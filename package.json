@@ -1,0 +1,92 @@
+{
+  "name": "identity-protocol",
+  "version": "1.0.0",
+  "description": "A decentralized, user-owned identity ecosystem with local-first architecture",
+  "main": "index.js",
+  "scripts": {
+    "dev": "concurrently \"npm run dev:identity\" \"npm run dev:tools\" \"npm run dev:browser\"",
+    "dev:identity": "cd core/identity-core && npm run dev",
+    "dev:tools": "cd tools && npm run dev",
+    "dev:browser": "cd browser && npm run dev",
+    "build": "npm run build:identity && npm run build:tools && npm run build:browser",
+    "build:identity": "cd core/identity-core && npm run build",
+    "build:tools": "cd tools && npm run build",
+    "build:browser": "cd browser && npm run build",
+    "test": "npm run test:identity && npm run test:tools && npm run test:browser",
+    "test:identity": "cd core/identity-core && npm test",
+    "test:tools": "cd tools && npm test",
+    "test:browser": "cd browser && npm test",
+    "lint": "npm run lint:identity && npm run lint:tools && npm run lint:browser",
+    "lint:identity": "cd core/identity-core && npm run lint",
+    "lint:tools": "cd tools && npm run lint",
+    "lint:browser": "cd browser && npm run lint",
+    "clean": "npm run clean:identity && npm run clean:tools && npm run clean:browser",
+    "clean:identity": "cd core/identity-core && npm run clean",
+    "clean:tools": "cd tools && npm run clean",
+    "clean:browser": "cd browser && npm run clean",
+    "docs": "npm run docs:build && npm run docs:serve",
+    "docs:build": "typedoc",
+    "docs:serve": "serve docs",
+    "prepare": "husky install"
+  },
+  "workspaces": [
+    "core/*",
+    "tools/*",
+    "browser/*",
+    "sdk/*",
+    "apps/*"
+  ],
+  "keywords": [
+    "identity",
+    "did",
+    "decentralized",
+    "privacy",
+    "authentication",
+    "local-first",
+    "user-owned",
+    "cryptography"
+  ],
+  "author": "Identity Protocol Team",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/yourusername/identity-protocol.git"
+  },
+  "bugs": {
+    "url": "https://github.com/yourusername/identity-protocol/issues"
+  },
+  "homepage": "https://identity-protocol.com",
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@typescript-eslint/eslint-plugin": "^6.0.0",
+    "@typescript-eslint/parser": "^6.0.0",
+    "concurrently": "^8.0.0",
+    "eslint": "^8.0.0",
+    "eslint-config-prettier": "^9.0.0",
+    "eslint-plugin-prettier": "^5.0.0",
+    "husky": "^8.0.0",
+    "lint-staged": "^14.0.0",
+    "prettier": "^3.0.0",
+    "serve": "^14.0.0",
+    "typedoc": "^0.25.0",
+    "typescript": "^5.0.0"
+  },
+  "engines": {
+    "node": ">=18.0.0",
+    "npm": ">=9.0.0"
+  },
+  "lint-staged": {
+    "*.{js,ts,jsx,tsx}": [
+      "eslint --fix",
+      "prettier --write"
+    ],
+    "*.{json,md,yml,yaml}": [
+      "prettier --write"
+    ]
+  },
+  "config": {
+    "commitizen": {
+      "path": "cz-conventional-changelog"
+    }
+  }
+} 
