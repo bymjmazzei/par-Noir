@@ -1,0 +1,445 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>White Paper - par Noir</title>
+    <link rel="stylesheet" href="styles.css">
+    <link rel="icon" type="image/png" href="branding/Par-Noir-Icon-White.png">
+</head>
+<body>
+    <!-- Background -->
+    <div class="background"></div>
+
+    <!-- Navigation -->
+    <nav class="nav">
+        <div class="nav-container">
+            <div class="nav-brand">
+                <img src="branding/Par-Noir-Logo-White.png" alt="Par Noir" class="nav-logo">
+            </div>
+            <div class="nav-menu">
+                <a href="index.html" class="nav-link">Home</a>
+                <a href="developer-portal.html" class="nav-link">Developer Portal</a>
+                <a href="#overview" class="nav-link active">White Paper</a>
+                <a href="https://github.com/identity-protocol" target="_blank" class="nav-link">GitHub</a>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Hero Section -->
+    <section class="hero">
+        <div class="hero-container">
+            <div class="hero-content">
+                <div class="hero-badge">Technical Specification</div>
+                <h1 class="hero-title">
+                    par Noir <span class="hero-highlight">White Paper</span>
+                </h1>
+                <p class="hero-subtitle">
+                    A comprehensive technical specification for sovereign digital identity, 
+                    zero-knowledge proofs, and decentralized authentication.
+                </p>
+                <div class="hero-actions">
+                    <a href="#overview" class="btn btn-primary btn-large">
+                        <span>Read the Paper</span>
+                        <svg class="btn-icon" viewBox="0 0 24 24">
+                            <path d="M5 12h14m-7-7l7 7-7 7"/>
+                        </svg>
+                    </a>
+                    <a href="developer-portal.html" class="btn btn-secondary">Developer Portal</a>
+                </div>
+            </div>
+            <div class="hero-visual">
+                <div class="whitepaper-preview">
+                    <div class="document-icon">
+                        <svg viewBox="0 0 24 24">
+                            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                            <polyline points="14,2 14,8 20,8"/>
+                            <line x1="16" y1="13" x2="8" y2="13"/>
+                            <line x1="16" y1="17" x2="8" y2="17"/>
+                            <polyline points="10,9 9,9 8,9"/>
+                        </svg>
+                    </div>
+                    <p>Technical Specification v1.0</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Table of Contents -->
+    <section id="overview" class="narrative-section">
+        <div class="container">
+            <div class="section-header">
+                <h2 class="section-title">Table of Contents</h2>
+                <p class="section-subtitle">Navigate through the technical specification.</p>
+            </div>
+            <div class="toc-grid">
+                <div class="toc-item">
+                    <div class="toc-number">1</div>
+                    <div class="toc-content">
+                        <h3>Introduction</h3>
+                        <p>The problem with current digital identity systems and our solution.</p>
+                        <a href="#introduction" class="toc-link">Read Section →</a>
+                    </div>
+                </div>
+                <div class="toc-item">
+                    <div class="toc-number">2</div>
+                    <div class="toc-content">
+                        <h3>Protocol Architecture</h3>
+                        <p>Core components, cryptographic foundations, and system design.</p>
+                        <a href="#architecture" class="toc-link">Read Section →</a>
+                    </div>
+                </div>
+                <div class="toc-item">
+                    <div class="toc-number">3</div>
+                    <div class="toc-content">
+                        <h3>Zero-Knowledge Proofs</h3>
+                        <p>Privacy-preserving verification without data exposure.</p>
+                        <a href="#zkp" class="toc-link">Read Section →</a>
+                    </div>
+                </div>
+                <div class="toc-item">
+                    <div class="toc-number">4</div>
+                    <div class="toc-content">
+                        <h3>Social Recovery</h3>
+                        <p>Decentralized identity recovery through trusted networks.</p>
+                        <a href="#recovery" class="toc-link">Read Section →</a>
+                    </div>
+                </div>
+                <div class="toc-item">
+                    <div class="toc-number">5</div>
+                    <div class="toc-content">
+                        <h3>Security Model</h3>
+                        <p>Threat analysis, security guarantees, and attack vectors.</p>
+                        <a href="#security" class="toc-link">Read Section →</a>
+                    </div>
+                </div>
+                <div class="toc-item">
+                    <div class="toc-number">6</div>
+                    <div class="toc-content">
+                        <h3>Implementation</h3>
+                        <p>Technical implementation details and integration patterns.</p>
+                        <a href="#implementation" class="toc-link">Read Section →</a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Section 1: Introduction -->
+    <section id="introduction" class="narrative-section solution-section">
+        <div class="container">
+            <div class="section-header">
+                <h2 class="section-title">1. Introduction</h2>
+                <p class="section-subtitle">The problem with current digital identity systems.</p>
+            </div>
+            <div class="whitepaper-content">
+                <h3>The Digital Identity Crisis</h3>
+                <p>
+                    Current digital identity systems are fundamentally broken. Users are forced to surrender control 
+                    of their personal information to centralized platforms that can revoke access, sell data, or 
+                    be compromised by security breaches. This creates a system where identity is rented, not owned.
+                </p>
+                
+                <h3>Our Solution: Sovereign Identity</h3>
+                <p>
+                    par Noir introduces a paradigm shift: sovereign digital identity. Users generate and control 
+                    their own cryptographic keys, maintaining complete ownership of their digital identity while 
+                    still being able to prove facts about themselves without revealing underlying data.
+                </p>
+
+                <h3>Key Principles</h3>
+                <ul class="whitepaper-list">
+                    <li><strong>Sovereignty:</strong> Users own their identity completely</li>
+                    <li><strong>Privacy:</strong> Zero-knowledge proofs enable verification without exposure</li>
+                    <li><strong>Recovery:</strong> Social recovery networks prevent permanent loss</li>
+                    <li><strong>Interoperability:</strong> Works across any platform or service</li>
+                    <li><strong>Decentralization:</strong> No central authority can revoke access</li>
+                </ul>
+            </div>
+        </div>
+    </section>
+
+    <!-- Section 2: Architecture -->
+    <section id="architecture" class="narrative-section">
+        <div class="container">
+            <div class="section-header">
+                <h2 class="section-title">2. Protocol Architecture</h2>
+                <p class="section-subtitle">Core components and system design.</p>
+            </div>
+            <div class="whitepaper-content">
+                <h3>Core Components</h3>
+                <p>
+                    The par Noir protocol consists of several key components that work together to provide 
+                    sovereign digital identity:
+                </p>
+
+                <h4>Identity Core</h4>
+                <p>
+                    The foundation of the system, responsible for key generation, identity creation, and 
+                    cryptographic operations. Built on established standards like DIDs (Decentralized Identifiers) 
+                    and W3C Verifiable Credentials.
+                </p>
+
+                <h4>Zero-Knowledge Proof Engine</h4>
+                <p>
+                    Enables users to prove facts about themselves without revealing the underlying data. 
+                    Supports age verification, qualification proofs, and custom attribute verification.
+                </p>
+
+                <h4>Social Recovery Network</h4>
+                <p>
+                    Decentralized recovery mechanism that allows users to recover their identity through 
+                    trusted contacts without any single point of failure.
+                </p>
+
+                <h4>Storage Layer</h4>
+                <p>
+                    Hybrid storage system combining local device storage with IPFS for encrypted metadata, 
+                    ensuring data sovereignty while maintaining accessibility.
+                </p>
+            </div>
+        </div>
+    </section>
+
+    <!-- Section 3: Zero-Knowledge Proofs -->
+    <section id="zkp" class="narrative-section solution-section">
+        <div class="container">
+            <div class="section-header">
+                <h2 class="section-title">3. Zero-Knowledge Proofs</h2>
+                <p class="section-subtitle">Privacy-preserving verification without data exposure.</p>
+            </div>
+            <div class="whitepaper-content">
+                <h3>What are Zero-Knowledge Proofs?</h3>
+                <p>
+                    Zero-knowledge proofs allow one party (the prover) to prove to another party (the verifier) 
+                    that a statement is true without revealing any information beyond the validity of the statement itself.
+                </p>
+
+                <h3>Implementation in par Noir</h3>
+                <p>
+                    Our ZKP system enables users to prove facts like age, qualifications, or membership 
+                    without revealing their actual birth date, educational records, or personal details.
+                </p>
+
+                <h4>Age Verification Example</h4>
+                <div class="code-example">
+                    <pre><code>// User proves they are over 21 without revealing their age
+const ageProof = await identity.prove({
+  statement: "age >= 21",
+  reveal: false
+});
+
+// Verifier can validate the proof without seeing the actual age
+const isValid = await verifier.verify(ageProof);</code></pre>
+                </div>
+
+                <h3>Supported Proof Types</h3>
+                <ul class="whitepaper-list">
+                    <li><strong>Age Verification:</strong> Prove minimum age without revealing birth date</li>
+                    <li><strong>Qualification Proofs:</strong> Prove education or certification without revealing details</li>
+                    <li><strong>Membership Proofs:</strong> Prove group membership without revealing identity</li>
+                    <li><strong>Custom Attributes:</strong> Prove any boolean statement about attributes</li>
+                </ul>
+            </div>
+        </div>
+    </section>
+
+    <!-- Section 4: Social Recovery -->
+    <section id="recovery" class="narrative-section">
+        <div class="container">
+            <div class="section-header">
+                <h2 class="section-title">4. Social Recovery</h2>
+                <p class="section-subtitle">Decentralized identity recovery through trusted networks.</p>
+            </div>
+            <div class="whitepaper-content">
+                <h3>The Recovery Problem</h3>
+                <p>
+                    Traditional identity systems rely on centralized recovery mechanisms that can be 
+                    compromised or unavailable. With sovereign identity, users need a decentralized 
+                    way to recover access when keys are lost.
+                </p>
+
+                <h3>Social Recovery Solution</h3>
+                <p>
+                    Social recovery allows users to designate trusted contacts who can help them 
+                    recover their identity. The recovery process requires a threshold of these 
+                    contacts to approve the recovery, ensuring security while preventing permanent loss.
+                </p>
+
+                <h4>Recovery Process</h4>
+                <ol class="whitepaper-list">
+                    <li>User designates trusted contacts during identity setup</li>
+                    <li>Recovery shares are distributed among contacts</li>
+                    <li>When recovery is needed, user requests help from contacts</li>
+                    <li>Threshold of contacts must approve the recovery</li>
+                    <li>New keys are generated and identity is restored</li>
+                </ol>
+
+                <h3>Security Guarantees</h3>
+                <ul class="whitepaper-list">
+                    <li><strong>No Single Point of Failure:</strong> No single contact can recover the identity alone</li>
+                    <li><strong>Threshold Security:</strong> Requires multiple approvals for recovery</li>
+                    <li><strong>Privacy Preserved:</strong> Contacts don't know each other or the user's data</li>
+                    <li><strong>Revocable:</strong> Users can update their recovery network at any time</li>
+                </ul>
+            </div>
+        </div>
+    </section>
+
+    <!-- Section 5: Security Model -->
+    <section id="security" class="narrative-section solution-section">
+        <div class="container">
+            <div class="section-header">
+                <h2 class="section-title">5. Security Model</h2>
+                <p class="section-subtitle">Threat analysis and security guarantees.</p>
+            </div>
+            <div class="whitepaper-content">
+                <h3>Threat Model</h3>
+                <p>
+                    We consider the following threat vectors in our security model:
+                </p>
+
+                <h4>Key Compromise</h4>
+                <p>
+                    If a user's private keys are compromised, the attacker gains full control over the identity. 
+                    This is mitigated through secure key generation, hardware security modules (HSM) support, 
+                    and social recovery mechanisms.
+                </p>
+
+                <h4>Social Engineering</h4>
+                <p>
+                    Attackers may attempt to manipulate users into revealing their keys or recovery information. 
+                    This is addressed through user education, secure recovery processes, and multi-factor authentication.
+                </p>
+
+                <h4>Quantum Attacks</h4>
+                <p>
+                    Future quantum computers may threaten current cryptographic algorithms. Our protocol is 
+                    designed to be quantum-resistant and can be upgraded to post-quantum cryptography.
+                </p>
+
+                <h3>Security Guarantees</h3>
+                <ul class="whitepaper-list">
+                    <li><strong>Cryptographic Security:</strong> Based on well-established cryptographic primitives</li>
+                    <li><strong>Forward Secrecy:</strong> Compromised keys don't affect past communications</li>
+                    <li><strong>Zero-Knowledge:</strong> No information leakage beyond intended proofs</li>
+                    <li><strong>Decentralized:</strong> No central point of attack or failure</li>
+                </ul>
+            </div>
+        </div>
+    </section>
+
+    <!-- Section 6: Implementation -->
+    <section id="implementation" class="narrative-section">
+        <div class="container">
+            <div class="section-header">
+                <h2 class="section-title">6. Implementation</h2>
+                <p class="section-subtitle">Technical implementation details and integration patterns.</p>
+            </div>
+            <div class="whitepaper-content">
+                <h3>SDK Architecture</h3>
+                <p>
+                    The par Noir SDK provides a unified interface for integrating sovereign identity 
+                    into applications across multiple platforms.
+                </p>
+
+                <h4>Core SDK Components</h4>
+                <ul class="whitepaper-list">
+                    <li><strong>IdentitySDK:</strong> Main SDK class for identity operations</li>
+                    <li><strong>Storage Adapters:</strong> Local storage, IndexedDB, and memory storage</li>
+                    <li><strong>Security Modules:</strong> Certificate pinning and threat detection</li>
+                    <li><strong>React Integration:</strong> Hooks for React applications</li>
+                </ul>
+
+                <h3>Integration Patterns</h3>
+                <p>
+                    The SDK supports multiple integration patterns for different use cases:
+                </p>
+
+                <h4>Web Applications</h4>
+                <div class="code-example">
+                    <pre><code>// Basic web integration
+import { createIdentitySDK } from '@identity-protocol/identity-sdk';
+
+const sdk = createIdentitySDK({
+  identityProvider: {
+    name: 'Identity Protocol',
+    type: 'oauth2',
+    config: {
+      clientId: 'your-client-id',
+      redirectUri: 'your-redirect-uri'
+    }
+  }
+});</code></pre>
+                </div>
+
+                <h4>Mobile Applications</h4>
+                <p>
+                    Mobile integration supports React Native and Flutter through platform-specific 
+                    storage adapters and native security features.
+                </p>
+
+                <h3>Deployment Considerations</h3>
+                <ul class="whitepaper-list">
+                    <li><strong>Key Management:</strong> Secure key generation and storage</li>
+                    <li><strong>Network Security:</strong> Certificate pinning and secure communication</li>
+                    <li><strong>User Experience:</strong> Seamless onboarding and recovery flows</li>
+                    <li><strong>Compliance:</strong> GDPR, CCPA, and other privacy regulations</li>
+                </ul>
+            </div>
+        </div>
+    </section>
+
+    <!-- Footer -->
+    <footer class="footer">
+        <div class="container">
+            <div class="footer-content">
+                <div class="footer-brand">
+                    <img src="branding/Par-Noir-Logo-White.png" alt="Par Noir" class="footer-logo">
+                    <p>Building the future of digital identity.</p>
+                </div>
+                <div class="footer-links">
+                    <div class="footer-column">
+                        <h4>Documentation</h4>
+                        <a href="#overview">Overview</a>
+                        <a href="#architecture">Architecture</a>
+                        <a href="#zkp">Zero-Knowledge Proofs</a>
+                    </div>
+                    <div class="footer-column">
+                        <h4>Resources</h4>
+                        <a href="index.html">Home</a>
+                        <a href="developer-portal.html">Developer Portal</a>
+                        <a href="https://github.com/identity-protocol">GitHub</a>
+                    </div>
+                    <div class="footer-column">
+                        <h4>Community</h4>
+                        <a href="https://discord.gg/parnoir">Discord</a>
+                        <a href="https://twitter.com/parnoir">Twitter</a>
+                        <a href="#community">Community</a>
+                    </div>
+                </div>
+            </div>
+            <div class="footer-bottom">
+                <p>&copy; 2025 Par Noir. Continuing the legacy of freedom since 1776.</p>
+            </div>
+        </div>
+    </footer>
+
+    <script src="script.js"></script>
+    <script>
+        // Smooth scrolling for anchor links
+        document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+            anchor.addEventListener('click', function (e) {
+                e.preventDefault();
+                const target = document.querySelector(this.getAttribute('href'));
+                if (target) {
+                    target.scrollIntoView({
+                        behavior: 'smooth',
+                        block: 'start'
+                    });
+                }
+            });
+        });
+    </script>
+</body>
+</html>

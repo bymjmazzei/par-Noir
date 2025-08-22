@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Identity Protocol Debug Test</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .test-section { margin: 20px 0; padding: 15px; border: 1px solid #ccc; }
+        button { margin: 5px; padding: 10px; }
+        .error { color: red; }
+        .success { color: green; }
+        .log { background: #f5f5f5; padding: 10px; margin: 10px 0; font-family: monospace; }
+    </style>
+</head>
+<body>
+    <h1>Identity Protocol Debug Test</h1>
+    
+    <div class="test-section">
+        <h2>Storage Test</h2>
+        <button onclick="testStorage()">Test Storage Initialization</button>
+        <button onclick="clearStorage()">Clear Storage</button>
+        <div id="storage-log" class="log"></div>
+    </div>
+
+    <div class="test-section">
+        <h2>Identity Creation Test</h2>
+        <input type="text" id="test-username" placeholder="Username" value="testuser">
+        <input type="text" id="test-passcode" placeholder="Passcode" value="TestPass123!">
+        <input type="text" id="test-nickname" placeholder="Nickname" value="Test User">
+        <button onclick="testCreateIdentity()">Test Create Identity</button>
+        <div id="create-log" class="log"></div>
+    </div>
+
+    <div class="test-section">
+        <h2>Identity Unlock Test</h2>
+        <button onclick="testUnlockIdentity()">Test Unlock Identity</button>
+        <div id="unlock-log" class="log"></div>
+    </div>
+
+    <div class="test-section">
+        <h2>Environment Test</h2>
+        <button onclick="testEnvironment()">Test Environment Variables</button>
+        <div id="env-log" class="log"></div>
+    </div>
+
+    <script>
+        function log(elementId, message, type = 'info') {
+            const element = document.getElementById(elementId);
+            const timestamp = new Date().toLocaleTimeString();
+            const className = type === 'error' ? 'error' : type === 'success' ? 'success' : '';
+            element.innerHTML += `<div class="${className}">[${timestamp}] ${message}</div>`;
+            element.scrollTop = element.scrollHeight;
+        }
+
+        async function testStorage() {
+            try {
+                log('storage-log', 'Testing storage initialization...');
+                
+                // Test IndexedDB
+                const request = indexedDB.open('IdentityProtocolDB', 1);
+                
+                request.onerror = () => {
+                    log('storage-log', '❌ IndexedDB failed to open', 'error');
+                };
+                
+                request.onsuccess = () => {
+                    log('storage-log', '✅ IndexedDB opened successfully', 'success');
+                    const db = request.result;
+                    log('storage-log', `Database name: ${db.name}, version: ${db.version}`);
+                    log('storage-log', `Object stores: ${Array.from(db.objectStoreNames).join(', ')}`);
+                };
+                
+                request.onupgradeneeded = (event) => {
+                    log('storage-log', 'Database upgrade needed');
+                    const db = event.target.result;
+                    
+                    if (!db.objectStoreNames.contains('identities')) {
+                        db.createObjectStore('identities', { keyPath: 'publicKey' });
+                        log('storage-log', 'Created identities store');
+                    }
+                    
+                    if (!db.objectStoreNames.contains('sessions')) {
+                        db.createObjectStore('sessions', { keyPath: 'id' });
+                        log('storage-log', 'Created sessions store');
+                    }
+                };
+                
+            } catch (error) {
+                log('storage-log', `❌ Storage test failed: ${error.message}`, 'error');
+            }
+        }
+
+        async function clearStorage() {
+            try {
+                log('storage-log', 'Clearing storage...');
+                localStorage.clear();
+                sessionStorage.clear();
+                
+                const request = indexedDB.deleteDatabase('IdentityProtocolDB');
+                request.onsuccess = () => {
+                    log('storage-log', '✅ Storage cleared successfully', 'success');
+                };
+                request.onerror = () => {
+                    log('storage-log', '❌ Failed to clear IndexedDB', 'error');
+                };
+            } catch (error) {
+                log('storage-log', `❌ Clear storage failed: ${error.message}`, 'error');
+            }
+        }
+
+        async function testCreateIdentity() {
+            try {
+                const username = document.getElementById('test-username').value;
+                const passcode = document.getElementById('test-passcode').value;
+                const nickname = document.getElementById('test-nickname').value;
+                
+                log('create-log', `Testing identity creation for: ${username}`);
+                
+                // Test basic validation
+                if (!username || username.length < 3) {
+                    log('create-log', '❌ Username must be at least 3 characters', 'error');
+                    return;
+                }
+                
+                if (!passcode || passcode.length < 8) {
+                    log('create-log', '❌ Passcode must be at least 8 characters', 'error');
+                    return;
+                }
+                
+                log('create-log', '✅ Basic validation passed', 'success');
+                
+                // Test crypto API availability
+                if (!window.crypto || !window.crypto.subtle) {
+                    log('create-log', '❌ Web Crypto API not available', 'error');
+                    return;
+                }
+                
+                log('create-log', '✅ Web Crypto API available', 'success');
+                
+                // Test random value generation
+                const randomBytes = crypto.getRandomValues(new Uint8Array(32));
+                log('create-log', `✅ Random bytes generated: ${randomBytes.length} bytes`);
+                
+                // Test text encoding
+                const encoder = new TextEncoder();
+                const encoded = encoder.encode('test');
+                log('create-log', `✅ Text encoding works: ${encoded.length} bytes`);
+                
+                log('create-log', '✅ All crypto tests passed - identity creation should work', 'success');
+                
+            } catch (error) {
+                log('create-log', `❌ Create identity test failed: ${error.message}`, 'error');
+            }
+        }
+
+        async function testUnlockIdentity() {
+            try {
+                log('unlock-log', 'Testing identity unlock...');
+                
+                // Check if we have any stored identities
+                const request = indexedDB.open('IdentityProtocolDB', 1);
+                
+                request.onsuccess = () => {
+                    const db = request.result;
+                    const transaction = db.transaction(['identities'], 'readonly');
+                    const store = transaction.objectStore('identities');
+                    const getAllRequest = store.getAll();
+                    
+                    getAllRequest.onsuccess = () => {
+                        const identities = getAllRequest.result;
+                        log('unlock-log', `Found ${identities.length} stored identities`);
+                        
+                        if (identities.length === 0) {
+                            log('unlock-log', 'No identities to unlock - create one first', 'error');
+                        } else {
+                            log('unlock-log', '✅ Stored identities found - unlock should work', 'success');
+                        }
+                    };
+                    
+                    getAllRequest.onerror = () => {
+                        log('unlock-log', '❌ Failed to read stored identities', 'error');
+                    };
+                };
+                
+            } catch (error) {
+                log('unlock-log', `❌ Unlock test failed: ${error.message}`, 'error');
+            }
+        }
+
+        async function testEnvironment() {
+            try {
+                log('env-log', 'Testing environment variables...');
+                
+                // Check for common environment variables
+                const envVars = [
+                    'NODE_ENV',
+                    'REACT_APP_FIREBASE_API_KEY',
+                    'REACT_APP_SENDGRID_API_KEY',
+                    'REACT_APP_TWILIO_ACCOUNT_SID',
+                    'REACT_APP_IPFS_API_KEY'
+                ];
+                
+                envVars.forEach(varName => {
+                    const value = window.process?.env?.[varName] || 'not set';
+                    log('env-log', `${varName}: ${value}`);
+                });
+                
+                // Check browser environment
+                log('env-log', `User Agent: ${navigator.userAgent}`);
+                log('env-log', `Platform: ${navigator.platform}`);
+                log('env-log', `Cookies Enabled: ${navigator.cookieEnabled}`);
+                log('env-log', `IndexedDB Available: ${!!window.indexedDB}`);
+                log('env-log', `Crypto Available: ${!!window.crypto}`);
+                
+            } catch (error) {
+                log('env-log', `❌ Environment test failed: ${error.message}`, 'error');
+            }
+        }
+
+        // Auto-run storage test on load
+        window.addEventListener('load', () => {
+            log('storage-log', 'Page loaded - running initial tests...');
+            testStorage();
+            testEnvironment();
+        });
+    </script>
+</body>
+</html>

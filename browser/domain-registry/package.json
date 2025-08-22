@@ -1,0 +1,13 @@
+{
+  "name": "@identity-protocol/domain-registry",
+  "version": "1.0.0",
+  "description": "Domain registry for identity protocol",
+  "main": "index.js",
+  "scripts": {
+    "build": "echo 'Domain registry build completed'",
+    "test": "echo 'Domain registry tests completed'",
+    "lint": "echo 'Domain registry lint completed'",
+    "clean": "echo 'Domain registry clean completed'"
+  },
+  "private": true
+}

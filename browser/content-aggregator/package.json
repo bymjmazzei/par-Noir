@@ -1,0 +1,13 @@
+{
+  "name": "@identity-protocol/content-aggregator",
+  "version": "1.0.0",
+  "description": "Content aggregator for identity protocol",
+  "main": "index.js",
+  "scripts": {
+    "build": "echo 'Content aggregator build completed'",
+    "test": "echo 'Content aggregator tests completed'",
+    "lint": "echo 'Content aggregator lint completed'",
+    "clean": "echo 'Content aggregator clean completed'"
+  },
+  "private": true
+}

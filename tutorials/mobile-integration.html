@@ -1,0 +1,1121 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mobile App Integration Tutorial - par Noir</title>
+    <link rel="stylesheet" href="../styles.css">
+    <link rel="icon" type="image/png" href="../branding/Par-Noir-Icon-White.png">
+</head>
+<body>
+    <!-- Background -->
+    <div class="background"></div>
+
+    <!-- Navigation -->
+    <nav class="nav">
+        <div class="nav-container">
+            <div class="nav-brand">
+                <img src="../branding/Par-Noir-Logo-White.png" alt="Par Noir" class="nav-logo">
+            </div>
+            <div class="nav-menu">
+                <a href="../index.html" class="nav-link">Home</a>
+                <a href="../developer-portal.html" class="nav-link">Developer Portal</a>
+                <a href="#overview" class="nav-link active">Tutorial</a>
+                <a href="https://github.com/identity-protocol" target="_blank" class="nav-link">GitHub</a>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Hero Section -->
+    <section class="hero">
+        <div class="hero-container">
+            <div class="hero-content">
+                <div class="hero-badge">Tutorial</div>
+                <h1 class="hero-title">
+                    Mobile App <span class="hero-highlight">Integration</span>
+                </h1>
+                <p class="hero-subtitle">
+                    Integrate par Noir into React Native and Flutter applications. 
+                    Enable users to carry their sovereign identity across all devices.
+                </p>
+                <div class="hero-actions">
+                    <a href="#overview" class="btn btn-primary btn-large">
+                        <span>Start Tutorial</span>
+                        <svg class="btn-icon" viewBox="0 0 24 24">
+                            <path d="M5 12h14m-7-7l7 7-7 7"/>
+                        </svg>
+                    </a>
+                    <a href="https://github.com/identity-protocol/examples/tree/main/mobile" target="_blank" class="btn btn-secondary">View Code</a>
+                </div>
+            </div>
+            <div class="hero-visual">
+                <div class="tutorial-preview">
+                    <div class="tutorial-icon">
+                        <svg viewBox="0 0 24 24">
+                            <path d="M12 2L2 7l10 5 10-5-10-5z"/>
+                            <path d="M2 17l10 5 10-5"/>
+                            <path d="M2 12l10 5 10-5"/>
+                        </svg>
+                    </div>
+                    <p>25-minute tutorial</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Overview -->
+    <section id="overview" class="narrative-section">
+        <div class="container">
+            <div class="section-header">
+                <h2 class="section-title">Overview</h2>
+                <p class="section-subtitle">What you'll build and learn in this tutorial.</p>
+            </div>
+            <div class="tutorial-content">
+                <h3>What You'll Build</h3>
+                <p>
+                    In this tutorial, you'll create mobile applications for both React Native and Flutter 
+                    that integrate par Noir for sovereign identity management. Users will be able to 
+                    create identities, authenticate securely, and maintain control of their identity across devices.
+                </p>
+
+                <h3>Key Concepts</h3>
+                <ul class="tutorial-list">
+                    <li><strong>Mobile SDK Integration:</strong> Use par Noir SDK in mobile environments</li>
+                    <li><strong>Secure Storage:</strong> Implement secure key storage on mobile devices</li>
+                    <li><strong>Device Authentication:</strong> Add device-level security for mobile apps</li>
+                    <li><strong>Cross-Platform Identity:</strong> Same identity works across web and mobile</li>
+                </ul>
+
+                <h3>Prerequisites</h3>
+                <ul class="tutorial-list">
+                    <li>Basic knowledge of React Native or Flutter</li>
+                    <li>Node.js and npm installed</li>
+                    <li>Android Studio (for Android development)</li>
+                    <li>Xcode (for iOS development, macOS only)</li>
+                </ul>
+
+                <div class="tutorial-info">
+                    <div class="info-item">
+                        <strong>Duration:</strong> 25 minutes
+                    </div>
+                    <div class="info-item">
+                        <strong>Difficulty:</strong> Advanced
+                    </div>
+                    <div class="info-item">
+                        <strong>Code:</strong> <a href="https://github.com/identity-protocol/examples/tree/main/mobile" target="_blank">View on GitHub</a>
+                    </div>
+                </div>
+
+                <h3>What This Actually Enables</h3>
+                <div class="tutorial-info">
+                    <div class="info-item">
+                        <strong>✅ Provides:</strong> Cross-device identity synchronization
+                    </div>
+                    <div class="info-item">
+                        <strong>✅ Enables:</strong> Mobile-optimized identity management
+                    </div>
+                    <div class="info-item">
+                        <strong>✅ Protects:</strong> User data stays on their devices
+                    </div>
+                    <div class="info-item">
+                        <strong>⚠️ Limitations:</strong> Same identity capabilities as web version
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- React Native Section -->
+    <section id="react-native" class="narrative-section solution-section">
+        <div class="container">
+            <div class="section-header">
+                <h2 class="section-title">React Native Integration</h2>
+                <p class="section-subtitle">Build a React Native app with par Noir authentication.</p>
+            </div>
+            <div class="tutorial-content">
+                <h3>Project Setup</h3>
+                <div class="code-example">
+                    <pre><code># Create React Native project
+npx react-native@latest init ParNoirMobile --template react-native-template-typescript
+
+cd ParNoirMobile
+
+# Install dependencies
+npm install @identity-protocol/identity-sdk
+npm install react-native-keychain
+npm install react-native-biometrics
+npm install @react-native-async-storage/async-storage
+npm install react-native-vector-icons
+npm install @react-navigation/native @react-navigation/stack</code></pre>
+                </div>
+
+                <h3>iOS Setup (macOS only)</h3>
+                <div class="code-example">
+                    <pre><code>cd ios
+pod install
+cd ..</code></pre>
+                </div>
+
+                <h3>Android Setup</h3>
+                <div class="code-example">
+                    <pre><code># Add to android/app/build.gradle
+android {
+    defaultConfig {
+        // ... existing config
+        missingDimensionStrategy 'react-native-camera', 'general'
+    }
+}</code></pre>
+                </div>
+
+                <h3>Mobile Storage Service</h3>
+                <div class="code-example">
+                    <pre><code>// src/services/MobileStorageService.ts
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as Keychain from 'react-native-keychain';
+
+export class MobileStorageService {
+  async storeIdentity(identity: any): Promise<void> {
+    try {
+      // Store identity data in secure keychain
+      await Keychain.setInternetCredentials(
+        'parnoir_identity',
+        'user',
+        JSON.stringify(identity)
+      );
+    } catch (error) {
+      console.error('Failed to store identity:', error);
+      throw error;
+    }
+  }
+
+  async getIdentity(): Promise<any | null> {
+    try {
+      const credentials = await Keychain.getInternetCredentials('parnoir_identity');
+      if (credentials && credentials.password) {
+        return JSON.parse(credentials.password);
+      }
+      return null;
+    } catch (error) {
+      console.error('Failed to retrieve identity:', error);
+      return null;
+    }
+  }
+
+  async clearIdentity(): Promise<void> {
+    try {
+      await Keychain.resetInternetCredentials('parnoir_identity');
+    } catch (error) {
+      console.error('Failed to clear identity:', error);
+      throw error;
+    }
+  }
+
+  async storeUserData(key: string, data: any): Promise<void> {
+    try {
+      await AsyncStorage.setItem(key, JSON.stringify(data));
+    } catch (error) {
+      console.error('Failed to store user data:', error);
+      throw error;
+    }
+  }
+
+  async getUserData(key: string): Promise<any | null> {
+    try {
+      const data = await AsyncStorage.getItem(key);
+      return data ? JSON.parse(data) : null;
+    } catch (error) {
+      console.error('Failed to retrieve user data:', error);
+      return null;
+    }
+  }
+}</code></pre>
+                </div>
+
+                <h3>Biometric Authentication</h3>
+                <div class="code-example">
+                    <pre><code>// src/services/BiometricService.ts
+import ReactNativeBiometrics from 'react-native-biometrics';
+
+export class BiometricService {
+  private rnBiometrics: ReactNativeBiometrics;
+
+  constructor() {
+    this.rnBiometrics = new ReactNativeBiometrics();
+  }
+
+  async isBiometricAvailable(): Promise<boolean> {
+    try {
+      const { available, biometryType } = await this.rnBiometrics.isSensorAvailable();
+      return available;
+    } catch (error) {
+      console.error('Biometric check failed:', error);
+      return false;
+    }
+  }
+
+  async authenticateUser(): Promise<boolean> {
+    try {
+      const { success } = await this.rnBiometrics.simplePrompt({
+        promptMessage: 'Authenticate with biometrics',
+        cancelButtonText: 'Cancel'
+      });
+      return success;
+    } catch (error) {
+      console.error('Biometric authentication failed:', error);
+      return false;
+    }
+  }
+
+  async setupBiometric(): Promise<boolean> {
+    try {
+      const { success } = await this.rnBiometrics.createKeys();
+      return success;
+    } catch (error) {
+      console.error('Biometric setup failed:', error);
+      return false;
+    }
+  }
+}</code></pre>
+                </div>
+
+                <h3>Mobile Authentication Hook</h3>
+                <div class="code-example">
+                    <pre><code>// src/hooks/useMobileAuth.ts
+import { useState, useEffect } from 'react';
+import { createIdentitySDK } from '@identity-protocol/identity-sdk';
+import { MobileStorageService } from '../services/MobileStorageService';
+import { BiometricService } from '../services/BiometricService';
+
+export const useMobileAuth = () => {
+  const [sdk, setSdk] = useState<any>(null);
+  const [user, setUser] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+  const [biometricAvailable, setBiometricAvailable] = useState(false);
+
+  const storageService = new MobileStorageService();
+  const biometricService = new BiometricService();
+
+  useEffect(() => {
+    initializeSDK();
+    checkBiometricAvailability();
+  }, []);
+
+  const initializeSDK = async () => {
+    try {
+      const mobileSDK = createIdentitySDK({
+        identityProvider: {
+          name: 'Par Noir Mobile',
+          type: 'oauth2',
+          config: {
+            clientId: 'mobile-client',
+            redirectUri: 'parnoirmobile://callback'
+          }
+        },
+        storage: 'custom',
+        customStorage: storageService
+      });
+
+      setSdk(mobileSDK);
+
+      // Check for existing user
+      const existingUser = await storageService.getIdentity();
+      if (existingUser) {
+        setUser(existingUser);
+      }
+    } catch (error) {
+      console.error('SDK initialization failed:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const checkBiometricAvailability = async () => {
+    const available = await biometricService.isBiometricAvailable();
+    setBiometricAvailable(available);
+  };
+
+  const createIdentity = async (userData: any) => {
+    try {
+      const identity = await sdk.createIdentity(userData);
+      await storageService.storeIdentity(identity);
+      setUser(identity);
+      return identity;
+    } catch (error) {
+      console.error('Identity creation failed:', error);
+      throw error;
+    }
+  };
+
+  const authenticateWithBiometric = async (): Promise<boolean> => {
+    if (!biometricAvailable) {
+      return false;
+    }
+
+    try {
+      const authenticated = await biometricService.authenticateUser();
+      return authenticated;
+    } catch (error) {
+      console.error('Biometric authentication failed:', error);
+      return false;
+    }
+  };
+
+  const logout = async () => {
+    try {
+      await storageService.clearIdentity();
+      setUser(null);
+    } catch (error) {
+      console.error('Logout failed:', error);
+    }
+  };
+
+  return {
+    user,
+    loading,
+    biometricAvailable,
+    createIdentity,
+    authenticateWithBiometric,
+    logout,
+    sdk
+  };
+};</code></pre>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Flutter Section -->
+    <section id="flutter" class="narrative-section">
+        <div class="container">
+            <div class="section-header">
+                <h2 class="section-title">Flutter Integration</h2>
+                <p class="section-subtitle">Build a Flutter app with par Noir authentication.</p>
+            </div>
+            <div class="tutorial-content">
+                <h3>Project Setup</h3>
+                <div class="code-example">
+                    <pre><code># Create Flutter project
+flutter create par_noir_mobile
+cd par_noir_mobile
+
+# Add dependencies to pubspec.yaml
+dependencies:
+  flutter:
+    sdk: flutter
+  http: ^1.1.0
+  shared_preferences: ^2.2.2
+  flutter_secure_storage: ^9.0.0
+  local_auth: ^2.1.7
+  crypto: ^3.0.3
+  json_annotation: ^4.8.1
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  build_runner: ^2.4.7
+  json_serializable: ^6.7.1</code></pre>
+                </div>
+
+                <h3>Flutter Storage Service</h3>
+                <div class="code-example">
+                    <pre><code>// lib/services/storage_service.dart
+import 'dart:convert';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+
+class StorageService {
+  static const FlutterSecureStorage _secureStorage = FlutterSecureStorage();
+  static const String _identityKey = 'parnoir_identity';
+
+  Future<void> storeIdentity(Map<String, dynamic> identity) async {
+    try {
+      final identityJson = jsonEncode(identity);
+      await _secureStorage.write(key: _identityKey, value: identityJson);
+    } catch (e) {
+      print('Failed to store identity: $e');
+      rethrow;
+    }
+  }
+
+  Future<Map<String, dynamic>?> getIdentity() async {
+    try {
+      final identityJson = await _secureStorage.read(key: _identityKey);
+      if (identityJson != null) {
+        return jsonDecode(identityJson) as Map<String, dynamic>;
+      }
+      return null;
+    } catch (e) {
+      print('Failed to retrieve identity: $e');
+      return null;
+    }
+  }
+
+  Future<void> clearIdentity() async {
+    try {
+      await _secureStorage.delete(key: _identityKey);
+    } catch (e) {
+      print('Failed to clear identity: $e');
+      rethrow;
+    }
+  }
+
+  Future<void> storeUserData(String key, dynamic data) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(key, jsonEncode(data));
+    } catch (e) {
+      print('Failed to store user data: $e');
+      rethrow;
+    }
+  }
+
+  Future<dynamic> getUserData(String key) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final data = prefs.getString(key);
+      return data != null ? jsonDecode(data) : null;
+    } catch (e) {
+      print('Failed to retrieve user data: $e');
+      return null;
+    }
+  }
+}</code></pre>
+                </div>
+
+                <h3>Flutter Biometric Service</h3>
+                <div class="code-example">
+                    <pre><code>// lib/services/biometric_service.dart
+import 'package:local_auth/local_auth.dart';
+
+class BiometricService {
+  final LocalAuthentication _localAuth = LocalAuthentication();
+
+  Future<bool> isBiometricAvailable() async {
+    try {
+      final isAvailable = await _localAuth.canCheckBiometrics;
+      final isDeviceSupported = await _localAuth.isDeviceSupported();
+      return isAvailable && isDeviceSupported;
+    } catch (e) {
+      print('Biometric check failed: $e');
+      return false;
+    }
+  }
+
+  Future<bool> authenticateUser() async {
+    try {
+      final isAuthenticated = await _localAuth.authenticate(
+        localizedReason: 'Authenticate with biometrics',
+        options: const AuthenticationOptions(
+          biometricOnly: true,
+          stickyAuth: true,
+        ),
+      );
+      return isAuthenticated;
+    } catch (e) {
+      print('Biometric authentication failed: $e');
+      return false;
+    }
+  }
+
+  Future<List<BiometricType>> getAvailableBiometrics() async {
+    try {
+      return await _localAuth.getAvailableBiometrics();
+    } catch (e) {
+      print('Failed to get available biometrics: $e');
+      return [];
+    }
+  }
+}</code></pre>
+                </div>
+
+                <h3>Flutter Authentication Provider</h3>
+                <div class="code-example">
+                    <pre><code>// lib/providers/auth_provider.dart
+import 'package:flutter/foundation.dart';
+import '../services/storage_service.dart';
+import '../services/biometric_service.dart';
+import '../models/user.dart';
+
+class AuthProvider with ChangeNotifier {
+  final StorageService _storageService = StorageService();
+  final BiometricService _biometricService = BiometricService();
+  
+  User? _user;
+  bool _loading = true;
+  bool _biometricAvailable = false;
+
+  User? get user => _user;
+  bool get loading => _loading;
+  bool get biometricAvailable => _biometricAvailable;
+  bool get isAuthenticated => _user != null;
+
+  AuthProvider() {
+    _initialize();
+  }
+
+  Future<void> _initialize() async {
+    try {
+      // Check for existing user
+      final identity = await _storageService.getIdentity();
+      if (identity != null) {
+        _user = User.fromJson(identity);
+      }
+
+      // Check biometric availability
+      _biometricAvailable = await _biometricService.isBiometricAvailable();
+    } catch (e) {
+      print('Initialization failed: $e');
+    } finally {
+      _loading = false;
+      notifyListeners();
+    }
+  }
+
+  Future<User> createIdentity(String name, String email) async {
+    try {
+      // In a real implementation, you'd call the par Noir SDK
+      // For demo purposes, we'll create a mock identity
+      final user = User(
+        id: DateTime.now().millisecondsSinceEpoch.toString(),
+        name: name,
+        email: email,
+      );
+
+      await _storageService.storeIdentity(user.toJson());
+      _user = user;
+      notifyListeners();
+      return user;
+    } catch (e) {
+      print('Identity creation failed: $e');
+      rethrow;
+    }
+  }
+
+  Future<bool> authenticateWithBiometric() async {
+    if (!_biometricAvailable) {
+      return false;
+    }
+
+    try {
+      final authenticated = await _biometricService.authenticateUser();
+      return authenticated;
+    } catch (e) {
+      print('Biometric authentication failed: $e');
+      return false;
+    }
+  }
+
+  Future<void> logout() async {
+    try {
+      await _storageService.clearIdentity();
+      _user = null;
+      notifyListeners();
+    } catch (e) {
+      print('Logout failed: $e');
+      rethrow;
+    }
+  }
+}</code></pre>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- UI Components -->
+    <section id="ui-components" class="narrative-section solution-section">
+        <div class="container">
+            <div class="section-header">
+                <h2 class="section-title">Mobile UI Components</h2>
+                <p class="section-subtitle">Create beautiful mobile interfaces for authentication.</p>
+            </div>
+            <div class="tutorial-content">
+                <h3>React Native Login Screen</h3>
+                <div class="code-example">
+                    <pre><code>// src/screens/LoginScreen.tsx
+import React, { useState } from 'react';
+import {
+  View,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  StyleSheet,
+  Alert,
+  ActivityIndicator,
+} from 'react-native';
+import { useMobileAuth } from '../hooks/useMobileAuth';
+
+export const LoginScreen: React.FC = () => {
+  const [name, setName] = useState('');
+  const [email, setEmail] = useState('');
+  const [loading, setLoading] = useState(false);
+  
+  const { createIdentity, biometricAvailable, authenticateWithBiometric } = useMobileAuth();
+
+  const handleCreateIdentity = async () => {
+    if (!name || !email) {
+      Alert.alert('Error', 'Please fill in all fields');
+      return;
+    }
+
+    setLoading(true);
+    try {
+      await createIdentity({ name, email });
+      Alert.alert('Success', 'Identity created successfully!');
+    } catch (error) {
+      Alert.alert('Error', 'Failed to create identity');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleBiometricAuth = async () => {
+    const authenticated = await authenticateWithBiometric();
+    if (authenticated) {
+      Alert.alert('Success', 'Biometric authentication successful!');
+    } else {
+      Alert.alert('Error', 'Biometric authentication failed');
+    }
+  };
+
+  return (
+    <View style={styles.container}>
+      <Text style={styles.title}>Par Noir Mobile</Text>
+      <Text style={styles.subtitle}>Create your sovereign identity</Text>
+      
+      <View style={styles.form}>
+        <TextInput
+          style={styles.input}
+          placeholder="Name"
+          value={name}
+          onChangeText={setName}
+        />
+        
+        <TextInput
+          style={styles.input}
+          placeholder="Email"
+          value={email}
+          onChangeText={setEmail}
+          keyboardType="email-address"
+          autoCapitalize="none"
+        />
+        
+        <TouchableOpacity
+          style={styles.button}
+          onPress={handleCreateIdentity}
+          disabled={loading}
+        >
+          {loading ? (
+            <ActivityIndicator color="white" />
+          ) : (
+            <Text style={styles.buttonText}>Create Identity</Text>
+          )}
+        </TouchableOpacity>
+        
+        {biometricAvailable && (
+          <TouchableOpacity
+            style={styles.biometricButton}
+            onPress={handleBiometricAuth}
+          >
+            <Text style={styles.biometricButtonText}>
+              Authenticate with Biometrics
+            </Text>
+          </TouchableOpacity>
+        )}
+      </View>
+    </View>
+  );
+};
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    justifyContent: 'center',
+    padding: 20,
+    backgroundColor: '#f5f5f5',
+  },
+  title: {
+    fontSize: 32,
+    fontWeight: 'bold',
+    textAlign: 'center',
+    marginBottom: 10,
+    color: '#333',
+  },
+  subtitle: {
+    fontSize: 16,
+    textAlign: 'center',
+    marginBottom: 40,
+    color: '#666',
+  },
+  form: {
+    backgroundColor: 'white',
+    padding: 20,
+    borderRadius: 10,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  input: {
+    borderWidth: 1,
+    borderColor: '#ddd',
+    borderRadius: 8,
+    padding: 15,
+    marginBottom: 15,
+    fontSize: 16,
+  },
+  button: {
+    backgroundColor: '#007AFF',
+    borderRadius: 8,
+    padding: 15,
+    alignItems: 'center',
+    marginBottom: 15,
+  },
+  buttonText: {
+    color: 'white',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  biometricButton: {
+    backgroundColor: '#34C759',
+    borderRadius: 8,
+    padding: 15,
+    alignItems: 'center',
+  },
+  biometricButtonText: {
+    color: 'white',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+});</code></pre>
+                </div>
+
+                <h3>Flutter Login Screen</h3>
+                <div class="code-example">
+                    <pre><code>// lib/screens/login_screen.dart
+import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+import '../providers/auth_provider.dart';
+
+class LoginScreen extends StatefulWidget {
+  @override
+  _LoginScreenState createState() => _LoginScreenState();
+}
+
+class _LoginScreenState extends State<LoginScreen> {
+  final _formKey = GlobalKey<FormState>();
+  final _nameController = TextEditingController();
+  final _emailController = TextEditingController();
+  bool _loading = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.grey[100],
+      body: SafeArea(
+        child: Padding(
+          padding: EdgeInsets.all(20),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Text(
+                'Par Noir Mobile',
+                style: TextStyle(
+                  fontSize: 32,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.grey[800],
+                ),
+              ),
+              SizedBox(height: 10),
+              Text(
+                'Create your sovereign identity',
+                style: TextStyle(
+                  fontSize: 16,
+                  color: Colors.grey[600],
+                ),
+              ),
+              SizedBox(height: 40),
+              Card(
+                child: Padding(
+                  padding: EdgeInsets.all(20),
+                  child: Form(
+                    key: _formKey,
+                    child: Column(
+                      children: [
+                        TextFormField(
+                          controller: _nameController,
+                          decoration: InputDecoration(
+                            labelText: 'Name',
+                            border: OutlineInputBorder(),
+                          ),
+                          validator: (value) {
+                            if (value?.isEmpty ?? true) {
+                              return 'Please enter your name';
+                            }
+                            return null;
+                          },
+                        ),
+                        SizedBox(height: 15),
+                        TextFormField(
+                          controller: _emailController,
+                          decoration: InputDecoration(
+                            labelText: 'Email',
+                            border: OutlineInputBorder(),
+                          ),
+                          keyboardType: TextInputType.emailAddress,
+                          validator: (value) {
+                            if (value?.isEmpty ?? true) {
+                              return 'Please enter your email';
+                            }
+                            if (!value!.contains('@')) {
+                              return 'Please enter a valid email';
+                            }
+                            return null;
+                          },
+                        ),
+                        SizedBox(height: 20),
+                        SizedBox(
+                          width: double.infinity,
+                          child: ElevatedButton(
+                            onPressed: _loading ? null : _createIdentity,
+                            child: _loading
+                                ? CircularProgressIndicator(color: Colors.white)
+                                : Text('Create Identity'),
+                            style: ElevatedButton.styleFrom(
+                              padding: EdgeInsets.symmetric(vertical: 15),
+                            ),
+                          ),
+                        ),
+                        SizedBox(height: 15),
+                        Consumer<AuthProvider>(
+                          builder: (context, auth, child) {
+                            if (auth.biometricAvailable) {
+                              return SizedBox(
+                                width: double.infinity,
+                                child: ElevatedButton(
+                                  onPressed: _authenticateWithBiometric,
+                                  child: Text('Authenticate with Biometrics'),
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: Colors.green,
+                                    padding: EdgeInsets.symmetric(vertical: 15),
+                                  ),
+                                ),
+                              );
+                            }
+                            return SizedBox.shrink();
+                          },
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _createIdentity() async {
+    if (!_formKey.currentState!.validate()) {
+      return;
+    }
+
+    setState(() {
+      _loading = true;
+    });
+
+    try {
+      final auth = Provider.of<AuthProvider>(context, listen: false);
+      await auth.createIdentity(
+        _nameController.text,
+        _emailController.text,
+      );
+      
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Identity created successfully!')),
+      );
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Failed to create identity')),
+      );
+    } finally {
+      setState(() {
+        _loading = false;
+      });
+    }
+  }
+
+  Future<void> _authenticateWithBiometric() async {
+    try {
+      final auth = Provider.of<AuthProvider>(context, listen: false);
+      final authenticated = await auth.authenticateWithBiometric();
+      
+      if (authenticated) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Biometric authentication successful!')),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Biometric authentication failed')),
+        );
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Authentication error')),
+      );
+    }
+  }
+
+  @override
+  void dispose() {
+    _nameController.dispose();
+    _emailController.dispose();
+    super.dispose();
+  }
+}</code></pre>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Testing -->
+    <section id="testing" class="narrative-section">
+        <div class="container">
+            <div class="section-header">
+                <h2 class="section-title">Testing Your Mobile App</h2>
+                <p class="section-subtitle">Test your mobile integration thoroughly.</p>
+            </div>
+            <div class="tutorial-content">
+                <h3>React Native Testing</h3>
+                <div class="code-example">
+                    <pre><code># Start Metro bundler
+npx react-native start
+
+# Run on Android
+npx react-native run-android
+
+# Run on iOS (macOS only)
+npx react-native run-ios</code></pre>
+                </div>
+
+                <h3>Flutter Testing</h3>
+                <div class="code-example">
+                    <pre><code># Run on Android
+flutter run
+
+# Run on iOS (macOS only)
+flutter run -d ios
+
+# Run on specific device
+flutter devices
+flutter run -d [device-id]</code></pre>
+                </div>
+
+                <h3>Test Scenarios</h3>
+                <ul class="tutorial-list">
+                    <li><strong>Identity Creation:</strong> Create new identities on both platforms</li>
+                    <li><strong>Biometric Authentication:</strong> Test fingerprint/face unlock</li>
+                    <li><strong>Data Persistence:</strong> Verify data survives app restarts</li>
+                    <li><strong>Cross-Platform:</strong> Test same identity on web and mobile</li>
+                    <li><strong>Security:</strong> Verify secure storage implementation</li>
+                </ul>
+
+                <h3>Debugging Tips</h3>
+                <ul class="tutorial-list">
+                    <li><strong>React Native:</strong> Use Flipper or React Native Debugger</li>
+                    <li><strong>Flutter:</strong> Use Flutter Inspector and DevTools</li>
+                    <li><strong>Storage:</strong> Check secure storage contents</li>
+                    <li><strong>Biometrics:</strong> Test on physical devices, not simulators</li>
+                </ul>
+            </div>
+        </div>
+    </section>
+
+    <!-- Next Steps -->
+    <section id="next-steps" class="narrative-section solution-section">
+        <div class="container">
+            <div class="section-header">
+                <h2 class="section-title">Next Steps</h2>
+                <p class="section-subtitle">Extend your mobile implementation.</p>
+            </div>
+            <div class="tutorial-content">
+                <h3>Advanced Features</h3>
+                <ul class="tutorial-list">
+                    <li><strong>Offline Support:</strong> Implement offline identity operations</li>
+                    <li><strong>Push Notifications:</strong> Add identity-related notifications</li>
+                    <li><strong>Deep Linking:</strong> Handle identity verification links</li>
+                    <li><strong>Widget Support:</strong> Create home screen widgets</li>
+                </ul>
+
+                <h3>Production Considerations</h3>
+                <ul class="tutorial-list">
+                    <li><strong>App Store Compliance:</strong> Ensure privacy policy compliance</li>
+                    <li><strong>Performance:</strong> Optimize for mobile performance</li>
+                    <li><strong>Battery Life:</strong> Minimize background processing</li>
+                    <li><strong>Network Handling:</strong> Implement offline-first architecture</li>
+                </ul>
+
+                <h3>Related Tutorials</h3>
+                <div class="tutorial-links">
+                    <a href="age-verification.html" class="btn btn-primary">Age Verification</a>
+                    <a href="social-auth.html" class="btn btn-secondary">Social Authentication</a>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Footer -->
+    <footer class="footer">
+        <div class="container">
+            <div class="footer-content">
+                <div class="footer-brand">
+                    <img src="../branding/Par-Noir-Logo-White.png" alt="Par Noir" class="footer-logo">
+                    <p>Building the future of digital identity.</p>
+                </div>
+                <div class="footer-links">
+                    <div class="footer-column">
+                        <h4>Tutorials</h4>
+                        <a href="#overview">Overview</a>
+                        <a href="#react-native">React Native</a>
+                        <a href="#flutter">Flutter</a>
+                    </div>
+                    <div class="footer-column">
+                        <h4>Resources</h4>
+                        <a href="../index.html">Home</a>
+                        <a href="../developer-portal.html">Developer Portal</a>
+                        <a href="../whitepaper.html">White Paper</a>
+                    </div>
+                    <div class="footer-column">
+                        <h4>Community</h4>
+                        <a href="https://discord.gg/parnoir">Discord</a>
+                        <a href="https://twitter.com/parnoir">Twitter</a>
+                        <a href="https://github.com/identity-protocol">GitHub</a>
+                    </div>
+                </div>
+            </div>
+            <div class="footer-bottom">
+                <p>&copy; 2025 Par Noir. Continuing the legacy of freedom since 1776.</p>
+            </div>
+        </div>
+    </footer>
+
+    <script src="../script.js"></script>
+    <script>
+        // Smooth scrolling for anchor links
+        document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+            anchor.addEventListener('click', function (e) {
+                e.preventDefault();
+                const target = document.querySelector(this.getAttribute('href'));
+                if (target) {
+                    target.scrollIntoView({
+                        behavior: 'smooth',
+                        block: 'start'
+                    });
+                }
+            });
+        });
+    </script>
+</body>
+</html>

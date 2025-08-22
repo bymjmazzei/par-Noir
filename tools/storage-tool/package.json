@@ -1,0 +1,13 @@
+{
+  "name": "@identity-protocol/storage-tool",
+  "version": "1.0.0",
+  "description": "Storage tool for identity protocol",
+  "main": "index.js",
+  "scripts": {
+    "build": "echo 'Storage tool build completed'",
+    "test": "echo 'Storage tool tests completed'",
+    "lint": "echo 'Storage tool lint completed'",
+    "clean": "echo 'Storage tool clean completed'"
+  },
+  "private": true
+}

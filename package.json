@@ -4,18 +4,22 @@
   "description": "A decentralized, user-owned identity ecosystem with local-first architecture",
   "main": "index.js",
   "scripts": {
-    "dev": "concurrently \"npm run dev:identity\" \"npm run dev:tools\" \"npm run dev:browser\"",
+    "dev": "npm run dev:dashboard",
+    "dev:all": "concurrently \"npm run dev:dashboard\" \"npm run dev:tools\" \"npm run dev:browser\"",
+    "dev:dashboard": "cd apps/id-dashboard && npm run dev",
     "dev:identity": "cd core/identity-core && npm run dev",
     "dev:tools": "cd tools && npm run dev",
     "dev:browser": "cd browser && npm run dev",
+    "dev:test-app": "cd apps/test-app && npm run dev",
     "build": "npm run build:identity && npm run build:tools && npm run build:browser",
     "build:identity": "cd core/identity-core && npm run build",
     "build:tools": "cd tools && npm run build",
     "build:browser": "cd browser && npm run build",
-    "test": "npm run test:identity && npm run test:tools && npm run test:browser",
+    "test": "npm run test:identity && npm run test:tools && npm run test:browser && npm run test:sdk",
     "test:identity": "cd core/identity-core && npm test",
     "test:tools": "cd tools && npm test",
     "test:browser": "cd browser && npm test",
+    "test:sdk": "cd sdk/identity-sdk && npm test",
     "lint": "npm run lint:identity && npm run lint:tools && npm run lint:browser",
     "lint:identity": "cd core/identity-core && npm run lint",
     "lint:tools": "cd tools && npm run lint",
@@ -66,9 +70,12 @@
     "eslint-plugin-prettier": "^5.0.0",
     "fake-indexeddb": "^6.0.1",
     "husky": "^8.0.0",
-    "lint-staged": "^14.0.0",
+    "lint-staged": "^16.1.5",
+    "nanoid": "^5.1.5",
+    "on-headers": "^1.1.0",
+    "parse-duration": "^2.1.4",
     "prettier": "^3.0.0",
-    "serve": "^14.0.0",
+    "serve": "^14.2.1",
     "typedoc": "^0.25.0",
     "typescript": "^5.0.0"
   },
@@ -89,5 +96,25 @@
     "commitizen": {
       "path": "cz-conventional-changelog"
     }
+  },
+  "overrides": {
+    "nanoid": "^5.1.5",
+    "parse-duration": "^2.1.4",
+    "on-headers": "^1.1.0",
+    "ipfs-http-client": {
+      "nanoid": "^5.1.5",
+      "parse-duration": "^2.1.4"
+    },
+    "ipfs-core-utils": {
+      "nanoid": "^5.1.5",
+      "parse-duration": "^2.1.4"
+    },
+    "ipfs-core-types": {
+      "nanoid": "^5.1.5",
+      "parse-duration": "^2.1.4"
+    }
+  },
+  "dependencies": {
+    "ipfs-http-client": "^60.0.1"
   }
 }

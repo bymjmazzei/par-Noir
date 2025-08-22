@@ -1,0 +1,12 @@
+{
+  "id": "did:example:work:abcdef1234567890",
+  "username": "jane.smith",
+  "nickname": "Work ID",
+  "email": "jane.smith@company.com",
+  "createdAt": "2024-01-20T14:15:00Z",
+  "status": "active",
+  "profilePicture": "data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDAiIGhlaWdodD0iNDAiIHZpZXdCb3g9IjAgMCA0MCA0MCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPGNpcmNsZSBjeD0iMjAiIGN5PSIyMCIgcj0iMjAiIGZpbGw9IiNGRkYzRTAiLz4KPHN2ZyB3aWR0aD0iMjQiIGhlaWdodD0iMjQiIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHBhdGggZD0iTTEyIDJDNi40OCAyIDIgNi40OCAyIDEyQzIgMTcuNTIgNi40OCAyMiAxMiAyMkMxNy41MiAyMiAyMiAxNy41MiAyMiAxMkMyMiA2LjQ4IDE3LjUyIDIgMTIgMlpNMTIgNEMxNi40MSA0IDIwIDcuNTkgMjAgMTJDMjAgMTYuNDEgMTYuNDEgMjAgMTIgMjBDNy41OSAyMCA0IDE2LjQxIDQgMTJDNCA3LjU5IDcuNTkgNCAxMiA0Wk0xMiA2QzguNjkgNiA2IDguNjkgNiAxMkM2IDE1LjMxIDguNjkgMTggMTIgMThDMTUuMzEgMTggMTggMTUuMzEgMTggMTJDMTggOC42OSAxNS4zMSA2IDEyIDZaIiBmaWxsPSIjRjU3QzNBIi8+Cjwvc3ZnPgo8L3N2Zz4K",
+  "encryptedData": "encrypted_work_identity_data_here",
+  "iv": "work_initialization_vector_here",
+  "salt": "work_salt_here"
+}

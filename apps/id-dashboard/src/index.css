@@ -1,0 +1,518 @@
+/* Import modern font */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Theme Variables */
+:root {
+  /* Classic Theme (Neon Green) */
+  --classic-bg: #000000;
+  --classic-text: #00ff00;
+  --classic-primary: #00ff00;
+  --classic-secondary: #00cc00;
+  --classic-accent: #00ff00;
+  --classic-border: #00ff00;
+  --classic-hover: #00cc00;
+  --classic-shadow: 0 0 10px rgba(0, 255, 0, 0.5);
+  --classic-glow: 0 0 20px rgba(0, 255, 0, 0.3);
+  --classic-input-bg: #001100;
+  --classic-input-border: #00ff00;
+  --classic-modal-bg: #000000;
+  --classic-modal-border: #00ff00;
+
+  /* Dark Theme (Black) */
+  --dark-bg: #000000;
+  --dark-text: #ffffff;
+  --dark-primary: #ffffff;
+  --dark-secondary: #1a1a1a;
+  --dark-accent: #cccccc;
+  --dark-border: #333333;
+  --dark-hover: #333333;
+  --dark-shadow: 0 4px 6px rgba(0, 0, 0, 0.5);
+  --dark-glow: none;
+  --dark-input-bg: #1a1a1a;
+  --dark-input-border: #333333;
+  --dark-modal-bg: #1a1a1a;
+  --dark-modal-border: #333333;
+
+  /* Light Theme (White) */
+  --light-bg: #ffffff;
+  --light-text: #000000;
+  --light-primary: #3b82f6;
+  --light-secondary: #f5f5f5;
+  --light-accent: #666666;
+  --light-border: #e0e0e0;
+  --light-hover: #f0f0f0;
+  --light-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+  --light-glow: none;
+  --light-input-bg: #ffffff;
+  --light-input-border: #e0e0e0;
+  --light-modal-bg: #ffffff;
+  --light-modal-border: #e0e0e0;
+}
+
+/* Classic Theme */
+.theme-classic {
+  --bg-primary: var(--classic-bg);
+  --text-primary: var(--classic-text);
+  --text-secondary: var(--classic-text);
+  --primary: var(--classic-primary);
+  --secondary: var(--classic-secondary);
+  --accent: var(--classic-accent);
+  --border: var(--classic-border);
+  --hover: var(--classic-hover);
+  --shadow: var(--classic-shadow);
+  --glow: var(--classic-glow);
+  --input-bg: var(--classic-input-bg);
+  --input-border: var(--classic-input-border);
+  --modal-bg: var(--classic-modal-bg);
+  --modal-border: var(--classic-modal-border);
+}
+
+.theme-classic .bg-bg-primary {
+  background-image: url('/branding/Par-Noir-Background-Dark.png');
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  background-attachment: fixed;
+}
+
+/* Dark Theme */
+.theme-dark {
+  --bg-primary: var(--dark-bg);
+  --text-primary: var(--dark-text);
+  --text-secondary: #cccccc;
+  --primary: var(--dark-primary);
+  --secondary: var(--dark-secondary);
+  --accent: var(--dark-accent);
+  --border: var(--dark-border);
+  --hover: var(--dark-hover);
+  --shadow: var(--dark-shadow);
+  --glow: var(--dark-glow);
+  --input-bg: var(--dark-input-bg);
+  --input-border: var(--dark-input-border);
+  --modal-bg: var(--dark-modal-bg);
+  --modal-border: var(--dark-modal-border);
+}
+
+.theme-dark .bg-bg-primary {
+  background-image: url('/branding/Par-Noir-Background-Dark.png');
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  background-attachment: fixed;
+}
+
+/* Light Theme */
+.theme-light {
+  --bg-primary: var(--light-bg);
+  --text-primary: #000000;
+  --text-secondary: #000000;
+  --primary: var(--light-primary);
+  --secondary: var(--light-secondary);
+  --accent: var(--light-accent);
+  --border: var(--light-border);
+  --hover: var(--light-hover);
+  --shadow: var(--light-shadow);
+  --glow: var(--light-glow);
+  --input-bg: var(--light-input-bg);
+  --input-border: var(--light-input-border);
+  --modal-bg: var(--light-modal-bg);
+  --modal-border: var(--light-modal-border);
+}
+
+.theme-light .bg-bg-primary {
+  background-image: url('/branding/Par-Noir-Background-Light.png');
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  background-attachment: fixed;
+}
+
+/* Base styles */
+body {
+  font-family: 'Inter', system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  transition: all 0.3s ease;
+  background-color: var(--bg-primary);
+  color: var(--text-primary);
+}
+
+/* Main container background */
+.min-h-screen {
+  background-color: var(--bg-primary);
+}
+
+/* Theme-aware text classes */
+.text-theme-primary {
+  color: var(--text-primary) !important;
+}
+
+.text-theme-secondary {
+  color: var(--text-secondary) !important;
+}
+
+/* Theme-aware button text */
+.btn-text {
+  color: var(--text-primary) !important;
+}
+
+/* Theme-aware placeholder */
+.theme-light input::placeholder,
+.theme-light textarea::placeholder {
+  color: #666666 !important;
+}
+
+.theme-dark input::placeholder,
+.theme-dark textarea::placeholder {
+  color: #cccccc !important;
+}
+
+.theme-classic input::placeholder,
+.theme-classic textarea::placeholder {
+  color: #00cc00 !important;
+}
+
+/* Modal and component styles */
+.modal-button {
+  background-color: var(--primary);
+  color: var(--text-primary);
+  border: 1px solid var(--border);
+  padding: 0.5rem 1rem;
+  border-radius: 0.25rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.modal-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  transform: none !important;
+  box-shadow: none !important;
+}
+
+.modal-button:disabled:hover {
+  transform: none !important;
+  box-shadow: none !important;
+}
+
+
+/* Input styles */
+input, textarea, select {
+  background-color: var(--input-bg);
+  border: 1px solid var(--input-border);
+  color: var(--text-primary);
+  padding: 0.5rem;
+  border-radius: 0.25rem;
+  font-size: 0.875rem;
+}
+
+/* Modal background */
+.bg-modal-bg {
+  background-color: var(--modal-bg);
+  border: 1px solid var(--modal-border);
+  box-shadow: var(--shadow);
+}
+
+/* Header styles */
+header {
+  background-color: var(--bg-primary);
+  border-bottom: 1px solid var(--border);
+}
+
+/* Theme switcher */
+.ThemeSwitcher button {
+  color: var(--text-primary);
+}
+
+.ThemeSwitcher .absolute {
+  background-color: var(--modal-bg);
+}
+
+/* Override the general ThemeSwitcher button rule for light theme dropdown */
+.theme-light .ThemeSwitcher .absolute button {
+  color: #000000 !important;
+}
+
+.theme-light .ThemeSwitcher .absolute button:hover {
+  color: #000000 !important;
+}
+
+/* Override any other text colors in light theme */
+.theme-light .ThemeSwitcher .absolute button.text-text-primary {
+  color: #000000 !important;
+}
+
+.theme-light .ThemeSwitcher .absolute button.hover\:text-text-primary:hover {
+  color: #000000 !important;
+}
+
+/* Force black text for all theme switcher dropdown buttons in light theme */
+.theme-light .ThemeSwitcher .absolute button span {
+  color: #000000 !important;
+}
+
+.theme-light .ThemeSwitcher .absolute button:hover span {
+  color: #000000 !important;
+}
+
+/* Most specific override for light theme dropdown */
+.theme-light .ThemeSwitcher .absolute button:not(.bg-primary) {
+  color: #000000 !important;
+}
+
+.theme-light .ThemeSwitcher .absolute button:not(.bg-primary):hover {
+  color: #000000 !important;
+}
+
+/* Additional override to ensure non-selected buttons are black in light theme */
+.theme-light .ThemeSwitcher .absolute button:not(.bg-primary):not(.text-bg-primary) {
+  color: #000000 !important;
+}
+
+/* Force ALL buttons in light theme dropdown to be black */
+.theme-light .ThemeSwitcher .absolute button,
+.theme-light .ThemeSwitcher .absolute button.bg-primary,
+.theme-light .ThemeSwitcher .absolute button:hover,
+.theme-light .ThemeSwitcher .absolute button.bg-primary:hover {
+  color: #000000 !important;
+}
+
+/* Theme switcher button styling */
+.dos-button {
+  background-color: var(--modal-bg);
+  color: var(--text-primary);
+  border: 1px solid var(--border);
+  transition: all 0.2s ease;
+}
+
+.dos-button:hover {
+  background-color: var(--hover);
+  transform: translateY(-1px);
+  box-shadow: var(--shadow);
+}
+
+/* Theme-specific dos-button styles */
+.theme-classic .dos-button {
+  background-color: #000000;
+  color: #00ff00;
+  border: 1px solid #00ff00;
+  box-shadow: 0 0 5px rgba(0, 255, 0, 0.2);
+}
+
+.theme-classic .dos-button:hover {
+  background-color: #001100;
+  color: #00ff00;
+  box-shadow: 0 0 10px rgba(0, 255, 0, 0.4);
+}
+
+.theme-dark .dos-button {
+  background-color: #1a1a1a;
+  color: #ffffff;
+  border: 1px solid #333333;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+.theme-dark .dos-button:hover {
+  background-color: #333333;
+  color: #ffffff;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+}
+
+.theme-light .dos-button {
+  background-color: #ffffff;
+  color: #000000;
+  border: 1px solid #e0e0e0;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.theme-light .dos-button:hover {
+  background-color: #f0f0f0;
+  color: #000000;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.15);
+}
+
+/* Light theme specific overrides */
+.theme-light .modal-button {
+  background-color: #ffffff;
+  color: #000000;
+  border: 2px solid #000000;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.15);
+}
+
+
+
+.theme-light input,
+.theme-light textarea,
+.theme-light select {
+  background-color: #ffffff;
+  border: 1px solid #e0e0e0;
+  color: #000000;
+}
+
+.theme-light .bg-modal-bg {
+  background-color: #ffffff;
+  border: 1px solid #e0e0e0;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+}
+
+/* Header specific overrides */
+.theme-light header {
+  background-color: #ffffff;
+  border-bottom: 1px solid #e0e0e0;
+}
+
+/* Dark theme modal button overrides */
+.theme-dark .modal-button {
+  background-color: #1a1a1a;
+  color: #ffffff;
+  border: 2px solid #333333;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+}
+
+.theme-dark .modal-button:hover {
+  background-color: #333333;
+  color: #ffffff;
+  transform: translateY(-1px);
+  box-shadow: 0 6px 8px rgba(0, 0, 0, 0.4);
+}
+
+/* Classic theme modal button overrides */
+.theme-classic .modal-button {
+  background-color: #000000;
+  color: #00ff00;
+  border: 2px solid #00ff00;
+  box-shadow: 0 0 10px rgba(0, 255, 0, 0.3);
+}
+
+.theme-classic .modal-button:hover {
+  background-color: #001100;
+  color: #00ff00;
+  transform: translateY(-1px);
+  box-shadow: 0 0 15px rgba(0, 255, 0, 0.5);
+}
+
+.theme-classic .modal-button:disabled {
+  background-color: #000000;
+  color: #006600;
+  border: 2px solid #006600;
+  box-shadow: 0 0 5px rgba(0, 255, 0, 0.1);
+}
+
+/* Light theme modal button overrides */
+.theme-light .modal-button:disabled {
+  background-color: #f5f5f5;
+  color: #999999;
+  border: 2px solid #cccccc;
+  box-shadow: none;
+}
+
+/* Dark theme modal button overrides */
+.theme-dark .modal-button:disabled {
+  background-color: #0a0a0a;
+  color: #666666;
+  border: 2px solid #1a1a1a;
+  box-shadow: none;
+}
+
+/* PWA Install Button Styles */
+.pwa-button {
+  background-color: var(--primary);
+  color: var(--text-primary);
+  border: 2px solid var(--border);
+  padding: 0.5rem 1rem;
+  border-radius: 0.375rem;
+  font-weight: 500;
+  font-size: 0.875rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+}
+
+.pwa-button:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: var(--shadow);
+}
+
+.pwa-button:focus {
+  outline: none;
+  ring: 2px;
+  ring-color: var(--primary);
+}
+
+.pwa-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  transform: none !important;
+  box-shadow: none !important;
+}
+
+/* Theme-specific PWA button styles */
+.theme-classic .pwa-button {
+  background-color: #000000;
+  color: #00ff00;
+  border: 2px solid #00ff00;
+  box-shadow: 0 0 10px rgba(0, 255, 0, 0.3);
+}
+
+.theme-classic .pwa-button:hover:not(:disabled) {
+  background-color: #001100;
+  color: #00ff00;
+  box-shadow: 0 0 15px rgba(0, 255, 0, 0.5);
+}
+
+.theme-classic .pwa-button:disabled {
+  background-color: #000000;
+  color: #006600;
+  border: 2px solid #006600;
+  box-shadow: 0 0 5px rgba(0, 255, 0, 0.1);
+}
+
+.theme-dark .pwa-button {
+  background-color: #1a1a1a;
+  color: #ffffff;
+  border: 2px solid #333333;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+}
+
+.theme-dark .pwa-button:hover:not(:disabled) {
+  background-color: #333333;
+  color: #ffffff;
+  box-shadow: 0 6px 8px rgba(0, 0, 0, 0.4);
+}
+
+.theme-dark .pwa-button:disabled {
+  background-color: #0a0a0a;
+  color: #666666;
+  border: 2px solid #1a1a1a;
+  box-shadow: none;
+}
+
+.theme-light .pwa-button {
+  background-color: #ffffff;
+  color: #000000;
+  border: 2px solid #000000;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.15);
+}
+
+.theme-light .pwa-button:hover:not(:disabled) {
+  background-color: #f0f0f0;
+  color: #000000;
+  box-shadow: 0 6px 8px rgba(0, 0, 0, 0.2);
+}
+
+.theme-light .pwa-button:disabled {
+  background-color: #f5f5f5;
+  color: #999999;
+  border: 2px solid #cccccc;
+  box-shadow: none;
+}
+
+
