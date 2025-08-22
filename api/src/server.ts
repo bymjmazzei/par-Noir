@@ -13,6 +13,10 @@ import winston from 'winston';
 import dotenv from 'dotenv';
 import { createServer } from 'http';
 import { Server } from 'socket.io';
+import crypto from 'crypto';
+
+// Import decentralized authentication server
+import DecentralizedAuthServer from '../decentralized-auth-server';
 
 // Load environment variables
 dotenv.config();
@@ -22,8 +26,10 @@ class ProductionServer {
   private server: any;
   private io: Server;
   private logger!: winston.Logger;
+  private decentralizedAuthServer: DecentralizedAuthServer;
 
   constructor() {
+    this.validateEnvironmentVariables();
     this.app = express();
     this.server = createServer(this.app);
     this.io = new Server(this.server, {
@@ -33,6 +39,9 @@ class ProductionServer {
       }
     });
 
+    // Initialize decentralized authentication server
+    this.decentralizedAuthServer = new DecentralizedAuthServer();
+
     this.setupLogger();
     this.setupMiddleware();
     this.setupSecurity();
@@ -40,6 +49,35 @@ class ProductionServer {
     this.setupRoutes();
     this.setupWebSocket();
     this.setupErrorHandling();
+  }
+
+  private validateEnvironmentVariables(): void {
+    const requiredEnvVars = [
+      'JWT_SECRET',
+      'SENDGRID_API_KEY',
+      'IPFS_API_KEY'
+    ];
+
+    const missingVars = requiredEnvVars.filter(varName => !process.env[varName]);
+    
+    if (missingVars.length > 0) {
+      console.error('❌ CRITICAL: Missing required environment variables:');
+      missingVars.forEach(varName => {
+        console.error(`   - ${varName}`);
+      });
+      console.error('\nPlease set these environment variables before starting the server.');
+      console.error('For development, you can create a .env file with these variables.');
+      process.exit(1);
+    }
+
+    // Validate JWT secret strength
+    const jwtSecret = process.env.JWT_SECRET;
+    if (jwtSecret && jwtSecret.length < 32) {
+      console.error('❌ CRITICAL: JWT_SECRET must be at least 32 characters long');
+      process.exit(1);
+    }
+
+    console.log('✅ Environment variables validated successfully');
   }
 
   private setupLogger(): void {
@@ -497,7 +535,10 @@ class ProductionServer {
       });
     });
 
-    // OAuth endpoints
+    // Decentralized Authentication endpoints (replaces OAuth)
+    this.app.use('/auth', this.decentralizedAuthServer.getRouter());
+    
+    // OAuth compatibility endpoints (for legacy support)
     this.app.get('/oauth/authorize', this.handleOAuthAuthorize.bind(this));
     this.app.post('/oauth/token', this.handleOAuthToken.bind(this));
     this.app.get('/oauth/userinfo', this.handleOAuthUserInfo.bind(this));
@@ -664,7 +705,7 @@ class ProductionServer {
       }
 
       // Generate access token
-      const accessToken = Math.random().toString(36).substring(2, 15);
+      const accessToken = crypto.randomBytes(32).toString('hex');
       
       res.json({
         access_token: accessToken,

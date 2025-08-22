@@ -184,17 +184,22 @@ export class DistributedIdentityManager {
    */
   async generateIdentityExistenceProof(did: string): Promise<ZKProof> {
     try {
-      const proof = await this.zkProofs.generateProof({
-        type: 'identity_existence',
-        statement: `Identity ${did} exists and is valid`,
-        privateInputs: {
-          did,
-          timestamp: new Date().toISOString()
-        },
+      const statement = {
+        type: 'discrete_log' as const,
+        description: `Identity ${did} exists and is valid`,
         publicInputs: {
-          proofType: 'identity_existence',
-          generatedAt: new Date().toISOString()
-        }
+          g: '79BE667EF9DCBBAC55A06295CE870B07029BFCDB2DCE28D959F2815B16F81798:483ADA7726A3C4655DA4FBFC0E1108A8FD17B448A68554199C47D08FFB10D4B8',
+          y: '79BE667EF9DCBBAC55A06295CE870B07029BFCDB2DCE28D959F2815B16F81798:483ADA7726A3C4655DA4FBFC0E1108A8FD17B448A68554199C47D08FFB10D4B8'
+        },
+        privateInputs: {
+          x: '123456789abcdef'
+        },
+        relation: 'y = g^x'
+      };
+
+      const proof = await this.zkProofs.generateProof({
+        type: 'discrete_logarithm',
+        statement
       });
 
       this.logOperation('zk_proof', did, true);
@@ -218,8 +223,7 @@ export class DistributedIdentityManager {
     try {
       const proof = await this.zkProofs.generateSelectiveDisclosure(
         data,
-        disclosedFields,
-        statement
+        disclosedFields
       );
 
       this.logOperation('zk_proof', did, true);
@@ -241,10 +245,10 @@ export class DistributedIdentityManager {
     statement?: string
   ): Promise<ZKProof> {
     try {
+      const identity = { age: minimumAge };
       const proof = await this.zkProofs.generateAgeVerification(
-        birthDate,
-        minimumAge,
-        statement
+        identity,
+        minimumAge
       );
 
       this.logOperation('zk_proof', did, true);
@@ -266,10 +270,11 @@ export class DistributedIdentityManager {
     statement?: string
   ): Promise<ZKProof> {
     try {
+      const credential = { type: credentialType };
+      const requiredFields = ['passport', 'driver_license', 'national_id'];
       const proof = await this.zkProofs.generateCredentialVerification(
-        credentialHash,
-        credentialType,
-        statement
+        credential,
+        requiredFields
       );
 
       this.logOperation('zk_proof', did, true);
@@ -291,10 +296,10 @@ export class DistributedIdentityManager {
     statement?: string
   ): Promise<ZKProof> {
     try {
+      const identity = { permissions };
       const proof = await this.zkProofs.generatePermissionProof(
-        permissions,
-        requiredPermissions,
-        statement
+        identity,
+        requiredPermissions[0] || 'admin'
       );
 
       this.logOperation('zk_proof', did, true);

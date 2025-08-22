@@ -45,7 +45,7 @@ export const UnifiedAuth: React.FC<UnifiedAuthProps> = ({
             username
           );
           
-          if (decryptedIdentity.username === username) {
+          if (decryptedIdentity.pnName === username) {
             // Found matching identity
             const session = await IdentityCrypto.decryptIdentity(
               identity.publicKey, 

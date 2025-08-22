@@ -4,7 +4,7 @@
 
 export interface DID {
   id: string;
-  username: string;
+  pnName: string;
   createdAt: string;
   updatedAt: string;
   status: 'active' | 'inactive' | 'deleted';
@@ -71,7 +71,7 @@ export interface ToolPermission {
 }
 
 export interface CreateDIDOptions {
-  username: string;
+  pnName: string;
   passcode: string;
   displayName?: string;
   email?: string;
@@ -79,7 +79,7 @@ export interface CreateDIDOptions {
 }
 
 export interface AuthenticateOptions {
-  username: string;
+  pnName: string;
   passcode: string;
   biometric?: boolean;
 }
@@ -127,8 +127,8 @@ export interface IdentityCoreEvents {
   'tool:access:granted': (did: string, toolId: string) => void;
   'tool:access:revoked': (did: string, toolId: string) => void;
   'initialized': (data: {}) => void;
-  'did_created': (data: { didId: string; username: string }) => void;
-  'did_authenticated': (data: { didId: string; username: string }) => void;
+  'did_created': (data: { didId: string; pnName: string }) => void;
+  'did_authenticated': (data: { didId: string; pnName: string }) => void;
   'security:event': (securityEvent: any) => void;
 }
 
@@ -165,7 +165,7 @@ export type IdentityErrorCode = typeof IdentityErrorCodes[keyof typeof IdentityE
 // Distributed Identity Types
 export interface Identity {
   id: string;
-  username: string;
+  pnName: string;
   displayName?: string;
   email?: string;
   createdAt: string;

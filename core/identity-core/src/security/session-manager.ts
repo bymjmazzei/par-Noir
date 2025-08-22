@@ -163,7 +163,7 @@ export class SessionManager {
       screen.colorDepth,
       new Date().getTimezoneOffset(),
       navigator.hardwareConcurrency,
-      navigator.deviceMemory || 'unknown',
+      (navigator as any).deviceMemory || 'unknown',
       navigator.platform,
       navigator.cookieEnabled ? '1' : '0',
       navigator.doNotTrack || 'unknown'

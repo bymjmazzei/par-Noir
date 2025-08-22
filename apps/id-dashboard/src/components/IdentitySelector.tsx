@@ -194,7 +194,7 @@ export const IdentitySelector: React.FC<IdentitySelectorProps> = ({
                               {identity.nickname}
                             </div>
                             <div className="text-xs text-text-secondary">
-                              @{identity.username} • {formatDate(identity.createdAt)}
+                              @{identity.pnName} • {formatDate(identity.createdAt)}
                             </div>
                           </div>
                         </div>
@@ -235,7 +235,7 @@ export const IdentitySelector: React.FC<IdentitySelectorProps> = ({
                   {selectedIdentity.nickname}
                 </div>
                 <div className="text-xs text-blue-700">
-                  @{selectedIdentity.username} • Created {formatDate(selectedIdentity.createdAt)}
+                  @{selectedIdentity.pnName} • Created {formatDate(selectedIdentity.createdAt)}
                 </div>
               </div>
             </div>

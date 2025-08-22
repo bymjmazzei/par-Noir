@@ -1,14 +1,14 @@
 # Identity Protocol SDK
 
-A universal authentication SDK that provides OAuth-like functionality with user-owned identities. Any platform can adopt this SDK to enable users to sign in with their Identity Protocol ID.
+A user-controlled identity SDK that enables users to create their own identities that serve as access tokens. Users control what personal data they share with third parties, providing OAuth-like authentication with user-owned data.
 
 ## 🚀 Features
 
-- **Universal Authentication**: Works with any platform that adopts the protocol
-- **User-Owned**: Users control their identity and data
-- **Compliance Ready**: Built-in support for additional data collection
-- **Standards-Based**: Leverages existing web standards and metadata
-- **Lightweight**: Minimal overhead, fast startup times
+- **User-Owned Identities**: Users create and control their own identities
+- **Access Token Management**: Identities serve as access tokens for third parties
+- **Controlled Data Sharing**: Users decide what data to share with each platform
+- **OAuth-Like Flow**: Familiar authentication patterns for developers
+- **Compliance Ready**: Request additional data collection from users
 - **Cross-Platform**: Works in browsers, mobile apps, and desktop applications
 
 ## 📦 Installation
@@ -38,7 +38,7 @@ const config = createSimpleConfig(
 // Initialize SDK
 const sdk = createIdentitySDK(config);
 
-// Start authentication
+// Start authentication - user creates/uses their own identity
 await sdk.authenticate('identity-protocol');
 ```
 
@@ -65,7 +65,8 @@ function MyApp() {
   if (isAuthenticated) {
     return (
       <div>
-        <p>Welcome, {session?.identity.displayName}!</p>
+        <p>Welcome! You're signed in with your Identity Protocol ID</p>
+        <p>Your identity ID: {session?.identity.id}</p>
         <button onClick={logout}>Logout</button>
       </div>
     );
@@ -73,7 +74,7 @@ function MyApp() {
 
   return (
     <button onClick={() => authenticate('identity-protocol')}>
-      Sign in with Identity Protocol
+      Sign in with your Identity Protocol ID
     </button>
   );
 }
@@ -82,17 +83,18 @@ function MyApp() {
 ## 🔄 Authentication Flow
 
 1. **User clicks "Sign in"** → SDK redirects to Identity Protocol
-2. **User authenticates** → Identity Protocol validates credentials
+2. **User creates/uses identity** → User creates or accesses their own identity
 3. **User consents** → User approves data sharing with your platform
 4. **Callback received** → SDK exchanges code for tokens
 5. **Session created** → User is authenticated in your app
 
-## 📊 Compliance Data Collection
+## 📊 Data Collection
 
-Third-party platforms can request additional data from users for compliance purposes:
+Third-party platforms can request additional data from users for compliance purposes. The SDK does not verify or validate this data - it simply collects what users choose to share:
 
 ```javascript
-// Request additional data collection
+// Request additional data from user for compliance
+// This doesn't verify the data - it just collects what the user provides
 const complianceData = await sdk.requestDataCollection({
   platform: 'your-platform',
   fields: {
@@ -138,7 +140,7 @@ const complianceData = await sdk.requestDataCollection({
 ## 🎯 Use Cases
 
 ### For Users
-- **Single Identity**: Use one identity across all platforms
+- **Own Your Identity**: Create and control your own identity
 - **Data Control**: Control what data you share with each platform
 - **Portable Identity**: Take your identity with you
 - **Privacy-First**: Your data stays yours
@@ -146,7 +148,7 @@ const complianceData = await sdk.requestDataCollection({
 ### For Developers
 - **Plug-and-Play**: Easy integration with existing apps
 - **OAuth-Like API**: Familiar authentication patterns
-- **Compliance Ready**: Built-in data collection tools
+- **Data Collection**: Request additional data from users
 - **Cross-Platform**: Works everywhere
 
 ## 🔒 Security Features
@@ -304,6 +306,25 @@ const platformConfig = {
   }
 };
 ```
+
+## ⚠️ Important Notes
+
+### What the SDK Does
+- ✅ Identity creation and management
+- ✅ Access control and permissions
+- ✅ OAuth-like authentication flow
+- ✅ Data collection requests
+- ✅ Session management
+- ✅ Privacy control
+
+### What the SDK Does NOT Do
+- ❌ Age verification
+- ❌ Credential verification
+- ❌ Personal attestations
+- ❌ Data validation
+- ❌ Identity verification
+
+The SDK enables users to create their own identities and control what data they share, but it does not verify or validate the accuracy of user-provided data. Platforms are responsible for their own data validation and verification processes.
 
 ## 🤝 Contributing
 

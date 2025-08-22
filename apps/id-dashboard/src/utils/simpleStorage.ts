@@ -7,7 +7,7 @@
 export interface SimpleIdentity {
   id: string;
   nickname: string;
-  username: string;
+  pnName: string;
   publicKey: string;
   encryptedData: any;
   createdAt: string;

@@ -21,10 +21,10 @@ export interface IPFSMetadata {
   version: string;
 }
 
-export interface IPFSClient {
-  add(data: string | Buffer): Promise<{ cid: { toString(): string } }>;
-  cat(cid: string): AsyncIterable<Uint8Array>;
-}
+// Use the actual IPFS HTTP client type
+import type { IPFSHTTPClient } from 'ipfs-http-client';
+
+export interface IPFSClient extends IPFSHTTPClient {}
 
 export class IPFSStorage {
   private config: IPFSConfig;
@@ -47,25 +47,26 @@ export class IPFSStorage {
     try {
       // Check if ipfs-http-client is available
       try {
-        // @ts-ignore - Dynamic import that may not be available
         const { create } = await import('ipfs-http-client');
         
         this.ipfsClient = create({
-          host: this.config.host || 'ipfs.infura.io',
-          port: this.config.port || 5001,
-          protocol: this.config.protocol || 'https',
+          url: this.config.url || 'https://ipfs.infura.io:5001',
           headers: this.config.apiKey ? {
             'Authorization': `Bearer ${this.config.apiKey}`
           } : undefined
         });
 
-        // console.log('✅ Real IPFS client initialized');
+        // Test the connection
+        if (this.ipfsClient) {
+          await this.ipfsClient.version();
+          console.log('✅ Real IPFS client initialized');
+        }
       } catch (importError) {
-        // console.warn('⚠️ ipfs-http-client not available, falling back to mock mode');
+        console.warn('⚠️ ipfs-http-client not available, falling back to mock mode');
         this.isDevelopment = true;
       }
     } catch (error) {
-      // console.warn('⚠️ Failed to initialize real IPFS, falling back to mock mode:', error);
+      console.warn('⚠️ Failed to initialize real IPFS, falling back to mock mode:', error);
       this.isDevelopment = true;
     }
   }
@@ -169,21 +170,20 @@ export class IPFSStorage {
       if (this.isDevelopment) {
         // Mock connection test
         await new Promise(resolve => setTimeout(resolve, 50));
-            // console.log('🔧 Mock IPFS connection test: OK');
-    return true;
+        console.log('🔧 Mock IPFS connection test: OK');
+        return true;
       }
 
-      // Real connection test
-      const response = await fetch(`${this.config.gateway}QmYwAPJzv5CZsnA625s3Xf2nemtYgPpHdWEz79ojWnPbdG`, {
-        method: 'HEAD',
-        signal: AbortSignal.timeout(this.config.timeout || 30000)
-      });
-      
-      const isConnected = response.ok;
-          // console.log(`🚀 Real IPFS connection test: ${isConnected ? 'OK' : 'FAILED'}`);
-    return isConnected;
+      if (!this.ipfsClient) {
+        return false;
+      }
+
+      // Real connection test using IPFS client
+      await this.ipfsClient.version();
+      console.log('🚀 Real IPFS connection test: OK');
+      return true;
     } catch (error) {
-      // console.error('❌ IPFS connection test failed:', error);
+      console.error('❌ IPFS connection test failed:', error);
       return false;
     }
   }

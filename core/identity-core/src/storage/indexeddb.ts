@@ -48,7 +48,7 @@ export class IndexedDBStorage {
         
         if (!db.objectStoreNames.contains(this.config.storeName)) {
           const store = db.createObjectStore(this.config.storeName, { keyPath: 'id' });
-          store.createIndex('username', 'username', { unique: true });
+          store.createIndex('pnName', 'pnName', { unique: true });
           store.createIndex('createdAt', 'createdAt', { unique: false });
         }
       };
@@ -97,7 +97,7 @@ export class IndexedDBStorage {
 
       const request = store.put({
         id: did.id,
-        username: did.username,
+        pnName: did.pnName,
         encryptedData: encryptedData,
         createdAt: did.createdAt,
         updatedAt: did.updatedAt,
@@ -216,7 +216,7 @@ export class IndexedDBStorage {
   /**
    * Get all DIDs (without decryption)
    */
-  async getAllDIDs(): Promise<Array<{ id: string; username: string; createdAt: string; status: string }>> {
+  async getAllDIDs(): Promise<Array<{ id: string; pnName: string; createdAt: string; status: string }>> {
     if (!this.db) {
       throw new IdentityError(
         'Database not initialized',
@@ -232,7 +232,7 @@ export class IndexedDBStorage {
       request.onsuccess = () => {
         const results = request.result.map(item => ({
           id: item.id,
-          username: item.username,
+          pnName: item.pnName,
           createdAt: item.createdAt,
           status: item.status
         }));
@@ -276,7 +276,7 @@ export class IndexedDBStorage {
 
       const request = store.put({
         id: did.id,
-        username: did.username,
+        pnName: did.pnName,
         encryptedData: encryptedData,
         createdAt: did.createdAt,
         updatedAt: did.updatedAt,
@@ -377,9 +377,9 @@ export class IndexedDBStorage {
   }
 
   /**
-   * Get DID by username
+   * Get DID by pN Name
    */
-  async getDIDByUsername(username: string): Promise<{ id: string; username: string; createdAt: string; status: string } | null> {
+  async getDIDByPNName(pnName: string): Promise<{ id: string; pnName: string; createdAt: string; status: string } | null> {
     if (!this.db) {
       throw new IdentityError(
         'Database not initialized',
@@ -389,8 +389,8 @@ export class IndexedDBStorage {
 
     const transaction = this.db.transaction([this.config.storeName], 'readonly');
     const store = transaction.objectStore(this.config.storeName);
-    const index = store.index('username');
-    const request = index.get(username);
+    const index = store.index('pnName');
+    const request = index.get(pnName);
 
     return new Promise((resolve, reject) => {
       request.onsuccess = () => {
@@ -400,7 +400,7 @@ export class IndexedDBStorage {
         } else {
           resolve({
             id: result.id,
-            username: result.username,
+            pnName: result.pnName,
             createdAt: result.createdAt,
             status: result.status
           });
@@ -459,7 +459,7 @@ export class IndexedDBStorage {
    */
   private validateDIDStructure(did: DID): void {
     // Required fields
-    if (!did.id || !did.username || !did.createdAt || !did.updatedAt) {
+    if (!did.id || !did.pnName || !did.createdAt || !did.updatedAt) {
       throw new IdentityError(
         'Invalid DID structure: missing required fields',
         IdentityErrorCodes.VALIDATION_ERROR
@@ -474,8 +474,8 @@ export class IndexedDBStorage {
       );
     }
 
-    // Validate username format
-    if (!/^[a-zA-Z0-9-]{3,20}$/.test(did.username)) {
+    // Validate pnName format
+    if (!/^[a-zA-Z0-9-]{3,20}$/.test(did.pnName)) {
       throw new IdentityError(
         'Invalid username format',
         IdentityErrorCodes.VALIDATION_ERROR

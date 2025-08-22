@@ -112,47 +112,47 @@ export class InputValidator {
   }
 
   /**
-   * Validate username
+   * Validate pN Name
    */
-  static validateUsername(username: string): ValidationResult {
+  static validatePNName(pnName: string): ValidationResult {
     const errors: string[] = [];
     const warnings: string[] = [];
 
-    if (!username || typeof username !== 'string') {
-      errors.push('Username must be a non-empty string');
+    if (!pnName || typeof pnName !== 'string') {
+      errors.push('pN Name must be a non-empty string');
       return { isValid: false, errors, warnings };
     }
 
-    if (username.length < 3) {
-      errors.push('Username must be at least 3 characters long');
+    if (pnName.length < 3) {
+      errors.push('pN Name must be at least 3 characters long');
     }
 
-    if (username.length > 20) {
-      errors.push('Username must be no more than 20 characters long');
+    if (pnName.length > 20) {
+      errors.push('pN Name must be no more than 20 characters long');
     }
 
-    if (!this.USERNAME_PATTERN.test(username)) {
-      errors.push('Username can only contain letters, numbers, and hyphens');
+    if (!this.USERNAME_PATTERN.test(pnName)) {
+      errors.push('pN Name can only contain letters, numbers, and hyphens');
     }
 
-    if (this.RESERVED_USERNAMES.includes(username.toLowerCase())) {
-      errors.push('Username is reserved and cannot be used');
+    if (this.RESERVED_USERNAMES.includes(pnName.toLowerCase())) {
+      errors.push('pN Name is reserved and cannot be used');
     }
 
     // Check for suspicious patterns
-    if (this.containsXSS(username)) {
-      errors.push('Username contains potentially malicious content');
+    if (this.containsXSS(pnName)) {
+      errors.push('pN Name contains potentially malicious content');
     }
 
-    if (this.containsSQLInjection(username)) {
-      errors.push('Username contains potentially malicious SQL patterns');
+    if (this.containsSQLInjection(pnName)) {
+      errors.push('pN Name contains potentially malicious SQL patterns');
     }
 
     return {
       isValid: errors.length === 0,
       errors,
       warnings,
-      sanitizedValue: this.sanitizeString(username)
+      sanitizedValue: this.sanitizeString(pnName)
     };
   }
 
@@ -575,7 +575,7 @@ export class InputValidator {
    * Comprehensive validation for identity creation
    */
   static validateIdentityCreation(data: {
-    username: string;
+    pnName: string;
     nickname: string;
     passcode: string;
     email?: string;
@@ -585,11 +585,11 @@ export class InputValidator {
     const warnings: string[] = [];
 
     // Validate required fields
-    const usernameValidation = this.validateUsername(data.username);
-    if (!usernameValidation.isValid) {
-      errors.push(...usernameValidation.errors);
+    const pnNameValidation = this.validatePNName(data.pnName);
+    if (!pnNameValidation.isValid) {
+      errors.push(...pnNameValidation.errors);
     }
-    warnings.push(...usernameValidation.warnings);
+    warnings.push(...pnNameValidation.warnings);
 
     const nicknameValidation = this.validateNickname(data.nickname);
     if (!nicknameValidation.isValid) {

@@ -21,7 +21,7 @@ export interface EncryptedIdentity {
 
 export interface AuthSession {
   id: string;
-  username: string;
+  pnName: string;
   nickname: string;
   accessToken: string;
   expiresIn: number;
@@ -163,8 +163,8 @@ export class IdentityCrypto {
       
       return {
         id: identity.id, // DID comes from decrypted data
-        username: identity.username,
-        nickname: identity.nickname || identity.username,
+        pnName: identity.pnName,
+                  nickname: identity.nickname || identity.pnName,
         accessToken: token,
         expiresIn: this.TOKEN_EXPIRY,
         authenticatedAt: new Date().toISOString(),

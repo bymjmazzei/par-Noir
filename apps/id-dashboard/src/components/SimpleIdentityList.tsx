@@ -142,7 +142,7 @@ export const SimpleIdentityList: React.FC<SimpleIdentityListProps> = ({
                   <FileText className="w-5 h-5 text-gray-500" />
                   <div>
                     <h3 className="font-medium text-gray-900">{identity.nickname}</h3>
-                    <p className="text-sm text-gray-500">@{identity.username}</p>
+                    <p className="text-sm text-gray-500">@{identity.pnName}</p>
                     <p className="text-xs text-gray-400">
                       Created: {new Date(identity.createdAt).toLocaleDateString()}
                     </p>

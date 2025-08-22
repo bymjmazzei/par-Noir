@@ -57,7 +57,8 @@ export class SecurityMonitor {
         algorithm: 'CRYSTALS-Kyber',
         hybridMode: true,
         keySize: 768,
-        fallbackToClassical: true
+        fallbackToClassical: true,
+        securityLevel: '192'
       },
       hsm: { 
         enabled: false, 

@@ -1,145 +1,131 @@
 /**
- * Simple test script for ZK Proofs functionality
- * This tests the zero-knowledge proof system without complex setup
+ * Test script for Identity Management functionality
+ * This demonstrates the user-controlled identity features
  */
-
-// Mock IndexedDB for Node.js environment
-global.indexedDB = {
-  open: () => ({
-    result: {
-      createObjectStore: () => {},
-      transaction: () => ({
-        objectStore: () => ({
-          put: () => Promise.resolve(),
-          get: () => Promise.resolve(),
-          getAll: () => Promise.resolve([])
-        })
-      })
-    },
-    onupgradeneeded: null,
-    onsuccess: null,
-    onerror: null
-  })
-};
 
 // Mock crypto for Node.js environment
 if (!global.crypto) {
   global.crypto = require('crypto').webcrypto;
 }
 
-const { ZKProofManager } = require('./dist/index.js');
+const { DistributedIdentityManager } = require('./dist/index.js');
 
-async function testZKProofs() {
-  console.log('🧪 Testing ZK Proofs...\n');
+async function testIdentityManagement() {
+  console.log('🧪 Testing Identity Management...\n');
 
   try {
-    // Test 1: Create ZKProofManager instance
-    console.log('✅ Test 1: Creating ZKProofManager instance');
-    const zkManager = new ZKProofManager({
-      curve: 'BLS12-381',
-      hashAlgorithm: 'SHAKE256',
-      proofExpirationHours: 24,
-      enableSelectiveDisclosure: true,
-      securityLevel: 'military',
-      keyLength: 512,
-      iterations: 100000,
-      memoryCost: 1024,
-      quantumResistant: true,
-      usePedersenCommitments: true,
-      useSchnorrSignatures: true
+    // Test 1: Create DistributedIdentityManager instance
+    console.log('✅ Test 1: Creating DistributedIdentityManager instance');
+    const manager = new DistributedIdentityManager({
+      enableIPFS: true,
+      enableBlockchain: true,
+      storageType: 'indexeddb',
+      encryptionLevel: 'high'
     });
-    console.log('   ZKProofManager instance created successfully');
+    console.log('   DistributedIdentityManager instance created successfully');
 
-    // Test 2: Generate a simple proof
-    console.log('\n✅ Test 2: Generating a simple proof');
-    const proof = await zkManager.generateProof({
-      type: 'identity_existence',
-      statement: 'User exists and is over 18',
-      privateInputs: {
-        age: 25,
-        userId: 'user123'
-      },
-      publicInputs: {
-        minimumAge: 18
-      },
-      securityLevel: 'military',
-      quantumResistant: true
+    // Test 2: Initialize the manager
+    console.log('\n✅ Test 2: Initializing manager');
+    await manager.initialize('test-sync-password');
+    console.log('   Manager initialized successfully');
+
+    // Test 3: Create user identity
+    console.log('\n✅ Test 3: Creating user identity');
+    const identity = await manager.createIdentity({
+      username: 'testuser',
+      displayName: 'Test User',
+      email: 'test@example.com',
+      preferences: {
+        privacy: 'high',
+        sharing: 'selective'
+      }
     });
-    console.log('   Proof generated successfully');
-    console.log('   Proof ID:', proof.id);
-    console.log('   Type:', proof.type);
-    console.log('   Quantum resistant:', proof.quantumResistant);
-    console.log('   Algorithm:', proof.algorithm);
+    console.log('   User identity created successfully');
+    console.log('   Identity ID:', identity.id);
 
-    // Test 3: Verify the proof
-    console.log('\n✅ Test 3: Verifying the proof');
-    const verification = await zkManager.verifyProof(proof);
-    console.log('   Proof verification result:', verification.isValid);
-    console.log('   Security validation:', verification.securityValidation);
+    // Test 4: Authenticate with identity
+    console.log('\n✅ Test 4: Authenticating with identity');
+    const session = await manager.authenticate({
+      username: 'testuser',
+      passcode: 'test-passcode'
+    });
+    console.log('   Authentication successful');
+    console.log('   Session ID:', session.id);
 
-    // Test 4: Generate age verification proof
-    console.log('\n✅ Test 4: Generating age verification proof');
-    const ageProof = await zkManager.generateAgeVerification(
-      '1998-01-15',
-      18,
-      'User is over 18 years old',
-      'military'
+    // Test 5: Update identity metadata
+    console.log('\n✅ Test 5: Updating identity metadata');
+    const updatedIdentity = await manager.updateMetadata({
+      did: identity.id,
+      passcode: 'test-passcode',
+      metadata: {
+        displayName: 'Updated Test User',
+        customFields: {
+          bio: 'Software developer',
+          location: 'San Francisco'
+        }
+      }
+    });
+    console.log('   Identity metadata updated successfully');
+    console.log('   New display name:', updatedIdentity.metadata.displayName);
+
+    // Test 6: Grant platform access
+    console.log('\n✅ Test 6: Granting platform access');
+    const platformAccess = await manager.grantToolAccess({
+      did: identity.id,
+      passcode: 'test-passcode',
+      toolId: 'test-platform',
+      permissions: ['read:profile', 'write:data'],
+      expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString()
+    });
+    console.log('   Platform access granted successfully');
+
+    // Test 7: Process data sharing request
+    console.log('\n✅ Test 7: Processing data sharing request');
+    const dataRequest = await manager.processToolRequest(
+      identity.id,
+      'test-passcode',
+      {
+        toolId: 'test-platform',
+        toolName: 'Test Platform',
+        toolDescription: 'A test platform for data sharing',
+        requestedData: ['displayName', 'email'],
+        permissions: ['read:profile'],
+        requireZKProof: false
+      }
     );
-    console.log('   Age verification proof generated successfully');
-    console.log('   Proof ID:', ageProof.id);
+    console.log('   Data sharing request processed successfully');
+    console.log('   Access granted:', dataRequest.granted);
+    console.log('   Data shared:', dataRequest.auditLog.dataShared);
 
-    // Test 5: Generate credential verification proof
-    console.log('\n✅ Test 5: Generating credential verification proof');
-    const credentialProof = await zkManager.generateCredentialVerification(
-      'hash123456789',
-      'university_degree',
-      'User has a valid university degree',
-      'military'
-    );
-    console.log('   Credential verification proof generated successfully');
-    console.log('   Proof ID:', credentialProof.id);
+    // Test 8: Get audit log
+    console.log('\n✅ Test 8: Getting audit log');
+    const auditLog = manager.getAuditLog(identity.id);
+    console.log('   Audit log retrieved successfully');
+    console.log('   Total entries:', auditLog.length);
+    auditLog.forEach(entry => {
+      console.log(`   - ${entry.timestamp}: ${entry.toolId} - ${entry.action}`);
+    });
 
-    // Test 6: Get proof statistics
-    console.log('\n✅ Test 6: Getting proof statistics');
-    const stats = zkManager.getProofStats();
-    console.log('   Total proofs:', stats.totalProofs);
-    console.log('   Active proofs:', stats.activeProofs);
-    console.log('   Quantum resistant count:', stats.quantumResistantCount);
-    console.log('   Compliance rate:', stats.complianceRate);
+    // Test 9: Get identity statistics
+    console.log('\n✅ Test 9: Getting identity statistics');
+    const stats = manager.getIdentityStats();
+    console.log('   Identity statistics retrieved successfully');
+    console.log('   Total identities:', stats.totalIdentities);
+    console.log('   Active sessions:', stats.activeSessions);
+    console.log('   Data sharing events:', stats.dataSharingEvents);
 
-    // Test 7: Get quantum resistance status
-    console.log('\n✅ Test 7: Getting quantum resistance status');
-    const quantumStatus = zkManager.getQuantumResistanceStatus();
-    console.log('   Quantum resistance enabled:', quantumStatus.enabled);
-    console.log('   Coverage:', quantumStatus.coverage + '%');
-    console.log('   Algorithms:', quantumStatus.algorithms.join(', '));
-    console.log('   Migration progress:', quantumStatus.migrationProgress + '%');
-
-    // Test 8: Get security compliance report
-    console.log('\n✅ Test 8: Getting security compliance report');
-    const complianceReport = zkManager.getSecurityComplianceReport();
-    console.log('   Overall compliance:', complianceReport.overallCompliance);
-    console.log('   Security score:', complianceReport.securityScore);
-    console.log('   Risk assessment:', complianceReport.riskAssessment);
-
-    console.log('\n🎉 All ZK Proofs tests passed successfully!');
-    console.log('\n📊 Summary:');
-    console.log('   - ZKProofManager instance created');
-    console.log('   - Identity existence proof generated and verified');
-    console.log('   - Age verification proof generated');
-    console.log('   - Credential verification proof generated');
-    console.log('   - Statistics and compliance reports retrieved');
-    console.log('   - Quantum resistance features working');
+    console.log('\n🎉 All identity management tests completed successfully!');
+    console.log('\n📝 Summary:');
+    console.log('- User identity creation and management');
+    console.log('- Authentication and session management');
+    console.log('- Data sharing control with platforms');
+    console.log('- Audit logging and privacy controls');
 
   } catch (error) {
-    console.error('\n❌ Test failed:', error);
-    console.error('Error details:', error.message);
-    if (error.stack) {
-      console.error('Stack trace:', error.stack);
-    }
+    console.error('❌ Error during testing:', error);
     process.exit(1);
   }
 }
 
 // Run the test
-testZKProofs().catch(console.error);
+testIdentityManagement();

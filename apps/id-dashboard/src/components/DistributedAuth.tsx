@@ -65,7 +65,7 @@ export const DistributedAuth: React.FC<DistributedAuthProps> = ({
 
       // Use the correct authenticate method
       const session = await manager.authenticate({
-        username: did,
+        pnName: did,
         passcode: syncPassword
       });
 

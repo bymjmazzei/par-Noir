@@ -7,7 +7,7 @@ interface BiometricSetupProps {
   onClose: () => void;
   onSuccess: () => void;
   identityId: string;
-  username: string;
+  pnName: string;
 }
 
 export const BiometricSetup: React.FC<BiometricSetupProps> = ({
@@ -15,7 +15,7 @@ export const BiometricSetup: React.FC<BiometricSetupProps> = ({
   onClose,
   onSuccess,
   identityId,
-  username
+  pnName
 }) => {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -55,7 +55,7 @@ export const BiometricSetup: React.FC<BiometricSetupProps> = ({
       setIsLoading(true);
       setError(null);
       
-      const credential = await BiometricAuth.registerCredential(identityId, username);
+      const credential = await BiometricAuth.registerCredential(identityId, pnName);
       
       if (credential) {
         setStep('success');

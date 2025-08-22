@@ -2,6 +2,7 @@
 export interface IPFSConfig {
   apiKey: string;
   gatewayUrl: string;
+  url?: string;
   projectId?: string;
   projectSecret?: string;
 }
@@ -46,24 +47,46 @@ export class IPFSService {
     }
 
     try {
-      // In production, this would upload to IPFS
       // Uploading file to IPFS
+      if (process.env.NODE_ENV === 'development' || !process.env.VITE_IPFS_API_KEY) {
+        // Simulate IPFS upload in development or when no API key
+        await new Promise(resolve => setTimeout(resolve, 2000));
+        
+        // Generate mock CID (Content Identifier)
+        const mockCid = `Qm${Math.random().toString(36).substring(2, 15)}${Math.random().toString(36).substring(2, 15)}`;
+        
+        const result: IPFSUploadResult = {
+          cid: mockCid,
+          url: `${this.config.gatewayUrl}/ipfs/${mockCid}`,
+          size: file.size,
+          name: file.name
+        };
 
-      // Simulate IPFS upload
-      await new Promise(resolve => setTimeout(resolve, 2000));
-      
-      // Generate mock CID (Content Identifier)
-      const mockCid = `Qm${Math.random().toString(36).substring(2, 15)}${Math.random().toString(36).substring(2, 15)}`;
-      
-      const result: IPFSUploadResult = {
-        cid: mockCid,
-        url: `${this.config.gatewayUrl}/ipfs/${mockCid}`,
-        size: file.size,
-        name: file.name
-      };
+        console.log('🔧 Mock IPFS upload:', mockCid);
+        return result;
+      } else {
+        // Real IPFS upload when API key is available
+        const { create } = await import('ipfs-http-client');
+        const ipfs = create({
+          url: this.config.url || 'https://ipfs.infura.io:5001',
+          headers: process.env.VITE_IPFS_API_KEY ? {
+            'Authorization': `Bearer ${process.env.VITE_IPFS_API_KEY}`
+          } : undefined
+        });
 
-      // File uploaded to IPFS successfully
-      return result;
+        const result = await ipfs.add(file);
+        const cid = result.cid.toString();
+        
+        const uploadResult: IPFSUploadResult = {
+          cid: cid,
+          url: `${this.config.gatewayUrl}/ipfs/${cid}`,
+          size: file.size,
+          name: file.name
+        };
+
+        console.log('🚀 Real IPFS upload:', cid);
+        return uploadResult;
+      }
     } catch (error) {
       // Handle upload error silently
       throw error;

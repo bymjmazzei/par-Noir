@@ -10,7 +10,7 @@ export const SDKDocumentation: React.FC = () => {
   const tabs = [
     { id: 'overview', label: 'Overview' },
     { id: 'integration', label: 'Integration' },
-    { id: 'compliance', label: 'Compliance' },
+    { id: 'compliance', label: 'Data Sharing' },
     { id: 'demo', label: 'Live Demo' }
   ];
 
@@ -31,7 +31,7 @@ const config = createSimpleConfig(
 // Initialize SDK
 const sdk = createIdentitySDK(config);
 
-// Start authentication
+// Start authentication - user creates/uses their own identity
 await sdk.authenticate('identity-protocol');`,
 
     react: `import { useIdentitySDK, createSimpleConfig } from '@identity-protocol/identity-sdk';
@@ -54,7 +54,8 @@ function MyApp() {
   if (isAuthenticated) {
     return (
       <div>
-        <p>Welcome, {session?.identity.displayName}!</p>
+        <p>Welcome! You're signed in with your Identity Protocol ID</p>
+        <p>Your identity ID: {session?.identity.id}</p>
         <button onClick={logout}>Logout</button>
       </div>
     );
@@ -62,12 +63,13 @@ function MyApp() {
 
   return (
     <button onClick={() => authenticate('identity-protocol')}>
-      Sign in with Identity Protocol
+      Sign in with your Identity Protocol ID
     </button>
   );
 }`,
 
-    compliance: `// Request additional data collection
+    compliance: `// Request additional data from user for compliance
+// This doesn't verify the data - it just collects what the user provides
 const complianceData = await sdk.requestDataCollection({
   platform: 'your-platform',
   fields: {
@@ -97,10 +99,10 @@ const complianceData = await sdk.requestDataCollection({
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <div className="mb-8">
           <h1 className="text-3xl font-bold text-gray-900 mb-4">
-            Cross-Platform Identity SDK
+            User-Controlled Identity SDK
           </h1>
           <p className="text-gray-600">
-            Integrate secure, privacy-preserving identity authentication into any platform
+            Create user-owned identities that serve as access tokens with controlled data sharing
           </p>
         </div>
 
@@ -146,17 +148,18 @@ const complianceData = await sdk.requestDataCollection({
                 </h2>
                 <div className="prose max-w-none">
                   <p className="text-gray-600 mb-4">
-                    The Identity Protocol SDK provides OAuth-like authentication that can be adopted by any platform. 
-                    Unlike traditional OAuth providers, users own their identities and control their data.
+                    The Identity Protocol SDK enables users to create their own identities that serve as access tokens. 
+                    Users control what personal data they share with third parties, providing OAuth-like authentication 
+                    with user-owned data.
                   </p>
                   
                   <h3 className="text-lg font-medium text-gray-900 mb-3">Key Features</h3>
                   <ul className="space-y-2 text-gray-600">
-                    <li>• <strong>Universal Authentication:</strong> Works with any platform that adopts the protocol</li>
-                    <li>• <strong>User-Owned:</strong> Users control their identity and data</li>
-                    <li>• <strong>Compliance Ready:</strong> Built-in support for additional data collection</li>
-                    <li>• <strong>Standards-Based:</strong> Leverages existing web standards and metadata</li>
-                    <li>• <strong>Lightweight:</strong> Minimal overhead, fast startup times</li>
+                    <li>• <strong>User-Owned Identities:</strong> Users create and control their own identities</li>
+                    <li>• <strong>Access Token Management:</strong> Identities serve as access tokens for third parties</li>
+                    <li>• <strong>Controlled Data Sharing:</strong> Users decide what data to share with each platform</li>
+                    <li>• <strong>OAuth-Like Flow:</strong> Familiar authentication patterns for developers</li>
+                    <li>• <strong>Compliance Ready:</strong> Request additional data collection from users</li>
                   </ul>
                 </div>
               </div>
@@ -164,26 +167,42 @@ const complianceData = await sdk.requestDataCollection({
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div className="bg-white rounded-lg shadow-md p-6">
                   <h3 className="text-lg font-semibold text-gray-900 mb-3">
-                    For Users
+                    What the SDK Does
                   </h3>
                   <ul className="space-y-2 text-gray-600">
-                    <li>• Single identity across all platforms</li>
-                    <li>• Control over data sharing</li>
-                    <li>• Portable identity</li>
-                    <li>• Privacy-first approach</li>
+                    <li>✅ Identity creation and management</li>
+                    <li>✅ Access control and permissions</li>
+                    <li>✅ OAuth-like authentication flow</li>
+                    <li>✅ Data collection requests</li>
+                    <li>✅ Session management</li>
+                    <li>✅ Privacy control</li>
                   </ul>
                 </div>
 
                 <div className="bg-white rounded-lg shadow-md p-6">
                   <h3 className="text-lg font-semibold text-gray-900 mb-3">
-                    For Developers
+                    What the SDK Does NOT Do
                   </h3>
                   <ul className="space-y-2 text-gray-600">
-                    <li>• Plug-and-play integration</li>
-                    <li>• OAuth-like API</li>
-                    <li>• Compliance data collection</li>
-                    <li>• Cross-platform compatibility</li>
+                    <li>❌ Age verification</li>
+                    <li>❌ Credential verification</li>
+                    <li>❌ Personal attestations</li>
+                    <li>❌ Data validation</li>
+                    <li>❌ Identity verification</li>
                   </ul>
+                </div>
+              </div>
+
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-6">
+                <h3 className="text-lg font-semibold text-blue-900 mb-3">
+                  How It Works
+                </h3>
+                <div className="space-y-3 text-blue-800">
+                  <p><strong>1. User Creates Identity:</strong> Users create their own identity with their chosen data</p>
+                  <p><strong>2. Platform Integration:</strong> Third parties integrate the SDK to accept these identities</p>
+                  <p><strong>3. Authentication Flow:</strong> Users sign in with their identity (OAuth-like flow)</p>
+                  <p><strong>4. Data Sharing:</strong> Users control what data they share with each platform</p>
+                  <p><strong>5. Access Token:</strong> The identity serves as an access token for the platform</p>
                 </div>
               </div>
             </div>
@@ -252,11 +271,11 @@ const complianceData = await sdk.requestDataCollection({
             <div className="space-y-6">
               <div className="bg-white rounded-lg shadow-md p-6">
                 <h2 className="text-xl font-semibold text-gray-900 mb-4">
-                  Compliance Data Collection
+                  Data Sharing & Collection
                 </h2>
                 <p className="text-gray-600 mb-4">
                   Third-party platforms can request additional data from users for compliance purposes. 
-                  Users maintain control over what they share.
+                  Users maintain control over what they share. The SDK does not verify or validate this data.
                 </p>
 
                 <div className="mb-6">
@@ -267,20 +286,20 @@ const complianceData = await sdk.requestDataCollection({
                 </div>
 
                 <div className="bg-blue-50 border border-blue-200 rounded-md p-4">
-                  <h3 className="text-sm font-medium text-blue-900 mb-2">Best Practices</h3>
+                  <h3 className="text-sm font-medium text-blue-900 mb-2">Important Notes</h3>
                   <ul className="text-sm text-blue-800 space-y-1">
-                    <li>• Only request data you actually need</li>
-                    <li>• Clearly explain why you need the data</li>
-                    <li>• Provide clear consent options</li>
-                    <li>• Allow users to decline optional fields</li>
-                    <li>• Follow data protection regulations</li>
+                    <li>• The SDK does not verify the accuracy of user-provided data</li>
+                    <li>• Users control what data they choose to share</li>
+                    <li>• Platforms are responsible for their own data validation</li>
+                    <li>• This is a data collection tool, not a verification service</li>
+                    <li>• Follow data protection regulations for collected data</li>
                   </ul>
                 </div>
               </div>
 
               <div className="bg-white rounded-lg shadow-md p-6">
                 <h3 className="text-lg font-semibold text-gray-900 mb-4">
-                  Demo: Compliance Data Collection
+                  Demo: Data Collection Request
                 </h3>
                 <ComplianceDataCollection
                   platform="Demo Platform"
@@ -312,7 +331,7 @@ const complianceData = await sdk.requestDataCollection({
                   onSubmit={() => {
                     // Handle compliance data submission
                     // In production, this would send data to the compliance service
-                    setSuccess('Compliance data submitted successfully!');
+                    setSuccess('Data collection request submitted successfully!');
                     setTimeout(() => setSuccess(null), 3000);
                   }}
                   onCancel={() => {
@@ -331,8 +350,8 @@ const complianceData = await sdk.requestDataCollection({
                   Live Demo
                 </h2>
                 <p className="text-gray-600 mb-6">
-                  Try the cross-platform authentication flow below. This demonstrates how any platform 
-                  can integrate with the Identity Protocol.
+                  Try the user-controlled identity authentication flow below. This demonstrates how users 
+                  create their own identities and control what data they share with platforms.
                 </p>
                 
                 <CrossPlatformAuth

@@ -82,27 +82,27 @@ export class IdentityCore {
    */
   async createDID(options: CreateDIDOptions): Promise<DID> {
     try {
-      // Validate username with enhanced security
-      if (!options.username || options.username.length < 3) {
+      // Validate pN Name with enhanced security
+      if (!options.pnName || options.pnName.length < 3) {
         throw new IdentityError(
-          'Username must be at least 3 characters long',
+          'pN Name must be at least 3 characters long',
           IdentityErrorCodes.VALIDATION_ERROR
         );
       }
 
-      // Validate username format (alphanumeric and hyphens only)
-      if (!/^[a-zA-Z0-9-]+$/.test(options.username)) {
+      // Validate pN Name format (alphanumeric and hyphens only)
+      if (!/^[a-zA-Z0-9-]+$/.test(options.pnName)) {
         throw new IdentityError(
-          'Username can only contain letters, numbers, and hyphens',
+          'pN Name can only contain letters, numbers, and hyphens',
           IdentityErrorCodes.VALIDATION_ERROR
         );
       }
 
-      // Check for reserved usernames
+      // Check for reserved pN Names
       const reservedUsernames = ['admin', 'root', 'system', 'test', 'guest', 'anonymous'];
-      if (reservedUsernames.includes(options.username.toLowerCase())) {
+      if (reservedUsernames.includes(options.pnName.toLowerCase())) {
         throw new IdentityError(
-          'Username is reserved and cannot be used',
+          'pN Name is reserved and cannot be used',
           IdentityErrorCodes.VALIDATION_ERROR
         );
       }
@@ -117,10 +117,10 @@ export class IdentityCore {
       }
 
       // Check if username already exists
-      const existingDID = await this.storage.getDIDByUsername(options.username);
+      const existingDID = await this.storage.getDIDByPNName(options.pnName);
       if (existingDID) {
         throw new IdentityError(
-          'Username already exists',
+          'pN Name already exists',
           IdentityErrorCodes.VALIDATION_ERROR
         );
       }
@@ -131,7 +131,7 @@ export class IdentityCore {
       // Create DID with enhanced metadata
       const did: DID = {
         id: `did:key:${await CryptoManager.hash(keyPair.publicKey)}`,
-        username: options.username,
+        pnName: options.pnName,
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
         status: 'active',
@@ -166,7 +166,7 @@ export class IdentityCore {
       await this.storage.storeDID(did, options.passcode);
 
       // Log successful creation
-      this.emit('did_created', { didId: did.id, username: did.username });
+      this.emit('did_created', { didId: did.id, pnName: did.pnName });
       return did;
 
     } catch (error) {
@@ -184,7 +184,7 @@ export class IdentityCore {
   async authenticate(options: AuthenticateOptions): Promise<DID> {
     try {
       // Check for account lockout
-      if (CryptoManager.isAccountLocked(options.username)) {
+      if (CryptoManager.isAccountLocked(options.pnName)) {
         throw new IdentityError(
           'Account is temporarily locked due to too many failed attempts. Please try again later.',
           IdentityErrorCodes.AUTHENTICATION_ERROR
@@ -194,7 +194,7 @@ export class IdentityCore {
       // Validate passcode strength
       const passcodeValidation = CryptoManager.validatePasscode(options.passcode);
       if (!passcodeValidation.isValid) {
-        CryptoManager.recordFailedAttempt(options.username);
+        CryptoManager.recordFailedAttempt(options.pnName);
         throw new IdentityError(
           `Weak passcode: ${passcodeValidation.errors.join(', ')}`,
           IdentityErrorCodes.VALIDATION_ERROR
@@ -202,11 +202,11 @@ export class IdentityCore {
       }
 
       // Retrieve and decrypt DID
-      const did = await this.storage.getDID(options.username, options.passcode);
+      const did = await this.storage.getDID(options.pnName, options.passcode);
       
       if (!did) {
         // Record failed attempt
-        CryptoManager.recordFailedAttempt(options.username);
+        CryptoManager.recordFailedAttempt(options.pnName);
         throw new IdentityError(
           'Invalid username or passcode',
           IdentityErrorCodes.AUTHENTICATION_ERROR
@@ -225,7 +225,7 @@ export class IdentityCore {
       }
 
       // Clear failed attempts on successful authentication
-      CryptoManager.clearFailedAttempts(options.username);
+      CryptoManager.clearFailedAttempts(options.pnName);
 
       // Update security metadata
       did.metadata.security = {
@@ -239,14 +239,14 @@ export class IdentityCore {
       await this.storage.updateDID(did, options.passcode);
 
       // Log successful authentication
-      this.emit('did_authenticated', { didId: did.id, username: did.username });
+      this.emit('did_authenticated', { didId: did.id, pnName: did.pnName });
 
       return did;
 
     } catch (error) {
       // Record failed attempt for authentication errors
       if (error instanceof IdentityError && error.code === IdentityErrorCodes.AUTHENTICATION_ERROR) {
-        CryptoManager.recordFailedAttempt(options.username);
+        CryptoManager.recordFailedAttempt(options.pnName);
       }
       throw error;
     }
@@ -255,7 +255,7 @@ export class IdentityCore {
   /**
    * Get all DIDs (without decryption)
    */
-  async getAllDIDs(): Promise<Array<{ id: string; username: string; createdAt: string; status: string }>> {
+  async getAllDIDs(): Promise<Array<{ id: string; pnName: string; createdAt: string; status: string }>> {
     return this.storage.getAllDIDs();
   }
 

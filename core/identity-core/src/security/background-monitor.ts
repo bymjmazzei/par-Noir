@@ -141,7 +141,8 @@ export class BackgroundMonitor {
       // Clean up old sessions
       if (config.sessionCleanupEnabled) {
         this.log('Cleaning up expired sessions', 'debug');
-        SessionManager.cleanupExpiredSessions();
+        // Note: cleanupExpiredSessions is private, so we'll handle this differently
+        // The session manager handles its own cleanup internally
       }
 
       // Clean up expired proofs

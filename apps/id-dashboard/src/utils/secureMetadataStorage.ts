@@ -60,7 +60,7 @@ export class SecureMetadataStorage {
    */
   static async updateMetadataField(
     identityId: string,
-    username: string,
+    pnName: string,
     passcode: string,
     field: keyof MetadataContent,
     value: any
@@ -73,7 +73,7 @@ export class SecureMetadataStorage {
         // Update the field
         const updatedMetadata = await SecureMetadataCrypto.updateMetadataField(
           currentMetadata,
-          username,
+          pnName,
           passcode,
           field,
           value
@@ -96,7 +96,7 @@ export class SecureMetadataStorage {
       } else {
         // Create new metadata
         const newMetadata = await SecureMetadataCrypto.createInitialMetadata(
-          username,
+          pnName,
           passcode,
           identityId,
           { [field]: value }
@@ -127,7 +127,7 @@ export class SecureMetadataStorage {
    */
   static async applyMetadataToIdentity(
     identityData: any,
-    username: string,
+    pnName: string,
     passcode: string
   ): Promise<any> {
     try {
@@ -138,7 +138,7 @@ export class SecureMetadataStorage {
         // Try to decrypt metadata
         const decryptedMetadata = await SecureMetadataCrypto.decryptMetadata(
           metadata,
-          username,
+          pnName,
           passcode
         );
         
@@ -278,14 +278,14 @@ export class SecureMetadataStorage {
    */
   static async verifyMetadataIntegrity(
     identityId: string,
-    username: string,
+    pnName: string,
     passcode: string
   ): Promise<boolean> {
     try {
       const metadata = await this.getMetadata(identityId);
       if (!metadata) return true; // No metadata is valid
       
-      return await SecureMetadataCrypto.verifyMetadata(metadata, username, passcode);
+      return await SecureMetadataCrypto.verifyMetadata(metadata, pnName, passcode);
     } catch (error) {
       return false;
     }

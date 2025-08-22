@@ -173,13 +173,75 @@ export class ZKProofManager {
   private static async generateBaseProof(did: DID, statement: string): Promise<ZKProof> {
     // This would integrate with your existing ZK proof system
     // For now, return a mock proof
+    const now = new Date();
+    const expiresAt = new Date(now.getTime() + 24 * 60 * 60 * 1000); // 24 hours
+    
     return {
-      type: 'custom',
-      statement,
-      proof: crypto.randomUUID(),
+      id: crypto.randomUUID(),
+      type: 'custom_proof',
+      statement: {
+        type: 'custom',
+        description: statement,
+        publicInputs: {},
+        privateInputs: {},
+        relation: 'custom'
+      },
+      proof: {
+        schnorrProof: undefined,
+        pedersenProof: undefined,
+        sigmaProtocol: undefined,
+        fiatShamirTransform: undefined
+      },
+      publicInputs: {},
+      timestamp: now.toISOString(),
+      expiresAt: expiresAt.toISOString(),
+      verificationKey: crypto.randomUUID(),
       securityLevel: 'military',
       algorithm: 'P-384',
-      keyLength: 384
+      keyLength: 384,
+      quantumResistant: true,
+      schnorrProof: {
+        commitment: crypto.randomUUID(),
+        challenge: crypto.randomUUID(),
+        response: crypto.randomUUID(),
+        publicKey: crypto.randomUUID(),
+        message: crypto.randomUUID(),
+        curve: 'secp256k1',
+        generator: crypto.randomUUID(),
+        order: crypto.randomUUID()
+      },
+      pedersenProof: {
+        commitment: crypto.randomUUID(),
+        opening: {
+          message: crypto.randomUUID(),
+          randomness: crypto.randomUUID()
+        },
+        generators: {
+          g: crypto.randomUUID(),
+          h: crypto.randomUUID()
+        },
+        proofOfKnowledge: {
+          commitment: crypto.randomUUID(),
+          challenge: crypto.randomUUID(),
+          response1: crypto.randomUUID(),
+          response2: crypto.randomUUID()
+        }
+      },
+      sigmaProtocol: {
+        commitment: crypto.randomUUID(),
+        challenge: crypto.randomUUID(),
+        response: crypto.randomUUID(),
+        statement: statement,
+        generator: crypto.randomUUID(),
+        order: crypto.randomUUID()
+      },
+      fiatShamirTransform: {
+        commitment: crypto.randomUUID(),
+        challenge: crypto.randomUUID(),
+        response: crypto.randomUUID(),
+        hashFunction: 'SHA-256',
+        transformType: 'sigma'
+      }
     };
   }
 
@@ -282,7 +344,7 @@ export class ZKProofManager {
     ];
 
     for (const pattern of suspiciousStatements) {
-      if (pattern.test(proof.statement)) {
+      if (pattern.test(proof.statement.description)) {
         patterns.push('Suspicious proof statement detected');
         break;
       }

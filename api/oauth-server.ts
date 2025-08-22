@@ -49,7 +49,7 @@ class OAuthServer {
   constructor() {
     this.app = express();
     this.identityCore = new IdentityCore();
-    this.jwtSecret = process.env.JWT_SECRET || 'your-secret-key';
+    this.jwtSecret = process.env.JWT_SECRET || crypto.randomBytes(64).toString('hex');
     this.setupMiddleware();
     this.setupRoutes();
     this.initializeDefaultClients();
@@ -117,14 +117,16 @@ class OAuthServer {
   }
 
   private initializeDefaultClients(): void {
-    // Register default clients for testing
-    this.registerClient({
-      clientId: 'test-client',
-              clientSecret: crypto.randomBytes(32).toString('hex'),
-              redirectUri: process.env.OAUTH_REDIRECT_URI || 'https://yourdomain.com/callback',
-      scopes: ['openid', 'profile', 'email'],
-      name: 'Test Client'
-    });
+    // Register default clients for testing only in development
+    if (process.env.NODE_ENV === 'development') {
+      this.registerClient({
+        clientId: 'test-client',
+        clientSecret: crypto.randomBytes(32).toString('hex'),
+        redirectUri: process.env.OAUTH_REDIRECT_URI || 'http://localhost:3000/callback',
+        scopes: ['openid', 'profile', 'email'],
+        name: 'Test Client'
+      });
+    }
   }
 
   public registerClient(client: OAuthClient): void {

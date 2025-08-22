@@ -7,6 +7,9 @@
     "build": "tsc",
     "start": "node dist/server.js",
     "dev": "ts-node src/server.ts",
+    "auth:dev": "ts-node decentralized-auth-server.ts",
+    "auth:start": "node dist/decentralized-auth-server.js",
+    "auth:build": "tsc decentralized-auth-server.ts --outDir dist",
     "test": "jest",
     "clean": "rm -rf dist"
   },

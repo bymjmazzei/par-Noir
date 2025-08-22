@@ -1,207 +1,234 @@
-# Par Noir - Sovereign Identity Protocol
+# Identity Protocol
 
-Par Noir is an open-source protocol for sovereign identity, building a more secure and equitable foundation for the internet. Users own and control their digital identity completely through cryptographic proofs and zero-knowledge verification.
+A user-controlled identity system that enables users to create their own identities that serve as access tokens for third-party platforms. Users control what personal data they share with each platform, providing privacy-first authentication.
 
-## 🚀 Quick Start
+## 🎯 **What the Identity Protocol Does**
 
-### Installation
+### **User-Controlled Identities**
+- Users create and own their identities
+- Identities serve as access tokens for platforms
+- Users control what data they share with each platform
+- OAuth-like authentication flow with user-owned data
+
+### **Data Sharing Control**
+- Users decide what personal information to share
+- Granular control over data sharing permissions
+- Audit trail of all data sharing activities
+- Privacy-first approach to authentication
+
+## 🚀 **Key Features**
+
+- **User-Owned Identities**: Users create and control their own identities
+- **Access Token Management**: Identities serve as access tokens for third parties
+- **Controlled Data Sharing**: Users decide what data to share with each platform
+- **OAuth-Like Flow**: Familiar authentication patterns for developers
+- **Compliance Ready**: Request additional data collection from users
+- **Cross-Platform**: Works in browsers, mobile apps, and desktop applications
+
+## 📦 **Installation**
 
 ```bash
-npm install @par-noir/identity-sdk
+npm install @identity-protocol/identity-sdk
 ```
 
-### Basic Usage
+## 🔧 **Quick Start**
+
+### Basic Integration
 
 ```javascript
-import { createIdentitySDK } from '@par-noir/identity-sdk';
+import { createIdentitySDK, createSimpleConfig } from '@identity-protocol/identity-sdk';
 
-const sdk = createIdentitySDK({
-  clientId: 'your-client-id',
-  redirectUri: 'https://your-app.com/callback',
-  scope: 'openid profile email'
-});
+// Create SDK configuration
+const config = createSimpleConfig(
+  'your-client-id',
+  'https://your-app.com/callback',
+  { 
+    scopes: ['openid', 'profile', 'email'],
+    storage: 'localStorage',
+    autoRefresh: true 
+  }
+);
 
-// Start authentication
-sdk.authenticate();
+// Initialize SDK
+const sdk = createIdentitySDK(config);
 
-// Handle callback
-sdk.handleCallback().then(user => {
-  console.log('Authenticated user:', user);
-});
+// Start authentication - user creates/uses their own identity
+await sdk.authenticate('identity-protocol');
 ```
-
-## 📚 Documentation
-
-- **[API Reference](docs/api-documentation.md)** - Complete API documentation
-- **[SDK Documentation](sdk/identity-sdk/README.md)** - JavaScript/TypeScript SDK guide
-- **[Tutorials](tutorials/)** - Step-by-step integration guides
-- **[Examples](core/identity-core/examples/)** - Working code examples
-
-## 🏗️ Architecture
-
-### Core Components
-
-- **`core/identity-core/`** - Core identity management and cryptographic functions
-- **`sdk/identity-sdk/`** - JavaScript/TypeScript SDK for easy integration
-- **`api/`** - OAuth 2.0 server implementation
-- **`apps/id-dashboard/`** - Complete working example application
-
-### Key Features
-
-- 🔐 **Sovereign Identity** - Users own and control their digital identity
-- 🔒 **Zero-Knowledge Proofs** - Prove identity without revealing personal data
-- 🌐 **Cross-Platform** - Use the same identity across web, mobile, and desktop
-- 🛡️ **Military-Grade Security** - Advanced encryption and security protocols
-- 📱 **OAuth 2.0 Compatible** - Works with existing authentication systems
-
-## 🛠️ Development
-
-### Prerequisites
-
-- Node.js 18+
-- npm or yarn
-
-### Setup
-
-```bash
-# Clone the repository
-git clone https://github.com/bymjmazzei/par-Noir.git
-cd par-Noir
-
-# Install dependencies
-npm install
-
-# Start the development server
-npm run dev:dashboard
-```
-
-### Project Structure
-
-```
-par-Noir/
-├── core/identity-core/     # Core identity functionality
-├── sdk/identity-sdk/       # JavaScript/TypeScript SDK
-├── api/                    # OAuth 2.0 server
-├── apps/id-dashboard/      # Working example app
-├── docs/                   # Documentation
-├── tutorials/              # Integration tutorials
-└── branding/              # Assets and branding
-```
-
-## 🔧 Integration Examples
 
 ### React Integration
 
 ```javascript
-import { useIdentitySDK } from '@par-noir/identity-sdk/react';
+import { useIdentitySDK, createSimpleConfig } from '@identity-protocol/identity-sdk';
 
-function App() {
-  const { user, isAuthenticated, authenticate, logout } = useIdentitySDK({
-    clientId: 'your-client-id',
-    redirectUri: 'https://your-app.com/callback'
-  });
+function MyApp() {
+  const config = createSimpleConfig(
+    'your-client-id',
+    'https://your-app.com/callback'
+  );
+
+  const {
+    session,
+    isAuthenticated,
+    isLoading,
+    error,
+    authenticate,
+    logout
+  } = useIdentitySDK(config);
 
   if (isAuthenticated) {
     return (
       <div>
-        <h1>Welcome, {user.name}!</h1>
+        <p>Welcome! You're signed in with your Identity Protocol ID</p>
+        <p>Your identity ID: {session?.identity.id}</p>
         <button onClick={logout}>Logout</button>
       </div>
     );
   }
 
   return (
-    <div>
-      <h1>Welcome to Par Noir</h1>
-      <button onClick={authenticate}>Login with Par Noir</button>
-    </div>
+    <button onClick={() => authenticate('identity-protocol')}>
+      Sign in with your Identity Protocol ID
+    </button>
   );
 }
 ```
 
-### Age Verification
+## 🔄 **How It Works**
+
+1. **User Creates Identity**: Users create their own identity with their chosen data
+2. **Platform Integration**: Third parties integrate the SDK to accept these identities
+3. **Authentication Flow**: Users sign in with their identity (OAuth-like flow)
+4. **Data Sharing**: Users control what data they share with each platform
+5. **Access Token**: The identity serves as an access token for the platform
+
+## 📊 **Data Collection**
+
+Third-party platforms can request additional data from users for compliance purposes. The SDK does not verify or validate this data - it simply collects what users choose to share:
 
 ```javascript
-import { createAgeVerification } from '@par-noir/identity-sdk';
-
-const ageVerifier = createAgeVerification({
-  minimumAge: 18,
-  clientId: 'your-client-id'
+// Request additional data from user for compliance
+// This doesn't verify the data - it just collects what the user provides
+const complianceData = await sdk.requestDataCollection({
+  platform: 'your-platform',
+  fields: {
+    phone: {
+      required: true,
+      type: 'phone',
+      description: 'Phone number for account verification'
+    },
+    address: {
+      required: false,
+      type: 'text',
+      description: 'Billing address'
+    },
+    terms: {
+      required: true,
+      type: 'checkbox',
+      description: 'I agree to the terms and conditions'
+    }
+  },
+  consentText: 'I consent to the collection and processing of my data',
+  dataUsage: 'This data will be used for account verification and compliance purposes'
 });
-
-// Verify age without revealing birth date
-ageVerifier.verifyAge(userProof).then(isValid => {
-  if (isValid) {
-    console.log('User is 18 or older');
-  }
-});
 ```
 
-## 🔗 OAuth 2.0 Endpoints
+## 🎯 **Use Cases**
 
-### Authorization Endpoint
-```
-GET /oauth/authorize?response_type=code&client_id=your-client-id&redirect_uri=https://your-app.com/callback&scope=openid%20profile%20email
+### **For Users**
+- **Own Your Identity**: Create and control your own identity
+- **Data Control**: Control what data you share with each platform
+- **Portable Identity**: Take your identity with you
+- **Privacy-First**: Your data stays yours
+
+### **For Developers**
+- **Plug-and-Play**: Easy integration with existing apps
+- **OAuth-Like API**: Familiar authentication patterns
+- **Data Collection**: Request additional data from users
+- **Cross-Platform**: Works everywhere
+
+## 🔒 **Security Features**
+
+- **State Parameter**: Prevents CSRF attacks
+- **PKCE Support**: Enhanced security for public clients
+- **Token Validation**: Automatic token verification
+- **Secure Storage**: Encrypted local storage
+- **Session Management**: Automatic session cleanup
+
+## 📱 **Platform Support**
+
+- **Web Applications**: Full browser support
+- **Mobile Apps**: React Native, Flutter, native apps
+- **Desktop Apps**: Electron, Tauri, native desktop
+- **Progressive Web Apps**: Service worker support
+
+## 🛠️ **Development**
+
+### Building the SDK
+
+```bash
+cd sdk/identity-sdk
+npm install
+npm run build
 ```
 
-### Token Endpoint
-```
-POST /oauth/token
-Content-Type: application/x-www-form-urlencoded
+### Running Tests
 
-grant_type=authorization_code&code=authorization_code&client_id=your-client-id&client_secret=your-client-secret&redirect_uri=https://your-app.com/callback
+```bash
+npm test
 ```
 
-### User Info Endpoint
-```
-GET /oauth/userinfo
-Authorization: Bearer your-access-token
+### Development Mode
+
+```bash
+npm run dev
 ```
 
-## 🤝 Contributing
+## 🌐 **Platform Integration**
+
+### Setting up a Platform
+
+1. **Register your platform** with Identity Protocol
+2. **Get your client credentials** (client ID, client secret)
+3. **Configure your redirect URI**
+4. **Integrate the SDK** into your application
+5. **Handle authentication callbacks**
+6. **Request additional data** as needed for compliance
+
+## ⚠️ **Important Notes**
+
+### **What the Identity Protocol Does**
+- ✅ Identity creation and management
+- ✅ Access control and permissions
+- ✅ OAuth-like authentication flow
+- ✅ Data sharing control
+- ✅ Session management
+- ✅ Privacy control
+
+### **What the Identity Protocol Does NOT Do**
+- ❌ Age verification
+- ❌ Credential verification
+- ❌ Personal attestations
+- ❌ Data validation
+- ❌ Identity verification
+
+The Identity Protocol enables users to create their own identities and control what data they share, but it does not verify or validate the accuracy of user-provided data. Platforms are responsible for their own data validation and verification processes.
+
+## 🤝 **Contributing**
 
 We welcome contributions! Please see our [Contributing Guide](CONTRIBUTING.md) for details.
 
-### Development Setup
+## 📄 **License**
 
-```bash
-# Install dependencies
-npm install
+MIT License - see [LICENSE](LICENSE) for details.
 
-# Run tests
-npm test
+## 🆘 **Support**
 
-# Build SDK
-npm run build:sdk
-
-# Start development server
-npm run dev:dashboard
-```
-
-## 📄 License
-
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
-## 🌟 Features
-
-- **Sovereign Identity Management** - Complete control over digital identity
-- **Zero-Knowledge Proofs** - Privacy-preserving verification
-- **Cross-Platform SDK** - JavaScript, TypeScript, React support
-- **OAuth 2.0 Compliance** - Industry-standard authentication
-- **Military-Grade Security** - Advanced cryptographic protocols
-- **Social Recovery** - Secure identity recovery through trusted networks
-- **Age Verification** - Prove age without revealing birth date
-- **Location Verification** - Prove location without revealing coordinates
-
-## 🚀 Getting Started
-
-1. **Install the SDK**: `npm install @par-noir/identity-sdk`
-2. **Set up OAuth**: Configure your client ID and redirect URI
-3. **Integrate authentication**: Use the SDK in your application
-4. **Add zero-knowledge proofs**: Implement privacy-preserving features
-
-For detailed integration guides, see our [tutorials](tutorials/) and [examples](core/identity-core/examples/).
+- **Documentation**: [docs.identity-protocol.com](https://docs.identity-protocol.com)
+- **Issues**: [GitHub Issues](https://github.com/identity-protocol/identity-sdk/issues)
+- **Discussions**: [GitHub Discussions](https://github.com/identity-protocol/identity-sdk/discussions)
+- **Email**: support@identity-protocol.com
 
 ---
 
-**Par Noir** - It's time to own your digital self. 
+**Built with ❤️ by the Identity Protocol Team** 

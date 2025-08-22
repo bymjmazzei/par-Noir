@@ -8,7 +8,7 @@ import { UnifiedAuth } from './components/UnifiedAuth';
 import { Logo } from './components/Logo';
 import QRCode from 'qrcode';
 
-import { IdentityCrypto, AuthSession } from './utils/crypto';
+import { IdentityCrypto, AuthSession, EncryptedIdentity } from './utils/crypto';
 
 import { analytics } from './utils/analytics';
 import { security } from './utils/security';
@@ -52,7 +52,7 @@ const LoadingSpinner = () => (
 
 interface DIDInfo {
   id: string;
-  username: string;
+  pnName: string;
   createdAt: string;
   status: string;
   displayName?: string;
@@ -484,8 +484,8 @@ function App() {
 
   // Form states
   const [createForm, setCreateForm] = useState({
-    username: '',
-    confirmUsername: '',
+    pnName: '',
+    confirmPNName: '',
     passcode: '',
     confirmPasscode: '',
     email: '',
@@ -500,7 +500,7 @@ function App() {
   const [createStep, setCreateStep] = useState(1);
 
   const [importForm, setImportForm] = useState({
-    username: '',
+    pnName: '',
     passcode: '',
     backupFile: null as File | null
   });
@@ -512,7 +512,7 @@ function App() {
 
   // Main screen form state
   const [mainForm, setMainForm] = useState({
-    username: '',
+    pnName: '',
     passcode: '',
     uploadFile: null as File | null
   });
@@ -532,6 +532,10 @@ function App() {
   
   // Profile picture editing state
   const [showProfilePictureEditor, setShowProfilePictureEditor] = useState(false);
+  
+  // Nickname editing state
+  const [showNicknameEditor, setShowNicknameEditor] = useState(false);
+  const [editingNickname, setEditingNickname] = useState('');
   
   // Biometric authentication state
   const [showBiometricSetup, setShowBiometricSetup] = useState(false);
@@ -627,10 +631,10 @@ function App() {
       setError(null);
 
       // Comprehensive input validation
-      const usernameValidation = InputValidator.validateUsername(createForm.username);
-      if (!usernameValidation.isValid) {
-        setError(`Username validation failed: ${usernameValidation.errors.join(', ')}`);
-        analytics.trackError(new Error(`Username validation failed: ${usernameValidation.errors.join(', ')}`), 'create-form', 'high');
+      const pnNameValidation = InputValidator.validatePNName(createForm.pnName);
+      if (!pnNameValidation.isValid) {
+        setError(`pN Name validation failed: ${pnNameValidation.errors.join(', ')}`);
+        analytics.trackError(new Error(`pN Name validation failed: ${pnNameValidation.errors.join(', ')}`), 'create-form', 'high');
         return;
       }
 
@@ -701,8 +705,8 @@ function App() {
       }
 
       // Validate confirmation fields match
-      if (createForm.username !== createForm.confirmUsername) {
-        throw new Error('Usernames do not match');
+      if (createForm.pnName !== createForm.confirmPNName) {
+        throw new Error('pN Names do not match');
       }
       
 
@@ -718,8 +722,8 @@ function App() {
       // Create real identity with cryptography
       logDebug('Creating encrypted identity...');
       const encryptedIdentity = await IdentityCrypto.createIdentity(
-        createForm.username,
-        createForm.username, // Use username as nickname since nickname field is removed
+        createForm.pnName,
+        createForm.pnName, // Use pnName as nickname since nickname field is removed
         createForm.passcode,
         createForm.recoveryEmail ? createForm.recoveryEmail : undefined,
         createForm.recoveryPhone ? createForm.recoveryPhone : undefined
@@ -733,8 +737,8 @@ function App() {
         const simpleStorage = SimpleStorage.getInstance();
         const simpleIdentity: SimpleIdentity = {
           id: encryptedIdentity.publicKey,
-          nickname: createForm.username, // Use username as nickname since nickname field was removed
-          username: createForm.username,
+          nickname: createForm.pnName, // Use pnName as nickname since nickname field was removed
+          pnName: createForm.pnName,
           publicKey: encryptedIdentity.publicKey,
           encryptedData: encryptedIdentity,
           createdAt: new Date().toISOString(),
@@ -757,7 +761,7 @@ function App() {
       // Create DID info for UI (all data is encrypted except public key)
       const didInfo: DIDInfo = {
         id: '', // ID is encrypted - will be filled after decryption
-        username: '', // Username is encrypted - user must enter it
+        pnName: '', // pN Name is encrypted - user must enter it
         email: '', // Email is encrypted
         nickname: '', // Nickname is encrypted
         phone: '', // Phone is encrypted
@@ -780,7 +784,7 @@ function App() {
       
       // Authenticate the user immediately after identity creation
       try {
-        const authSession = await IdentityCrypto.authenticateIdentity(encryptedIdentity, createForm.passcode, createForm.username);
+        const authSession = await IdentityCrypto.authenticateIdentity(encryptedIdentity, createForm.passcode, createForm.pnName);
         setAuthenticatedUser(authSession);
         setSuccess('PN created and authenticated successfully! Welcome to Par Noir.');
         
@@ -794,8 +798,8 @@ function App() {
       
       // Reset form
       setCreateForm({
-        username: '',
-        confirmUsername: '',
+        pnName: '',
+        confirmPNName: '',
         passcode: '',
         confirmPasscode: '',
         email: '',
@@ -820,7 +824,7 @@ function App() {
       
       // Track error
       analytics.trackError(error, 'create-form', 'medium');
-      security.monitorAuthentication(false, createForm.username, 'identity_creation');
+      security.monitorAuthentication(false, createForm.pnName, 'identity_creation');
     } finally {
       setLoading(false);
     }
@@ -852,7 +856,7 @@ function App() {
 
       // Find the identity to import
       const identityToImport = backup.identities.find((identity: any) => 
-        identity.username === importForm.username
+        identity.pnName === importForm.pnName
       );
 
       if (!identityToImport) {
@@ -863,7 +867,7 @@ function App() {
       const authSession = await IdentityCrypto.authenticateIdentity(
         identityToImport,
         importForm.passcode,
-        importForm.username
+        importForm.pnName
       );
 
       // Store the session
@@ -872,7 +876,7 @@ function App() {
       // Create DID info for UI
       const didInfo: DIDInfo = {
         id: identityToImport.id,
-        username: identityToImport.username,
+        pnName: identityToImport.pnName,
         nickname: identityToImport.nickname,
         email: identityToImport.email || '',
         phone: identityToImport.phone || '',
@@ -895,7 +899,7 @@ function App() {
       
       // Reset form
       setImportForm({
-        username: '',
+        pnName: '',
         passcode: '',
         backupFile: null
       });
@@ -917,7 +921,7 @@ function App() {
       // Store the session using AuthSession interface
       await storage.storeSession({
         id: session.id,
-        username: session.username,
+        pnName: session.pnName,
         nickname: session.nickname,
         accessToken: session.accessToken,
         expiresIn: session.expiresIn,
@@ -928,7 +932,7 @@ function App() {
       // Set the authenticated user
       setAuthenticatedUser({
         id: session.id,
-        username: session.username,
+        pnName: session.pnName,
         nickname: session.nickname,
         accessToken: session.accessToken,
         expiresIn: session.expiresIn,
@@ -937,15 +941,15 @@ function App() {
       });
 
       // Set the unlocked identity for notifications
-      notificationsService.setUnlockedIdentity(session.id, session.nickname || session.username);
+      notificationsService.setUnlockedIdentity(session.id, session.nickname || session.pnName);
 
       // Reload stored identities into the selector
       try {
         const storedIdentities = await storage.getIdentities();
         const didInfos: DIDInfo[] = storedIdentities.map((identity: any) => ({
           id: identity.id,
-          username: identity.username,
-          nickname: identity.nickname || identity.username,
+          pnName: identity.pnName,
+          nickname: identity.nickname || identity.pnName,
           email: identity.email || '',
           phone: identity.phone || '',
           recoveryEmail: identity.recoveryEmail || '',
@@ -978,7 +982,7 @@ function App() {
       // Close the modal and show success
     setShowUnifiedAuth(false);
     setError(null);
-            showSuccessMessage(`Successfully unlocked identity: ${session.nickname || session.username}`, 5000);
+            showSuccessMessage(`Successfully unlocked identity: ${session.nickname || session.pnName}`, 5000);
     } catch (error: any) {
               logError('Failed to store session:', error);
       setError('Authentication succeeded but failed to store session. Please try again.');
@@ -1007,7 +1011,7 @@ function App() {
       setSelectedDID(null);
       setSelectedStoredIdentity(null);
       setShowUnifiedAuth(false);
-      setMainForm({ username: '', passcode: '', uploadFile: null });
+      setMainForm({ pnName: '', passcode: '', uploadFile: null });
       setError(null);
       setSuccess(null);
       setLoading(false);
@@ -1036,7 +1040,7 @@ function App() {
       setSelectedDID(null);
       setSelectedStoredIdentity(null);
       setShowUnifiedAuth(false);
-      setMainForm({ username: '', passcode: '', uploadFile: null });
+      setMainForm({ pnName: '', passcode: '', uploadFile: null });
       setError(null);
       setSuccess(null);
       setLoading(false);
@@ -1055,8 +1059,8 @@ function App() {
   const handleIdentitySelect = (identity: SimpleIdentity | null) => {
     setSelectedStoredIdentity(identity);
     if (identity) {
-      // Auto-fill username when identity is selected
-      setMainForm(prev => ({ ...prev, username: identity.username }));
+      // Auto-fill pnName when identity is selected
+      setMainForm(prev => ({ ...prev, pnName: identity.pnName }));
       // Clear any uploaded file when selecting a stored identity
       setMainForm(prev => ({ ...prev, uploadFile: null }));
     }
@@ -1072,7 +1076,7 @@ function App() {
       // Clear selection if the deleted identity was selected
       if (selectedStoredIdentity?.id === identity.id) {
         setSelectedStoredIdentity(null);
-        setMainForm(prev => ({ ...prev, username: '' }));
+        setMainForm(prev => ({ ...prev, pnName: '' }));
       }
       
       setSuccess(`Identity "${identity.nickname}" deleted successfully`);
@@ -1085,7 +1089,6 @@ function App() {
 
 
 
-  /*
   const handleIncomingNicknameUpdate = async (identityId: string, newNickname: string) => {
     try {
               logDebug('Received nickname update for identity:', identityId, 'new nickname:', newNickname);
@@ -1166,7 +1169,124 @@ function App() {
               logError('Error handling incoming nickname update:', error);
     }
   };
-  */
+
+  const handleNicknameUpdate = async (newNickname: string) => {
+    if (!authenticatedUser) return;
+    
+    try {
+      setLoading(true);
+      
+      const isPWAMode = pwaState.isInstalled;
+      logDebug('Updating nickname for', isPWAMode ? 'PWA' : 'Web App', 'identity...');
+      
+      // 🔐 SECURE METADATA UPDATE: Update nickname in encrypted metadata
+      try {
+        const identityId = authenticatedUser.id || authenticatedUser.publicKey;
+        await SecureMetadataStorage.updateMetadataField(
+          identityId,
+          authenticatedUser.pnName,
+          authenticatedUser.passcode, // From ID file credentials
+          'nickname',
+          newNickname
+        );
+        logDebug('Nickname updated in secure metadata');
+      } catch (error) {
+        logError('Failed to update secure metadata:', error);
+        // Continue with local updates even if secure metadata fails
+      }
+      
+      // Update the authenticated user's nickname
+      const updatedUser = { ...authenticatedUser, nickname: newNickname };
+      setAuthenticatedUser(updatedUser);
+      
+      // Update the DID info in state
+      setDids(prev => prev.map(did => 
+        did.id === authenticatedUser.id 
+          ? { ...did, nickname: newNickname, displayName: newNickname }
+          : did
+      ));
+      
+      // Update selected DID if it's the current user
+      if (selectedDID?.id === authenticatedUser.id) {
+        setSelectedDID(prev => prev ? { ...prev, nickname: newNickname } : null);
+      }
+      
+      if (isPWAMode) {
+        // PWA: Update localStorage storage
+        try {
+          const storedIdentities = localStorage.getItem('pwa_stored_identities');
+          if (storedIdentities) {
+            const stored = JSON.parse(storedIdentities);
+            const identityIndex = stored.findIndex((item: any) => 
+              item.publicKey === authenticatedUser.publicKey || item.idFile?.id === authenticatedUser.id
+            );
+            
+            if (identityIndex >= 0) {
+              // Update the nickname in the stored reference
+              stored[identityIndex].nickname = newNickname;
+              
+              // Update the nickname in the actual ID file data
+              if (stored[identityIndex].idFile) {
+                stored[identityIndex].idFile.nickname = newNickname;
+              }
+              
+              localStorage.setItem('pwa_stored_identities', JSON.stringify(stored));
+              logDebug('Updated nickname in PWA localStorage:', newNickname);
+            } else {
+              logDebug('Identity not found in PWA localStorage');
+            }
+          } else {
+            logDebug('No PWA stored identities found');
+          }
+        } catch (error) {
+          logError('Failed to update PWA stored identity reference:', error);
+        }
+      } else {
+        // Web App: Update IndexedDB storage
+        try {
+          await storage.init();
+          const storedIdentity = await storage.getIdentity(authenticatedUser.publicKey);
+          if (storedIdentity) {
+            logDebug('Web app: Updated session nickname, user should re-upload ID file for permanent storage');
+          } else {
+            logDebug('Identity not found in web app storage');
+          }
+        } catch (error) {
+          logError('Failed to update web app storage:', error);
+        }
+      }
+
+      // Store nickname update in cloud database for cross-platform sync
+      try {
+        await cloudSyncManager.initialize();
+        await cloudSyncManager.storeUpdate({
+          type: 'nickname',
+          identityId: authenticatedUser.id,
+          publicKey: authenticatedUser.publicKey,
+          data: {
+            oldNickname: authenticatedUser.nickname || '',
+            newNickname
+          },
+          updatedByDeviceId: currentDevice?.id || generateDeviceFingerprint()
+        });
+        logDebug('Nickname update stored in cloud database for cross-platform sync');
+      } catch (error) {
+        logError('Failed to store nickname update in cloud:', error);
+        // Don't fail the entire operation if cloud sync fails
+      }
+      
+      setShowNicknameEditor(false);
+      const successMessage = pwaState.isInstalled 
+        ? 'Nickname updated successfully! Changes will sync across all PWA devices and platforms.'
+        : 'Nickname updated successfully! Changes will sync to cloud and other platforms. Re-upload your PN file to save changes permanently.';
+      showSuccessMessage(successMessage);
+    } catch (error) {
+      logError('Error updating nickname:', error);
+      showErrorMessage(`Failed to update nickname: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const handleProfilePictureUpdate = async (newProfilePicture: string) => {
     if (!authenticatedUser) return;
@@ -1182,7 +1302,7 @@ function App() {
         const identityId = authenticatedUser.id || authenticatedUser.publicKey;
         await SecureMetadataStorage.updateMetadataField(
           identityId,
-          authenticatedUser.username,
+          authenticatedUser.pnName,
           authenticatedUser.passcode, // From ID file credentials
           'profilePicture',
           newProfilePicture
@@ -1401,8 +1521,8 @@ function App() {
         // Create authenticated session without requiring passcode
         const authSession = {
           id: identity.id,
-          username: identity.username,
-          nickname: identity.nickname || identity.username,
+          pnName: identity.pnName,
+          nickname: identity.nickname || identity.pnName,
           accessToken: `biometric_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
           expiresIn: 3600,
           authenticatedAt: new Date().toISOString(),
@@ -1421,7 +1541,7 @@ function App() {
       } else if (result.fallbackToPasscode) {
         // Fall back to passcode authentication
         setSelectedDID(identity);
-        setMainForm(prev => ({ ...prev, username: identity.username }));
+        setMainForm(prev => ({ ...prev, pnName: identity.pnName }));
         setError(result.error || 'Biometric authentication failed. Please enter your passcode.');
         setTimeout(() => setError(null), 5000);
       } else {
@@ -1446,8 +1566,8 @@ function App() {
   const handleMainFormSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    if (!mainForm.username || !mainForm.passcode) {
-      setError('Please enter both username and passcode');
+    if (!mainForm.pnName || !mainForm.passcode) {
+      setError('Please enter both pnName and passcode');
       return;
     }
     
@@ -1502,7 +1622,7 @@ function App() {
             } else {
               throw new Error('Invalid PN file: Multiple identities found. Each PN file should contain only one identity.');
             }
-          } else if (identityData.id || identityData.username) {
+          } else if (identityData.id || identityData.pnName) {
             // Single identity format
             identityToUnlock = identityData;
           } else {
@@ -1519,7 +1639,7 @@ function App() {
         
         if (identityToUnlock.encryptedData && identityToUnlock.iv && identityToUnlock.salt) {
           logDebug('Processing encrypted identity');
-          logDebug('Attempting authentication with username:', mainForm.username);
+          logDebug('Attempting authentication with pnName:', mainForm.pnName);
           logDebug('Identity to unlock publicKey:', identityToUnlock.publicKey);
           
           // This is an encrypted identity, try to authenticate it
@@ -1528,7 +1648,7 @@ function App() {
             authSession = await IdentityCrypto.authenticateIdentity(
               identityToUnlock as any,
               mainForm.passcode,
-              mainForm.username
+              mainForm.pnName
             );
             logDebug('Authentication successful, auth session created:', authSession);
           } catch (authError) {
@@ -1561,7 +1681,7 @@ function App() {
           // Create DID info for UI
           const didInfo: DIDInfo = {
             id: identityToUnlock.id,
-            username: identityToUnlock.username,
+            pnName: identityToUnlock.pnName,
             nickname: finalNickname,
             email: identityToUnlock.email || '',
             phone: identityToUnlock.phone || '',
@@ -1579,7 +1699,7 @@ function App() {
             const simpleIdentity: SimpleIdentity = {
               id: identityToUnlock.publicKey,
               nickname: finalNickname,
-              username: identityToUnlock.username,
+              pnName: identityToUnlock.pnName,
               publicKey: identityToUnlock.publicKey,
               encryptedData: identityToUnlock, // This is the decrypted data - we need to store the original encrypted data
               createdAt: new Date().toISOString(),
@@ -1625,18 +1745,18 @@ function App() {
         } else {
           console.log('Processing plain identity');
           // This appears to be a plain identity, but we need to validate credentials
-          // Check if the username matches the identity in the file
-          if (identityToUnlock.username && identityToUnlock.username !== mainForm.username) {
-            console.error('Username mismatch:', { fileUsername: identityToUnlock.username, formUsername: mainForm.username });
-            throw new Error('Username does not match the identity in the file');
+          // Check if the pN Name matches the identity in the file
+          if (identityToUnlock.pnName && identityToUnlock.pnName !== mainForm.pnName) {
+            console.error('pN Name mismatch:', { filePNName: identityToUnlock.pnName, formPNName: mainForm.pnName });
+            throw new Error('pN Name does not match the identity in the file');
           }
           
           // For plain identities, we should still require some form of validation
-          // For now, we'll require the username to match and create a proper session
+          // For now, we'll require the pN Name to match and create a proper session
           const session = {
             id: identityToUnlock.id || 'plain-id',
-            username: identityToUnlock.username || mainForm.username,
-            nickname: identityToUnlock.nickname || identityToUnlock.username || 'User',
+            pnName: identityToUnlock.pnName || mainForm.pnName,
+            nickname: identityToUnlock.nickname || identityToUnlock.pnName || 'User',
             accessToken: 'token-' + Date.now(),
             expiresIn: 3600,
             authenticatedAt: new Date().toISOString(),
@@ -1650,8 +1770,8 @@ function App() {
           // Create DID info for UI
           const didInfo: DIDInfo = {
             id: identityToUnlock.id || 'plain-id',
-            username: identityToUnlock.username || mainForm.username,
-            nickname: identityToUnlock.nickname || identityToUnlock.username || 'User',
+            pnName: identityToUnlock.pnName || mainForm.pnName,
+            nickname: identityToUnlock.nickname || identityToUnlock.pnName || 'User',
             email: identityToUnlock.email || '',
             phone: identityToUnlock.phone || '',
             recoveryEmail: identityToUnlock.recoveryEmail || '',
@@ -1684,7 +1804,7 @@ function App() {
         }
         
         // Clear the form
-        setMainForm({ username: '', passcode: '', uploadFile: null });
+        setMainForm({ pnName: '', passcode: '', uploadFile: null });
         
         return; // Exit early since we handled the file upload
                       } catch (error: any) {
@@ -1713,16 +1833,16 @@ function App() {
       let decryptedIdentity = null;
       
       for (const identity of identities) {
-        logDebug('Checking identity with username:', identity.username);
+        logDebug('Checking identity with pnName:', identity.pnName);
         try {
           // Try to decrypt and verify the identity
           decryptedIdentity = await IdentityCrypto.authenticateIdentity(
             identity.encryptedData, 
             mainForm.passcode, 
-            mainForm.username
+            mainForm.pnName
           );
-          logDebug('Decrypted identity username:', decryptedIdentity.username);
-          if (decryptedIdentity.username === mainForm.username) {
+          logDebug('Decrypted identity pnName:', decryptedIdentity.pnName);
+          if (decryptedIdentity.pnName === mainForm.pnName) {
             logDebug('Found matching identity!');
             foundIdentity = identity;
             break;
@@ -1735,13 +1855,13 @@ function App() {
       }
 
       if (!foundIdentity || !decryptedIdentity) {
-        throw new Error('No identity found with that username and passcode.');
+        throw new Error('No identity found with that pnName and passcode.');
       }
 
       // Create session
       const session: AuthSession = {
         id: decryptedIdentity.id,
-        username: decryptedIdentity.username,
+        pnName: decryptedIdentity.pnName,
         nickname: decryptedIdentity.nickname,
         accessToken: `token_${Date.now()}`,
         expiresIn: 3600,
@@ -1756,7 +1876,7 @@ function App() {
       setAuthenticatedUser(session);
       setDids([{
         id: decryptedIdentity.id,
-        username: decryptedIdentity.username,
+        pnName: decryptedIdentity.pnName,
         nickname: decryptedIdentity.nickname, // Set the actual nickname
         createdAt: decryptedIdentity.authenticatedAt,
         status: 'active',
@@ -1766,7 +1886,7 @@ function App() {
       }]);
       
       // Clear the form
-      setMainForm({ username: '', passcode: '', uploadFile: null });
+      setMainForm({ pnName: '', passcode: '', uploadFile: null });
       
       // Show success message with proper timeout management
       showSuccessMessage('Identity unlocked successfully!');
@@ -1782,7 +1902,7 @@ function App() {
 
   // Recovery functions
   const handleInitiateRecovery = async (recoveryData: {
-    username: string;
+    pnName: string;
     passcode: string;
     nickname: string;
     emailOrPhone: string;
@@ -1803,7 +1923,7 @@ function App() {
           // Try to decrypt and verify the identity
           const decryptedData = JSON.parse(stored.encryptedData);
           return (
-            decryptedData.username === recoveryData.username &&
+            decryptedData.pnName === recoveryData.pnName &&
             decryptedData.nickname === recoveryData.nickname &&
             (decryptedData.recoveryEmail === recoveryData.emailOrPhone || 
              decryptedData.recoveryPhone === recoveryData.emailOrPhone)
@@ -1832,7 +1952,7 @@ function App() {
       const recoveryRequest: RecoveryRequest = {
         id: `recovery-${Date.now()}`,
         requestingDid: foundIdentity.publicKey, // Use public key since ID is encrypted
-        requestingUser: recoveryData.username,
+        requestingUser: recoveryData.pnName,
         timestamp: new Date().toISOString(),
         status: 'pending',
         approvals: [],
@@ -1862,7 +1982,7 @@ function App() {
         contactValue: custodianData.contactValue,
         expiresAt: Date.now() + (24 * 60 * 60 * 1000), // 24 hours
         identityName: authenticatedUser?.nickname || 'Unknown Identity',
-        identityUsername: authenticatedUser?.username || 'unknown'
+        identityUsername: authenticatedUser?.pnName || 'unknown'
       };
       
       // Create deep link for custodian invitation
@@ -2562,7 +2682,7 @@ function App() {
         logDebug('Available identities:', identities);
         
         // Since all data is encrypted, we can't display identities without decrypting
-        // The user will need to enter username and passcode to unlock
+        // The user will need to enter pnName and passcode to unlock
         logDebug('Found', identities.length, 'encrypted identities - user must unlock with credentials');
         // Don't set dids here - let the other useEffect handle PWA identity loading
         
@@ -2801,7 +2921,7 @@ function App() {
       // Set the authenticated user to the recovered DID
       setAuthenticatedUser({
         id: recoveredDID.id,
-        username: recoveredDID.username,
+        pnName: recoveredDID.pnName,
         nickname: recoveredDID.nickname,
         accessToken: `recovered-token-${Date.now()}`,
         expiresIn: 3600,
@@ -3026,7 +3146,7 @@ function App() {
         } else {
           throw new Error('Multiple identities found. Please specify which one to unlock.');
         }
-      } else if (identityData.id || identityData.username) {
+      } else if (identityData.id || identityData.pnName) {
         // Single identity format
         identityToUnlock = identityData;
       } else {
@@ -3133,7 +3253,7 @@ function App() {
       try {
         identityWithMetadata = await SecureMetadataStorage.applyMetadataToIdentity(
           finalIdentityToUnlock,
-          finalIdentityToUnlock.username,
+          finalIdentityToUnlock.pnName,
           passcode
         );
         logDebug('Applied secure metadata to identity');
@@ -3150,7 +3270,7 @@ function App() {
           const authSession = await IdentityCrypto.authenticateIdentity(
               identityWithMetadata as any,
             passcode,
-              identityWithMetadata.username || 'unknown'
+              identityWithMetadata.pnName || 'unknown'
           );
 
           // Store the session
@@ -3159,8 +3279,8 @@ function App() {
           // Create DID info for UI
           const didInfo: DIDInfo = {
             id: identityWithMetadata.id,
-            username: identityWithMetadata.username,
-            nickname: identityWithMetadata.nickname || identityWithMetadata.username,
+            pnName: identityWithMetadata.pnName,
+            nickname: identityWithMetadata.nickname || identityWithMetadata.pnName,
             email: identityWithMetadata.email || '',
             phone: identityWithMetadata.phone || '',
             recoveryEmail: identityWithMetadata.recoveryEmail || '',
@@ -3188,8 +3308,8 @@ function App() {
         // This appears to be a plain identity, create a mock session for demo purposes
         const mockSession = {
           id: finalIdentityToUnlock.id || 'demo-id',
-          username: finalIdentityToUnlock.username || 'demo-user',
-          nickname: finalIdentityToUnlock.nickname || finalIdentityToUnlock.username || 'Demo User',
+          pnName: finalIdentityToUnlock.pnName || 'demo-user',
+          nickname: finalIdentityToUnlock.nickname || finalIdentityToUnlock.pnName || 'Demo User',
           accessToken: 'demo-token-' + Date.now(),
           expiresIn: 3600,
           authenticatedAt: new Date().toISOString(),
@@ -3202,8 +3322,8 @@ function App() {
         // Create DID info for UI
         const didInfo: DIDInfo = {
           id: finalIdentityToUnlock.id || 'demo-id',
-          username: finalIdentityToUnlock.username || 'demo-user',
-          nickname: finalIdentityToUnlock.nickname || finalIdentityToUnlock.username || 'Demo User',
+          pnName: finalIdentityToUnlock.pnName || 'demo-user',
+          nickname: finalIdentityToUnlock.nickname || finalIdentityToUnlock.pnName || 'Demo User',
           email: finalIdentityToUnlock.email || '',
           phone: finalIdentityToUnlock.phone || '',
           recoveryEmail: finalIdentityToUnlock.recoveryEmail || '',
@@ -3289,7 +3409,7 @@ function App() {
       if (newIdentity) {
         setIdentities(prev => [...prev, {
           id: newIdentity.id || `id-${Date.now()}`,
-          username: newIdentity.username || 'unknown',
+          pnName: newIdentity.pnName || 'unknown',
           nickname: newIdentity.nickname || 'Unknown User',
           email: '',
           phone: '',
@@ -3582,17 +3702,17 @@ function App() {
                     </div>
                   )}
                   
-                  {/* Username input - auto-filled if identity selected */}
+                  {/* pN Name input - auto-filled if identity selected */}
                   <div>
                     <label className="block text-sm font-medium text-text-primary mb-1">
-                      Username
+                      pN Name
                     </label>
                     <input
                       type="text"
-                      value={mainForm.username || ''}
-                      onChange={(e) => setMainForm(prev => ({ ...prev, username: e.target.value }))}
+                      value={mainForm.pnName || ''}
+                      onChange={(e) => setMainForm(prev => ({ ...prev, pnName: e.target.value }))}
                       className="w-full px-3 py-2 border border-input-border bg-input-bg rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
-                      placeholder="Enter your username"
+                      placeholder="Enter your pN Name"
                       required
                     />
                   </div>
@@ -3696,8 +3816,8 @@ function App() {
                     setShowCreateForm(false);
                     setCreateStep(1);
                     setCreateForm({
-                      username: '',
-                      confirmUsername: '',
+                      pnName: '',
+                      confirmPNName: '',
                       passcode: '',
                       confirmPasscode: '',
                       email: '',
@@ -3752,14 +3872,14 @@ function App() {
                     
                     <div>
                       <label className="block text-sm font-medium text-text-primary mb-1">
-                        Username
+                        pN Name
                       </label>
                       <input
                         type="text"
-                        value={createForm.username}
-                        onChange={(e) => setCreateForm(prev => ({ ...prev, username: e.target.value }))}
+                        value={createForm.pnName}
+                        onChange={(e) => setCreateForm(prev => ({ ...prev, pnName: e.target.value }))}
                         className="w-full px-3 py-2 border border-input-border bg-input-bg rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
-                        placeholder="Enter username"
+                        placeholder="Enter pN Name"
                         required
                       />
                     </div>
@@ -3841,7 +3961,7 @@ function App() {
                     <button
                       type="submit"
                       className="flex-1 px-4 py-2 modal-button rounded-md"
-                      disabled={!createForm.username || !createForm.passcode || 
+                      disabled={!createForm.pnName || !createForm.passcode || 
                         (createForm.recoveryContactType === 'email' ? !createForm.recoveryEmail : !createForm.recoveryPhone)}
                     >
                       Next
@@ -3862,14 +3982,14 @@ function App() {
                     
                     <div>
                       <label className="block text-sm font-medium text-text-primary mb-1">
-                        Confirm Username
+                        Confirm pN Name
                       </label>
                       <input
                         type="text"
-                        value={createForm.confirmUsername}
-                        onChange={(e) => setCreateForm(prev => ({ ...prev, confirmUsername: e.target.value }))}
+                        value={createForm.confirmPNName}
+                        onChange={(e) => setCreateForm(prev => ({ ...prev, confirmPNName: e.target.value }))}
                         className="w-full px-3 py-2 border border-input-border bg-input-bg rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
-                        placeholder="Confirm your username"
+                        placeholder="Confirm your pN Name"
                         required
                       />
                     </div>
@@ -3925,7 +4045,7 @@ function App() {
                     <button
                       type="submit"
                       className="flex-1 px-4 py-2 modal-button rounded-md"
-                      disabled={!createForm.confirmUsername || !createForm.confirmPasscode || 
+                      disabled={!createForm.confirmPNName || !createForm.confirmPasscode || 
                         (createForm.recoveryContactType === 'email' ? !createForm.confirmRecoveryEmail : !createForm.confirmRecoveryPhone)}
                     >
                       Create PN
@@ -3968,14 +4088,14 @@ function App() {
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-text-primary mb-1">
-                    Username
+                    pN Name
                   </label>
                   <input
                     type="text"
-                    value={importForm.username}
-                    onChange={(e) => setImportForm(prev => ({ ...prev, username: e.target.value }))}
+                    value={importForm.pnName}
+                    onChange={(e) => setImportForm(prev => ({ ...prev, pnName: e.target.value }))}
                     className="w-full px-3 py-2 border border-input-border bg-input-bg text-black rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
-                    placeholder="Enter your username"
+                    placeholder="Enter your pN Name"
                     required
                   />
                 </div>
@@ -4052,7 +4172,7 @@ function App() {
                   }`}
                 >
                   <div className={`font-medium ${activeRecoveryMethod === 'factor' ? 'text-bg-primary' : 'text-text-primary'}`}>4-Factor Verification</div>
-                  <div className={`text-sm ${activeRecoveryMethod === 'factor' ? 'text-bg-primary' : 'text-text-secondary'}`}>Use username, passcode, nickname, and contact</div>
+                  <div className={`text-sm ${activeRecoveryMethod === 'factor' ? 'text-bg-primary' : 'text-text-secondary'}`}>Use pnName, passcode, nickname, and contact</div>
                 </button>
               </div>
 
@@ -4150,7 +4270,7 @@ function App() {
                     e.preventDefault();
                     const formData = new FormData(e.currentTarget);
                     handleInitiateRecovery({
-                      username: formData.get('username') as string,
+                      pnName: formData.get('pnName') as string,
                       passcode: formData.get('passcode') as string,
                       nickname: formData.get('nickname') as string,
                       emailOrPhone: formData.get('emailOrPhone') as string,
@@ -4158,13 +4278,13 @@ function App() {
                   }} className="space-y-4">
                     <div>
                       <label className="block text-sm font-medium text-text-primary mb-1">
-                        Username
+                        pN Name
                       </label>
                       <input
-                        name="username"
+                        name="pnName"
                         type="text"
                         className="w-full px-3 py-2 border border-input-border bg-input-bg rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
-                        placeholder="Enter your username"
+                        placeholder="Enter your pN Name"
                         required
                       />
                     </div>
@@ -4703,7 +4823,66 @@ function App() {
                     </button>
                   </div>
                     <div className="flex-1">
-                      <h3 className="text-xl font-semibold text-text-primary">{authenticatedUser.nickname || 'User'}</h3>
+                      <div className="flex items-center space-x-2 group">
+                        {!showNicknameEditor ? (
+                          <>
+                            <h3 className="text-xl font-semibold text-text-primary">{authenticatedUser.nickname || 'User'}</h3>
+                            <button
+                              onClick={() => {
+                                setEditingNickname(authenticatedUser.nickname || '');
+                                setShowNicknameEditor(true);
+                              }}
+                              className="opacity-0 group-hover:opacity-100 p-1 text-gray-500 hover:text-primary transition-all duration-200"
+                              title="Edit nickname"
+                            >
+                              <Edit3 className="w-4 h-4" />
+                            </button>
+                          </>
+                        ) : (
+                          <div className="flex items-center space-x-2 flex-1">
+                            <input
+                              type="text"
+                              value={editingNickname}
+                              onChange={(e) => setEditingNickname(e.target.value)}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') {
+                                  handleNicknameUpdate(editingNickname);
+                                } else if (e.key === 'Escape') {
+                                  setShowNicknameEditor(false);
+                                  setEditingNickname('');
+                                }
+                              }}
+                              className="flex-1 text-xl font-semibold bg-transparent border-b-2 border-primary text-text-primary focus:outline-none focus:border-primary-dark"
+                              placeholder="Enter nickname"
+                              autoFocus
+                              disabled={loading}
+                            />
+                            <button
+                              onClick={() => handleNicknameUpdate(editingNickname)}
+                              disabled={loading || !editingNickname.trim()}
+                              className="p-1 text-green-600 hover:text-green-700 disabled:opacity-50"
+                              title="Save nickname"
+                            >
+                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                              </svg>
+                            </button>
+                            <button
+                              onClick={() => {
+                                setShowNicknameEditor(false);
+                                setEditingNickname('');
+                              }}
+                              disabled={loading}
+                              className="p-1 text-gray-600 hover:text-gray-700 disabled:opacity-50"
+                              title="Cancel"
+                            >
+                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                              </svg>
+                            </button>
+                          </div>
+                        )}
+                      </div>
                     </div>
                   </div>
                   <div className="flex items-center space-x-2">
@@ -5240,7 +5419,7 @@ function App() {
                               <p>• Set how many custodians must approve recovery (2-5)</p>
                               <p>• Generate recovery keys for secure backup</p>
                               <p>• <strong>Recovery Keys:</strong> Trigger custodian approval with contact verification</p>
-                              <p>• <strong>4-Factor Recovery:</strong> Username, Passcode, Nickname, Email/Phone</p>
+                              <p>• <strong>4-Factor Recovery:</strong> pN Name, Passcode, Nickname, Email/Phone</p>
                               <p>• Custodians receive automatic notifications in their dashboard</p>
                               <p>• Each custodian can approve/deny with one click</p>
                               <p>• Once threshold is met, your identity is recovered</p>
@@ -5656,7 +5835,7 @@ function App() {
                   <h3 className="font-medium text-text-primary mb-2">Invitation Details</h3>
                   <div className="space-y-2 text-sm">
                     <div><span className="text-text-secondary">Identity:</span> <span className="font-medium">{pendingCustodianInvitation.identityName}</span></div>
-                    <div><span className="text-text-secondary">Username:</span> <span className="font-medium">{pendingCustodianInvitation.identityUsername}</span></div>
+                    <div><span className="text-text-secondary">pN Name:</span> <span className="font-medium">{pendingCustodianInvitation.identityUsername}</span></div>
                     <div><span className="text-text-secondary">Custodian Name:</span> <span className="font-medium">{pendingCustodianInvitation.custodianName}</span></div>
                     <div><span className="text-text-secondary">Type:</span> <span className="font-medium">{pendingCustodianInvitation.custodianType}</span></div>
                     <div><span className="text-text-secondary">Contact:</span> <span className="font-medium">{pendingCustodianInvitation.contactValue} ({pendingCustodianInvitation.contactType})</span></div>
@@ -6107,7 +6286,7 @@ function App() {
               onClose={() => setShowBiometricSetup(false)}
               onSuccess={handleBiometricSetupSuccess}
               identityId={authenticatedUser.id}
-              username={authenticatedUser.username}
+              pnName={authenticatedUser.pnName}
             />
           </Suspense>
         )}
