@@ -169,7 +169,7 @@ console.log("Identity created:", identity.id);`}</code></pre>
               </div>
               <h3 className="text-lg font-semibold text-text-primary mb-2">API Reference</h3>
               <p className="text-text-secondary mb-4">Complete API documentation with examples for every endpoint and method.</p>
-              <a href="https://github.com/bymjmazzei/par-Noir/blob/main/docs/api-documentation.md" target="_blank" rel="noopener noreferrer" className="text-primary hover:text-accent font-medium">View API Docs →</a>
+              <a href="https://bymjmazzei.github.io/par-Noir/#authentication" target="_blank" rel="noopener noreferrer" className="text-primary hover:text-accent font-medium">View API Docs →</a>
             </div>
             <div className="bg-bg-primary rounded-lg p-6">
               <div className="w-12 h-12 bg-green-500 bg-opacity-20 rounded-lg flex items-center justify-center mb-4">
@@ -179,7 +179,7 @@ console.log("Identity created:", identity.id);`}</code></pre>
               </div>
               <h3 className="text-lg font-semibold text-text-primary mb-2">Zero-Knowledge Proofs</h3>
               <p className="text-text-secondary mb-4">Learn how to implement privacy-preserving features with cryptographic proofs.</p>
-              <a href="https://github.com/bymjmazzei/par-Noir/blob/main/docs/zk-integration.md" target="_blank" rel="noopener noreferrer" className="text-primary hover:text-accent font-medium">ZKP Guide →</a>
+              <a href="https://bymjmazzei.github.io/par-Noir/#zero-knowledge-proofs" target="_blank" rel="noopener noreferrer" className="text-primary hover:text-accent font-medium">ZKP Guide →</a>
             </div>
             <div className="bg-bg-primary rounded-lg p-6">
               <div className="w-12 h-12 bg-purple-500 bg-opacity-20 rounded-lg flex items-center justify-center mb-4">
@@ -192,7 +192,7 @@ console.log("Identity created:", identity.id);`}</code></pre>
               </div>
               <h3 className="text-lg font-semibold text-text-primary mb-2">Social Recovery</h3>
               <p className="text-text-secondary mb-4">Implement secure identity recovery through trusted networks.</p>
-              <a href="https://github.com/bymjmazzei/par-Noir/blob/main/docs/implementation-guide.md#social-recovery" target="_blank" rel="noopener noreferrer" className="text-primary hover:text-accent font-medium">Recovery Guide →</a>
+              <a href="https://bymjmazzei.github.io/par-Noir/#social-recovery" target="_blank" rel="noopener noreferrer" className="text-primary hover:text-accent font-medium">Recovery Guide →</a>
             </div>
             <div className="bg-bg-primary rounded-lg p-6">
               <div className="w-12 h-12 bg-red-500 bg-opacity-20 rounded-lg flex items-center justify-center mb-4">
@@ -202,7 +202,7 @@ console.log("Identity created:", identity.id);`}</code></pre>
               </div>
               <h3 className="text-lg font-semibold text-text-primary mb-2">Authentication</h3>
               <p className="text-text-secondary mb-4">Add sovereign identity authentication to your web and mobile apps.</p>
-              <a href="https://github.com/bymjmazzei/par-Noir/blob/main/tutorials/privacy-auth.html" target="_blank" rel="noopener noreferrer" className="text-primary hover:text-accent font-medium">Auth Guide →</a>
+              <a href="https://bymjmazzei.github.io/par-Noir/#authentication" target="_blank" rel="noopener noreferrer" className="text-primary hover:text-accent font-medium">Auth Guide →</a>
             </div>
             <div className="bg-bg-primary rounded-lg p-6">
               <div className="w-12 h-12 bg-yellow-500 bg-opacity-20 rounded-lg flex items-center justify-center mb-4">
@@ -212,7 +212,7 @@ console.log("Identity created:", identity.id);`}</code></pre>
               </div>
               <h3 className="text-lg font-semibold text-text-primary mb-2">SDK Documentation</h3>
               <p className="text-text-secondary mb-4">Language-specific SDKs for JavaScript, TypeScript, React, and more.</p>
-              <a href="https://github.com/bymjmazzei/par-Noir/tree/main/sdk/identity-sdk" target="_blank" rel="noopener noreferrer" className="text-primary hover:text-accent font-medium">SDK Docs →</a>
+              <a href="https://bymjmazzei.github.io/par-Noir/#javascript-sdk" target="_blank" rel="noopener noreferrer" className="text-primary hover:text-accent font-medium">SDK Docs →</a>
             </div>
             <div className="bg-bg-primary rounded-lg p-6">
               <div className="w-12 h-12 bg-indigo-500 bg-opacity-20 rounded-lg flex items-center justify-center mb-4">
@@ -222,7 +222,7 @@ console.log("Identity created:", identity.id);`}</code></pre>
               </div>
               <h3 className="text-lg font-semibold text-text-primary mb-2">Best Practices</h3>
               <p className="text-text-secondary mb-4">Security guidelines, performance tips, and implementation patterns.</p>
-              <a href="https://github.com/bymjmazzei/par-Noir/blob/main/docs/security-hardening.md" target="_blank" rel="noopener noreferrer" className="text-primary hover:text-accent font-medium">Best Practices →</a>
+              <a href="https://bymjmazzei.github.io/par-Noir/#security-best-practices" target="_blank" rel="noopener noreferrer" className="text-primary hover:text-accent font-medium">Best Practices →</a>
             </div>
           </div>
         </div>
@@ -253,7 +253,7 @@ console.log("Identity created:", identity.id);`}</code></pre>
                 <h3 className="text-lg font-semibold text-text-primary mb-2">Privacy-Preserving Authentication</h3>
                 <p className="text-text-secondary mb-4">Implement sovereign identity authentication without storing personal data.</p>
                 <div className="flex space-x-2">
-                  <a href="https://github.com/bymjmazzei/par-Noir/blob/main/tutorials/age-verification.html" target="_blank" rel="noopener noreferrer" className="inline-flex items-center px-3 py-2 bg-primary hover:bg-hover text-bg-primary text-sm rounded-lg font-medium transition-colors">View Tutorial</a>
+                  <a href="https://bymjmazzei.github.io/par-Noir/#age-verification" target="_blank" rel="noopener noreferrer" className="inline-flex items-center px-3 py-2 bg-primary hover:bg-hover text-bg-primary text-sm rounded-lg font-medium transition-colors">View Tutorial</a>
                   <a href="https://github.com/bymjmazzei/par-Noir/tree/main/core/identity-core/examples" target="_blank" rel="noopener noreferrer" className="inline-flex items-center px-3 py-2 bg-secondary hover:bg-hover text-text-primary text-sm rounded-lg font-medium transition-colors">View Code</a>
                 </div>
               </div>
@@ -275,7 +275,7 @@ console.log("Identity created:", identity.id);`}</code></pre>
                 <h3 className="text-lg font-semibold text-text-primary mb-2">Cross-Platform Identity</h3>
                 <p className="text-text-secondary mb-4">Use the same sovereign identity across web, mobile, and desktop applications.</p>
                 <div className="flex space-x-2">
-                  <a href="https://github.com/bymjmazzei/par-Noir/blob/main/tutorials/mobile-integration.html" target="_blank" rel="noopener noreferrer" className="inline-flex items-center px-3 py-2 bg-primary hover:bg-hover text-bg-primary text-sm rounded-lg font-medium transition-colors">View Tutorial</a>
+                  <a href="https://bymjmazzei.github.io/par-Noir/#mobile-integration" target="_blank" rel="noopener noreferrer" className="inline-flex items-center px-3 py-2 bg-primary hover:bg-hover text-bg-primary text-sm rounded-lg font-medium transition-colors">View Tutorial</a>
                   <a href="https://github.com/bymjmazzei/par-Noir/tree/main/sdk/identity-sdk" target="_blank" rel="noopener noreferrer" className="inline-flex items-center px-3 py-2 bg-secondary hover:bg-hover text-text-primary text-sm rounded-lg font-medium transition-colors">View Code</a>
                 </div>
               </div>
@@ -296,7 +296,7 @@ console.log("Identity created:", identity.id);`}</code></pre>
                 <h3 className="text-lg font-semibold text-text-primary mb-2">Mobile App Integration</h3>
                 <p className="text-text-secondary mb-4">Add par Noir to React Native and Flutter applications for cross-device identity.</p>
                 <div className="flex space-x-2">
-                  <a href="https://github.com/bymjmazzei/par-Noir/blob/main/tutorials/mobile-integration.html" target="_blank" rel="noopener noreferrer" className="inline-flex items-center px-3 py-2 bg-primary hover:bg-hover text-bg-primary text-sm rounded-lg font-medium transition-colors">View Tutorial</a>
+                  <a href="https://bymjmazzei.github.io/par-Noir/#mobile-integration" target="_blank" rel="noopener noreferrer" className="inline-flex items-center px-3 py-2 bg-primary hover:bg-hover text-bg-primary text-sm rounded-lg font-medium transition-colors">View Tutorial</a>
                   <a href="https://github.com/bymjmazzei/par-Noir/tree/main/sdk/identity-sdk" target="_blank" rel="noopener noreferrer" className="inline-flex items-center px-3 py-2 bg-secondary hover:bg-hover text-text-primary text-sm rounded-lg font-medium transition-colors">View Code</a>
                 </div>
               </div>
