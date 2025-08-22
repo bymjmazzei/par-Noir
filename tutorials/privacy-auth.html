@@ -1,0 +1,624 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Privacy-Preserving Authentication Tutorial - par Noir</title>
+    <link rel="stylesheet" href="../styles.css">
+    <link rel="icon" type="image/png" href="../branding/Par-Noir-Icon-White.png">
+</head>
+<body>
+    <!-- Background -->
+    <div class="background"></div>
+
+    <!-- Navigation -->
+    <nav class="nav">
+        <div class="nav-container">
+            <div class="nav-brand">
+                <img src="../branding/Par-Noir-Logo-White.png" alt="Par Noir" class="nav-logo">
+            </div>
+            <div class="nav-menu">
+                <a href="../index.html" class="nav-link">Home</a>
+                <a href="../developer-portal.html" class="nav-link">Developer Portal</a>
+                <a href="#overview" class="nav-link active">Tutorial</a>
+                <a href="https://github.com/identity-protocol" target="_blank" class="nav-link">GitHub</a>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Hero Section -->
+    <section class="hero">
+        <div class="hero-container">
+            <div class="hero-content">
+                <div class="hero-badge">Tutorial</div>
+                <h1 class="hero-title">
+                    Privacy-Preserving <span class="hero-highlight">Authentication</span>
+                </h1>
+                <p class="hero-subtitle">
+                    Build applications that authenticate users without storing personal data. 
+                    Users control their identity while you get verified authentication.
+                </p>
+                <div class="hero-actions">
+                    <a href="#overview" class="btn btn-primary btn-large">
+                        <span>Start Tutorial</span>
+                        <svg class="btn-icon" viewBox="0 0 24 24">
+                            <path d="M5 12h14m-7-7l7 7-7 7"/>
+                        </svg>
+                    </a>
+                    <a href="https://github.com/identity-protocol/examples/tree/main/privacy-auth" target="_blank" class="btn btn-secondary">View Code</a>
+                </div>
+            </div>
+            <div class="hero-visual">
+                <div class="tutorial-preview">
+                    <div class="tutorial-icon">
+                        <svg viewBox="0 0 24 24">
+                            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+                        </svg>
+                    </div>
+                    <p>15-minute tutorial</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Overview -->
+    <section id="overview" class="narrative-section">
+        <div class="container">
+            <div class="section-header">
+                <h2 class="section-title">Overview</h2>
+                <p class="section-subtitle">What you'll build and learn in this tutorial.</p>
+            </div>
+            <div class="tutorial-content">
+                <h3>What You'll Build</h3>
+                <p>
+                    In this tutorial, you'll create a web application that uses par Noir for authentication 
+                    without storing any personal user data. Users will create sovereign identities and can 
+                    authenticate securely while maintaining complete control over their information.
+                </p>
+
+                <h3>Key Concepts</h3>
+                <ul class="tutorial-list">
+                    <li><strong>Sovereign Identity:</strong> Users own and control their digital identity completely</li>
+                    <li><strong>Privacy by Design:</strong> No personal data is stored on your servers</li>
+                    <li><strong>Cryptographic Security:</strong> All authentication is cryptographically verified</li>
+                    <li><strong>User Control:</strong> Users decide what information to share</li>
+                </ul>
+
+                <h3>What This Actually Does</h3>
+                <div class="tutorial-info">
+                    <div class="info-item">
+                        <strong>✅ Provides:</strong> Cryptographically verified user authentication
+                    </div>
+                    <div class="info-item">
+                        <strong>✅ Enables:</strong> User-controlled identity management
+                    </div>
+                    <div class="info-item">
+                        <strong>✅ Protects:</strong> User privacy through zero data storage
+                    </div>
+                    <div class="info-item">
+                        <strong>⚠️ Limitations:</strong> Relies on user-provided information
+                    </div>
+                </div>
+
+                <h3>Prerequisites</h3>
+                <ul class="tutorial-list">
+                    <li>Basic knowledge of JavaScript/TypeScript</li>
+                    <li>Node.js and npm installed</li>
+                    <li>Understanding of web development concepts</li>
+                </ul>
+
+                <div class="tutorial-info">
+                    <div class="info-item">
+                        <strong>Duration:</strong> 15 minutes
+                    </div>
+                    <div class="info-item">
+                        <strong>Difficulty:</strong> Intermediate
+                    </div>
+                    <div class="info-item">
+                        <strong>Code:</strong> <a href="https://github.com/identity-protocol/examples/tree/main/privacy-auth" target="_blank">View on GitHub</a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Step 1: Setup -->
+    <section id="setup" class="narrative-section solution-section">
+        <div class="container">
+            <div class="section-header">
+                <h2 class="section-title">Step 1: Project Setup</h2>
+                <p class="section-subtitle">Initialize your project and install dependencies.</p>
+            </div>
+            <div class="tutorial-content">
+                <h3>Create a New Project</h3>
+                <div class="code-example">
+                    <pre><code>mkdir privacy-auth-demo
+cd privacy-auth-demo
+npm init -y</code></pre>
+                </div>
+
+                <h3>Install Dependencies</h3>
+                <div class="code-example">
+                    <pre><code>npm install @identity-protocol/identity-sdk
+npm install express cors dotenv
+npm install --save-dev typescript @types/node @types/express</code></pre>
+                </div>
+
+                <h3>Project Structure</h3>
+                <div class="code-example">
+                    <pre><code>privacy-auth-demo/
+├── src/
+│   ├── server.ts
+│   ├── authService.ts
+│   └── types.ts
+├── public/
+│   ├── index.html
+│   └── app.js
+├── package.json
+└── tsconfig.json</code></pre>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Step 2: Authentication Service -->
+    <section id="auth-service" class="narrative-section">
+        <div class="container">
+            <div class="section-header">
+                <h2 class="section-title">Step 2: Authentication Service</h2>
+                <p class="section-subtitle">Create the core authentication logic using par Noir.</p>
+            </div>
+            <div class="tutorial-content">
+                <h3>Initialize Authentication Service</h3>
+                <div class="code-example">
+                    <pre><code>// src/authService.ts
+import { createIdentitySDK } from '@identity-protocol/identity-sdk';
+
+class AuthService {
+  private sdk: any;
+
+  constructor() {
+    this.sdk = createIdentitySDK({
+      identityProvider: {
+        name: 'Privacy Auth Demo',
+        type: 'oauth2',
+        config: {
+          clientId: process.env.CLIENT_ID || 'demo-client',
+          redirectUri: 'http://localhost:3000/callback'
+        }
+      },
+      storage: 'localStorage',
+      debug: true
+    });
+  }
+
+  async createIdentity(userData: {
+    name: string;
+    email: string;
+  }): Promise<any> {
+    // Create sovereign identity
+    const identity = await this.sdk.createIdentity(userData);
+    return identity;
+  }
+
+  async authenticateUser(identityProof: string): Promise<boolean> {
+    try {
+      // Verify the identity proof
+      const isValid = await this.sdk.verifyProof(identityProof);
+      return isValid;
+    } catch (error) {
+      console.error('Authentication failed:', error);
+      return false;
+    }
+  }
+
+  async generateUserProfile(identity: any, userPreferences: any): Promise<string> {
+    // Generate a proof of user profile without revealing personal data
+    const proof = await this.sdk.generateProof({
+      statement: 'has_complete_profile',
+      attributes: {
+        hasName: !!userPreferences.name,
+        hasEmail: !!userPreferences.email,
+        hasPreferences: !!userPreferences.preferences
+      },
+      reveal: false
+    });
+    
+    return proof;
+  }
+}
+
+export const authService = new AuthService();</code></pre>
+                </div>
+
+                <h3>Type Definitions</h3>
+                <div class="code-example">
+                    <pre><code>// src/types.ts
+export interface User {
+  id: string;
+  name: string;
+  email: string;
+  preferences?: any;
+}
+
+export interface AuthRequest {
+  identityProof: string;
+  userProfile?: string;
+}
+
+export interface AuthResponse {
+  authenticated: boolean;
+  userId?: string;
+  message: string;
+}</code></pre>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Step 3: Server Implementation -->
+    <section id="server" class="narrative-section solution-section">
+        <div class="container">
+            <div class="section-header">
+                <h2 class="section-title">Step 3: Server Implementation</h2>
+                <p class="section-subtitle">Create the server-side authentication endpoints.</p>
+            </div>
+            <div class="tutorial-content">
+                <h3>Express Server Setup</h3>
+                <div class="code-example">
+                    <pre><code>// src/server.ts
+import express from 'express';
+import cors from 'cors';
+import { authService } from './authService';
+import { AuthRequest, AuthResponse } from './types';
+
+const app = express();
+app.use(cors());
+app.use(express.json());
+app.use(express.static('public'));
+
+// Authentication endpoint
+app.post('/auth', async (req, res) => {
+  try {
+    const { identityProof, userProfile }: AuthRequest = req.body;
+
+    // Authenticate the user
+    const isAuthenticated = await authService.authenticateUser(identityProof);
+
+    if (isAuthenticated) {
+      const response: AuthResponse = {
+        authenticated: true,
+        userId: 'user_' + Date.now(), // Generate session ID
+        message: 'Authentication successful'
+      };
+      res.json(response);
+    } else {
+      const response: AuthResponse = {
+        authenticated: false,
+        message: 'Authentication failed'
+      };
+      res.status(401).json(response);
+    }
+  } catch (error) {
+    res.status(500).json({
+      authenticated: false,
+      message: 'Server error'
+    });
+  }
+});
+
+// User profile endpoint
+app.post('/profile', async (req, res) => {
+  try {
+    const { identity, preferences } = req.body;
+    
+    // Generate profile proof
+    const profileProof = await authService.generateUserProfile(identity, preferences);
+    
+    res.json({
+      success: true,
+      profileProof: profileProof
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: 'Failed to generate profile'
+    });
+  }
+});
+
+app.listen(3000, () => {
+  console.log('Privacy Auth server running on port 3000');
+});</code></pre>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Step 4: Frontend Implementation -->
+    <section id="frontend" class="narrative-section">
+        <div class="container">
+            <div class="section-header">
+                <h2 class="section-title">Step 4: Frontend Implementation</h2>
+                <p class="section-subtitle">Create the client-side authentication interface.</p>
+            </div>
+            <div class="tutorial-content">
+                <h3>HTML Interface</h3>
+                <div class="code-example">
+                    <pre><code>&lt;!DOCTYPE html&gt;
+&lt;html lang="en"&gt;
+&lt;head&gt;
+    &lt;meta charset="UTF-8"&gt;
+    &lt;meta name="viewport" content="width=device-width, initial-scale=1.0"&gt;
+    &lt;title&gt;Privacy Auth Demo&lt;/title&gt;
+    &lt;style&gt;
+        body { font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; }
+        .form-group { margin-bottom: 15px; }
+        label { display: block; margin-bottom: 5px; }
+        input, button { padding: 10px; width: 100%; }
+        .success { color: green; }
+        .error { color: red; }
+    &lt;/style&gt;
+&lt;/head&gt;
+&lt;body&gt;
+    &lt;h1&gt;Privacy-Preserving Authentication Demo&lt;/h1&gt;
+    
+    &lt;div id="identity-form"&gt;
+        &lt;h2&gt;Create Your Sovereign Identity&lt;/h2&gt;
+        &lt;div class="form-group"&gt;
+            &lt;label for="name"&gt;Name:&lt;/label&gt;
+            &lt;input type="text" id="name" required&gt;
+        &lt;/div&gt;
+        &lt;div class="form-group"&gt;
+            &lt;label for="email"&gt;Email:&lt;/label&gt;
+            &lt;input type="email" id="email" required&gt;
+        &lt;/div&gt;
+        &lt;button onclick="createIdentity()"&gt;Create Identity&lt;/button&gt;
+    &lt;/div&gt;
+
+    &lt;div id="auth-form" style="display: none;"&gt;
+        &lt;h2&gt;Authenticate&lt;/h2&gt;
+        &lt;p&gt;Your identity is ready. Click to authenticate.&lt;/p&gt;
+        &lt;button onclick="authenticate()"&gt;Authenticate&lt;/button&gt;
+        &lt;div id="result"&gt;&lt;/div&gt;
+    &lt;/div&gt;
+
+    &lt;script src="app.js"&gt;&lt;/script&gt;
+&lt;/body&gt;
+&lt;/html&gt;</code></pre>
+                </div>
+
+                <h3>JavaScript Implementation</h3>
+                <div class="code-example">
+                    <pre><code>// public/app.js
+let userIdentity = null;
+
+async function createIdentity() {
+  const name = document.getElementById('name').value;
+  const email = document.getElementById('email').value;
+
+  if (!name || !email) {
+    alert('Please fill in all fields');
+    return;
+  }
+
+  try {
+    // In a real implementation, you'd use the par Noir SDK
+    // For demo purposes, we'll simulate identity creation
+    userIdentity = {
+      id: 'identity_' + Date.now(),
+      name: name,
+      email: email
+    };
+
+    // Store identity locally (user controls their data)
+    localStorage.setItem('userIdentity', JSON.stringify(userIdentity));
+
+    document.getElementById('identity-form').style.display = 'none';
+    document.getElementById('auth-form').style.display = 'block';
+    
+    console.log('Identity created:', userIdentity);
+  } catch (error) {
+    alert('Error creating identity: ' + error.message);
+  }
+}
+
+async function authenticate() {
+  try {
+    // Generate authentication proof
+    const identityProof = await generateIdentityProof(userIdentity);
+    
+    // Send to server for verification
+    const response = await fetch('/auth', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        identityProof: identityProof
+      })
+    });
+
+    const result = await response.json();
+    
+    const resultDiv = document.getElementById('result');
+    if (result.authenticated) {
+      resultDiv.innerHTML = '&lt;div class="success"&gt;✓ Authentication successful!&lt;/div&gt;';
+    } else {
+      resultDiv.innerHTML = '&lt;div class="error"&gt;✗ Authentication failed&lt;/div&gt;';
+    }
+  } catch (error) {
+    document.getElementById('result').innerHTML = 
+      '&lt;div class="error"&gt;Error: ' + error.message + '&lt;/div&gt;';
+  }
+}
+
+async function generateIdentityProof(identity) {
+  // In a real implementation, this would use the par Noir SDK
+  // to generate a cryptographic proof
+  return 'proof_' + identity.id + '_' + Date.now();
+}</code></pre>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Step 5: Testing -->
+    <section id="testing" class="narrative-section solution-section">
+        <div class="container">
+            <div class="section-header">
+                <h2 class="section-title">Step 5: Testing Your Implementation</h2>
+                <p class="section-subtitle">Test the privacy-preserving authentication system.</p>
+            </div>
+            <div class="tutorial-content">
+                <h3>Start the Server</h3>
+                <div class="code-example">
+                    <pre><code># Compile TypeScript
+npx tsc
+
+# Start the server
+node dist/server.js</code></pre>
+                </div>
+
+                <h3>Test Scenarios</h3>
+                <ul class="tutorial-list">
+                    <li><strong>Identity Creation:</strong> Create a new sovereign identity</li>
+                    <li><strong>Authentication:</strong> Authenticate using the identity</li>
+                    <li><strong>Privacy Check:</strong> Verify no personal data is sent to server</li>
+                    <li><strong>Cross-Session:</strong> Test identity persistence across browser sessions</li>
+                </ul>
+
+                <h3>Privacy Verification</h3>
+                <p>
+                    To verify that no personal data is being transmitted:
+                </p>
+                <ul class="tutorial-list">
+                    <li>Check browser network tab - no personal data should be sent</li>
+                    <li>Check server logs - only proof data should be received</li>
+                    <li>Verify that the server cannot determine user's actual information</li>
+                </ul>
+            </div>
+        </div>
+    </section>
+
+    <!-- Realistic Use Cases -->
+    <section id="use-cases" class="narrative-section">
+        <div class="container">
+            <div class="section-header">
+                <h2 class="section-title">Realistic Use Cases</h2>
+                <p class="section-subtitle">What this authentication system actually enables.</p>
+            </div>
+            <div class="tutorial-content">
+                <h3>Legitimate Applications</h3>
+                <ul class="tutorial-list">
+                    <li><strong>Privacy-First Apps:</strong> Applications that don't want to store user data</li>
+                    <li><strong>Cross-Platform Identity:</strong> Same identity works on web, mobile, desktop</li>
+                    <li><strong>User-Controlled Data:</strong> Users decide what information to share</li>
+                    <li><strong>Cryptographic Security:</strong> All authentication is cryptographically verified</li>
+                </ul>
+
+                <h3>What This Actually Solves</h3>
+                <ul class="tutorial-list">
+                    <li><strong>Privacy:</strong> Apps don't store personal user data</li>
+                    <li><strong>User Control:</strong> Users own and control their identity</li>
+                    <li><strong>Security:</strong> Cryptographic verification of identity</li>
+                    <li><strong>Compliance:</strong> Reduced data storage requirements</li>
+                </ul>
+
+                <h3>Limitations to Be Aware Of</h3>
+                <ul class="tutorial-list">
+                    <li><strong>Self-Attestation:</strong> Users provide their own information</li>
+                    <li><strong>No External Verification:</strong> Cannot verify against external databases</li>
+                    <li><strong>User Honesty Required:</strong> Relies on users providing accurate information</li>
+                    <li><strong>Not a Verification System:</strong> This is a privacy and control system</li>
+                </ul>
+            </div>
+        </div>
+    </section>
+
+    <!-- Next Steps -->
+    <section id="next-steps" class="narrative-section solution-section">
+        <div class="container">
+            <div class="section-header">
+                <h2 class="section-title">Next Steps</h2>
+                <p class="section-subtitle">Extend your privacy-preserving authentication implementation.</p>
+            </div>
+            <div class="tutorial-content">
+                <h3>Advanced Features</h3>
+                <ul class="tutorial-list">
+                    <li><strong>Social Recovery:</strong> Implement identity recovery through trusted contacts</li>
+                    <li><strong>Profile Management:</strong> Allow users to manage their profile information</li>
+                    <li><strong>Session Management:</strong> Implement secure session handling</li>
+                    <li><strong>Multi-Factor Authentication:</strong> Add additional security layers</li>
+                </ul>
+
+                <h3>Production Considerations</h3>
+                <ul class="tutorial-list">
+                    <li><strong>Secure Storage:</strong> Use hardware security modules for key storage</li>
+                    <li><strong>Rate Limiting:</strong> Implement proof generation rate limits</li>
+                    <li><strong>Error Handling:</strong> Add comprehensive error handling and logging</li>
+                    <li><strong>Compliance:</strong> Ensure GDPR and other privacy regulation compliance</li>
+                </ul>
+
+                <h3>Related Tutorials</h3>
+                <div class="tutorial-links">
+                    <a href="cross-platform.html" class="btn btn-primary">Cross-Platform Identity</a>
+                    <a href="mobile-integration.html" class="btn btn-secondary">Mobile App Integration</a>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Footer -->
+    <footer class="footer">
+        <div class="container">
+            <div class="footer-content">
+                <div class="footer-brand">
+                    <img src="../branding/Par-Noir-Logo-White.png" alt="Par Noir" class="footer-logo">
+                    <p>Building the future of digital identity.</p>
+                </div>
+                <div class="footer-links">
+                    <div class="footer-column">
+                        <h4>Tutorials</h4>
+                        <a href="#overview">Overview</a>
+                        <a href="#setup">Setup</a>
+                        <a href="#auth-service">Auth Service</a>
+                    </div>
+                    <div class="footer-column">
+                        <h4>Resources</h4>
+                        <a href="../index.html">Home</a>
+                        <a href="../developer-portal.html">Developer Portal</a>
+                        <a href="../whitepaper.html">White Paper</a>
+                    </div>
+                    <div class="footer-column">
+                        <h4>Community</h4>
+                        <a href="https://discord.gg/parnoir">Discord</a>
+                        <a href="https://twitter.com/parnoir">Twitter</a>
+                        <a href="https://github.com/identity-protocol">GitHub</a>
+                    </div>
+                </div>
+            </div>
+            <div class="footer-bottom">
+                <p>&copy; 2025 Par Noir. Continuing the legacy of freedom since 1776.</p>
+            </div>
+        </div>
+    </footer>
+
+    <script src="../script.js"></script>
+    <script>
+        // Smooth scrolling for anchor links
+        document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+            anchor.addEventListener('click', function (e) {
+                e.preventDefault();
+                const target = document.querySelector(this.getAttribute('href'));
+                if (target) {
+                    target.scrollIntoView({
+                        behavior: 'smooth',
+                        block: 'start'
+                    });
+                }
+            });
+        });
+    </script>
+</body>
+</html>

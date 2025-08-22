@@ -1,0 +1,530 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Par Noir Documentation</title>
+    <link rel="stylesheet" href="styles.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="icon" type="image/png" href="../branding/Par-Noir-Icon-White.png">
+</head>
+<body>
+    <div class="docs-container">
+        <!-- Sidebar Navigation -->
+        <nav class="sidebar">
+            <div class="sidebar-header">
+                <img src="../branding/Par-Noir-Logo-White.png" alt="Par Noir" class="sidebar-logo">
+                <h1>Documentation</h1>
+            </div>
+            <div class="search-box">
+                <input type="text" id="search" placeholder="Search documentation...">
+            </div>
+            <ul class="nav-menu">
+                <li class="nav-section">
+                    <h3>Getting Started</h3>
+                    <ul>
+                        <li><a href="#overview" class="nav-link">Overview</a></li>
+                        <li><a href="#quick-start" class="nav-link">Quick Start</a></li>
+                        <li><a href="#installation" class="nav-link">Installation</a></li>
+                    </ul>
+                </li>
+                <li class="nav-section">
+                    <h3>API Reference</h3>
+                    <ul>
+                        <li><a href="#authentication" class="nav-link">Authentication</a></li>
+                        <li><a href="#oauth-endpoints" class="nav-link">OAuth Endpoints</a></li>
+                        <li><a href="#user-endpoints" class="nav-link">User Endpoints</a></li>
+                        <li><a href="#error-handling" class="nav-link">Error Handling</a></li>
+                    </ul>
+                </li>
+                <li class="nav-section">
+                    <h3>SDK Documentation</h3>
+                    <ul>
+                        <li><a href="#javascript-sdk" class="nav-link">JavaScript SDK</a></li>
+                        <li><a href="#react-hooks" class="nav-link">React Hooks</a></li>
+                        <li><a href="#typescript" class="nav-link">TypeScript</a></li>
+                    </ul>
+                </li>
+                <li class="nav-section">
+                    <h3>Tutorials</h3>
+                    <ul>
+                        <li><a href="#age-verification" class="nav-link">Age Verification</a></li>
+                        <li><a href="#mobile-integration" class="nav-link">Mobile Integration</a></li>
+                        <li><a href="#privacy-auth" class="nav-link">Privacy Authentication</a></li>
+                    </ul>
+                </li>
+                <li class="nav-section">
+                    <h3>Advanced</h3>
+                    <ul>
+                        <li><a href="#zero-knowledge-proofs" class="nav-link">Zero-Knowledge Proofs</a></li>
+                        <li><a href="#social-recovery" class="nav-link">Social Recovery</a></li>
+                        <li><a href="#security-best-practices" class="nav-link">Security Best Practices</a></li>
+                    </ul>
+                </li>
+                <li class="nav-section">
+                    <h3>Resources</h3>
+                    <ul>
+                        <li><a href="#examples" class="nav-link">Code Examples</a></li>
+                        <li><a href="#faq" class="nav-link">FAQ</a></li>
+                        <li><a href="#community" class="nav-link">Community</a></li>
+                    </ul>
+                </li>
+            </ul>
+        </nav>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <div class="content-header">
+                <button id="sidebar-toggle" class="sidebar-toggle">☰</button>
+                <div class="breadcrumb">
+                    <a href="../">Home</a> / Documentation
+                </div>
+            </div>
+
+            <!-- Overview Section -->
+            <section id="overview" class="doc-section">
+                <h1>Par Noir Documentation</h1>
+                <p class="lead">Welcome to the Par Noir documentation. Par Noir is an open-source protocol for sovereign identity, building a more secure and equitable foundation for the internet.</p>
+                
+                <div class="feature-grid">
+                    <div class="feature-card">
+                        <h3>🔐 Sovereign Identity</h3>
+                        <p>Users own and control their digital identity completely</p>
+                    </div>
+                    <div class="feature-card">
+                        <h3>🔒 Zero-Knowledge Proofs</h3>
+                        <p>Prove identity without revealing personal data</p>
+                    </div>
+                    <div class="feature-card">
+                        <h3>🌐 Cross-Platform</h3>
+                        <p>Use the same identity across web, mobile, and desktop</p>
+                    </div>
+                    <div class="feature-card">
+                        <h3>🛡️ Military-Grade Security</h3>
+                        <p>Advanced encryption and security protocols</p>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Quick Start Section -->
+            <section id="quick-start" class="doc-section">
+                <h2>Quick Start</h2>
+                <p>Get started with Par Noir in minutes. This guide will walk you through the basic setup and authentication flow.</p>
+
+                <div class="code-block">
+                    <div class="code-header">
+                        <span>Installation</span>
+                        <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+                    </div>
+                    <pre><code class="language-bash">npm install @par-noir/identity-sdk</code></pre>
+                </div>
+
+                <div class="code-block">
+                    <div class="code-header">
+                        <span>Basic Setup</span>
+                        <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+                    </div>
+                    <pre><code class="language-javascript">import { createIdentitySDK } from '@par-noir/identity-sdk';
+
+const sdk = createIdentitySDK({
+  clientId: 'your-client-id',
+  redirectUri: 'https://your-app.com/callback',
+  scope: 'openid profile email'
+});
+
+// Initialize authentication
+sdk.authenticate();</code></pre>
+                </div>
+
+                <div class="code-block">
+                    <div class="code-header">
+                        <span>Handle Callback</span>
+                        <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+                    </div>
+                    <pre><code class="language-javascript">// Handle the OAuth callback
+sdk.handleCallback().then(user => {
+  console.log('Authenticated user:', user);
+  // User is now authenticated with their sovereign identity
+});</code></pre>
+                </div>
+            </section>
+
+            <!-- API Reference Section -->
+            <section id="authentication" class="doc-section">
+                <h2>Authentication</h2>
+                <p>Par Noir uses OAuth 2.0 with sovereign identity for secure authentication. Users authenticate with their personal identity file (.did) and passcode.</p>
+
+                <h3>OAuth 2.0 Flow</h3>
+                <ol>
+                    <li><strong>Authorization Request:</strong> Redirect user to Par Noir with your app's credentials</li>
+                    <li><strong>Identity Verification:</strong> User uploads their .did file and enters passcode</li>
+                    <li><strong>Authorization Grant:</strong> User grants permission to your application</li>
+                    <li><strong>Token Exchange:</strong> Exchange authorization code for access token</li>
+                    <li><strong>API Access:</strong> Use access token to call protected endpoints</li>
+                </ol>
+
+                <h3>Base URL</h3>
+                <div class="code-block">
+                    <pre><code>https://identity-protocol.com/api</code></pre>
+                </div>
+
+                <h3>Authentication Header</h3>
+                <div class="code-block">
+                    <pre><code>Authorization: Bearer &lt;access_token&gt;</code></pre>
+                </div>
+            </section>
+
+            <!-- OAuth Endpoints Section -->
+            <section id="oauth-endpoints" class="doc-section">
+                <h2>OAuth Endpoints</h2>
+
+                <h3>1. Authorization Endpoint</h3>
+                <p><strong>Endpoint:</strong> <code>GET /oauth/authorize</code></p>
+                <p>Initiates the OAuth 2.0 authorization code flow.</p>
+
+                <h4>Parameters:</h4>
+                <ul>
+                    <li><code>response_type</code> (required): Must be <code>code</code></li>
+                    <li><code>client_id</code> (required): Your application's client ID</li>
+                    <li><code>redirect_uri</code> (required): Your application's callback URL</li>
+                    <li><code>scope</code> (optional): Space-separated list of requested scopes</li>
+                    <li><code>state</code> (optional): Random string for CSRF protection</li>
+                    <li><code>nonce</code> (optional): Random string for replay protection</li>
+                </ul>
+
+                <div class="code-block">
+                    <div class="code-header">
+                        <span>Example Request</span>
+                        <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+                    </div>
+                    <pre><code class="language-bash">GET /oauth/authorize?response_type=code&client_id=your-client-id&redirect_uri=https://your-app.com/callback&scope=openid%20profile%20email&state=random-string</code></pre>
+                </div>
+
+                <h3>2. Token Endpoint</h3>
+                <p><strong>Endpoint:</strong> <code>POST /oauth/token</code></p>
+                <p>Exchanges authorization code for access token.</p>
+
+                <div class="code-block">
+                    <div class="code-header">
+                        <span>Example Request</span>
+                        <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+                    </div>
+                    <pre><code class="language-bash">POST /oauth/token
+Content-Type: application/x-www-form-urlencoded
+
+grant_type=authorization_code&code=authorization_code&client_id=your-client-id&client_secret=your-client-secret&redirect_uri=https://your-app.com/callback</code></pre>
+                </div>
+
+                <div class="code-block">
+                    <div class="code-header">
+                        <span>Example Response</span>
+                        <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+                    </div>
+                    <pre><code class="language-json">{
+  "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+  "token_type": "Bearer",
+  "expires_in": 3600,
+  "scope": "openid profile email",
+  "state": "random-string"
+}</code></pre>
+                </div>
+            </section>
+
+            <!-- User Endpoints Section -->
+            <section id="user-endpoints" class="doc-section">
+                <h2>User Endpoints</h2>
+
+                <h3>User Info Endpoint</h3>
+                <p><strong>Endpoint:</strong> <code>GET /oauth/userinfo</code></p>
+                <p>Returns user information based on the access token.</p>
+
+                <div class="code-block">
+                    <div class="code-header">
+                        <span>Example Request</span>
+                        <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+                    </div>
+                    <pre><code class="language-bash">GET /oauth/userinfo
+Authorization: Bearer your-access-token</code></pre>
+                </div>
+
+                <div class="code-block">
+                    <div class="code-header">
+                        <span>Example Response</span>
+                        <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+                    </div>
+                    <pre><code class="language-json">{
+  "sub": "user-id",
+  "name": "John Doe",
+  "email": "john@example.com",
+  "username": "johndoe",
+  "created_at": "2024-01-01T00:00:00Z",
+  "verified": true
+}</code></pre>
+                </div>
+            </section>
+
+            <!-- SDK Documentation Section -->
+            <section id="javascript-sdk" class="doc-section">
+                <h2>JavaScript SDK</h2>
+                <p>The Par Noir JavaScript SDK provides a simple interface for integrating sovereign identity authentication into your web applications.</p>
+
+                <h3>Installation</h3>
+                <div class="code-block">
+                    <pre><code class="language-bash">npm install @par-noir/identity-sdk</code></pre>
+                </div>
+
+                <h3>Basic Usage</h3>
+                <div class="code-block">
+                    <div class="code-header">
+                        <span>SDK Setup</span>
+                        <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+                    </div>
+                    <pre><code class="language-javascript">import { createIdentitySDK } from '@par-noir/identity-sdk';
+
+const sdk = createIdentitySDK({
+  clientId: 'your-client-id',
+  redirectUri: 'https://your-app.com/callback',
+  scope: 'openid profile email'
+});</code></pre>
+                </div>
+
+                <h3>Authentication Flow</h3>
+                <div class="code-block">
+                    <div class="code-header">
+                        <span>Complete Flow</span>
+                        <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+                    </div>
+                    <pre><code class="language-javascript">// 1. Start authentication
+sdk.authenticate();
+
+// 2. Handle callback (in your callback page)
+sdk.handleCallback().then(user => {
+  console.log('User authenticated:', user);
+  
+  // 3. Get user info
+  return sdk.getUserInfo();
+}).then(userInfo => {
+  console.log('User info:', userInfo);
+}).catch(error => {
+  console.error('Authentication failed:', error);
+});</code></pre>
+                </div>
+            </section>
+
+            <!-- React Hooks Section -->
+            <section id="react-hooks" class="doc-section">
+                <h2>React Hooks</h2>
+                <p>Par Noir provides React hooks for easy integration with React applications.</p>
+
+                <div class="code-block">
+                    <div class="code-header">
+                        <span>useIdentitySDK Hook</span>
+                        <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+                    </div>
+                    <pre><code class="language-javascript">import { useIdentitySDK } from '@par-noir/identity-sdk/react';
+
+function App() {
+  const { user, isAuthenticated, authenticate, logout } = useIdentitySDK({
+    clientId: 'your-client-id',
+    redirectUri: 'https://your-app.com/callback'
+  });
+
+  if (isAuthenticated) {
+    return (
+      <div>
+        <h1>Welcome, {user.name}!</h1>
+        <button onClick={logout}>Logout</button>
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      <h1>Welcome to Par Noir</h1>
+      <button onClick={authenticate}>Login with Par Noir</button>
+    </div>
+  );
+}</code></pre>
+                </div>
+            </section>
+
+            <!-- Tutorials Section -->
+            <section id="age-verification" class="doc-section">
+                <h2>Age Verification Tutorial</h2>
+                <p>Learn how to implement age verification using Par Noir's zero-knowledge proofs without storing personal data.</p>
+
+                <h3>Overview</h3>
+                <p>This tutorial shows how to verify a user's age without storing their actual birth date, using cryptographic proofs.</p>
+
+                <div class="code-block">
+                    <div class="code-header">
+                        <span>Age Verification Setup</span>
+                        <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+                    </div>
+                    <pre><code class="language-javascript">import { createAgeVerification } from '@par-noir/identity-sdk';
+
+const ageVerifier = createAgeVerification({
+  minimumAge: 18,
+  clientId: 'your-client-id'
+});
+
+// Verify age without revealing birth date
+ageVerifier.verifyAge(userProof).then(isValid => {
+  if (isValid) {
+    console.log('User is 18 or older');
+  } else {
+    console.log('User is under 18');
+  }
+});</code></pre>
+                </div>
+
+                <div class="tutorial-link">
+                    <a href="../tutorials/age-verification.html" target="_blank" class="btn btn-primary">
+                        View Full Tutorial →
+                    </a>
+                </div>
+            </section>
+
+            <!-- Zero-Knowledge Proofs Section -->
+            <section id="zero-knowledge-proofs" class="doc-section">
+                <h2>Zero-Knowledge Proofs</h2>
+                <p>Par Noir uses zero-knowledge proofs to enable privacy-preserving authentication and verification.</p>
+
+                <h3>What are Zero-Knowledge Proofs?</h3>
+                <p>Zero-knowledge proofs allow you to prove that you know something without revealing what you know. For example, you can prove you're over 18 without revealing your exact age.</p>
+
+                <h3>Types of Proofs</h3>
+                <ul>
+                    <li><strong>Age Verification:</strong> Prove age without revealing birth date</li>
+                    <li><strong>Location Verification:</strong> Prove location without revealing exact coordinates</li>
+                    <li><strong>Identity Verification:</strong> Prove identity without revealing personal details</li>
+                </ul>
+
+                <div class="code-block">
+                    <div class="code-header">
+                        <span>Creating a Proof</span>
+                        <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+                    </div>
+                    <pre><code class="language-javascript">import { createProof } from '@par-noir/identity-sdk';
+
+// Create a proof that user is over 18
+const proof = await createProof({
+  type: 'age',
+  value: userAge,
+  constraint: '>= 18'
+});
+
+// The proof can be verified without revealing the actual age
+const isValid = await verifyProof(proof);
+console.log('Proof is valid:', isValid);</code></pre>
+                </div>
+            </section>
+
+            <!-- Security Best Practices Section -->
+            <section id="security-best-practices" class="doc-section">
+                <h2>Security Best Practices</h2>
+                <p>Follow these security guidelines to ensure your Par Noir integration is secure.</p>
+
+                <h3>Client Security</h3>
+                <ul>
+                    <li>Always use HTTPS in production</li>
+                    <li>Store client secrets securely (server-side only)</li>
+                    <li>Validate redirect URIs to prevent open redirects</li>
+                    <li>Use state parameters for CSRF protection</li>
+                </ul>
+
+                <h3>Token Security</h3>
+                <ul>
+                    <li>Store access tokens securely</li>
+                    <li>Never expose tokens in client-side code</li>
+                    <li>Implement proper token refresh logic</li>
+                    <li>Validate token expiration</li>
+                </ul>
+
+                <h3>User Data Protection</h3>
+                <ul>
+                    <li>Only request necessary scopes</li>
+                    <li>Implement proper data retention policies</li>
+                    <li>Use zero-knowledge proofs when possible</li>
+                    <li>Encrypt sensitive data at rest</li>
+                </ul>
+            </section>
+
+            <!-- Examples Section -->
+            <section id="examples" class="doc-section">
+                <h2>Code Examples</h2>
+                <p>Explore working examples of Par Noir integration in different frameworks and languages.</p>
+
+                <div class="examples-grid">
+                    <div class="example-card">
+                        <h3>React Example</h3>
+                        <p>Complete React application with Par Noir authentication</p>
+                        <a href="https://github.com/bymjmazzei/par-Noir/tree/main/apps/id-dashboard" target="_blank" class="btn btn-secondary">View Example</a>
+                    </div>
+                    <div class="example-card">
+                        <h3>Node.js API</h3>
+                        <p>Backend API with Par Noir OAuth integration</p>
+                        <a href="https://github.com/bymjmazzei/par-Noir/tree/main/api" target="_blank" class="btn btn-secondary">View Example</a>
+                    </div>
+                    <div class="example-card">
+                        <h3>Core Examples</h3>
+                        <p>Basic usage examples and patterns</p>
+                        <a href="https://github.com/bymjmazzei/par-Noir/tree/main/core/identity-core/examples" target="_blank" class="btn btn-secondary">View Examples</a>
+                    </div>
+                </div>
+            </section>
+
+            <!-- FAQ Section -->
+            <section id="faq" class="doc-section">
+                <h2>Frequently Asked Questions</h2>
+
+                <div class="faq-item">
+                    <h3>What is a sovereign identity?</h3>
+                    <p>A sovereign identity is a digital identity that you own and control completely. Unlike traditional identities managed by companies, you have full control over your data and can revoke access at any time.</p>
+                </div>
+
+                <div class="faq-item">
+                    <h3>How does Par Noir protect my privacy?</h3>
+                    <p>Par Noir uses zero-knowledge proofs and advanced encryption to ensure your personal data never leaves your control. You can prove facts about yourself without revealing the underlying data.</p>
+                </div>
+
+                <div class="faq-item">
+                    <h3>What happens if I lose my identity file?</h3>
+                    <p>Par Noir supports social recovery, allowing you to recover your identity through trusted contacts. You can also create backup files for additional security.</p>
+                </div>
+
+                <div class="faq-item">
+                    <h3>Is Par Noir compatible with existing OAuth providers?</h3>
+                    <p>Yes! Par Noir implements the OAuth 2.0 standard, making it compatible with existing OAuth libraries and frameworks. You can easily integrate it into your existing authentication flow.</p>
+                </div>
+            </section>
+
+            <!-- Community Section -->
+            <section id="community" class="doc-section">
+                <h2>Community</h2>
+                <p>Join the Par Noir community to get help, share ideas, and contribute to the project.</p>
+
+                <div class="community-grid">
+                    <div class="community-card">
+                        <h3>GitHub</h3>
+                        <p>View source code, report issues, and contribute to the project.</p>
+                        <a href="https://github.com/bymjmazzei/par-Noir" target="_blank" class="btn btn-primary">View on GitHub</a>
+                    </div>
+                    <div class="community-card">
+                        <h3>Discord</h3>
+                        <p>Join our Discord server for real-time discussions and support.</p>
+                        <a href="https://discord.gg/parnoir" target="_blank" class="btn btn-primary">Join Discord</a>
+                    </div>
+                    <div class="community-card">
+                        <h3>Documentation</h3>
+                        <p>Explore our comprehensive documentation and guides.</p>
+                        <a href="https://github.com/bymjmazzei/par-Noir/tree/main/docs" target="_blank" class="btn btn-primary">View Docs</a>
+                    </div>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>

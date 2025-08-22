@@ -1,0 +1,13 @@
+{
+  "id": "did:key:test123",
+  "username": "testuser",
+  "nickname": "Test User",
+  "email": "test@example.com",
+  "createdAt": "2024-01-01T00:00:00.000Z",
+  "status": "active",
+  "custodiansRequired": false,
+  "custodiansSetup": false,
+  "encryptedData": "encrypted_data_here",
+  "iv": "initialization_vector_here",
+  "salt": "salt_here"
+} 
