@@ -1,288 +1,207 @@
-# Identity Protocol
+# Par Noir - Sovereign Identity Protocol
 
-## 🎯 **Project Overview**
+Par Noir is an open-source protocol for sovereign identity, building a more secure and equitable foundation for the internet. Users own and control their digital identity completely through cryptographic proofs and zero-knowledge verification.
 
-A decentralized, user-owned identity ecosystem where DIDs are stored locally on user devices, with third-party tools enhancing metadata and a browser layer providing opt-in curated content discovery.
+## 🚀 Quick Start
 
-## 🏗️ **Architecture Overview**
+### Installation
 
-### **Core Philosophy**
-The Identity Protocol is built on **lightweight, modular architecture** that leverages existing infrastructure and standardized metadata to create portable, user-owned identity systems.
-
-### **Key Principles**
-1. **Light & Lean**: Minimal overhead, fast startup, efficient resource usage
-2. **Standards-Based**: Leveraging existing metadata standards (DID, W3C, etc.)
-3. **Portable**: Data/objects that can move between systems seamlessly
-4. **Infrastructure-Leveraging**: Building on top of existing web standards, browsers, etc.
-5. **Modular**: Each component operates independently
-
-### **Modular Architecture**
-```
-User Device (Local Storage)
-├── DID (Decentralized Identifier)
-├── Private Keys
-├── Metadata
-└── Access Tokens
-    ↓
-Independent Services (Optional)
-├── Security Tools (recovery, backup)
-├── Storage Tools (encrypted content)
-├── Monetization Tools (payments)
-└── Browser Tools (content discovery)
-    ↓
-Browser Layer (Opt-in Network)
-├── Curated Content Discovery
-├── User Domain Aggregation
-└── Social Features
-```
-
-## 📁 **Project Structure**
-
-```
-identity-protocol/
-├── core/
-│   ├── identity-core/          # Local DID management
-│   ├── key-management/         # Local key storage
-│   └── metadata-manager/       # Local metadata handling
-├── tools/
-│   ├── security-tool/          # Recovery & backup
-│   ├── storage-tool/           # Encrypted storage
-│   ├── monetization-tool/      # Payment integration
-│   └── browser-tool/           # Content discovery
-├── browser/
-│   ├── content-aggregator/     # Curated content network
-│   ├── domain-registry/        # User domain discovery
-│   └── social-network/         # User connections
-├── sdk/
-│   ├── identity-sdk/           # Local DID SDK
-│   ├── tools-sdk/              # Third-party tool SDK
-│   └── browser-sdk/            # Content discovery SDK
-└── apps/
-    ├── identity-app/           # Local ID management
-    ├── browser-app/            # Content browser
-    └── developer-portal/       # Tool integration docs
-```
-
-## 🔑 **Key Architecture Principles**
-
-### **1. Local-First**
-- DIDs stored locally on user devices
-- Private keys never leave the device
-- User controls all data and permissions
-- Offline-first functionality
-
-### **2. Modular & Independent**
-- Each service runs independently
-- No heavy dependencies between components
-- Fast startup times (< 200ms per service)
-- Clear separation of concerns
-
-### **3. Standards-Based**
-- Leverages existing metadata standards (DID, W3C)
-- Uses browser-native APIs (IndexedDB, Web Crypto)
-- Portable data objects across systems
-- Infrastructure-leveraging approach
-
-### **4. Enterprise-Grade Security (100/100 Score)**
-- Certificate Pinning for MITM protection
-- Advanced Threat Detection with behavioral analysis
-- Distributed Rate Limiting for abuse prevention
-- Zero-Knowledge Proofs for privacy-preserving authentication
-- Constant-time operations and secure storage
-
-### **5. Tool Integration (Optional)**
-- Third-party tools enhance DID metadata
-- Tools request access through user approval
-- Metadata updates require user consent
-- Tools cannot access private keys
-
-### **6. Browser as Aggregator**
-- Opt-in content discovery network
-- Users control what content they share
-- Curated content from user domains
-- Social features and recommendations
-
-## 👤 **User Journey**
-
-### **1. Local Identity Creation**
-```javascript
-// User creates DID locally
-const did = await IdentitySDK.createDID(username, passcode)
-// Stored locally on device
-// Private keys never leave device
-```
-
-### **2. Third-Party Tool Integration**
-```javascript
-// Tool requests access to user's DID
-const accessToken = await IdentitySDK.grantAccess(did, toolName)
-// Tool can update metadata but can't access private keys
-```
-
-### **3. Browser Content Discovery**
-```javascript
-// User opts into content network
-const content = await BrowserSDK.discoverContent(userDid)
-// Browser aggregates content from user domains
-// Users control what they share
-```
-
-## 🛠️ **Technical Implementation**
-
-### **Development Setup**
 ```bash
-# Run just the dashboard (recommended for most development)
+npm install @par-noir/identity-sdk
+```
+
+### Basic Usage
+
+```javascript
+import { createIdentitySDK } from '@par-noir/identity-sdk';
+
+const sdk = createIdentitySDK({
+  clientId: 'your-client-id',
+  redirectUri: 'https://your-app.com/callback',
+  scope: 'openid profile email'
+});
+
+// Start authentication
+sdk.authenticate();
+
+// Handle callback
+sdk.handleCallback().then(user => {
+  console.log('Authenticated user:', user);
+});
+```
+
+## 📚 Documentation
+
+- **[API Reference](docs/api-documentation.md)** - Complete API documentation
+- **[SDK Documentation](sdk/identity-sdk/README.md)** - JavaScript/TypeScript SDK guide
+- **[Tutorials](tutorials/)** - Step-by-step integration guides
+- **[Examples](core/identity-core/examples/)** - Working code examples
+
+## 🏗️ Architecture
+
+### Core Components
+
+- **`core/identity-core/`** - Core identity management and cryptographic functions
+- **`sdk/identity-sdk/`** - JavaScript/TypeScript SDK for easy integration
+- **`api/`** - OAuth 2.0 server implementation
+- **`apps/id-dashboard/`** - Complete working example application
+
+### Key Features
+
+- 🔐 **Sovereign Identity** - Users own and control their digital identity
+- 🔒 **Zero-Knowledge Proofs** - Prove identity without revealing personal data
+- 🌐 **Cross-Platform** - Use the same identity across web, mobile, and desktop
+- 🛡️ **Military-Grade Security** - Advanced encryption and security protocols
+- 📱 **OAuth 2.0 Compatible** - Works with existing authentication systems
+
+## 🛠️ Development
+
+### Prerequisites
+
+- Node.js 18+
+- npm or yarn
+
+### Setup
+
+```bash
+# Clone the repository
+git clone https://github.com/bymjmazzei/par-Noir.git
+cd par-Noir
+
+# Install dependencies
+npm install
+
+# Start the development server
 npm run dev:dashboard
-
-# Run just a specific tool
-npm run dev:security-tool
-
-# Run just the browser app
-npm run dev:browser-app
-
-# Run all services (only when needed)
-npm run dev:all
 ```
 
-### **Port Configuration**
-- `id-dashboard`: 3000 (main UI)
-- `developer-portal`: 3001
-- `browser-app`: 3002
-- Tools: 3003-3010
+### Project Structure
 
-### **Local Identity Core**
+```
+par-Noir/
+├── core/identity-core/     # Core identity functionality
+├── sdk/identity-sdk/       # JavaScript/TypeScript SDK
+├── api/                    # OAuth 2.0 server
+├── apps/id-dashboard/      # Working example app
+├── docs/                   # Documentation
+├── tutorials/              # Integration tutorials
+└── branding/              # Assets and branding
+```
+
+## 🔧 Integration Examples
+
+### React Integration
+
 ```javascript
-// identity-core/local-did-manager.js
-class LocalDIDManager {
-  async createDID(username, passcode) {
-    // Generate DID locally
-    // Store encrypted on device
-    // Never transmitted to server
+import { useIdentitySDK } from '@par-noir/identity-sdk/react';
+
+function App() {
+  const { user, isAuthenticated, authenticate, logout } = useIdentitySDK({
+    clientId: 'your-client-id',
+    redirectUri: 'https://your-app.com/callback'
+  });
+
+  if (isAuthenticated) {
+    return (
+      <div>
+        <h1>Welcome, {user.name}!</h1>
+        <button onClick={logout}>Logout</button>
+      </div>
+    );
   }
-  
-  async signChallenge(challenge) {
-    // Sign with local private key
-    // Prove identity without revealing keys
-  }
-  
-  async updateMetadata(metadata) {
-    // Update local metadata
-    // Sync with trusted services
-  }
+
+  return (
+    <div>
+      <h1>Welcome to Par Noir</h1>
+      <button onClick={authenticate}>Login with Par Noir</button>
+    </div>
+  );
 }
 ```
 
-### **Tool Integration SDK**
+### Age Verification
+
 ```javascript
-// tools-sdk/tool-integration.js
-class ToolIntegration {
-  async requestAccess(did, toolName) {
-    // Request access to user's DID
-    // User approves locally
-    // Tool gets access token
+import { createAgeVerification } from '@par-noir/identity-sdk';
+
+const ageVerifier = createAgeVerification({
+  minimumAge: 18,
+  clientId: 'your-client-id'
+});
+
+// Verify age without revealing birth date
+ageVerifier.verifyAge(userProof).then(isValid => {
+  if (isValid) {
+    console.log('User is 18 or older');
   }
-  
-  async updateMetadata(did, metadata) {
-    // Update DID metadata
-    // Requires user approval
-    // Stored locally
-  }
-}
+});
 ```
 
-### **Browser Content Discovery**
-```javascript
-// browser-sdk/content-discovery.js
-class ContentDiscovery {
-  async discoverContent(userDid) {
-    // Find user domains
-    // Aggregate content
-    // Return curated results
-  }
-  
-  async optIntoNetwork(userDid, preferences) {
-    // User opts into content sharing
-    // Control what's shared
-    // Manage privacy settings
-  }
-}
+## 🔗 OAuth 2.0 Endpoints
+
+### Authorization Endpoint
+```
+GET /oauth/authorize?response_type=code&client_id=your-client-id&redirect_uri=https://your-app.com/callback&scope=openid%20profile%20email
 ```
 
-## 🔒 **Privacy & Control**
-
-### **User Controls**
-- Selective data sharing
-- Tool permission management
-- Content visibility controls
-- Network participation opt-in/out
-
-### **Local Storage**
-- Private keys never leave device
-- Local metadata database
-- Local access token management
-- Local content caching
-
-## 🚀 **Development Phases**
-
-### **Phase 1: Local Identity Core**
-- [ ] Local DID creation and storage
-- [ ] Key management system
-- [ ] Metadata management
-- [ ] Access control system
-
-### **Phase 2: Tool Integration**
-- [ ] Security tool (recovery, backup)
-- [ ] Storage tool (encrypted content)
-- [ ] Monetization tool (payments)
-- [ ] Tool SDK development
-
-### **Phase 3: Browser Layer**
-- [ ] Content aggregation
-- [ ] Domain discovery
-- [ ] Social features
-- [ ] Browser SDK development
-
-## 📚 **Documentation Structure**
-
+### Token Endpoint
 ```
-docs/
-├── architecture/
-│   ├── overview.md
-│   ├── local-storage.md
-│   ├── tool-integration.md
-│   └── browser-layer.md
-├── api/
-│   ├── identity-api.md
-│   ├── tools-api.md
-│   └── browser-api.md
-├── sdk/
-│   ├── identity-sdk.md
-│   ├── tools-sdk.md
-│   └── browser-sdk.md
-└── guides/
-    ├── getting-started.md
-    ├── tool-development.md
-    └── browser-integration.md
+POST /oauth/token
+Content-Type: application/x-www-form-urlencoded
+
+grant_type=authorization_code&code=authorization_code&client_id=your-client-id&client_secret=your-client-secret&redirect_uri=https://your-app.com/callback
 ```
 
-## 🎯 **Success Metrics**
+### User Info Endpoint
+```
+GET /oauth/userinfo
+Authorization: Bearer your-access-token
+```
 
-- [ ] Users can create and manage DIDs locally
-- [ ] Third-party tools can integrate seamlessly
-- [ ] Browser provides valuable content discovery
-- [ ] Users maintain full control over their data
-- [ ] System scales to support multiple tools and users
+## 🤝 Contributing
 
-## 📝 **Notes**
+We welcome contributions! Please see our [Contributing Guide](CONTRIBUTING.md) for details.
 
-- This is a decentralized, user-owned ecosystem
-- All identity data is stored locally on user devices
-- Third-party tools enhance but don't control user identity
-- Browser layer is opt-in and user-controlled
-- Privacy and user control are paramount
+### Development Setup
+
+```bash
+# Install dependencies
+npm install
+
+# Run tests
+npm test
+
+# Build SDK
+npm run build:sdk
+
+# Start development server
+npm run dev:dashboard
+```
+
+## 📄 License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+## 🌟 Features
+
+- **Sovereign Identity Management** - Complete control over digital identity
+- **Zero-Knowledge Proofs** - Privacy-preserving verification
+- **Cross-Platform SDK** - JavaScript, TypeScript, React support
+- **OAuth 2.0 Compliance** - Industry-standard authentication
+- **Military-Grade Security** - Advanced cryptographic protocols
+- **Social Recovery** - Secure identity recovery through trusted networks
+- **Age Verification** - Prove age without revealing birth date
+- **Location Verification** - Prove location without revealing coordinates
+
+## 🚀 Getting Started
+
+1. **Install the SDK**: `npm install @par-noir/identity-sdk`
+2. **Set up OAuth**: Configure your client ID and redirect URI
+3. **Integrate authentication**: Use the SDK in your application
+4. **Add zero-knowledge proofs**: Implement privacy-preserving features
+
+For detailed integration guides, see our [tutorials](tutorials/) and [examples](core/identity-core/examples/).
 
 ---
 
-**Last Updated**: $(date)
-**Version**: 1.0.0
-**Status**: Planning Phase 
+**Par Noir** - It's time to own your digital self. 
