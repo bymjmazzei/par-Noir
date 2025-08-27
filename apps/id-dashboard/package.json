@@ -30,7 +30,6 @@
     "test:coverage": "jest --coverage"
   },
   "dependencies": {
-    "@identity-protocol/identity-core": "file:../../core/identity-core",
     "@types/qrcode": "^1.5.5",
     "ipfs-http-client": "^60.0.1",
     "lucide-react": "^0.263.1",
