@@ -11,7 +11,6 @@ export default defineConfig({
     },
   },
   optimizeDeps: {
-    exclude: ['crypto', 'orbit-db', 'multiformats'],
     include: [
       'react',
       'react-dom',
@@ -27,7 +26,7 @@ export default defineConfig({
     minify: 'terser',
     chunkSizeWarningLimit: 1000, // Increase warning limit for better chunking
     rollupOptions: {
-      external: ['ipfs-http-client', 'orbit-db', 'multiformats'], // Externalize problematic modules
+      // external: ['ipfs-http-client', 'orbit-db', 'multiformats'], // Commented out for Netlify
       output: {
         manualChunks: (id) => {
           // Vendor chunks

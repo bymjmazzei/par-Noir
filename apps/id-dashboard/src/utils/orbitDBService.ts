@@ -128,24 +128,24 @@ export class OrbitDBService {
    */
   private async initializeOrbitDB(): Promise<void> {
     try {
-      // Import OrbitDB
-      const OrbitDB = await import('orbit-db');
+      // Import OrbitDB (disabled for Netlify deployment)
+      // const OrbitDB = await import('orbit-db');
       
-      // Create OrbitDB instance
-      this.orbitDBInstance = await OrbitDB.default.createInstance(this.ipfsInstance);
+      // Create OrbitDB instance (disabled for Netlify deployment)
+      // this.orbitDBInstance = await OrbitDB.default.createInstance(this.ipfsInstance);
       
-      // Create/open database
-      this.database = await this.orbitDBInstance.docs(this.config.databaseName, {
-        indexBy: 'pnId',
-        accessController: {
-          type: 'ipfs',
-          admin: ['*'],
-          write: ['*']
-        }
-      });
+      // Create/open database (disabled for Netlify deployment)
+      // this.database = await this.orbitDBInstance.docs(this.config.databaseName, {
+      //   indexBy: 'pnId',
+      //   accessController: {
+      //     type: 'ipfs',
+      //     admin: ['*'],
+      //     write: ['*']
+      //   }
+      // });
 
-      // Wait for database to load
-      await this.database.load();
+      // Wait for database to load (disabled for Netlify deployment)
+      // await this.database.load();
 
       if (process.env.NODE_ENV === 'development') {
         console.log('✅ OrbitDB database initialized');
