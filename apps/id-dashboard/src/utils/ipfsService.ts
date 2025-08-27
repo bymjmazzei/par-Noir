@@ -1,10 +1,9 @@
-// IPFS service for decentralized file storage
+// IPFS service using Pinata for decentralized file storage
+import { PinataSDK } from '@pinata/sdk';
+
 export interface IPFSConfig {
   apiKey: string;
   gatewayUrl: string;
-  url?: string;
-  projectId?: string;
-  projectSecret?: string;
 }
 
 export interface IPFSFile {
@@ -24,71 +23,75 @@ export interface IPFSUploadResult {
 
 export class IPFSService {
   private config: IPFSConfig;
+  private pinata: PinataSDK | null = null;
   private isInitialized = false;
 
   constructor(config: IPFSConfig) {
     this.config = config;
   }
 
-  async initialize(config?: IPFSConfig): Promise<void> {
+  async initialize(): Promise<void> {
+    if (this.isInitialized) return;
+
     try {
-      if (config) {
-        this.config = config;
+      // Initialize Pinata SDK
+      this.pinata = new PinataSDK({ pinataJWTKey: this.config.apiKey });
+      
+      if (process.env.NODE_ENV === 'development') {
+        console.log('✅ Pinata IPFS service initialized');
       }
+      
       this.isInitialized = true;
     } catch (error) {
-      // Handle initialization error silently
+      if (process.env.NODE_ENV === 'development') {
+        console.error('❌ Failed to initialize Pinata IPFS service:', error);
+      }
+      throw error;
     }
   }
 
-  async uploadFile(file: File, _metadata?: any): Promise<IPFSUploadResult> {
+  async uploadFile(file: File, metadata?: any): Promise<IPFSUploadResult> {
     if (!this.isInitialized) {
       await this.initialize();
     }
 
+    if (!this.pinata) {
+      throw new Error('Pinata client not initialized');
+    }
+
     try {
-      // Uploading file to IPFS
-      if (process.env.NODE_ENV === 'development' || !process.env.VITE_IPFS_API_KEY) {
-        // Simulate IPFS upload in development or when no API key
-        await new Promise(resolve => setTimeout(resolve, 2000));
-        
-        // Generate mock CID (Content Identifier)
-        const mockCid = `Qm${Math.random().toString(36).substring(2, 15)}${Math.random().toString(36).substring(2, 15)}`;
-        
-        const result: IPFSUploadResult = {
-          cid: mockCid,
-          url: `${this.config.gatewayUrl}/ipfs/${mockCid}`,
-          size: file.size,
-          name: file.name
-        };
+      // Prepare metadata for Pinata
+      const pinataMetadata = {
+        name: file.name,
+        keyvalues: {
+          ...metadata,
+          uploadedAt: new Date().toISOString(),
+          fileType: file.type,
+          fileSize: file.size
+        }
+      };
 
-        console.log('🔧 Mock IPFS upload:', mockCid);
-        return result;
-      } else {
-        // Real IPFS upload when API key is available
-        const { create } = await import('ipfs-http-client');
-        const ipfs = create({
-          url: this.config.url || 'https://ipfs.infura.io:5001',
-          headers: process.env.VITE_IPFS_API_KEY ? {
-            'Authorization': `Bearer ${process.env.VITE_IPFS_API_KEY}`
-          } : undefined
-        });
+      // Upload file to Pinata
+      const result = await this.pinata.pinFileToIPFS(file, {
+        pinataMetadata: pinataMetadata
+      });
 
-        const result = await ipfs.add(file);
-        const cid = result.cid.toString();
-        
-        const uploadResult: IPFSUploadResult = {
-          cid: cid,
-          url: `${this.config.gatewayUrl}/ipfs/${cid}`,
-          size: file.size,
-          name: file.name
-        };
+      const uploadResult: IPFSUploadResult = {
+        cid: result.IpfsHash,
+        url: `${this.config.gatewayUrl}/ipfs/${result.IpfsHash}`,
+        size: file.size,
+        name: file.name
+      };
 
-        console.log('🚀 Real IPFS upload:', cid);
-        return uploadResult;
+      if (process.env.NODE_ENV === 'development') {
+        console.log(`✅ File uploaded to IPFS: ${result.IpfsHash}`);
       }
+
+      return uploadResult;
     } catch (error) {
-      // Handle upload error silently
+      if (process.env.NODE_ENV === 'development') {
+        console.error('❌ Failed to upload file to IPFS:', error);
+      }
       throw error;
     }
   }
@@ -98,102 +101,193 @@ export class IPFSService {
       await this.initialize();
     }
 
+    if (!this.pinata) {
+      throw new Error('Pinata client not initialized');
+    }
+
     try {
-      // Convert identity data to file-like object
-      const identityBlob = new Blob([JSON.stringify(identityData, null, 2)], {
-        type: 'application/json'
+      // Convert identity data to JSON string
+      const jsonData = JSON.stringify(identityData, null, 2);
+      const blob = new Blob([jsonData], { type: 'application/json' });
+      
+      // Create a File object from the blob
+      const file = new File([blob], filename, { type: 'application/json' });
+
+      // Prepare metadata for identity file
+      const metadata = {
+        type: 'identity-backup',
+        version: '1.0',
+        timestamp: new Date().toISOString(),
+        identityName: identityData.nickname || 'unknown'
+      };
+
+      return await this.uploadFile(file, metadata);
+    } catch (error) {
+      if (process.env.NODE_ENV === 'development') {
+        console.error('❌ Failed to upload identity file:', error);
+      }
+      throw error;
+    }
+  }
+
+  async uploadJSON(data: any, name: string): Promise<IPFSUploadResult> {
+    if (!this.isInitialized) {
+      await this.initialize();
+    }
+
+    if (!this.pinata) {
+      throw new Error('Pinata client not initialized');
+    }
+
+    try {
+      // Upload JSON data to Pinata
+      const result = await this.pinata.pinJSONToIPFS(data, {
+        pinataMetadata: {
+          name: name,
+          keyvalues: {
+            type: 'json-data',
+            uploadedAt: new Date().toISOString()
+          }
+        }
       });
 
-      // Uploading identity file to IPFS
-
-      // Simulate IPFS upload
-      await new Promise(resolve => setTimeout(resolve, 1500));
-      
-      // Generate mock CID
-      const mockCid = `Qm${Math.random().toString(36).substring(2, 15)}${Math.random().toString(36).substring(2, 15)}`;
-      
-      const result: IPFSUploadResult = {
-        cid: mockCid,
-        url: `${this.config.gatewayUrl}/ipfs/${mockCid}`,
-        size: identityBlob.size,
-        name: filename
+      const uploadResult: IPFSUploadResult = {
+        cid: result.IpfsHash,
+        url: `${this.config.gatewayUrl}/ipfs/${result.IpfsHash}`,
+        size: JSON.stringify(data).length,
+        name: name
       };
 
-      // Identity file uploaded to IPFS successfully
-      return result;
+      if (process.env.NODE_ENV === 'development') {
+        console.log(`✅ JSON uploaded to IPFS: ${result.IpfsHash}`);
+      }
+
+      return uploadResult;
     } catch (error) {
-      // Handle upload error silently
+      if (process.env.NODE_ENV === 'development') {
+        console.error('❌ Failed to upload JSON to IPFS:', error);
+      }
       throw error;
     }
   }
 
-  async downloadFile(cid: string): Promise<Blob> {
-    if (!this.isInitialized) {
-      await this.initialize();
-    }
-
+  async getFile(cid: string): Promise<Response> {
     try {
-      // Downloading file from IPFS
-
-      // Simulate IPFS download
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      const response = await fetch(`${this.config.gatewayUrl}/ipfs/${cid}`);
       
-      // Return mock data
-      const mockData = { message: 'Mock IPFS file data', cid };
-      return new Blob([JSON.stringify(mockData)], { type: 'application/json' });
+      if (!response.ok) {
+        throw new Error(`Failed to fetch file: ${response.statusText}`);
+      }
+
+      return response;
     } catch (error) {
-      // Handle download error silently
+      if (process.env.NODE_ENV === 'development') {
+        console.error('❌ Failed to get file from IPFS:', error);
+      }
       throw error;
     }
   }
 
-  async getFileInfo(cid: string): Promise<IPFSFile> {
-    if (!this.isInitialized) {
-      await this.initialize();
-    }
-
+  async getFileAsJSON(cid: string): Promise<any> {
     try {
-      // Getting file info from IPFS
-
-      // Simulate getting file info
-      await new Promise(resolve => setTimeout(resolve, 500));
-      
-      return {
-        cid,
-        name: 'identity-file.json',
-        size: 1024,
-        type: 'application/json',
-        uploadedAt: new Date().toISOString()
-      };
+      const response = await this.getFile(cid);
+      return await response.json();
     } catch (error) {
-      // Handle file info error silently
+      if (process.env.NODE_ENV === 'development') {
+        console.error('❌ Failed to get JSON from IPFS:', error);
+      }
       throw error;
     }
   }
 
-  async pinFile(_cid: string): Promise<void> {
+  async getFileAsText(cid: string): Promise<string> {
+    try {
+      const response = await this.getFile(cid);
+      return await response.text();
+    } catch (error) {
+      if (process.env.NODE_ENV === 'development') {
+        console.error('❌ Failed to get text from IPFS:', error);
+      }
+      throw error;
+    }
+  }
+
+  async listFiles(): Promise<IPFSFile[]> {
     if (!this.isInitialized) {
       await this.initialize();
     }
 
-    try {
-      // Pinning file in IPFS
+    if (!this.pinata) {
+      throw new Error('Pinata client not initialized');
+    }
 
-      // Simulate pinning
-      await new Promise(resolve => setTimeout(resolve, 800));
-      
-      // File pinned successfully
+    try {
+      // Get list of pinned files from Pinata
+      const result = await this.pinata.pinList({
+        status: 'pinned'
+      });
+
+      const files: IPFSFile[] = result.rows.map((item: any) => ({
+        cid: item.ipfs_pin_hash,
+        name: item.metadata?.name || 'Unknown',
+        size: item.size || 0,
+        type: item.metadata?.keyvalues?.fileType || 'unknown',
+        uploadedAt: item.date_pinned || new Date().toISOString()
+      }));
+
+      if (process.env.NODE_ENV === 'development') {
+        console.log(`✅ Found ${files.length} files on IPFS`);
+      }
+
+      return files;
     } catch (error) {
-      // Handle pinning error silently
+      if (process.env.NODE_ENV === 'development') {
+        console.error('❌ Failed to list files from IPFS:', error);
+      }
       throw error;
     }
+  }
+
+  async deleteFile(cid: string): Promise<void> {
+    if (!this.isInitialized) {
+      await this.initialize();
+    }
+
+    if (!this.pinata) {
+      throw new Error('Pinata client not initialized');
+    }
+
+    try {
+      // Unpin file from Pinata
+      await this.pinata.unpin(cid);
+
+      if (process.env.NODE_ENV === 'development') {
+        console.log(`✅ File unpinned from IPFS: ${cid}`);
+      }
+    } catch (error) {
+      if (process.env.NODE_ENV === 'development') {
+        console.error('❌ Failed to delete file from IPFS:', error);
+      }
+      throw error;
+    }
+  }
+
+  getConfig(): IPFSConfig {
+    return { ...this.config };
+  }
+
+  async updateConfig(newConfig: Partial<IPFSConfig>): Promise<void> {
+    this.config = { ...this.config, ...newConfig };
+    
+    // Reinitialize with new config
+    this.isInitialized = false;
+    this.pinata = null;
+    await this.initialize();
   }
 }
 
-// Initialize with environment variables
+// Create IPFS service instance with environment variables
 export const ipfsService = new IPFSService({
-  apiKey: process.env.REACT_APP_IPFS_API_KEY || 'your-ipfs-api-key',
-  gatewayUrl: process.env.REACT_APP_IPFS_GATEWAY_URL || 'https://ipfs.io',
-  projectId: process.env.REACT_APP_IPFS_PROJECT_ID || 'your-ipfs-project-id',
-  projectSecret: process.env.REACT_APP_IPFS_PROJECT_SECRET || 'your-ipfs-project-secret'
+  apiKey: process.env.REACT_APP_PINATA_API_KEY || '',
+  gatewayUrl: process.env.REACT_APP_IPFS_GATEWAY_URL || 'https://gateway.pinata.cloud'
 });
