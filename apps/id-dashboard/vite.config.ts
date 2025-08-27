@@ -132,6 +132,8 @@ export default defineConfig({
     'process.env.REACT_APP_IPFS_PROJECT_ID': JSON.stringify(process.env.REACT_APP_IPFS_PROJECT_ID),
     'process.env.REACT_APP_SENDGRID_API_KEY': JSON.stringify(process.env.REACT_APP_SENDGRID_API_KEY),
     'process.env.REACT_APP_TWILIO_ACCOUNT_SID': JSON.stringify(process.env.REACT_APP_TWILIO_ACCOUNT_SID),
+    'process.env.REACT_APP_TWILIO_AUTH_TOKEN': JSON.stringify(process.env.REACT_APP_TWILIO_AUTH_TOKEN),
+    'process.env.REACT_APP_TWILIO_FROM_NUMBER': JSON.stringify(process.env.REACT_APP_TWILIO_FROM_NUMBER),
     'process.env.REACT_APP_IPFS_API_KEY': JSON.stringify(process.env.REACT_APP_IPFS_API_KEY)
   },
   esbuild: {

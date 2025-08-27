@@ -1,4 +1,6 @@
 // SMS service using Twilio
+import twilio from 'twilio';
+
 export interface SMSConfig {
   accountSid: string;
   authToken: string;
@@ -19,120 +21,168 @@ export interface SecuritySMSData {
 }
 
 export class SMSService {
-  // private config: SMSConfig;
+  private config: SMSConfig;
+  private client: twilio.Twilio | null = null;
   private isInitialized = false;
 
-  // constructor(config: SMSConfig) {
-  //   // this.config = config;
-  // }
+  constructor(config: SMSConfig) {
+    this.config = config;
+  }
 
   async initialize(): Promise<void> {
     if (this.isInitialized) return;
 
     try {
-      // In production, this would initialize Twilio
-      // For now, we'll simulate the service
-      // Silently handle SMS service initialization in production
+      // Initialize Twilio client
+      this.client = twilio(this.config.accountSid, this.config.authToken);
+      
       if (process.env.NODE_ENV === 'development') {
-        // Development logging only
+        console.log('✅ Twilio SMS service initialized');
       }
+      
       this.isInitialized = true;
     } catch (error) {
-      // Silently handle SMS service initialization failures in production
       if (process.env.NODE_ENV === 'development') {
-        // Development logging only
+        console.error('❌ Failed to initialize Twilio SMS service:', error);
       }
       throw error;
     }
   }
 
-  async sendRecoverySMS(_data: RecoverySMSData): Promise<void> {
+  async sendRecoverySMS(data: RecoverySMSData): Promise<void> {
     if (!this.isInitialized) {
       await this.initialize();
     }
 
-    try {
-      // In production, this would send via Twilio
-      // Silently handle recovery SMS sending in production
-      if (process.env.NODE_ENV === 'development') {
-        // Development logging only
-      }
+    if (!this.client) {
+      throw new Error('Twilio client not initialized');
+    }
 
-      // Simulate SMS sending
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      
-      // Silently handle successful recovery SMS sending in production
+    try {
+      const message = data.recoveryCode 
+        ? `Your Par-Noir recovery code is: ${data.recoveryCode}. Use this code to recover your account.`
+        : data.message;
+
+      await this.client.messages.create({
+        body: message,
+        from: this.config.fromNumber,
+        to: data.to
+      });
+
       if (process.env.NODE_ENV === 'development') {
-        // Development logging only
+        console.log(`✅ Recovery SMS sent to ${data.to}`);
       }
     } catch (error) {
-      // Silently handle recovery SMS sending failures in production
       if (process.env.NODE_ENV === 'development') {
-        // Development logging only
+        console.error('❌ Failed to send recovery SMS:', error);
       }
       throw error;
     }
   }
 
-  async sendSecuritySMS(_data: SecuritySMSData): Promise<void> {
+  async sendSecuritySMS(data: SecuritySMSData): Promise<void> {
     if (!this.isInitialized) {
       await this.initialize();
     }
 
-    try {
-      // In production, this would send via Twilio
-      // Silently handle security SMS sending in production
-      if (process.env.NODE_ENV === 'development') {
-        // Development logging only
-      }
+    if (!this.client) {
+      throw new Error('Twilio client not initialized');
+    }
 
-      // Simulate SMS sending
-      await new Promise(resolve => setTimeout(resolve, 800));
-      
-      // Silently handle successful security SMS sending in production
+    try {
+      const alertMessages = {
+        login: `Security Alert: New login detected for ${data.username}`,
+        recovery: `Security Alert: Account recovery initiated for ${data.username}`,
+        device: `Security Alert: New device detected for ${data.username}`,
+        custodian: `Security Alert: Custodian access for ${data.username}`
+      };
+
+      const message = `${alertMessages[data.alertType]}\n\nDetails: ${data.details}\n\nIf this wasn't you, please secure your account immediately.`;
+
+      await this.client.messages.create({
+        body: message,
+        from: this.config.fromNumber,
+        to: data.to
+      });
+
       if (process.env.NODE_ENV === 'development') {
-        // Development logging only
+        console.log(`✅ Security SMS sent to ${data.to}`);
       }
     } catch (error) {
-      // Silently handle security SMS sending failures in production
       if (process.env.NODE_ENV === 'development') {
-        // Development logging only
+        console.error('❌ Failed to send security SMS:', error);
       }
       throw error;
     }
   }
 
-  async sendVerificationCode(_data: {
-    to: string;
-    code: string;
-    purpose: 'recovery' | 'device' | 'custodian';
-  }): Promise<void> {
+  async sendVerificationSMS(to: string, code: string): Promise<void> {
     if (!this.isInitialized) {
       await this.initialize();
     }
 
-    try {
-      // Silently handle verification code sending in production
-      if (process.env.NODE_ENV === 'development') {
-        // Development logging only
-      }
+    if (!this.client) {
+      throw new Error('Twilio client not initialized');
+    }
 
-      // Simulate SMS sending
-      await new Promise(resolve => setTimeout(resolve, 600));
-      
-      // Silently handle successful verification code sending in production
+    try {
+      const message = `Your Par-Noir verification code is: ${code}. Enter this code to verify your phone number.`;
+
+      await this.client.messages.create({
+        body: message,
+        from: this.config.fromNumber,
+        to: to
+      });
+
       if (process.env.NODE_ENV === 'development') {
-        // Development logging only
+        console.log(`✅ Verification SMS sent to ${to}`);
       }
     } catch (error) {
-      // Silently handle verification code sending failures in production
       if (process.env.NODE_ENV === 'development') {
-        // Development logging only
+        console.error('❌ Failed to send verification SMS:', error);
       }
       throw error;
     }
+  }
+
+  async validatePhoneNumber(phoneNumber: string): Promise<boolean> {
+    if (!this.isInitialized) {
+      await this.initialize();
+    }
+
+    if (!this.client) {
+      throw new Error('Twilio client not initialized');
+    }
+
+    try {
+      // Use Twilio's Lookup API to validate phone numbers
+      const lookup = await this.client.lookups.v2.phoneNumbers(phoneNumber).fetch();
+      return lookup.valid;
+    } catch (error) {
+      if (process.env.NODE_ENV === 'development') {
+        console.error('❌ Phone number validation failed:', error);
+      }
+      return false;
+    }
+  }
+
+  getConfig(): SMSConfig {
+    return { ...this.config };
+  }
+
+  async updateConfig(newConfig: Partial<SMSConfig>): Promise<void> {
+    this.config = { ...this.config, ...newConfig };
+    
+    // Reinitialize with new config
+    this.isInitialized = false;
+    this.client = null;
+    await this.initialize();
   }
 }
 
-// Initialize with environment variables
-export const smsService = new SMSService();
+// Create SMS service instance with environment variables
+export const smsService = new SMSService({
+  accountSid: process.env.REACT_APP_TWILIO_ACCOUNT_SID || '',
+  authToken: process.env.REACT_APP_TWILIO_AUTH_TOKEN || '',
+  fromNumber: process.env.REACT_APP_TWILIO_FROM_NUMBER || ''
+});
