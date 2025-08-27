@@ -39,7 +39,8 @@
     "react-dom": "^18.2.0",
     "react-router-dom": "^6.8.1",
     "tailwind-merge": "^2.0.0",
-    "twilio": "^4.19.0"
+    "twilio": "^4.19.0",
+    "@sendgrid/mail": "^8.1.0"
   },
   "devDependencies": {
     "@playwright/test": "^1.54.2",
