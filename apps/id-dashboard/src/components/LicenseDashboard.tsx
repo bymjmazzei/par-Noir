@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { LicenseModal } from './LicenseModal';
 import { LicenseVerification, LicenseInfo, LicenseProof, LicenseReceipt, UsagePattern } from '../utils/licenseVerification';
-import DetectionTest from '../utils/detectionTest';
-import EnforcementTest from '../utils/enforcementTest';
+// import DetectionTest from '../utils/detectionTest';
+// import EnforcementTest from '../utils/enforcementTest';
 
 export const LicenseDashboard: React.FC = () => {
   const [licenseKey, setLicenseKey] = useState<string>('');
@@ -382,7 +382,8 @@ export const LicenseDashboard: React.FC = () => {
                 <div className="flex flex-wrap gap-2">
                   <button
                     onClick={async () => {
-                      await DetectionTest.runComprehensiveTest(identityHash);
+                      // await DetectionTest.runComprehensiveTest(identityHash);
+                      console.log('Detection test disabled');
                       await loadLicenseInfo(); // Refresh the display
                     }}
                     className="bg-blue-600 text-white px-3 py-1 rounded text-xs hover:bg-blue-500"
@@ -391,7 +392,8 @@ export const LicenseDashboard: React.FC = () => {
                   </button>
                   <button
                     onClick={async () => {
-                      await EnforcementTest.runComprehensiveEnforcementTest(identityHash);
+                      // await EnforcementTest.runComprehensiveEnforcementTest(identityHash);
+                      console.log('Enforcement test disabled');
                       await loadLicenseInfo(); // Refresh the display
                     }}
                     className="bg-purple-600 text-white px-3 py-1 rounded text-xs hover:bg-purple-500"
@@ -400,7 +402,8 @@ export const LicenseDashboard: React.FC = () => {
                   </button>
                   <button
                     onClick={async () => {
-                      await DetectionTest.testGracePeriod(identityHash);
+                      // await DetectionTest.testGracePeriod(identityHash);
+                      console.log('Grace period test disabled');
                       await loadLicenseInfo(); // Refresh the display
                     }}
                     className="bg-yellow-600 text-white px-3 py-1 rounded text-xs hover:bg-yellow-500"
@@ -409,7 +412,8 @@ export const LicenseDashboard: React.FC = () => {
                   </button>
                   <button
                     onClick={async () => {
-                      await DetectionTest.simulateGracePeriodExpiration(identityHash);
+                      // await DetectionTest.simulateGracePeriodExpiration(identityHash);
+                      console.log('Expiration test disabled');
                       await loadLicenseInfo(); // Refresh the display
                     }}
                     className="bg-red-600 text-white px-3 py-1 rounded text-xs hover:bg-red-500"
@@ -418,7 +422,8 @@ export const LicenseDashboard: React.FC = () => {
                   </button>
                   <button
                     onClick={async () => {
-                      DetectionTest.resetDetectionLogs();
+                      // DetectionTest.resetDetectionLogs();
+                      console.log('Reset test disabled');
                       await loadLicenseInfo(); // Refresh the display
                     }}
                     className="bg-gray-600 text-white px-3 py-1 rounded text-xs hover:bg-gray-500"

@@ -14,7 +14,7 @@ app.use(cors({
 app.use(express.json());
 
 // Coinbase Commerce API configuration
-const COINBASE_API_KEY = 'c79f3516-c20c-4b32-af0d-4938ec2039f0';
+const COINBASE_API_KEY = process.env.COINBASE_COMMERCE_API_KEY || 'your-coinbase-api-key-here';
 const COINBASE_API_BASE = 'https://api.commerce.coinbase.com';
 
 /**

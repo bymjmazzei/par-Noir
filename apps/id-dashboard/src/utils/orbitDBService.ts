@@ -132,7 +132,7 @@ export class OrbitDBService {
       const OrbitDB = await import('orbit-db');
       
       // Create OrbitDB instance
-      this.orbitDBInstance = await OrbitDB.createInstance(this.ipfsInstance);
+      this.orbitDBInstance = await OrbitDB.default.createInstance(this.ipfsInstance);
       
       // Create/open database
       this.database = await this.orbitDBInstance.docs(this.config.databaseName, {
@@ -147,7 +147,9 @@ export class OrbitDBService {
       // Wait for database to load
       await this.database.load();
 
-      logDebug('✅ OrbitDB database initialized');
+      if (process.env.NODE_ENV === 'development') {
+        console.log('✅ OrbitDB database initialized');
+      }
     } catch (error) {
       throw new IdentityError(
         'Failed to initialize OrbitDB database',

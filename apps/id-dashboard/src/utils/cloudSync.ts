@@ -212,11 +212,11 @@ export class CloudSyncManager {
   private async processSyncQueue(): Promise<void> {
     if (this.syncQueue.length === 0) return;
 
+    const updates = [...this.syncQueue];
+    
     if (process.env.NODE_ENV === 'development') {
       console.log(`Processing ${updates.length} queued updates`);
     }
-
-    const updates = [...this.syncQueue];
     this.syncQueue = [];
 
     for (const update of updates) {
