@@ -157,7 +157,7 @@ The PWA can be deployed to any static hosting service:
 - **Netlify**: Automatic deployments
 - **Vercel**: Edge deployment
 - **GitHub Pages**: Free hosting
-- **Firebase Hosting**: Google's hosting
+- **OrbitDB/IPFS**: Decentralized hosting
 
 ### Build Output
 ```bash

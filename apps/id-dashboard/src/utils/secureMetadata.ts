@@ -45,9 +45,8 @@ export class SecureMetadataCrypto {
         updatedAt: new Date().toISOString()
       };
     } catch (error) {
-      // Silently handle metadata encryption failures in production
       if (process.env.NODE_ENV === 'development') {
-        // Development logging only
+        console.error('Failed to encrypt metadata:', error);
       }
       throw new Error('Metadata encryption failed');
     }
@@ -72,9 +71,8 @@ export class SecureMetadataCrypto {
       const decryptedString = await IdentityCrypto.decryptData(encryptedData, passcode);
       return JSON.parse(decryptedString);
     } catch (error) {
-      // Silently handle metadata decryption failures in production
       if (process.env.NODE_ENV === 'development') {
-        // Development logging only
+        console.error('Failed to decrypt metadata:', error);
       }
       throw new Error('Metadata decryption failed - check your credentials');
     }
@@ -112,9 +110,8 @@ export class SecureMetadataCrypto {
         secureMetadata.identityId
       );
     } catch (error) {
-      // Silently handle metadata field update failures in production
       if (process.env.NODE_ENV === 'development') {
-        // Development logging only
+        console.error('Failed to update metadata field:', error);
       }
       throw new Error('Metadata update failed');
     }

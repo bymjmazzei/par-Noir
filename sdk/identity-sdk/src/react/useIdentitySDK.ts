@@ -37,11 +37,14 @@ export const useIdentitySDK = (config: SDKConfig) => {
       });
 
       // Check for existing session
-      const currentSession = sdkRef.current.getCurrentSession();
-      if (currentSession) {
-        setSession(currentSession);
-        setIsAuthenticated(sdkRef.current.isAuthenticated());
-      }
+      sdkRef.current?.getCurrentSession().then(currentSession => {
+        if (currentSession) {
+          setSession(currentSession);
+          sdkRef.current?.isAuthenticated().then(isAuth => {
+            setIsAuthenticated(isAuth);
+          });
+        }
+      });
     }
   }, [config]);
 

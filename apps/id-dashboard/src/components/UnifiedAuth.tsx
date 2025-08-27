@@ -19,6 +19,8 @@ export const UnifiedAuth: React.FC<UnifiedAuthProps> = ({
   const [passcode, setPasscode] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<Error | null>(null);
+  
+
 
   const handleAuthenticate = async (e: React.FormEvent) => {
     e.preventDefault();

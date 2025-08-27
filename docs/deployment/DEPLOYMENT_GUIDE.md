@@ -178,7 +178,7 @@ DATABASE_URL=postgresql://identity_protocol:password@localhost:5432/identity_pro
 REDIS_URL=redis://:password@localhost:6379
 
 # External Services
-FIREBASE_PROJECT_ID=your-firebase-project
+IPFS_PROJECT_ID=your-ipfs-project
 SENDGRID_API_KEY=your-sendgrid-api-key
 TWILIO_ACCOUNT_SID=your-twilio-sid
 TWILIO_AUTH_TOKEN=your-twilio-token

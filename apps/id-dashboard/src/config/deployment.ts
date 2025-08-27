@@ -2,7 +2,7 @@
 export const deploymentConfig = {
   // Production API endpoints
   apiEndpoints: {
-    firebase: 'https://api.identityprotocol.com/firebase',
+    orbitDB: 'https://api.identityprotocol.com/orbitdb',
     websocket: 'wss://api.identityprotocol.com/socket.io',
     cloudSync: 'https://api.identityprotocol.com/sync',
     emailService: 'https://api.identityprotocol.com/email',

@@ -60,12 +60,12 @@ describe('IdentitySDK', () => {
       expect(sdk.config.identityProvider.config.clientId).toBe('test-client-id');
     });
 
-    it('should check authentication status', () => {
-      expect(sdk.isAuthenticated()).toBe(false);
+    it('should check authentication status', async () => {
+      expect(await sdk.isAuthenticated()).toBe(false);
     });
 
-    it('should get current session', () => {
-      const session = sdk.getCurrentSession();
+    it('should get current session', async () => {
+      const session = await sdk.getCurrentSession();
       expect(session).toBeNull();
     });
   });

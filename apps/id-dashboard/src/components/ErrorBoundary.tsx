@@ -33,17 +33,20 @@ export class ErrorBoundary extends Component<Props, State> {
     this.setState({ hasError: false, error: undefined, errorInfo: undefined });
   };
 
-  // private handleReportError = () => {
-  //   const { error, errorInfo } = this.state;
-  //   if (error) {
-  //     // In production, this would send to error reporting service
-  //     console.log('Reporting error:', {
-  //       message: error.message,
-  //       stack: error.stack,
-  //       componentStack: errorInfo?.componentStack
-  //     });
-  //   }
-  // };
+  private handleReportError = () => {
+    const { error, errorInfo } = this.state;
+    if (error) {
+      // In production, this would send to error reporting service
+      if (process.env.NODE_ENV === 'development') {
+        console.error('Error Boundary caught error:', {
+          message: error.message,
+          stack: error.stack,
+          componentStack: errorInfo?.componentStack
+        });
+      }
+      // TODO: Implement production error reporting service
+    }
+  };
 
   public render() {
     if (this.state.hasError) {

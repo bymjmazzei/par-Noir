@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useDecentralizedAuth } from '../utils/decentralizedAuth';
-import { Identity } from '../../../core/identity-core/src/types';
+import { useDecentralizedAuth, Identity } from '../utils/decentralizedAuth';
 
 interface DecentralizedAuthProps {
   onAuthenticated?: (identity: Identity) => void;

@@ -20,10 +20,16 @@ import {
 import { CryptoManager } from './encryption/crypto';
 import { IndexedDBStorage } from './storage/indexeddb';
 import { PrivacyManager, ToolAccessRequest } from './utils/privacy-manager';
+import { DeviceSecurityManager } from './security/device-security';
+import { WebAuthnManager } from './security/webauthn';
+import { SupplyChainSecurityManager } from './security/supply-chain-security';
 
 export class IdentityCore {
   private storage: IndexedDBStorage;
   private privacyManager: PrivacyManager;
+  private deviceSecurity: DeviceSecurityManager;
+  private webAuthn: WebAuthnManager;
+  private supplyChainSecurity: SupplyChainSecurityManager;
   private config: IdentityCoreConfig;
   private eventHandlers: Map<IdentityCoreEventType, Set<IdentityCoreEventHandler<any>>> = new Map();
 
@@ -38,6 +44,9 @@ export class IdentityCore {
 
     this.storage = new IndexedDBStorage();
     this.privacyManager = new PrivacyManager();
+    this.deviceSecurity = new DeviceSecurityManager();
+    this.webAuthn = new WebAuthnManager();
+    this.supplyChainSecurity = new SupplyChainSecurityManager();
 
     // Start background security monitoring
     this.startBackgroundSecurity();
@@ -66,12 +75,75 @@ export class IdentityCore {
    */
   async initialize(): Promise<void> {
     try {
+      // Initialize storage
       await this.storage.initialize();
+      
+      // Initialize security modules
+      await this.deviceSecurity.initialize();
+      await this.supplyChainSecurity.initialize();
+      
+      // Check WebAuthn support
+      if (WebAuthnManager.isSupported()) {
+        this.emit('webauthn_supported', { supported: true });
+      }
+      
       this.emit('initialized', {});
     } catch (error) {
       throw new IdentityError(
         'Failed to initialize Identity Core',
         IdentityErrorCodes.STORAGE_ERROR,
+        error
+      );
+    }
+  }
+
+  /**
+   * Get device security manager
+   */
+  getDeviceSecurity(): DeviceSecurityManager {
+    return this.deviceSecurity;
+  }
+
+  /**
+   * Get WebAuthn manager
+   */
+  getWebAuthn(): WebAuthnManager {
+    return this.webAuthn;
+  }
+
+  /**
+   * Get supply chain security manager
+   */
+  getSupplyChainSecurity(): SupplyChainSecurityManager {
+    return this.supplyChainSecurity;
+  }
+
+  /**
+   * Perform security health check
+   */
+  async performSecurityHealthCheck(): Promise<{
+    deviceSecurity: boolean;
+    webAuthnSupported: boolean;
+    supplyChainSecurity: boolean;
+    threats: any[];
+    vulnerabilities: any[];
+  }> {
+    try {
+      const deviceFingerprint = this.deviceSecurity.getDeviceFingerprint();
+      const threatHistory = this.deviceSecurity.getThreatHistory();
+      const latestAudit = this.supplyChainSecurity.getLatestAuditResult();
+      
+      return {
+        deviceSecurity: !!deviceFingerprint,
+        webAuthnSupported: WebAuthnManager.isSupported(),
+        supplyChainSecurity: latestAudit?.riskLevel !== 'critical',
+        threats: threatHistory,
+        vulnerabilities: latestAudit ? [latestAudit] : []
+      };
+    } catch (error) {
+      throw new IdentityError(
+        'Security health check failed',
+        IdentityErrorCodes.SECURITY_ERROR,
         error
       );
     }
@@ -257,6 +329,45 @@ export class IdentityCore {
    */
   async getAllDIDs(): Promise<Array<{ id: string; pnName: string; createdAt: string; status: string }>> {
     return this.storage.getAllDIDs();
+  }
+
+  /**
+   * Get DID by ID (without decryption - returns public info only)
+   */
+  async getDID(didId: string): Promise<{ id: string; pnName: string; createdAt: string; status: string; metadata?: any } | null> {
+    try {
+      // Try to get DID by ID first
+      const dids = await this.storage.getAllDIDs();
+      const did = dids.find(d => d.id === didId);
+      
+      if (did) {
+        return {
+          id: did.id,
+          pnName: did.pnName,
+          createdAt: did.createdAt,
+          status: did.status
+        };
+      }
+
+      // If not found by ID, try to get by pnName
+      const byName = await this.storage.getDIDByPNName(didId);
+      if (byName) {
+        return {
+          id: byName.id,
+          pnName: byName.pnName,
+          createdAt: byName.createdAt,
+          status: byName.status
+        };
+      }
+
+      return null;
+    } catch (error) {
+      throw new IdentityError(
+        'Failed to retrieve DID',
+        IdentityErrorCodes.STORAGE_ERROR,
+        error
+      );
+    }
   }
 
   /**
@@ -590,4 +701,5 @@ export { PrivacyManager } from './utils/privacy-manager';
 export { ZKProofManager } from './encryption/zk-proofs';
 export { DIDResolver } from './distributed/DIDResolver';
 export { IdentitySync } from './distributed/IdentitySync';
-export { DecentralizedAuth } from './distributed/DecentralizedAuth'; 
+export { DecentralizedAuth } from './distributed/DecentralizedAuth';
+export { DistributedIdentityManager } from './distributed/DistributedIdentityManager'; 

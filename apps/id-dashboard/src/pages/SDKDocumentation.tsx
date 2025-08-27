@@ -149,7 +149,7 @@ const complianceData = await sdk.requestDataCollection({
                 <div className="prose max-w-none">
                   <p className="text-gray-600 mb-4">
                     The Identity Protocol SDK enables users to create their own identities that serve as access tokens. 
-                    Users control what personal data they share with third parties, providing OAuth-like authentication 
+                    Users control what personal data they share with third parties, providing decentralized authentication 
                     with user-owned data.
                   </p>
                   
@@ -158,7 +158,7 @@ const complianceData = await sdk.requestDataCollection({
                     <li>• <strong>User-Owned Identities:</strong> Users create and control their own identities</li>
                     <li>• <strong>Access Token Management:</strong> Identities serve as access tokens for third parties</li>
                     <li>• <strong>Controlled Data Sharing:</strong> Users decide what data to share with each platform</li>
-                    <li>• <strong>OAuth-Like Flow:</strong> Familiar authentication patterns for developers</li>
+                    <li>• <strong>Decentralized Flow:</strong> Self-sovereign authentication patterns for developers</li>
                     <li>• <strong>Compliance Ready:</strong> Request additional data collection from users</li>
                   </ul>
                 </div>
@@ -172,7 +172,7 @@ const complianceData = await sdk.requestDataCollection({
                   <ul className="space-y-2 text-gray-600">
                     <li>✅ Identity creation and management</li>
                     <li>✅ Access control and permissions</li>
-                    <li>✅ OAuth-like authentication flow</li>
+                    <li>✅ Decentralized authentication flow</li>
                     <li>✅ Data collection requests</li>
                     <li>✅ Session management</li>
                     <li>✅ Privacy control</li>
@@ -200,7 +200,7 @@ const complianceData = await sdk.requestDataCollection({
                 <div className="space-y-3 text-blue-800">
                   <p><strong>1. User Creates Identity:</strong> Users create their own identity with their chosen data</p>
                   <p><strong>2. Platform Integration:</strong> Third parties integrate the SDK to accept these identities</p>
-                  <p><strong>3. Authentication Flow:</strong> Users sign in with their identity (OAuth-like flow)</p>
+                  <p><strong>3. Authentication Flow:</strong> Users sign in with their identity (decentralized flow)</p>
                   <p><strong>4. Data Sharing:</strong> Users control what data they share with each platform</p>
                   <p><strong>5. Access Token:</strong> The identity serves as an access token for the platform</p>
                 </div>

@@ -3,7 +3,7 @@
 ## **📋 Pre-Deployment Checklist**
 
 ### **✅ What's Been Implemented**
-- ✅ **Firebase Cloud API** - Real database integration (with mock fallback)
+- ✅ **OrbitDB Cloud API** - Decentralized database integration (with mock fallback)
 - ✅ **Email Service** - SendGrid integration for recovery emails
 - ✅ **SMS Service** - Twilio integration for SMS recovery
 - ✅ **IPFS Service** - Decentralized file storage
@@ -15,8 +15,8 @@
 
 ## **Step 1: Sign Up for Services**
 
-### **1. Firebase (Required - FREE)**
-- **URL**: https://console.firebase.google.com/
+### **1. OrbitDB/IPFS (Required - FREE)**
+- **URL**: https://ipfs.io/
 - **Cost**: Free tier (1GB storage, 50K reads/day, 20K writes/day)
 - **Setup**:
   1. Create new project
@@ -59,13 +59,11 @@ nano .env
 
 ### **Required Environment Variables**
 ```bash
-# Firebase (Required)
-REACT_APP_FIREBASE_API_KEY=your-firebase-api-key
-REACT_APP_FIREBASE_AUTH_DOMAIN=your-project.firebaseapp.com
-REACT_APP_FIREBASE_PROJECT_ID=your-project-id
-REACT_APP_FIREBASE_STORAGE_BUCKET=your-project.appspot.com
-REACT_APP_FIREBASE_MESSAGING_SENDER_ID=your-sender-id
-REACT_APP_FIREBASE_APP_ID=your-app-id
+# OrbitDB/IPFS (Required)
+REACT_APP_IPFS_PROJECT_ID=your-ipfs-project-id
+REACT_APP_IPFS_PROJECT_SECRET=your-ipfs-project-secret
+REACT_APP_IPFS_URL=https://ipfs.infura.io:5001
+REACT_APP_IPFS_GATEWAY_URL=https://ipfs.io
 
 # SendGrid (Recommended)
 REACT_APP_SENDGRID_API_KEY=your-sendgrid-api-key
@@ -92,7 +90,7 @@ REACT_APP_IPFS_PROJECT_SECRET=your-ipfs-project-secret
 cd apps/id-dashboard
 
 # Install production dependencies
-npm install firebase @sendgrid/mail twilio @zxing/library ipfs-http-client --legacy-peer-deps
+npm install orbit-db @sendgrid/mail twilio @zxing/library ipfs-http-client --legacy-peer-deps
 ```
 
 ### **If you encounter dependency conflicts:**
@@ -107,12 +105,12 @@ npm install
 
 ## **Step 4: Test Services Locally**
 
-### **Test Firebase Connection**
+### **Test OrbitDB Connection**
 ```bash
 # Start development server
 npm run dev
 
-# Check browser console for Firebase connection status
+# Check browser console for OrbitDB connection status
 ```
 
 ### **Test Email Service**
@@ -184,7 +182,7 @@ REACT_APP_ENABLE_DEBUG_MODE=false
 
 ### **Common Issues**
 
-#### **Firebase Connection Failed**
+#### **OrbitDB Connection Failed**
 - Verify API key is correct
 - Check Firestore Database is enabled
 - Ensure project ID matches
@@ -216,7 +214,7 @@ The app includes built-in service status monitoring. Check the browser console f
 ## **💰 Cost Estimation**
 
 ### **Monthly Costs (First Year)**
-- **Firebase**: $0 (free tier)
+- **OrbitDB/IPFS**: $0 (free tier)
 - **SendGrid**: $0 (free tier - 100 emails/day)
 - **Twilio**: $0 (free trial), then ~$1-5/month
 - **IPFS**: $0 (free tier)
@@ -232,7 +230,7 @@ The app includes built-in service status monitoring. Check the browser console f
 - Track user engagement
 
 ### **Scale Up**
-- Upgrade Firebase plan if needed
+- Upgrade IPFS plan if needed
 - Add more SendGrid emails
 - Expand Twilio usage
 
@@ -243,7 +241,7 @@ The app includes built-in service status monitoring. Check the browser console f
 
 ## **✅ Success Checklist**
 
-- [ ] Firebase project created and configured
+- [ ] IPFS project created and configured
 - [ ] SendGrid account set up with verified sender
 - [ ] Twilio account created (optional)
 - [ ] IPFS service configured (optional)
@@ -257,7 +255,7 @@ The app includes built-in service status monitoring. Check the browser console f
 ## **🎉 You're Ready for Production!**
 
 Your Identity Protocol Dashboard is now fully production-ready with:
-- ✅ Real cloud database (Firebase)
+- ✅ Decentralized database (OrbitDB/IPFS)
 - ✅ Email recovery system (SendGrid)
 - ✅ SMS recovery system (Twilio)
 - ✅ Decentralized file storage (IPFS)

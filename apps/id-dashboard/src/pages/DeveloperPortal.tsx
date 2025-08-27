@@ -1,6 +1,57 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
+import { LicenseModal } from '../components/LicenseModal';
+import { LicenseVerification, LicenseInfo } from '../utils/licenseVerification';
 
 export const DeveloperPortal: React.FC = () => {
+  const [licenseInfo, setLicenseInfo] = useState<LicenseInfo | null>(null);
+  const [showLicenseModal, setShowLicenseModal] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+  const [currentTheme, setCurrentTheme] = useState<'dark' | 'light'>('dark');
+
+  useEffect(() => {
+    loadLicenseInfo();
+  }, []);
+
+  useEffect(() => {
+    // Function to update theme
+    const updateTheme = () => {
+      const isDarkTheme = document.documentElement.className.includes('theme-dark');
+      setCurrentTheme(isDarkTheme ? 'dark' : 'light');
+    };
+
+    // Initial theme check
+    updateTheme();
+
+    // Listen for theme changes
+    const observer = new MutationObserver(updateTheme);
+    observer.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ['class']
+    });
+
+    return () => observer.disconnect();
+  }, []);
+
+  const loadLicenseInfo = async () => {
+    setIsLoading(true);
+    try {
+      const storedLicense = localStorage.getItem('identity_protocol_license');
+      if (storedLicense) {
+        const licenseData = JSON.parse(storedLicense);
+        setLicenseInfo(licenseData);
+      }
+    } catch (error) {
+      console.error('Failed to load license info:', error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleLicensePurchased = async (newLicenseKey: string) => {
+    setShowLicenseModal(false);
+    loadLicenseInfo();
+  };
+
   const copyCode = (button: React.MouseEvent<HTMLButtonElement>) => {
     const codeBlock = button.currentTarget.previousElementSibling as HTMLElement;
     const code = codeBlock.textContent || '';
@@ -17,77 +68,95 @@ export const DeveloperPortal: React.FC = () => {
     });
   };
 
-  return (
-    <div className="min-h-screen bg-bg-primary text-text-primary">
-      {/* Hero Section */}
-      <section className="bg-gradient-to-br from-secondary to-bg-primary py-20">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="grid lg:grid-cols-2 gap-12 items-center">
-            <div>
-              <div className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-primary text-bg-primary mb-6">
-                Developer Portal
-              </div>
-              <h1 className="text-4xl lg:text-6xl font-bold mb-6 text-text-primary">
-                Build the Future of <span className="text-primary">Digital Identity</span>
-              </h1>
-              <p className="text-xl text-text-secondary mb-8">
-                Integrate sovereign identity into your applications with our comprehensive SDK, 
-                documentation, and developer tools.
-              </p>
-              <div className="flex flex-col sm:flex-row gap-4">
-                <a href="#quickstart" className="inline-flex items-center px-6 py-3 bg-primary hover:bg-hover text-bg-primary rounded-lg font-medium transition-colors">
-                  <span>Get Started</span>
-                  <svg className="ml-2 w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 12h14m-7-7l7 7-7 7"/>
-                  </svg>
-                </a>
-                <a href="https://github.com/identity-protocol" target="_blank" rel="noopener noreferrer" className="inline-flex items-center px-6 py-3 bg-secondary hover:bg-hover text-text-primary rounded-lg font-medium transition-colors">
-                  <span>View on GitHub</span>
-                  <svg className="ml-2 w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
-                    <path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22"/>
-                  </svg>
-                </a>
-              </div>
-            </div>
-            <div className="bg-secondary rounded-lg p-6">
-              <div className="flex items-center mb-4">
-                <div className="flex space-x-2">
-                  <div className="w-3 h-3 bg-red-500 rounded-full"></div>
-                  <div className="w-3 h-3 bg-yellow-500 rounded-full"></div>
-                  <div className="w-3 h-3 bg-green-500 rounded-full"></div>
-                </div>
-                <span className="ml-4 text-sm text-text-secondary">quickstart.js</span>
-              </div>
-              <pre className="text-sm text-text-secondary overflow-x-auto">
-                <code>{`// Import the Identity SDK
-import { createIdentitySDK } from '@identity-protocol/identity-sdk';
-
-// Initialize the SDK
-const sdk = createIdentitySDK({
-  identityProvider: {
-    name: 'Identity Protocol',
-    type: 'oauth2',
-    config: {
-      clientId: 'your-client-id',
-      redirectUri: 'your-redirect-uri'
+  const getLicenseStatus = () => {
+    if (!licenseInfo) return { status: 'Open Source', color: 'text-gray-400', bgColor: 'bg-gray-800', expiration: null };
+    
+    switch (licenseInfo.type) {
+      case 'perpetual':
+        return { status: 'Perpetual License', color: 'text-green-400', bgColor: 'bg-green-900', expiration: null };
+      case 'annual':
+        const expirationDate = licenseInfo.expiresAt && licenseInfo.expiresAt !== 'Never' 
+          ? new Date(licenseInfo.expiresAt).toLocaleDateString()
+          : null;
+        return { 
+          status: 'Annual License', 
+          color: 'text-blue-400', 
+          bgColor: 'bg-blue-900', 
+          expiration: expirationDate 
+        };
+      default:
+        return { status: 'Open Source', color: 'text-gray-400', bgColor: 'bg-gray-800', expiration: null };
     }
-  }
-});
+  };
 
-// Create your sovereign identity
-const identity = await sdk.createIdentity({
-  name: "John Doe",
-  email: "john@example.com"
-});`}</code>
-              </pre>
+  const licenseStatus = getLicenseStatus();
+  const backgroundColor = currentTheme === 'dark' ? '#1a1a1a' : '#ffffff';
+
+  return (
+    <div className="min-h-screen text-text-primary" style={{ backgroundColor }}>
+      {/* License Status Banner */}
+      <div className="border-b border-border py-4" style={{ backgroundColor }}>
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center space-x-4">
+              <h1 className="text-2xl font-bold text-text-primary">Developer Portal</h1>
+              <div className="flex items-center space-x-2">
+                <div className={`px-3 py-1 rounded-full text-sm font-medium ${licenseStatus.bgColor} ${licenseStatus.color}`}>
+                  {licenseStatus.status}
+                </div>
+                {licenseStatus.expiration && (
+                  <div className="text-sm text-text-secondary">
+                    Expires: {licenseStatus.expiration}
+                  </div>
+                )}
+              </div>
             </div>
+            {!licenseInfo && (
+              <button
+                onClick={() => setShowLicenseModal(true)}
+                className="px-4 py-2 bg-primary hover:bg-hover text-bg-primary rounded-lg font-medium transition-colors"
+              >
+                Purchase Commercial License
+              </button>
+            )}
           </div>
         </div>
-      </section>
+      </div>
 
-      {/* Quick Start Section */}
-      <section id="quickstart" className="py-20">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      {/* Main Content */}
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        {/* Hero Section */}
+        <section className="bg-gradient-to-br from-secondary to-bg-primary py-20 rounded-lg mb-12">
+          <div className="text-center">
+            <div className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-primary text-bg-primary mb-6">
+              Developer Portal
+            </div>
+            <h1 className="text-4xl lg:text-6xl font-bold mb-6 text-text-primary">
+              Build the Future of <span className="text-primary">Digital Identity</span>
+            </h1>
+            <p className="text-xl text-text-secondary mb-8 max-w-3xl mx-auto">
+              Integrate sovereign identity into your applications with our comprehensive SDK, 
+              documentation, and developer tools.
+            </p>
+            <div className="flex flex-col sm:flex-row gap-4 justify-center">
+              <a href="#quickstart" className="inline-flex items-center px-6 py-3 bg-primary hover:bg-hover text-bg-primary rounded-lg font-medium transition-colors">
+                <span>Get Started</span>
+                <svg className="ml-2 w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 12h14m-7-7l7 7-7 7"/>
+                </svg>
+              </a>
+              <a href="https://github.com/identity-protocol" target="_blank" rel="noopener noreferrer" className="inline-flex items-center px-6 py-3 bg-secondary hover:bg-hover text-text-primary rounded-lg font-medium transition-colors">
+                <span>View on GitHub</span>
+                <svg className="ml-2 w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
+                  <path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22"/>
+                </svg>
+              </a>
+            </div>
+          </div>
+        </section>
+
+        {/* Quick Start Section */}
+        <section id="quickstart" className="py-20">
           <div className="text-center mb-16">
             <h2 className="text-3xl lg:text-4xl font-bold text-text-primary mb-4">Quick Start</h2>
             <p className="text-xl text-text-secondary">Get up and running with par Noir in 5 minutes.</p>
@@ -113,7 +182,7 @@ const identity = await sdk.createIdentity({
 const sdk = createIdentitySDK({
   identityProvider: {
     name: 'Identity Protocol',
-    type: 'oauth2',
+            type: 'decentralized',
     config: {
       clientId: 'your-client-id',
       redirectUri: 'your-redirect-uri'
@@ -150,12 +219,10 @@ console.log("Identity created:", identity.id);`}</code></pre>
               </div>
             </div>
           </div>
-        </div>
-      </section>
+        </section>
 
-      {/* Documentation Section */}
-      <section id="docs" className="py-20 bg-secondary">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        {/* Documentation Section */}
+        <section id="docs" className="py-20 bg-secondary rounded-lg">
           <div className="text-center mb-16">
             <h2 className="text-3xl lg:text-4xl font-bold text-text-primary mb-4">Documentation</h2>
             <p className="text-xl text-text-secondary">Everything you need to build with par Noir.</p>
@@ -225,89 +292,10 @@ console.log("Identity created:", identity.id);`}</code></pre>
               <a href="https://bymjmazzei.github.io/par-Noir/#security-best-practices" target="_blank" rel="noopener noreferrer" className="text-primary hover:text-accent font-medium">Best Practices →</a>
             </div>
           </div>
-        </div>
-      </section>
+        </section>
 
-      {/* Examples Section */}
-      <section id="examples" className="py-20">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="text-center mb-16">
-            <h2 className="text-3xl lg:text-4xl font-bold text-text-primary mb-4">Examples & Tutorials</h2>
-            <p className="text-xl text-text-secondary">Real-world implementations to get you started.</p>
-          </div>
-          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8">
-            <div className="bg-secondary rounded-lg shadow-lg overflow-hidden">
-              <div className="p-6">
-                <div className="flex items-center mb-4">
-                  <div className="w-10 h-10 bg-primary bg-opacity-20 rounded-lg flex items-center justify-center mr-4">
-                    <svg className="w-5 h-5 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 4h2a2 2 0 012 2v14a2 2 0 01-2 2H6a2 2 0 01-2-2V6a2 2 0 012-2h2"/>
-                      <rect x="8" y="2" width="8" height="4" rx="1" ry="1"/>
-                    </svg>
-                  </div>
-                  <div>
-                    <span className="inline-block bg-primary bg-opacity-20 text-primary text-xs px-2 py-1 rounded-full font-medium">Web App</span>
-                    <span className="text-xs text-text-secondary ml-2">15 min</span>
-                  </div>
-                </div>
-                <h3 className="text-lg font-semibold text-text-primary mb-2">Privacy-Preserving Authentication</h3>
-                <p className="text-text-secondary mb-4">Implement sovereign identity authentication without storing personal data.</p>
-                <div className="flex space-x-2">
-                  <a href="https://bymjmazzei.github.io/par-Noir/#age-verification" target="_blank" rel="noopener noreferrer" className="inline-flex items-center px-3 py-2 bg-primary hover:bg-hover text-bg-primary text-sm rounded-lg font-medium transition-colors">View Tutorial</a>
-                  <a href="https://github.com/bymjmazzei/par-Noir/tree/main/core/identity-core/examples" target="_blank" rel="noopener noreferrer" className="inline-flex items-center px-3 py-2 bg-secondary hover:bg-hover text-text-primary text-sm rounded-lg font-medium transition-colors">View Code</a>
-                </div>
-              </div>
-            </div>
-            <div className="bg-secondary rounded-lg shadow-lg overflow-hidden">
-              <div className="p-6">
-                <div className="flex items-center mb-4">
-                  <div className="w-10 h-10 bg-green-500 bg-opacity-20 rounded-lg flex items-center justify-center mr-4">
-                    <svg className="w-5 h-5 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/>
-                      <circle cx="9" cy="7" r="4"/>
-                    </svg>
-                  </div>
-                  <div>
-                    <span className="inline-block bg-green-500 bg-opacity-20 text-green-500 text-xs px-2 py-1 rounded-full font-medium">Social</span>
-                    <span className="text-xs text-text-secondary ml-2">20 min</span>
-                  </div>
-                </div>
-                <h3 className="text-lg font-semibold text-text-primary mb-2">Cross-Platform Identity</h3>
-                <p className="text-text-secondary mb-4">Use the same sovereign identity across web, mobile, and desktop applications.</p>
-                <div className="flex space-x-2">
-                  <a href="https://bymjmazzei.github.io/par-Noir/#mobile-integration" target="_blank" rel="noopener noreferrer" className="inline-flex items-center px-3 py-2 bg-primary hover:bg-hover text-bg-primary text-sm rounded-lg font-medium transition-colors">View Tutorial</a>
-                  <a href="https://github.com/bymjmazzei/par-Noir/tree/main/sdk/identity-sdk" target="_blank" rel="noopener noreferrer" className="inline-flex items-center px-3 py-2 bg-secondary hover:bg-hover text-text-primary text-sm rounded-lg font-medium transition-colors">View Code</a>
-                </div>
-              </div>
-            </div>
-            <div className="bg-secondary rounded-lg shadow-lg overflow-hidden">
-              <div className="p-6">
-                <div className="flex items-center mb-4">
-                  <div className="w-10 h-10 bg-purple-500 bg-opacity-20 rounded-lg flex items-center justify-center mr-4">
-                    <svg className="w-5 h-5 text-purple-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z"/>
-                    </svg>
-                  </div>
-                  <div>
-                    <span className="inline-block bg-purple-500 bg-opacity-20 text-purple-500 text-xs px-2 py-1 rounded-full font-medium">Mobile</span>
-                    <span className="text-xs text-text-secondary ml-2">25 min</span>
-                  </div>
-                </div>
-                <h3 className="text-lg font-semibold text-text-primary mb-2">Mobile App Integration</h3>
-                <p className="text-text-secondary mb-4">Add par Noir to React Native and Flutter applications for cross-device identity.</p>
-                <div className="flex space-x-2">
-                  <a href="https://bymjmazzei.github.io/par-Noir/#mobile-integration" target="_blank" rel="noopener noreferrer" className="inline-flex items-center px-3 py-2 bg-primary hover:bg-hover text-bg-primary text-sm rounded-lg font-medium transition-colors">View Tutorial</a>
-                  <a href="https://github.com/bymjmazzei/par-Noir/tree/main/sdk/identity-sdk" target="_blank" rel="noopener noreferrer" className="inline-flex items-center px-3 py-2 bg-secondary hover:bg-hover text-text-primary text-sm rounded-lg font-medium transition-colors">View Code</a>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* Community Section */}
-      <section id="community" className="py-20 bg-secondary">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        {/* Community Section */}
+        <section id="community" className="py-20">
           <div className="text-center mb-16">
             <h2 className="text-3xl lg:text-4xl font-bold text-text-primary mb-4">Join the Community</h2>
             <p className="text-xl text-text-secondary">Connect with developers building the future of digital identity.</p>
@@ -344,8 +332,17 @@ console.log("Identity created:", identity.id);`}</code></pre>
               <a href="https://twitter.com/parnoir" target="_blank" rel="noopener noreferrer" className="inline-flex items-center px-4 py-2 bg-primary hover:bg-hover text-bg-primary rounded-lg font-medium transition-colors">Follow on Twitter</a>
             </div>
           </div>
-        </div>
-      </section>
+        </section>
+      </div>
+
+      {/* License Modal */}
+      {showLicenseModal && (
+        <LicenseModal
+          isOpen={showLicenseModal}
+          onClose={() => setShowLicenseModal(false)}
+          onLicensePurchased={handleLicensePurchased}
+        />
+      )}
     </div>
   );
 };

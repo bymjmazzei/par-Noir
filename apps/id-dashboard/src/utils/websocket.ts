@@ -77,7 +77,9 @@ export class WebSocketManager {
               this.handleMessage(message);
             }
           } catch (error) {
-            // Handle message parsing error silently
+            if (process.env.NODE_ENV === 'development') {
+              console.error('Failed to parse WebSocket message:', error);
+            }
           }
         };
 

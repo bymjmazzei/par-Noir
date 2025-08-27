@@ -136,7 +136,7 @@ The Identity Protocol implements enterprise-grade security with a comprehensive 
 - **GCP KMS**: Google Cloud key management service
 
 #### 3. **External Services**
-- **Firebase**: Cloud database and authentication
+- **OrbitDB**: Decentralized database and metadata storage
 - **SendGrid**: Email service for notifications
 - **Twilio**: SMS service for 2FA
 - **IPFS**: Decentralized file storage

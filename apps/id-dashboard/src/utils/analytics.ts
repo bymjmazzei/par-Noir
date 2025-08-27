@@ -59,7 +59,9 @@ export class PrivacyAnalytics {
       // this.isInitialized = true;
       this.startSession();
     } catch (error) {
-      // Handle initialization error silently
+      if (process.env.NODE_ENV === 'development') {
+        console.error('Failed to initialize analytics:', error);
+      }
     }
   }
 
@@ -135,9 +137,8 @@ export class PrivacyAnalytics {
     this.errors.push(errorEvent);
     this.saveErrors();
     
-    // Silently handle critical errors in production
     if (severity === 'critical' && process.env.NODE_ENV === 'development') {
-      // Development logging only
+      console.error('Critical error tracked:', error);
     }
   }
 
@@ -295,7 +296,9 @@ export class PrivacyAnalytics {
       if (errors) this.errors = JSON.parse(errors);
       if (performance) this.performance = JSON.parse(performance);
     } catch (error) {
-      // Handle loading error silently
+      if (process.env.NODE_ENV === 'development') {
+        console.error('Failed to load analytics settings:', error);
+      }
     }
   }
 
@@ -306,7 +309,9 @@ export class PrivacyAnalytics {
     try {
       localStorage.setItem('analytics_events', JSON.stringify(this.events));
     } catch (error) {
-      // Handle saving error silently
+      if (process.env.NODE_ENV === 'development') {
+        console.error('Failed to save analytics events:', error);
+      }
     }
   }
 
@@ -317,7 +322,9 @@ export class PrivacyAnalytics {
     try {
       localStorage.setItem('analytics_errors', JSON.stringify(this.errors));
     } catch (error) {
-      // Handle saving error silently
+      if (process.env.NODE_ENV === 'development') {
+        console.error('Failed to save analytics errors:', error);
+      }
     }
   }
 
@@ -328,7 +335,9 @@ export class PrivacyAnalytics {
     try {
       localStorage.setItem('analytics_performance', JSON.stringify(this.performance));
     } catch (error) {
-      // Handle saving error silently
+      if (process.env.NODE_ENV === 'development') {
+        console.error('Failed to save analytics performance:', error);
+      }
     }
   }
 

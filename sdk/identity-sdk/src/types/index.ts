@@ -8,6 +8,7 @@ export interface Identity {
   updatedAt: string;
   status: 'active' | 'inactive' | 'suspended';
   metadata: Record<string, any>;
+  privateKey?: CryptoKey;
 }
 
 // Authentication Types
@@ -68,6 +69,7 @@ export interface SDKConfig {
   autoRefresh?: boolean;
   tokenExpiryBuffer?: number; // seconds before expiry to refresh
   debug?: boolean;
+  dashboardId?: string;
 }
 
 // User Session

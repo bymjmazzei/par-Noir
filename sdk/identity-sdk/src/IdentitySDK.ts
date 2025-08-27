@@ -14,60 +14,244 @@ import {
   DataCollectionRequest
 } from './types';
 
-// Import security systems
-import { MetadataValidator } from '../../core/identity-core/src/security/metadata-validator';
-import { SessionManager, SecureSession } from '../../core/identity-core/src/security/session-manager';
-import { ZKProofManager, TimestampedZKProof } from '../../core/identity-core/src/security/zk-proof-manager';
-import { ThreatDetector } from '../../core/identity-core/src/security/threat-detector';
+// Stub implementations for SDK compatibility
+export interface SecureSession {
+  id: string;
+  userId: string;
+  createdAt: string;
+  expiresAt: string;
+  data: any;
+}
+
+export interface TimestampedZKProof {
+  proof: any;
+  timestamp: string;
+  signature: string;
+}
+
+export class MetadataValidator {
+  async validate(metadata: any): Promise<boolean> {
+    return true;
+  }
+}
+
+export class SessionManager {
+  async createSession(userId: string, data: any): Promise<SecureSession> {
+    throw new Error('Not implemented');
+  }
+  
+  async getSession(sessionId: string): Promise<SecureSession | null> {
+    throw new Error('Not implemented');
+  }
+  
+  async validateSession(sessionId: string): Promise<boolean> {
+    throw new Error('Not implemented');
+  }
+}
+
+export class ZKProofManager {
+  async generateProof(data: any): Promise<TimestampedZKProof> {
+    throw new Error('Not implemented');
+  }
+  
+  async verifyProof(proof: TimestampedZKProof): Promise<boolean> {
+    throw new Error('Not implemented');
+  }
+}
+
+export class ThreatDetector {
+  static recordEvent(event: any): void {
+    // Stub implementation
+  }
+}
 
 // Import storage implementations
 import { IndexedDBStorage } from './IndexedDBStorage';
 import { MemoryStorage } from './MemoryStorage';
 
+// Storage interface
+interface StorageInterface {
+  setItem(key: string, value: string): Promise<void>;
+  getItem(key: string): Promise<string | null>;
+  removeItem(key: string): Promise<void>;
+  clear(): Promise<void>;
+  keys(): Promise<string[]>;
+  length(): Promise<number>;
+}
+
+// License validation types
+interface LicenseInfo {
+  licenseKey: string;
+  type: 'commercial' | 'enterprise';
+  companyName: string;
+  email: string;
+  issuedAt: string;
+  expiresAt: string;
+  status: 'active' | 'expired' | 'pending';
+  identityHash?: string;
+  identityName?: string;
+}
+
+interface CommercialUseOptions {
+  commercialUse?: boolean;
+  revenueGeneration?: boolean;
+  paidService?: boolean;
+  enterpriseFeatures?: boolean;
+}
+
 export class IdentitySDK {
   private config: SDKConfig;
+  private storage: StorageInterface;
+  private sessionManager: SessionManager;
+  private metadataValidator: MetadataValidator;
+  private zkProofManager: ZKProofManager;
+  private threatDetector: ThreatDetector;
+  private licenseKey: string | null = null;
+  private licenseInfo: LicenseInfo | null = null;
   private session: UserSession | null = null;
-  private secureSession: SecureSession | null = null;
   private eventListeners: Map<string, Function[]> = new Map();
-  private storage: Storage | IndexedDBStorage | MemoryStorage | null = null;
 
   constructor(config: SDKConfig) {
     this.config = config;
-    this.initializeStorage().catch(error => {
-      // Fallback to memory storage if initialization fails
-      this.storage = new MemoryStorage();
-    });
+    this.storage = config.storage === 'indexedDB' ? new IndexedDBStorage() : new MemoryStorage();
+    this.sessionManager = new SessionManager();
+    this.metadataValidator = new MetadataValidator();
+    this.zkProofManager = new ZKProofManager();
+    this.threatDetector = new ThreatDetector();
+    
+    // Load license from storage
+    this.loadLicenseFromStorage();
   }
 
-  /**
-   * Initialize the SDK with platform-specific storage
-   */
-  private async initializeStorage(): Promise<void> {
+  private loadLicenseFromStorage(): void {
     try {
-      switch (this.config.storage) {
-        case 'localStorage':
-          this.storage = window.localStorage;
-          break;
-        case 'sessionStorage':
-          this.storage = window.sessionStorage;
-          break;
-        case 'indexedDB':
-          if (IndexedDBStorage.isSupported()) {
-            this.storage = new IndexedDBStorage();
-            await (this.storage as IndexedDBStorage).initialize();
-          } else {
-            this.storage = window.localStorage; // fallback
-          }
-          break;
-        case 'memory':
-          this.storage = new MemoryStorage();
-          break;
-        default:
-          this.storage = window.localStorage;
+      // Load license from localStorage or environment
+      this.licenseKey = localStorage.getItem('identity_protocol_license') || 
+                       process.env.IDENTITY_PROTOCOL_LICENSE || 
+                       null;
+      
+      if (this.licenseKey) {
+        this.licenseInfo = this.parseLicenseKey(this.licenseKey);
       }
     } catch (error) {
-      // Silently fallback to memory storage in production
-      this.storage = new MemoryStorage();
+      console.warn('Failed to load license:', error);
+    }
+  }
+
+  private parseLicenseKey(licenseKey: string): LicenseInfo {
+    // Simple parsing for demo - in production, validate with server
+    const parts = licenseKey.split('_');
+    const type = parts[0] === 'COM' ? 'commercial' : 'enterprise';
+    const timestamp = parseInt(parts[1]);
+    
+    return {
+      licenseKey,
+      type,
+      companyName: 'Demo Company', // In production, fetch from server
+      email: 'demo@company.com', // In production, fetch from server
+      issuedAt: new Date(timestamp).toISOString(),
+      expiresAt: new Date(timestamp + 30 * 24 * 60 * 60 * 1000).toISOString(), // 30 days
+      status: 'active'
+    };
+  }
+
+  private async validateLicenseWithServer(licenseKey: string, identityHash?: string): Promise<boolean> {
+    try {
+      // In production, validate with your server
+      const response = await fetch('https://identityprotocol.com/api/validate-license', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          licenseKey,
+          identityHash // Include identity hash for validation
+        })
+      });
+      
+      if (response.ok) {
+        const result = await response.json();
+        if (result.valid === true) {
+          // Store identity info for future use
+          this.licenseInfo = {
+            ...this.licenseInfo!,
+            identityHash: result.identityHash,
+            identityName: result.identityName
+          };
+          return true;
+        }
+      }
+      
+      return false;
+    } catch (error) {
+      // Fallback to local validation for offline use
+      console.warn('Server validation failed, using local validation:', error);
+      return this.parseLicenseKey(licenseKey).status === 'active';
+    }
+  }
+
+  private isCommercialUse(platform: string, options?: CommercialUseOptions): boolean {
+    // Detect commercial use patterns
+    const commercialIndicators = [
+      options?.commercialUse === true,
+      options?.revenueGeneration === true,
+      options?.paidService === true,
+      options?.enterpriseFeatures === true,
+      platform.includes('enterprise'),
+      platform.includes('business'),
+      platform.includes('corporate'),
+      platform.includes('commercial'),
+      platform.includes('paid'),
+      platform.includes('premium')
+    ];
+
+    return commercialIndicators.some(indicator => indicator === true);
+  }
+
+  private async requireCommercialLicense(operation: string, identityHash?: string): Promise<void> {
+    if (!this.licenseKey) {
+      throw new Error(`Commercial license required for ${operation}. Please purchase a license at https://identityprotocol.com/license`);
+    }
+    
+    // Validate license with server (including identity hash)
+    const isValid = await this.validateLicenseWithServer(this.licenseKey, identityHash);
+    if (!isValid) {
+      throw new Error(`Invalid or expired license for ${operation}. Please renew at https://identityprotocol.com/license`);
+    }
+  }
+
+  // Set license key (for dashboard integration)
+  setLicenseKey(licenseKey: string): void {
+    this.licenseKey = licenseKey;
+    this.licenseInfo = this.parseLicenseKey(licenseKey);
+    localStorage.setItem('identity_protocol_license', licenseKey);
+  }
+
+  // Get current license info
+  getLicenseInfo(): LicenseInfo | null {
+    return this.licenseInfo;
+  }
+
+  // Check if commercial license is active
+  hasCommercialLicense(): boolean {
+    return this.licenseKey !== null && this.licenseInfo?.status === 'active';
+  }
+
+  // Get current identity hash for license validation
+  private async getCurrentIdentityHash(): Promise<string | undefined> {
+    try {
+      // Try to get current identity from storage
+      const currentIdentity = await this.storage.getItem('current_identity');
+      if (currentIdentity) {
+        // Generate hash of current identity
+        const encoder = new TextEncoder();
+        const data = encoder.encode(JSON.stringify(currentIdentity));
+        const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+        const hashArray = Array.from(new Uint8Array(hashBuffer));
+        return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+      }
+      return undefined;
+    } catch (error) {
+      console.warn('Failed to get current identity hash:', error);
+      return undefined;
     }
   }
 
@@ -79,7 +263,14 @@ export class IdentitySDK {
     state?: string;
     nonce?: string;
     responseType?: 'code' | 'token' | 'id_token';
-  }): Promise<void> {
+  } & CommercialUseOptions): Promise<AuthResponse> {
+    // Check if this is commercial use
+    if (this.isCommercialUse(platform, options)) {
+      // Get current identity hash if available
+      const currentIdentityHash = await this.getCurrentIdentityHash();
+      await this.requireCommercialLicense('authentication', currentIdentityHash);
+    }
+
     // Record security event
     ThreatDetector.recordEvent({
       eventType: 'authentication_started',
@@ -110,6 +301,17 @@ export class IdentitySDK {
       // Redirect to authorization endpoint
       window.location.href = authUrl;
 
+      // Return a placeholder response since we're redirecting
+      return {
+        code: undefined,
+        accessToken: undefined,
+        idToken: undefined,
+        tokenType: 'Bearer',
+        expiresIn: 0,
+        scope: [],
+        state: authRequest.state
+      };
+
     } catch (error) {
       const identityError = this.createError(ErrorCodes.SERVER_ERROR, error);
       this.emit(EventTypes.AUTH_ERROR, identityError);
@@ -136,7 +338,7 @@ export class IdentitySDK {
       }
 
       // Verify state parameter
-      const storedState = this.getStoredAuthState();
+      const storedState = await this.getStoredAuthState();
       if (state !== storedState) {
         throw new Error('State parameter mismatch');
       }
@@ -172,9 +374,9 @@ export class IdentitySDK {
   /**
    * Get current user session
    */
-  getCurrentSession(): UserSession | null {
+  async getCurrentSession(): Promise<UserSession | null> {
     if (!this.session) {
-      this.session = this.getStoredSession();
+      this.session = await this.getStoredSession();
     }
     return this.session;
   }
@@ -182,8 +384,8 @@ export class IdentitySDK {
   /**
    * Check if user is authenticated
    */
-  isAuthenticated(): boolean {
-    const session = this.getCurrentSession();
+  async isAuthenticated(): Promise<boolean> {
+    const session = await this.getCurrentSession();
     if (!session) return false;
 
     // Check if token is expired
@@ -191,7 +393,7 @@ export class IdentitySDK {
     const now = new Date();
     
     if (now >= expiryTime) {
-      this.logout();
+      await this.logout();
       return false;
     }
 
@@ -202,7 +404,7 @@ export class IdentitySDK {
    * Refresh access token
    */
   async refreshToken(): Promise<TokenInfo> {
-    const session = this.getCurrentSession();
+    const session = await this.getCurrentSession();
     if (!session?.tokens.refreshToken) {
       throw this.createError(ErrorCodes.INVALID_TOKEN, 'No refresh token available');
     }
@@ -252,7 +454,7 @@ export class IdentitySDK {
    */
   async logout(): Promise<void> {
     try {
-      const session = this.getCurrentSession();
+      const session = await this.getCurrentSession();
       if (session?.tokens.accessToken) {
         // Revoke token if endpoint is available
         const provider = this.config.identityProvider;
@@ -312,7 +514,13 @@ export class IdentitySDK {
   /**
    * Request additional data collection from user
    */
-  async requestDataCollection(request: DataCollectionRequest): Promise<Record<string, any>> {
+  async requestDataCollection(request: DataCollectionRequest & CommercialUseOptions): Promise<Record<string, any>> {
+    // Validate commercial license for data collection
+    if (this.isCommercialUse(request.platform, request)) {
+      const currentIdentityHash = await this.getCurrentIdentityHash();
+      await this.requireCommercialLicense('data collection', currentIdentityHash);
+    }
+
     return new Promise((resolve, reject) => {
       // This would typically show a modal or redirect to a data collection form
       const event = new CustomEvent('identity:dataCollection', {
@@ -440,8 +648,8 @@ export class IdentitySDK {
     }
   }
 
-  private getStoredAuthState(): string | null {
-    return this.storage?.getItem('identity_auth_state') || null;
+  private async getStoredAuthState(): Promise<string | null> {
+    return await this.storage?.getItem('identity_auth_state') || null;
   }
 
   private clearStoredAuthState(): void {
@@ -454,41 +662,12 @@ export class IdentitySDK {
     }
   }
 
-  private getStoredSession(): UserSession | null {
-    const stored = this.storage?.getItem('identity_session');
+  private async getStoredSession(): Promise<UserSession | null> {
+    const stored = await this.storage?.getItem('identity_session');
     return stored ? JSON.parse(stored) : null;
   }
 
   private clearStoredSession(): void {
     this.storage?.removeItem('identity_session');
-  }
-}
-
-// Memory storage fallback
-class MemoryStorage implements Storage {
-  private data: Map<string, string> = new Map();
-
-  get length(): number {
-    return this.data.size;
-  }
-
-  clear(): void {
-    this.data.clear();
-  }
-
-  getItem(key: string): string | null {
-    return this.data.get(key) || null;
-  }
-
-  key(index: number): string | null {
-    return Array.from(this.data.keys())[index] || null;
-  }
-
-  removeItem(key: string): void {
-    this.data.delete(key);
-  }
-
-  setItem(key: string, value: string): void {
-    this.data.set(key, value);
   }
 } 

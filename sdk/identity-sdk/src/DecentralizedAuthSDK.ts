@@ -5,7 +5,41 @@
  * Users authenticate using their own cryptographic keys
  */
 
-import { DecentralizedAuth, AuthChallenge, AuthSignature, AuthSession } from '../../core/identity-core/src/distributed/DecentralizedAuth';
+// Stub implementations for SDK compatibility
+export interface AuthChallenge {
+  challenge: string;
+  expiresAt: string;
+  did: string;
+}
+
+export interface AuthSignature {
+  challenge: string;
+  signature: string;
+  publicKey: string;
+  timestamp: string;
+}
+
+export interface AuthSession {
+  did: string;
+  authenticatedAt: string;
+  expiresAt: string;
+  deviceId: string;
+  permissions: string[];
+}
+
+export class DecentralizedAuth {
+  async createChallenge(did: string): Promise<AuthChallenge> {
+    throw new Error('Not implemented');
+  }
+  
+  async authenticate(did: string, signature: AuthSignature): Promise<AuthSession | null> {
+    throw new Error('Not implemented');
+  }
+  
+  async isAuthenticated(did: string): Promise<boolean> {
+    throw new Error('Not implemented');
+  }
+}
 import { Identity } from './types';
 
 export interface DecentralizedAuthConfig {
@@ -40,7 +74,7 @@ export interface UserInfo {
 
 export class DecentralizedAuthSDK {
   private auth: DecentralizedAuth;
-  private apiUrl: string;
+  private apiUrl: string = '';
   private config: DecentralizedAuthConfig;
   private ws: WebSocket | null = null;
 
@@ -177,6 +211,9 @@ export class DecentralizedAuthSDK {
   async authenticate(identity: Identity, challenge: AuthChallenge): Promise<AuthenticationResult> {
     try {
       // Sign the challenge with the user's private key
+      if (!identity.privateKey) {
+        throw new Error('Private key is required for authentication');
+      }
       const signature = await this.signChallenge(challenge.challenge, identity.privateKey);
       
       // Submit authentication

@@ -120,7 +120,7 @@ export const MigrationModal: React.FC<MigrationModalProps> = ({
                 <div>
                   <h3 className="font-medium text-blue-900 mb-2">We found PNs to migrate!</h3>
                   <p className="text-blue-800 text-sm">
-                    You created {pendingIdentities.length} PN(s) in your browser before installing the PWA. 
+                    You created {pendingIdentities.length} pN(s) in your browser before installing the PWA. 
                     We can securely migrate them to your PWA&apos;s encrypted storage for better security and offline access.
                   </p>
                 </div>
@@ -201,7 +201,7 @@ export const MigrationModal: React.FC<MigrationModalProps> = ({
                 disabled={selectedIdentities.length === 0}
                 className="flex-1 px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary-dark transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                Migrate {selectedIdentities.length} PN(s)
+                Migrate {selectedIdentities.length} pN(s)
               </button>
             </div>
           </div>
@@ -216,7 +216,7 @@ export const MigrationModal: React.FC<MigrationModalProps> = ({
             <div>
               <h3 className="text-lg font-medium mb-2">Migrating Your PNs</h3>
               <p className="text-text-secondary">
-                                  Securely transferring {selectedIdentities.length} PN(s) to PWA storage...
+                                  Securely transferring {selectedIdentities.length} pN(s) to PWA storage...
               </p>
               <p className="text-sm text-text-secondary mt-2">
                 This may take a few moments. Please don&apos;t close this window.

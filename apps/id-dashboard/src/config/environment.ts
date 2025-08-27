@@ -2,7 +2,7 @@
 export interface EnvironmentConfig {
   mode: 'development' | 'production';
   apiEndpoints: {
-    firebase: string;
+    orbitDB: string;
     websocket: string;
     cloudSync: string;
     emailService: string;
@@ -35,7 +35,7 @@ export interface EnvironmentConfig {
 const developmentConfig: EnvironmentConfig = {
   mode: 'development',
   apiEndpoints: {
-    firebase: 'http://localhost:3002/firebase',
+    orbitDB: 'http://localhost:3002/orbitdb',
     websocket: 'ws://localhost:3002/socket.io',
     cloudSync: 'http://localhost:3002/sync',
     emailService: 'http://localhost:3002/email',
@@ -68,7 +68,7 @@ const developmentConfig: EnvironmentConfig = {
 const productionConfig: EnvironmentConfig = {
   mode: 'production',
   apiEndpoints: {
-    firebase: 'https://api.identityprotocol.com/firebase',
+    orbitDB: 'https://api.identityprotocol.com/orbitdb',
     websocket: 'wss://api.identityprotocol.com/socket.io',
     cloudSync: 'https://api.identityprotocol.com/sync',
     emailService: 'https://api.identityprotocol.com/email',

@@ -47,9 +47,8 @@ class ErrorMonitor {
       this.errors.shift();
     }
 
-    // Silently handle error capture in production
     if (process.env.NODE_ENV === 'development') {
-      // Development logging only
+      console.error('Error captured:', errorEvent);
     }
 
     // Send to monitoring service in production
@@ -92,9 +91,8 @@ class ErrorMonitor {
   private async sendToMonitoringService(_errorEvent: ErrorEvent): Promise<void> {
     try {
       // In production, this would send to a real monitoring service
-      // For now, we'll silently handle it without console logging
       if (process.env.NODE_ENV === 'development') {
-        // Development logging only
+        console.log('Sending error to monitoring service');
       }
       
       // Example: Send to monitoring service
@@ -104,9 +102,8 @@ class ErrorMonitor {
       //   body: JSON.stringify(errorEvent)
       // });
     } catch (error) {
-      // Silently handle monitoring service errors in production
       if (process.env.NODE_ENV === 'development') {
-        // Development logging only
+        console.error('Failed to send error to monitoring service:', error);
       }
     }
   }
@@ -115,9 +112,8 @@ class ErrorMonitor {
     try {
       localStorage.setItem('error_log', JSON.stringify(this.errors));
     } catch (error) {
-      // Silently handle error persistence failures in production
       if (process.env.NODE_ENV === 'development') {
-        // Development logging only
+        console.error('Failed to persist errors:', error);
       }
     }
   }

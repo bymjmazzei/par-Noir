@@ -130,6 +130,7 @@ export interface IdentityCoreEvents {
   'did_created': (data: { didId: string; pnName: string }) => void;
   'did_authenticated': (data: { didId: string; pnName: string }) => void;
   'security:event': (securityEvent: any) => void;
+  'webauthn_supported': (data: { supported: boolean }) => void;
 }
 
 export type IdentityCoreEventType = keyof IdentityCoreEvents;
@@ -158,6 +159,7 @@ export const IdentityErrorCodes = {
   AUTHENTICATION_ERROR: 'AUTHENTICATION_ERROR',
   NOT_FOUND_ERROR: 'NOT_FOUND_ERROR',
   PRIVACY_ERROR: 'PRIVACY_ERROR',
+  SECURITY_ERROR: 'SECURITY_ERROR',
 } as const;
 
 export type IdentityErrorCode = typeof IdentityErrorCodes[keyof typeof IdentityErrorCodes];
@@ -200,6 +202,8 @@ export interface Service {
   serviceEndpoint: string;
   timestamp?: string;
   deviceId?: string;
+  name?: string;
+  email?: string;
 }
 
 // --- Advanced Security Types ---

@@ -5,7 +5,7 @@ export interface CloudSyncConfig {
 }
 
 export interface CloudSyncUpdate {
-  type: 'nickname' | 'profile-picture' | 'custodian' | 'recovery-key' | 'device' | 'privacy';
+  type: 'nickname' | 'profile-picture' | 'custodian' | 'recovery-key' | 'device' | 'privacy' | 'license-transfer';
   identityId: string;
   publicKey: string;
   data: any;
@@ -57,18 +57,15 @@ export class CloudSyncManager {
    */
   async initialize(): Promise<void> {
     try {
-      // Silently handle cloud sync initialization in production
-      if (process.env.NODE_ENV === 'development') {
-        // Development logging only
-      }
+      // Initialize cloud sync connection
       
       // Test connection to cloud service
       const response = await this.testConnection();
       if (response) {
         this.isConnected = true;
-        // Silently handle successful cloud sync initialization in production
+        
         if (process.env.NODE_ENV === 'development') {
-          // Development logging only
+          console.log('Cloud sync initialized successfully');
         }
         
         // Start periodic sync
@@ -80,9 +77,8 @@ export class CloudSyncManager {
         throw new Error('Failed to connect to cloud sync service');
       }
     } catch (error) {
-      // Silently handle cloud sync initialization failures in production
       if (process.env.NODE_ENV === 'development') {
-        // Development logging only
+        console.error('Failed to initialize cloud sync:', error);
       }
       this.isConnected = false;
     }
@@ -93,9 +89,9 @@ export class CloudSyncManager {
    */
   private async testConnection(): Promise<CloudSyncResponse> {
     try {
-      // Use Firebase Cloud API
-      const { firebaseCloudAPI } = await import('./firebaseCloudAPI');
-      const result = await firebaseCloudAPI.healthCheck();
+      // Use Orbit Cloud API
+      const { orbitCloudAPI } = await import('./orbitCloudAPI');
+      const result = await orbitCloudAPI.healthCheck();
       
       if (result) {
         return { success: true };
@@ -121,9 +117,9 @@ export class CloudSyncManager {
     } else {
       // Queue for later sync
       this.syncQueue.push(fullUpdate);
-      // Silently handle update queuing in production
+      
       if (process.env.NODE_ENV === 'development') {
-        // Development logging only
+        console.log('Update queued for later sync');
       }
     }
   }
@@ -152,14 +148,13 @@ export class CloudSyncManager {
    */
   async getUpdates(identityId: string): Promise<CloudSyncUpdate[]> {
     try {
-      // Use Firebase Cloud API
-      const { firebaseCloudAPI } = await import('./firebaseCloudAPI');
-      const updates = await firebaseCloudAPI.getUpdates(identityId);
+      // Use Orbit Cloud API
+      const { orbitCloudAPI } = await import('./orbitCloudAPI');
+      const updates = await orbitCloudAPI.getUpdates(identityId);
       return updates;
     } catch (error) {
-      // Silently handle update retrieval errors in production
       if (process.env.NODE_ENV === 'development') {
-        // Development logging only
+        console.error('Failed to retrieve updates:', error);
       }
       return [];
     }
@@ -183,9 +178,8 @@ export class CloudSyncManager {
           signature: update.signature
         }));
     } catch (error) {
-      // Silently handle nickname update retrieval errors in production
       if (process.env.NODE_ENV === 'development') {
-        // Development logging only
+        console.error('Failed to retrieve nickname updates:', error);
       }
       return [];
     }
@@ -196,18 +190,16 @@ export class CloudSyncManager {
    */
   private async sendToCloud(update: CloudSyncUpdate): Promise<void> {
     try {
-      // Use Firebase Cloud API
-      const { firebaseCloudAPI } = await import('./firebaseCloudAPI');
-      await firebaseCloudAPI.storeUpdate(update);
+      // Use Orbit Cloud API
+      const { orbitCloudAPI } = await import('./orbitCloudAPI');
+      await orbitCloudAPI.storeUpdate(update);
 
-      // Silently handle successful update storage in production
       if (process.env.NODE_ENV === 'development') {
-        // Development logging only
+        console.log('Update stored successfully');
       }
     } catch (error) {
-      // Silently handle update storage failures in production
       if (process.env.NODE_ENV === 'development') {
-        // Development logging only
+        console.error('Failed to store update:', error);
       }
       // Queue for retry
       this.syncQueue.push(update);
@@ -220,9 +212,8 @@ export class CloudSyncManager {
   private async processSyncQueue(): Promise<void> {
     if (this.syncQueue.length === 0) return;
 
-    // Silently handle queue processing in production
     if (process.env.NODE_ENV === 'development') {
-      // Development logging only
+      console.log(`Processing ${updates.length} queued updates`);
     }
 
     const updates = [...this.syncQueue];
@@ -232,9 +223,8 @@ export class CloudSyncManager {
       try {
         await this.sendToCloud(update);
       } catch (error) {
-        // Silently handle queued update processing failures in production
         if (process.env.NODE_ENV === 'development') {
-          // Development logging only
+          console.error('Failed to process queued update:', error);
         }
         // Re-queue failed updates
         this.syncQueue.push(update);

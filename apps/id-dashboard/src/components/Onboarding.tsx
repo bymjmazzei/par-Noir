@@ -247,12 +247,12 @@ export const Onboarding: React.FC<OnboardingProps> = ({ isOpen, onComplete }) =>
           </div>
           <h2 className="text-2xl font-bold">Setup Complete!</h2>
           <p className="text-lg">
-            Your secure digital PN has been created successfully.
+            Your secure digital pN has been created successfully.
           </p>
           <div className="bg-secondary p-4 rounded-lg">
             <h3 className="font-semibold mb-2">Next Steps:</h3>
             <ul className="text-left space-y-1">
-              <li className="flex items-center gap-2"><Lock className="w-4 h-4 text-blue-500" /> Your PN is now secure and encrypted</li>
+              <li className="flex items-center gap-2"><Lock className="w-4 h-4 text-blue-500" /> Your pN is now secure and encrypted</li>
               <li className="flex items-center gap-2"><User className="w-4 h-4 text-blue-500" /> Add recovery custodians for account safety</li>
               <li className="flex items-center gap-2"><Smartphone className="w-4 h-4 text-blue-500" /> Sync your devices for seamless access</li>
               <li className="flex items-center gap-2"><Settings className="w-4 h-4 text-blue-500" /> Configure privacy settings to your preference</li>

@@ -128,23 +128,18 @@ export class SentryService {
       return 'sentry_disabled';
     }
 
+    // SECURITY: Sanitize error data before sending
+    const sanitizedError = this.sanitizeErrorData(error, context);
+
     const event: SentryEvent = {
-      message: error.message,
+      message: sanitizedError.message,
       level: 'error',
       tags: {
         type: 'exception',
-        ...context?.tags
+        ...sanitizedError.tags
       },
-      extra: {
-        stack: error.stack,
-        ...context?.extra
-      },
-      user: this.user ? {
-        id: this.user.id,
-        email: this.user.email,
-        username: this.user.username,
-        ip_address: this.user.ip_address
-      } : undefined,
+      extra: sanitizedError.extra,
+      user: sanitizedError.user,
       contexts: {
         app: {
           name: 'Identity Protocol',
@@ -152,18 +147,18 @@ export class SentryService {
         },
         device: {
           name: 'web',
-          version: navigator.userAgent
+          version: '[REDACTED]' // Don't send user agent
         },
         os: {
           name: 'web',
-          version: navigator.platform
+          version: '[REDACTED]' // Don't send platform info
         },
         runtime: {
           name: 'javascript',
           version: '1.0'
         }
       },
-      breadcrumbs: this.breadcrumbs
+      breadcrumbs: [] // Don't send breadcrumbs for security
     };
 
     return this.sendEvent(event);
@@ -182,27 +177,25 @@ export class SentryService {
       return 'sentry_disabled';
     }
 
+    // SECURITY: Sanitize message data before sending
+    const sanitizedMessage = this.sanitizeMessageData(message, context);
+
     const event: SentryEvent = {
-      message,
+      message: sanitizedMessage.message,
       level,
       tags: {
         type: 'message',
-        ...context?.tags
+        ...sanitizedMessage.tags
       },
-      extra: context?.extra,
-      user: this.user ? {
-        id: this.user.id,
-        email: this.user.email,
-        username: this.user.username,
-        ip_address: this.user.ip_address
-      } : undefined,
+      extra: sanitizedMessage.extra,
+      user: sanitizedMessage.user,
       contexts: {
         app: {
           name: 'Identity Protocol',
           version: this.config.release
         }
       },
-      breadcrumbs: this.breadcrumbs
+      breadcrumbs: [] // Don't send breadcrumbs for security
     };
 
     return this.sendEvent(event);
@@ -450,6 +443,145 @@ export class SentryService {
     if (!success) {
       throw new Error('Failed to send performance data to Sentry');
     }
+  }
+
+  /**
+   * SECURITY: Sanitize error data before sending to Sentry
+   */
+  private sanitizeErrorData(error: Error, context?: Partial<SentryEvent>): {
+    message: string;
+    tags: Record<string, string>;
+    extra: Record<string, any>;
+    user: any;
+  } {
+    // List of sensitive patterns to filter out
+    const sensitivePatterns = [
+      /password/i,
+      /token/i,
+      /key/i,
+      /secret/i,
+      /private.*key/i,
+      /mnemonic/i,
+      /seed.*phrase/i,
+      /did.*document/i,
+      /crypto.*key/i,
+      /encryption.*key/i,
+      /jwt.*secret/i,
+      /api.*key/i,
+      /auth.*token/i,
+      /session.*secret/i
+    ];
+
+    // Sanitize error message
+    let sanitizedMessage = error.message;
+    sensitivePatterns.forEach(pattern => {
+      sanitizedMessage = sanitizedMessage.replace(pattern, '[REDACTED]');
+    });
+
+    // Sanitize stack trace
+    let sanitizedStack = error.stack;
+    if (sanitizedStack) {
+      sensitivePatterns.forEach(pattern => {
+        sanitizedStack = sanitizedStack!.replace(pattern, '[REDACTED]');
+      });
+    }
+
+    // Sanitize extra data
+    const sanitizedExtra: Record<string, any> = {};
+    if (context?.extra) {
+      Object.entries(context.extra).forEach(([key, value]) => {
+        const stringValue = String(value);
+        let sanitizedValue = stringValue;
+        
+        sensitivePatterns.forEach(pattern => {
+          sanitizedValue = sanitizedValue.replace(pattern, '[REDACTED]');
+        });
+        
+        sanitizedExtra[key] = sanitizedValue;
+      });
+    }
+
+    // Sanitize user data - only send anonymous ID
+    const sanitizedUser = this.user ? {
+      id: this.user.id ? `user_${this.user.id.slice(0, 8)}` : undefined,
+      email: undefined, // Never send email
+      username: undefined, // Never send username
+      ip_address: undefined // Never send IP
+    } : undefined;
+
+    return {
+      message: sanitizedMessage,
+      tags: context?.tags || {},
+      extra: {
+        stack: sanitizedStack,
+        ...sanitizedExtra
+      },
+      user: sanitizedUser
+    };
+  }
+
+  /**
+   * SECURITY: Sanitize message data before sending to Sentry
+   */
+  private sanitizeMessageData(message: string, context?: Partial<SentryEvent>): {
+    message: string;
+    tags: Record<string, string>;
+    extra: Record<string, any>;
+    user: any;
+  } {
+    // List of sensitive patterns to filter out
+    const sensitivePatterns = [
+      /password/i,
+      /token/i,
+      /key/i,
+      /secret/i,
+      /private.*key/i,
+      /mnemonic/i,
+      /seed.*phrase/i,
+      /did.*document/i,
+      /crypto.*key/i,
+      /encryption.*key/i,
+      /jwt.*secret/i,
+      /api.*key/i,
+      /auth.*token/i,
+      /session.*secret/i
+    ];
+
+    // Sanitize message
+    let sanitizedMessage = message;
+    sensitivePatterns.forEach(pattern => {
+      sanitizedMessage = sanitizedMessage.replace(pattern, '[REDACTED]');
+    });
+
+    // Sanitize extra data
+    const sanitizedExtra: Record<string, any> = {};
+    if (context?.extra) {
+      Object.entries(context.extra).forEach(([key, value]) => {
+        const stringValue = String(value);
+        let sanitizedValue = stringValue;
+        
+        sensitivePatterns.forEach(pattern => {
+          sanitizedValue = sanitizedValue.replace(pattern, '[REDACTED]');
+        });
+        
+        sanitizedExtra[key] = sanitizedValue;
+      });
+    }
+
+    // Sanitize user data - only send anonymous ID
+    const sanitizedUser = this.user ? {
+      id: this.user.id ? `user_${this.user.id.slice(0, 8)}` : undefined,
+      email: undefined, // Never send email
+      username: undefined, // Never send username
+      ip_address: undefined // Never send IP
+    } : undefined;
+
+    return {
+      message: sanitizedMessage,
+      tags: context?.tags || {},
+      extra: sanitizedExtra,
+      user: sanitizedUser
+    };
   }
 
   /**

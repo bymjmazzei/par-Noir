@@ -35,7 +35,9 @@ export class EmailService {
       }
       this.isInitialized = true;
     } catch (error) {
-      // Handle initialization error silently
+      if (process.env.NODE_ENV === 'development') {
+        console.error('Failed to initialize email service:', error);
+      }
     }
   }
 
@@ -55,7 +57,9 @@ export class EmailService {
       await new Promise(resolve => setTimeout(resolve, 1000));
       
     } catch (error) {
-      // Handle error silently
+      if (process.env.NODE_ENV === 'development') {
+        console.error('Failed to send recovery email:', error);
+      }
     }
   }
 
@@ -75,7 +79,9 @@ export class EmailService {
       await new Promise(resolve => setTimeout(resolve, 1000));
       
     } catch (error) {
-      // Handle error silently
+      if (process.env.NODE_ENV === 'development') {
+        console.error('Failed to send custodian invitation:', error);
+      }
     }
   }
 
@@ -98,7 +104,9 @@ export class EmailService {
       await new Promise(resolve => setTimeout(resolve, 800));
       
     } catch (error) {
-      // Handle error silently
+      if (process.env.NODE_ENV === 'development') {
+        console.error('Failed to send security alert:', error);
+      }
     }
   }
 }

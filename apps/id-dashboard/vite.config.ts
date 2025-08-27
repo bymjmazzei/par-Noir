@@ -11,7 +11,7 @@ export default defineConfig({
     },
   },
   optimizeDeps: {
-    exclude: ['crypto'],
+    exclude: ['crypto', 'orbit-db', 'multiformats'],
     include: [
       'react',
       'react-dom',
@@ -27,7 +27,7 @@ export default defineConfig({
     minify: 'terser',
     chunkSizeWarningLimit: 1000, // Increase warning limit for better chunking
     rollupOptions: {
-      external: ['ipfs-http-client'], // Externalize IPFS module
+      external: ['ipfs-http-client', 'orbit-db', 'multiformats'], // Externalize problematic modules
       output: {
         manualChunks: (id) => {
           // Vendor chunks
@@ -130,7 +130,7 @@ export default defineConfig({
     __APP_VERSION__: JSON.stringify(process.env.npm_package_version),
     __BUILD_TIME__: JSON.stringify(new Date().toISOString()),
     'process.env.NODE_ENV': JSON.stringify(process.env.NODE_ENV),
-    'process.env.REACT_APP_FIREBASE_API_KEY': JSON.stringify(process.env.REACT_APP_FIREBASE_API_KEY),
+    'process.env.REACT_APP_IPFS_PROJECT_ID': JSON.stringify(process.env.REACT_APP_IPFS_PROJECT_ID),
     'process.env.REACT_APP_SENDGRID_API_KEY': JSON.stringify(process.env.REACT_APP_SENDGRID_API_KEY),
     'process.env.REACT_APP_TWILIO_ACCOUNT_SID': JSON.stringify(process.env.REACT_APP_TWILIO_ACCOUNT_SID),
     'process.env.REACT_APP_IPFS_API_KEY': JSON.stringify(process.env.REACT_APP_IPFS_API_KEY)

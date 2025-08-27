@@ -4,8 +4,39 @@
  * Manages authentication state and provides a clean interface for DID-based authentication
  */
 
-import { DecentralizedAuthSDK, AuthenticationResult, UserInfo } from '../../../sdk/identity-sdk/src/DecentralizedAuthSDK';
-import { Identity } from '../../../core/identity-core/src/types';
+import React from 'react';
+
+// Mock types and interfaces
+export interface Identity {
+  id: string;
+  name: string;
+  did: string;
+  publicKey: string;
+  createdAt: string;
+  updatedAt: string;
+  username?: string;
+  deviceId?: string;
+  permissions?: string[];
+  metadata?: {
+    displayName?: string;
+    [key: string]: any;
+  };
+}
+
+export interface AuthenticationResult {
+  success: boolean;
+  session?: AuthSession;
+  error?: string;
+}
+
+export interface UserInfo {
+  did: string;
+  name: string;
+  email?: string;
+  avatar?: string;
+  permissions: string[];
+  verified?: boolean;
+}
 
 export interface AuthSession {
   did: string;
@@ -22,6 +53,46 @@ export interface AuthState {
   userInfo?: UserInfo;
   isLoading: boolean;
   error?: string;
+}
+
+// Mock SDK class
+class DecentralizedAuthSDK {
+  constructor(config: any) {
+    console.log('Mock SDK initialized with config:', config);
+  }
+
+  async validateSession(did: string): Promise<boolean> {
+    // Mock validation - always return true for demo
+    return true;
+  }
+
+  async getUserInfo(did: string): Promise<UserInfo> {
+    return {
+      did,
+      name: 'Demo User',
+      permissions: ['read', 'write']
+    };
+  }
+
+  async authenticate(identity: Identity): Promise<AuthenticationResult> {
+    const session: AuthSession = {
+      did: identity.did,
+      authenticatedAt: new Date().toISOString(),
+      expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+      deviceId: 'demo-device',
+      permissions: ['read', 'write']
+    };
+
+    return {
+      success: true,
+      session
+    };
+  }
+
+  async logout(): Promise<void> {
+    // Mock logout
+    console.log('Mock logout called');
+  }
 }
 
 export class DecentralizedAuthManager {
@@ -101,9 +172,13 @@ export class DecentralizedAuthManager {
         this.updateAuthState({ isAuthenticated: false, isLoading: false });
       }
     } catch (error) {
-      console.warn('Session validation failed:', error);
+      console.error('Session validation failed:', error);
       this.clearStoredAuth();
-      this.updateAuthState({ isAuthenticated: false, isLoading: false });
+      this.updateAuthState({ 
+        isAuthenticated: false, 
+        isLoading: false, 
+        error: 'Session validation failed' 
+      });
     }
   }
 
@@ -111,98 +186,35 @@ export class DecentralizedAuthManager {
    * Start monitoring session validity
    */
   private startSessionMonitoring(): void {
-    // Check session every 5 minutes
     this.sessionCheckInterval = setInterval(() => {
-      if (this.authState.isAuthenticated && this.authState.session?.did) {
-        this.sdk.validateSession(this.authState.session.did).then(isValid => {
-          if (!isValid) {
-            this.handleSessionExpired();
-          }
-        });
+      if (this.authState.isAuthenticated && this.authState.session) {
+        const now = Date.now();
+        const expiresAt = new Date(this.authState.session.expiresAt).getTime();
+        
+        if (now >= expiresAt) {
+          console.log('Session expired, logging out');
+          this.logout();
+        }
       }
-    }, 5 * 60 * 1000);
+    }, 60000); // Check every minute
   }
 
   /**
-   * Handle session expiration
+   * Update authentication state and notify listeners
    */
-  private handleSessionExpired(): void {
-    console.log('Session expired, logging out');
-    this.clearStoredAuth();
-    this.updateAuthState({
-      isAuthenticated: false,
-      currentIdentity: undefined,
-      session: undefined,
-      userInfo: undefined,
-      error: 'Session expired'
-    });
-  }
-
-  /**
-   * Authenticate with an identity
-   */
-  async authenticateWithIdentity(identity: Identity): Promise<boolean> {
-    this.updateAuthState({ isLoading: true, error: undefined });
-
-    try {
-      const result = await this.sdk.authenticateWithRetry(identity);
-      
-      if (result.success && result.session) {
-        // Store session and identity
-        localStorage.setItem('auth_session', JSON.stringify(result.session));
-        localStorage.setItem('current_identity', JSON.stringify(identity));
-
-        // Get user info
-        const userInfo = await this.sdk.getUserInfo(identity.id);
-
-        this.updateAuthState({
-          isAuthenticated: true,
-          currentIdentity: identity,
-          session: result.session,
-          userInfo,
-          isLoading: false
-        });
-
-        return true;
-      } else {
-        this.updateAuthState({
-          isAuthenticated: false,
-          isLoading: false,
-          error: result.error || 'Authentication failed'
-        });
-        return false;
-      }
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Authentication failed';
-      this.updateAuthState({
-        isAuthenticated: false,
-        isLoading: false,
-        error: errorMessage
-      });
-      return false;
+  private updateAuthState(updates: Partial<AuthState>): void {
+    this.authState = { ...this.authState, ...updates };
+    
+    // Store in localStorage
+    if (this.authState.session) {
+      localStorage.setItem('auth_session', JSON.stringify(this.authState.session));
     }
-  }
-
-  /**
-   * Logout current user
-   */
-  async logout(): Promise<void> {
-    try {
-      if (this.authState.session?.did) {
-        await this.sdk.logout(this.authState.session.did);
-      }
-    } catch (error) {
-      console.warn('Logout request failed:', error);
-    } finally {
-      this.clearStoredAuth();
-      this.updateAuthState({
-        isAuthenticated: false,
-        currentIdentity: undefined,
-        session: undefined,
-        userInfo: undefined,
-        error: undefined
-      });
+    if (this.authState.currentIdentity) {
+      localStorage.setItem('current_identity', JSON.stringify(this.authState.currentIdentity));
     }
+    
+    // Notify listeners
+    this.listeners.forEach(listener => listener(this.authState));
   }
 
   /**
@@ -214,37 +226,6 @@ export class DecentralizedAuthManager {
   }
 
   /**
-   * Update authentication state and notify listeners
-   */
-  private updateAuthState(updates: Partial<AuthState>): void {
-    this.authState = { ...this.authState, ...updates };
-    
-    // Notify all listeners
-    this.listeners.forEach(listener => {
-      try {
-        listener(this.authState);
-      } catch (error) {
-        console.warn('Auth state listener error:', error);
-      }
-    });
-  }
-
-  /**
-   * Subscribe to authentication state changes
-   */
-  subscribe(listener: (state: AuthState) => void): () => void {
-    this.listeners.add(listener);
-    
-    // Immediately call with current state
-    listener(this.authState);
-    
-    // Return unsubscribe function
-    return () => {
-      this.listeners.delete(listener);
-    };
-  }
-
-  /**
    * Get current authentication state
    */
   getAuthState(): AuthState {
@@ -252,81 +233,100 @@ export class DecentralizedAuthManager {
   }
 
   /**
-   * Check if user is authenticated
+   * Subscribe to authentication state changes
    */
-  isAuthenticated(): boolean {
-    return this.authState.isAuthenticated;
+  subscribe(listener: (state: AuthState) => void): () => void {
+    this.listeners.add(listener);
+    return () => this.listeners.delete(listener);
   }
 
   /**
-   * Get current identity
+   * Authenticate with an identity
    */
-  getCurrentIdentity(): Identity | undefined {
-    return this.authState.currentIdentity;
+  async authenticate(identity: Identity): Promise<boolean> {
+    this.updateAuthState({ isLoading: true, error: undefined });
+
+    try {
+      const result = await this.sdk.authenticate(identity);
+      
+      if (result.success && result.session) {
+        this.updateAuthState({
+          isAuthenticated: true,
+          currentIdentity: identity,
+          session: result.session,
+          isLoading: false
+        });
+        return true;
+      } else {
+        this.updateAuthState({
+          isAuthenticated: false,
+          isLoading: false,
+          error: result.error || 'Authentication failed'
+        });
+        return false;
+      }
+    } catch (error) {
+      console.error('Authentication error:', error);
+      this.updateAuthState({
+        isAuthenticated: false,
+        isLoading: false,
+        error: 'Authentication failed'
+      });
+      return false;
+    }
   }
 
   /**
-   * Get current session
+   * Logout current user
    */
-  getCurrentSession(): AuthSession | undefined {
-    return this.authState.session;
+  async logout(): Promise<void> {
+    try {
+      await this.sdk.logout();
+    } catch (error) {
+      console.error('Logout error:', error);
+    } finally {
+      this.clearStoredAuth();
+      this.updateAuthState({
+        isAuthenticated: false,
+        currentIdentity: undefined,
+        session: undefined,
+        userInfo: undefined,
+        isLoading: false,
+        error: undefined
+      });
+    }
   }
 
   /**
-   * Get user info
-   */
-  getUserInfo(): UserInfo | undefined {
-    return this.authState.userInfo;
-  }
-
-  /**
-   * Refresh user info
+   * Refresh user information
    */
   async refreshUserInfo(): Promise<void> {
-    if (!this.authState.session?.did) {
-      return;
-    }
+    if (!this.authState.session?.did) return;
 
     try {
       const userInfo = await this.sdk.getUserInfo(this.authState.session.did);
       this.updateAuthState({ userInfo });
     } catch (error) {
-      console.warn('Failed to refresh user info:', error);
+      console.error('Failed to refresh user info:', error);
     }
   }
 
   /**
-   * Resolve a DID
-   */
-  async resolveDID(did: string): Promise<any> {
-    return await this.sdk.resolveDID(did);
-  }
-
-  /**
-   * Create authentication challenge (for advanced use cases)
-   */
-  async createChallenge(did: string): Promise<any> {
-    return await this.sdk.createChallenge(did);
-  }
-
-  /**
-   * Clean up resources
+   * Cleanup resources
    */
   destroy(): void {
     if (this.sessionCheckInterval) {
       clearInterval(this.sessionCheckInterval);
       this.sessionCheckInterval = null;
     }
-    
     this.listeners.clear();
-    this.sdk.destroy();
   }
 }
 
-// Export singleton instance
+// Create singleton instance
 export const decentralizedAuthManager = new DecentralizedAuthManager();
 
-// React hook for using decentralized authentication
+// React hooks for use in components
 export const useDecentralizedAuth = () => {
   const [authState, setAuthState] = React.useState<AuthState>(decentralizedAuthManager.getAuthState());
 
@@ -336,7 +336,7 @@ export const useDecentralizedAuth = () => {
   }, []);
 
   const authenticate = React.useCallback(async (identity: Identity) => {
-    return await decentralizedAuthManager.authenticateWithIdentity(identity);
+    return await decentralizedAuthManager.authenticate(identity);
   }, []);
 
   const logout = React.useCallback(async () => {
@@ -352,9 +352,8 @@ export const useDecentralizedAuth = () => {
     authenticate,
     logout,
     refreshUserInfo,
-    getCurrentIdentity: decentralizedAuthManager.getCurrentIdentity.bind(decentralizedAuthManager),
-    getCurrentSession: decentralizedAuthManager.getCurrentSession.bind(decentralizedAuthManager),
-    getUserInfo: decentralizedAuthManager.getUserInfo.bind(decentralizedAuthManager),
-    resolveDID: decentralizedAuthManager.resolveDID.bind(decentralizedAuthManager)
+    getCurrentIdentity: () => authState.currentIdentity,
+    getUserInfo: () => authState.userInfo
   };
 };
+

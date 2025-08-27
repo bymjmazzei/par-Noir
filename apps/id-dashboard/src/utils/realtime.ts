@@ -234,20 +234,23 @@ export class RealtimeManager {
   /**
    * Process queued messages
    */
-  // private async processQueuedMessages(): Promise<void> {
-  //   if (this.messageQueue.length === 0) return;
-  //   
-  //   const messages = [...this.messageQueue];
-  //   this.messageQueue = [];
-  //   
-  //   for (const message of messages) {
-  //     try {
-  //       await this.processMessage(message);
-  //     } catch (error) {
-  //       // Handle message processing error silently
-  //     }
-  //   }
-  // }
+  private async processQueuedMessages(): Promise<void> {
+    if (this.messageQueue.length === 0) return;
+    
+    const messages = [...this.messageQueue];
+    this.messageQueue = [];
+    
+    for (const message of messages) {
+      try {
+        await this.processMessage(message);
+      } catch (error) {
+        // Log error in development, handle silently in production
+        if (process.env.NODE_ENV === 'development') {
+          console.error('Failed to process queued message:', error);
+        }
+      }
+    }
+  }
 
   /**
    * Start health check

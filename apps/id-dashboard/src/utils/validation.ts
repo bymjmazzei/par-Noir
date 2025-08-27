@@ -514,8 +514,12 @@ export class InputValidator {
       'application/octet-stream'
     ];
 
-    if (!allowedTypes.includes(file.type)) {
-      errors.push('Invalid file type. Only JSON and text files are allowed');
+    // Also check file extension for .pn files
+    const allowedExtensions = ['.pn', '.id', '.json', '.identity'];
+    const fileExtension = file.name.toLowerCase().substring(file.name.lastIndexOf('.'));
+    
+    if (!allowedTypes.includes(file.type) && !allowedExtensions.includes(fileExtension)) {
+      errors.push('Invalid file type. Only Par-Noir identity files (.pn, .id, .json, .identity) are allowed');
     }
 
     // Check filename

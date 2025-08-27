@@ -111,9 +111,9 @@ export class PWAFileStorage {
       const idFilesDir = await this.rootHandle.getDirectoryHandle(this.ID_FILES_DIR, { create: true });
       const files: PWAIdentityFile[] = [];
       
-      // Scan directory for .id files
+      // Scan directory for identity files
       for await (const [filename, handle] of idFilesDir as any) {
-        if (filename.endsWith('.id') && handle.kind === 'file') {
+        if ((filename.endsWith('.id') || filename.endsWith('.pn') || filename.endsWith('.json') || filename.endsWith('.identity')) && handle.kind === 'file') {
           try {
             const fileHandle = handle as FileSystemFileHandle;
             const file = await fileHandle.getFile();
@@ -121,7 +121,7 @@ export class PWAFileStorage {
             const encryptedIdentity = JSON.parse(content);
             
             // Get metadata
-            const baseFilename = filename.replace('.id', '');
+            const baseFilename = filename.replace(/\.(id|pn|json|identity)$/, '');
             const metadata = await this.getMetadata(baseFilename);
             
             files.push({

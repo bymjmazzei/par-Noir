@@ -411,7 +411,9 @@ export class ErrorHandler {
       const errorsToStore = this.errors.slice(-100); // Store only last 100 errors
       localStorage.setItem('error_log', JSON.stringify(errorsToStore));
     } catch (error) {
-      // Silently handle localStorage errors
+      if (process.env.NODE_ENV === 'development') {
+        console.error('Failed to persist errors to localStorage:', error);
+      }
     }
   }
 
@@ -435,7 +437,9 @@ export class ErrorHandler {
         body: JSON.stringify(errorEvent)
       });
     } catch (error) {
-      // Silently handle remote logging errors
+      if (process.env.NODE_ENV === 'development') {
+        console.error('Failed to send error to remote logging:', error);
+      }
     }
   }
 
@@ -460,7 +464,9 @@ export class ErrorHandler {
         })
       });
     } catch (error) {
-      // Silently handle analytics errors
+      if (process.env.NODE_ENV === 'development') {
+        console.error('Failed to send error to analytics:', error);
+      }
     }
   }
 

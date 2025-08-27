@@ -73,16 +73,14 @@ export const usePWA = (): [PWAState, PWAHandlers] => {
 
   // Install the PWA
   const install = useCallback(async () => {
-    // Silently handle PWA installation in production
     if (process.env.NODE_ENV === 'development') {
-      // Development logging only
+      console.log('Starting PWA installation...');
     }
     
-    if (!state.deferredPrompt) {
-      // Silently handle deferred prompt availability in production
-      if (process.env.NODE_ENV === 'development') {
-        // Development logging only
-      }
+          if (!state.deferredPrompt) {
+        if (process.env.NODE_ENV === 'development') {
+          console.log('No deferred prompt available, trying synthetic event');
+        }
       
       // Try to force the install prompt by triggering the beforeinstallprompt event
       try {
@@ -96,14 +94,12 @@ export const usePWA = (): [PWAState, PWAHandlers] => {
             try {
               await state.deferredPrompt.prompt();
               await state.deferredPrompt.userChoice;
-              // Silently handle install outcome in production
               if (process.env.NODE_ENV === 'development') {
-                // Development logging only
+                console.log('Install prompt completed');
               }
             } catch (error) {
-              // Silently handle install failures in production
               if (process.env.NODE_ENV === 'development') {
-                // Development logging only
+                console.error('Install prompt failed:', error);
               }
               alert('Install failed. Please try the manual installation methods.');
             }
@@ -115,9 +111,8 @@ export const usePWA = (): [PWAState, PWAHandlers] => {
         
         return;
               } catch (error) {
-          // Silently handle force install prompt failures in production
           if (process.env.NODE_ENV === 'development') {
-            // Development logging only
+            console.error('Synthetic event failed:', error);
           }
         }
       
@@ -132,9 +127,8 @@ export const usePWA = (): [PWAState, PWAHandlers] => {
       const { outcome } = await state.deferredPrompt.userChoice;
 
       if (outcome === 'accepted') {
-        // Silently handle user acceptance in production
         if (process.env.NODE_ENV === 'development') {
-          // Development logging only
+          console.log('PWA installation accepted by user');
         }
         setState(prev => ({
           ...prev,
@@ -143,15 +137,13 @@ export const usePWA = (): [PWAState, PWAHandlers] => {
           deferredPrompt: null
         }));
       } else {
-        // Silently handle user dismissal in production
         if (process.env.NODE_ENV === 'development') {
-          // Development logging only
+          console.log('PWA installation dismissed by user');
         }
       }
     } catch (error) {
-      // Silently handle installation errors in production
       if (process.env.NODE_ENV === 'development') {
-        // Development logging only
+        console.error('PWA installation failed:', error);
       }
       alert('Install failed. Please try again or install manually from your browser menu.');
     } finally {
@@ -164,14 +156,12 @@ export const usePWA = (): [PWAState, PWAHandlers] => {
     if ('serviceWorker' in navigator && state.serviceWorkerRegistration) {
       try {
         await state.serviceWorkerRegistration.update();
-        // Silently handle service worker updates in production
         if (process.env.NODE_ENV === 'development') {
-          // Development logging only
+          console.log('Service worker updated');
         }
       } catch (error) {
-        // Silently handle service worker update failures in production
         if (process.env.NODE_ENV === 'development') {
-          // Development logging only
+          console.error('Service worker update failed:', error);
         }
       }
     }
@@ -185,14 +175,12 @@ export const usePWA = (): [PWAState, PWAHandlers] => {
         await Promise.all(
           cacheNames.map(cacheName => caches.delete(cacheName))
         );
-        // Silently handle cache clearing in production
         if (process.env.NODE_ENV === 'development') {
-          // Development logging only
+          console.log('Cache cleared successfully');
         }
       } catch (error) {
-        // Silently handle cache clearing failures in production
         if (process.env.NODE_ENV === 'development') {
-          // Development logging only
+          console.error('Failed to clear cache:', error);
         }
       }
     }
@@ -205,9 +193,8 @@ export const usePWA = (): [PWAState, PWAHandlers] => {
       const { secureStorage } = await import('../utils/localStorage');
       return await secureStorage.exportData();
     } catch (error) {
-      // Silently handle data export failures in production
       if (process.env.NODE_ENV === 'development') {
-        // Development logging only
+        console.error('Failed to export data:', error);
       }
       throw error;
     }
@@ -218,14 +205,12 @@ export const usePWA = (): [PWAState, PWAHandlers] => {
     try {
       const { secureStorage } = await import('../utils/localStorage');
       await secureStorage.importData(data);
-      // Silently handle data import success in production
       if (process.env.NODE_ENV === 'development') {
-        // Development logging only
+        console.log('Data imported successfully');
       }
     } catch (error) {
-      // Silently handle data import failures in production
       if (process.env.NODE_ENV === 'development') {
-        // Development logging only
+        console.error('Failed to import data:', error);
       }
       throw error;
     }
@@ -238,9 +223,8 @@ export const usePWA = (): [PWAState, PWAHandlers] => {
       const stats = await secureStorage.getStorageStats();
       setState(prev => ({ ...prev, storageStats: stats }));
     } catch (error) {
-      // Silently handle storage stats failures in production
       if (process.env.NODE_ENV === 'development') {
-        // Development logging only
+        console.error('Failed to get storage stats:', error);
       }
     }
   }, []);

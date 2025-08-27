@@ -182,23 +182,23 @@
    - Enable GitHub Pages
    - Set source to `/docs` or `/root`
 
-#### Firebase Hosting
-1. **Install Firebase CLI**
+#### OrbitDB Hosting
+1. **Install IPFS CLI**
    ```bash
-   npm install -g firebase-tools
+   npm install -g ipfs-cli
    ```
 
-2. **Initialize Firebase**
+2. **Initialize IPFS**
    ```bash
-   firebase login
-   firebase init hosting
+   ipfs init
+   ipfs daemon
    ```
 
 3. **Deploy**
    ```bash
    cd apps/id-dashboard
    npm run build
-   firebase deploy
+   ipfs add -r dist/
    ```
 
 ### Manual Deployment

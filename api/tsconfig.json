@@ -21,7 +21,7 @@
     "noUnusedParameters": false,
     "exactOptionalPropertyTypes": false,
     "noImplicitOverride": true,
-    "noPropertyAccessFromIndexSignature": true,
+    "noPropertyAccessFromIndexSignature": false,
     "noUncheckedIndexedAccess": false
   },
   "include": [

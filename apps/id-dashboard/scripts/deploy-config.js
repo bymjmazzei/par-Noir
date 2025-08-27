@@ -26,7 +26,7 @@ console.log(`Domain: ${domain}`);
 const configs = {
   development: {
     apiEndpoints: {
-      firebase: `http://${domain}/firebase`,
+      orbitDB: `http://${domain}/orbitdb`,
       websocket: `ws://${domain}/socket.io`,
       cloudSync: `http://${domain}/sync`,
       emailService: `http://${domain}/email`,
@@ -51,7 +51,7 @@ const configs = {
   },
   staging: {
     apiEndpoints: {
-      firebase: `https://api.${domain}/firebase`,
+      orbitDB: `https://api.${domain}/orbitdb`,
       websocket: `wss://api.${domain}/socket.io`,
       cloudSync: `https://api.${domain}/sync`,
       emailService: `https://api.${domain}/email`,
@@ -76,7 +76,7 @@ const configs = {
   },
   production: {
     apiEndpoints: {
-      firebase: `https://api.${domain}/firebase`,
+      orbitDB: `https://api.${domain}/orbitdb`,
       websocket: `wss://api.${domain}/socket.io`,
       cloudSync: `https://api.${domain}/sync`,
       emailService: `https://api.${domain}/email`,
@@ -146,7 +146,7 @@ console.log(`📁 Updated file: ${deploymentConfigPath}`);
 const envContent = `# Environment: ${env}
 VITE_APP_ENV=${env}
 VITE_APP_DOMAIN=${domain}
-VITE_APP_API_BASE_URL=${config.apiEndpoints.firebase.replace('/firebase', '')}
+VITE_APP_API_BASE_URL=${config.apiEndpoints.orbitDB.replace('/orbitdb', '')}
 `;
 
 const envFilePath = path.join(__dirname, `../.env.${env}`);

@@ -38,14 +38,14 @@ export const CrossPlatformAuth: React.FC<CrossPlatformAuthProps> = ({
     setError(null);
 
     try {
-      // Simulate OAuth-like authentication with local ID
+      // Simulate decentralized authentication with local ID
       const selectedIdentity = availableIds.find(id => id.id === selectedId);
       
       if (!selectedIdentity) {
         throw new Error('Selected ID not found');
       }
 
-      // Create a session object similar to OAuth
+              // Create a session object for decentralized authentication
       const session = {
         identity: {
           id: selectedIdentity.id,
@@ -185,7 +185,7 @@ export const CrossPlatformAuth: React.FC<CrossPlatformAuthProps> = ({
 
         <div className="bg-blue-50 border border-blue-200 rounded-md p-3">
           <p className="text-sm text-blue-800">
-            <strong>How it works:</strong> This simulates OAuth-like authentication using your local IDs. 
+            <strong>How it works:</strong> This simulates decentralized authentication using your local IDs. 
             Select an ID from your device to authenticate with the chosen platform.
           </p>
         </div>

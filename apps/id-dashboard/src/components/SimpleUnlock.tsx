@@ -39,20 +39,20 @@ export const SimpleUnlock: React.FC<SimpleUnlockProps> = ({ onUnlock, onCancel }
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
       <div className="bg-white rounded-lg p-6 w-full max-w-md mx-4">
-        <h2 className="text-2xl font-bold mb-4 text-gray-800">Unlock PN File</h2>
+        <h2 className="text-2xl font-bold mb-4 text-gray-800">Unlock pN File</h2>
 
         
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">
-              Select PN File
+              Select pN File
             </label>
-            <input
-              type="file"
-              accept=".json,.txt,.did"
-              onChange={(e) => setFile(e.target.files?.[0] || null)}
-              className="w-full p-3 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-            />
+                          <input
+                type="file"
+                accept=".pn,.id,.json,.identity"
+                onChange={(e) => setFile(e.target.files?.[0] || null)}
+                className="w-full p-3 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              />
           </div>
 
           <div>

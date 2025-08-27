@@ -344,9 +344,8 @@ export class AdvancedSecurity {
     this.events.push(event);
     this.saveSecurityEvents();
     
-    // Silently handle security events in production
     if (event.severity === 'critical' && process.env.NODE_ENV === 'development') {
-      // Development logging only
+      console.warn('Critical security event:', event);
     }
   }
 
@@ -404,9 +403,8 @@ export class AdvancedSecurity {
     try {
       localStorage.setItem('security_events', JSON.stringify(this.events));
     } catch (error) {
-      // Silently handle security event save failures in production
       if (process.env.NODE_ENV === 'development') {
-        // Development logging only
+        console.error('Failed to save security events:', error);
       }
     }
   }

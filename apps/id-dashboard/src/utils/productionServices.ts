@@ -1,16 +1,16 @@
 // Production Services Integration
 // This file manages all production services and provides a unified interface
 
-import { firebaseCloudAPI } from './firebaseCloudAPI';
+import { orbitDBService } from './orbitDBService';
 import { emailService } from './emailService';
 import { smsService } from './smsService';
 import { ipfsService } from './ipfsService';
 import { qrScannerService } from './qrScannerService';
 
 export interface ProductionServicesConfig {
-  firebase: {
+  orbitDB: {
     enabled: boolean;
-    apiKey: string;
+    ipfsUrl: string;
     projectId: string;
   };
   email: {
@@ -68,10 +68,10 @@ export class ProductionServicesManager {
     if (!ProductionServicesManager.instance) {
       // Default configuration from environment variables
       const config: ProductionServicesConfig = {
-        firebase: {
-          enabled: !!process.env.REACT_APP_FIREBASE_API_KEY,
-          apiKey: process.env.REACT_APP_FIREBASE_API_KEY || '',
-          projectId: process.env.REACT_APP_FIREBASE_PROJECT_ID || ''
+        orbitDB: {
+          enabled: !!process.env.REACT_APP_IPFS_PROJECT_ID,
+          ipfsUrl: process.env.REACT_APP_IPFS_URL || '',
+          projectId: process.env.REACT_APP_IPFS_PROJECT_ID || ''
         },
         email: {
           enabled: !!process.env.REACT_APP_SENDGRID_API_KEY,
@@ -104,9 +104,9 @@ export class ProductionServicesManager {
     const results: ServiceResult[] = [];
     
     try {
-      // Initialize Firebase
-      const firebaseResult = await this.initializeFirebase();
-      results.push(firebaseResult);
+      // Initialize OrbitDB
+      const orbitDBResult = await this.initializeOrbitDB();
+      results.push(orbitDBResult);
       
       // Initialize Email Service
       const emailResult = await this.initializeEmailService();
@@ -134,7 +134,9 @@ export class ProductionServicesManager {
         totalCount
       };
     } catch (error) {
-      // Handle initialization error silently
+      if (process.env.NODE_ENV === 'development') {
+        console.error('Failed to initialize production services:', error);
+      }
       return {
         success: false,
         services: results,
@@ -144,17 +146,17 @@ export class ProductionServicesManager {
     }
   }
 
-  private static async initializeFirebase(): Promise<ServiceResult> {
+  private static async initializeOrbitDB(): Promise<ServiceResult> {
     try {
-      const result = await firebaseCloudAPI.healthCheck();
+      const result = await orbitDBService.healthCheck();
       return {
-        service: 'firebase',
-        success: result,
-        error: result ? undefined : 'Connection failed'
+        service: 'orbitDB',
+        success: result.success,
+        error: result.success ? undefined : result.error
       };
     } catch (error) {
       return {
-        service: 'firebase',
+        service: 'orbitDB',
         success: false,
         error: error instanceof Error ? error.message : 'Unknown error'
       };
@@ -235,8 +237,8 @@ export class ProductionServicesManager {
 
   isServiceEnabled(service: string): boolean {
     switch (service) {
-      case 'firebase':
-        return this.config.firebase.enabled;
+      case 'orbitDB':
+        return this.config.orbitDB.enabled;
       case 'email':
         return this.config.email.enabled;
       case 'sms':
@@ -263,8 +265,8 @@ export class ProductionServicesManager {
   }
 
   // Service accessors
-  getFirebaseAPI() {
-    return firebaseCloudAPI;
+  getOrbitDBService() {
+    return orbitDBService;
   }
 
   getEmailService() {

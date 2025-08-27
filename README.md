@@ -1,4 +1,4 @@
-# 🎖️ Identity Protocol - Military-Grade Quantum-Resistant Cryptography
+# 🎖️ Par Noir - Military-Grade Quantum-Resistant Cryptography
 
 A **military-grade quantum-resistant identity system** that enables users to create their own identities with **authentic zero-knowledge proofs** and **NIST PQC Round 3 algorithms**. Users control what personal data they share with each platform, providing **privacy-first authentication** with **FIPS 140-3 Level 4** equivalent security.
 
@@ -32,7 +32,7 @@ A **military-grade quantum-resistant identity system** that enables users to cre
 - Users create and own their identities
 - Identities serve as access tokens for platforms
 - Users control what data they share with each platform
-- OAuth-like authentication flow with user-owned data
+- **Decentralized authentication flow** with user-owned data (no central OAuth server)
 
 ### **Data Sharing Control**
 - Users decide what personal information to share
@@ -48,7 +48,7 @@ A **military-grade quantum-resistant identity system** that enables users to cre
 - **👤 User-Owned Identities**: Users create and control their own identities
 - **🔑 Access Token Management**: Identities serve as access tokens for third parties
 - **🛡️ Controlled Data Sharing**: Users decide what data to share with each platform
-- **🔄 OAuth-Like Flow**: Familiar authentication patterns for developers
+- **🔄 Decentralized Authentication**: Self-sovereign authentication with no central authority
 - **📋 Compliance Ready**: Request additional data collection from users
 - **📱 Cross-Platform**: Works in browsers, mobile apps, and desktop applications
 

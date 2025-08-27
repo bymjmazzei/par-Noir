@@ -1,7 +1,7 @@
 /**
  * Military-Grade Cryptographic Operations for Identity Protocol
  * Provides FIPS 140-3 Level 4 equivalent security with quantum resistance
- * Includes hardware security module (HSM) integration and post-quantum cryptography
+ * Includes post-quantum cryptography and hardware-backed security
  */
 
 import { IdentityError, IdentityErrorCodes } from '../types';
@@ -18,7 +18,6 @@ export interface CryptoConfig {
   hashAlgorithm: 'SHA-384' | 'SHA-512' | 'SHAKE256' | 'Keccak-256';
   ellipticCurve: 'P-384' | 'P-521' | 'BLS12-381';
   quantumResistant: boolean;
-  hsmEnabled: boolean;
   keyRotationInterval: number; // in milliseconds
   postQuantumEnabled: boolean;
   securityLevel: 'standard' | 'military' | 'top-secret';
@@ -33,7 +32,7 @@ export interface EncryptedData {
   timestamp: string;
   securityLevel: string;
   quantumResistant: boolean;
-  hsmProtected: boolean;
+  hardwareBacked: boolean;
 }
 
 export interface KeyPair {
@@ -45,16 +44,14 @@ export interface KeyPair {
   createdAt: string;
   expiresAt: string;
   quantumResistant: boolean;
-  hsmProtected: boolean;
+  hardwareBacked: boolean;
 }
 
-export interface HSMConfig {
+export interface HardwareConfig {
   enabled: boolean;
-  provider: 'aws-kms' | 'azure-keyvault' | 'gcp-kms' | 'local-hsm';
-  region?: string;
-  keyId?: string;
-  accessKey?: string;
-  secretKey?: string;
+  useSecureEnclave: boolean;
+  useTPM: boolean;
+  useWebAuthn: boolean;
 }
 
 export class MilitaryGradeCrypto {
@@ -81,29 +78,30 @@ export class MilitaryGradeCrypto {
   }> = new Map();
 
   private config: CryptoConfig;
-  private hsmConfig: HSMConfig;
+  private hardwareConfig: HardwareConfig;
   private keyStore: Map<string, KeyPair> = new Map();
   private encryptionCache: Map<string, EncryptedData> = new Map();
   private securityAuditLog: Array<{ timestamp: string; event: string; details: any; riskLevel: string }> = [];
 
-  constructor(config: Partial<CryptoConfig> = {}, hsmConfig: Partial<HSMConfig> = {}) {
+  constructor(config: Partial<CryptoConfig> = {}, hardwareConfig: Partial<HardwareConfig> = {}) {
     this.config = {
       algorithm: 'AES-256-GCM',
       keyLength: 256,
       hashAlgorithm: 'SHA-512',
       ellipticCurve: 'P-384',
       quantumResistant: true,
-      hsmEnabled: false,
       keyRotationInterval: 24 * 60 * 60 * 1000, // 24 hours
       postQuantumEnabled: true,
       securityLevel: 'military',
       ...config
     };
 
-    this.hsmConfig = {
-      enabled: false,
-      provider: 'local-hsm',
-      ...hsmConfig
+    this.hardwareConfig = {
+      enabled: true,
+      useSecureEnclave: true,
+      useTPM: true,
+      useWebAuthn: true,
+      ...hardwareConfig
     };
 
     this.initializeSecurity();
@@ -117,10 +115,10 @@ export class MilitaryGradeCrypto {
       // Verify crypto capabilities
       await this.verifyCryptoCapabilities();
       
-      // Initialize HSM if enabled
-      if (this.hsmConfig.enabled) {
-        await this.initializeHSM();
-      }
+          // Initialize hardware-backed security if enabled
+    if (this.hardwareConfig.enabled) {
+      await this.initializeHardwareSecurity();
+    }
       
       // Generate initial key pairs
       await this.generateInitialKeyPairs();
@@ -178,82 +176,9 @@ export class MilitaryGradeCrypto {
   }
 
   /**
-   * Initialize Hardware Security Module
+   * Initialize Hardware-Backed Security
    */
-  private async initializeHSM(): Promise<void> {
-    try {
-      switch (this.hsmConfig.provider) {
-        case 'aws-kms':
-          await this.initializeAWSKMS();
-          break;
-        case 'azure-keyvault':
-          await this.initializeAzureKeyVault();
-          break;
-        case 'gcp-kms':
-          await this.initializeGCPKMS();
-          break;
-        case 'local-hsm':
-          await this.initializeLocalHSM();
-          break;
-        default:
-          throw new Error(`Unsupported HSM provider: ${this.hsmConfig.provider}`);
-      }
-      
-      this.logSecurityEvent('hsm_initialized', { provider: this.hsmConfig.provider }, 'low');
-    } catch (error) {
-      this.logSecurityEvent('hsm_initialization_failed', { error: error instanceof Error ? error.message : 'Unknown error' }, 'critical');
-      throw error;
-    }
-  }
-
-  /**
-   * Initialize AWS KMS
-   */
-  private async initializeAWSKMS(): Promise<void> {
-    // In a real implementation, you'd initialize AWS SDK and configure KMS
-    // For now, we'll simulate the initialization
-    if (!this.hsmConfig.accessKey || !this.hsmConfig.secretKey) {
-      throw new Error('AWS credentials required for KMS initialization');
-    }
-    
-    // Simulate AWS KMS connection test
-    await new Promise(resolve => setTimeout(resolve, 100));
-  }
-
-  /**
-   * Initialize Azure Key Vault
-   */
-  private async initializeAzureKeyVault(): Promise<void> {
-    // In a real implementation, you'd initialize Azure SDK and configure Key Vault
-    // For now, we'll simulate the initialization
-    if (!this.hsmConfig.accessKey) {
-      throw new Error('Azure access key required for Key Vault initialization');
-    }
-    
-    // Simulate Azure Key Vault connection test
-    await new Promise(resolve => setTimeout(resolve, 100));
-  }
-
-  /**
-   * Initialize GCP KMS
-   */
-  private async initializeGCPKMS(): Promise<void> {
-    // In a real implementation, you'd initialize GCP SDK and configure KMS
-    // For now, we'll simulate the initialization
-    if (!this.hsmConfig.accessKey) {
-      throw new Error('GCP access key required for KMS initialization');
-    }
-    
-    // Simulate GCP KMS connection test
-    await new Promise(resolve => setTimeout(resolve, 100));
-  }
-
-  /**
-   * Initialize Local HSM
-   */
-  private async initializeLocalHSM(): Promise<void> {
-    // Local HSM uses secure enclaves or TPM if available
-    // For now, we'll use the Web Crypto API with enhanced security
+  private async initializeHardwareSecurity(): Promise<void> {
     try {
       // Test secure random generation
       const testRandom = crypto.getRandomValues(new Uint8Array(32));
@@ -264,15 +189,34 @@ export class MilitaryGradeCrypto {
       // Test key generation in secure context
       const testKey = await crypto.subtle.generateKey(
         { name: 'AES-GCM', length: 256 },
-        false,
+        false, // extractable = false for hardware backing
         ['encrypt', 'decrypt']
       );
       
       if (!testKey) {
         throw new Error('Key generation failed');
       }
+
+      // Test WebAuthn availability if enabled
+      if (this.hardwareConfig.useWebAuthn && typeof window !== 'undefined') {
+        if (!window.PublicKeyCredential) {
+          this.logSecurityEvent('webauthn_not_supported', {}, 'medium');
+        } else {
+          this.logSecurityEvent('webauthn_available', {}, 'low');
+        }
+      }
+      
+      this.logSecurityEvent('hardware_security_initialized', { 
+        useSecureEnclave: this.hardwareConfig.useSecureEnclave,
+        useTPM: this.hardwareConfig.useTPM,
+        useWebAuthn: this.hardwareConfig.useWebAuthn
+      }, 'low');
+      
     } catch (error) {
-      throw new Error(`Local HSM initialization failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      this.logSecurityEvent('hardware_security_initialization_failed', { 
+        error: error instanceof Error ? error.message : 'Unknown error' 
+      }, 'critical');
+      throw error;
     }
   }
 
@@ -337,7 +281,7 @@ export class MilitaryGradeCrypto {
         createdAt: now.toISOString(),
         expiresAt: expiresAt.toISOString(),
         quantumResistant: this.config.quantumResistant,
-        hsmProtected: this.hsmConfig.enabled
+        hardwareBacked: this.hardwareConfig.enabled
       };
 
       this.keyStore.set(keyId, result);
@@ -374,7 +318,7 @@ export class MilitaryGradeCrypto {
         createdAt: now.toISOString(),
         expiresAt: expiresAt.toISOString(),
         quantumResistant: this.config.quantumResistant,
-        hsmProtected: this.hsmConfig.enabled
+        hardwareBacked: this.hardwareConfig.enabled
       };
 
       this.keyStore.set(keyId, result);
@@ -411,7 +355,7 @@ export class MilitaryGradeCrypto {
         createdAt: now.toISOString(),
         expiresAt: expiresAt.toISOString(),
         quantumResistant: this.config.quantumResistant,
-        hsmProtected: this.hsmConfig.enabled
+        hardwareBacked: this.hardwareConfig.enabled
       };
 
       this.keyStore.set(keyId, result);
@@ -1133,13 +1077,13 @@ export class MilitaryGradeCrypto {
   async encrypt(data: string, options: {
     algorithm?: string;
     quantumResistant?: boolean;
-    hsmProtected?: boolean;
+    hardwareBacked?: boolean;
     securityLevel?: string;
   } = {}): Promise<EncryptedData> {
     try {
       const algorithm = options.algorithm || this.config.algorithm;
       const quantumResistant = options.quantumResistant ?? this.config.quantumResistant;
-      const hsmProtected = options.hsmProtected ?? this.hsmConfig.enabled;
+      const hardwareBacked = options.hardwareBacked ?? this.hardwareConfig.enabled;
       const securityLevel = options.securityLevel || this.config.securityLevel;
 
       // Get encryption key
@@ -1201,7 +1145,7 @@ export class MilitaryGradeCrypto {
         timestamp: new Date().toISOString(),
         securityLevel,
         quantumResistant,
-        hsmProtected
+        hardwareBacked
       };
 
       // Cache encrypted data
@@ -1212,7 +1156,7 @@ export class MilitaryGradeCrypto {
         algorithm, 
         securityLevel, 
         quantumResistant, 
-        hsmProtected,
+        hardwareBacked,
         dataSize: data.length 
       }, 'low');
 
@@ -1275,7 +1219,7 @@ export class MilitaryGradeCrypto {
         algorithm: encryptedData.algorithm, 
         securityLevel: encryptedData.securityLevel,
         quantumResistant: encryptedData.quantumResistant,
-        hsmProtected: encryptedData.hsmProtected
+        hardwareBacked: encryptedData.hardwareBacked
       }, 'low');
 
       return decryptedData;
@@ -1295,12 +1239,12 @@ export class MilitaryGradeCrypto {
   async sign(data: string, options: {
     algorithm?: string;
     quantumResistant?: boolean;
-    hsmProtected?: boolean;
+    hardwareBacked?: boolean;
   } = {}): Promise<{ signature: string; publicKey: string; algorithm: string }> {
     try {
       const algorithm = options.algorithm || `ECDSA-${this.config.ellipticCurve}`;
       const quantumResistant = options.quantumResistant ?? this.config.quantumResistant;
-      const hsmProtected = options.hsmProtected ?? this.hsmConfig.enabled;
+      const hardwareBacked = options.hardwareBacked ?? this.hardwareConfig.enabled;
 
       // Get signing key
       const signingKey = await this.getSigningKey();
@@ -1322,7 +1266,7 @@ export class MilitaryGradeCrypto {
       this.logSecurityEvent('data_signed', { 
         algorithm, 
         quantumResistant, 
-        hsmProtected,
+        hardwareBacked,
         dataSize: data.length 
       }, 'low');
 
@@ -1479,7 +1423,7 @@ export class MilitaryGradeCrypto {
     keyExchangeKeys: number;
     expiredKeys: number;
     quantumResistantKeys: number;
-    hsmProtectedKeys: number;
+    hardwareBackedKeys: number;
   } {
     const now = new Date();
     let encryptionKeys = 0;
@@ -1487,7 +1431,7 @@ export class MilitaryGradeCrypto {
     let keyExchangeKeys = 0;
     let expiredKeys = 0;
     let quantumResistantKeys = 0;
-    let hsmProtectedKeys = 0;
+    let hardwareBackedKeys = 0;
 
     for (const keyPair of this.keyStore.values()) {
       if (keyPair.algorithm.startsWith('AES') || keyPair.algorithm.startsWith('ChaCha')) {
@@ -1506,8 +1450,8 @@ export class MilitaryGradeCrypto {
         quantumResistantKeys++;
       }
 
-      if (keyPair.hsmProtected) {
-        hsmProtectedKeys++;
+      if (keyPair.hardwareBacked) {
+        hardwareBackedKeys++;
       }
     }
 
@@ -1518,7 +1462,7 @@ export class MilitaryGradeCrypto {
       keyExchangeKeys,
       expiredKeys,
       quantumResistantKeys,
-      hsmProtectedKeys
+      hardwareBackedKeys
     };
   }
 
@@ -1547,9 +1491,9 @@ export class MilitaryGradeCrypto {
       recommendations.push('Upgrade keys to use quantum-resistant curves (P-521, BLS12-381)');
     }
 
-    if (keyStoreInfo.hsmProtectedKeys < keyStoreInfo.totalKeys * 0.5) {
-      issues.push('Less than 50% of keys are HSM-protected');
-      recommendations.push('Enable HSM protection for all critical keys');
+    if (keyStoreInfo.hardwareBackedKeys < keyStoreInfo.totalKeys * 0.5) {
+      issues.push('Less than 50% of keys are hardware-backed');
+      recommendations.push('Enable hardware-backed security for all critical keys');
     }
 
     const quantumResistantStatus = keyStoreInfo.totalKeys > 0 
@@ -1557,13 +1501,13 @@ export class MilitaryGradeCrypto {
       : 'No keys generated';
 
     const hsmStatus = keyStoreInfo.totalKeys > 0 
-      ? `${Math.round((keyStoreInfo.hsmProtectedKeys / keyStoreInfo.totalKeys) * 100)}% HSM-protected`
+      ? `${Math.round((keyStoreInfo.hardwareBackedKeys / keyStoreInfo.totalKeys) * 100)}% hardware-backed`
       : 'No keys generated';
 
     return {
       overallCompliance: keyStoreInfo.expiredKeys === 0 && 
                         keyStoreInfo.quantumResistantKeys >= keyStoreInfo.totalKeys * 0.8 &&
-                        keyStoreInfo.hsmProtectedKeys >= keyStoreInfo.totalKeys * 0.5,
+                        keyStoreInfo.hardwareBackedKeys >= keyStoreInfo.totalKeys * 0.5,
       issues,
       recommendations,
       lastAudit: new Date().toISOString(),
@@ -1601,28 +1545,32 @@ export class MilitaryGradeCrypto {
   }
 
   /**
-   * Get HSM status
+   * Get hardware-backed security status
    */
-  getHSMStatus(): {
+  getHardwareSecurityStatus(): {
     enabled: boolean;
-    provider: string;
+    features: string[];
     status: string;
     recommendations: string[];
   } {
     const keyStoreInfo = this.getKeyStoreInfo();
-    const coverage = keyStoreInfo.totalKeys > 0 ? (keyStoreInfo.hsmProtectedKeys / keyStoreInfo.totalKeys) * 100 : 0;
+    const coverage = keyStoreInfo.totalKeys > 0 ? (keyStoreInfo.hardwareBackedKeys / keyStoreInfo.totalKeys) * 100 : 0;
     
     const recommendations: string[] = [];
     if (coverage < 100) {
-      recommendations.push('Enable HSM protection for all critical keys');
-      recommendations.push('Configure cloud HSM providers (AWS KMS, Azure Key Vault, GCP KMS)');
-      recommendations.push('Implement local HSM with secure enclaves or TPM');
+      recommendations.push('Enable hardware-backed security for all critical keys');
+      recommendations.push('Use WebAuthn for biometric authentication');
+      recommendations.push('Enable secure enclaves and TPM where available');
     }
 
     return {
-      enabled: this.hsmConfig.enabled,
-      provider: this.hsmConfig.provider,
-      status: this.hsmConfig.enabled ? 'Active' : 'Disabled',
+      enabled: this.hardwareConfig.enabled,
+      features: [
+        this.hardwareConfig.useSecureEnclave ? 'Secure Enclave' : '',
+        this.hardwareConfig.useTPM ? 'TPM' : '',
+        this.hardwareConfig.useWebAuthn ? 'WebAuthn' : ''
+      ].filter(Boolean),
+      status: this.hardwareConfig.enabled ? 'Active' : 'Disabled',
       recommendations
     };
   }

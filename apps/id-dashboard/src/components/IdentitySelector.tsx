@@ -105,7 +105,7 @@ export const IdentitySelector: React.FC<IdentitySelectorProps> = ({
           <FileText className="w-8 h-8 text-gray-400 mx-auto mb-2" />
           <p className="text-sm text-text-secondary mb-2">No stored identities found</p>
           <p className="text-xs text-text-secondary">
-            Upload a PN file to store it for quick access
+            Upload a pN file to store it for quick access
           </p>
         </div>
       ) : (
