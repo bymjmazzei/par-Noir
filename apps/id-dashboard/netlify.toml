@@ -6,6 +6,27 @@
 [build.environment]
   NODE_VERSION = "18.20.8"
 
+# Static files first
+[[redirects]]
+  from = "/sw.js"
+  to = "/sw.js"
+  status = 200
+
+[[redirects]]
+  from = "/manifest.json"
+  to = "/manifest.json"
+  status = 200
+
+[[redirects]]
+  from = "/icons/*"
+  to = "/icons/:splat"
+  status = 200
+
+[[redirects]]
+  from = "/assets/*"
+  to = "/assets/:splat"
+  status = 200
+
 # SPA fallback for everything else
 [[redirects]]
   from = "/*"
