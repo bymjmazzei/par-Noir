@@ -1,5 +1,5 @@
 // IPFS service using Pinata for decentralized file storage
-import { PinataSDK } from '@pinata/sdk';
+// import { PinataSDK } from '@pinata/sdk'; // Temporarily disabled for Netlify
 
 export interface IPFSConfig {
   apiKey: string;

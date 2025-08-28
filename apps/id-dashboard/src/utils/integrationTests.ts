@@ -1,4 +1,5 @@
 // Integration Tests for All Services (Browser-Compatible)
+// Temporarily disabled heavy dependencies for Netlify deployment
 export interface TestResult {
   service: string;
   status: 'success' | 'error' | 'skipped';
