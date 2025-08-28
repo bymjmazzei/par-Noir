@@ -71,25 +71,51 @@ export class CoinbaseProxy {
   }
 
   /**
-   * Create a checkout via Firebase Functions (recommended for production)
+   * Create a checkout via direct Coinbase API (permanent solution)
    */
   static async createCheckoutViaProxy(checkoutData: CheckoutRequest): Promise<CoinbaseCheckout> {
-    console.log('Attempting checkout via Firebase Functions...');
+    console.log('Creating checkout via direct Coinbase API...');
     
     try {
-      // Import Firebase Functions dynamically
-      const { getFunctions, httpsCallable } = await import('firebase/functions');
-      const functions = getFunctions();
+      // Use direct Coinbase API call
+      const COINBASE_API_KEY = 'c79f3516-c20c-4b32-af0d-4938ec2039f0';
+      const COINBASE_API_BASE = 'https://api.commerce.coinbase.com';
       
-      // Call the Firebase Function
-      const createCheckout = httpsCallable(functions, 'createCoinbaseCheckout');
-      const result = await createCheckout(checkoutData);
+      const response = await fetch(`${COINBASE_API_BASE}/checkouts`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CC-Api-Key': COINBASE_API_KEY,
+          'X-CC-Version': '2018-03-22'
+        },
+        body: JSON.stringify(checkoutData)
+      });
 
-      console.log('Firebase Functions response:', result);
-      return (result.data as any).checkout;
+      if (!response.ok) {
+        const errorData = await response.json();
+        console.error('Coinbase API error:', errorData);
+        throw new Error(errorData.error?.message || response.statusText);
+      }
+
+      const result = await response.json();
+      console.log('Direct API response:', result);
+      
+      // Handle different possible field names for hosted_url
+      const checkout = result.data;
+      if (!checkout.hosted_url && checkout.hosted_urls) {
+        checkout.hosted_url = checkout.hosted_urls.redirect;
+      }
+      
+      // If still no hosted_url, create one using the checkout ID
+      if (!checkout.hosted_url) {
+        checkout.hosted_url = `https://commerce.coinbase.com/checkout/${checkout.id}`;
+        console.log('Created fallback hosted_url:', checkout.hosted_url);
+      }
+      
+      return checkout;
     } catch (error) {
-      console.error('Firebase Functions call failed, falling back to direct checkout:', error);
-      return this.createCheckoutDirect(checkoutData);
+      console.error('Direct API call failed:', error);
+      throw error;
     }
   }
 
@@ -108,38 +134,17 @@ export class CoinbaseProxy {
   }
 
   /**
-   * Smart checkout creation with fallbacks
+   * Smart checkout creation with direct API
    */
   static async createCheckout(checkoutData: CheckoutRequest): Promise<CoinbaseCheckout> {
-    console.log('Creating Coinbase checkout with smart fallback...');
+    console.log('Creating Coinbase checkout with direct API...');
 
-    // Try direct API call first
+    // Use the direct API approach (which is now the main method)
     try {
-      return await this.createCheckoutDirect(checkoutData);
+      return await this.createCheckoutViaProxy(checkoutData);
     } catch (error) {
-      console.log('Direct API call failed, trying server proxy...');
-      
-      // Try server proxy
-      try {
-        return await this.createCheckoutViaProxy(checkoutData);
-      } catch (proxyError) {
-        console.log('Server proxy failed, using direct URL fallback...');
-        
-        // Fallback to direct URL
-        const directUrl = this.createDirectCheckoutURL(checkoutData);
-        const fallbackCheckout: CoinbaseCheckout = {
-          id: `checkout_${Date.now()}`,
-          hosted_url: directUrl,
-          name: checkoutData.name,
-          description: checkoutData.description,
-          pricing_type: checkoutData.pricing_type,
-          local_price: checkoutData.local_price,
-          metadata: checkoutData.metadata
-        };
-        
-        console.log('Using fallback checkout URL:', directUrl);
-        return fallbackCheckout;
-      }
+      console.error('Direct API call failed:', error);
+      throw error;
     }
   }
 

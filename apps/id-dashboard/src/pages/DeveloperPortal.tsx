@@ -114,7 +114,17 @@ export const DeveloperPortal: React.FC = () => {
             {!licenseInfo && (
               <button
                 onClick={() => setShowLicenseModal(true)}
-                className="px-4 py-2 bg-primary hover:bg-hover text-bg-primary rounded-lg font-medium transition-colors"
+                className="px-4 py-2 rounded-lg font-medium transition-colors"
+                style={{
+                  backgroundColor: '#3b82f6',
+                  color: '#ffffff'
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.backgroundColor = '#2563eb';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.backgroundColor = '#3b82f6';
+                }}
               >
                 Purchase Commercial License
               </button>

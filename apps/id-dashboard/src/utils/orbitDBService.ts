@@ -160,35 +160,28 @@ export class OrbitDBService {
   }
 
   /**
-   * Store pN metadata (same API as Firebase)
+   * Store pN metadata via client-side IPFS MFS
    */
   async storePNMetadata(metadata: PNMetadata): Promise<OrbitDBResult> {
-    if (!this.isInitialized) {
-      await this.initialize();
-    }
-
     try {
-      // Encrypt metadata if enabled
-      const dataToStore = this.config.encryptionEnabled 
-        ? await this.encryptMetadata(metadata)
-        : metadata;
-
-      // Store in OrbitDB
-      const cid = await this.database.put(dataToStore);
+      // Use client-side IPFS service
+      const { ipfsMetadataService } = await import('./ipfsMetadataService');
+      const result = await ipfsMetadataService.storePNMetadata(metadata);
       
-      // Update metadata with CID
-      const updatedMetadata = {
-        ...metadata,
-        cid: cid.toString(),
-        updatedAt: new Date().toISOString()
-      };
-
-      return {
-        success: true,
-        data: updatedMetadata,
-        cid: cid.toString()
-      };
+      if (result.success) {
+        return {
+          success: true,
+          data: result.data,
+          cid: result.cid
+        };
+      } else {
+        return {
+          success: false,
+          error: result.error || 'Failed to store metadata'
+        };
+      }
     } catch (error) {
+      console.error('Failed to store pN metadata:', error);
       return {
         success: false,
         error: error instanceof Error ? error.message : 'Unknown error'
@@ -197,36 +190,19 @@ export class OrbitDBService {
   }
 
   /**
-   * Get pN metadata (same API as Firebase)
+   * Get pN metadata via client-side IPFS MFS
    */
   async getPNMetadata(pnId: string): Promise<OrbitDBResult> {
-    if (!this.isInitialized) {
-      await this.initialize();
-    }
-
     try {
-      // Query OrbitDB for metadata
-      const results = await this.database.query((doc: any) => doc.pnId === pnId);
-      
-      if (results.length === 0) {
-        return {
-          success: false,
-          error: 'Metadata not found'
-        };
-      }
-
-      const metadata = results[0];
-      
-      // Decrypt metadata if enabled
-      const decryptedMetadata = this.config.encryptionEnabled 
-        ? await this.decryptMetadata(metadata)
-        : metadata;
-
+      // For now, we'll need to store the CID somewhere
+      // In a full implementation, you'd have an index
+      console.log('Note: getPNMetadata requires CID storage - implement index system');
       return {
-        success: true,
-        data: decryptedMetadata
+        success: false,
+        error: 'CID index not implemented yet'
       };
     } catch (error) {
+      console.error('Failed to get pN metadata:', error);
       return {
         success: false,
         error: error instanceof Error ? error.message : 'Unknown error'

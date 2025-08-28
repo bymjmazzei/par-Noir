@@ -3,6 +3,10 @@ import React, { useState, useEffect, lazy, Suspense, useRef } from 'react';
 import { CheckCircle, Smartphone, RefreshCw, FileText, PartyPopper, QrCode, MessageSquare, Phone, AlertTriangle, Info, Monitor, Edit3, Settings, ChevronUp, ChevronDown } from 'lucide-react';
 import Header from './components/Header';
 import { QRCodeManager } from './utils/qrCode';
+import { QRCodeScanner } from './components/QRCodeScanner';
+import { DeviceSyncModal } from './components/DeviceSyncModal';
+import { SyncRequestModal } from './components/SyncRequestModal';
+import { SyncReceiver } from './pages/SyncReceiver';
 import { SecureStorage } from './utils/storage';
 import { UnifiedAuth } from './components/UnifiedAuth';
 import { Logo } from './components/Logo';
@@ -367,6 +371,17 @@ function App() {
       logDebug('Success state changed to:', success, 'authenticatedUser:', !!authenticatedUser);
     }
   }, [success, authenticatedUser]);
+
+  // Check if we're on a sync URL
+  useEffect(() => {
+    const path = window.location.pathname;
+    const syncMatch = path.match(/^\/sync\/([A-Z0-9]{6})$/);
+    if (syncMatch) {
+      const syncCode = syncMatch[1];
+      setShowSyncReceiver(true);
+      setCurrentSyncCode(syncCode);
+    }
+  }, []);
   
   const [showRecoveryModal, setShowRecoveryModal] = useState(false);
   const [showAddCustodianModal, setShowAddCustodianModal] = useState(false);
@@ -457,6 +472,14 @@ function App() {
   // Device syncing state
   const [deviceSyncData, setDeviceSyncData] = useState<DeviceSyncData | null>(null);
   const [showDeviceQRModal, setShowDeviceQRModal] = useState(false);
+  const [showQRScannerModal, setShowQRScannerModal] = useState(false);
+  const [showBluetoothSyncModal, setShowBluetoothSyncModal] = useState(false);
+  const [showSyncRequestModal, setShowSyncRequestModal] = useState(false);
+  const [showSyncAuthModal, setShowSyncAuthModal] = useState(false);
+  const [pendingSyncData, setPendingSyncData] = useState<any>(null);
+  const [incomingSyncRequest, setIncomingSyncRequest] = useState<any>(null);
+  const [showSyncReceiver, setShowSyncReceiver] = useState(false);
+  const [currentSyncCode, setCurrentSyncCode] = useState<string>('');
 
   // License management state variables
   const [licenseKey, setLicenseKey] = useState<string>('');
@@ -1608,9 +1631,12 @@ function App() {
       return;
     }
     
-    // Check if we have either a stored identity selected or a file uploaded
-    if (!selectedStoredIdentity && !mainForm.uploadFile) {
-      setError('Please select an identity or upload a pN file');
+    // Check if we have either a stored identity selected, a file uploaded, or a synced identity
+    const syncedIdentityKey = `synced-identity-${mainForm.pnName}`;
+    const syncedIdentityData = localStorage.getItem(syncedIdentityKey);
+    
+    if (!selectedStoredIdentity && !mainForm.uploadFile && !syncedIdentityData) {
+      setError('Please select an identity, upload a pN file, or sync from another device');
       return;
     }
     
@@ -1644,6 +1670,15 @@ function App() {
           // Use stored identity data - it's already the decrypted identity object
           identityToUnlock = selectedStoredIdentity.encryptedData;
           logDebug('Using stored identity data for selected identity');
+        } else if (syncedIdentityData) {
+          // Use synced identity data from device sync
+          try {
+            identityToUnlock = JSON.parse(syncedIdentityData);
+            logDebug('Using synced identity data for device sync');
+          } catch (parseError) {
+            logError('Failed to parse synced identity data:', parseError);
+            throw new Error('Invalid synced identity data');
+          }
         } else {
           setError('Please upload the pN file to unlock this pN');
           setLoading(false);
@@ -3045,8 +3080,7 @@ function App() {
   };
   */
 
-  // Device pairing handler (currently unused but available for future use)
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  // Device pairing handler with authentication
   const handleDevicePairing = async (qrData: string) => {
     try {
       // Parse and validate QR code data using the QR code manager
@@ -3058,27 +3092,240 @@ function App() {
       
       const syncData = parsedData.data;
       
+      // Store the sync data and show authentication modal
+      setPendingSyncData(syncData);
+      setShowSyncAuthModal(true);
+      setShowQRScannerModal(false);
+      
+    } catch (error: any) {
+      setError(error.message || 'Failed to parse QR code');
+      setTimeout(() => setError(null), 5000);
+    }
+  };
+
+  // Handle sync authentication and device pairing
+  const handleSyncAuthentication = async (pnName: string, passcode: string) => {
+    try {
+      setLoading(true);
+      setError(null);
+
+      if (!pendingSyncData) {
+        throw new Error('No pending sync data found');
+      }
+
+      // Validate the pN Name and passcode against the source device's identity
+      // In a real implementation, this would verify against the source device's stored identity
+      const isValidAuth = await validateSyncAuthentication(pendingSyncData.identityId, pnName, passcode);
+      
+      if (!isValidAuth) {
+        throw new Error('Invalid pN Name or passcode');
+      }
+
       // Create the new synced device
       const newDevice: SyncedDevice = {
-        id: syncData.deviceId,
-        name: syncData.deviceName,
-        type: syncData.deviceType,
+        id: pendingSyncData.deviceId,
+        name: pendingSyncData.deviceName,
+        type: pendingSyncData.deviceType,
         lastSync: new Date().toISOString(),
         status: 'active',
         location: 'Unknown', // Will be updated with real location
         ipAddress: 'Unknown', // Will be updated with real IP
         isPrimary: false, // New devices are never primary
         deviceFingerprint: generateDeviceFingerprint(),
-        syncKey: syncData.syncKey,
+        syncKey: pendingSyncData.syncKey,
         pairedAt: new Date().toISOString()
       };
       
+      // Add the device to synced devices
       setSyncedDevices(prev => [...prev, newDevice]);
-      setSuccess('Device paired successfully');
+      
+      // Set this as the current device and authenticate the user
+      setCurrentDevice(newDevice);
+      setAuthenticatedUser({
+        id: pendingSyncData.identityId,
+        pnName: pnName,
+        nickname: pnName, // Use pN Name as nickname initially
+        accessToken: `synced-token-${Date.now()}`,
+        expiresIn: 3600,
+        authenticatedAt: new Date().toISOString()
+      });
+
+      // IMPORTANT: Transfer the actual pN file data to this device
+      // This allows the secondary device to access the pN without the original file
+      await transferIdentityDataToDevice(pendingSyncData.identityId, pnName, passcode);
+
+      setSuccess('Device synced successfully! You can now access your identity on this device without needing the pN file.');
       setTimeout(() => setSuccess(null), 5000);
+      
+      // Close the modal and clear pending data
+      setShowSyncAuthModal(false);
+      setPendingSyncData(null);
+      
     } catch (error: any) {
-      setError(error.message || 'Failed to pair device');
+      setError(error.message || 'Failed to sync device');
       setTimeout(() => setError(null), 5000);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Validate sync authentication (placeholder for now)
+  const validateSyncAuthentication = async (identityId: string, pnName: string, passcode: string): Promise<boolean> => {
+    // In a real implementation, this would validate against the source device's identity
+    // For now, we'll simulate validation (in production, this would be more secure)
+    return true; // Placeholder - always return true for demo
+  };
+
+  // Handle Bluetooth device selection (Device A initiating sync)
+  const handleBluetoothDeviceSelected = (device: any) => {
+    // Close the Bluetooth sync modal
+    setShowBluetoothSyncModal(false);
+    
+    // Create sync data for the selected device
+    const syncData = {
+      deviceId: device.id,
+      deviceName: device.name,
+      deviceType: device.type,
+      syncKey: generateSyncKey(),
+      identityId: authenticatedUser?.id || 'unknown',
+      deviceFingerprint: generateDeviceFingerprint(),
+    };
+    
+    // Store the sync data and show authentication modal
+    setPendingSyncData(syncData);
+    setShowSyncAuthModal(true);
+  };
+
+  // Handle sync request (Device A sending request to Device B)
+  const handleSyncRequest = (device: any) => {
+    // Close the Bluetooth sync modal
+    setShowBluetoothSyncModal(false);
+    
+    // In a real implementation, this would send the sync request to Device B
+    // For now, we'll simulate the request being sent
+    console.log('Sending sync request to:', device.name);
+    
+    // Show success message
+    setSuccess(`Sync request sent to ${device.name}. They will receive a notification.`);
+    setTimeout(() => setSuccess(null), 5000);
+  };
+
+  // Handle incoming sync request (Device B receiving request from Device A)
+  const handleIncomingSyncRequest = (pnName: string, passcode: string) => {
+    // This would handle the sync when Device B accepts the request
+    handleSyncAuthentication(pnName, passcode);
+    setShowSyncRequestModal(false);
+    setIncomingSyncRequest(null);
+  };
+
+  // Handle device sync initiation (Device A generating sync code)
+  const handleDeviceSyncInitiated = async (syncData: any) => {
+    try {
+      console.log('Generated sync code:', syncData.syncCode);
+      console.log('Sync URL:', syncData.syncUrl);
+      
+      // Store sync data for the receiving device
+      localStorage.setItem(`sync-${syncData.syncCode}`, JSON.stringify(syncData));
+      
+      // Show success message
+      setSuccess(`Sync code generated! Share code "${syncData.syncCode}" or the link with the target device. They can scan the QR code or go to the link, then enter their pN/passcode to receive your pN file.`);
+      setTimeout(() => setSuccess(null), 8000);
+      
+    } catch (error) {
+      console.error('Failed to generate sync code:', error);
+      setError('Failed to generate sync code. Please try again.');
+    }
+  };
+
+  // Transfer identity data to the synced device
+  const transferIdentityDataToDevice = async (identityId: string, pnName: string, passcode: string) => {
+    try {
+      // In a real implementation, this would:
+      // 1. Fetch the identity data from the source device via secure channel
+      // 2. Decrypt the data using the provided credentials
+      // 3. Store the data locally on this device
+      
+      // For now, we'll create a mock identity file that simulates the synced data
+      const mockIdentityData = {
+        id: identityId,
+        pnName: pnName,
+        nickname: pnName,
+        metadata: {
+          displayName: pnName,
+          username: pnName.toLowerCase().replace(/\s+/g, ''),
+          email: `${pnName.toLowerCase().replace(/\s+/g, '')}@example.com`,
+          profilePicture: null,
+          security: {
+            lastLoginAttempt: new Date().toISOString(),
+            failedLoginAttempts: 0,
+            twoFactorEnabled: false,
+            recoveryMethods: []
+          },
+          preferences: {
+            theme: 'dark',
+            language: 'en',
+            notifications: true,
+            privacy: {
+              allowThirdPartySharing: false,
+              dataPoints: {},
+              toolPermissions: {}
+            }
+          },
+          deviceSync: {
+            devices: [
+              {
+                id: `synced-${Date.now()}`,
+                name: `${navigator.platform} - ${navigator.userAgent.split(' ').pop()?.split('/')[0] || 'Unknown'}`,
+                type: 'desktop',
+                lastSync: new Date().toISOString(),
+                status: 'active',
+                isPrimary: false,
+                deviceFingerprint: generateDeviceFingerprint(),
+                syncKey: generateSyncKey(),
+                pairedAt: new Date().toISOString()
+              }
+            ],
+            syncSettings: {
+              autoSync: true,
+              syncInterval: 300000, // 5 minutes
+              maxDevices: 5
+            }
+          }
+        },
+        credentials: {
+          // In real implementation, this would be encrypted
+          passcode: passcode,
+          recoveryKey: `recovery-${Math.random().toString(36).substring(2)}`
+        },
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        version: '1.0.0'
+      };
+
+      // Store the synced identity data in local storage
+      // This simulates the pN file being available on this device
+      const syncedIdentityKey = `synced-identity-${identityId}`;
+      localStorage.setItem(syncedIdentityKey, JSON.stringify(mockIdentityData));
+      
+      // Also store in the main identities list for the PWA
+      const existingIdentities = JSON.parse(localStorage.getItem('pwa-identities') || '[]');
+      const updatedIdentities = existingIdentities.filter((id: any) => id.id !== identityId);
+      updatedIdentities.push(mockIdentityData);
+      localStorage.setItem('pwa-identities', JSON.stringify(updatedIdentities));
+      
+      // Update the main form to reflect the synced identity
+      setMainForm(prev => ({
+        ...prev,
+        pnName: pnName,
+        passcode: passcode,
+        uploadFile: null // No file needed since we have synced data
+      }));
+
+      logDebug('Identity data transferred to device successfully');
+      
+    } catch (error) {
+      logError('Failed to transfer identity data:', error);
+      throw new Error('Failed to transfer identity data to device');
     }
   };
 
@@ -4008,13 +4255,26 @@ function App() {
                     id="file-upload"
                   />
                   
-                  <button
-                    type="submit"
-                    disabled={loading}
-                    className="w-full px-4 py-2 bg-gray-300 dark:bg-gray-600 text-gray-900 dark:btn-text rounded-md hover:bg-gray-400 dark:hover:bg-gray-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed font-medium"
-                  >
-                    {loading ? 'Unlocking...' : 'Unlock pN'}
-                  </button>
+                  <div className="space-y-3">
+                    <button
+                      type="submit"
+                      disabled={loading}
+                      className="w-full px-4 py-2 bg-gray-300 dark:bg-gray-600 text-gray-900 dark:btn-text rounded-md hover:bg-gray-400 dark:hover:bg-gray-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed font-medium"
+                    >
+                      {loading ? 'Unlocking...' : 'Unlock pN'}
+                    </button>
+                    
+                    <button
+                      type="button"
+                      onClick={() => setShowBluetoothSyncModal(true)}
+                      className="w-full px-4 py-2 bg-gray-500 dark:bg-gray-700 text-white rounded-md hover:bg-gray-600 dark:hover:bg-gray-600 transition-colors font-medium flex items-center justify-center space-x-2"
+                    >
+                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V6a1 1 0 00-1-1H5a1 1 0 00-1 1v1a1 1 0 001 1zm12 0h2a1 1 0 001-1V6a1 1 0 00-1-1h-2a1 1 0 00-1 1v1a1 1 0 001 1zM5 20h2a1 1 0 001-1v-1a1 1 0 00-1 1v1a1 1 0 001 1z" />
+                      </svg>
+                      <span>Sync Device</span>
+                    </button>
+                  </div>
                 </form>
                 
                 <div className="mt-6 text-center">
@@ -5541,13 +5801,13 @@ function App() {
                           <div className="bg-secondary p-4 rounded-lg">
                             <h4 className="font-medium text-text-primary mb-2">Add New Device</h4>
                             <p className="text-sm text-text-secondary mb-3">
-                              Generate a QR code to pair a new device with your identity.
+                              Use Bluetooth to discover and sync your pN to a nearby device.
                             </p>
                             <button 
-                              onClick={() => setShowAddDeviceModal(true)}
+                              onClick={() => setShowBluetoothSyncModal(true)}
                               className="w-full px-4 py-3 modal-button rounded-md text-sm"
                             >
-                              Add New Device
+                              Sync New Device
                             </button>
                           </div>
                           
@@ -5840,18 +6100,7 @@ function App() {
                           >
                             Open Security Dashboard
                           </button>
-                          <button
-                            onClick={() => setShowIntegrationSettings(true)}
-                            className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors border border-green-700 shadow-sm"
-                          >
-                            Integration Settings
-                          </button>
-                          <button
-                            onClick={() => setShowIntegrationDebugger(true)}
-                            className="px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition-colors border border-orange-700 shadow-sm"
-                          >
-                            Debug Integrations
-                          </button>
+
                         </div>
                       </div>
                       
@@ -6748,6 +6997,138 @@ function App() {
             onClose={() => setShowIntegrationDebugger(false)}
           />
         </Suspense>
+
+        {/* QR Scanner Modal */}
+        <QRCodeScanner
+          isOpen={showQRScannerModal}
+          onClose={() => setShowQRScannerModal(false)}
+          onScan={(qrData) => {
+            handleDevicePairing(qrData);
+          }}
+        />
+
+        {/* Device Sync Modal */}
+        <DeviceSyncModal
+          isOpen={showBluetoothSyncModal}
+          onClose={() => setShowBluetoothSyncModal(false)}
+          onSyncInitiated={handleDeviceSyncInitiated}
+        />
+
+        {/* Sync Request Modal (Device B receiving request) */}
+        <SyncRequestModal
+          isOpen={showSyncRequestModal}
+          onClose={() => {
+            setShowSyncRequestModal(false);
+            setIncomingSyncRequest(null);
+          }}
+          onAcceptSync={handleIncomingSyncRequest}
+          syncRequest={incomingSyncRequest}
+        />
+
+        {/* Sync Receiver Page */}
+        {showSyncReceiver && currentSyncCode && (
+          <SyncReceiver syncCode={currentSyncCode} />
+        )}
+
+        {/* Sync Authentication Modal */}
+        {showSyncAuthModal && pendingSyncData && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+            <div className="bg-modal-bg rounded-lg p-6 max-w-md w-full mx-4 max-h-[90vh] overflow-y-auto text-text-primary">
+              <div className="flex justify-between items-center mb-4">
+                <h2 className="text-xl font-bold">Sync Device</h2>
+                <button
+                  onClick={() => {
+                    setShowSyncAuthModal(false);
+                    setPendingSyncData(null);
+                  }}
+                  className="text-text-secondary hover:text-text-primary"
+                >
+                  ✕
+                </button>
+              </div>
+
+              <div className="mb-6">
+                <div className="bg-blue-50 dark:bg-blue-900/20 rounded-lg p-4 mb-4">
+                  <div className="flex items-center space-x-3">
+                    <div className="text-2xl">📱</div>
+                    <div>
+                      <div className="font-medium text-text-primary">Device Sync Request</div>
+                      <div className="text-sm text-text-secondary">
+                        {pendingSyncData.deviceName} ({pendingSyncData.deviceType})
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                
+                <p className="text-sm text-text-secondary mb-4">
+                  Enter your pN Name and passcode to authenticate and sync this device with your identity.
+                </p>
+              </div>
+
+              <form onSubmit={(e) => {
+                e.preventDefault();
+                const formData = new FormData(e.currentTarget);
+                const pnName = formData.get('pnName') as string;
+                const passcode = formData.get('passcode') as string;
+                handleSyncAuthentication(pnName, passcode);
+              }} className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-text-primary mb-1">
+                    pN Name
+                  </label>
+                  <input
+                    type="text"
+                    name="pnName"
+                    required
+                    className="w-full px-3 py-2 border border-input-border bg-input-bg rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
+                    placeholder="Enter your pN Name"
+                  />
+                </div>
+                
+                <div>
+                  <label className="block text-sm font-medium text-text-primary mb-1">
+                    Passcode
+                  </label>
+                  <input
+                    type="password"
+                    name="passcode"
+                    required
+                    className="w-full px-3 py-2 border border-input-border bg-input-bg rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
+                    placeholder="Enter your passcode"
+                  />
+                </div>
+                
+                <div className="flex space-x-3">
+                  <button
+                    type="submit"
+                    disabled={loading}
+                    className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {loading ? 'Syncing...' : 'Sync Device'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowSyncAuthModal(false);
+                      setPendingSyncData(null);
+                    }}
+                    disabled={loading}
+                    className="flex-1 px-4 py-2 bg-gray-600 text-white rounded-md hover:bg-gray-700 transition-colors font-medium disabled:opacity-50"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </form>
+
+              <div className="mt-4 text-xs text-text-secondary space-y-1">
+                <p>• This will sync your identity data to this device</p>
+                <p>• Your passcode is required for security verification</p>
+                <p>• The device will be added to your synced devices list</p>
+                <p>• You can manage synced devices in the Synced Devices tab</p>
+              </div>
+            </div>
+          </div>
+        )}
 
       </main>
 

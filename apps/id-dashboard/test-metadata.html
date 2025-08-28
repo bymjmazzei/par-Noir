@@ -1,0 +1,344 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>IPFS Metadata Service Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .test-section {
+            margin: 20px 0;
+            padding: 20px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+        }
+        .success { color: #28a745; }
+        .error { color: #dc3545; }
+        .info { color: #17a2b8; }
+        button {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        button:hover { background: #0056b3; }
+        pre {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 5px;
+            overflow-x: auto;
+        }
+        input, textarea {
+            width: 100%;
+            padding: 8px;
+            margin: 5px 0;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🧪 IPFS Metadata Service Test</h1>
+        
+        <div class="test-section">
+            <h3>Step 1: Setup</h3>
+            <p class="info">Your Pinata API key is already configured.</p>
+            <p>API Key: <code>6c557a6d433e0ad1de47</code> ✅</p>
+            <p class="success">Ready to test! Your API key should work with JWT authentication.</p>
+            <button onclick="checkApiKey()">Check API Key Status</button>
+            <div id="apiKeyStatus"></div>
+        </div>
+
+        <div class="test-section">
+            <h3>Step 2: Test Connection</h3>
+            <p>Test if the IPFS service can connect to Pinata.</p>
+            <button onclick="testConnection()">Test Connection</button>
+            <div id="connectionResult"></div>
+        </div>
+
+        <div class="test-section">
+            <h3>Step 3: Store Metadata</h3>
+            <p>Test storing pN metadata on IPFS.</p>
+            <label>pN ID:</label>
+            <input type="text" id="pnId" value="test-pn-123" placeholder="Enter pN ID">
+            <label>Name:</label>
+            <input type="text" id="pnName" value="Test pN" placeholder="Enter name">
+            <label>Description:</label>
+            <textarea id="pnDescription" placeholder="Enter description">Testing IPFS metadata storage</textarea>
+            <button onclick="storeMetadata()">Store Metadata</button>
+            <div id="storeResult"></div>
+        </div>
+
+        <div class="test-section">
+            <h3>Step 4: Retrieve Metadata</h3>
+            <p>Test retrieving metadata from IPFS using CID.</p>
+            <input type="text" id="cidInput" placeholder="Enter CID from previous test">
+            <button onclick="retrieveMetadata()">Retrieve Metadata</button>
+            <div id="retrieveResult"></div>
+        </div>
+
+        <div class="test-section">
+            <h3>Results</h3>
+            <pre id="results">No tests run yet...</pre>
+        </div>
+    </div>
+
+    <script>
+        // Simple IPFS metadata service for testing
+        class SimpleIPFSMetadataService {
+            constructor() {
+                this.pinataApiKey = '6c557a6d433e0ad1de47';
+                this.pinataSecretKey = '600492827bbfa45b4a9d506faf50a88059b06965b70fefe0856be509b0fe4d87';
+            }
+
+            async storePNMetadata(metadata) {
+                try {
+                    // Create metadata object with timestamp
+                    const metadataObject = {
+                        ...metadata,
+                        updatedAt: new Date().toISOString(),
+                        version: Date.now()
+                    };
+
+                    // Convert to JSON
+                    const metadataJson = JSON.stringify(metadataObject, null, 2);
+                    const metadataBuffer = new Blob([metadataJson], { type: 'application/json' });
+
+                    // Create form data
+                    const formData = new FormData();
+                    formData.append('file', metadataBuffer, 'metadata.json');
+
+                    // Add to IPFS using Pinata - try different auth methods
+                    let response;
+                    
+                    // Use proper Pinata authentication with both API key and secret
+                    response = await fetch('https://api.pinata.cloud/pinning/pinFileToIPFS', {
+                        method: 'POST',
+                        headers: {
+                            'pinata_api_key': this.pinataApiKey,
+                            'pinata_secret_api_key': this.pinataSecretKey
+                        },
+                        body: formData
+                    });
+
+                    if (!response.ok) {
+                        throw new Error(`IPFS upload failed: ${response.status} ${response.statusText}`);
+                    }
+
+                    const result = await response.json();
+                    const cid = result.IpfsHash;
+
+                    return {
+                        success: true,
+                        data: metadataObject,
+                        cid: cid,
+                        ipfsUrl: `https://gateway.pinata.cloud/ipfs/${cid}`
+                    };
+                } catch (error) {
+                    console.error('Failed to store pN metadata:', error);
+                    return {
+                        success: false,
+                        error: error.message
+                    };
+                }
+            }
+
+            async getPNMetadata(cid) {
+                try {
+                    // Get from IPFS using Pinata gateway
+                    const response = await fetch(`https://gateway.pinata.cloud/ipfs/${cid}`);
+                    
+                    if (!response.ok) {
+                        throw new Error(`IPFS retrieval failed: ${response.status} ${response.statusText}`);
+                    }
+
+                    const metadata = await response.json();
+
+                    return {
+                        success: true,
+                        data: metadata,
+                        cid: cid,
+                        ipfsUrl: `https://gateway.pinata.cloud/ipfs/${cid}`
+                    };
+                } catch (error) {
+                    console.error('Failed to get pN metadata:', error);
+                    return {
+                        success: false,
+                        error: error.message
+                    };
+                }
+            }
+
+            async testConnection() {
+                try {
+                    const testMetadata = {
+                        pnId: 'test-connection',
+                        name: 'Connection Test',
+                        description: 'Testing IPFS connection'
+                    };
+
+                    const result = await this.storePNMetadata(testMetadata);
+                    return result.success;
+                } catch (error) {
+                    console.error('Connection test failed:', error);
+                    return false;
+                }
+            }
+        }
+
+        // Create service instance
+        const metadataService = new SimpleIPFSMetadataService();
+        let testResults = [];
+
+        // Check API key status
+        window.checkApiKey = async function() {
+            try {
+                addResult('🔍 Testing API key with actual file upload...');
+                
+                // Test with a small file upload instead of authentication check
+                const testData = { test: 'connection' };
+                const testJson = JSON.stringify(testData);
+                const testBlob = new Blob([testJson], { type: 'application/json' });
+                
+                const formData = new FormData();
+                formData.append('file', testBlob, 'test.json');
+                
+                const response = await fetch('https://api.pinata.cloud/pinning/pinFileToIPFS', {
+                    method: 'POST',
+                    headers: {
+                        'pinata_api_key': metadataService.pinataApiKey,
+                        'pinata_secret_api_key': metadataService.pinataSecretKey
+                    },
+                    body: formData
+                });
+                
+                if (response.ok) {
+                    const result = await response.json();
+                    addResult('✅ API key is valid! File upload test successful.');
+                    addResult('📄 Test file CID: ' + result.IpfsHash);
+                    document.getElementById('apiKeyStatus').innerHTML = '<p class="success">✅ API key is valid and working</p>';
+                } else {
+                    addResult('❌ API key test failed: ' + response.status + ' ' + response.statusText);
+                    document.getElementById('apiKeyStatus').innerHTML = '<p class="error">❌ API key test failed: ' + response.status + '</p>';
+                }
+            } catch (error) {
+                addResult('❌ API key test error: ' + error.message);
+                document.getElementById('apiKeyStatus').innerHTML = '<p class="error">❌ Error: ' + error.message + '</p>';
+            }
+        };
+
+        // Test connection
+        window.testConnection = async function() {
+            try {
+                addResult('🔄 Testing IPFS connection...');
+                const isConnected = await metadataService.testConnection();
+                
+                if (isConnected) {
+                    addResult('✅ IPFS connection successful!');
+                    document.getElementById('connectionResult').innerHTML = '<p class="success">✅ Connection successful</p>';
+                } else {
+                    addResult('❌ IPFS connection failed');
+                    document.getElementById('connectionResult').innerHTML = '<p class="error">❌ Connection failed</p>';
+                }
+            } catch (error) {
+                addResult('❌ Connection error: ' + error.message);
+                document.getElementById('connectionResult').innerHTML = '<p class="error">❌ Error: ' + error.message + '</p>';
+            }
+        };
+
+        // Store metadata
+        window.storeMetadata = async function() {
+            try {
+                const pnId = document.getElementById('pnId').value;
+                const name = document.getElementById('pnName').value;
+                const description = document.getElementById('pnDescription').value;
+
+                const metadata = {
+                    pnId,
+                    name,
+                    description,
+                    createdAt: new Date().toISOString()
+                };
+
+                addResult('🔄 Storing metadata...');
+                const result = await metadataService.storePNMetadata(metadata);
+                
+                if (result.success) {
+                    addResult('✅ Metadata stored successfully!');
+                    addResult('📄 CID: ' + result.cid);
+                    addResult('🔗 IPFS URL: ' + result.ipfsUrl);
+                    
+                    document.getElementById('storeResult').innerHTML = 
+                        '<p class="success">✅ Stored successfully</p>' +
+                        '<p><strong>CID:</strong> ' + result.cid + '</p>' +
+                        '<p><strong>URL:</strong> <a href="' + result.ipfsUrl + '" target="_blank">' + result.ipfsUrl + '</a></p>';
+                    
+                    // Auto-fill CID for retrieval test
+                    document.getElementById('cidInput').value = result.cid;
+                } else {
+                    addResult('❌ Failed to store metadata: ' + result.error);
+                    document.getElementById('storeResult').innerHTML = '<p class="error">❌ Failed: ' + result.error + '</p>';
+                }
+            } catch (error) {
+                addResult('❌ Store error: ' + error.message);
+                document.getElementById('storeResult').innerHTML = '<p class="error">❌ Error: ' + error.message + '</p>';
+            }
+        };
+
+        // Retrieve metadata
+        window.retrieveMetadata = async function() {
+            try {
+                const cid = document.getElementById('cidInput').value;
+                if (!cid) {
+                    addResult('❌ Please enter a CID');
+                    return;
+                }
+
+                addResult('🔄 Retrieving metadata...');
+                const result = await metadataService.getPNMetadata(cid);
+                
+                if (result.success) {
+                    addResult('✅ Metadata retrieved successfully!');
+                    addResult('📄 Data: ' + JSON.stringify(result.data, null, 2));
+                    
+                    document.getElementById('retrieveResult').innerHTML = 
+                        '<p class="success">✅ Retrieved successfully</p>' +
+                        '<pre>' + JSON.stringify(result.data, null, 2) + '</pre>';
+                } else {
+                    addResult('❌ Failed to retrieve metadata: ' + result.error);
+                    document.getElementById('retrieveResult').innerHTML = '<p class="error">❌ Failed: ' + result.error + '</p>';
+                }
+            } catch (error) {
+                addResult('❌ Retrieve error: ' + error.message);
+                document.getElementById('retrieveResult').innerHTML = '<p class="error">❌ Error: ' + error.message + '</p>';
+            }
+        };
+
+        // Helper function to add results
+        function addResult(message) {
+            testResults.push(new Date().toLocaleTimeString() + ': ' + message);
+            document.getElementById('results').textContent = testResults.join('\n');
+        }
+
+        // Initialize
+        addResult('🚀 IPFS Metadata Service Test Page Loaded');
+        addResult('📝 Ready to test IPFS metadata storage');
+    </script>
+</body>
+</html>
