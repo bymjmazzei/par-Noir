@@ -12,28 +12,46 @@ const copyPWAFiles = () => {
       const publicDir = resolve(__dirname, 'public');
       const distDir = resolve(__dirname, 'dist');
       
-      // Copy service worker
-      const swSrc = join(publicDir, 'sw.js');
-      const swDest = join(distDir, 'sw.js');
-      if (existsSync(swSrc)) {
-        copyFileSync(swSrc, swDest);
-        console.log('✅ Copied sw.js to dist');
-      }
-      
-      // Copy manifest
-      const manifestSrc = join(publicDir, 'manifest.json');
-      const manifestDest = join(distDir, 'manifest.json');
-      if (existsSync(manifestSrc)) {
-        copyFileSync(manifestSrc, manifestDest);
-        console.log('✅ Copied manifest.json to dist');
-      }
-      
-      // Copy icons directory
-      const iconsSrc = join(publicDir, 'icons');
-      const iconsDest = join(distDir, 'icons');
-      if (existsSync(iconsSrc)) {
-        // This is a simplified copy - in production you might want to use a proper copy library
-        console.log('✅ Icons directory ready for copy');
+      try {
+        // Copy service worker
+        const swSrc = join(publicDir, 'sw.js');
+        const swDest = join(distDir, 'sw.js');
+        if (existsSync(swSrc)) {
+          copyFileSync(swSrc, swDest);
+          console.log('✅ Copied sw.js to dist');
+        } else {
+          console.error('❌ sw.js not found in public directory');
+        }
+        
+        // Copy manifest
+        const manifestSrc = join(publicDir, 'manifest.json');
+        const manifestDest = join(distDir, 'manifest.json');
+        if (existsSync(manifestSrc)) {
+          copyFileSync(manifestSrc, manifestDest);
+          console.log('✅ Copied manifest.json to dist');
+        } else {
+          console.error('❌ manifest.json not found in public directory');
+        }
+        
+        // Copy icons directory (simplified)
+        const iconsSrc = join(publicDir, 'icons');
+        const iconsDest = join(distDir, 'icons');
+        if (existsSync(iconsSrc)) {
+          console.log('✅ Icons directory exists, will be copied by Vite');
+        } else {
+          console.error('❌ icons directory not found in public directory');
+        }
+        
+        // Copy favicon
+        const faviconSrc = join(publicDir, 'icons', 'favicon.png');
+        const faviconDest = join(distDir, 'favicon.png');
+        if (existsSync(faviconSrc)) {
+          copyFileSync(faviconSrc, faviconDest);
+          console.log('✅ Copied favicon.png to dist');
+        }
+        
+      } catch (error) {
+        console.error('❌ Error in copyPWAFiles plugin:', error);
       }
     }
   };
