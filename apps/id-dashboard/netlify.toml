@@ -6,6 +6,7 @@
 [build.environment]
   NODE_VERSION = "18.20.8"
 
+# SPA fallback for everything else
 [[redirects]]
   from = "/*"
   to = "/index.html"
