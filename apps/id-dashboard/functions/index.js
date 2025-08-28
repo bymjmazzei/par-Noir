@@ -2,7 +2,7 @@ const functions = require('firebase-functions');
 const fetch = require('node-fetch');
 
 // Coinbase Commerce API configuration
-const COINBASE_API_KEY = functions.config().coinbase?.api_key || process.env.COINBASE_COMMERCE_API_KEY;
+const COINBASE_API_KEY = process.env.COINBASE_COMMERCE_API_KEY || functions.config().coinbase?.api_key;
 const COINBASE_API_BASE = 'https://api.commerce.coinbase.com';
 
 /**

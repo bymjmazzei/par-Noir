@@ -36,24 +36,17 @@ npm run preview
 
 ## 🚀 Deployment
 
-### Option 1: Vercel (Recommended)
+### Firebase Hosting (Recommended)
 
 ```bash
-# Install Vercel CLI
-npm i -g vercel
+# Install Firebase CLI
+npm install -g firebase-tools
 
-# Deploy to Vercel
-npm run deploy:vercel
-```
+# Login to Firebase
+firebase login
 
-### Option 2: Netlify
-
-```bash
-# Install Netlify CLI
-npm i -g netlify-cli
-
-# Deploy to Netlify
-npm run deploy:netlify
+# Deploy to Firebase
+npm run deploy:firebase
 ```
 
 ### Option 3: Manual Deployment

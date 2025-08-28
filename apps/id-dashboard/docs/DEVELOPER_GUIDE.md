@@ -154,8 +154,7 @@ export default defineConfig({
 
 ### Static Hosting
 The PWA can be deployed to any static hosting service:
-- **Netlify**: Automatic deployments
-- **Vercel**: Edge deployment
+- **Firebase**: Automatic deployments with Functions
 - **GitHub Pages**: Free hosting
 - **OrbitDB/IPFS**: Decentralized hosting
 

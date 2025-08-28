@@ -1,5 +1,5 @@
 // Email service using SendGrid
-// import sgMail from '@sendgrid/mail'; // Temporarily disabled for Netlify
+import sgMail from '@sendgrid/mail';
 
 export interface EmailConfig {
   apiKey: string;

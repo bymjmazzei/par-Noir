@@ -71,14 +71,26 @@ export class CoinbaseProxy {
   }
 
   /**
-   * Create a checkout via server proxy (for future use with backend)
+   * Create a checkout via Firebase Functions (recommended for production)
    */
   static async createCheckoutViaProxy(checkoutData: CheckoutRequest): Promise<CoinbaseCheckout> {
-    console.log('Attempting checkout via server proxy...');
+    console.log('Attempting checkout via Firebase Functions...');
     
-    // For now, just use the direct approach
-    // In the future, this could call a backend server
-    return this.createCheckoutDirect(checkoutData);
+    try {
+      // Import Firebase Functions dynamically
+      const { getFunctions, httpsCallable } = await import('firebase/functions');
+      const functions = getFunctions();
+      
+      // Call the Firebase Function
+      const createCheckout = httpsCallable(functions, 'createCoinbaseCheckout');
+      const result = await createCheckout(checkoutData);
+
+      console.log('Firebase Functions response:', result);
+      return (result.data as any).checkout;
+    } catch (error) {
+      console.error('Firebase Functions call failed, falling back to direct checkout:', error);
+      return this.createCheckoutDirect(checkoutData);
+    }
   }
 
   /**

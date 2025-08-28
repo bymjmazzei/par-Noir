@@ -1,5 +1,5 @@
 // SMS service using Twilio
-// import twilio from 'twilio'; // Temporarily disabled for Netlify
+import twilio from 'twilio';
 
 export interface SMSConfig {
   accountSid: string;

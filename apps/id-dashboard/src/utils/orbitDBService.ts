@@ -128,13 +128,13 @@ export class OrbitDBService {
    */
   private async initializeOrbitDB(): Promise<void> {
     try {
-      // Import OrbitDB (disabled for Netlify deployment)
+      // Import OrbitDB (disabled for browser compatibility)
       // const OrbitDB = await import('orbit-db');
       
-      // Create OrbitDB instance (disabled for Netlify deployment)
+      // Create OrbitDB instance (disabled for browser compatibility)
       // this.orbitDBInstance = await OrbitDB.default.createInstance(this.ipfsInstance);
       
-      // Create/open database (disabled for Netlify deployment)
+      // Create/open database (disabled for browser compatibility)
       // this.database = await this.orbitDBInstance.docs(this.config.databaseName, {
       //   indexBy: 'pnId',
       //   accessController: {
@@ -144,7 +144,7 @@ export class OrbitDBService {
       //   }
       // });
 
-      // Wait for database to load (disabled for Netlify deployment)
+      // Wait for database to load (disabled for browser compatibility)
       // await this.database.load();
 
       if (process.env.NODE_ENV === 'development') {

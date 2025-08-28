@@ -23,8 +23,7 @@
     "type-check": "tsc --noEmit",
     "postinstall": "echo 'Dependencies installed successfully'",
     "deploy:build": "npm run build && echo 'Build complete. Ready for deployment.'",
-    "deploy:vercel": "npm run build && vercel --prod",
-    "deploy:netlify": "npm run build && netlify deploy --prod --dir=dist",
+    "deploy:firebase": "npm run build && firebase deploy --only hosting",
     "lighthouse": "node scripts/lighthouse-audit.js",
     "audit": "npm run build && npm run lighthouse",
     "test": "jest",
@@ -33,6 +32,7 @@
   },
   "dependencies": {
     "@types/qrcode": "^1.5.5",
+    "firebase": "^12.1.0",
     "lucide-react": "^0.263.1",
     "qrcode": "^1.5.4",
     "react": "^18.2.0",
