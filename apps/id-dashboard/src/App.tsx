@@ -38,6 +38,8 @@ import { DeveloperPortal } from './pages/DeveloperPortal';
 // Lazy load heavy components
 const EnhancedPrivacyPanel = lazy(() => import('./components/EnhancedPrivacyPanel').then(module => ({ default: module.EnhancedPrivacyPanel })));
 const ToolSettingsModal = lazy(() => import('./components/ToolSettingsModal').then(module => ({ default: module.ToolSettingsModal })));
+const IntegrationSettingsManager = lazy(() => import('./components/IntegrationSettingsManager').then(module => ({ default: module.default })));
+const IntegrationDebugger = lazy(() => import('./components/IntegrationDebugger').then(module => ({ default: module.default })));
 const SecurityDashboard = lazy(() => import('./components/SecurityDashboard').then(module => ({ default: module.SecurityDashboard })));
 const SessionManager = lazy(() => import('./components/SessionManager').then(module => ({ default: module.SessionManager })));
 const RealtimeSecurityAlerts = lazy(() => import('./components/RealtimeSecurityAlerts').then(module => ({ default: module.RealtimeSecurityAlerts })));
@@ -430,6 +432,10 @@ function App() {
   // Tool Settings Modal
   const [showToolSettingsModal, setShowToolSettingsModal] = useState(false);
   const [selectedToolId, setSelectedToolId] = useState<string>('');
+  
+  // Integration Settings Manager
+  const [showIntegrationSettings, setShowIntegrationSettings] = useState(false);
+  const [showIntegrationDebugger, setShowIntegrationDebugger] = useState(false);
   const [custodianships, setCustodianships] = useState<Array<{
     id: string;
     identityId: string;
@@ -5834,6 +5840,18 @@ function App() {
                           >
                             Open Security Dashboard
                           </button>
+                          <button
+                            onClick={() => setShowIntegrationSettings(true)}
+                            className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors border border-green-700 shadow-sm"
+                          >
+                            Integration Settings
+                          </button>
+                          <button
+                            onClick={() => setShowIntegrationDebugger(true)}
+                            className="px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition-colors border border-orange-700 shadow-sm"
+                          >
+                            Debug Integrations
+                          </button>
                         </div>
                       </div>
                       
@@ -6714,6 +6732,22 @@ function App() {
             setActiveTab(section as any);
           }}
         />
+
+        {/* Integration Settings Manager */}
+        <Suspense fallback={<LoadingSpinner />}>
+          <IntegrationSettingsManager
+            isOpen={showIntegrationSettings}
+            onClose={() => setShowIntegrationSettings(false)}
+          />
+        </Suspense>
+
+        {/* Integration Debugger */}
+        <Suspense fallback={<LoadingSpinner />}>
+          <IntegrationDebugger
+            isOpen={showIntegrationDebugger}
+            onClose={() => setShowIntegrationDebugger(false)}
+          />
+        </Suspense>
 
       </main>
 

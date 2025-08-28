@@ -68,12 +68,12 @@ const developmentConfig: EnvironmentConfig = {
 const productionConfig: EnvironmentConfig = {
   mode: 'production',
   apiEndpoints: {
-    orbitDB: 'https://api.identityprotocol.com/orbitdb',
-    websocket: 'wss://api.identityprotocol.com/socket.io',
-    cloudSync: 'https://api.identityprotocol.com/sync',
-    emailService: 'https://api.identityprotocol.com/email',
-    smsService: 'https://api.identityprotocol.com/sms',
-    ipfsService: 'https://api.identityprotocol.com/ipfs',
+    orbitDB: 'https://pn.parnoir.com/api/orbitdb',
+    websocket: 'wss://pn.parnoir.com/socket.io',
+    cloudSync: 'https://pn.parnoir.com/api/sync',
+    emailService: 'https://pn.parnoir.com/api/email',
+    smsService: 'https://pn.parnoir.com/api/sms',
+    ipfsService: 'https://pn.parnoir.com/api/ipfs',
   },
   features: {
     enableWebSocket: true,

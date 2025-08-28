@@ -1,0 +1,39 @@
+#!/bin/bash
+
+echo "Setting up environment variables..."
+
+# Remove old .env file if it exists
+rm -f .env
+
+# Create new .env file with API keys
+cat > .env << 'EOF'
+# Production Environment Variables for Par Noir Dashboard
+
+# SendGrid Email Service
+REACT_APP_SENDGRID_API_KEY=your-sendgrid-api-key-here
+REACT_APP_FROM_EMAIL=info@parnoir.com
+REACT_APP_FROM_NAME=Par Noir
+
+# Twilio SMS Service
+REACT_APP_TWILIO_ACCOUNT_SID=your-twilio-account-sid-here
+REACT_APP_TWILIO_AUTH_TOKEN=your-twilio-auth-token-here
+REACT_APP_TWILIO_FROM_NUMBER=+1 916 277 9274
+
+# IPFS Storage (Pinata)
+REACT_APP_IPFS_PROJECT_ID=your-ipfs-project-id-here
+REACT_APP_IPFS_PROJECT_SECRET=your-ipfs-project-secret-here
+REACT_APP_IPFS_URL=https://ipfs.infura.io:5001
+REACT_APP_IPFS_GATEWAY_URL=https://gateway.pinata.cloud
+
+# Coinbase Commerce
+REACT_APP_COINBASE_COMMERCE_API_KEY=your-coinbase-api-key-here
+
+# App Configuration
+NODE_ENV=production
+REACT_APP_APP_NAME=Par Noir
+REACT_APP_APP_VERSION=1.0.0
+REACT_APP_APP_URL=https://pn.parnoir.com
+EOF
+
+echo "✅ Environment file created!"
+echo "Now run: npm run build && firebase deploy"

@@ -93,7 +93,7 @@ export class CoinbaseProxy {
     
     try {
       // Call the server endpoint (adjust URL based on your setup)
-      const serverUrl = 'http://localhost:3001'; // Change this to your server URL in production
+      const serverUrl = 'https://pn.parnoir.com'; // Production server URL
       const response = await fetch(`${serverUrl}/api/coinbase/create-checkout`, {
         method: 'POST',
         headers: {
@@ -120,14 +120,20 @@ export class CoinbaseProxy {
    * Create a direct checkout URL (fallback method)
    */
   static createDirectCheckoutURL(checkoutData: CheckoutRequest): string {
-    // For development, show a message that the server needs to be running
-    // In production, this would create a proper checkout URL
-    console.warn('⚠️ Development Mode: Server not running. Please start the server with: cd server && npm start');
+    // For production, create a direct Coinbase checkout URL
+    console.warn('⚠️ Using direct Coinbase checkout as fallback');
     
-    // Return a placeholder URL that shows the issue
-    const placeholderUrl = `data:text/html,<html><body style="font-family: Arial, sans-serif; padding: 20px; text-align: center;"><h2>🚧 Development Mode</h2><p>The Coinbase Commerce server needs to be running.</p><p>Please run: <code>cd server && npm start</code></p><p>Then try again.</p></body></html>`;
+    // Create a direct checkout URL using Coinbase Commerce
+    const baseUrl = 'https://commerce.coinbase.com/checkout';
+    const params = new URLSearchParams({
+      name: checkoutData.name,
+      description: checkoutData.description,
+      pricing_type: checkoutData.pricing_type,
+      local_price: JSON.stringify(checkoutData.local_price),
+      metadata: JSON.stringify(checkoutData.metadata)
+    });
     
-    return placeholderUrl;
+    return `${baseUrl}?${params.toString()}`;
   }
 
   /**
