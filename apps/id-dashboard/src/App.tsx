@@ -3,13 +3,11 @@ import React, { useState, useEffect, lazy, Suspense, useRef } from 'react';
 import { CheckCircle, Smartphone, RefreshCw, FileText, PartyPopper, QrCode, MessageSquare, Phone, AlertTriangle, Info, Monitor, Edit3, Settings, ChevronUp, ChevronDown } from 'lucide-react';
 import Header from './components/Header';
 import { QRCodeManager } from './utils/qrCode';
-import { QRCodeScanner } from './components/QRCodeScanner';
-import { DeviceSyncModal } from './components/DeviceSyncModal';
-import { SyncRequestModal } from './components/SyncRequestModal';
-import { SyncReceiver } from './pages/SyncReceiver';
+  import { QRCodeScanner } from './components/QRCodeScanner';
 import { SecureStorage } from './utils/storage';
 import { UnifiedAuth } from './components/UnifiedAuth';
 import { Logo } from './components/Logo';
+
 import QRCode from 'qrcode';
 
 import { IdentityCrypto, AuthSession, EncryptedIdentity } from './utils/crypto';
@@ -31,13 +29,16 @@ let DistributedIdentityManager: any;
 import { LicenseVerification } from './utils/licenseVerification';
 
 import { InputValidator } from './utils/validation';
-import { DevelopmentModeIndicator } from './components/DevelopmentModeIndicator';
+
 import SimpleStorage, { SimpleIdentity } from './utils/simpleStorage';
 import IdentitySelector from './components/IdentitySelector';
-import IPFSStatus from './components/IPFSStatus';
+
 import { OnboardingWizard } from './components/OnboardingWizard';
 import { ThemeAwareProfileImage } from './components/ThemeAwareProfileImage';
 import { DeveloperPortal } from './pages/DeveloperPortal';
+import TransferReceiver from './pages/TransferReceiver';
+import TermsOfService from './pages/TermsOfService';
+import PrivacyPolicy from './pages/PrivacyPolicy';
 
 // Lazy load heavy components
 const EnhancedPrivacyPanel = lazy(() => import('./components/EnhancedPrivacyPanel').then(module => ({ default: module.EnhancedPrivacyPanel })));
@@ -267,46 +268,71 @@ function App() {
     logDebug('PWA State:', pwaState);
   }
   
-  // Use real storage for data export/import
+  // Enhanced export with authentication and transfer options
   const handleExportData = async () => {
+    setShowExportAuthModal(true);
+  };
+
+    // Handle export authentication using the same logic as unlock
+  const handleExportAuth = async () => {
     try {
-      await storage.init();
-      
-      // Debug logging
-      logDebug('Export attempt - authenticatedUser:', !!authenticatedUser);
-      logDebug('Export attempt - selectedDID:', selectedDID);
-      logDebug('Export attempt - authenticatedUser structure:', authenticatedUser);
-      logDebug('Export attempt - selectedDID structure:', selectedDID);
-      
-      // Only export if user is authenticated and has a selected identity
       if (!authenticatedUser || !selectedDID) {
         throw new Error('No identity is currently unlocked. Please unlock an identity first.');
       }
-      
-      // Export only the currently unlocked identity
-      // Use authenticatedUser data which has the correct publicKey
-      const identityKey = authenticatedUser.publicKey || selectedDID?.publicKey || selectedDID?.id;
-      logDebug('Looking for unlocked identity with key:', identityKey);
-      logDebug('Authenticated user publicKey:', authenticatedUser.publicKey);
-      logDebug('SelectedDID publicKey:', selectedDID?.publicKey);
-      logDebug('SelectedDID id:', selectedDID?.id);
-      
-      // Also check what's actually in storage
+
+      // Get the stored identity data that was used for unlock
       const simpleStorage = SimpleStorage.getInstance();
-      const allStoredIdentities = await simpleStorage.getIdentities();
-      logDebug('All stored identities:', allStoredIdentities.map(id => ({ id: id.id, nickname: id.nickname })));
+      const identityKey = authenticatedUser.publicKey || selectedDID?.publicKey || selectedDID?.id;
       const currentIdentity = await simpleStorage.getIdentity(identityKey);
-      logDebug('Found unlocked identity:', !!currentIdentity);
       
       if (!currentIdentity) {
-        throw new Error('Unlocked identity not found in storage. Please unlock your identity again.');
+        throw new Error('Identity not found in storage. Please unlock your identity again.');
+      }
+
+      // Use the same authentication logic as the unlock function
+      // This re-authenticates using the stored encrypted identity data
+      const identityToUnlock = currentIdentity.encryptedData;
+      
+      if (!identityToUnlock.encryptedData || !identityToUnlock.iv || !identityToUnlock.salt) {
+        throw new Error('Invalid identity data structure');
+      }
+
+      // Authenticate using the same crypto function as unlock
+      const authSession = await IdentityCrypto.authenticateIdentity(
+        identityToUnlock as any,
+        exportAuthData.passcode,
+        exportAuthData.pnName
+      );
+
+      // Authentication successful, show export options
+      setShowExportAuthModal(false);
+      setShowExportOptionsModal(true);
+      
+    } catch (error: any) {
+      setError(error.message || 'Authentication failed');
+      setTimeout(() => setError(null), 5000);
+    }
+  };
+
+  // Handle direct download export
+  const handleDownloadExport = async () => {
+    try {
+      await storage.init();
+      
+      if (!authenticatedUser || !selectedDID) {
+        throw new Error('No identity is currently unlocked.');
       }
       
-      // Export ONLY the encrypted data, not the plain text metadata
-      // The encrypted data contains all the sensitive information
+      const identityKey = authenticatedUser.publicKey || selectedDID?.publicKey || selectedDID?.id;
+      const simpleStorage = SimpleStorage.getInstance();
+      const currentIdentity = await simpleStorage.getIdentity(identityKey);
+      
+      if (!currentIdentity) {
+        throw new Error('Identity not found in storage.');
+      }
+      
       const identityToExport = currentIdentity.encryptedData;
       
-      // Verify this is actually encrypted data
       if (!identityToExport.encryptedData || !identityToExport.iv || !identityToExport.salt) {
         throw new Error('Invalid encrypted data structure');
       }
@@ -314,53 +340,131 @@ function App() {
       const exportData = {
         version: '1.0',
         timestamp: new Date().toISOString(),
-        identities: [identityToExport] // Only export the encrypted identity data
+        identities: [identityToExport]
       };
       const exportedData = JSON.stringify(exportData, null, 2);
       
-      // Parse the exported data to get identity info for filename
       let filename = 'identity-backup.pn';
       try {
-        const parsedData = JSON.parse(exportedData);
-        logDebug('Exported data structure:', Object.keys(parsedData));
-        
-        // Use the current session's nickname for the filename
         let nickname = 'identity';
         if (authenticatedUser && authenticatedUser.nickname) {
           nickname = authenticatedUser.nickname;
-          logDebug('Using current session nickname for filename:', nickname);
-        } else {
-          logDebug('No nickname available, using default');
         }
         
-        // Clean nickname for filename (remove special chars, limit length)
         const cleanNickname = nickname
-          .replace(/[^a-zA-Z0-9\s]/g, '') // Remove special characters
-          .replace(/\s+/g, '-') // Replace spaces with dashes
+          .replace(/[^a-zA-Z0-9\s]/g, '')
+          .replace(/\s+/g, '-')
           .toLowerCase()
-          .substring(0, 20); // Limit length
+          .substring(0, 20);
         
-        logDebug('Clean nickname for filename:', cleanNickname);
-        filename = `${cleanNickname}-backup.pn`;
+        filename = `${cleanNickname}-backup.json`;
       } catch (parseError) {
-        logDebug('Could not parse exported data for filename, using default');
         logError('Parse error:', parseError);
       }
       
-      logDebug('Final filename:', filename);
-      
-      // Create download link
-      const blob = new Blob([exportedData], { type: 'application/par-noir-identity' });
+      const blob = new Blob([exportedData], { type: 'application/json' });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
       a.download = filename;
       a.click();
       URL.revokeObjectURL(url);
-      showSuccessMessage('Data exported successfully', 5000);
-    } catch (error) {
-      logError('Export error:', error);
-      showErrorMessage(`Failed to export data: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      
+      setShowExportOptionsModal(false);
+      setSuccess('pN file downloaded successfully');
+      setTimeout(() => setSuccess(null), 5000);
+      
+    } catch (error: any) {
+      setError(error.message || 'Download failed');
+      setTimeout(() => setError(null), 5000);
+    }
+  };
+
+  // Handle Bluetooth transfer export
+  const handleTransfer = async () => {
+    try {
+      if (!authenticatedUser || !selectedDID) {
+        throw new Error('No identity is currently unlocked.');
+      }
+
+      // Show transfer setup modal to get transfer passcode
+      setShowTransferSetupModal(true);
+      
+    } catch (error: any) {
+      setError(error.message || 'Transfer failed to start');
+      setTimeout(() => setError(null), 5000);
+    }
+  };
+
+  const handleTransferSetup = async () => {
+    try {
+      if (!transferPasscode || transferPasscode.length < 4) {
+        throw new Error('Transfer passcode must be at least 4 characters.');
+      }
+
+      // Generate short transfer ID
+      const transferId = Math.random().toString(36).substring(2, 8).toUpperCase();
+      
+      // Get the current identity data for transfer
+      const simpleStorage = SimpleStorage.getInstance();
+      const identityKey = authenticatedUser.publicKey || selectedDID?.publicKey || selectedDID?.id;
+      const currentIdentity = await simpleStorage.getIdentity(identityKey);
+      
+      if (!currentIdentity) {
+        throw new Error('Identity not found in storage.');
+      }
+
+      // Get the encrypted identity data for transfer (same format as export)
+      const identityToTransfer = currentIdentity.encryptedData;
+      
+      if (!identityToTransfer.encryptedData || !identityToTransfer.iv || !identityToTransfer.salt) {
+        throw new Error('Invalid encrypted data structure');
+      }
+
+      // Create the proper backup format (same as export function)
+      const transferFileContent = {
+        version: '1.0',
+        timestamp: new Date().toISOString(),
+        identities: [identityToTransfer]
+      };
+
+      // Upload the proper pN file format to IPFS
+      const { IPFSMetadataService } = await import('./utils/ipfsMetadataService');
+      const ipfsService = new IPFSMetadataService();
+      console.log('Transfer file content to upload:', JSON.stringify(transferFileContent, null, 2));
+      const ipfsCid = await ipfsService.uploadIdentityData(transferFileContent);
+      console.log('pN file uploaded to IPFS:', ipfsCid);
+
+      const transferData = {
+        id: transferId,
+        ipfsCid: ipfsCid,
+        nickname: authenticatedUser.nickname || 'Transferred pN',
+        transferPasscode: transferPasscode,
+        expiresAt: new Date(Date.now() + 30 * 60 * 1000).toISOString() // 30 minutes
+      };
+
+      // Encode transfer data for URL parameters (cross-device compatible)
+      const transferDataEncoded = btoa(JSON.stringify(transferData));
+      console.log('Transfer created:', transferId);
+      console.log('Transfer expires at:', transferData.expiresAt);
+
+      // Generate transfer URL with encoded data
+      const transferUrl = `${window.location.origin}/transfer/id=${transferId}?data=${transferDataEncoded}`;
+      
+      // Show transfer URL and QR code
+      setTransferUrl(transferUrl);
+      setTransferId(transferId);
+      setTransferPasscode('');
+      setTransferCreated(true);
+      
+      // Generate QR code
+      setTimeout(() => {
+        generateQRCode(transferUrl);
+      }, 100);
+      
+    } catch (error: any) {
+      setError(error.message || 'Transfer setup failed');
+      setTimeout(() => setError(null), 5000);
     }
   };
   const [authenticatedUser, setAuthenticatedUser] = useState<any>(null);
@@ -372,16 +476,7 @@ function App() {
     }
   }, [success, authenticatedUser]);
 
-  // Check if we're on a sync URL
-  useEffect(() => {
-    const path = window.location.pathname;
-    const syncMatch = path.match(/^\/sync\/([A-Z0-9]{6})$/);
-    if (syncMatch) {
-      const syncCode = syncMatch[1];
-      setShowSyncReceiver(true);
-      setCurrentSyncCode(syncCode);
-    }
-  }, []);
+
   
   const [showRecoveryModal, setShowRecoveryModal] = useState(false);
   const [showAddCustodianModal, setShowAddCustodianModal] = useState(false);
@@ -466,20 +561,8 @@ function App() {
     contactValue: '',
     claimantName: ''
   });
-  const [syncedDevices, setSyncedDevices] = useState<SyncedDevice[]>([]);
-  const [showAddDeviceModal, setShowAddDeviceModal] = useState(false);
 
-  // Device syncing state
-  const [deviceSyncData, setDeviceSyncData] = useState<DeviceSyncData | null>(null);
-  const [showDeviceQRModal, setShowDeviceQRModal] = useState(false);
-  const [showQRScannerModal, setShowQRScannerModal] = useState(false);
-  const [showBluetoothSyncModal, setShowBluetoothSyncModal] = useState(false);
-  const [showSyncRequestModal, setShowSyncRequestModal] = useState(false);
-  const [showSyncAuthModal, setShowSyncAuthModal] = useState(false);
-  const [pendingSyncData, setPendingSyncData] = useState<any>(null);
-  const [incomingSyncRequest, setIncomingSyncRequest] = useState<any>(null);
-  const [showSyncReceiver, setShowSyncReceiver] = useState(false);
-  const [currentSyncCode, setCurrentSyncCode] = useState<string>('');
+
 
   // License management state variables
   const [licenseKey, setLicenseKey] = useState<string>('');
@@ -578,6 +661,24 @@ function App() {
   const [showOnboardingWizard, setShowOnboardingWizard] = useState(false);
   const [isNewUser, setIsNewUser] = useState(false);
 
+  // Export modal state
+  const [showExportModal, setShowExportModal] = useState(false);
+  const [showExportAuthModal, setShowExportAuthModal] = useState(false);
+  const [showExportOptionsModal, setShowExportOptionsModal] = useState(false);
+  const [exportAuthData, setExportAuthData] = useState({ pnName: '', passcode: '' });
+  const [showExportPasscode, setShowExportPasscode] = useState(false);
+  const [showExportPnName, setShowExportPnName] = useState(false);
+  
+  // Transfer state
+  const [showTransferReceiver, setShowTransferReceiver] = useState(false);
+  const [showTermsOfService, setShowTermsOfService] = useState(false);
+  const [showPrivacyPolicy, setShowPrivacyPolicy] = useState(false);
+  const [showTransferSetupModal, setShowTransferSetupModal] = useState(false);
+  const [transferUrl, setTransferUrl] = useState('');
+  const [transferId, setTransferId] = useState('');
+  const [transferPasscode, setTransferPasscode] = useState('');
+  const [transferCreated, setTransferCreated] = useState(false);
+
   
 
   
@@ -602,6 +703,69 @@ function App() {
   const getThirdPartyCustodiansCount = () => {
     return custodians.filter(c => c.type === 'person' && c.identityId !== authenticatedUser?.id).length;
   };
+
+  // Check for transfer route
+  useEffect(() => {
+    const pathname = window.location.pathname;
+    const transferMatch = pathname.match(/^\/transfer\/id=(.+)$/);
+    
+    if (transferMatch) {
+      const transferId = transferMatch[1];
+      // Handle transfer route - show transfer receiver
+      setShowTransferReceiver(true);
+      setTransferId(transferId);
+    }
+  }, []);
+
+  // Check for legal pages route
+  useEffect(() => {
+    const pathname = window.location.pathname;
+    
+    if (pathname === '/terms') {
+      setShowTermsOfService(true);
+    } else if (pathname === '/privacy') {
+      setShowPrivacyPolicy(true);
+    }
+  }, []);
+
+  // Check for successful transfer completion
+  useEffect(() => {
+    const urlParams = new URLSearchParams(window.location.search);
+    const transferCompleted = urlParams.get('transferCompleted');
+    const autoLogin = urlParams.get('autoLogin');
+    
+    if (transferCompleted === 'true') {
+      // A transfer was just completed
+      if (autoLogin === 'true') {
+        // Auto-login the user with the transferred pN
+        const storedUser = localStorage.getItem('authenticatedUser');
+        const storedDID = localStorage.getItem('selectedDID');
+        
+        if (storedUser && storedDID) {
+          try {
+            const user = JSON.parse(storedUser);
+            const did = JSON.parse(storedDID);
+            setAuthenticatedUser(user);
+            setSelectedDID(did);
+            setSuccess('Transfer completed successfully! You are now logged in with the transferred pN.');
+          } catch (error) {
+            console.error('Error parsing stored user data:', error);
+            setSuccess('Transfer completed successfully! Your pN identity is now available.');
+          }
+        } else {
+          setSuccess('Transfer completed successfully! Your pN identity is now available.');
+        }
+      } else {
+        setSuccess('Transfer completed successfully! Your pN identity is now available.');
+      }
+      
+      setTimeout(() => setSuccess(null), 5000);
+      
+      // Clean up the URL
+      const newUrl = window.location.pathname;
+      window.history.replaceState({}, document.title, newUrl);
+    }
+  }, []);
 
   // Initialize systems
   useEffect(() => {
@@ -2599,48 +2763,9 @@ function App() {
 
 
 
-  const handleAddDevice = async (deviceData: {
-    name: string;
-    type: 'mobile' | 'desktop' | 'tablet' | 'other';
-  }) => {
-    try {
-      const syncData = await createDeviceQRData(deviceData);
-      setDeviceSyncData(syncData);
-      setShowDeviceQRModal(true);
-    } catch (error: any) {
-      setError(error.message || 'Failed to generate device sync data');
-    }
-  };
 
-  const handleRemoveDevice = (deviceId: string) => {
-    const removedDevice = syncedDevices.find(d => d.id === deviceId);
-    setSyncedDevices(prev => prev.filter(device => device.id !== deviceId));
 
-    // Store device removal in cloud database for cross-platform sync
-    if (removedDevice) {
-      cloudSyncManager.initialize().then(() => {
-        return cloudSyncManager.storeUpdate({
-          type: 'device',
-          identityId: authenticatedUser?.id || selectedDID?.id || 'temp-identity',
-          publicKey: authenticatedUser?.publicKey || '',
-          data: {
-            action: 'remove',
-            deviceId,
-            device: removedDevice
-          },
-          updatedByDeviceId: currentDevice?.id || generateDeviceFingerprint()
-        });
-      }).then(() => {
-        logDebug('Device removal stored in cloud database for cross-platform sync');
-      }).catch((error) => {
-                  logError('Failed to store device removal in cloud:', error);
-        // Don't fail the entire operation if cloud sync fails
-      });
-    }
 
-    setSuccess('Device removed successfully. Changes will sync across platforms.');
-    setTimeout(() => setSuccess(null), 5000);
-  };
 
   // Device syncing utility functions
   const generateDeviceFingerprint = () => {
@@ -2652,6 +2777,32 @@ function App() {
       return canvas.toDataURL().slice(0, 50) + Date.now().toString();
     }
     return `device-${Date.now()}-${Math.random().toString(36).substring(2)}`;
+  };
+
+  // Generate QR code for transfer URL
+  const generateQRCode = async (url: string) => {
+    try {
+      const qrContainer = document.getElementById('qr-code-container');
+      if (qrContainer) {
+        qrContainer.innerHTML = '';
+        const qrDataURL = await QRCode.toDataURL(url, {
+          width: 192,
+          margin: 2,
+          color: {
+            dark: '#000000',
+            light: '#FFFFFF'
+          }
+        });
+        
+        const img = document.createElement('img');
+        img.src = qrDataURL;
+        img.alt = 'Transfer QR Code';
+        img.className = 'w-full h-full';
+        qrContainer.appendChild(img);
+      }
+    } catch (error) {
+      console.error('Failed to generate QR code:', error);
+    }
   };
 
   // Check for cloud updates and sync them to PWA
@@ -2787,49 +2938,9 @@ function App() {
     return Array.from(array, byte => byte.toString(16).padStart(2, '0')).join('');
   };
 
-  const createDeviceQRData = async (deviceData: {
-    name: string;
-    type: 'mobile' | 'desktop' | 'tablet' | 'other';
-  }) => {
-    const syncData = {
-      deviceId: `device-${Date.now()}`,
-      deviceName: deviceData.name,
-      deviceType: deviceData.type,
-      syncKey: generateSyncKey(),
-      identityId: authenticatedUser?.id || 'unknown',
-      deviceFingerprint: generateDeviceFingerprint(),
-    };
-    
-    // Generate real QR code
-    const qrCodeDataURL = await QRCodeManager.generateDevicePairingQR(syncData);
-    
-    return {
-      ...syncData,
-      expiresAt: new Date(Date.now() + 5 * 60 * 1000).toISOString(),
-      qrCodeDataURL
-    };
-  };
 
-  const initializeCurrentDevice = () => {
-    if (authenticatedUser && syncedDevices.length === 0) {
-      const currentDevice: SyncedDevice = {
-        id: `primary-${Date.now()}`,
-        name: `${navigator.platform} - ${navigator.userAgent.split(' ').pop()?.split('/')[0] || 'Unknown'}`,
-        type: 'desktop', // Default to desktop, could be enhanced with better detection
-        lastSync: new Date().toISOString(),
-        status: 'active',
-        location: 'Current Location',
-        ipAddress: 'Current IP',
-        isPrimary: true, // This is the primary device
-        deviceFingerprint: generateDeviceFingerprint(),
-        syncKey: generateSyncKey(),
-        pairedAt: new Date().toISOString()
-      };
-      
-      setCurrentDevice(currentDevice);
-      setSyncedDevices([currentDevice]);
-    }
-  };
+
+
 
   // Function to sync data from webapp storage to PWA
   const syncFromWebappStorage = async (): Promise<{ identities: any[] } | null> => {
@@ -2961,12 +3072,7 @@ function App() {
     initializeApp();
   }, [storage]);
 
-  // Initialize current device when user authenticates
-  useEffect(() => {
-    if (authenticatedUser) {
-      initializeCurrentDevice();
-    }
-  }, [authenticatedUser]);
+
 
   // PWA lock management with stable dependencies
   useEffect(() => {
@@ -3080,254 +3186,8 @@ function App() {
   };
   */
 
-  // Device pairing handler with authentication
-  const handleDevicePairing = async (qrData: string) => {
-    try {
-      // Parse and validate QR code data using the QR code manager
-      const parsedData = await QRCodeManager.parseQRCode(qrData);
-      
-      if (parsedData.type !== 'device-pairing') {
-        throw new Error('Invalid QR code type');
-      }
-      
-      const syncData = parsedData.data;
-      
-      // Store the sync data and show authentication modal
-      setPendingSyncData(syncData);
-      setShowSyncAuthModal(true);
-      setShowQRScannerModal(false);
-      
-    } catch (error: any) {
-      setError(error.message || 'Failed to parse QR code');
-      setTimeout(() => setError(null), 5000);
-    }
-  };
 
-  // Handle sync authentication and device pairing
-  const handleSyncAuthentication = async (pnName: string, passcode: string) => {
-    try {
-      setLoading(true);
-      setError(null);
-
-      if (!pendingSyncData) {
-        throw new Error('No pending sync data found');
-      }
-
-      // Validate the pN Name and passcode against the source device's identity
-      // In a real implementation, this would verify against the source device's stored identity
-      const isValidAuth = await validateSyncAuthentication(pendingSyncData.identityId, pnName, passcode);
-      
-      if (!isValidAuth) {
-        throw new Error('Invalid pN Name or passcode');
-      }
-
-      // Create the new synced device
-      const newDevice: SyncedDevice = {
-        id: pendingSyncData.deviceId,
-        name: pendingSyncData.deviceName,
-        type: pendingSyncData.deviceType,
-        lastSync: new Date().toISOString(),
-        status: 'active',
-        location: 'Unknown', // Will be updated with real location
-        ipAddress: 'Unknown', // Will be updated with real IP
-        isPrimary: false, // New devices are never primary
-        deviceFingerprint: generateDeviceFingerprint(),
-        syncKey: pendingSyncData.syncKey,
-        pairedAt: new Date().toISOString()
-      };
-      
-      // Add the device to synced devices
-      setSyncedDevices(prev => [...prev, newDevice]);
-      
-      // Set this as the current device and authenticate the user
-      setCurrentDevice(newDevice);
-      setAuthenticatedUser({
-        id: pendingSyncData.identityId,
-        pnName: pnName,
-        nickname: pnName, // Use pN Name as nickname initially
-        accessToken: `synced-token-${Date.now()}`,
-        expiresIn: 3600,
-        authenticatedAt: new Date().toISOString()
-      });
-
-      // IMPORTANT: Transfer the actual pN file data to this device
-      // This allows the secondary device to access the pN without the original file
-      await transferIdentityDataToDevice(pendingSyncData.identityId, pnName, passcode);
-
-      setSuccess('Device synced successfully! You can now access your identity on this device without needing the pN file.');
-      setTimeout(() => setSuccess(null), 5000);
-      
-      // Close the modal and clear pending data
-      setShowSyncAuthModal(false);
-      setPendingSyncData(null);
-      
-    } catch (error: any) {
-      setError(error.message || 'Failed to sync device');
-      setTimeout(() => setError(null), 5000);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // Validate sync authentication (placeholder for now)
-  const validateSyncAuthentication = async (identityId: string, pnName: string, passcode: string): Promise<boolean> => {
-    // In a real implementation, this would validate against the source device's identity
-    // For now, we'll simulate validation (in production, this would be more secure)
-    return true; // Placeholder - always return true for demo
-  };
-
-  // Handle Bluetooth device selection (Device A initiating sync)
-  const handleBluetoothDeviceSelected = (device: any) => {
-    // Close the Bluetooth sync modal
-    setShowBluetoothSyncModal(false);
     
-    // Create sync data for the selected device
-    const syncData = {
-      deviceId: device.id,
-      deviceName: device.name,
-      deviceType: device.type,
-      syncKey: generateSyncKey(),
-      identityId: authenticatedUser?.id || 'unknown',
-      deviceFingerprint: generateDeviceFingerprint(),
-    };
-    
-    // Store the sync data and show authentication modal
-    setPendingSyncData(syncData);
-    setShowSyncAuthModal(true);
-  };
-
-  // Handle sync request (Device A sending request to Device B)
-  const handleSyncRequest = (device: any) => {
-    // Close the Bluetooth sync modal
-    setShowBluetoothSyncModal(false);
-    
-    // In a real implementation, this would send the sync request to Device B
-    // For now, we'll simulate the request being sent
-    console.log('Sending sync request to:', device.name);
-    
-    // Show success message
-    setSuccess(`Sync request sent to ${device.name}. They will receive a notification.`);
-    setTimeout(() => setSuccess(null), 5000);
-  };
-
-  // Handle incoming sync request (Device B receiving request from Device A)
-  const handleIncomingSyncRequest = (pnName: string, passcode: string) => {
-    // This would handle the sync when Device B accepts the request
-    handleSyncAuthentication(pnName, passcode);
-    setShowSyncRequestModal(false);
-    setIncomingSyncRequest(null);
-  };
-
-  // Handle device sync initiation (Device A generating sync code)
-  const handleDeviceSyncInitiated = async (syncData: any) => {
-    try {
-      console.log('Generated sync code:', syncData.syncCode);
-      console.log('Sync URL:', syncData.syncUrl);
-      
-      // Store sync data for the receiving device
-      localStorage.setItem(`sync-${syncData.syncCode}`, JSON.stringify(syncData));
-      
-      // Show success message
-      setSuccess(`Sync code generated! Share code "${syncData.syncCode}" or the link with the target device. They can scan the QR code or go to the link, then enter their pN/passcode to receive your pN file.`);
-      setTimeout(() => setSuccess(null), 8000);
-      
-    } catch (error) {
-      console.error('Failed to generate sync code:', error);
-      setError('Failed to generate sync code. Please try again.');
-    }
-  };
-
-  // Transfer identity data to the synced device
-  const transferIdentityDataToDevice = async (identityId: string, pnName: string, passcode: string) => {
-    try {
-      // In a real implementation, this would:
-      // 1. Fetch the identity data from the source device via secure channel
-      // 2. Decrypt the data using the provided credentials
-      // 3. Store the data locally on this device
-      
-      // For now, we'll create a mock identity file that simulates the synced data
-      const mockIdentityData = {
-        id: identityId,
-        pnName: pnName,
-        nickname: pnName,
-        metadata: {
-          displayName: pnName,
-          username: pnName.toLowerCase().replace(/\s+/g, ''),
-          email: `${pnName.toLowerCase().replace(/\s+/g, '')}@example.com`,
-          profilePicture: null,
-          security: {
-            lastLoginAttempt: new Date().toISOString(),
-            failedLoginAttempts: 0,
-            twoFactorEnabled: false,
-            recoveryMethods: []
-          },
-          preferences: {
-            theme: 'dark',
-            language: 'en',
-            notifications: true,
-            privacy: {
-              allowThirdPartySharing: false,
-              dataPoints: {},
-              toolPermissions: {}
-            }
-          },
-          deviceSync: {
-            devices: [
-              {
-                id: `synced-${Date.now()}`,
-                name: `${navigator.platform} - ${navigator.userAgent.split(' ').pop()?.split('/')[0] || 'Unknown'}`,
-                type: 'desktop',
-                lastSync: new Date().toISOString(),
-                status: 'active',
-                isPrimary: false,
-                deviceFingerprint: generateDeviceFingerprint(),
-                syncKey: generateSyncKey(),
-                pairedAt: new Date().toISOString()
-              }
-            ],
-            syncSettings: {
-              autoSync: true,
-              syncInterval: 300000, // 5 minutes
-              maxDevices: 5
-            }
-          }
-        },
-        credentials: {
-          // In real implementation, this would be encrypted
-          passcode: passcode,
-          recoveryKey: `recovery-${Math.random().toString(36).substring(2)}`
-        },
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-        version: '1.0.0'
-      };
-
-      // Store the synced identity data in local storage
-      // This simulates the pN file being available on this device
-      const syncedIdentityKey = `synced-identity-${identityId}`;
-      localStorage.setItem(syncedIdentityKey, JSON.stringify(mockIdentityData));
-      
-      // Also store in the main identities list for the PWA
-      const existingIdentities = JSON.parse(localStorage.getItem('pwa-identities') || '[]');
-      const updatedIdentities = existingIdentities.filter((id: any) => id.id !== identityId);
-      updatedIdentities.push(mockIdentityData);
-      localStorage.setItem('pwa-identities', JSON.stringify(updatedIdentities));
-      
-      // Update the main form to reflect the synced identity
-      setMainForm(prev => ({
-        ...prev,
-        pnName: pnName,
-        passcode: passcode,
-        uploadFile: null // No file needed since we have synced data
-      }));
-
-      logDebug('Identity data transferred to device successfully');
-      
-    } catch (error) {
-      logError('Failed to transfer identity data:', error);
-      throw new Error('Failed to transfer identity data to device');
-    }
-  };
 
   // Handle recovery completion with automatic license transfer
   const handleRecoveryComplete = async (recoveredDID: DIDInfo) => {
@@ -3361,7 +3221,6 @@ function App() {
       };
       
       setCurrentDevice(recoveredPrimaryDevice);
-      setSyncedDevices([recoveredPrimaryDevice]);
       
       // Update recovery request status
       setRecoveryRequests(prev => prev.map(req => 
@@ -3971,7 +3830,7 @@ function App() {
   }, [pwaState]);
 
   return (
-    <div className="min-h-screen theme-dark bg-bg-primary text-text-primary">
+    <div className="min-h-screen theme-dark bg-bg-primary text-text-primary flex flex-col">
       <Header
         authenticatedUser={authenticatedUser}
         onLogout={handleLogout}
@@ -4047,14 +3906,14 @@ function App() {
         })()
       )}
       
-      <main className="pt-12">
-                {/* Main Screen - Show when not authenticated */}
-        {!authenticatedUser && (
-          <div className="max-w-6xl mx-auto text-text-primary pt-6">
+      <main className="pt-12 flex-1">
+                {/* Main Screen - Show when not authenticated and not on transfer route */}
+        {!authenticatedUser && !showTransferReceiver && (
+          <div className="max-w-6xl mx-auto text-text-primary pt-6 px-4 sm:px-6 lg:px-8">
             
             {/* Header */}
-            <div className="flex justify-center items-center mb-8">
-              <div className="w-[270px] h-[270px]">
+            <div className="flex justify-center items-center mt-2 mb-2">
+              <div className="w-48 h-48 sm:w-56 sm:h-56 md:w-64 md:h-64 lg:w-72 lg:h-72 xl:w-80 xl:h-80">
                 <Logo />
               </div>
             </div>
@@ -4124,7 +3983,7 @@ function App() {
                                   Upload new pN file
                                 </div>
                                 <div className="text-xs text-text-secondary mt-1">
-                                  (.pn files only)
+                                  (.json files recommended)
                                 </div>
                               </div>
                             </label>
@@ -4166,7 +4025,7 @@ function App() {
                               {mainForm.uploadFile ? mainForm.uploadFile.name : 'Tap to upload pN file'}
                             </div>
                             <div className="text-xs text-text-secondary mt-1">
-                              (.pn files only)
+                              (.json files recommended)
                             </div>
                           </div>
                         </label>
@@ -4256,24 +4115,15 @@ function App() {
                   />
                   
                   <div className="space-y-3">
-                    <button
-                      type="submit"
-                      disabled={loading}
-                      className="w-full px-4 py-2 bg-gray-300 dark:bg-gray-600 text-gray-900 dark:btn-text rounded-md hover:bg-gray-400 dark:hover:bg-gray-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed font-medium"
-                    >
-                      {loading ? 'Unlocking...' : 'Unlock pN'}
-                    </button>
+                  <button
+                    type="submit"
+                    disabled={loading}
+                    className="w-full px-4 py-2 bg-gray-300 dark:bg-gray-600 text-gray-900 dark:btn-text rounded-md hover:bg-gray-400 dark:hover:bg-gray-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed font-medium"
+                  >
+                    {loading ? 'Unlocking...' : 'Unlock pN'}
+                  </button>
                     
-                    <button
-                      type="button"
-                      onClick={() => setShowBluetoothSyncModal(true)}
-                      className="w-full px-4 py-2 bg-gray-500 dark:bg-gray-700 text-white rounded-md hover:bg-gray-600 dark:hover:bg-gray-600 transition-colors font-medium flex items-center justify-center space-x-2"
-                    >
-                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V6a1 1 0 00-1-1H5a1 1 0 00-1 1v1a1 1 0 001 1zm12 0h2a1 1 0 001-1V6a1 1 0 00-1-1h-2a1 1 0 00-1 1v1a1 1 0 001 1zM5 20h2a1 1 0 001-1v-1a1 1 0 00-1 1v1a1 1 0 001 1z" />
-                      </svg>
-                      <span>Sync Device</span>
-                    </button>
+
                   </div>
                 </form>
                 
@@ -5205,82 +5055,7 @@ function App() {
 
 
 
-        {/* Add Device Modal */}
-        {showAddDeviceModal && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-start justify-center z-50 overflow-y-auto p-4 sm:p-6">
-            <div className="bg-modal-bg rounded-lg p-6 max-w-md w-full mx-4 my-8 max-h-[90vh] overflow-y-auto text-text-primary">
-              <div className="flex justify-between items-center mb-8">
-                <h2 className="text-xl font-semibold">Add Synced Device</h2>
-                <button
-                  onClick={() => setShowAddDeviceModal(false)}
-                  className="modal-close-button"
-                >
-                  ✕
-                </button>
-              </div>
-              <form onSubmit={(e) => {
-                e.preventDefault();
-                const formData = new FormData(e.currentTarget);
-                handleAddDevice({
-                  name: formData.get('name') as string,
-                  type: formData.get('type') as 'mobile' | 'desktop' | 'tablet' | 'other',
-                });
-                setShowAddDeviceModal(false);
-              }} className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-text-primary mb-1">
-                    Device Name
-                  </label>
-                  <input
-                    name="name"
-                    type="text"
-                    className="w-full px-3 py-2 border border-input-border bg-input-bg text-text-primary rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
-                    placeholder="e.g., iPhone 13, MacBook Pro, iPad"
-                    required
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-text-primary mb-1">
-                    Device Type
-                  </label>
-                  <select
-                    name="type"
-                    className="w-full px-3 py-2 border border-input-border bg-input-bg rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
-                    required
-                  >
-                    <option value="mobile">Mobile (Phone)</option>
-                    <option value="desktop">Desktop (Computer)</option>
-                    <option value="tablet">Tablet</option>
-                    <option value="other">Other</option>
-                  </select>
-                </div>
-                <div className="info-box p-4 rounded-lg">
-                  <h4 className="font-medium text-text-primary mb-2">Device Sync</h4>
-                  <div className="text-sm text-text-secondary space-y-1">
-                    <p>• Device will be synced with your identity</p>
-                    <p>• Data will be encrypted in transit</p>
-                    <p>• You can remove devices at any time</p>
-                  </div>
-                </div>
-                <div className="flex space-x-2">
-                  <button
-                    type="submit"
-                    className="flex-1 px-4 py-2 modal-button rounded-md"
-                  >
-                    Add Device
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setShowAddDeviceModal(false)}
-                    className="flex-1 px-4 py-2 bg-secondary text-text-primary rounded-md hover:bg-hover"
-                  >
-                    Cancel
-                  </button>
-                </div>
-              </form>
-            </div>
-          </div>
-        )}
+
 
         {/* Recovery Key Input Modal */}
         {showRecoveryKeyInputModal && (
@@ -5408,13 +5183,7 @@ function App() {
 
 
         {authenticatedUser && (
-          <div className="max-w-6xl mx-auto text-text-primary pt-8">
-            {/* Simple Header for Authenticated Users */}
-            <div className="flex justify-center items-center mb-8">
-              <div className="w-[270px] h-[270px]">
-              <Logo />
-              </div>
-            </div>
+          <div className="max-w-6xl mx-auto text-text-primary pt-8 px-4 sm:px-6 lg:px-8">
             
             {/* Authenticated Dashboard */}
             <div className="flex flex-col items-center gap-8 -mt-4 relative z-10">
@@ -5567,16 +5336,7 @@ function App() {
                     >
                       Privacy & Sharing
                 </button>
-                    <button
-                      onClick={() => setActiveTab('devices')}
-                      className={`py-2 px-1 border-b-2 font-medium text-sm whitespace-nowrap ${
-                        activeTab === 'devices'
-                          ? 'border-primary text-primary'
-                          : 'border-transparent text-text-secondary hover:text-text-primary hover:border-border'
-                      }`}
-                    >
-                      Synced Devices
-                    </button>
+
                     <button
                       onClick={() => setActiveTab('recovery')}
                       className={`py-2 px-1 border-b-2 font-medium text-sm whitespace-nowrap ${
@@ -5727,102 +5487,7 @@ function App() {
                     </div>
                   )}
 
-                  {activeTab === 'devices' && (
-                    <div className="space-y-6">
-                      <div>
-                        <h3 className="text-lg font-semibold text-text-primary mb-4">Synced Devices</h3>
-                        <div className="space-y-4">
-                          {/* Device List */}
-                          <div className="space-y-3">
-                            {syncedDevices.map((device) => (
-                              <div key={device.id} className="bg-input-bg rounded-lg border border-border p-4">
-                                <div className="flex items-center justify-between mb-2">
-                                  <div className="flex items-center space-x-3">
-                                    <div className={`w-3 h-3 rounded-full ${device.isPrimary ? 'bg-primary' : 'bg-blue-500'}`}></div>
-                                    <div>
-                                      <div className="font-medium text-sm flex items-center space-x-2">
-                                        <span className="text-text-primary">{device.name}</span>
-                                        {device.isPrimary && (
-                                          <span className="text-xs text-black px-2 py-1">
-                                            Primary
-                                          </span>
-                                        )}
-                                      </div>
-                                      <div className="text-xs text-text-secondary">
-                                        {device.type} • {device.location} • {device.ipAddress}
-                                      </div>
-                                    </div>
-                                  </div>
-                                  <div className="text-right">
-                                    <div className="text-xs text-text-secondary">
-                                      Last sync: {new Date(device.lastSync).toLocaleString()}
-                                    </div>
-                                    <div className={`text-xs px-2 py-1 ${
-                                      device.status === 'active' 
-                                        ? 'text-primary' 
-                                        : 'text-red-600'
-                                    }`}>
-                                      {device.status}
-                                    </div>
-                                  </div>
-                                </div>
-                                
-                                {!device.isPrimary && (
-                                  <div className="flex space-x-2 mt-3">
-                                    <button
-                                      onClick={() => handleRemoveDevice(device.id)}
-                                      className="px-3 py-1 bg-red-600 btn-text rounded text-sm hover:bg-red-700"
-                                    >
-                                      Remove
-                                    </button>
-                                    <button
-                                      onClick={() => {
-                                        // Simulate sync
-                                        const updatedDevices = syncedDevices.map(d => 
-                                          d.id === device.id 
-                                            ? { ...d, lastSync: new Date().toISOString() }
-                                            : d
-                                        );
-                                        setSyncedDevices(updatedDevices);
-                                        setSuccess('Device synced successfully');
-                                        setTimeout(() => setSuccess(null), 5000);
-                                      }}
-                                      className="px-3 py-1 bg-blue-600 btn-text rounded text-sm hover:bg-blue-700"
-                                    >
-                                      Sync Now
-                                    </button>
-                                  </div>
-                                )}
-                              </div>
-                            ))}
-                          </div>
-                          
-                          {/* Add New Device Button */}
-                          <div className="bg-secondary p-4 rounded-lg">
-                            <h4 className="font-medium text-text-primary mb-2">Add New Device</h4>
-                            <p className="text-sm text-text-secondary mb-3">
-                              Use Bluetooth to discover and sync your pN to a nearby device.
-                            </p>
-                            <button 
-                              onClick={() => setShowBluetoothSyncModal(true)}
-                              className="w-full px-4 py-3 modal-button rounded-md text-sm"
-                            >
-                              Sync New Device
-                            </button>
-                          </div>
-                          
-                          {/* Info Button */}
-                          <button
-                            onClick={() => setShowDeviceInfoModal(true)}
-                            className="flex items-center gap-2 text-text-secondary hover:text-text-primary transition-colors"
-                          >
-                            <Info className="w-4 h-4" />
-                            <span className="text-sm">Device Sync Information</span>
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                  )}
+
 
                   {activeTab === 'recovery' && (
                     <div className="space-y-6">
@@ -6330,96 +5995,7 @@ function App() {
           </div>
         )}
 
-        {/* Device QR Code Modal */}
-        {showDeviceQRModal && deviceSyncData && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-start justify-center z-50 overflow-y-auto p-4 sm:p-6">
-            <div className="bg-modal-bg rounded-lg p-6 max-w-md w-full mx-4 my-8 max-h-[90vh] overflow-y-auto text-text-primary">
-              <div className="flex justify-between items-center mb-8">
-                <h2 className="text-xl font-semibold">Add New Device</h2>
-                <button 
-                  onClick={() => setShowDeviceQRModal(false)}
-                  className="text-gray-500 hover:text-gray-700"
-                >
-                  ✕
-                </button>
-              </div>
-              
-              <div className="space-y-6">
-                <div className="text-center">
-                  <h3 className="text-lg font-medium mb-4">Scan This QR Code on Your New Device</h3>
-                  <div className="bg-gray-100 p-4 rounded-lg inline-block">
-                    {deviceSyncData.qrCodeDataURL ? (
-                      <img 
-                        src={deviceSyncData.qrCodeDataURL} 
-                        alt="Device Sync QR Code"
-                        className="w-48 h-48 border border-gray-300"
-                      />
-                    ) : (
-                      <div className="w-48 h-48 bg-gray-200 flex items-center justify-center border-2 border-dashed border-gray-400">
-                        <div className="text-center text-gray-700">
-                          <div className="flex justify-center mb-2">
-                  <Smartphone className="w-12 h-12 text-blue-500" />
-                </div>
-                          <div className="text-sm">QR Code</div>
-                          <div className="text-xs mt-1">Scan with new device</div>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                </div>
-                
-                <div className="bg-gray-100 p-4 rounded-lg">
-                  <h4 className="font-medium text-black mb-2 flex items-center gap-2">
-                  <Info className="w-5 h-5" />
-                  Device Information
-                </h4>
-                  <div className="text-sm text-black space-y-1">
-                    <p>• Device: {deviceSyncData.deviceName}</p>
-                    <p>• Type: {deviceSyncData.deviceType}</p>
-                    <p>• Sync Key: {deviceSyncData.syncKey.substring(0, 8)}...</p>
-                    <p>• Expires: {new Date(deviceSyncData.expiresAt).toLocaleTimeString()}</p>
-                    <p>• <strong>Security:</strong> QR code expires in 5 minutes</p>
-                    <p>• <strong>Encryption:</strong> All data synced between devices is encrypted</p>
-                  </div>
-                </div>
-                
-                <div className="flex space-x-3">
-                  <button
-                    onClick={() => setShowDeviceQRModal(false)}
-                                                    className="flex-1 px-4 py-2 bg-gray-600 btn-text rounded-md hover:bg-gray-700"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    onClick={() => {
-                      // Simulate successful pairing for demo
-                      const newDevice: SyncedDevice = {
-                        id: deviceSyncData.deviceId,
-                        name: deviceSyncData.deviceName,
-                        type: deviceSyncData.deviceType,
-                        lastSync: new Date().toISOString(),
-                        status: 'active',
-                        location: 'San Francisco, CA',
-                        ipAddress: '192.168.1.101',
-                        isPrimary: false,
-                        deviceFingerprint: generateDeviceFingerprint(),
-                        syncKey: deviceSyncData.syncKey,
-                        pairedAt: new Date().toISOString()
-                      };
-                      setSyncedDevices(prev => [...prev, newDevice]);
-                      setShowDeviceQRModal(false);
-                      setSuccess('Device paired successfully');
-                      setTimeout(() => setSuccess(null), 5000);
-                    }}
-                                                    className="flex-1 px-4 py-2 bg-blue-600 btn-text rounded-md hover:bg-blue-700"
-                  >
-                    Simulate Pairing
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
+
 
 
 
@@ -6998,147 +6574,309 @@ function App() {
           />
         </Suspense>
 
-        {/* QR Scanner Modal */}
-        <QRCodeScanner
-          isOpen={showQRScannerModal}
-          onClose={() => setShowQRScannerModal(false)}
-          onScan={(qrData) => {
-            handleDevicePairing(qrData);
-          }}
-        />
-
-        {/* Device Sync Modal */}
-        <DeviceSyncModal
-          isOpen={showBluetoothSyncModal}
-          onClose={() => setShowBluetoothSyncModal(false)}
-          onSyncInitiated={handleDeviceSyncInitiated}
-        />
-
-        {/* Sync Request Modal (Device B receiving request) */}
-        <SyncRequestModal
-          isOpen={showSyncRequestModal}
-          onClose={() => {
-            setShowSyncRequestModal(false);
-            setIncomingSyncRequest(null);
-          }}
-          onAcceptSync={handleIncomingSyncRequest}
-          syncRequest={incomingSyncRequest}
-        />
-
-        {/* Sync Receiver Page */}
-        {showSyncReceiver && currentSyncCode && (
-          <SyncReceiver syncCode={currentSyncCode} />
-        )}
-
-        {/* Sync Authentication Modal */}
-        {showSyncAuthModal && pendingSyncData && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-            <div className="bg-modal-bg rounded-lg p-6 max-w-md w-full mx-4 max-h-[90vh] overflow-y-auto text-text-primary">
-              <div className="flex justify-between items-center mb-4">
-                <h2 className="text-xl font-bold">Sync Device</h2>
-                <button
+        {/* Export Authentication Modal */}
+        {showExportAuthModal && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+            <div className="bg-modal-bg rounded-lg p-6 max-w-md w-full text-text-primary">
+              <div className="flex justify-between items-center mb-6">
+                <h2 className="text-xl font-semibold">Verify Identity</h2>
+                <button 
                   onClick={() => {
-                    setShowSyncAuthModal(false);
-                    setPendingSyncData(null);
+                    setShowExportAuthModal(false);
+                    setExportAuthData({ pnName: '', passcode: '' });
+                    setShowExportPnName(false);
+                    setShowExportPasscode(false);
                   }}
-                  className="text-text-secondary hover:text-text-primary"
+                  className="text-gray-500 hover:text-gray-700"
                 >
                   ✕
                 </button>
               </div>
-
-              <div className="mb-6">
-                <div className="bg-blue-50 dark:bg-blue-900/20 rounded-lg p-4 mb-4">
-                  <div className="flex items-center space-x-3">
-                    <div className="text-2xl">📱</div>
-                    <div>
-                      <div className="font-medium text-text-primary">Device Sync Request</div>
-                      <div className="text-sm text-text-secondary">
-                        {pendingSyncData.deviceName} ({pendingSyncData.deviceType})
-                      </div>
-                    </div>
+              
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium mb-2">pN Name</label>
+                  <div className="relative">
+                    <input
+                      type={showExportPnName ? "text" : "password"}
+                      value={exportAuthData.pnName}
+                      onChange={(e) => setExportAuthData(prev => ({ ...prev, pnName: e.target.value }))}
+                      className="w-full px-3 py-2 pr-10 border border-border rounded-md bg-input-bg text-text-primary"
+                      placeholder="Enter your pN name"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowExportPnName(!showExportPnName)}
+                      className="absolute right-2 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                    >
+                      {showExportPnName ? "👁️" : "👁️‍🗨️"}
+                    </button>
                   </div>
                 </div>
                 
-                <p className="text-sm text-text-secondary mb-4">
-                  Enter your pN Name and passcode to authenticate and sync this device with your identity.
-                </p>
-              </div>
-
-              <form onSubmit={(e) => {
-                e.preventDefault();
-                const formData = new FormData(e.currentTarget);
-                const pnName = formData.get('pnName') as string;
-                const passcode = formData.get('passcode') as string;
-                handleSyncAuthentication(pnName, passcode);
-              }} className="space-y-4">
                 <div>
-                  <label className="block text-sm font-medium text-text-primary mb-1">
-                    pN Name
-                  </label>
-                  <input
-                    type="text"
-                    name="pnName"
-                    required
-                    className="w-full px-3 py-2 border border-input-border bg-input-bg rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
-                    placeholder="Enter your pN Name"
-                  />
+                  <label className="block text-sm font-medium mb-2">Passcode</label>
+                  <div className="relative">
+                    <input
+                      type={showExportPasscode ? "text" : "password"}
+                      value={exportAuthData.passcode}
+                      onChange={(e) => setExportAuthData(prev => ({ ...prev, passcode: e.target.value }))}
+                      className="w-full px-3 py-2 pr-10 border border-border rounded-md bg-input-bg text-text-primary"
+                      placeholder="Enter your passcode"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowExportPasscode(!showExportPasscode)}
+                      className="absolute right-2 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                    >
+                      {showExportPasscode ? "👁️" : "👁️‍🗨️"}
+                    </button>
+                  </div>
                 </div>
                 
-                <div>
-                  <label className="block text-sm font-medium text-text-primary mb-1">
-                    Passcode
-                  </label>
-                  <input
-                    type="password"
-                    name="passcode"
-                    required
-                    className="w-full px-3 py-2 border border-input-border bg-input-bg rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
-                    placeholder="Enter your passcode"
-                  />
-                </div>
-                
-                <div className="flex space-x-3">
+                <div className="flex space-x-3 pt-4">
+                                      <button
+                      onClick={() => {
+                        setShowExportAuthModal(false);
+                        setExportAuthData({ pnName: '', passcode: '' });
+                        setShowExportPnName(false);
+                        setShowExportPasscode(false);
+                      }}
+                      className="flex-1 px-4 py-2 bg-gray-600 text-white rounded-md hover:bg-gray-700"
+                    >
+                      Cancel
+                    </button>
                   <button
-                    type="submit"
-                    disabled={loading}
-                    className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                    onClick={handleExportAuth}
+                    className="flex-1 px-4 py-2 bg-primary text-white rounded-md hover:bg-primary-dark"
                   >
-                    {loading ? 'Syncing...' : 'Sync Device'}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setShowSyncAuthModal(false);
-                      setPendingSyncData(null);
-                    }}
-                    disabled={loading}
-                    className="flex-1 px-4 py-2 bg-gray-600 text-white rounded-md hover:bg-gray-700 transition-colors font-medium disabled:opacity-50"
-                  >
-                    Cancel
+                    Verify
                   </button>
                 </div>
-              </form>
-
-              <div className="mt-4 text-xs text-text-secondary space-y-1">
-                <p>• This will sync your identity data to this device</p>
-                <p>• Your passcode is required for security verification</p>
-                <p>• The device will be added to your synced devices list</p>
-                <p>• You can manage synced devices in the Synced Devices tab</p>
               </div>
             </div>
           </div>
         )}
 
+        {/* Export Options Modal */}
+        {showExportOptionsModal && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+            <div className="bg-modal-bg rounded-lg p-6 max-w-md w-full text-text-primary">
+              <div className="flex justify-between items-center mb-6">
+                <h2 className="text-xl font-semibold">Export Options</h2>
+                                  <button
+                    onClick={() => {
+                      setShowExportOptionsModal(false);
+                      setExportAuthData({ pnName: '', passcode: '' });
+                      setShowExportPnName(false);
+                      setShowExportPasscode(false);
+                    }}
+                    className="text-gray-500 hover:text-gray-700"
+                  >
+                    ✕
+                  </button>
+              </div>
+              
+              <div className="space-y-4">
+                <div className="text-sm text-text-secondary mb-4">
+                  Choose how you want to export your pN file:
+                </div>
+                
+                <button
+                  onClick={handleDownloadExport}
+                  className="w-full p-4 border border-border rounded-lg hover:bg-secondary transition-colors text-left"
+                >
+                  <div className="flex items-center space-x-3">
+                    <div className="w-10 h-10 bg-primary/10 rounded-lg flex items-center justify-center">
+                      <FileText className="w-6 h-6 text-primary" />
+                    </div>
+                    <div>
+                      <div className="font-medium">Download</div>
+                      <div className="text-sm text-text-secondary">Save pN file to your device</div>
+                    </div>
+                  </div>
+                </button>
+                
+                <button
+                                      onClick={handleTransfer}
+                  className="w-full p-4 border border-border rounded-lg hover:bg-secondary transition-colors text-left"
+                >
+                  <div className="flex items-center space-x-3">
+                    <div className="w-10 h-10 bg-primary/10 rounded-lg flex items-center justify-center">
+                      <Smartphone className="w-6 h-6 text-primary" />
+                    </div>
+                    <div>
+                      <div className="font-medium">Transfer to Device</div>
+                      <div className="text-sm text-text-secondary">Generate URL for another device to unlock pN identity</div>
+                    </div>
+                  </div>
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+
+
+        {/* Transfer Setup Modal */}
+        {showTransferSetupModal && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+            <div className="bg-modal-bg rounded-lg p-6 max-w-md w-full text-text-primary">
+              <div className="flex justify-between items-center mb-6">
+                <h2 className="text-xl font-semibold">
+                  {transferCreated ? 'Transfer Created' : 'Setup Transfer'}
+                </h2>
+                <button 
+                  onClick={() => {
+                    setShowTransferSetupModal(false);
+                    setTransferCreated(false);
+                  }}
+                  className="text-gray-500 hover:text-gray-700"
+                >
+                  ✕
+                </button>
+              </div>
+              
+              {!transferCreated ? (
+                <div className="space-y-4">
+                  <div className="text-sm text-text-secondary mb-4">
+                    Create a transfer passcode to secure the pN file transfer:
+                  </div>
+                  
+                  <div>
+                    <label className="block text-sm font-medium text-text-primary mb-2">
+                      Transfer Passcode
+                    </label>
+                    <input
+                      type="password"
+                      value={transferPasscode}
+                      onChange={(e) => setTransferPasscode(e.target.value)}
+                      className="w-full px-3 py-2 bg-input-bg border border-border rounded-md text-text-primary placeholder-text-secondary focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
+                      placeholder="Enter a transfer passcode (min 4 characters)"
+                    />
+                    <p className="text-xs text-text-secondary mt-1">
+                      This passcode will be required to download the pN file on the target device.
+                    </p>
+                  </div>
+                  
+                  <div className="flex space-x-3 pt-4">
+                    <button
+                      onClick={() => setShowTransferSetupModal(false)}
+                      className="flex-1 px-4 py-2 bg-gray-600 text-white rounded-md hover:bg-gray-700"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      onClick={handleTransferSetup}
+                      disabled={!transferPasscode || transferPasscode.length < 4}
+                      className="flex-1 px-4 py-2 bg-primary text-white rounded-md hover:bg-primary-dark disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      Create Transfer
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  <div className="text-sm text-text-secondary mb-4">
+                    Share this URL or QR code with the target device:
+                  </div>
+                  
+                  <div className="bg-secondary p-3 rounded-lg">
+                    <div className="text-xs text-text-secondary mb-1">Transfer URL:</div>
+                    <div className="text-sm font-mono break-all text-text-primary">{transferUrl}</div>
+                  </div>
+                  
+                  <div className="text-center">
+                    <div className="bg-secondary p-4 rounded-lg inline-block">
+                      <div id="qr-code-container" className="w-48 h-48 bg-white flex items-center justify-center">
+                        {/* QR Code will be generated here */}
+                      </div>
+                    </div>
+                  </div>
+                  
+                  <div className="bg-secondary p-3 rounded-lg">
+                    <div className="text-sm text-text-primary">
+                      <strong>Transfer Instructions:</strong>
+                      <ul className="mt-2 space-y-1 text-xs text-text-secondary">
+                        <li>• Target device opens the URL</li>
+                        <li>• Enters the transfer passcode</li>
+                        <li>• Downloads the pN file</li>
+                        <li>• Uses normal unlock flow with the file</li>
+                        <li>• Transfer expires in 30 minutes</li>
+                      </ul>
+                    </div>
+                  </div>
+                  
+                  <div className="flex space-x-3 pt-4">
+                    <button
+                      onClick={() => {
+                        navigator.clipboard.writeText(transferUrl);
+                        setSuccess('URL copied to clipboard!');
+                        setTimeout(() => setSuccess(null), 3000);
+                      }}
+                      className="flex-1 px-4 py-2 bg-primary text-white rounded-md hover:bg-primary-dark"
+                    >
+                      Copy URL
+                    </button>
+                    <button
+                      onClick={() => {
+                        setShowTransferSetupModal(false);
+                        setTransferCreated(false);
+                      }}
+                      className="flex-1 px-4 py-2 bg-gray-600 text-white rounded-md hover:bg-gray-700"
+                    >
+                      Close
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Transfer Receiver */}
+        {showTransferReceiver && (
+          <TransferReceiver 
+            transferId={transferId}
+            onClose={() => {
+              setShowTransferReceiver(false);
+              window.location.href = '/';
+            }}
+          />
+        )}
+
+        {/* Terms of Service */}
+        {showTermsOfService && (
+          <TermsOfService />
+        )}
+
+        {/* Privacy Policy */}
+        {showPrivacyPolicy && (
+          <PrivacyPolicy />
+        )}
+
       </main>
 
-      {/* Development Mode Indicator */}
-      <DevelopmentModeIndicator />
-
-      {/* IPFS Status Indicator */}
-      <div className="fixed bottom-4 right-4 z-40">
-        <IPFSStatus />
-      </div>
+      {/* Footer */}
+      <footer className="mt-auto py-4 px-4 sm:px-6 lg:px-8">
+        <div className="max-w-6xl mx-auto">
+          <div className="flex justify-center items-center space-x-6 text-sm">
+            <a 
+              href="/terms" 
+              className="text-text-secondary hover:text-primary transition-colors"
+            >
+              Terms of Service
+            </a>
+            <span className="text-text-secondary">•</span>
+            <a 
+              href="/privacy" 
+              className="text-text-secondary hover:text-primary transition-colors"
+            >
+              Privacy Policy
+            </a>
+          </div>
+        </div>
+      </footer>
 
     </div>
   );

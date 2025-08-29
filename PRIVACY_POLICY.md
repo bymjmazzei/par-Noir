@@ -1,185 +1,206 @@
-# Privacy Policy - Par Noir
+# Privacy Policy - Identity Protocol
 
 **Last Updated:** December 2024  
 **Effective Date:** December 2024
 
-## 🎯 **Overview**
+## 🎯 **Our Privacy Commitment**
 
-Par Noir ("we," "our," or "us") is committed to protecting your privacy. This Privacy Policy explains how we handle your information when you use our decentralized identity management system.
+Identity Protocol is built on the principle of **privacy by design**. We believe that your personal information belongs to you, and we are committed to protecting your privacy while providing a secure, decentralized identity management system.
 
-## 🔐 **Our Privacy-First Approach**
+## 📋 **Information We Do NOT Collect**
 
-### **Decentralized Architecture**
-- **No Central Database**: We do not store your personal data on our servers
-- **User-Owned Data**: All your identity data is stored locally on your devices
-- **IPFS Storage**: Encrypted metadata is stored on IPFS for cross-device access
-- **Peer-to-Peer Communication**: Direct communication between users without intermediaries
-- **Zero-Knowledge**: We cannot access your personal information
+### **No Personal Data Collection**
+We do not collect, store, or process your personal information, including:
+- **Identity Data**: Your pN names, passcodes, or identity details
+- **Personal Information**: Names, addresses, phone numbers, or email addresses
+- **Usage Data**: How you use the service or which features you access
+- **Device Information**: Device identifiers, IP addresses, or location data
+- **Biometric Data**: Fingerprint, face, or other biometric information
+
+### **No Tracking or Analytics**
+- **No Cookies**: We do not use tracking cookies
+- **No Analytics**: We do not track user behavior or analytics
+- **No Profiling**: We do not create user profiles or behavioral analysis
+- **No Third-Party Tracking**: We do not allow third-party tracking
+
+## 🔐 **How Your Data is Handled**
+
+### **Local Storage Only**
+- **Device Storage**: All your data is stored locally on your devices
+- **No Cloud Storage**: We do not store your data on our servers
+- **User Control**: You have complete control over your data
+- **Encryption**: All data is encrypted with military-grade encryption
+
+### **Decentralized Processing**
+- **Local Processing**: All data processing happens on your devices
+- **No Server Processing**: We do not process your data on our servers
+- **Peer-to-Peer**: Direct communication between users when needed
+- **IPFS Integration**: Optional decentralized metadata storage
 
 ### **Data Ownership**
-- **You Own Your Data**: All identity information belongs to you
-- **Local Storage**: Data is encrypted and stored on your devices
-- **No Data Mining**: We do not collect, analyze, or monetize your personal information
-- **No Tracking**: We do not track your activities or behavior
+- **Your Ownership**: You own 100% of your identity data
+- **No License**: We do not claim any rights to your data
+- **Export Rights**: You can export your data at any time
+- **Deletion Rights**: You can delete your data completely
 
-## 📊 **Information We Do NOT Collect**
+## 🔄 **Data Sharing and Third Parties**
 
-### **Zero Data Collection**
-Par Noir is designed with **zero data collection** at its core. We do not collect, store, or process any of your personal information.
+### **Your Control Over Sharing**
+- **Granular Permissions**: You control exactly what data is shared
+- **Revocation Rights**: You can revoke access at any time
+- **Audit Trail**: Complete history of data sharing
+- **No Automatic Sharing**: Nothing is shared without your explicit consent
 
-### **What We Do NOT Collect**
-- ❌ **Identity Information**: We do not collect usernames, nicknames, emails, or phone numbers
-- ❌ **Recovery Information**: We do not collect recovery contacts or custodian details
-- ❌ **Device Information**: We do not collect device names or sync preferences
-- ❌ **Recovery Keys**: We do not collect cryptographic keys you generate
-- ❌ **Usage Analytics**: We do not track how you use the system
-- ❌ **Location Data**: We do not collect location information
-- ❌ **Browsing History**: We do not track your web browsing
-- ❌ **Third-Party Data**: We do not collect data from third-party services
-- ❌ **Metadata**: We do not collect any metadata about your activities
+### **Third-Party Integrations**
+- **Optional Services**: Third-party integrations are completely optional
+- **Your Choice**: You choose which integrations to use
+- **Separate Privacy**: Third-party services have their own privacy policies
+- **No Data Transfer**: We do not transfer your data to third parties
 
-### **Local-First Architecture**
-- **Local Storage**: All your identity data is stored locally on your devices
-- **IPFS Sync**: Encrypted metadata is synchronized via IPFS for cross-device access
-- **User Control**: You create, manage, and control all your identity information
-- **No Servers**: We do not have servers that store your data
-- **No Databases**: We do not maintain databases of user information
+### **Recovery Custodians**
+- **Your Selection**: You choose your recovery custodians
+- **Direct Communication**: Communication happens directly with custodians
+- **No Intermediary**: We do not act as an intermediary
+- **Custodian Privacy**: Custodians have their own privacy policies
 
-## 🔄 **How Your Data Works**
+## 🛡️ **Security Measures**
 
-### **Local Processing**
-- **Identity Management**: You create and manage your digital identity through the dashboard
-- **Recovery System**: You set up custodian-based recovery through the dashboard
-- **Device Sync**: Your identity is automatically synchronized across your devices
-- **Authentication**: You verify your identity using cryptographic proofs locally
+### **Encryption Standards**
+- **Military-Grade**: AES-256 encryption for all data
+- **End-to-End**: Encryption from device to device
+- **Key Management**: Secure key generation and storage
+- **No Backdoors**: We cannot access your encrypted data
 
-### **Decentralized Storage**
-- **IPFS Integration**: Encrypted metadata is stored on IPFS for cross-device access
-- **Dashboard Control**: You update metadata through the dashboard interface
-- **Automatic Sync**: Changes are automatically encrypted and synced to IPFS
-- **No Central Control**: We cannot access or control your IPFS data
+### **Security Practices**
+- **Regular Updates**: Security updates and patches
+- **Vulnerability Disclosure**: Prompt disclosure of security issues
+- **Security Audits**: Regular security assessments
+- **Best Practices**: Following industry security standards
 
-### **Third-Party Services (Optional)**
-- **Email Services**: You can optionally enable recovery notifications via email
-- **SMS Services**: You can optionally enable recovery notifications via SMS
-- **Your Choice**: You control whether to use these services
-
-## 🛡️ **Data Security**
-
-### **Encryption**
-- **End-to-End Encryption**: All data is encrypted before storage
-- **AES-256-GCM**: Military-grade encryption for sensitive data
-- **PBKDF2**: Secure key derivation for passcodes
-- **Ed25519**: Cryptographic signatures for authentication
-
-### **Local Storage**
-- **Device Storage**: Data stored locally on your devices
-- **Encrypted Backups**: All backups are encrypted
-- **No Cloud Storage**: We do not store your data in the cloud
-
-### **Access Control**
-- **User Control**: Only you can access your data
-- **Custodian Access**: Limited access for recovery purposes only
-- **No Backdoor Access**: We cannot access your encrypted data
-
-## 🌐 **Third-Party Services**
-
-### **IPFS (InterPlanetary File System)**
-- **Purpose**: Core decentralized storage for your encrypted metadata
-- **Data Shared**: Only encrypted metadata for cross-device synchronization
-- **Privacy**: No personal information is stored on IPFS
-- **Dashboard Interface**: You update metadata through the dashboard
-
-### **Email/SMS Services (Optional)**
-- **Purpose**: Optional recovery notifications
-- **Data Shared**: Only recovery contact information you provide
-- **Control**: You can enable/disable these services at any time
-- **Your Choice**: You control whether to use these services
-
-### **Third-Party Tools**
-- **Purpose**: Integration with external applications
-- **Data Control**: You control what data is shared with each tool
-- **Permissions**: Granular control over data sharing permissions
-- **Revocation**: You can revoke access at any time
-
-## 🔍 **Your Rights**
-
-### **Complete Data Ownership**
-- **Dashboard Control**: You have complete control over your identity data through the dashboard
-- **Local Access**: Access all your data directly on your devices
-- **Export Data**: Download your data in encrypted format anytime
-- **Data Portability**: Transfer your data to other systems freely
-
-### **Data Management**
-- **Modify Data**: Update your identity information through the dashboard
-- **Delete Data**: Remove your data from your devices anytime
-- **Revoke Access**: Revoke access from third-party tools instantly
-
-### **Recovery Control**
-- **Manage Custodians**: Add, remove, or modify recovery custodians through the dashboard
-- **Recovery Keys**: Generate and manage recovery keys through the dashboard
-- **Recovery Settings**: Configure recovery thresholds and settings through the dashboard
-
-## 🚨 **Security and Incident Response**
-
-### **Our Commitment**
-- **Transparency**: Full disclosure of any security incidents
-- **Prompt Notification**: Immediate notification of any issues
-- **Security Updates**: Regular security improvements and updates
-
-### **Your Responsibilities**
-- **Secure Devices**: Keep your devices secure and updated
-- **Strong Passcodes**: Use strong, unique passcodes
-- **Recovery Setup**: Maintain active recovery custodians
-- **Local Security**: Secure your local identity data
+### **Your Security Role**
+- **Device Security**: You are responsible for securing your devices
+- **Passcode Management**: Use strong, unique passcodes
+- **Backup Security**: Secure your encrypted backups
+- **Third-Party Security**: Secure third-party integrations
 
 ## 🌍 **International Data Transfers**
 
 ### **No Data Transfers**
-- **No Central Servers**: We do not have central servers to transfer data to
-- **Local Processing**: All processing happens on your devices
-- **No Cross-Border Issues**: No international data transfers occur
-- **User Control**: You control where your data is stored and processed
+- **Local Storage**: All data stays on your local devices
+- **No Cross-Border**: We do not transfer data across borders
+- **No International Processing**: No international data processing
+- **Your Control**: You control where your data is stored
 
-### **Compliance**
-- **GDPR Compliance**: We comply with GDPR requirements through zero data collection
-- **CCPA Compliance**: We comply with CCPA requirements through zero data collection
-- **Local Laws**: We respect local privacy laws through our privacy-first design
+### **Compliance with Laws**
+- **GDPR Compliance**: Compliance with European data protection laws
+- **CCPA Compliance**: Compliance with California privacy laws
+- **Local Laws**: Compliance with local privacy and data laws
+- **Export Controls**: Compliance with export control regulations
 
-## 📞 **Contact Information**
+## 📱 **Mobile and PWA Privacy**
 
-### **Privacy Questions**
-- **Email**: privacy@parnoir.com
-- **Support**: support@parnoir.com
-- **Security**: security@parnoir.com
+### **Progressive Web App (PWA)**
+- **Local Storage**: PWA data is stored locally on your device
+- **Offline Functionality**: Works without internet connection
+- **No Cloud Sync**: No automatic cloud synchronization
+- **User-Initiated**: You control when and what to sync
 
-### **Support and Questions**
-- **Privacy Questions**: privacy@parnoir.com
-- **Technical Support**: support@parnoir.com
-- **Security Issues**: security@parnoir.com
+### **Mobile Privacy**
+- **Device Permissions**: Only requests necessary permissions
+- **No Location Tracking**: Does not track your location
+- **No Background Activity**: No background data collection
+- **Battery Efficient**: Minimal battery and data usage
 
-## 📝 **Changes to This Policy**
+## 🔍 **Your Privacy Rights**
 
-### **Notification**
+### **Right to Access**
+- **Your Data**: You have complete access to your data
+- **Export Rights**: You can export your data at any time
+- **Transparency**: Complete transparency about data handling
+- **No Barriers**: No barriers to accessing your data
+
+### **Right to Deletion**
+- **Complete Deletion**: You can delete all your data
+- **No Retention**: We do not retain deleted data
+- **Immediate Effect**: Deletion takes effect immediately
+- **No Recovery**: Deleted data cannot be recovered
+
+### **Right to Portability**
+- **Data Export**: Export your data in standard formats
+- **No Restrictions**: No restrictions on data export
+- **Multiple Formats**: Export in various formats
+- **Complete Data**: Export all your data, not just portions
+
+### **Right to Object**
+- **No Processing**: We do not process your data
+- **No Profiling**: We do not create profiles
+- **No Marketing**: We do not use data for marketing
+- **No Automated Decisions**: No automated decision making
+
+## 📞 **Privacy Inquiries and Requests**
+
+### **Contact Information**
+- **Privacy Officer**: privacy@identityprotocol.com
+- **General Support**: support@identityprotocol.com
+- **Legal Matters**: legal@identityprotocol.com
+
+### **Response Time**
+- **Prompt Response**: We respond to privacy inquiries promptly
+- **30 Days**: Maximum response time for formal requests
+- **No Fees**: No fees for privacy-related requests
+- **Clear Communication**: Clear, understandable responses
+
+### **Dispute Resolution**
+- **Direct Resolution**: We prefer direct resolution of issues
+- **Privacy Complaints**: Process for handling privacy complaints
+- **Regulatory Bodies**: Cooperation with privacy regulators
+- **Legal Recourse**: Legal options if disputes cannot be resolved
+
+## 🔄 **Changes to Privacy Policy**
+
+### **Notification of Changes**
 - **Email Notification**: We will notify you of significant changes
 - **Dashboard Notification**: Updates will be shown in the dashboard
 - **Effective Date**: Changes will be effective 30 days after notification
-
-### **Your Consent**
 - **Continued Use**: Continued use constitutes acceptance of changes
-- **Opt-Out**: You can stop using the service if you disagree with changes
 
-## 🎯 **Key Privacy Principles**
+### **Your Rights**
+- **Review Period**: 30 days to review changes
+- **Acceptance**: Continued use constitutes acceptance
+- **Rejection**: You can stop using the service if you disagree
+- **Grandfathering**: Existing users may be grandfathered for some changes
 
-1. **Zero Data Collection**: We do not collect any of your information
-2. **Complete User Ownership**: You own and control all your data
-3. **Local-First Storage**: All data stays on your devices
-4. **Zero Knowledge**: We cannot access your information
-5. **Transparency**: Clear information about how your data works
-6. **Military-Grade Security**: End-to-end encryption and security
-7. **Complete Control**: You control what data is shared and when
-8. **Privacy Compliance**: Adherence to privacy laws through zero collection
+## 🎯 **Privacy Principles**
+
+### **Privacy by Design**
+- **Built-In Privacy**: Privacy is built into the system design
+- **Default Privacy**: Privacy is the default setting
+- **Minimal Data**: Only minimal data is collected (none in our case)
+- **User Control**: Users have complete control over their data
+
+### **Transparency**
+- **Clear Communication**: Clear, understandable privacy information
+- **No Hidden Practices**: No hidden data collection or processing
+- **Open Source**: Source code is available for review
+- **Regular Updates**: Regular updates on privacy practices
+
+### **User Empowerment**
+- **Your Control**: You have complete control over your data
+- **Your Choice**: You choose what to share and with whom
+- **Your Rights**: You have all privacy rights and protections
+- **Your Responsibility**: You are responsible for your own privacy
+
+## 📝 **Privacy Policy Summary**
+
+1. **No Data Collection**: We do not collect your personal information
+2. **Local Storage**: All data is stored locally on your devices
+3. **Your Ownership**: You own 100% of your data
+4. **Your Control**: You control what data is shared
+5. **Strong Encryption**: Military-grade encryption protects your data
+6. **No Tracking**: No tracking, analytics, or profiling
+7. **Privacy Rights**: You have all standard privacy rights
+8. **Transparency**: Complete transparency about data handling
 
 ---
 
-**This Privacy Policy is part of our commitment to protecting your privacy in our decentralized identity system.**
+**This Privacy Policy explains how Identity Protocol protects your privacy in our decentralized identity management system.**

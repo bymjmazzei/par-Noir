@@ -18,8 +18,8 @@ Replace the placeholder in `src/utils/ipfsMetadataService.ts`:
 ```typescript
 constructor() {
   // Use your Pinata API keys
-  this.pinataApiKey = '950c8f37317d5ebaae77'; // ✅ Already set
-  this.pinataSecretKey = 'YOUR_ACTUAL_SECRET_KEY_HERE'; // ⚠️ Replace this
+  this.pinataApiKey = process.env.PINATA_API_KEY; // ✅ Set via environment variable
+  this.pinataSecretKey = process.env.PINATA_SECRET_KEY; // ✅ Set via environment variable
 }
 ```
 

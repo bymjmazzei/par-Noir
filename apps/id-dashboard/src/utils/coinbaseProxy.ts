@@ -78,7 +78,11 @@ export class CoinbaseProxy {
     
     try {
       // Use direct Coinbase API call
-      const COINBASE_API_KEY = 'c79f3516-c20c-4b32-af0d-4938ec2039f0';
+      const COINBASE_API_KEY = process.env.REACT_APP_COINBASE_COMMERCE_API_KEY;
+      
+      if (!COINBASE_API_KEY) {
+        throw new Error('Coinbase Commerce API key not configured. Please set REACT_APP_COINBASE_COMMERCE_API_KEY environment variable.');
+      }
       const COINBASE_API_BASE = 'https://api.commerce.coinbase.com';
       
       const response = await fetch(`${COINBASE_API_BASE}/checkouts`, {

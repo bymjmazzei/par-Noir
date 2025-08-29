@@ -82,6 +82,86 @@ export class IPFSMetadataService {
   }
 
   /**
+   * Upload encrypted identity data to IPFS for transfer
+   */
+  async uploadIdentityData(encryptedData: any): Promise<string> {
+    try {
+      // Convert encrypted data to JSON
+      const dataJson = JSON.stringify(encryptedData, null, 2);
+      const dataBuffer = new Blob([dataJson], { type: 'application/json' });
+
+      // Create form data
+      const formData = new FormData();
+      formData.append('file', dataBuffer, 'identity-data.json');
+
+      // Add to IPFS using Pinata with proper authentication
+      const response = await fetch('https://api.pinata.cloud/pinning/pinFileToIPFS', {
+        method: 'POST',
+        headers: {
+          'pinata_api_key': this.pinataApiKey,
+          'pinata_secret_api_key': this.pinataSecretKey
+        },
+        body: formData
+      });
+
+      if (!response.ok) {
+        throw new Error(`IPFS upload failed: ${response.status} ${response.statusText}`);
+      }
+
+      const result = await response.json();
+      return result.IpfsHash; // Return the CID
+    } catch (error) {
+      console.error('Failed to upload identity data to IPFS:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Download encrypted identity data from IPFS
+   */
+  async downloadIdentityData(cid: string): Promise<any> {
+    try {
+      // Get from IPFS using Pinata gateway
+      const response = await fetch(`https://gateway.pinata.cloud/ipfs/${cid}`);
+      
+      if (!response.ok) {
+        throw new Error(`IPFS retrieval failed: ${response.status} ${response.statusText}`);
+      }
+
+      const data = await response.json();
+      return data;
+    } catch (error) {
+      console.error('Failed to download identity data from IPFS:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Delete identity data from IPFS
+   */
+  async deleteIdentityData(cid: string): Promise<boolean> {
+    try {
+      // Unpin from IPFS using Pinata
+      const response = await fetch(`https://api.pinata.cloud/pinning/unpin/${cid}`, {
+        method: 'DELETE',
+        headers: {
+          'pinata_api_key': this.pinataApiKey,
+          'pinata_secret_api_key': this.pinataSecretKey
+        }
+      });
+
+      if (!response.ok) {
+        throw new Error(`IPFS deletion failed: ${response.status} ${response.statusText}`);
+      }
+
+      return true;
+    } catch (error) {
+      console.error('Failed to delete identity data from IPFS:', error);
+      return false;
+    }
+  }
+
+  /**
    * Get pN metadata from IPFS
    */
   async getPNMetadata(cid: string): Promise<MetadataResult> {
