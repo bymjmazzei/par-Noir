@@ -1,0 +1,72 @@
+name: Deploy par Noir Site to GitHub Pages
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'index.html'
+      - 'assets/**'
+      - 'icons/**'
+      - 'branding/**'
+      - 'screenshots/**'
+      - 'licensing/**'
+      - 'manifest.json'
+      - 'sw.js'
+      - 'offline.html'
+      - 'browserconfig.xml'
+      - 'founder-photo.jpg'
+      - 'whitepaper.html'
+      - 'developer-portal.html'
+      - 'styles.css'
+      - 'script.js'
+      - '.github/workflows/deploy-site.yml'
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      - name: Build React App
+        run: |
+          cd apps/id-dashboard
+          npm ci
+          npm run build
+          cp -r dist/* ../../site-build/
+
+      - name: Copy Static Files
+        run: |
+          mkdir -p site-build
+          cp index.html site-build/
+          cp -r assets site-build/
+          cp -r icons site-build/
+          cp -r branding site-build/
+          cp -r screenshots site-build/
+          cp -r licensing site-build/
+          cp manifest.json site-build/
+          cp sw.js site-build/
+          cp offline.html site-build/
+          cp browserconfig.xml site-build/
+          cp founder-photo.jpg site-build/
+          cp whitepaper.html site-build/
+          cp developer-portal.html site-build/
+          cp styles.css site-build/
+          cp script.js site-build/
+
+      - name: Setup CNAME
+        run: |
+          echo "parnoir.com" > site-build/CNAME
+          touch site-build/.nojekyll
+
+      - name: Deploy to GitHub Pages
+        uses: peaceiris/actions-gh-pages@v3
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./site-build
+          cname: parnoir.com
