@@ -2568,7 +2568,7 @@ footer::before {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 2rem;
-  align-items: start;
+  align-items: center;
   width: 100%;
   max-width: 1200px;
   margin: 0 auto;
