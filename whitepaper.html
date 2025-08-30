@@ -16,19 +16,19 @@
     <!-- Navigation -->
     <nav class="nav">
         <div class="nav-container">
-            <div class="nav-brand">
-                <a href="http://localhost:3002/" title="Go to par Noir App">
+                                <div class="nav-brand">
+                <a href="index.html" title="Go to par Noir App">
                     <img src="branding/Par-Noir-Logo-White.png" alt="Par Noir" class="nav-logo">
                 </a>
             </div>
-            <div class="nav-menu">
+                            <div class="nav-menu">
                 <a href="index.html" class="nav-link">Home</a>
                 <a href="#abstract" class="nav-link">Abstract</a>
                 <a href="#introduction" class="nav-link">Introduction</a>
                 <a href="#architecture" class="nav-link">Architecture</a>
                 <a href="#implementation" class="nav-link">Implementation</a>
                 <a href="#future" class="nav-link">Future Work</a>
-                <a href="developer-portal.html?v=1" class="nav-link">Developer Portal</a>
+                <a href="developer-portal.html" class="nav-link">Developer Portal</a>
             </div>
         </div>
     </nav>
@@ -52,7 +52,25 @@
                             <path d="M19 14l-7 7m0 0l-7-7m7 7V3"/>
                         </svg>
                     </a>
-                    <a href="http://localhost:3002/" class="btn btn-secondary">Try the Protocol</a>
+                    <a href="#video" class="btn btn-secondary">
+                        <span>Watch the Story</span>
+                        <svg class="btn-icon" viewBox="0 0 24 24">
+                            <path d="M8 5v14l11-7z"/>
+                        </svg>
+                    </a>
+                    <a href="https://pn.parnoir.com" class="btn btn-secondary">Try the Protocol</a>
+                </div>
+            </div>
+            <div class="hero-visual">
+                <div class="video-container" id="video">
+                    <div class="video-placeholder">
+                        <div class="video-play-button">
+                            <svg viewBox="0 0 24 24">
+                                <path d="M8 5v14l11-7z"/>
+                            </svg>
+                        </div>
+                        <p>Founder Video Coming Soon</p>
+                    </div>
                 </div>
             </div>
         </div>
@@ -143,17 +161,26 @@
                     <div class="architecture-component">
                         <h4>2.1.1 Identity Core</h4>
                         <p>
-                            The identity core manages cryptographic key generation, identity creation, and basic 
-                            authentication operations. It utilizes elliptic curve cryptography (secp256k1) for 
-                            key generation and digital signatures, ensuring compatibility with existing blockchain 
-                            infrastructure while maintaining quantum-resistance roadmap compatibility.
+                            The identity core provides comprehensive identity management with advanced security features. 
+                            It implements elliptic curve cryptography (secp256k1) for key generation and digital signatures, 
+                            along with WebAuthn support, device security monitoring, and supply chain security validation. 
+                            The core includes background security monitoring and real-time threat detection.
                         </p>
                         <div class="code-block">
-                            <pre><code>// Identity creation process
-const identity = await IdentityCore.create({
+                            <pre><code>// Initialize identity core with security features
+const identityCore = new IdentityCore({
+  storageType: 'indexeddb',
+  encryptionLevel: 'high',
+  backupEnabled: true,
+  biometricEnabled: true
+});
+
+await identityCore.initialize();
+await identityCore.createIdentity({
   pnName: "alice",
-  entropy: secureRandomBytes(32),
-  derivationPath: "m/44'/0'/0'/0/0"
+  nickname: "Alice",
+  passcode: "secure-passcode",
+  recoveryEmail: "alice@example.com"
 });</code></pre>
                         </div>
                     </div>
@@ -161,49 +188,83 @@ const identity = await IdentityCore.create({
                     <div class="architecture-component">
                         <h4>2.1.2 Storage Layer</h4>
                         <p>
-                            The storage layer provides encrypted, distributed storage for identity data using IPFS 
-                            as the primary backend. Data is encrypted client-side using AES-256-GCM before distribution, 
-                            ensuring that storage providers cannot access identity information.
+                            The storage layer provides encrypted, distributed storage with IPFS integration and local 
+                            IndexedDB fallback. Data is encrypted client-side using AES-256-GCM before distribution, 
+                            with automatic environment-based switching between production IPFS and development mock storage. 
+                            The system includes metadata management and storage proof generation.
                         </p>
                         <div class="code-block">
-                            <pre><code>// Encrypted storage operation
-const encryptedData = await encrypt(identityData, userKey);
-const ipfsHash = await ipfs.add(encryptedData);
-const storageProof = await generateStorageProof(ipfsHash);</code></pre>
+                            <pre><code>// Encrypted storage with IPFS integration
+const ipfsStorage = new IPFSStorage({
+  url: 'https://ipfs.infura.io:5001',
+  gateway: 'https://ipfs.io/ipfs/',
+  apiKey: process.env.IPFS_API_KEY
+});
+
+const metadata = {
+  did: identity.did,
+  metadata: identityData,
+  createdAt: new Date().toISOString(),
+  version: '1.0'
+};
+
+const ipfsHash = await ipfsStorage.uploadMetadata(metadata);</code></pre>
                         </div>
                     </div>
 
                     <div class="architecture-component">
                         <h4>2.1.3 Zero-Knowledge Layer</h4>
                         <p>
-                            The zero-knowledge layer enables users to prove facts about their identity without 
-                            revealing the underlying data. This utilizes zk-SNARKs for age verification, 
-                            qualification proofs, and other privacy-preserving identity assertions.
+                            The zero-knowledge layer implements authentic ZK protocols with real cryptographic primitives 
+                            including Schnorr signatures, Pedersen commitments, and Fiat-Shamir transforms. The system 
+                            provides both interactive and non-interactive proof protocols, supporting discrete logarithm 
+                            proofs, range proofs, set membership, and equality proofs with military-grade security levels.
                         </p>
                         <div class="code-block">
-                            <pre><code>// Zero-knowledge age proof
-const ageProof = await zkProofs.generateAgeProof({
-  birthDate: user.birthDate,
-  minimumAge: 21,
-  nonce: randomNonce()
-});
-// Verifier can confirm age ≥ 21 without learning birth date</code></pre>
+                            <pre><code>// Real ZK proof generation with Schnorr signatures
+const zkProof = await zkProofs.generateProof({
+  type: 'discrete_log',
+  statement: {
+    type: 'discrete_log',
+    description: 'I know x such that g^x = y',
+    publicInputs: { g: generator, y: publicKey },
+    privateInputs: { x: privateKey },
+    relation: 'y = g^x'
+  },
+  securityLevel: 'military',
+  interactive: false
+});</code></pre>
                         </div>
                     </div>
 
                     <div class="architecture-component">
                         <h4>2.1.4 Recovery Network</h4>
                         <p>
-                            The recovery network implements Shamir's Secret Sharing for social recovery, 
-                            allowing users to recover their identity through trusted custodians without 
-                            any single party having control.
+                            The recovery network provides comprehensive social recovery through a sophisticated 
+                            custodian system with multiple recovery methods. Users can recover via recovery keys 
+                            or 4-factor authentication (pnName, passcode, nickname, contact). The system includes 
+                            custodian invitation workflows, QR code generation, approval/denial tracking, and 
+                            recovery request management with real-time notifications.
                         </p>
                         <div class="code-block">
-                            <pre><code>// Social recovery setup
-const recoveryShares = shamirSecretSharing.split(masterKey, {
-  threshold: 3,
-  shares: 5,
-  custodians: trustedCustodians
+                            <pre><code>// Recovery system with multiple methods
+// Generate recovery keys
+const recoveryKeys = await IdentityCrypto.generateRecoveryKeySet(did, 5);
+
+// Setup custodian invitation
+const invitation = await generateCustodianQRCode({
+  name: "Trusted Friend",
+  type: "personal",
+  contactType: "email",
+  contactValue: "friend@example.com"
+});
+
+// Initiate recovery via 4-factor auth
+await handleInitiateRecovery({
+  pnName: "alice",
+  passcode: "secure-passcode",
+  nickname: "Alice",
+  emailOrPhone: "alice@example.com"
 });</code></pre>
                         </div>
                     </div>
@@ -227,7 +288,7 @@ const recoveryShares = shamirSecretSharing.split(masterKey, {
                 <div class="paper-content">
                     <h3>3.1 Protocol Flow</h3>
                     <p>
-                        The complete par Noir protocol follows this implementation flow:
+                        The complete par Noir protocol follows this comprehensive implementation flow:
                     </p>
                     
                     <div class="protocol-flow">
@@ -235,74 +296,90 @@ const recoveryShares = shamirSecretSharing.split(masterKey, {
                             <div class="step-number">1</div>
                             <div class="step-content">
                                 <h4>Identity Creation</h4>
-                                <p>User generates cryptographic identity locally using secure random entropy</p>
+                                <p>User creates identity with pN name, nickname, passcode, and recovery contact. System generates DID, cryptographic keys, and recovery key set.</p>
                             </div>
                         </div>
                         <div class="flow-step">
                             <div class="step-number">2</div>
                             <div class="step-content">
-                                <h4>Data Encryption</h4>
-                                <p>Identity data is encrypted client-side using user-controlled keys</p>
+                                <h4>Security Setup</h4>
+                                <p>Background security monitoring starts, device security validation, WebAuthn setup, and supply chain security checks are performed.</p>
                             </div>
                         </div>
                         <div class="flow-step">
                             <div class="step-number">3</div>
                             <div class="step-content">
-                                <h4>Distributed Storage</h4>
-                                <p>Encrypted data is distributed across IPFS network</p>
+                                <h4>Data Encryption & Storage</h4>
+                                <p>Identity data encrypted with AES-256-GCM, stored locally in IndexedDB with IPFS backup. Recovery keys generated and stored securely.</p>
                             </div>
                         </div>
                         <div class="flow-step">
                             <div class="step-number">4</div>
                             <div class="step-content">
-                                <h4>Recovery Setup</h4>
-                                <p>Social recovery shares are distributed to trusted custodians</p>
+                                <h4>Custodian Network</h4>
+                                <p>User invites trusted custodians via QR codes, sets up approval thresholds, and establishes social recovery network.</p>
                             </div>
                         </div>
                         <div class="flow-step">
                             <div class="step-number">5</div>
                             <div class="step-content">
                                 <h4>Identity Usage</h4>
-                                <p>User can authenticate and prove identity claims across any supporting platform</p>
+                                <p>User can authenticate, generate ZK proofs, manage custodians, and recover identity through multiple methods.</p>
                             </div>
                         </div>
                     </div>
 
                     <h3>3.2 Cryptographic Primitives</h3>
                     <p>
-                        par Noir leverages the following cryptographic primitives:
+                        par Noir leverages the following advanced cryptographic primitives:
                     </p>
                     <ul>
                         <li><strong>ECDSA (secp256k1):</strong> Digital signatures and identity verification</li>
                         <li><strong>AES-256-GCM:</strong> Symmetric encryption for data storage</li>
-                        <li><strong>PBKDF2:</strong> Key derivation from user passphrases</li>
-                        <li><strong>Shamir's Secret Sharing:</strong> Social recovery implementation</li>
-                        <li><strong>zk-SNARKs:</strong> Zero-knowledge proof generation and verification</li>
-                        <li><strong>SHA-3:</strong> Cryptographic hashing and integrity verification</li>
+                        <li><strong>PBKDF2:</strong> Key derivation from user passphrases with 100,000 iterations</li>
+                        <li><strong>Schnorr Signatures:</strong> Real zero-knowledge proof protocols over secp256k1</li>
+                        <li><strong>Pedersen Commitments:</strong> Privacy-preserving commitment schemes</li>
+                        <li><strong>Fiat-Shamir Transform:</strong> Non-interactive zero-knowledge proofs</li>
+                        <li><strong>Sigma Protocols:</strong> Interactive zero-knowledge proof protocols</li>
+                        <li><strong>SHA-256:</strong> Cryptographic hashing and integrity verification</li>
+                        <li><strong>WebAuthn:</strong> Hardware-based authentication and biometric support</li>
                     </ul>
 
-                    <h3>3.3 SDK Implementation</h3>
+                    <h3>3.3 Implementation Features</h3>
                     <p>
-                        The par Noir SDK provides developers with simple APIs for integration:
+                        The par Noir implementation includes comprehensive features for production use:
                     </p>
                     <div class="code-block">
-                        <pre><code>// Initialize the SDK
-import { ParNoirSDK } from 'par-noir-sdk';
+                        <pre><code>// Complete identity management workflow
+import { IdentityCore } from '@parnoir/identity-core';
+import { IdentityCrypto } from '@parnoir/identity-crypto';
 
-const sdk = new ParNoirSDK({
-  network: 'mainnet',
-  storage: 'ipfs',
-  zkProvider: 'default'
+// Initialize with security features
+const identityCore = new IdentityCore({
+  storageType: 'indexeddb',
+  encryptionLevel: 'high',
+  backupEnabled: true,
+  biometricEnabled: true
 });
 
-// Authenticate user
-const user = await sdk.authenticate(identityFile, passphrase);
+// Create identity with recovery setup
+const encryptedIdentity = await IdentityCrypto.createIdentity(
+  'alice',
+  'Alice',
+  'secure-passcode',
+  'alice@example.com'
+);
 
-// Generate zero-knowledge proof
-const proof = await sdk.zkProofs.generateAgeProof(user, 21);
+// Generate recovery keys and setup custodians
+const recoveryKeys = await IdentityCrypto.generateRecoveryKeySet(did, 5);
+const invitation = await generateCustodianQRCode(custodianData);
 
-// Verify the proof
-const isValid = await sdk.zkProofs.verifyAgeProof(proof, 21);</code></pre>
+// Generate ZK proofs with military-grade security
+const zkProof = await zkProofs.generateProof({
+  type: 'discrete_log',
+  securityLevel: 'military',
+  interactive: false
+});</code></pre>
                     </div>
                 </div>
             </section>
@@ -313,10 +390,12 @@ const isValid = await sdk.zkProofs.verifyAgeProof(proof, 21);</code></pre>
                 <div class="paper-content">
                     <h3>4.1 Technical Enhancements</h3>
                     <ul>
-                        <li><strong>Quantum Resistance:</strong> Migration to post-quantum cryptographic algorithms</li>
+                        <li><strong>Quantum Resistance:</strong> Migration to post-quantum cryptographic algorithms (quantum-resistant layer already implemented)</li>
                         <li><strong>Mobile Integration:</strong> Native iOS and Android SDK implementations</li>
-                        <li><strong>Hardware Security:</strong> TEE and hardware wallet integration</li>
+                        <li><strong>Hardware Security:</strong> Enhanced TEE and hardware wallet integration beyond current WebAuthn support</li>
                         <li><strong>Performance Optimization:</strong> Proof generation acceleration through specialized hardware</li>
+                        <li><strong>Advanced Recovery:</strong> Enhanced custodian management and recovery workflow automation</li>
+                        <li><strong>Real-time Security:</strong> Enhanced background monitoring and threat detection</li>
                     </ul>
 
                     <h3>4.2 Ecosystem Development</h3>
@@ -325,6 +404,8 @@ const isValid = await sdk.zkProofs.verifyAgeProof(proof, 21);</code></pre>
                         <li><strong>Developer Tools:</strong> Enhanced SDKs, testing frameworks, and development environments</li>
                         <li><strong>Standards Compliance:</strong> W3C DID specification and Verifiable Credentials compatibility</li>
                         <li><strong>Governance Framework:</strong> Decentralized governance for protocol evolution</li>
+                        <li><strong>Recovery Network:</strong> Expand custodian network and recovery service ecosystem</li>
+                        <li><strong>Security Audits:</strong> Comprehensive security audits and penetration testing</li>
                     </ul>
 
                     <h3>4.3 The Vision: Internet of Trust</h3>
@@ -411,7 +492,7 @@ const isValid = await sdk.zkProofs.verifyAgeProof(proof, 21);</code></pre>
                     </div>
                     <h3>Developers</h3>
                     <p>Integrate par Noir into your applications and help build the sovereign web.</p>
-                    <a href="developer-portal.html?v=1" class="btn btn-primary">View Documentation</a>
+                    <a href="developer-portal.html" class="btn btn-primary">View Documentation</a>
                 </div>
                 <div class="cta-box">
                     <div class="cta-icon">
@@ -421,7 +502,7 @@ const isValid = await sdk.zkProofs.verifyAgeProof(proof, 21);</code></pre>
                     </div>
                     <h3>Users</h3>
                     <p>Experience true digital sovereignty. Create your first par Noir identity.</p>
-                    <a href="http://localhost:3002/" class="btn btn-primary">Create Identity</a>
+                    <a href="https://pn.parnoir.com" class="btn btn-primary">Create Identity</a>
                 </div>
                 <div class="cta-box">
                     <div class="cta-icon">
@@ -460,8 +541,8 @@ const isValid = await sdk.zkProofs.verifyAgeProof(proof, 21);</code></pre>
                     </div>
                     <div class="footer-column">
                         <h4>Resources</h4>
-                        <a href="developer-portal.html?v=1">Developer Portal</a>
-                        <a href="whitepaper.html?v=1">White Paper</a>
+                        <a href="developer-portal.html">Developer Portal</a>
+                        <a href="whitepaper.html">White Paper</a>
                         <a href="index.html#legacy">Our Legacy</a>
                     </div>
                 </div>

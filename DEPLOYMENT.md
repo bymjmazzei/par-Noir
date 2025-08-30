@@ -12,7 +12,7 @@ This document clarifies the deployment strategy for the Par Noir project.
 
 ### Developer Portal & Documentation
 - **Platform**: GitHub Pages
-- **URL**: [parnoir.github.io](https://parnoir.github.io)
+- **URL**: [parnoir.com](https://parnoir.com)
 - **Location**: Root directory files
 - **Configuration**: `.github/workflows/deploy-docs.yml`
 

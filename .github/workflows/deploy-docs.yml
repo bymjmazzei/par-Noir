@@ -53,6 +53,9 @@ jobs:
           # Copy founder photo
           cp founder-photo.jpg docs-build/
           
+          # Copy CNAME file for custom domain
+          cp CNAME docs-build/ 2>/dev/null || echo "parnoir.com" > docs-build/CNAME
+          
           # Create .nojekyll file to disable Jekyll processing
           touch docs-build/.nojekyll
           

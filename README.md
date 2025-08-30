@@ -5,7 +5,7 @@ A decentralized, user-owned identity ecosystem with local-first architecture and
 ## 🚀 Deployment Strategy
 
 - **Main Application**: Deployed via Firebase at [pn.parnoir.com](http://pn.parnoir.com)
-- **Developer Portal & Documentation**: Deployed via GitHub Pages at [parnoir.github.io](https://parnoir.github.io)
+- **Developer Portal & Documentation**: Deployed via GitHub Pages at [parnoir.com](https://parnoir.com)
 
 ## 📁 Project Structure
 
