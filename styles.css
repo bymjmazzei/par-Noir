@@ -1733,6 +1733,25 @@ footer::before {
     padding: 0 1rem;
   }
   
+  .heritage-timeline {
+    margin: 3rem auto 0 auto;
+    padding: 2rem;
+    max-width: 100%;
+  }
+  
+  .heritage-timeline .heritage-point {
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+  
+  .year {
+    font-size: 2rem;
+  }
+  
+  .event {
+    font-size: 0.8rem;
+  }
+  
   /* CTA section responsive */
   .cta-grid {
     grid-template-columns: 1fr;
@@ -2200,13 +2219,14 @@ footer::before {
 .heritage-timeline {
   display: flex;
   justify-content: space-between;
-  margin: 4rem 0 0 0;
+  margin: 4rem auto 0 auto;
   padding: 2.5rem;
   background: rgba(255, 255, 255, 0.03);
   border: 1px solid var(--border-glow);
   border-radius: 16px;
   box-shadow: var(--shadow);
-  width: calc(50% - 2rem);
+  width: 100%;
+  max-width: 600px;
 }
 
 .heritage-point {
