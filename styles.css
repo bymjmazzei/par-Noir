@@ -2264,11 +2264,11 @@ footer::before {
 /* Problem grid styling */
 .problem-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  grid-template-columns: repeat(3, 1fr);
   gap: 3rem;
   margin-top: 4rem;
   width: 100%;
-  max-width: 1000px;
+  max-width: 1200px;
   margin-left: auto;
   margin-right: auto;
 }
@@ -2337,7 +2337,7 @@ footer::before {
   align-items: center;
   margin-top: 4rem;
   width: 100%;
-  max-width: 1000px;
+  max-width: 1200px;
   margin-left: auto;
   margin-right: auto;
 }
@@ -2442,7 +2442,7 @@ footer::before {
 
 .vision-timeline {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  grid-template-columns: repeat(3, 1fr);
   gap: 3rem;
   margin-top: 4rem;
   width: 100%;
@@ -2690,7 +2690,7 @@ footer::before {
 
 .cta-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  grid-template-columns: repeat(3, 1fr);
   gap: 3rem;
   max-width: 1200px;
   margin: 0 auto;
