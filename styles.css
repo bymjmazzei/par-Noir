@@ -1037,6 +1037,21 @@ footer::before {
   margin: 0 auto;
 }
 
+/* Responsive breakpoints for features grid */
+@media (max-width: 1024px) {
+  .features-grid {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 1.5rem;
+  }
+}
+
+@media (max-width: 480px) {
+  .features-grid {
+    grid-template-columns: 1fr;
+    gap: 1rem;
+  }
+}
+
 .feature-card {
   background: rgba(255, 255, 255, 0.02);
   border: 1px solid var(--border-glow);
@@ -2290,19 +2305,9 @@ footer::before {
   .features-section {
     padding: 2rem 0;
   }
-  
-  .features-grid {
-    grid-template-columns: repeat(2, 1fr);
-    gap: 1.5rem;
-  }
 }
 
 @media (max-width: 480px) {
-  .features-grid {
-    grid-template-columns: 1fr;
-    gap: 1rem;
-  }
-  
   .features-section .features-title {
     font-size: 1.5rem;
     margin-bottom: 2rem;
