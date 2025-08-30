@@ -3,23 +3,6 @@ name: Deploy par Noir Site to GitHub Pages
 on:
   push:
     branches: [ main ]
-    paths:
-      - 'index.html'
-      - 'assets/**'
-      - 'icons/**'
-      - 'branding/**'
-      - 'screenshots/**'
-      - 'licensing/**'
-      - 'manifest.json'
-      - 'sw.js'
-      - 'offline.html'
-      - 'browserconfig.xml'
-      - 'founder-photo.jpg'
-      - 'whitepaper.html'
-      - 'developer-portal.html'
-      - 'styles.css'
-      - 'script.js'
-      - '.github/workflows/deploy-site.yml'
 
 jobs:
   deploy:
