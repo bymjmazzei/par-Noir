@@ -2158,6 +2158,7 @@ footer::before {
   overflow: hidden;
   backdrop-filter: blur(10px);
   max-width: 500px;
+  width: 100%;
 }
 
 .code-header {
@@ -2205,10 +2206,39 @@ footer::before {
   font-size: 0.875rem;
   line-height: 1.5;
   color: var(--text-primary);
+  overflow-x: auto;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  max-width: 100%;
 }
 
 .code-content code {
   color: #e6e6e6;
+}
+
+/* Responsive code preview */
+@media (max-width: 768px) {
+  .code-preview {
+    max-width: 100%;
+  }
+  
+  .code-content {
+    padding: 1rem;
+  }
+  
+  .code-content pre {
+    font-size: 0.8rem;
+  }
+}
+
+@media (max-width: 480px) {
+  .code-content {
+    padding: 0.75rem;
+  }
+  
+  .code-content pre {
+    font-size: 0.75rem;
+  }
 }
 
 /* Quick Start Grid */
@@ -2288,6 +2318,7 @@ footer::before {
   margin: 0;
   overflow: hidden;
   flex: 1;
+  max-width: 100%;
 }
 
 .code-block pre {
@@ -2298,6 +2329,9 @@ footer::before {
   line-height: 1.5;
   color: var(--text-primary);
   overflow-x: auto;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  max-width: 100%;
 }
 
 .copy-btn {
@@ -2665,6 +2699,16 @@ footer::before {
   text-align: left;
   max-width: 800px;
   margin: 0 auto;
+  padding: 0 1rem;
+  overflow-x: hidden;
+}
+
+/* Responsive paper content */
+@media (max-width: 768px) {
+  .paper-content {
+    max-width: 100%;
+    padding: 0 0.5rem;
+  }
 }
 
 /* Indent first line of paragraphs in abstract, conclusion, and author's notes */
@@ -2774,6 +2818,7 @@ footer::before {
   border-radius: 8px;
   margin: 1.5rem 0;
   overflow: hidden;
+  max-width: 100%;
 }
 
 .code-example pre {
@@ -2784,10 +2829,34 @@ footer::before {
   line-height: 1.5;
   color: var(--text-primary);
   overflow-x: auto;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  max-width: 100%;
 }
 
 .code-example code {
   color: #e6e6e6;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+}
+
+/* Responsive code blocks */
+@media (max-width: 768px) {
+  .code-example {
+    margin: 1rem 0;
+  }
+  
+  .code-example pre {
+    padding: 1rem;
+    font-size: 0.8rem;
+  }
+}
+
+@media (max-width: 480px) {
+  .code-example pre {
+    padding: 0.75rem;
+    font-size: 0.75rem;
+  }
 }
 
 /* Tutorial Styles */
