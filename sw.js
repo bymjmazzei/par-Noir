@@ -1,5 +1,5 @@
 // Service Worker for Par Noir Dashboard
-// Handles push notifications, background sync, and offline functionality
+// Handles offline functionality and caching
 
 const CACHE_NAME = 'par-noir-v1';
 const STATIC_CACHE = 'par-noir-static-v1';
@@ -155,73 +155,16 @@ self.addEventListener('sync', (event) => {
   }
 });
 
-// Push notification handling
-self.addEventListener('push', (event) => {
-  const options = {
-    body: event.data ? event.data.text() : 'Par Noir - New notification',
-    icon: '/icons/icon-192x192.png',
-    badge: '/icons/icon-192x192.png',
-    vibrate: [100, 50, 100],
-    data: {
-      dateOfArrival: Date.now(),
-      primaryKey: 1
-    },
-    actions: [
-      {
-        action: 'explore',
-        title: 'Open Par Noir',
-        icon: '/icons/icon-192x192.png'
-      },
-      {
-        action: 'close',
-        title: 'Close',
-        icon: '/icons/icon-192x192.png'
-      }
-    ]
-  };
-
-  event.waitUntil(
-    self.registration.showNotification('Par Noir', options)
-  );
-});
-
-// Notification click handling
-self.addEventListener('notificationclick', (event) => {
-  event.notification.close();
-
-  if (event.action === 'explore') {
-    event.waitUntil(
-      clients.openWindow('/')
-    );
-  }
-});
-
 // Background sync implementation
 async function performBackgroundSync() {
   try {
     // Sync offline data
     await syncOfflineData();
     
-    // Send pending notifications
-    const pendingNotifications = await getPendingNotifications();
-    for (const notification of pendingNotifications) {
-      await sendNotificationToServer(notification);
-    }
+    console.log('Background sync completed');
   } catch (error) {
     console.error('Background sync failed:', error);
   }
-}
-
-// Get pending notifications from IndexedDB
-async function getPendingNotifications() {
-  // Implementation would depend on your storage strategy
-  return [];
-}
-
-// Send notification to server
-async function sendNotificationToServer(notification) {
-  // Implementation would depend on your server setup
-  console.log('Sending notification to server:', notification);
 }
 
 // Sync offline data

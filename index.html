@@ -1,81 +1,279 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <link rel="icon" type="image/png" href="/icons/favicon.png" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Par Noir - Digital Identity Management</title>
+    <meta name="description" content="Par Noir - Create, manage, and secure your digital identities with sovereign identity technology">
+    <link rel="stylesheet" href="styles.css">
+    <link rel="icon" type="image/png" href="branding/Par-Noir-Icon-White.png">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+</head>
+<body>
+    <!-- Background -->
+    <div class="background"></div>
     
-    <!-- PWA Meta Tags -->
-    <meta name="description" content="Par Noir - Create, manage, and secure your digital identities" />
-    <meta name="theme-color" content="#1f2937" />
-    <meta name="mobile-web-app-capable" content="yes" />
-    <meta name="apple-mobile-web-app-capable" content="yes" />
-    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
-    <meta name="apple-mobile-web-app-title" content="Par Noir" />
-    <meta name="msapplication-TileColor" content="#1f2937" />
-    <meta name="msapplication-config" content="/browserconfig.xml" />
-    
-    <!-- PWA Manifest -->
-    <link rel="manifest" href="/manifest.json" />
-    
-    <!-- Apple Touch Icons -->
-    <link rel="apple-touch-icon" href="/icons/favicon.png" />
-    <link rel="apple-touch-icon" sizes="152x152" href="/icons/favicon.png" />
-    <link rel="apple-touch-icon" sizes="180x180" href="/icons/favicon.png" />
-    <link rel="apple-touch-icon" sizes="167x167" href="/icons/favicon.png" />
-    
-    <!-- Microsoft Tiles -->
-    <meta name="msapplication-TileImage" content="/icons/favicon.png" />
-    <meta name="msapplication-TileColor" content="#1f2937" />
-    
-    <!-- Preconnect for performance -->
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-    <script type="module" crossorigin src="/assets/js/index-BH26mxB-.js"></script>
-    <link rel="modulepreload" crossorigin href="/assets/js/vendor-BERG7lu9.js">
-    <link rel="modulepreload" crossorigin href="/assets/js/qr-CUcyLVYE.js">
-    <link rel="modulepreload" crossorigin href="/assets/js/react-vendor-CQugEivN.js">
-    <link rel="modulepreload" crossorigin href="/assets/js/hooks-BUBt1EqL.js">
-    <link rel="modulepreload" crossorigin href="/assets/js/pwa-features-a5BqKCS1.js">
-    <link rel="modulepreload" crossorigin href="/assets/js/service-utils-CVBXk1Z-.js">
-    <link rel="modulepreload" crossorigin href="/assets/js/storage-utils-D16TCNXA.js">
-    <link rel="modulepreload" crossorigin href="/assets/js/crypto-utils-BTk8JiGR.js">
-    <link rel="modulepreload" crossorigin href="/assets/js/utils-CW0mjxCA.js">
-    <link rel="modulepreload" crossorigin href="/assets/js/components-D97AB8da.js">
-    <link rel="modulepreload" crossorigin href="/assets/js/auth-features-vdtOTAeJ.js">
-    <link rel="stylesheet" crossorigin href="/assets/index-CJZN9kat.css">
-  </head>
-  <body>
-    <div id="root"></div>
-    
-    <!-- Service Worker Registration -->
-    <script>
-      if ('serviceWorker' in navigator) {
-        window.addEventListener('load', () => {
-          navigator.serviceWorker.register('/sw.js')
-            .then((registration) => {
-              console.log('Service Worker registered successfully:', registration.scope);
-              
-              // Handle service worker updates
-              registration.addEventListener('updatefound', () => {
-                const newWorker = registration.installing;
-                newWorker.addEventListener('statechange', () => {
-                  if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
-                    // New service worker available
-                    if (confirm('A new version is available. Reload to update?')) {
-                      window.location.reload();
-                    }
-                  }
-                });
-              });
-            })
-            .catch((error) => {
-              console.error('Service Worker registration failed:', error);
-            });
-        });
-      }
-    </script>
-  </body>
+    <!-- Navigation -->
+    <nav class="nav">
+        <div class="nav-container">
+            <div class="nav-brand">
+                <a href="index.html" title="Par Noir">
+                    <img src="branding/Par-Noir-Logo-White.png" alt="Par Noir" class="nav-logo">
+                </a>
+            </div>
+            <div class="nav-menu">
+                <a href="index.html" class="nav-link active">Home</a>
+                <a href="#problem" class="nav-link">The Problem</a>
+                <a href="#solution" class="nav-link">The Solution</a>
+                <a href="#founder" class="nav-link">Founder</a>
+                <a href="#features" class="nav-link">Features</a>
+                <a href="#vision" class="nav-link">Vision</a>
+                <a href="whitepaper.html" class="nav-link">White Paper</a>
+                <a href="developer-portal.html" class="nav-link">Developer Portal</a>
+                <a href="http://pn.parnoir.com" class="nav-link">Dashboard</a>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Hero Section -->
+    <section class="hero">
+        <div class="hero-container">
+            <div class="hero-content">
+                <div class="hero-badge">Sovereign Identity Protocol</div>
+                <h1 class="hero-title">
+                    Your Identity, <span class="hero-highlight">Your Control</span>
+                </h1>
+                <p class="hero-subtitle">
+                    Par Noir is a revolutionary protocol that puts you back in control of your digital identity. 
+                    Create, manage, and secure your identities with military-grade cryptography and zero-knowledge proofs.
+                </p>
+                <div class="hero-actions">
+                    <a href="http://pn.parnoir.com" class="btn btn-primary btn-large">
+                        <span>Get Started</span>
+                        <svg class="btn-icon" viewBox="0 0 24 24">
+                            <path d="M5 12h14m-7-7l7 7-7 7"/>
+                        </svg>
+                    </a>
+                    <a href="whitepaper.html" class="btn btn-secondary">Read White Paper</a>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- The Problem Section -->
+    <section id="problem" class="section section-dark">
+        <div class="container">
+            <div class="section-header">
+                <h2 class="section-title">The Problem</h2>
+                <p class="section-subtitle">Digital identity is broken</p>
+            </div>
+            <div class="problem-content">
+                <div class="problem-text">
+                    <p class="lead-text">
+                        Today's digital identity systems are fundamentally flawed. They create surveillance, dependency, and vulnerability.
+                    </p>
+                    <div class="problem-grid">
+                        <div class="problem-item">
+                            <h3>🔍 Surveillance Capitalism</h3>
+                            <p>Your identity data is harvested and sold to the highest bidder. Every login, every verification, every interaction becomes a data point for profit.</p>
+                        </div>
+                        <div class="problem-item">
+                            <h3>🔒 Centralized Control</h3>
+                            <p>Your digital identity is owned by corporations and governments who can revoke access, modify data, or lock you out at any time.</p>
+                        </div>
+                        <div class="problem-item">
+                            <h3>💔 Fragmented Identity</h3>
+                            <p>You must maintain dozens of separate accounts across different platforms, each with its own security risks and data silos.</p>
+                        </div>
+                        <div class="problem-item">
+                            <h3>🚨 Single Points of Failure</h3>
+                            <p>One data breach can compromise your entire digital life. Centralized systems are honeypots for attackers.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- The Solution Section -->
+    <section id="solution" class="section">
+        <div class="container">
+            <div class="section-header">
+                <h2 class="section-title">The Solution</h2>
+                <p class="section-subtitle">Sovereign identity through cryptography</p>
+            </div>
+            <div class="solution-content">
+                <div class="solution-text">
+                    <p class="lead-text">
+                        Par Noir gives you complete sovereignty over your digital identity through military-grade cryptography and zero-knowledge proofs.
+                    </p>
+                    <div class="solution-grid">
+                        <div class="solution-item">
+                            <h3>🔐 You Own Your Data</h3>
+                            <p>Your identity data never leaves your device. You control what information is shared and with whom.</p>
+                        </div>
+                        <div class="solution-item">
+                            <h3>🛡️ Privacy by Design</h3>
+                            <p>Zero-knowledge proofs allow you to prove facts about yourself without revealing the underlying data.</p>
+                        </div>
+                        <div class="solution-item">
+                            <h3>🌐 Universal Identity</h3>
+                            <p>One identity works everywhere. No more fragmented accounts across different platforms.</p>
+                        </div>
+                        <div class="solution-item">
+                            <h3>⚡ Instant Verification</h3>
+                            <p>Prove your age, credentials, or identity instantly without sharing personal information.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Founder Section -->
+    <section id="founder" class="section section-dark">
+        <div class="container">
+            <div class="founder-content">
+                <div class="founder-image">
+                    <img src="founder-photo.jpg" alt="Par Noir Founder" class="founder-photo">
+                </div>
+                <div class="founder-text">
+                    <h2 class="section-title">The Founder's Story</h2>
+                    <p class="lead-text">
+                        Par Noir was born from a deep understanding of the importance of identity sovereignty and the dangers of centralized control.
+                    </p>
+                    <p>
+                        Growing up in a family that experienced the consequences of identity theft and surveillance, I witnessed firsthand how 
+                        centralized identity systems can be weaponized against individuals. My family's story taught me that digital identity 
+                        is not just a technical problem—it's a human rights issue.
+                    </p>
+                    <p>
+                        When my family's identity was compromised through a centralized system, we lost access to essential services, 
+                        faced financial hardship, and spent years trying to restore our digital lives. This experience revealed the 
+                        fundamental flaw in today's identity systems: they put power in the hands of institutions rather than individuals.
+                    </p>
+                    <p>
+                        Par Noir is my response to this broken system. It's built on the principle that your identity belongs to you, 
+                        not to corporations or governments. Using military-grade cryptography and zero-knowledge proofs, Par Noir 
+                        gives you complete sovereignty over your digital identity while maintaining the convenience and security 
+                        that modern life requires.
+                    </p>
+                    <p>
+                        This isn't just technology—it's a movement toward a world where digital identity serves human freedom 
+                        rather than corporate control. A world where privacy is not a luxury, but a fundamental right.
+                    </p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Features Section -->
+    <section id="features" class="section">
+        <div class="container">
+            <div class="section-header">
+                <h2 class="section-title">Why Par Noir?</h2>
+                <p class="section-subtitle">Built for the future of digital identity</p>
+            </div>
+            <div class="features-grid">
+                <div class="feature-card">
+                    <div class="feature-icon">🔐</div>
+                    <h3>Military-Grade Security</h3>
+                    <p>Quantum-resistant cryptography and zero-knowledge proofs ensure your identity remains secure even against future threats.</p>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-icon">🛡️</div>
+                    <h3>Privacy by Design</h3>
+                    <p>Your data never leaves your device. Zero-knowledge proofs allow verification without revealing sensitive information.</p>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-icon">🌐</div>
+                    <h3>Universal Compatibility</h3>
+                    <p>Works with any application or service. No more fragmented identities across different platforms.</p>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-icon">⚡</div>
+                    <h3>Instant Verification</h3>
+                    <p>Prove your identity instantly without sharing personal data. Perfect for age verification, credentials, and more.</p>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-icon">🔗</div>
+                    <h3>Decentralized Storage</h3>
+                    <p>Your identity data is stored securely across a decentralized network, eliminating single points of failure.</p>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-icon">🎯</div>
+                    <h3>User Sovereignty</h3>
+                    <p>You own your identity completely. No corporation or government can revoke or modify your digital identity.</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Vision Section -->
+    <section id="vision" class="section section-dark">
+        <div class="container">
+            <div class="section-header">
+                <h2 class="section-title">Our Vision</h2>
+                <p class="section-subtitle">A world where digital identity serves human freedom</p>
+            </div>
+            <div class="vision-content">
+                <div class="vision-text">
+                    <p class="lead-text">
+                        We envision a future where digital identity is not a tool of control, but a foundation for human freedom and dignity.
+                    </p>
+                    <p>
+                        In this future, individuals have complete sovereignty over their digital identities. They can prove who they are 
+                        without revealing unnecessary information. They can control how their data is used and shared. They can move 
+                        freely across digital platforms without being locked into walled gardens.
+                    </p>
+                    <p>
+                        Par Noir is not just a protocol—it's a movement toward a more just and equitable digital world. A world where 
+                        technology serves human needs rather than corporate interests. A world where privacy is not a luxury, but a fundamental right.
+                    </p>
+                </div>
+                <div class="vision-actions">
+                    <a href="whitepaper.html" class="btn btn-primary">Learn More</a>
+                    <a href="developer-portal.html" class="btn btn-secondary">Join the Movement</a>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Footer -->
+    <footer class="footer">
+        <div class="container">
+            <div class="footer-content">
+                <div class="footer-brand">
+                    <img src="branding/Par-Noir-Logo-White.png" alt="Par Noir" class="footer-logo">
+                    <p>Empowering digital sovereignty through cryptographic identity.</p>
+                </div>
+                <div class="footer-links">
+                    <div class="footer-section">
+                        <h4>Product</h4>
+                        <a href="http://pn.parnoir.com">Dashboard</a>
+                        <a href="whitepaper.html">White Paper</a>
+                        <a href="developer-portal.html">Developer Portal</a>
+                    </div>
+                    <div class="footer-section">
+                        <h4>Resources</h4>
+                        <a href="docs/">Documentation</a>
+                        <a href="api/">API Reference</a>
+                        <a href="CONTRIBUTING.md">Contributing</a>
+                    </div>
+                    <div class="footer-section">
+                        <h4>Legal</h4>
+                        <a href="TERMS_OF_SERVICE.md">Terms of Service</a>
+                        <a href="PRIVACY_POLICY.md">Privacy Policy</a>
+                        <a href="LICENSE">License</a>
+                    </div>
+                </div>
+            </div>
+            <div class="footer-bottom">
+                <p>&copy; 2024 Par Noir. All rights reserved.</p>
+            </div>
+        </div>
+    </footer>
+
+    <script src="script.js"></script>
+</body>
 </html>
