@@ -193,10 +193,10 @@ body {
 
 /* Hero */
 .hero {
-  min-height: 100vh;
+  min-height: auto;
   display: flex;
   align-items: center;
-  padding: 6rem 0 3rem;
+  padding: 4rem 0 2rem;
   position: relative;
 }
 
@@ -756,7 +756,7 @@ section:nth-child(odd) {
   font-size: 1.25rem;
   color: var(--text-secondary);
   max-width: 800px;
-  margin: 0 auto 4rem;
+  margin: 0 auto 2rem;
   line-height: 1.6;
   text-shadow: 0 0 10px rgba(255, 255, 255, 0.05);
 }
@@ -2234,7 +2234,7 @@ footer::before {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   gap: 3rem;
-  margin-top: 4rem;
+  margin-top: 2rem;
   width: 100%;
   max-width: 1200px;
   margin-left: auto;
@@ -2303,7 +2303,7 @@ footer::before {
   grid-template-columns: 1fr 1fr;
   gap: 4rem;
   align-items: center;
-  margin-top: 4rem;
+  margin-top: 2rem;
   width: 100%;
   max-width: 1200px;
   margin-left: auto;
@@ -2484,7 +2484,7 @@ footer::before {
 
 .legacy-section .section-title {
   text-align: center;
-  margin-bottom: 4rem;
+  margin-bottom: 2rem;
   font-size: clamp(2.5rem, 5vw, 3.5rem);
   font-weight: 800;
   background: var(--gradient-text);
@@ -2636,7 +2636,7 @@ footer::before {
 }
 
 .cta-header {
-  margin-bottom: 4rem;
+  margin-bottom: 2rem;
 }
 
 .cta-header h2 {
@@ -2852,7 +2852,7 @@ footer::before {
   display: flex;
   flex-direction: column;
   gap: 1.5rem;
-  margin-top: 4rem;
+  margin-top: 2rem;
   width: 100%;
   max-width: 1200px;
   margin-left: auto;
@@ -2964,7 +2964,7 @@ footer::before {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
   gap: 2rem;
-  margin-top: 4rem;
+  margin-top: 2rem;
   width: 100%;
   max-width: 1200px;
   margin-left: auto;
@@ -3037,7 +3037,7 @@ footer::before {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
   gap: 2rem;
-  margin-top: 4rem;
+  margin-top: 2rem;
   width: 100%;
   max-width: 1200px;
   margin-left: auto;
@@ -3135,7 +3135,7 @@ footer::before {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
   gap: 2rem;
-  margin-top: 4rem;
+  margin-top: 2rem;
   width: 100%;
   max-width: 1000px;
   margin-left: auto;
@@ -3230,7 +3230,7 @@ footer::before {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
   gap: 2rem;
-  margin-top: 4rem;
+  margin-top: 2rem;
   width: 100%;
   max-width: 1200px;
   margin-left: auto;
