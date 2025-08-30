@@ -222,6 +222,7 @@ body {
   align-items: center;
   position: relative;
   z-index: 2;
+  background: rgba(255, 255, 0, 0.1); /* Debug: yellow background for desktop */
 }
 
 .hero-content {
@@ -1511,6 +1512,7 @@ footer::before {
     gap: 2rem;
     padding: 0 1rem;
     text-align: center;
+    background: rgba(255, 0, 255, 0.1) !important; /* Debug: magenta background for mobile */
   }
   
   .hero-title {
