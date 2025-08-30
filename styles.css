@@ -1711,7 +1711,6 @@ footer::before {
   .problem-grid {
     grid-template-columns: 1fr !important;
     gap: 2rem !important;
-    background: rgba(255, 0, 0, 0.1) !important; /* Debug: red background */
   }
   
   .problem-item {
@@ -1734,7 +1733,6 @@ footer::before {
   .vision-timeline {
     grid-template-columns: 1fr !important;
     gap: 2rem !important;
-    background: rgba(0, 255, 0, 0.1) !important; /* Debug: green background */
   }
   
   .timeline-item {
@@ -1782,7 +1780,6 @@ footer::before {
   .cta-grid {
     grid-template-columns: 1fr !important;
     gap: 2rem !important;
-    background: rgba(0, 0, 255, 0.1) !important; /* Debug: blue background */
   }
   
   .cta-box {
