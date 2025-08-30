@@ -540,6 +540,15 @@ section:nth-child(odd) {
   .toc-grid {
     margin-top: 2.5rem !important;
   }
+  
+  .problem-grid {
+    grid-template-columns: 1fr;
+    gap: 2rem;
+  }
+  
+  .problem-item {
+    padding: 2rem 1.5rem;
+  }
 }
 
 @media (max-width: 480px) {
@@ -559,6 +568,28 @@ section:nth-child(odd) {
   .community-grid,
   .toc-grid {
     margin-top: 2rem !important;
+  }
+  
+  .problem-grid {
+    gap: 1.5rem;
+  }
+  
+  .problem-item {
+    padding: 1.5rem 1rem;
+  }
+  
+  .problem-item h3 {
+    font-size: 1.25rem;
+  }
+  
+  .problem-icon {
+    width: 60px;
+    height: 60px;
+  }
+  
+  .problem-icon svg {
+    width: 30px;
+    height: 30px;
   }
 }
 
