@@ -280,3 +280,17 @@ document.addEventListener('DOMContentLoaded', function() {
 
 // Add smooth scroll behavior for improved UX
 document.documentElement.style.scrollBehavior = 'smooth';
+
+// Mobile menu toggle function
+function toggleMobileMenu() {
+    const mobileMenu = document.getElementById('mobileMenu');
+    const body = document.body;
+    
+    if (mobileMenu.classList.contains('active')) {
+        mobileMenu.classList.remove('active');
+        body.style.overflow = 'auto';
+    } else {
+        mobileMenu.classList.add('active');
+        body.style.overflow = 'hidden';
+    }
+}
