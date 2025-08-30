@@ -1,10 +1,10 @@
 // Coinbase Commerce Configuration
 export const COINBASE_CONFIG = {
   // API Key for Coinbase Commerce
-  API_KEY: process.env.COINBASE_COMMERCE_API_KEY || 'your-coinbase-api-key-here',
+  API_KEY: process.env.REACT_APP_COINBASE_COMMERCE_API_KEY,
   
   // Webhook secret (set this in your server environment)
-  WEBHOOK_SECRET: process.env.COINBASE_WEBHOOK_SECRET || 'your-webhook-secret-here',
+  WEBHOOK_SECRET: process.env.COINBASE_WEBHOOK_SECRET,
   
   // Supported cryptocurrencies
   SUPPORTED_CURRENCIES: [

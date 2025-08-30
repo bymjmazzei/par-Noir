@@ -33,10 +33,8 @@ export const IdentitySelector: React.FC<IdentitySelectorProps> = ({
       const storedIdentities = await storage.getIdentities();
       setIdentities(storedIdentities);
       
-      console.log('Loaded identities for selector:', storedIdentities.length);
     } catch (err) {
       setError('Failed to load identities');
-      console.error('Error loading identities:', err);
     } finally {
       setLoading(false);
     }

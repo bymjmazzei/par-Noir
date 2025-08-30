@@ -58,7 +58,6 @@ export interface AuthState {
 // Mock SDK class
 class DecentralizedAuthSDK {
   constructor(config: any) {
-    console.log('Mock SDK initialized with config:', config);
   }
 
   async validateSession(did: string): Promise<boolean> {
@@ -91,7 +90,6 @@ class DecentralizedAuthSDK {
 
   async logout(): Promise<void> {
     // Mock logout
-    console.log('Mock logout called');
   }
 }
 
@@ -140,7 +138,6 @@ export class DecentralizedAuthManager {
         this.validateStoredSession();
       }
     } catch (error) {
-      console.warn('Failed to initialize auth state from storage:', error);
       this.clearStoredAuth();
     }
   }
@@ -172,7 +169,6 @@ export class DecentralizedAuthManager {
         this.updateAuthState({ isAuthenticated: false, isLoading: false });
       }
     } catch (error) {
-      console.error('Session validation failed:', error);
       this.clearStoredAuth();
       this.updateAuthState({ 
         isAuthenticated: false, 
@@ -192,7 +188,6 @@ export class DecentralizedAuthManager {
         const expiresAt = new Date(this.authState.session.expiresAt).getTime();
         
         if (now >= expiresAt) {
-          console.log('Session expired, logging out');
           this.logout();
         }
       }
@@ -266,7 +261,6 @@ export class DecentralizedAuthManager {
         return false;
       }
     } catch (error) {
-      console.error('Authentication error:', error);
       this.updateAuthState({
         isAuthenticated: false,
         isLoading: false,
@@ -283,7 +277,6 @@ export class DecentralizedAuthManager {
     try {
       await this.sdk.logout();
     } catch (error) {
-      console.error('Logout error:', error);
     } finally {
       this.clearStoredAuth();
       this.updateAuthState({
@@ -307,7 +300,6 @@ export class DecentralizedAuthManager {
       const userInfo = await this.sdk.getUserInfo(this.authState.session.did);
       this.updateAuthState({ userInfo });
     } catch (error) {
-      console.error('Failed to refresh user info:', error);
     }
   }
 

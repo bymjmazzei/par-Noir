@@ -1,6 +1,5 @@
 export interface GlobalPrivacySettings {
   // Global overrides (always take precedence)
-  allowAllToolAccess: boolean;
   allowAnalytics: boolean;
   allowMarketing: boolean;
   allowThirdPartySharing: boolean;
@@ -10,7 +9,7 @@ export interface GlobalPrivacySettings {
     [dataPointKey: string]: {
       label: string;
       description: string;
-      category: 'identity' | 'preferences' | 'content' | 'analytics';
+      category: 'verification' | 'preferences' | 'compliance' | 'location' | 'content' | 'analytics';
       requestedBy: string[]; // Array of tool IDs that requested this
       globalSetting: boolean; // Global override for this data point
       lastUpdated: string;
@@ -54,5 +53,5 @@ export interface DataPointRegistration {
   dataPointKey: string;
   label: string;
   description: string;
-  category: 'identity' | 'preferences' | 'content' | 'analytics';
+  category: 'verification' | 'preferences' | 'compliance' | 'location' | 'content' | 'analytics';
 } 

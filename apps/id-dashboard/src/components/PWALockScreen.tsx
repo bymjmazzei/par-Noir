@@ -9,16 +9,17 @@ interface PWALockScreenProps {
 }
 
 const PWALockScreen: React.FC<PWALockScreenProps> = ({ isLocked, onUnlock, onFallback }) => {
-  const [isAuthenticating] = useState(false);
-  const [error] = useState<string | null>(null);
-  const [isMobile] = useState(false);
+  const [isAuthenticating, setIsAuthenticating] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [isMobile, setIsMobile] = useState(false);
 
   useEffect(() => {
     const checkDevice = () => {
       const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
       const isAndroid = /Android/.test(navigator.userAgent);
       const isMobileDevice = isIOS || isAndroid;
-      // const userAgent = navigator.userAgent;
+      
+      setIsMobile(isMobileDevice);
       
       if (!isMobileDevice) {
         // On desktop, unlock silently
@@ -26,8 +27,8 @@ const PWALockScreen: React.FC<PWALockScreenProps> = ({ isLocked, onUnlock, onFal
         return;
       }
       
-      // On mobile, start biometric authentication
-      startMobileAuthentication();
+      // On mobile, show the lock screen but don't auto-trigger biometrics
+      // User must explicitly choose to use biometrics or passcode
     };
 
     checkDevice();
@@ -35,9 +36,13 @@ const PWALockScreen: React.FC<PWALockScreenProps> = ({ isLocked, onUnlock, onFal
 
   const startMobileAuthentication = async () => {
     try {
+      setIsAuthenticating(true);
+      setError(null);
+
       // Check if biometric authentication is available
       if (!window.PublicKeyCredential) {
-        onUnlock();
+        setError('Biometric authentication not available on this device');
+        setIsAuthenticating(false);
         return;
       }
 
@@ -58,10 +63,13 @@ const PWALockScreen: React.FC<PWALockScreenProps> = ({ isLocked, onUnlock, onFal
 
       if (credential) {
         onUnlock();
+      } else {
+        setError('Biometric authentication was cancelled');
       }
     } catch (err) {
-      // Fallback to regular unlock on error
-      onUnlock();
+      setError('Biometric authentication failed. Please try again or use passcode.');
+    } finally {
+      setIsAuthenticating(false);
     }
   };
 

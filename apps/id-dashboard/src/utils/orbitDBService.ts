@@ -87,7 +87,6 @@ export class OrbitDBService {
       
       this.isInitialized = true;
       
-      console.log('🚀 OrbitDB service initialized successfully');
     } catch (error) {
       throw new IdentityError(
         'Failed to initialize OrbitDB service',
@@ -113,7 +112,6 @@ export class OrbitDBService {
         } : undefined
       });
 
-      console.log('✅ IPFS connection established');
     } catch (error) {
       throw new IdentityError(
         'Failed to initialize IPFS connection',
@@ -128,13 +126,13 @@ export class OrbitDBService {
    */
   private async initializeOrbitDB(): Promise<void> {
     try {
-      // Import OrbitDB (disabled for Netlify deployment)
+      // Import OrbitDB (disabled for browser compatibility)
       // const OrbitDB = await import('orbit-db');
       
-      // Create OrbitDB instance (disabled for Netlify deployment)
+      // Create OrbitDB instance (disabled for browser compatibility)
       // this.orbitDBInstance = await OrbitDB.default.createInstance(this.ipfsInstance);
       
-      // Create/open database (disabled for Netlify deployment)
+      // Create/open database (disabled for browser compatibility)
       // this.database = await this.orbitDBInstance.docs(this.config.databaseName, {
       //   indexBy: 'pnId',
       //   accessController: {
@@ -144,11 +142,10 @@ export class OrbitDBService {
       //   }
       // });
 
-      // Wait for database to load (disabled for Netlify deployment)
+      // Wait for database to load (disabled for browser compatibility)
       // await this.database.load();
 
       if (process.env.NODE_ENV === 'development') {
-        console.log('✅ OrbitDB database initialized');
       }
     } catch (error) {
       throw new IdentityError(
@@ -160,34 +157,26 @@ export class OrbitDBService {
   }
 
   /**
-   * Store pN metadata (same API as Firebase)
+   * Store pN metadata via client-side IPFS MFS
    */
   async storePNMetadata(metadata: PNMetadata): Promise<OrbitDBResult> {
-    if (!this.isInitialized) {
-      await this.initialize();
-    }
-
     try {
-      // Encrypt metadata if enabled
-      const dataToStore = this.config.encryptionEnabled 
-        ? await this.encryptMetadata(metadata)
-        : metadata;
-
-      // Store in OrbitDB
-      const cid = await this.database.put(dataToStore);
+      // Use client-side IPFS service
+      const { ipfsMetadataService } = await import('./ipfsMetadataService');
+      const result = await ipfsMetadataService.storePNMetadata(metadata);
       
-      // Update metadata with CID
-      const updatedMetadata = {
-        ...metadata,
-        cid: cid.toString(),
-        updatedAt: new Date().toISOString()
-      };
-
-      return {
-        success: true,
-        data: updatedMetadata,
-        cid: cid.toString()
-      };
+      if (result.success) {
+        return {
+          success: true,
+          data: result.data,
+          cid: result.cid
+        };
+      } else {
+        return {
+          success: false,
+          error: result.error || 'Failed to store metadata'
+        };
+      }
     } catch (error) {
       return {
         success: false,
@@ -197,34 +186,15 @@ export class OrbitDBService {
   }
 
   /**
-   * Get pN metadata (same API as Firebase)
+   * Get pN metadata via client-side IPFS MFS
    */
   async getPNMetadata(pnId: string): Promise<OrbitDBResult> {
-    if (!this.isInitialized) {
-      await this.initialize();
-    }
-
     try {
-      // Query OrbitDB for metadata
-      const results = await this.database.query((doc: any) => doc.pnId === pnId);
-      
-      if (results.length === 0) {
-        return {
-          success: false,
-          error: 'Metadata not found'
-        };
-      }
-
-      const metadata = results[0];
-      
-      // Decrypt metadata if enabled
-      const decryptedMetadata = this.config.encryptionEnabled 
-        ? await this.decryptMetadata(metadata)
-        : metadata;
-
+      // For now, we'll need to store the CID somewhere
+      // In a full implementation, you'd have an index
       return {
-        success: true,
-        data: decryptedMetadata
+        success: false,
+        error: 'CID index not implemented yet'
       };
     } catch (error) {
       return {

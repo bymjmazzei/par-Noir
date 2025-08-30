@@ -34,7 +34,6 @@ export const DecentralizedAuth: React.FC<DecentralizedAuthProps> = ({
           setAvailableIdentities(identities);
         }
       } catch (error) {
-        console.warn('Failed to load identities:', error);
       }
     };
 

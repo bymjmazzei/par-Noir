@@ -99,7 +99,6 @@ export const LicenseModal: React.FC<LicenseModalProps> = ({
       }
     };
 
-    console.log('Creating Coinbase checkout with data:', checkoutData);
     
     // Validate checkout data
     if (!CoinbaseProxy.validateCheckoutData(checkoutData)) {
@@ -115,14 +114,10 @@ export const LicenseModal: React.FC<LicenseModalProps> = ({
     setError('');
     
     try {
-      console.log('Starting crypto purchase process...');
       const checkout = await createCoinbaseCheckout();
-      console.log('Checkout created successfully:', checkout);
-      console.log('Checkout URL:', checkout.hosted_url);
       setPaymentRequest(checkout);
       setShowCryptoPayment(true);
     } catch (error) {
-      console.error('Failed to create crypto payment:', error);
       setError(error instanceof Error ? error.message : 'Failed to create payment request');
     } finally {
       setIsProcessing(false);
@@ -150,7 +145,6 @@ export const LicenseModal: React.FC<LicenseModalProps> = ({
       setIdentityName(identityData.metadata?.displayName || identityData.metadata?.username || 'Unknown Identity');
     } catch (error) {
       alert('Invalid identity file. Please upload a valid .pn, .id, .json, or .identity file.');
-      console.error('Identity file parsing error:', error);
     }
   };
 
@@ -253,17 +247,33 @@ export const LicenseModal: React.FC<LicenseModalProps> = ({
 
         <div className="mb-4">
           <label className="block text-sm font-medium mb-2" style={{ color: secondaryTextColor }}>Identity File</label>
-          <input
-            type="file"
-            accept=".pn,.id,.json,.identity"
-            onChange={handleIdentityFileUpload}
-            className="w-full p-2 border rounded focus:outline-none"
-            style={{ 
-              backgroundColor: inputBgColor,
-              borderColor: borderColor,
-              color: textColor
-            }}
-          />
+          <div className="relative">
+            <input
+              type="file"
+              accept=".pn,.id,.json,.identity"
+              onChange={handleIdentityFileUpload}
+              className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+              id="license-file-upload"
+            />
+            <label
+              htmlFor="license-file-upload"
+              className="flex items-center justify-center w-full px-4 py-3 border-2 border-dashed rounded-lg cursor-pointer transition-colors"
+              style={{ 
+                borderColor: borderColor,
+                backgroundColor: inputBgColor
+              }}
+            >
+              <div className="text-center">
+                <div className="text-2xl mb-2">↑</div>
+                <div className="text-sm font-medium" style={{ color: textColor }}>
+                  {identityFile ? identityFile.name : 'Tap to upload identity file'}
+                </div>
+                <div className="text-xs mt-1" style={{ color: secondaryTextColor }}>
+                  (.pn, .id, .json, .identity files)
+                </div>
+              </div>
+            </label>
+          </div>
           <p className="text-xs mt-2" style={{ color: secondaryTextColor }}>
             Your license will be bound to this specific identity file for security.
           </p>
@@ -323,7 +333,7 @@ export const LicenseModal: React.FC<LicenseModalProps> = ({
           <button
             onClick={handlePurchase}
             disabled={isProcessing}
-            className="flex-1 py-2 px-4 rounded"
+            className="flex-1 px-4 py-2 rounded-lg font-medium transition-colors"
             style={{
               backgroundColor: isProcessing ? (isDark ? '#666666' : '#cccccc') : (isDark ? '#ffffff' : '#000000'),
               color: isProcessing ? (isDark ? '#cccccc' : '#666666') : (isDark ? '#000000' : '#ffffff')
@@ -334,7 +344,7 @@ export const LicenseModal: React.FC<LicenseModalProps> = ({
           <button
             onClick={onClose}
             disabled={isProcessing}
-            className="flex-1 py-2 px-4 rounded"
+            className="flex-1 px-4 py-2 rounded-lg font-medium transition-colors"
             style={{
               backgroundColor: isProcessing ? (isDark ? '#1a1a1a' : '#f5f5f5') : (isDark ? '#333333' : '#e0e0e0'),
               color: isProcessing ? (isDark ? '#666666' : '#999999') : (isDark ? '#cccccc' : '#666666')
@@ -383,7 +393,6 @@ export const LicenseModal: React.FC<LicenseModalProps> = ({
                 
                 <button
                   onClick={() => {
-                    console.log('Opening Coinbase checkout URL:', paymentRequest.hosted_url);
                     window.open(paymentRequest.hosted_url, '_blank', 'noopener,noreferrer');
                   }}
                   className="inline-flex items-center px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition-colors"

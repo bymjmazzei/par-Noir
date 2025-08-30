@@ -321,7 +321,6 @@ export class DecentralizedEnforcement {
     }
     
     if (enforcementResult.requiresUpgrade) {
-      console.warn(`Commercial license recommended: ${enforcementResult.reason}`);
     }
     
     // Execute the operation

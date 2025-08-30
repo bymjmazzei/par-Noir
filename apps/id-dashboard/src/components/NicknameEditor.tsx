@@ -46,7 +46,6 @@ export const NicknameEditor: React.FC<NicknameEditorProps> = ({
       onSave(updatedIdentity);
     } catch (err) {
       setError('Failed to update nickname');
-      console.error('Error updating nickname:', err);
     } finally {
       setLoading(false);
     }

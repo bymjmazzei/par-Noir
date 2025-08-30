@@ -1,5 +1,5 @@
 // SMS service using Twilio
-// import twilio from 'twilio'; // Temporarily disabled for Netlify
+import twilio from 'twilio';
 
 export interface SMSConfig {
   accountSid: string;
@@ -37,13 +37,11 @@ export class SMSService {
       this.client = twilio(this.config.accountSid, this.config.authToken);
       
       if (process.env.NODE_ENV === 'development') {
-        console.log('✅ Twilio SMS service initialized');
       }
       
       this.isInitialized = true;
     } catch (error) {
       if (process.env.NODE_ENV === 'development') {
-        console.error('❌ Failed to initialize Twilio SMS service:', error);
       }
       throw error;
     }
@@ -70,11 +68,9 @@ export class SMSService {
       });
 
       if (process.env.NODE_ENV === 'development') {
-        console.log(`✅ Recovery SMS sent to ${data.to}`);
       }
     } catch (error) {
       if (process.env.NODE_ENV === 'development') {
-        console.error('❌ Failed to send recovery SMS:', error);
       }
       throw error;
     }
@@ -106,11 +102,9 @@ export class SMSService {
       });
 
       if (process.env.NODE_ENV === 'development') {
-        console.log(`✅ Security SMS sent to ${data.to}`);
       }
     } catch (error) {
       if (process.env.NODE_ENV === 'development') {
-        console.error('❌ Failed to send security SMS:', error);
       }
       throw error;
     }
@@ -135,11 +129,9 @@ export class SMSService {
       });
 
       if (process.env.NODE_ENV === 'development') {
-        console.log(`✅ Verification SMS sent to ${to}`);
       }
     } catch (error) {
       if (process.env.NODE_ENV === 'development') {
-        console.error('❌ Failed to send verification SMS:', error);
       }
       throw error;
     }
@@ -160,7 +152,6 @@ export class SMSService {
       return lookup.valid;
     } catch (error) {
       if (process.env.NODE_ENV === 'development') {
-        console.error('❌ Phone number validation failed:', error);
       }
       return false;
     }

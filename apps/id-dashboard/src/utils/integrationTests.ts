@@ -1,5 +1,5 @@
 // Integration Tests for All Services (Browser-Compatible)
-// Temporarily disabled heavy dependencies for Netlify deployment
+// Integration tests for all services
 export interface TestResult {
   service: string;
   status: 'success' | 'error' | 'skipped';
@@ -11,7 +11,6 @@ export class IntegrationTests {
   private results: TestResult[] = [];
 
   async runAllTests(): Promise<TestResult[]> {
-    console.log('🧪 Starting Integration Tests...');
     this.results = [];
 
     // Test Environment Variables
@@ -23,13 +22,11 @@ export class IntegrationTests {
     // Test IPFS Service (browser-compatible)
     await this.testIPFS();
 
-    console.log('✅ Integration Tests Complete!');
     return this.results;
   }
 
   private async testIPFS(): Promise<void> {
     try {
-      console.log('🌐 Testing Pinata IPFS Service...');
       
       // Test configuration availability
       const apiKey = process.env.REACT_APP_PINATA_API_KEY;
@@ -42,7 +39,6 @@ export class IntegrationTests {
           message: 'Pinata API key not configured',
           details: { reason: 'Environment variable not set' }
         });
-        console.log('⏭️ IPFS Test: SKIPPED');
         return;
       }
       
@@ -57,7 +53,6 @@ export class IntegrationTests {
         }
       });
       
-      console.log('✅ IPFS Test: PASSED');
     } catch (error) {
       this.results.push({
         service: 'Pinata IPFS',
@@ -65,13 +60,11 @@ export class IntegrationTests {
         message: `IPFS service failed: ${error instanceof Error ? error.message : 'Unknown error'}`,
         details: { error }
       });
-      console.log('❌ IPFS Test: FAILED');
     }
   }
 
   private async testCoinbase(): Promise<void> {
     try {
-      console.log('💰 Testing Coinbase Commerce...');
       
       // Test API key availability
       const apiKey = process.env.REACT_APP_COINBASE_COMMERCE_API_KEY;
@@ -83,7 +76,6 @@ export class IntegrationTests {
           message: 'Coinbase API key not configured',
           details: { reason: 'Environment variable not set' }
         });
-        console.log('⏭️ Coinbase Test: SKIPPED');
         return;
       }
       
@@ -101,7 +93,6 @@ export class IntegrationTests {
         }
       });
       
-      console.log('✅ Coinbase Test: PASSED');
     } catch (error) {
       this.results.push({
         service: 'Coinbase Commerce',
@@ -109,13 +100,11 @@ export class IntegrationTests {
         message: `Coinbase service failed: ${error instanceof Error ? error.message : 'Unknown error'}`,
         details: { error }
       });
-      console.log('❌ Coinbase Test: FAILED');
     }
   }
 
   private async testEnvironmentVariables(): Promise<void> {
     try {
-      console.log('🔧 Testing Environment Variables...');
       
       const requiredVars = [
         'REACT_APP_TWILIO_ACCOUNT_SID',
@@ -155,9 +144,7 @@ export class IntegrationTests {
       });
       
       if (missingVars.length === 0) {
-        console.log('✅ Environment Variables Test: PASSED');
       } else {
-        console.log('❌ Environment Variables Test: FAILED');
       }
     } catch (error) {
       this.results.push({
@@ -166,7 +153,6 @@ export class IntegrationTests {
         message: `Environment test failed: ${error instanceof Error ? error.message : 'Unknown error'}`,
         details: { error }
       });
-      console.log('❌ Environment Variables Test: FAILED');
     }
   }
 
@@ -180,29 +166,18 @@ export class IntegrationTests {
   }
 
   printResults(): void {
-    console.log('\n📊 Integration Test Results:');
-    console.log('============================');
     
     this.results.forEach(result => {
       const icon = result.status === 'success' ? '✅' : result.status === 'error' ? '❌' : '⏭️';
-      console.log(`${icon} ${result.service}: ${result.message}`);
       
       if (result.details) {
-        console.log(`   Details:`, result.details);
       }
     });
     
     const summary = this.getSummary();
-    console.log('\n📈 Summary:');
-    console.log(`   Total: ${summary.total}`);
-    console.log(`   Passed: ${summary.passed}`);
-    console.log(`   Failed: ${summary.failed}`);
-    console.log(`   Skipped: ${summary.skipped}`);
     
     if (summary.failed === 0) {
-      console.log('\n🎉 All tests passed! Your integrations are configured correctly.');
     } else {
-      console.log('\n⚠️ Some tests failed. Check the details above.');
     }
   }
 }

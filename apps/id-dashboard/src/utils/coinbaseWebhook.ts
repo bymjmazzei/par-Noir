@@ -55,7 +55,6 @@ export class CoinbaseWebhookHandler {
    */
   static async processWebhook(event: CoinbaseWebhookEvent): Promise<void> {
     try {
-      console.log('Processing Coinbase webhook:', event.type);
 
       if (event.type === 'charge:confirmed') {
         await this.handlePaymentConfirmed(event.data);
@@ -65,7 +64,6 @@ export class CoinbaseWebhookHandler {
         await this.handlePaymentExpired(event.data);
       }
     } catch (error) {
-      console.error('Error processing webhook:', error);
       throw error;
     }
   }
@@ -80,7 +78,6 @@ export class CoinbaseWebhookHandler {
       const paidAmount = checkout.pricing.local.amount;
       
       if (parseFloat(paidAmount) < parseFloat(expectedAmount)) {
-        console.error('Payment amount mismatch:', { expected: expectedAmount, paid: paidAmount });
         return;
       }
 
@@ -104,9 +101,7 @@ export class CoinbaseWebhookHandler {
       // Send confirmation email (in production)
       await this.sendLicenseConfirmationEmail(licenseInfo, checkout);
 
-      console.log('License issued successfully:', licenseInfo.licenseKey);
     } catch (error) {
-      console.error('Error issuing license:', error);
       throw error;
     }
   }
@@ -115,7 +110,6 @@ export class CoinbaseWebhookHandler {
    * Handle failed payment
    */
   private static async handlePaymentFailed(checkout: any): Promise<void> {
-    console.log('Payment failed for checkout:', checkout.id);
     
     // In production, send failure notification email
     // await this.sendPaymentFailureEmail(checkout);
@@ -125,7 +119,6 @@ export class CoinbaseWebhookHandler {
    * Handle expired payment
    */
   private static async handlePaymentExpired(checkout: any): Promise<void> {
-    console.log('Payment expired for checkout:', checkout.id);
     
     // In production, send expiration notification email
     // await this.sendPaymentExpiredEmail(checkout);
@@ -136,7 +129,6 @@ export class CoinbaseWebhookHandler {
    */
   private static async sendLicenseConfirmationEmail(licenseInfo: LicenseInfo, checkout: any): Promise<void> {
     // In production, implement email sending
-    console.log('Sending license confirmation email for:', licenseInfo.licenseKey);
     
     // Example email content:
     const emailContent = {
@@ -158,7 +150,6 @@ export class CoinbaseWebhookHandler {
       `
     };
     
-    console.log('Email content:', emailContent);
   }
 
   /**
@@ -200,7 +191,6 @@ export const createWebhookEndpoint = (app: any) => {
 
       res.status(200).json({ success: true });
     } catch (error) {
-      console.error('Webhook error:', error);
       res.status(500).json({ error: 'Webhook processing failed' });
     }
   });

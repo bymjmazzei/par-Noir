@@ -140,27 +140,19 @@
 
 ### Static Hosting Services
 
-#### Netlify
-1. **Connect Repository**
-   - Sign up at [netlify.com](https://netlify.com)
-   - Connect your GitHub repository
-   - Set build command: `cd apps/id-dashboard && npm run build`
-   - Set publish directory: `apps/id-dashboard/dist`
+#### Firebase Hosting
+1. **Setup Firebase**
+   - Sign up at [firebase.google.com](https://firebase.google.com)
+   - Create a new project
+   - Install Firebase CLI: `npm install -g firebase-tools`
 
-2. **Deploy**
-   - Netlify will automatically deploy on every push
-   - Your app will be available at a Netlify URL
-
-#### Vercel
-1. **Connect Repository**
-   - Sign up at [vercel.com](https://vercel.com)
-   - Import your GitHub repository
-   - Set root directory: `apps/id-dashboard`
-   - Set build command: `npm run build`
-
-2. **Deploy**
-   - Vercel will automatically deploy on every push
-   - Your app will be available at a Vercel URL
+2. **Initialize and Deploy**
+   ```bash
+   firebase login
+   firebase init hosting
+   npm run deploy:firebase
+   ```
+   - Your app will be available at a Firebase URL
 
 #### GitHub Pages
 1. **Build the Project**

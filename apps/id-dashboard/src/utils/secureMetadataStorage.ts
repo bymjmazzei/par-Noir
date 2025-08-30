@@ -56,6 +56,30 @@ export class SecureMetadataStorage {
   }
 
   /**
+   * Update entire metadata object
+   */
+  static async updateMetadata(identityId: string, secureMetadata: SecureMetadata): Promise<void> {
+    try {
+      // Store updated metadata locally (works offline)
+      await this.storeMetadata(identityId, secureMetadata);
+      
+      // Check if we're online and sync immediately
+      if (navigator.onLine) {
+        try {
+          await this.storeMetadataInCloud(identityId, secureMetadata);
+        } catch (error) {
+          this.markForCloudSync(identityId, secureMetadata);
+        }
+      } else {
+        // Mark for cloud sync (will sync when online)
+        this.markForCloudSync(identityId, secureMetadata);
+      }
+    } catch (error) {
+      throw new Error('Failed to update metadata');
+    }
+  }
+
+  /**
    * Update metadata field securely with offline-first support
    */
   static async updateMetadataField(

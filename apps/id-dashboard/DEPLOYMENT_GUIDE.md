@@ -123,25 +123,19 @@ npm run dev
 
 ## **Step 5: Deploy to Production**
 
-### **Option 1: Vercel (Recommended)**
+### **Firebase Hosting (Recommended)**
 ```bash
-# Install Vercel CLI
-npm install -g vercel
+# Install Firebase CLI
+npm install -g firebase-tools
 
-# Deploy
-vercel --prod
+# Login to Firebase
+firebase login
+
+# Deploy to Firebase
+npm run deploy:firebase
 ```
 
-### **Option 2: Netlify**
-```bash
-# Build the project
-npm run build
-
-# Deploy to Netlify
-netlify deploy --prod --dir=dist
-```
-
-### **Option 3: Manual Deployment**
+### **Manual Deployment**
 ```bash
 # Build the project
 npm run build
@@ -152,8 +146,7 @@ npm run build
 ## **Step 6: Configure Production Environment**
 
 ### **Set Environment Variables in Production**
-- **Vercel**: Go to Project Settings → Environment Variables
-- **Netlify**: Go to Site Settings → Environment Variables
+- **Firebase**: Use Firebase Functions config or environment variables
 - **Manual**: Set as server environment variables
 
 ### **Required Production Variables**
@@ -218,7 +211,7 @@ The app includes built-in service status monitoring. Check the browser console f
 - **SendGrid**: $0 (free tier - 100 emails/day)
 - **Twilio**: $0 (free trial), then ~$1-5/month
 - **IPFS**: $0 (free tier)
-- **Hosting**: $0-20/month (Vercel/Netlify free tier)
+- **Hosting**: $0-20/month (Firebase free tier)
 
 **Total**: $0-25/month for the first year
 

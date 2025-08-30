@@ -413,7 +413,6 @@ export class LicenseVerification {
       const signatureValid = await this.verifySignature(proof.proof, proof.signature);
       return isValid && signatureValid;
     } catch (error) {
-      console.error('License proof verification failed:', error);
       return false;
     }
   }
@@ -612,7 +611,6 @@ export class LicenseVerification {
 
       return zkProof.proof.schnorrProof.response;
     } catch (error) {
-      console.error('Real ZK proof generation failed:', error);
       // Fallback to secure hash if ZK proof fails
       const proofData = JSON.stringify(data);
       const encoder = new TextEncoder();
@@ -670,7 +668,6 @@ export class LicenseVerification {
 
             return isValid;
     } catch (error) {
-      console.error('Real ZK proof verification failed:', error);
       return false;
     }
   }
@@ -719,7 +716,6 @@ export class LicenseVerification {
         timestamp: Date.now()
       });
     } catch (error) {
-      console.error('Real signature generation failed:', error);
       // Fallback to secure hash
       const dataString = JSON.stringify(data);
       const encoder = new TextEncoder();
@@ -770,7 +766,6 @@ export class LicenseVerification {
 
       return isValid;
     } catch (error) {
-      console.error('Real signature verification failed:', error);
       return false;
     }
   }

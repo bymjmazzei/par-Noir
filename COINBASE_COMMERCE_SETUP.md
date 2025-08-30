@@ -201,14 +201,14 @@ console.log('Payment confirmed:', {
 
 ## 🌐 **Setting Up Subdomain pn.par-noir.com:**
 
-### **Step 1: Add Subdomain in Netlify**
+### **Step 1: Add Subdomain in Firebase**
 ```bash
-# In Netlify Dashboard:
-1. Go to your site
-2. Click "Domain settings"
-3. Click "Add custom domain"
-4. Enter: pn.par-noir.com
-5. Click "Add"
+# In Firebase Console:
+1. Go to Hosting → Custom domains
+2. Click "Add custom domain"
+3. Enter: pn.parnoir.com
+4. Click "Continue"
+5. Firebase will verify domain ownership
 ```
 
 ### **Step 2: Configure DNS in Namecheap**
@@ -218,31 +218,32 @@ console.log('Payment confirmed:', {
 
 Type: CNAME
 Name: pn
-Value: your-site-name.netlify.app
+Value: your-project-id.web.app
 ```
 
 ## 📋 **Detailed Steps:**
 
-### **In Netlify:**
+### **In Firebase:**
 ```bash
-1. Go to your site dashboard
-2. Click "Domain settings" (left sidebar)
-3. Click "Add custom domain"
-4. Type: pn.par-noir.com
-5. Click "Add domain"
-6. Netlify will show you DNS instructions
+1. Go to Firebase Console
+2. Select your project
+3. Go to Hosting → Custom domains
+4. Click "Add custom domain"
+5. Type: pn.parnoir.com
+6. Click "Continue"
+7. Firebase will show you DNS instructions
 ```
 
 ### **In Namecheap:**
 ```bash
 1. Log into Namecheap
 2. Go to "Domain List"
-3. Click "Manage" next to par-noir.com
+3. Click "Manage" next to parnoir.com
 4. Click "Advanced DNS"
 5. Add new record:
    - Type: CNAME
    - Name: pn
-   - Value: your-site-name.netlify.app
+   - Value: your-project-id.web.app
 6. Save the record
 ```
 
@@ -250,12 +251,14 @@ Value: your-site-name.netlify.app
 
 ### **What You'll Add:**
 ```bash
-<code_block_to_apply_changes_from>
+Type: CNAME
+Name: pn
+Value: par-noir-dashboard.web.app
 ```
 
 ### **Result:**
 ```bash
-✅ pn.par-noir.com → Your Netlify site
+✅ pn.parnoir.com → Your Firebase site
 ✅ Free SSL certificate (automatic)
 ✅ HTTPS enabled
 ```

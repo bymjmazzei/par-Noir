@@ -53,7 +53,6 @@ export const SessionManager: React.FC<SessionManagerProps> = ({
   const terminateSession = async (sessionId: string) => {
     try {
       // Mock implementation - implement actual session termination later
-      console.log('Terminating session:', sessionId);
       await loadSessions();
     } catch (error) {
       // Handle error silently
@@ -63,7 +62,6 @@ export const SessionManager: React.FC<SessionManagerProps> = ({
   const terminateAllOtherSessions = async () => {
     try {
       // Mock implementation - implement actual session termination later
-      console.log('Terminating all other sessions');
       await loadSessions();
     } catch (error) {
       // Handle error silently

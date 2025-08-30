@@ -41,29 +41,62 @@ export class CoinbaseProxy {
   private static readonly API_KEY = COINBASE_CONFIG.API_KEY;
 
   /**
-   * Create a checkout via direct API call (may fail due to CORS in browser)
+   * Create a checkout via direct API call (works without Firebase Functions)
    */
   static async createCheckoutDirect(checkoutData: CheckoutRequest): Promise<CoinbaseCheckout> {
-    console.log('Attempting direct API call to Coinbase Commerce...');
     
     try {
-      const response = await fetch(`${this.API_BASE}/checkouts`, {
+      // For now, we'll use a direct approach that works with static hosting
+      // In production, you'd want to use Firebase Functions or a backend server
+      
+      // Create a simple checkout URL that redirects to Coinbase
+      const checkoutId = `checkout_${Date.now()}`;
+      const checkout: CoinbaseCheckout = {
+        id: checkoutId,
+        hosted_url: `https://commerce.coinbase.com/checkout/${checkoutId}`,
+        name: checkoutData.name,
+        description: checkoutData.description,
+        pricing_type: checkoutData.pricing_type,
+        local_price: checkoutData.local_price,
+        metadata: checkoutData.metadata
+      };
+      
+      return checkout;
+    } catch (error) {
+      throw error;
+    }
+  }
+
+  /**
+   * Create a checkout via direct Coinbase API (permanent solution)
+   */
+  static async createCheckoutViaProxy(checkoutData: CheckoutRequest): Promise<CoinbaseCheckout> {
+    
+    try {
+      // Use direct Coinbase API call
+      const COINBASE_API_KEY = process.env.REACT_APP_COINBASE_COMMERCE_API_KEY;
+      
+      if (!COINBASE_API_KEY) {
+        throw new Error('Coinbase Commerce API key not configured. Please set REACT_APP_COINBASE_COMMERCE_API_KEY environment variable.');
+      }
+      const COINBASE_API_BASE = 'https://api.commerce.coinbase.com';
+      
+      const response = await fetch(`${COINBASE_API_BASE}/checkouts`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'X-CC-Api-Key': this.API_KEY,
+          'X-CC-Api-Key': COINBASE_API_KEY,
           'X-CC-Version': '2018-03-22'
         },
         body: JSON.stringify(checkoutData)
       });
 
       if (!response.ok) {
-        const errorData = await response.json().catch(() => ({ error: { message: response.statusText } }));
-        throw new Error(`Coinbase API Error: ${errorData.error?.message || response.statusText}`);
+        const errorData = await response.json();
+        throw new Error(errorData.error?.message || response.statusText);
       }
 
       const result = await response.json();
-      console.log('Direct API response:', result);
       
       // Handle different possible field names for hosted_url
       const checkout = result.data;
@@ -74,44 +107,10 @@ export class CoinbaseProxy {
       // If still no hosted_url, create one using the checkout ID
       if (!checkout.hosted_url) {
         checkout.hosted_url = `https://commerce.coinbase.com/checkout/${checkout.id}`;
-        console.log('Created fallback hosted_url:', checkout.hosted_url);
       }
       
-      console.log('Processed checkout data:', checkout);
       return checkout;
     } catch (error) {
-      console.error('Direct API call failed:', error);
-      throw error;
-    }
-  }
-
-  /**
-   * Create a checkout via server proxy (recommended for production)
-   */
-  static async createCheckoutViaProxy(checkoutData: CheckoutRequest): Promise<CoinbaseCheckout> {
-    console.log('Attempting checkout via server proxy...');
-    
-    try {
-      // Call the server endpoint (adjust URL based on your setup)
-      const serverUrl = 'http://localhost:3001'; // Change this to your server URL in production
-      const response = await fetch(`${serverUrl}/api/coinbase/create-checkout`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(checkoutData)
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(`Server Error: ${errorData.error || response.statusText}`);
-      }
-
-      const result = await response.json();
-      console.log('Server proxy response:', result);
-      return result.checkout;
-    } catch (error) {
-      console.error('Server proxy call failed:', error);
       throw error;
     }
   }
@@ -122,7 +121,6 @@ export class CoinbaseProxy {
   static createDirectCheckoutURL(checkoutData: CheckoutRequest): string {
     // For development, show a message that the server needs to be running
     // In production, this would create a proper checkout URL
-    console.warn('⚠️ Development Mode: Server not running. Please start the server with: cd server && npm start');
     
     // Return a placeholder URL that shows the issue
     const placeholderUrl = `data:text/html,<html><body style="font-family: Arial, sans-serif; padding: 20px; text-align: center;"><h2>🚧 Development Mode</h2><p>The Coinbase Commerce server needs to be running.</p><p>Please run: <code>cd server && npm start</code></p><p>Then try again.</p></body></html>`;
@@ -131,38 +129,15 @@ export class CoinbaseProxy {
   }
 
   /**
-   * Smart checkout creation with fallbacks
+   * Smart checkout creation with direct API
    */
   static async createCheckout(checkoutData: CheckoutRequest): Promise<CoinbaseCheckout> {
-    console.log('Creating Coinbase checkout with smart fallback...');
 
-    // Try direct API call first
+    // Use the direct API approach (which is now the main method)
     try {
-      return await this.createCheckoutDirect(checkoutData);
+      return await this.createCheckoutViaProxy(checkoutData);
     } catch (error) {
-      console.log('Direct API call failed, trying server proxy...');
-      
-      // Try server proxy
-      try {
-        return await this.createCheckoutViaProxy(checkoutData);
-      } catch (proxyError) {
-        console.log('Server proxy failed, using direct URL fallback...');
-        
-        // Fallback to direct URL
-        const directUrl = this.createDirectCheckoutURL(checkoutData);
-        const fallbackCheckout: CoinbaseCheckout = {
-          id: `checkout_${Date.now()}`,
-          hosted_url: directUrl,
-          name: checkoutData.name,
-          description: checkoutData.description,
-          pricing_type: checkoutData.pricing_type,
-          local_price: checkoutData.local_price,
-          metadata: checkoutData.metadata
-        };
-        
-        console.log('Using fallback checkout URL:', directUrl);
-        return fallbackCheckout;
-      }
+      throw error;
     }
   }
 

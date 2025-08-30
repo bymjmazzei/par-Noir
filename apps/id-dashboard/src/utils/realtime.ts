@@ -246,7 +246,6 @@ export class RealtimeManager {
       } catch (error) {
         // Log error in development, handle silently in production
         if (process.env.NODE_ENV === 'development') {
-          console.error('Failed to process queued message:', error);
         }
       }
     }

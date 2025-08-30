@@ -38,7 +38,6 @@ export class SimpleStorage {
       
       localStorage.setItem(this.STORAGE_KEY, JSON.stringify(updated));
     } catch (error) {
-      console.error('Failed to store identity:', error);
       throw error;
     }
   }
@@ -53,7 +52,6 @@ export class SimpleStorage {
       
       return JSON.parse(stored);
     } catch (error) {
-      console.error('Failed to get identities:', error);
       return [];
     }
   }
@@ -66,7 +64,6 @@ export class SimpleStorage {
       const identities = await this.getIdentities();
       return identities.find(identity => identity.id === id) || null;
     } catch (error) {
-      console.error('Failed to get identity:', error);
       return null;
     }
   }
@@ -85,7 +82,6 @@ export class SimpleStorage {
       
       localStorage.setItem(this.STORAGE_KEY, JSON.stringify(updated));
     } catch (error) {
-      console.error('Failed to update nickname:', error);
       throw error;
     }
   }
@@ -104,7 +100,6 @@ export class SimpleStorage {
       
       localStorage.setItem(this.STORAGE_KEY, JSON.stringify(updated));
     } catch (error) {
-      console.error('Failed to update identity:', error);
       throw error;
     }
   }
@@ -119,7 +114,6 @@ export class SimpleStorage {
       
       localStorage.setItem(this.STORAGE_KEY, JSON.stringify(updated));
     } catch (error) {
-      console.error('Failed to delete identity:', error);
       throw error;
     }
   }
@@ -131,7 +125,6 @@ export class SimpleStorage {
     try {
       localStorage.removeItem(this.STORAGE_KEY);
     } catch (error) {
-      console.error('Failed to clear identities:', error);
       throw error;
     }
   }

@@ -60,7 +60,6 @@ export const LicenseDashboard: React.FC = () => {
         setShowDetectionModal(true);
       }
     } catch (error) {
-      console.error('Failed to load license info:', error);
     } finally {
       setIsLoading(false);
     }
@@ -383,7 +382,6 @@ export const LicenseDashboard: React.FC = () => {
                   <button
                     onClick={async () => {
                       // await DetectionTest.runComprehensiveTest(identityHash);
-                      console.log('Detection test disabled');
                       await loadLicenseInfo(); // Refresh the display
                     }}
                     className="bg-blue-600 text-white px-3 py-1 rounded text-xs hover:bg-blue-500"
@@ -393,7 +391,6 @@ export const LicenseDashboard: React.FC = () => {
                   <button
                     onClick={async () => {
                       // await EnforcementTest.runComprehensiveEnforcementTest(identityHash);
-                      console.log('Enforcement test disabled');
                       await loadLicenseInfo(); // Refresh the display
                     }}
                     className="bg-purple-600 text-white px-3 py-1 rounded text-xs hover:bg-purple-500"
@@ -403,7 +400,6 @@ export const LicenseDashboard: React.FC = () => {
                   <button
                     onClick={async () => {
                       // await DetectionTest.testGracePeriod(identityHash);
-                      console.log('Grace period test disabled');
                       await loadLicenseInfo(); // Refresh the display
                     }}
                     className="bg-yellow-600 text-white px-3 py-1 rounded text-xs hover:bg-yellow-500"
@@ -413,7 +409,6 @@ export const LicenseDashboard: React.FC = () => {
                   <button
                     onClick={async () => {
                       // await DetectionTest.simulateGracePeriodExpiration(identityHash);
-                      console.log('Expiration test disabled');
                       await loadLicenseInfo(); // Refresh the display
                     }}
                     className="bg-red-600 text-white px-3 py-1 rounded text-xs hover:bg-red-500"
@@ -423,7 +418,6 @@ export const LicenseDashboard: React.FC = () => {
                   <button
                     onClick={async () => {
                       // DetectionTest.resetDetectionLogs();
-                      console.log('Reset test disabled');
                       await loadLicenseInfo(); // Refresh the display
                     }}
                     className="bg-gray-600 text-white px-3 py-1 rounded text-xs hover:bg-gray-500"

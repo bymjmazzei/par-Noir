@@ -48,7 +48,6 @@ class ErrorMonitor {
     }
 
     if (process.env.NODE_ENV === 'development') {
-      console.error('Error captured:', errorEvent);
     }
 
     // Send to monitoring service in production
@@ -92,7 +91,6 @@ class ErrorMonitor {
     try {
       // In production, this would send to a real monitoring service
       if (process.env.NODE_ENV === 'development') {
-        console.log('Sending error to monitoring service');
       }
       
       // Example: Send to monitoring service
@@ -103,7 +101,6 @@ class ErrorMonitor {
       // });
     } catch (error) {
       if (process.env.NODE_ENV === 'development') {
-        console.error('Failed to send error to monitoring service:', error);
       }
     }
   }
@@ -113,7 +110,6 @@ class ErrorMonitor {
       localStorage.setItem('error_log', JSON.stringify(this.errors));
     } catch (error) {
       if (process.env.NODE_ENV === 'development') {
-        console.error('Failed to persist errors:', error);
       }
     }
   }

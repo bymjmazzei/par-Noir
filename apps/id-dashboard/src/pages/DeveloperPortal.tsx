@@ -1,15 +1,20 @@
 import React, { useState, useEffect } from 'react';
 import { LicenseModal } from '../components/LicenseModal';
 import { LicenseVerification, LicenseInfo } from '../utils/licenseVerification';
+import { DataPointProposalModal } from '../components/DataPointProposalModal';
+import { ZKPGenerator } from '../types/standardDataPoints';
 
 export const DeveloperPortal: React.FC = () => {
   const [licenseInfo, setLicenseInfo] = useState<LicenseInfo | null>(null);
   const [showLicenseModal, setShowLicenseModal] = useState(false);
+  const [showProposalModal, setShowProposalModal] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [currentTheme, setCurrentTheme] = useState<'dark' | 'light'>('dark');
+  const [pendingProposals, setPendingProposals] = useState<any[]>([]);
 
   useEffect(() => {
     loadLicenseInfo();
+    loadPendingProposals();
   }, []);
 
   useEffect(() => {
@@ -41,7 +46,6 @@ export const DeveloperPortal: React.FC = () => {
         setLicenseInfo(licenseData);
       }
     } catch (error) {
-      console.error('Failed to load license info:', error);
     } finally {
       setIsLoading(false);
     }
@@ -50,6 +54,25 @@ export const DeveloperPortal: React.FC = () => {
   const handleLicensePurchased = async (newLicenseKey: string) => {
     setShowLicenseModal(false);
     loadLicenseInfo();
+  };
+
+  const loadPendingProposals = async () => {
+    try {
+      // Get current session info
+      const session = JSON.parse(localStorage.getItem('current_session') || '{}');
+      if (session.id && session.pnName && session.passcode) {
+        const proposals = await ZKPGenerator.getPendingProposals(session.id, session.pnName, session.passcode);
+        setPendingProposals(proposals);
+      } else {
+        setPendingProposals([]);
+      }
+    } catch (error) {
+      setPendingProposals([]);
+    }
+  };
+
+  const handleProposalSubmitted = (proposalId: string) => {
+    loadPendingProposals();
   };
 
   const copyCode = (button: React.MouseEvent<HTMLButtonElement>) => {
@@ -114,7 +137,17 @@ export const DeveloperPortal: React.FC = () => {
             {!licenseInfo && (
               <button
                 onClick={() => setShowLicenseModal(true)}
-                className="px-4 py-2 bg-primary hover:bg-hover text-bg-primary rounded-lg font-medium transition-colors"
+                className="px-4 py-2 rounded-lg font-medium transition-colors"
+                style={{
+                  backgroundColor: '#3b82f6',
+                  color: '#ffffff'
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.backgroundColor = '#2563eb';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.backgroundColor = '#3b82f6';
+                }}
               >
                 Purchase Commercial License
               </button>
@@ -201,9 +234,7 @@ const sdk = createIdentitySDK({
                   <pre className="text-sm text-text-primary"><code>{`const identity = await sdk.createIdentity({
   name: "User Name",
   email: "user@example.com"
-});
-
-console.log("Identity created:", identity.id);`}</code></pre>
+});`}</code></pre>
                   <button onClick={copyCode} className="absolute top-2 right-2 text-primary hover:text-accent text-sm">Copy</button>
                 </div>
               </div>
@@ -294,6 +325,93 @@ console.log("Identity created:", identity.id);`}</code></pre>
           </div>
         </section>
 
+        {/* Data Point Proposals Section */}
+        <section id="data-point-proposals" className="py-20">
+          <div className="text-center mb-16">
+            <h2 className="text-3xl lg:text-4xl font-bold text-text-primary mb-4">Standard Data Points</h2>
+            <p className="text-xl text-text-secondary">Propose new standard data points for the global library.</p>
+          </div>
+          
+          <div className="grid lg:grid-cols-2 gap-8 mb-8">
+            {/* Propose New Data Point */}
+            <div className="bg-secondary rounded-lg p-8">
+              <div className="w-16 h-16 bg-green-500 bg-opacity-20 rounded-lg flex items-center justify-center mb-6">
+                <svg className="w-8 h-8 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6"/>
+                </svg>
+              </div>
+              <h3 className="text-xl font-semibold text-text-primary mb-4">Propose New Data Point</h3>
+              <p className="text-text-secondary mb-6">
+                Suggest new standard data points that can be used by all developers. 
+                Approved proposals become part of the global library.
+              </p>
+              <button
+                onClick={() => setShowProposalModal(true)}
+                className="inline-flex items-center px-6 py-3 bg-primary hover:bg-hover text-bg-primary rounded-lg font-medium transition-colors"
+              >
+                <span>Propose Data Point</span>
+                <svg className="ml-2 w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 12h14m-7-7l7 7-7 7"/>
+                </svg>
+              </button>
+            </div>
+
+            {/* View Pending Proposals */}
+            <div className="bg-secondary rounded-lg p-8">
+              <div className="w-16 h-16 bg-blue-500 bg-opacity-20 rounded-lg flex items-center justify-center mb-6">
+                <svg className="w-8 h-8 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/>
+                </svg>
+              </div>
+              <h3 className="text-xl font-semibold text-text-primary mb-4">Pending Proposals</h3>
+              <p className="text-text-secondary mb-6">
+                Review and vote on data point proposals from the community. 
+                Help shape the future of standardized data collection.
+              </p>
+              <div className="text-center">
+                <div className="text-3xl font-bold text-text-primary mb-2">{pendingProposals.length}</div>
+                <div className="text-text-secondary">Pending Proposals</div>
+              </div>
+            </div>
+          </div>
+
+          {/* Pending Proposals List */}
+          {pendingProposals.length > 0 && (
+            <div className="bg-secondary rounded-lg p-6">
+              <h3 className="text-lg font-semibold text-text-primary mb-4">Recent Proposals</h3>
+              <div className="space-y-4">
+                {pendingProposals.slice(0, 3).map((proposal) => (
+                  <div key={proposal.id} className="bg-bg-primary rounded-lg p-4 border border-border">
+                    <div className="flex items-start justify-between">
+                      <div className="flex-1">
+                        <h4 className="font-medium text-text-primary mb-1">{proposal.name}</h4>
+                        <p className="text-sm text-text-secondary mb-2">{proposal.description}</p>
+                        <div className="flex items-center space-x-4 text-xs text-text-secondary">
+                          <span>Proposed by: {proposal.proposedBy}</span>
+                          <span>Category: {proposal.category}</span>
+                          <span>Votes: {proposal.votes.upvotes - proposal.votes.downvotes}</span>
+                        </div>
+                      </div>
+                      <div className="flex items-center space-x-2">
+                        <button className="px-3 py-1 bg-green-500 text-white rounded text-sm hover:bg-green-600">
+                          Vote
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              {pendingProposals.length > 3 && (
+                <div className="text-center mt-4">
+                  <button className="text-primary hover:text-accent font-medium">
+                    View All {pendingProposals.length} Proposals →
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+        </section>
+
         {/* Community Section */}
         <section id="community" className="py-20">
           <div className="text-center mb-16">
@@ -341,6 +459,15 @@ console.log("Identity created:", identity.id);`}</code></pre>
           isOpen={showLicenseModal}
           onClose={() => setShowLicenseModal(false)}
           onLicensePurchased={handleLicensePurchased}
+        />
+      )}
+
+      {/* Data Point Proposal Modal */}
+      {showProposalModal && (
+        <DataPointProposalModal
+          isOpen={showProposalModal}
+          onClose={() => setShowProposalModal(false)}
+          onProposalSubmitted={handleProposalSubmitted}
         />
       )}
     </div>
