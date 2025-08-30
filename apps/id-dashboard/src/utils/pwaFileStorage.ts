@@ -50,7 +50,6 @@ export class PWAFileStorage {
       
       // PWA file storage initialized
     } catch (error) {
-      console.error('Failed to initialize PWA file storage:', error);
       throw new Error('PWA file storage not available');
     }
   }
@@ -64,7 +63,6 @@ export class PWAFileStorage {
     try {
       await this.rootHandle.getDirectoryHandle(dirName, { create: true });
     } catch (error) {
-      console.error(`Failed to create directory ${dirName}:`, error);
       throw error;
     }
   }
@@ -96,7 +94,6 @@ export class PWAFileStorage {
         version: 1
       });
     } catch (error) {
-      console.error('Failed to store ID file:', error);
       throw error;
     }
   }
@@ -133,14 +130,12 @@ export class PWAFileStorage {
               lastAccessed: metadata?.lastAccessed || new Date().toISOString()
             });
           } catch (error) {
-            console.error(`Failed to load ID file ${filename}:`, error);
           }
         }
       }
       
       return files;
     } catch (error) {
-      console.error('Failed to load ID files:', error);
       return [];
     }
   }
@@ -184,7 +179,6 @@ export class PWAFileStorage {
         await this.deleteMetadata(oldFilename);
       }
     } catch (error) {
-      console.error('Failed to update nickname:', error);
       throw error;
     }
   }
@@ -213,7 +207,6 @@ export class PWAFileStorage {
       // Delete metadata
       await this.deleteMetadata(filename);
     } catch (error) {
-      console.error('Failed to delete ID file:', error);
       throw error;
     }
   }
@@ -232,7 +225,6 @@ export class PWAFileStorage {
       await writable.write(JSON.stringify(metadata));
       await writable.close();
     } catch (error) {
-      console.error('Failed to store metadata:', error);
       throw error;
     }
   }

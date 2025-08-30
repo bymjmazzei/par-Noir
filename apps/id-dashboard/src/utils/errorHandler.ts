@@ -209,7 +209,6 @@ export class ErrorHandler {
    */
   private logError(errorEvent: ErrorEvent): void {
     if (this.config.enableConsoleLogging && !this.isProduction) {
-      console.error('Error:', errorEvent.message, errorEvent.context);
     }
 
     if (this.config.enableRemoteLogging && this.isProduction) {
@@ -222,7 +221,6 @@ export class ErrorHandler {
    */
   private logWarning(warningEvent: ErrorEvent): void {
     if (this.config.enableConsoleLogging && !this.isProduction) {
-      console.warn('Warning:', warningEvent.message, warningEvent.context);
     }
   }
 
@@ -412,7 +410,6 @@ export class ErrorHandler {
       localStorage.setItem('error_log', JSON.stringify(errorsToStore));
     } catch (error) {
       if (process.env.NODE_ENV === 'development') {
-        console.error('Failed to persist errors to localStorage:', error);
       }
     }
   }
@@ -438,7 +435,6 @@ export class ErrorHandler {
       });
     } catch (error) {
       if (process.env.NODE_ENV === 'development') {
-        console.error('Failed to send error to remote logging:', error);
       }
     }
   }
@@ -465,7 +461,6 @@ export class ErrorHandler {
       });
     } catch (error) {
       if (process.env.NODE_ENV === 'development') {
-        console.error('Failed to send error to analytics:', error);
       }
     }
   }

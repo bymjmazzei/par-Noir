@@ -1,3 +1,5 @@
+import { StandardDataPoint, ZKPProof, DataPointProposal } from './standardDataPoints';
+
 // Core Identity Types
 export interface Identity {
   id: string;
@@ -134,14 +136,62 @@ export interface ComplianceData {
 
 export interface DataCollectionRequest {
   platform: string;
-  fields: {
-    [key: string]: {
-      required: boolean;
-      type: 'string' | 'number' | 'boolean' | 'date' | 'file';
-      description: string;
-      validation?: RegExp | ((value: any) => boolean);
-    };
-  };
+  dataPoints: string[]; // Array of standard data point IDs
+  verificationLevel?: 'basic' | 'enhanced' | 'verified';
+  expirationDays?: number;
   consentText: string;
   dataUsage: string;
+  purpose: string;
+}
+
+export interface DataCollectionResponse {
+  success: boolean;
+  proofs: ZKPProof[];
+  dataPoints: string[];
+  timestamp: string;
+  expiresAt?: string;
+}
+
+export interface StandardDataPointRequest {
+  dataPointId: string;
+  platform: string;
+  purpose: string;
+  verificationLevel?: 'basic' | 'enhanced' | 'verified';
+  expirationDays?: number;
+}
+
+export interface StandardDataPointResponse {
+  success: boolean;
+  proof: ZKPProof;
+  dataPoint: StandardDataPoint;
+}
+
+export interface DataPointProposalRequest {
+  name: string;
+  description: string;
+  category: 'identity' | 'verification' | 'preferences' | 'compliance' | 'location';
+  dataType: 'string' | 'number' | 'boolean' | 'date' | 'object';
+  requiredFields: string[];
+  optionalFields?: string[];
+  validation?: any;
+  examples: string[];
+  useCase: string;
+  proposedBy: string;
+}
+
+export interface DataPointProposalResponse {
+  success: boolean;
+  proposalId?: string;
+  error?: string;
+}
+
+export interface VoteRequest {
+  proposalId: string;
+  voterId: string;
+  vote: 'upvote' | 'downvote';
+}
+
+export interface VoteResponse {
+  success: boolean;
+  error?: string;
 } 

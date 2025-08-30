@@ -229,7 +229,6 @@ export class IdentityCrypto {
    */
   static async generateRecoveryKeySet(_identityId: string, totalKeys: number = 5): Promise<string[]> {
     try {
-      console.log('Starting recovery key generation...');
       const recoveryKeys: string[] = [];
       const purposes = ['personal', 'legal', 'insurance', 'will', 'emergency'];
       
@@ -376,7 +375,6 @@ export class IdentityCrypto {
    */
   private static async legacyDecrypt(encryptedData: EncryptedData, passcode: string): Promise<string> {
     try {
-      console.log('Using legacy decryption method...');
       
       const encoder = new TextEncoder();
       const passcodeBuffer = encoder.encode(passcode);
@@ -398,7 +396,6 @@ export class IdentityCrypto {
       
       for (const params of parameterSets) {
         try {
-          console.log(`Trying decryption with ${params.iterations} iterations and ${params.hash}...`);
           
           const keyMaterial = await window.crypto.subtle.importKey(
             'raw',
@@ -432,11 +429,9 @@ export class IdentityCrypto {
           
           // Try to parse as JSON to validate it's correct
           JSON.parse(decryptedData);
-          console.log(`Successfully decrypted with ${params.iterations} iterations and ${params.hash}`);
           return decryptedData;
           
         } catch (paramError) {
-          console.log(`Failed with ${params.iterations} iterations and ${params.hash}:`, paramError);
           continue; // Try next parameter set
         }
       }

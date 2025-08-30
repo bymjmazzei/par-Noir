@@ -30,7 +30,6 @@ export class IntegrationConfigManager {
         this.config = JSON.parse(stored);
       }
     } catch (error) {
-      console.error('Failed to load integration config:', error);
       this.config = {};
     }
   }
@@ -42,7 +41,6 @@ export class IntegrationConfigManager {
     try {
       localStorage.setItem(this.STORAGE_KEY, JSON.stringify(this.config));
     } catch (error) {
-      console.error('Failed to save integration config:', error);
     }
   }
 
@@ -154,7 +152,7 @@ export class IntegrationConfigManager {
   static getEnvVar(key: string): string {
     // First try process.env (for server-side)
     if (typeof process !== 'undefined' && process.env && process.env[key]) {
-      return process.env[key];
+      return process.env[key] || '';
     }
     
     // Then try window (for client-side)
@@ -209,7 +207,6 @@ export class IntegrationConfigManager {
       this.setAllConfig(config);
       return true;
     } catch (error) {
-      console.error('Failed to import configuration:', error);
       return false;
     }
   }

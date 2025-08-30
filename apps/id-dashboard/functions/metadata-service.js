@@ -6,7 +6,7 @@ class MetadataService {
   constructor() {
     // Use Pinata IPFS with your API key
     this.ipfsUrl = process.env.IPFS_NODE_URL || 'https://api.pinata.cloud';
-    this.pinataApiKey = process.env.PINATA_API_KEY;
+    this.pinataApiKey = process.env.REACT_APP_PINATA_API_KEY;
     this.pinataSecretKey = process.env.PINATA_SECRET_KEY || functions.config().pinata?.secret_key;
     this.isInitialized = true;
   }

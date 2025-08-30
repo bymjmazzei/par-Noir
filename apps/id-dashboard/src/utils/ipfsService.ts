@@ -1,9 +1,17 @@
-// IPFS service using Pinata for decentralized file storage
-import { PinataSDK } from '@pinata/sdk';
+// IPFS service using direct Pinata API calls for decentralized file storage
+// This avoids the deprecated SDK and axios vulnerabilities
 
 export interface IPFSConfig {
   apiKey: string;
+  secretKey: string;
   gatewayUrl: string;
+}
+
+export interface IPFSUploadResult {
+  cid: string;
+  url: string;
+  size: number;
+  name: string;
 }
 
 export interface IPFSFile {
@@ -14,166 +22,78 @@ export interface IPFSFile {
   uploadedAt: string;
 }
 
-export interface IPFSUploadResult {
-  cid: string;
-  url: string;
-  size: number;
-  name: string;
-}
-
-export class IPFSService {
-  private config: IPFSConfig;
-  private pinata: PinataSDK | null = null;
+class IPFSService {
+  private config: IPFSConfig | null = null;
   private isInitialized = false;
 
-  constructor(config: IPFSConfig) {
-    this.config = config;
-  }
-
-  async initialize(): Promise<void> {
-    if (this.isInitialized) return;
-
+  async initialize(config: IPFSConfig): Promise<void> {
     try {
-      // Initialize Pinata SDK
-      this.pinata = new PinataSDK({ pinataJWTKey: this.config.apiKey });
-      
-      if (process.env.NODE_ENV === 'development') {
-        console.log('✅ Pinata IPFS service initialized');
-      }
-      
+      this.config = config;
       this.isInitialized = true;
     } catch (error) {
-      if (process.env.NODE_ENV === 'development') {
-        console.error('❌ Failed to initialize Pinata IPFS service:', error);
-      }
-      throw error;
+      throw new Error('Failed to initialize IPFS service');
     }
   }
 
-  async uploadFile(file: File, metadata?: any): Promise<IPFSUploadResult> {
-    if (!this.isInitialized) {
-      await this.initialize();
-    }
-
-    if (!this.pinata) {
-      throw new Error('Pinata client not initialized');
+  async uploadFile(data: any, name: string = 'data.json'): Promise<IPFSUploadResult> {
+    if (!this.isInitialized || !this.config) {
+      throw new Error('IPFS service not initialized');
     }
 
     try {
-      // Prepare metadata for Pinata
-      const pinataMetadata = {
-        name: file.name,
-        keyvalues: {
-          ...metadata,
-          uploadedAt: new Date().toISOString(),
-          fileType: file.type,
-          fileSize: file.size
-        }
-      };
-
-      // Upload file to Pinata
-      const result = await this.pinata.pinFileToIPFS(file, {
-        pinataMetadata: pinataMetadata
-      });
-
-      const uploadResult: IPFSUploadResult = {
-        cid: result.IpfsHash,
-        url: `${this.config.gatewayUrl}/ipfs/${result.IpfsHash}`,
-        size: file.size,
-        name: file.name
-      };
-
-      if (process.env.NODE_ENV === 'development') {
-        console.log(`✅ File uploaded to IPFS: ${result.IpfsHash}`);
-      }
-
-      return uploadResult;
-    } catch (error) {
-      if (process.env.NODE_ENV === 'development') {
-        console.error('❌ Failed to upload file to IPFS:', error);
-      }
-      throw error;
-    }
-  }
-
-  async uploadIdentityFile(identityData: any, filename: string): Promise<IPFSUploadResult> {
-    if (!this.isInitialized) {
-      await this.initialize();
-    }
-
-    if (!this.pinata) {
-      throw new Error('Pinata client not initialized');
-    }
-
-    try {
-      // Convert identity data to JSON string
-      const jsonData = JSON.stringify(identityData, null, 2);
-      const blob = new Blob([jsonData], { type: 'application/json' });
+      // Convert data to JSON string
+      const jsonData = JSON.stringify(data);
       
-      // Create a File object from the blob
-      const file = new File([blob], filename, { type: 'application/json' });
+      // Create a blob from the JSON data
+      const blob = new Blob([jsonData], { type: 'application/json' });
+      const file = new File([blob], name, { type: 'application/json' });
 
-      // Prepare metadata for identity file
+      // Create form data
+      const formData = new FormData();
+      formData.append('file', file);
+
+      // Add metadata
       const metadata = {
-        type: 'identity-backup',
-        version: '1.0',
-        timestamp: new Date().toISOString(),
-        identityName: identityData.nickname || 'unknown'
-      };
-
-      return await this.uploadFile(file, metadata);
-    } catch (error) {
-      if (process.env.NODE_ENV === 'development') {
-        console.error('❌ Failed to upload identity file:', error);
-      }
-      throw error;
-    }
-  }
-
-  async uploadJSON(data: any, name: string): Promise<IPFSUploadResult> {
-    if (!this.isInitialized) {
-      await this.initialize();
-    }
-
-    if (!this.pinata) {
-      throw new Error('Pinata client not initialized');
-    }
-
-    try {
-      // Upload JSON data to Pinata
-      const result = await this.pinata.pinJSONToIPFS(data, {
-        pinataMetadata: {
-          name: name,
-          keyvalues: {
-            type: 'json-data',
-            uploadedAt: new Date().toISOString()
-          }
+        name: name,
+        keyvalues: {
+          type: 'json-data',
+          uploadedAt: new Date().toISOString()
         }
+      };
+      formData.append('pinataMetadata', JSON.stringify(metadata));
+
+      // Upload to Pinata using direct API
+      const response = await fetch('https://api.pinata.cloud/pinning/pinFileToIPFS', {
+        method: 'POST',
+        headers: {
+          'pinata_api_key': this.config.apiKey,
+          'pinata_secret_api_key': this.config.secretKey
+        },
+        body: formData
       });
+
+      if (!response.ok) {
+        throw new Error(`IPFS upload failed: ${response.status} ${response.statusText}`);
+      }
+
+      const result = await response.json();
 
       const uploadResult: IPFSUploadResult = {
         cid: result.IpfsHash,
         url: `${this.config.gatewayUrl}/ipfs/${result.IpfsHash}`,
-        size: JSON.stringify(data).length,
+        size: jsonData.length,
         name: name
       };
 
-      if (process.env.NODE_ENV === 'development') {
-        console.log(`✅ JSON uploaded to IPFS: ${result.IpfsHash}`);
-      }
-
       return uploadResult;
     } catch (error) {
-      if (process.env.NODE_ENV === 'development') {
-        console.error('❌ Failed to upload JSON to IPFS:', error);
-      }
-      throw error;
+      throw new Error('Failed to upload file to IPFS');
     }
   }
 
   async getFile(cid: string): Promise<Response> {
     try {
-      const response = await fetch(`${this.config.gatewayUrl}/ipfs/${cid}`);
+      const response = await fetch(`${this.config!.gatewayUrl}/ipfs/${cid}`);
       
       if (!response.ok) {
         throw new Error(`Failed to fetch file: ${response.statusText}`);
@@ -181,10 +101,7 @@ export class IPFSService {
 
       return response;
     } catch (error) {
-      if (process.env.NODE_ENV === 'development') {
-        console.error('❌ Failed to get file from IPFS:', error);
-      }
-      throw error;
+      throw new Error('Failed to fetch file from IPFS');
     }
   }
 
@@ -193,10 +110,7 @@ export class IPFSService {
       const response = await this.getFile(cid);
       return await response.json();
     } catch (error) {
-      if (process.env.NODE_ENV === 'development') {
-        console.error('❌ Failed to get JSON from IPFS:', error);
-      }
-      throw error;
+      throw new Error('Failed to fetch JSON file from IPFS');
     }
   }
 
@@ -205,27 +119,30 @@ export class IPFSService {
       const response = await this.getFile(cid);
       return await response.text();
     } catch (error) {
-      if (process.env.NODE_ENV === 'development') {
-        console.error('❌ Failed to get text from IPFS:', error);
-      }
-      throw error;
+      throw new Error('Failed to fetch text file from IPFS');
     }
   }
 
   async listFiles(): Promise<IPFSFile[]> {
-    if (!this.isInitialized) {
-      await this.initialize();
-    }
-
-    if (!this.pinata) {
-      throw new Error('Pinata client not initialized');
+    if (!this.isInitialized || !this.config) {
+      throw new Error('IPFS service not initialized');
     }
 
     try {
       // Get list of pinned files from Pinata
-      const result = await this.pinata.pinList({
-        status: 'pinned'
+      const response = await fetch('https://api.pinata.cloud/pinning/pinList?status=pinned', {
+        method: 'GET',
+        headers: {
+          'pinata_api_key': this.config.apiKey,
+          'pinata_secret_api_key': this.config.secretKey
+        }
       });
+
+      if (!response.ok) {
+        throw new Error(`Failed to list files: ${response.statusText}`);
+      }
+
+      const result = await response.json();
 
       const files: IPFSFile[] = result.rows.map((item: any) => ({
         cid: item.ipfs_pin_hash,
@@ -235,59 +152,79 @@ export class IPFSService {
         uploadedAt: item.date_pinned || new Date().toISOString()
       }));
 
-      if (process.env.NODE_ENV === 'development') {
-        console.log(`✅ Found ${files.length} files on IPFS`);
-      }
-
       return files;
     } catch (error) {
-      if (process.env.NODE_ENV === 'development') {
-        console.error('❌ Failed to list files from IPFS:', error);
-      }
-      throw error;
+      throw new Error('Failed to list IPFS files');
     }
   }
 
   async deleteFile(cid: string): Promise<void> {
-    if (!this.isInitialized) {
-      await this.initialize();
-    }
-
-    if (!this.pinata) {
-      throw new Error('Pinata client not initialized');
+    if (!this.isInitialized || !this.config) {
+      throw new Error('IPFS service not initialized');
     }
 
     try {
-      // Unpin file from Pinata
-      await this.pinata.unpin(cid);
+      // Unpin the file from Pinata
+      const response = await fetch(`https://api.pinata.cloud/pinning/unpin/${cid}`, {
+        method: 'DELETE',
+        headers: {
+          'pinata_api_key': this.config.apiKey,
+          'pinata_secret_api_key': this.config.secretKey
+        }
+      });
 
-      if (process.env.NODE_ENV === 'development') {
-        console.log(`✅ File unpinned from IPFS: ${cid}`);
+      if (!response.ok) {
+        throw new Error(`Failed to delete file: ${response.statusText}`);
       }
     } catch (error) {
-      if (process.env.NODE_ENV === 'development') {
-        console.error('❌ Failed to delete file from IPFS:', error);
-      }
-      throw error;
+      throw new Error('Failed to delete IPFS file');
     }
   }
 
-  getConfig(): IPFSConfig {
-    return { ...this.config };
+  async pinFile(cid: string): Promise<void> {
+    if (!this.isInitialized || !this.config) {
+      throw new Error('IPFS service not initialized');
+    }
+
+    try {
+      // Pin a hash to IPFS
+      const response = await fetch('https://api.pinata.cloud/pinning/pinHashToIPFS', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'pinata_api_key': this.config.apiKey,
+          'pinata_secret_api_key': this.config.secretKey
+        },
+        body: JSON.stringify({
+          hashToPin: cid
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error(`Failed to pin file: ${response.statusText}`);
+      }
+    } catch (error) {
+      throw new Error('Failed to pin IPFS file');
+    }
   }
 
-  async updateConfig(newConfig: Partial<IPFSConfig>): Promise<void> {
-    this.config = { ...this.config, ...newConfig };
-    
-    // Reinitialize with new config
-    this.isInitialized = false;
-    this.pinata = null;
-    await this.initialize();
+  async unpinFile(cid: string): Promise<void> {
+    await this.deleteFile(cid);
+  }
+
+  // Utility method to check if IPFS is available
+  isAvailable(): boolean {
+    return this.isInitialized && this.config !== null;
+  }
+
+  // Get gateway URL for a CID
+  getGatewayUrl(cid: string): string {
+    if (!this.config) {
+      throw new Error('IPFS service not configured');
+    }
+    return `${this.config.gatewayUrl}/ipfs/${cid}`;
   }
 }
 
-// Create IPFS service instance with environment variables
-export const ipfsService = new IPFSService({
-  apiKey: process.env.REACT_APP_PINATA_API_KEY || '',
-  gatewayUrl: process.env.REACT_APP_IPFS_GATEWAY_URL || 'https://gateway.pinata.cloud'
-});
+// Export singleton instance
+export const ipfsService = new IPFSService();

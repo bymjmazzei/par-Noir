@@ -28,10 +28,8 @@ export const SimpleIdentityList: React.FC<SimpleIdentityListProps> = ({
       const storedIdentities = await storage.getIdentities();
       setIdentities(storedIdentities);
       
-      console.log('Loaded identities:', storedIdentities.length);
     } catch (err) {
       setError('Failed to load identities');
-      console.error('Error loading identities:', err);
     } finally {
       setLoading(false);
     }
@@ -48,7 +46,6 @@ export const SimpleIdentityList: React.FC<SimpleIdentityListProps> = ({
       await loadIdentities(); // Reload the list
     } catch (err) {
       setError('Failed to delete identity');
-      console.error('Error deleting identity:', err);
     }
   };
 

@@ -1,5 +1,29 @@
 import { IdentityCrypto } from './crypto';
 
+export interface NotificationEvent {
+  id: string;
+  type: 'recovery-request' | 'custodian-approval' | 'integration-update' | 'security-alert' | 'sync-complete' | 'device-pairing' | 'data-request' | 'system-update';
+  timestamp: string;
+  sender: string; // Who sent the notification (pN ID)
+  encryptedPayload: string; // Encrypted notification data
+  signature: string; // Cryptographic signature
+  priority: 'low' | 'medium' | 'high' | 'critical';
+}
+
+export interface NotificationSettings {
+  enabled: boolean;
+  recoveryRequests: boolean;
+  custodianApprovals: boolean;
+  integrationUpdates: boolean;
+  securityAlerts: boolean;
+  syncNotifications: boolean;
+  devicePairing: boolean;
+  sound: boolean;
+  vibration: boolean;
+  showInApp: boolean;
+  showSystem: boolean;
+}
+
 export interface SecureMetadata {
   // Encrypted with ID file credentials
   encryptedData: string; // Base64 encoded encrypted JSON
@@ -8,6 +32,64 @@ export interface SecureMetadata {
   version: string;
   identityId: string; // Reference to the ID file
   updatedAt: string;
+  notifications?: {
+    unread: NotificationEvent[];
+    read: NotificationEvent[];
+    lastChecked: string;
+    settings: NotificationSettings;
+  };
+  dataPoints?: {
+    access: DataPointAccess[]; // Which data points this pN has granted access to
+    proposals: DataPointProposal[]; // Proposals submitted by this pN
+    attestedData: AttestedDataPoint[]; // Data points attested by this pN
+    globalSettings: {
+      [dataPointId: string]: {
+        enabled: boolean;
+        defaultPrivacy: 'public' | 'private' | 'selective';
+        lastUpdated: string;
+      };
+    };
+  };
+}
+
+export interface DataPointAccess {
+  dataPointId: string;
+  grantedTo: string[]; // Array of platform/tool IDs
+  grantedAt: string;
+  expiresAt?: string;
+  permissions: string[]; // What the platform can do with this data point
+  lastUsed?: string;
+}
+
+export interface AttestedDataPoint {
+  dataPointId: string;
+  attestedAt: string;
+  attestedBy: string; // pN ID of the user who attested
+  dataType: 'attested' | 'verified'; // attested = user claims, verified = notary verified
+  userData: any; // The actual data provided by user
+  zkpToken: string; // Generated ZKP proof token
+  expiresAt?: string;
+  lastUsed?: string;
+}
+
+export interface DataPointProposal {
+  id: string;
+  name: string;
+  description: string;
+  category: 'verification' | 'preferences' | 'compliance' | 'location';
+  dataType: 'string' | 'number' | 'boolean' | 'date' | 'object';
+  requiredFields: string[];
+  optionalFields?: string[];
+  examples: string[];
+  useCase: string;
+  proposedBy: string;
+  proposedAt: string;
+  status: 'pending' | 'approved' | 'rejected';
+  votes: {
+    upvotes: number;
+    downvotes: number;
+    voters: string[];
+  };
 }
 
 export interface MetadataContent {
@@ -17,6 +99,24 @@ export interface MetadataContent {
   recoveryKeys?: any[];
   syncedDevices?: any[];
   privacySettings?: any;
+  notifications?: {
+    unread: NotificationEvent[];
+    read: NotificationEvent[];
+    lastChecked: string;
+    settings: NotificationSettings;
+  };
+                dataPoints?: {
+                access: DataPointAccess[]; // Which data points this pN has granted access to
+                proposals: DataPointProposal[]; // Proposals submitted by this pN
+                attestedData: AttestedDataPoint[]; // Data points attested by this pN
+                globalSettings: {
+                  [dataPointId: string]: {
+                    enabled: boolean;
+                    defaultPrivacy: 'public' | 'private' | 'selective';
+                    lastUpdated: string;
+                  };
+                };
+              };
 }
 
 export class SecureMetadataCrypto {
@@ -46,7 +146,6 @@ export class SecureMetadataCrypto {
       };
     } catch (error) {
       if (process.env.NODE_ENV === 'development') {
-        console.error('Failed to encrypt metadata:', error);
       }
       throw new Error('Metadata encryption failed');
     }
@@ -72,7 +171,6 @@ export class SecureMetadataCrypto {
       return JSON.parse(decryptedString);
     } catch (error) {
       if (process.env.NODE_ENV === 'development') {
-        console.error('Failed to decrypt metadata:', error);
       }
       throw new Error('Metadata decryption failed - check your credentials');
     }
@@ -111,7 +209,6 @@ export class SecureMetadataCrypto {
       );
     } catch (error) {
       if (process.env.NODE_ENV === 'development') {
-        console.error('Failed to update metadata field:', error);
       }
       throw new Error('Metadata update failed');
     }

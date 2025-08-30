@@ -26,7 +26,6 @@ export class OrbitCloudAPI {
       return result.success;
     } catch (error) {
       if (process.env.NODE_ENV === 'development') {
-        console.error('Health check failed:', error);
       }
       return false;
     }

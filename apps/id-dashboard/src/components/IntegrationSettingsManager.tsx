@@ -219,7 +219,6 @@ export const IntegrationSettingsManager: React.FC<IntegrationSettingsManagerProp
         [integrationKey]: result.success ? 'success' : 'error' 
       }));
     } catch (error) {
-      console.error(`Error testing ${integrationKey}:`, error);
       setTestResults(prev => ({ 
         ...prev, 
         [integrationKey]: error instanceof Error ? error.message : 'Test failed' 
@@ -245,7 +244,6 @@ export const IntegrationSettingsManager: React.FC<IntegrationSettingsManagerProp
       setHasChanges(false);
       alert('Configuration saved successfully! Your API keys are now available throughout the application.');
     } catch (error) {
-      console.error('Error saving configuration:', error);
       alert('Failed to save configuration. Please try again.');
     }
   };

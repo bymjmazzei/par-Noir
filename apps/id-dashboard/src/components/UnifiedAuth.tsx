@@ -73,7 +73,6 @@ export const UnifiedAuth: React.FC<UnifiedAuthProps> = ({
       onAuthError?.(new Error('Authentication failed'));
       
     } catch (error) {
-      console.error('Authentication error:', error);
       setError(error instanceof Error ? error : new Error('Authentication failed'));
       onAuthError?.(error instanceof Error ? error : new Error('Authentication failed'));
     } finally {

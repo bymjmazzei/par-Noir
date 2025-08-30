@@ -246,7 +246,6 @@ export async function copyToClipboard(text: string): Promise<boolean> {
     return true;
   } catch (error) {
     if (process.env.NODE_ENV === 'development') {
-      console.error('Failed to copy to clipboard:', error);
     }
     return false;
   }

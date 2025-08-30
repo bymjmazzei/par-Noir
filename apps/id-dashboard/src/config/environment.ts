@@ -120,7 +120,6 @@ export const security = config.security;
 export const log = {
   debug: (message: string, ...args: any[]) => {
     if (config.logging.enableConsoleLogs && config.logging.level === 'debug') {
-      console.log(`[DEBUG] ${message}`, ...args);
     }
   },
   info: (message: string, ...args: any[]) => {
@@ -130,12 +129,10 @@ export const log = {
   },
   warn: (message: string, ...args: any[]) => {
     if (config.logging.enableConsoleLogs && ['debug', 'info', 'warn'].includes(config.logging.level)) {
-      console.warn(`[WARN] ${message}`, ...args);
     }
   },
   error: (message: string, ...args: any[]) => {
     if (config.logging.enableConsoleLogs && ['debug', 'info', 'warn', 'error'].includes(config.logging.level)) {
-      console.error(`[ERROR] ${message}`, ...args);
     }
   },
 };

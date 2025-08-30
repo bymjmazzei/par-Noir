@@ -298,7 +298,6 @@ export class RateLimiter {
         next();
       } catch (error) {
         // Log error but allow request to continue
-        console.error('Rate limiting error:', error);
         next();
       }
     };

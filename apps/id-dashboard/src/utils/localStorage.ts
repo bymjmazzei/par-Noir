@@ -128,7 +128,6 @@ class SecureLocalStorage {
       return new TextDecoder().decode(decrypted);
     } catch (error) {
       if (process.env.NODE_ENV === 'development') {
-        console.error('Failed to decrypt data:', error);
       }
       throw new Error('Failed to decrypt data');
     }
@@ -184,7 +183,6 @@ class SecureLocalStorage {
       // Check version compatibility
       if (item.version !== this.version) {
         if (process.env.NODE_ENV === 'development') {
-          console.warn('Version mismatch detected, data may be incompatible');
         }
       }
 
@@ -197,7 +195,6 @@ class SecureLocalStorage {
       // Check expiration
       if (Date.now() - item.timestamp > this.maxAge) {
         if (process.env.NODE_ENV === 'development') {
-          console.log('Data expired, removing from storage');
         }
         this.removeItem(key, useIndexedDB);
         return null;
@@ -206,7 +203,6 @@ class SecureLocalStorage {
       return item.data;
     } catch (error) {
       if (process.env.NODE_ENV === 'development') {
-        console.error('Failed to retrieve item from storage:', error);
       }
       return null;
     }

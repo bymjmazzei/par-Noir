@@ -81,7 +81,6 @@ export const QRCodeScanner: React.FC<QRCodeScannerProps> = ({
       }, 1000);
 
     } catch (err) {
-      console.error('Camera access error:', err);
       setError('Failed to access camera. Please ensure camera permissions are granted.');
       setIsScanning(false);
     }
@@ -119,7 +118,6 @@ export const QRCodeScanner: React.FC<QRCodeScannerProps> = ({
         const code = jsQR(imageData.data, imageData.width, imageData.height);
 
         if (code) {
-          console.log('QR Code detected:', code.data);
           onScan(code.data);
           stopCamera();
           return;

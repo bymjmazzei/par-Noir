@@ -67,7 +67,6 @@ const PWALockScreen: React.FC<PWALockScreenProps> = ({ isLocked, onUnlock, onFal
         setError('Biometric authentication was cancelled');
       }
     } catch (err) {
-      console.error('Biometric authentication error:', err);
       setError('Biometric authentication failed. Please try again or use passcode.');
     } finally {
       setIsAuthenticating(false);

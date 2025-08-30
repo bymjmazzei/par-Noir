@@ -44,7 +44,6 @@ export class CoinbaseProxy {
    * Create a checkout via direct API call (works without Firebase Functions)
    */
   static async createCheckoutDirect(checkoutData: CheckoutRequest): Promise<CoinbaseCheckout> {
-    console.log('Attempting direct API call to Coinbase Commerce...');
     
     try {
       // For now, we'll use a direct approach that works with static hosting
@@ -62,10 +61,8 @@ export class CoinbaseProxy {
         metadata: checkoutData.metadata
       };
       
-      console.log('Created checkout URL:', checkout.hosted_url);
       return checkout;
     } catch (error) {
-      console.error('Direct API call failed:', error);
       throw error;
     }
   }
@@ -74,7 +71,6 @@ export class CoinbaseProxy {
    * Create a checkout via direct Coinbase API (permanent solution)
    */
   static async createCheckoutViaProxy(checkoutData: CheckoutRequest): Promise<CoinbaseCheckout> {
-    console.log('Creating checkout via direct Coinbase API...');
     
     try {
       // Use direct Coinbase API call
@@ -97,12 +93,10 @@ export class CoinbaseProxy {
 
       if (!response.ok) {
         const errorData = await response.json();
-        console.error('Coinbase API error:', errorData);
         throw new Error(errorData.error?.message || response.statusText);
       }
 
       const result = await response.json();
-      console.log('Direct API response:', result);
       
       // Handle different possible field names for hosted_url
       const checkout = result.data;
@@ -113,12 +107,10 @@ export class CoinbaseProxy {
       // If still no hosted_url, create one using the checkout ID
       if (!checkout.hosted_url) {
         checkout.hosted_url = `https://commerce.coinbase.com/checkout/${checkout.id}`;
-        console.log('Created fallback hosted_url:', checkout.hosted_url);
       }
       
       return checkout;
     } catch (error) {
-      console.error('Direct API call failed:', error);
       throw error;
     }
   }
@@ -129,7 +121,6 @@ export class CoinbaseProxy {
   static createDirectCheckoutURL(checkoutData: CheckoutRequest): string {
     // For development, show a message that the server needs to be running
     // In production, this would create a proper checkout URL
-    console.warn('⚠️ Development Mode: Server not running. Please start the server with: cd server && npm start');
     
     // Return a placeholder URL that shows the issue
     const placeholderUrl = `data:text/html,<html><body style="font-family: Arial, sans-serif; padding: 20px; text-align: center;"><h2>🚧 Development Mode</h2><p>The Coinbase Commerce server needs to be running.</p><p>Please run: <code>cd server && npm start</code></p><p>Then try again.</p></body></html>`;
@@ -141,13 +132,11 @@ export class CoinbaseProxy {
    * Smart checkout creation with direct API
    */
   static async createCheckout(checkoutData: CheckoutRequest): Promise<CoinbaseCheckout> {
-    console.log('Creating Coinbase checkout with direct API...');
 
     // Use the direct API approach (which is now the main method)
     try {
       return await this.createCheckoutViaProxy(checkoutData);
     } catch (error) {
-      console.error('Direct API call failed:', error);
       throw error;
     }
   }

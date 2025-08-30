@@ -97,7 +97,6 @@ export const SyncReceiver: React.FC<SyncReceiverProps> = ({ syncCode }) => {
         existingPNs.push(pnEntry);
         localStorage.setItem('pwa-identities', JSON.stringify(existingPNs));
       } catch (err) {
-        console.log('PWA storage not available, file downloaded to device');
       }
 
       // Clean up sync data

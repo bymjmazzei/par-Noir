@@ -301,7 +301,7 @@ export const ToolSettingsModal: React.FC<ToolSettingsModalProps> = ({
                                 type="checkbox"
                                 checked={tool.dataPoints.includes(key)}
                                 onChange={(e) => handleDataPointChange(key, e.target.checked)}
-                                disabled={localSettings.allowAllToolAccess || !globalSetting}
+                                disabled={!globalSetting}
                                 className="ml-2"
                               />
                             </div>

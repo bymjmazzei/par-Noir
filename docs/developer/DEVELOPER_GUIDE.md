@@ -10,10 +10,11 @@
 2. [Architecture Overview](#architecture-overview)
 3. [SDK Integration](#sdk-integration)
 4. [API Reference](#api-reference)
-5. [Security Best Practices](#security-best-practices)
-6. [Testing & Debugging](#testing--debugging)
-7. [Deployment](#deployment)
-8. [Contributing](#contributing)
+5. [pN Notifications](#pn-notifications)
+6. [Security Best Practices](#security-best-practices)
+7. [Testing & Debugging](#testing--debugging)
+8. [Deployment](#deployment)
+9. [Contributing](#contributing)
 
 ---
 
@@ -344,6 +345,76 @@ api.on('error', (error) => {
 - `tool.access.granted`
 - `tool.access.revoked`
 - `error`
+
+---
+
+## pN Notifications
+
+The pN Notifications system allows external services to send notifications directly to pN identities. Notifications are stored in the pN's metadata and automatically sync across all devices when the pN is unlocked.
+
+### Key Features
+
+- **🔐 Secure**: Notifications are encrypted with pN keys
+- **🔄 Cross-Device**: Automatically syncs to all pN devices
+- **🛡️ Access Control**: Third parties can only add, not read/modify
+- **⚡ Real-time**: Notifications appear immediately when pN is unlocked
+- **🗑️ Auto-cleanup**: Expired notifications are automatically removed
+
+### Documentation
+
+- **[pN Notifications API Reference](../api/PN_NOTIFICATIONS_API.md)**: Complete API documentation
+- **[pN Notification Events Guide](PN_NOTIFICATION_EVENTS_GUIDE.md)**: Developer guide for handling events
+- **[Notification Types](#notification-types)**: Overview of supported notification types
+
+### Quick Start
+
+```typescript
+import { NotificationAPI } from '@parnoir/notification-api';
+
+const api = new NotificationAPI({
+  apiKey: 'your-api-key',
+  baseURL: 'https://api.parnoir.com/v1'
+});
+
+// Send privacy settings update notification
+const result = await api.sendNotification({
+  targetIdentityId: 'pn-1234567890abcdef',
+  type: 'privacy-settings-update',
+  title: 'Privacy Settings Updated',
+  message: 'Your privacy level has been changed to Private.',
+  priority: 'medium',
+  actionUrl: '/dashboard/privacy',
+  metadata: {
+    setting: 'privacyLevel',
+    previousValue: 'public',
+    newValue: 'private'
+  },
+  senderId: 'privacy-service',
+  signature: 'verified-signature'
+});
+```
+
+### Notification Types
+
+| Type | Description | Priority | Use Case |
+|------|-------------|----------|----------|
+| `privacy-settings-update` | Privacy settings changed | Medium | Settings modifications |
+| `sharing-settings-update` | Sharing settings changed | Medium | Data sharing changes |
+| `security-alert` | Security-related events | High | Security incidents |
+| `recovery-request` | Identity recovery requests | High | Recovery processes |
+| `custodian-approval` | Custodian actions | Medium | Custodian management |
+| `integration-update` | Third-party integration changes | Low | Service connections |
+| `device-pairing` | Device pairing events | Medium | Device management |
+
+### Best Practices
+
+1. **Use Appropriate Priority**: Don't overuse high/critical priority
+2. **Include Relevant Metadata**: Provide context for the notification
+3. **Sign All Notifications**: Use cryptographic signatures for security
+4. **Handle Rate Limits**: Implement exponential backoff for retries
+5. **Provide Action URLs**: Help users take action on notifications
+
+For detailed implementation guidance, see the [pN Notification Events Guide](PN_NOTIFICATION_EVENTS_GUIDE.md).
 
 ---
 

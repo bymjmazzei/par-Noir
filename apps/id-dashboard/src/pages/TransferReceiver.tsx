@@ -31,8 +31,6 @@ const TransferReceiver: React.FC<TransferReceiverProps> = ({ transferId, onClose
     // Get transfer data from URL parameters (cross-device compatible)
     const urlParams = new URLSearchParams(window.location.search);
     const encodedData = urlParams.get('data');
-    console.log('TransferReceiver: Looking for transfer ID:', transferId);
-    console.log('TransferReceiver: Encoded data found:', !!encodedData);
     
     if (!encodedData) {
       setError('Transfer not found or expired');
@@ -42,16 +40,10 @@ const TransferReceiver: React.FC<TransferReceiverProps> = ({ transferId, onClose
     try {
       const decodedData = atob(encodedData);
       const transferData: TransferData = JSON.parse(decodedData);
-      console.log('TransferReceiver: Transfer data loaded:', transferData);
-      console.log('TransferReceiver: Expires at:', transferData.expiresAt);
-      console.log('TransferReceiver: Current time:', new Date().toISOString());
       
       // Check if transfer has expired
       const expiresAt = new Date(transferData.expiresAt);
       const now = new Date();
-      console.log('TransferReceiver: Expires at (parsed):', expiresAt);
-      console.log('TransferReceiver: Current time (parsed):', now);
-      console.log('TransferReceiver: Has expired:', expiresAt < now);
       
       if (expiresAt < now) {
         setError(`Transfer has expired. Expired at: ${expiresAt.toLocaleTimeString()}, Current time: ${now.toLocaleTimeString()}`);
@@ -60,7 +52,6 @@ const TransferReceiver: React.FC<TransferReceiverProps> = ({ transferId, onClose
 
       setTransferData(transferData);
     } catch (err) {
-      console.error('TransferReceiver: Error parsing transfer data:', err);
       setError('Invalid transfer data');
     }
   }, [transferId]);
@@ -85,17 +76,12 @@ const TransferReceiver: React.FC<TransferReceiverProps> = ({ transferId, onClose
       const { IPFSMetadataService } = await import('../utils/ipfsMetadataService');
       const ipfsService = new IPFSMetadataService();
       const originalPnFileData = await ipfsService.downloadIdentityData(transferData.ipfsCid);
-      console.log('Original pN file downloaded from IPFS:', transferData.ipfsCid);
-      console.log('Downloaded data:', JSON.stringify(originalPnFileData, null, 2));
 
       // Create downloadable pN file with the proper backup format
       const jsonString = JSON.stringify(originalPnFileData, null, 2);
-      console.log('JSON string for file:', jsonString);
-      console.log('JSON string length:', jsonString.length);
       
       // Create the file with JSON MIME type for cross-platform compatibility
       const pnFileBlob = new Blob([jsonString], { type: 'application/json' });
-      console.log('Blob size:', pnFileBlob.size);
       
       // Create filename with .json extension for cross-platform compatibility
       const cleanNickname = transferData.nickname
@@ -105,7 +91,6 @@ const TransferReceiver: React.FC<TransferReceiverProps> = ({ transferId, onClose
         .substring(0, 20);
       const filename = `${cleanNickname}-backup.json`;
       
-      console.log('File size:', pnFileBlob.size);
 
       // Trigger file download exactly like the export function
       const downloadUrl = URL.createObjectURL(pnFileBlob);
@@ -119,7 +104,6 @@ const TransferReceiver: React.FC<TransferReceiverProps> = ({ transferId, onClose
 
       // Delete the IPFS file after successful download
       await ipfsService.deleteIdentityData(transferData.ipfsCid);
-      console.log('IPFS file deleted after successful download:', transferData.ipfsCid);
 
       setSuccess('pN file downloaded successfully! You can now unlock it using the normal unlock flow.');
       setShowTransferModal(false);

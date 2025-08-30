@@ -60,7 +60,6 @@ export class PrivacyAnalytics {
       this.startSession();
     } catch (error) {
       if (process.env.NODE_ENV === 'development') {
-        console.error('Failed to initialize analytics:', error);
       }
     }
   }
@@ -138,7 +137,6 @@ export class PrivacyAnalytics {
     this.saveErrors();
     
     if (severity === 'critical' && process.env.NODE_ENV === 'development') {
-      console.error('Critical error tracked:', error);
     }
   }
 
@@ -297,7 +295,6 @@ export class PrivacyAnalytics {
       if (performance) this.performance = JSON.parse(performance);
     } catch (error) {
       if (process.env.NODE_ENV === 'development') {
-        console.error('Failed to load analytics settings:', error);
       }
     }
   }
@@ -310,7 +307,6 @@ export class PrivacyAnalytics {
       localStorage.setItem('analytics_events', JSON.stringify(this.events));
     } catch (error) {
       if (process.env.NODE_ENV === 'development') {
-        console.error('Failed to save analytics events:', error);
       }
     }
   }
@@ -323,7 +319,6 @@ export class PrivacyAnalytics {
       localStorage.setItem('analytics_errors', JSON.stringify(this.errors));
     } catch (error) {
       if (process.env.NODE_ENV === 'development') {
-        console.error('Failed to save analytics errors:', error);
       }
     }
   }
@@ -336,7 +331,6 @@ export class PrivacyAnalytics {
       localStorage.setItem('analytics_performance', JSON.stringify(this.performance));
     } catch (error) {
       if (process.env.NODE_ENV === 'development') {
-        console.error('Failed to save analytics performance:', error);
       }
     }
   }

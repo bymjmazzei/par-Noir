@@ -107,9 +107,10 @@ export const EnhancedPrivacyPanel: React.FC<EnhancedPrivacyPanelProps> = ({
                 </div>
                 <input
                   type="checkbox"
-                  checked={localSettings.allowAllToolAccess}
-                  onChange={(e) => handleGlobalSettingChange('allowAllToolAccess', e.target.checked)}
+                  checked={false}
+                  onChange={(e) => {}}
                   className="ml-4"
+                  disabled
                 />
               </label>
               
@@ -230,7 +231,7 @@ export const EnhancedPrivacyPanel: React.FC<EnhancedPrivacyPanelProps> = ({
                                 type="checkbox"
                                 checked={tool.dataPoints.includes(dataPointKey)}
                                 onChange={(e) => handleToolPermissionChange(toolId, dataPointKey, e.target.checked)}
-                                disabled={localSettings.allowAllToolAccess}
+                                disabled={false}
                                 className="ml-2"
                               />
                             </div>

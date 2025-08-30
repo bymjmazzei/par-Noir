@@ -14,20 +14,12 @@ const NotificationsButton: React.FC<NotificationsButtonProps> = ({ isPWA = false
   const [showSettings, setShowSettings] = useState(false);
 
   useEffect(() => {
-    const loadNotifications = () => {
+    const loadNotifications = async () => {
       // Only show notifications for the currently unlocked identity
-      const currentIdentity = notificationsService.getCurrentUnlockedIdentity();
-      
-      if (currentIdentity) {
-        const identityNotifications = notificationsService.getNotificationsForCurrentIdentity();
-        const unread = notificationsService.getUnreadCountForCurrentIdentity();
-        setNotifications(identityNotifications);
-        setUnreadCount(unread);
-      } else {
-        // No ID unlocked, show empty state
-        setNotifications([]);
-        setUnreadCount(0);
-      }
+      const notifications = await notificationsService.getNotifications();
+      const unread = await notificationsService.getUnreadCount();
+      setNotifications(notifications);
+      setUnreadCount(unread);
     };
 
     loadNotifications();
@@ -39,7 +31,7 @@ const NotificationsButton: React.FC<NotificationsButtonProps> = ({ isPWA = false
   }, []);
 
   const handleNotificationClick = async (notification: Notification) => {
-    await notificationsService.markAsRead(notification.id);
+    await notificationsService.markAsRead([notification.id]);
     
     // Navigate to action URL if available
     if (notification.actionUrl) {
@@ -49,37 +41,35 @@ const NotificationsButton: React.FC<NotificationsButtonProps> = ({ isPWA = false
     setShowDropdown(false);
     
     // Refresh notifications for current identity
-    const currentIdentity = notificationsService.getCurrentUnlockedIdentity();
-    if (currentIdentity) {
-      const identityNotifications = notificationsService.getNotificationsForCurrentIdentity();
-      const unread = notificationsService.getUnreadCountForCurrentIdentity();
-      setNotifications(identityNotifications);
-      setUnreadCount(unread);
-    }
+    const notifications = await notificationsService.getNotifications();
+    const unread = await notificationsService.getUnreadCount();
+    setNotifications(notifications);
+    setUnreadCount(unread);
   };
 
   const handleMarkAllAsRead = async () => {
-    await notificationsService.markAllAsRead();
-    const currentIdentity = notificationsService.getCurrentUnlockedIdentity();
-    if (currentIdentity) {
-      const identityNotifications = notificationsService.getNotificationsForCurrentIdentity();
-      const unread = notificationsService.getUnreadCountForCurrentIdentity();
-      setNotifications(identityNotifications);
-      setUnreadCount(unread);
-    }
+    const notifications = await notificationsService.getNotifications();
+    const notificationIds = notifications.map(n => n.id);
+    await notificationsService.markAsRead(notificationIds);
+    const updatedNotifications = await notificationsService.getNotifications();
+    const unread = await notificationsService.getUnreadCount();
+    setNotifications(updatedNotifications);
+    setUnreadCount(unread);
   };
 
   const handleClearAll = async () => {
     // Only clear notifications for the current identity
-    const currentIdentity = notificationsService.getCurrentUnlockedIdentity();
-    if (currentIdentity) {
-      const currentNotifications = notificationsService.getNotificationsForCurrentIdentity();
-      for (const notification of currentNotifications) {
-        await notificationsService.deleteNotification(notification.id);
-      }
-      setNotifications([]);
-      setUnreadCount(0);
+    const currentNotifications = await notificationsService.getNotifications();
+    for (const notification of currentNotifications) {
+      await notificationsService.deleteNotification(notification.id);
     }
+    setNotifications([]);
+    setUnreadCount(0);
+  };
+
+  const handleTestNotification = async () => {
+    await notificationsService.createTestNotification('Test User');
+    alert('Test notification sent!');
   };
 
   const getNotificationIcon = (type: Notification['type']) => {
@@ -168,6 +158,18 @@ const NotificationsButton: React.FC<NotificationsButtonProps> = ({ isPWA = false
           {showSettings && (
             <div className="p-4 border-b border-border bg-background-secondary">
               <h4 className="text-sm font-medium text-text-primary mb-3">Notification Settings</h4>
+              
+              {process.env.NODE_ENV === 'development' && (
+                <div className="mb-3">
+                  <button
+                    onClick={handleTestNotification}
+                    className="px-3 py-1 text-xs bg-primary text-white rounded hover:bg-accent transition-colors"
+                  >
+                    Send Test Notification
+                  </button>
+                </div>
+              )}
+              
               <div className="space-y-2 text-xs">
                 {Object.entries(notificationsService.getSettings()).map(([key, value]) => {
                   if (typeof value === 'boolean') {
@@ -199,7 +201,7 @@ const NotificationsButton: React.FC<NotificationsButtonProps> = ({ isPWA = false
               <div className="p-4 text-center text-text-secondary">
                 <div className="text-2xl mb-2">📭</div>
                 <p className="text-sm">
-                  {notificationsService.getCurrentUnlockedIdentity() 
+                  {notifications.length > 0 
                     ? 'No notifications for this ID' 
                     : 'Unlock an ID to see notifications'
                   }

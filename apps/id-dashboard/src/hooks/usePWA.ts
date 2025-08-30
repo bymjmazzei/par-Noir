@@ -74,49 +74,26 @@ export const usePWA = (): [PWAState, PWAHandlers] => {
   // Install the PWA
   const install = useCallback(async () => {
     if (process.env.NODE_ENV === 'development') {
-      console.log('Starting PWA installation...');
     }
     
-          if (!state.deferredPrompt) {
-        if (process.env.NODE_ENV === 'development') {
-          console.log('No deferred prompt available, trying synthetic event');
-        }
+    if (!state.deferredPrompt) {
+      if (process.env.NODE_ENV === 'development') {
+      }
       
-      // Try to force the install prompt by triggering the beforeinstallprompt event
-      try {
-        // Create a synthetic beforeinstallprompt event
-        const syntheticEvent = new Event('beforeinstallprompt');
-        window.dispatchEvent(syntheticEvent);
-        
-        // Wait a moment and try again
-        setTimeout(async () => {
-          if (state.deferredPrompt) {
-            try {
-              await state.deferredPrompt.prompt();
-              await state.deferredPrompt.userChoice;
-              if (process.env.NODE_ENV === 'development') {
-                console.log('Install prompt completed');
-              }
-            } catch (error) {
-              if (process.env.NODE_ENV === 'development') {
-                console.error('Install prompt failed:', error);
-              }
-              alert('Install failed. Please try the manual installation methods.');
-            }
-          } else {
-            // If still no prompt, show manual instructions
-            alert('Please install manually:\n\nChrome: Look for 📱 icon in address bar\nSafari: Share → Add to Home Screen\nFirefox: ⋮ menu → Install App');
-          }
-        }, 100);
-        
-        return;
-              } catch (error) {
-          if (process.env.NODE_ENV === 'development') {
-            console.error('Synthetic event failed:', error);
-          }
-        }
+      // Show manual installation instructions in a more user-friendly way
+      const manualInstructions = `
+Please install manually:
+
+📱 Chrome: Look for the install icon in the address bar
+🍎 Safari: Tap Share → "Add to Home Screen"
+🦊 Firefox: Tap menu → "Install App"
+      `.trim();
       
-      alert('Please install manually:\n\nChrome: Look for 📱 icon in address bar\nSafari: Share → Add to Home Screen\nFirefox: ⋮ menu → Install App');
+      // Use a more elegant alert or modal instead of basic alert
+      if (window.confirm(manualInstructions + '\n\nWould you like to see detailed instructions?')) {
+        // Could open a modal with detailed instructions here
+        window.open('https://web.dev/install-criteria/', '_blank');
+      }
       return;
     }
 
@@ -128,7 +105,6 @@ export const usePWA = (): [PWAState, PWAHandlers] => {
 
       if (outcome === 'accepted') {
         if (process.env.NODE_ENV === 'development') {
-          console.log('PWA installation accepted by user');
         }
         setState(prev => ({
           ...prev,
@@ -138,12 +114,10 @@ export const usePWA = (): [PWAState, PWAHandlers] => {
         }));
       } else {
         if (process.env.NODE_ENV === 'development') {
-          console.log('PWA installation dismissed by user');
         }
       }
     } catch (error) {
       if (process.env.NODE_ENV === 'development') {
-        console.error('PWA installation failed:', error);
       }
       alert('Install failed. Please try again or install manually from your browser menu.');
     } finally {
@@ -157,11 +131,9 @@ export const usePWA = (): [PWAState, PWAHandlers] => {
       try {
         await state.serviceWorkerRegistration.update();
         if (process.env.NODE_ENV === 'development') {
-          console.log('Service worker updated');
         }
       } catch (error) {
         if (process.env.NODE_ENV === 'development') {
-          console.error('Service worker update failed:', error);
         }
       }
     }
@@ -176,11 +148,9 @@ export const usePWA = (): [PWAState, PWAHandlers] => {
           cacheNames.map(cacheName => caches.delete(cacheName))
         );
         if (process.env.NODE_ENV === 'development') {
-          console.log('Cache cleared successfully');
         }
       } catch (error) {
         if (process.env.NODE_ENV === 'development') {
-          console.error('Failed to clear cache:', error);
         }
       }
     }
@@ -194,7 +164,6 @@ export const usePWA = (): [PWAState, PWAHandlers] => {
       return await secureStorage.exportData();
     } catch (error) {
       if (process.env.NODE_ENV === 'development') {
-        console.error('Failed to export data:', error);
       }
       throw error;
     }
@@ -206,11 +175,9 @@ export const usePWA = (): [PWAState, PWAHandlers] => {
       const { secureStorage } = await import('../utils/localStorage');
       await secureStorage.importData(data);
       if (process.env.NODE_ENV === 'development') {
-        console.log('Data imported successfully');
       }
     } catch (error) {
       if (process.env.NODE_ENV === 'development') {
-        console.error('Failed to import data:', error);
       }
       throw error;
     }
@@ -224,7 +191,6 @@ export const usePWA = (): [PWAState, PWAHandlers] => {
       setState(prev => ({ ...prev, storageStats: stats }));
     } catch (error) {
       if (process.env.NODE_ENV === 'development') {
-        console.error('Failed to get storage stats:', error);
       }
     }
   }, []);

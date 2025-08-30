@@ -135,7 +135,6 @@ export class ProductionServicesManager {
       };
     } catch (error) {
       if (process.env.NODE_ENV === 'development') {
-        console.error('Failed to initialize production services:', error);
       }
       return {
         success: false,
@@ -197,7 +196,21 @@ export class ProductionServicesManager {
 
   private static async initializeIPFSService(): Promise<ServiceResult> {
     try {
-      await ipfsService.initialize();
+      const config = {
+        apiKey: process.env.REACT_APP_PINATA_API_KEY || '',
+        secretKey: process.env.REACT_APP_PINATA_SECRET_KEY || '',
+        gatewayUrl: process.env.REACT_APP_IPFS_GATEWAY_URL || 'https://gateway.pinata.cloud'
+      };
+
+      if (!config.apiKey || !config.secretKey) {
+        return {
+          service: 'ipfs',
+          success: false,
+          error: 'IPFS configuration missing'
+        };
+      }
+
+      await ipfsService.initialize(config);
       return {
         service: 'ipfs',
         success: true

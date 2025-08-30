@@ -1,5 +1,7 @@
-// Client-side IPFS MFS service for pN metadata
-// This works immediately without Firebase Functions deployment
+// Client-side IPFS service for pN metadata
+// Uses secure IPFS HTTP client instead of vulnerable Pinata SDK
+
+import { ipfsService } from './ipfsService';
 
 export interface PNMetadata {
   pnId: string;
@@ -20,13 +22,32 @@ export interface MetadataResult {
 }
 
 export class IPFSMetadataService {
-  private pinataApiKey: string;
-  private pinataSecretKey: string;
+  private isInitialized = false;
 
   constructor() {
-    // Use your new Pinata API keys
-    this.pinataApiKey = '6c557a6d433e0ad1de47';
-    this.pinataSecretKey = '600492827bbfa45b4a9d506faf50a88059b06965b70fefe0856be509b0fe4d87';
+    this.initialize();
+  }
+
+  private async initialize(): Promise<void> {
+    if (this.isInitialized) return;
+
+    try {
+      // Initialize IPFS service with environment variables
+      const config = {
+        apiKey: process.env.REACT_APP_PINATA_API_KEY || '',
+        secretKey: process.env.REACT_APP_PINATA_SECRET_KEY || '',
+        gatewayUrl: process.env.REACT_APP_IPFS_GATEWAY_URL || 'https://gateway.pinata.cloud'
+      };
+
+      if (!config.apiKey || !config.secretKey) {
+        throw new Error('IPFS configuration missing');
+      }
+
+      await ipfsService.initialize(config);
+      this.isInitialized = true;
+    } catch (error) {
+      // Don't throw - IPFS is optional
+    }
   }
 
   /**
@@ -34,6 +55,12 @@ export class IPFSMetadataService {
    */
   async storePNMetadata(metadata: PNMetadata): Promise<MetadataResult> {
     try {
+      await this.initialize();
+
+      if (!ipfsService.isAvailable()) {
+        throw new Error('IPFS service not available');
+      }
+
       // Create metadata object with timestamp
       const metadataObject = {
         ...metadata,
@@ -41,39 +68,16 @@ export class IPFSMetadataService {
         version: Date.now()
       };
 
-      // Convert to JSON
-      const metadataJson = JSON.stringify(metadataObject, null, 2);
-      const metadataBuffer = new Blob([metadataJson], { type: 'application/json' });
-
-      // Create form data
-      const formData = new FormData();
-      formData.append('file', metadataBuffer, 'metadata.json');
-
-      // Add to IPFS using Pinata with proper authentication
-      const response = await fetch('https://api.pinata.cloud/pinning/pinFileToIPFS', {
-        method: 'POST',
-        headers: {
-          'pinata_api_key': this.pinataApiKey,
-          'pinata_secret_api_key': this.pinataSecretKey
-        },
-        body: formData
-      });
-
-      if (!response.ok) {
-        throw new Error(`IPFS upload failed: ${response.status} ${response.statusText}`);
-      }
-
-      const result = await response.json();
-      const cid = result.IpfsHash;
+      // Upload to IPFS
+      const result = await ipfsService.uploadFile(metadataObject, 'metadata.json');
 
       return {
         success: true,
         data: metadataObject,
-        cid: cid,
-        ipfsUrl: `https://gateway.pinata.cloud/ipfs/${cid}`
+        cid: result.cid,
+        ipfsUrl: result.url
       };
     } catch (error) {
-      console.error('Failed to store pN metadata:', error);
       return {
         success: false,
         error: error instanceof Error ? error.message : 'Unknown error'
@@ -86,151 +90,104 @@ export class IPFSMetadataService {
    */
   async uploadIdentityData(encryptedData: any): Promise<string> {
     try {
-      // Convert encrypted data to JSON
-      const dataJson = JSON.stringify(encryptedData, null, 2);
-      const dataBuffer = new Blob([dataJson], { type: 'application/json' });
+      await this.initialize();
 
-      // Create form data
-      const formData = new FormData();
-      formData.append('file', dataBuffer, 'identity-data.json');
-
-      // Add to IPFS using Pinata with proper authentication
-      const response = await fetch('https://api.pinata.cloud/pinning/pinFileToIPFS', {
-        method: 'POST',
-        headers: {
-          'pinata_api_key': this.pinataApiKey,
-          'pinata_secret_api_key': this.pinataSecretKey
-        },
-        body: formData
-      });
-
-      if (!response.ok) {
-        throw new Error(`IPFS upload failed: ${response.status} ${response.statusText}`);
+      if (!ipfsService.isAvailable()) {
+        throw new Error('IPFS service not available');
       }
 
-      const result = await response.json();
-      return result.IpfsHash; // Return the CID
+      // Upload encrypted data to IPFS
+      const result = await ipfsService.uploadFile(encryptedData, 'identity-data.json');
+      return result.cid;
     } catch (error) {
-      console.error('Failed to upload identity data to IPFS:', error);
-      throw error;
+      throw new Error('Failed to upload identity data to IPFS');
     }
   }
 
   /**
-   * Download encrypted identity data from IPFS
+   * Download identity data from IPFS
    */
   async downloadIdentityData(cid: string): Promise<any> {
     try {
-      // Get from IPFS using Pinata gateway
-      const response = await fetch(`https://gateway.pinata.cloud/ipfs/${cid}`);
-      
-      if (!response.ok) {
-        throw new Error(`IPFS retrieval failed: ${response.status} ${response.statusText}`);
+      await this.initialize();
+
+      if (!ipfsService.isAvailable()) {
+        throw new Error('IPFS service not available');
       }
 
-      const data = await response.json();
+      // Download data from IPFS
+      const data = await ipfsService.getFileAsJSON(cid);
       return data;
     } catch (error) {
-      console.error('Failed to download identity data from IPFS:', error);
-      throw error;
+      throw new Error('Failed to download identity data from IPFS');
     }
   }
 
   /**
    * Delete identity data from IPFS
    */
-  async deleteIdentityData(cid: string): Promise<boolean> {
+  async deleteIdentityData(cid: string): Promise<void> {
     try {
-      // Unpin from IPFS using Pinata
-      const response = await fetch(`https://api.pinata.cloud/pinning/unpin/${cid}`, {
-        method: 'DELETE',
-        headers: {
-          'pinata_api_key': this.pinataApiKey,
-          'pinata_secret_api_key': this.pinataSecretKey
-        }
-      });
+      await this.initialize();
 
-      if (!response.ok) {
-        throw new Error(`IPFS deletion failed: ${response.status} ${response.statusText}`);
+      if (!ipfsService.isAvailable()) {
+        throw new Error('IPFS service not available');
       }
 
-      return true;
+      // Delete data from IPFS
+      await ipfsService.deleteFile(cid);
     } catch (error) {
-      console.error('Failed to delete identity data from IPFS:', error);
-      return false;
+      throw new Error('Failed to delete identity data from IPFS');
     }
   }
 
   /**
-   * Get pN metadata from IPFS
+   * Get metadata from IPFS
    */
-  async getPNMetadata(cid: string): Promise<MetadataResult> {
+  async getMetadata(cid: string): Promise<PNMetadata | null> {
     try {
-      // Get from IPFS using Pinata gateway
-      const response = await fetch(`https://gateway.pinata.cloud/ipfs/${cid}`);
-      
-      if (!response.ok) {
-        throw new Error(`IPFS retrieval failed: ${response.status} ${response.statusText}`);
+      await this.initialize();
+
+      if (!ipfsService.isAvailable()) {
+        throw new Error('IPFS service not available');
       }
 
-      const metadata = await response.json();
-
-      return {
-        success: true,
-        data: metadata,
-        cid: cid,
-        ipfsUrl: `https://gateway.pinata.cloud/ipfs/${cid}`
-      };
+      // Get metadata from IPFS
+      const data = await ipfsService.getFileAsJSON(cid);
+      return data as PNMetadata;
     } catch (error) {
-      console.error('Failed to get pN metadata:', error);
-      return {
-        success: false,
-        error: error instanceof Error ? error.message : 'Unknown error'
-      };
+      return null;
     }
   }
 
   /**
-   * Update pN metadata (creates new version)
+   * List all metadata files
    */
-  async updatePNMetadata(pnId: string, updates: Partial<PNMetadata>): Promise<MetadataResult> {
+  async listMetadata(): Promise<Array<{ cid: string; name: string; url: string }>> {
     try {
-      // For now, we'll create a new metadata entry
-      // In a full implementation, you'd update the index
-      const updatedMetadata: PNMetadata = {
-        pnId,
-        ...updates,
-        updatedAt: new Date().toISOString(),
-        version: Date.now()
-      };
+      await this.initialize();
 
-      return await this.storePNMetadata(updatedMetadata);
+      if (!ipfsService.isAvailable()) {
+        throw new Error('IPFS service not available');
+      }
+
+      // List files from IPFS
+      const files = await ipfsService.listFiles();
+      return files.map(file => ({
+        cid: file.cid,
+        name: file.name,
+        url: ipfsService.getGatewayUrl(file.cid)
+      }));
     } catch (error) {
-      console.error('Failed to update pN metadata:', error);
-      return {
-        success: false,
-        error: error instanceof Error ? error.message : 'Unknown error'
-      };
+      return [];
     }
   }
 
   /**
-   * Test the service
+   * Check if IPFS service is available
    */
-  async testConnection(): Promise<boolean> {
-    try {
-      const testMetadata: PNMetadata = {
-        pnId: 'test-connection',
-        name: 'Connection Test',
-        description: 'Testing IPFS connection'
-      };
-
-      const result = await this.storePNMetadata(testMetadata);
-      return result.success;
-    } catch (error) {
-      console.error('Connection test failed:', error);
-      return false;
-    }
+  isAvailable(): boolean {
+    return this.isInitialized && ipfsService.isAvailable();
   }
 }
 

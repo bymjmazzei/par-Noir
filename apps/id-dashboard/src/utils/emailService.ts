@@ -38,13 +38,11 @@ export class EmailService {
       sgMail.setApiKey(this.config.apiKey);
       
       if (process.env.NODE_ENV === 'development') {
-        console.log('✅ SendGrid email service initialized');
       }
       
       this.isInitialized = true;
     } catch (error) {
       if (process.env.NODE_ENV === 'development') {
-        console.error('❌ Failed to initialize SendGrid email service:', error);
       }
       throw error;
     }
@@ -89,11 +87,9 @@ export class EmailService {
       });
 
       if (process.env.NODE_ENV === 'development') {
-        console.log(`✅ Recovery email sent to ${data.to}`);
       }
     } catch (error) {
       if (process.env.NODE_ENV === 'development') {
-        console.error('❌ Failed to send recovery email:', error);
       }
       throw error;
     }
@@ -137,11 +133,9 @@ export class EmailService {
       });
 
       if (process.env.NODE_ENV === 'development') {
-        console.log(`✅ Custodian invitation sent to ${data.to}`);
       }
     } catch (error) {
       if (process.env.NODE_ENV === 'development') {
-        console.error('❌ Failed to send custodian invitation:', error);
       }
       throw error;
     }
@@ -196,11 +190,9 @@ export class EmailService {
       });
 
       if (process.env.NODE_ENV === 'development') {
-        console.log(`✅ Security alert sent to ${data.to}`);
       }
     } catch (error) {
       if (process.env.NODE_ENV === 'development') {
-        console.error('❌ Failed to send security alert:', error);
       }
       throw error;
     }
@@ -250,11 +242,9 @@ export class EmailService {
       });
 
       if (process.env.NODE_ENV === 'development') {
-        console.log(`✅ Welcome email sent to ${data.to}`);
       }
     } catch (error) {
       if (process.env.NODE_ENV === 'development') {
-        console.error('❌ Failed to send welcome email:', error);
       }
       throw error;
     }

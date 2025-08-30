@@ -11,8 +11,18 @@ import {
   EventTypes,
   IdentityEvent,
   ComplianceData,
-  DataCollectionRequest
+  DataCollectionRequest,
+  DataCollectionResponse,
+  StandardDataPointRequest,
+  StandardDataPointResponse,
+  DataPointProposalRequest,
+  DataPointProposalResponse,
+  VoteRequest,
+  VoteResponse
 } from './types';
+import { StandardDataPoint, DataPointProposal } from './types/standardDataPoints';
+
+import { ZKPGenerator, STANDARD_DATA_POINTS } from './types/standardDataPoints';
 
 // Stub implementations for SDK compatibility
 export interface SecureSession {
@@ -188,13 +198,13 @@ export class IdentitySDK {
     }
   }
 
-  private isCommercialUse(platform: string, options?: CommercialUseOptions): boolean {
+  private isCommercialUse(platform: string, options?: CommercialUseOptions | DataCollectionRequest): boolean {
     // Detect commercial use patterns
     const commercialIndicators = [
-      options?.commercialUse === true,
-      options?.revenueGeneration === true,
-      options?.paidService === true,
-      options?.enterpriseFeatures === true,
+      options && 'commercialUse' in options && options.commercialUse === true,
+      options && 'revenueGeneration' in options && options.revenueGeneration === true,
+      options && 'paidService' in options && options.paidService === true,
+      options && 'enterpriseFeatures' in options && options.enterpriseFeatures === true,
       platform.includes('enterprise'),
       platform.includes('business'),
       platform.includes('corporate'),
@@ -512,13 +522,19 @@ export class IdentitySDK {
   }
 
   /**
-   * Request additional data collection from user
+   * Request additional data collection from user using standardized data points
    */
-  async requestDataCollection(request: DataCollectionRequest & CommercialUseOptions): Promise<Record<string, any>> {
+  async requestDataCollection(request: DataCollectionRequest): Promise<DataCollectionResponse> {
     // Validate commercial license for data collection
     if (this.isCommercialUse(request.platform, request)) {
       const currentIdentityHash = await this.getCurrentIdentityHash();
       await this.requireCommercialLicense('data collection', currentIdentityHash);
+    }
+
+    // Validate requested data points
+    const invalidDataPoints = request.dataPoints.filter(dp => !STANDARD_DATA_POINTS[dp]);
+    if (invalidDataPoints.length > 0) {
+      throw new Error(`Invalid data points: ${invalidDataPoints.join(', ')}`);
     }
 
     return new Promise((resolve, reject) => {
@@ -528,6 +544,117 @@ export class IdentitySDK {
       });
       window.dispatchEvent(event);
     });
+  }
+
+  /**
+   * Request a single standard data point
+   */
+  async requestStandardDataPoint(request: StandardDataPointRequest): Promise<StandardDataPointResponse> {
+    // Validate data point exists
+    const dataPoint = STANDARD_DATA_POINTS[request.dataPointId];
+    if (!dataPoint) {
+      throw new Error(`Unknown data point: ${request.dataPointId}`);
+    }
+
+    return new Promise((resolve, reject) => {
+      const event = new CustomEvent('identity:standardDataPoint', {
+        detail: { request, dataPoint, resolve, reject }
+      });
+      window.dispatchEvent(event);
+    });
+  }
+
+  /**
+   * Propose a new standard data point
+   */
+  async proposeDataPoint(proposal: DataPointProposalRequest): Promise<DataPointProposalResponse> {
+    try {
+      // Validate proposal
+      if (!proposal.name || !proposal.description || !proposal.useCase) {
+        return { success: false, error: 'Missing required fields' };
+      }
+
+      // Check if data point already exists
+      const existingDataPoint = Object.values(STANDARD_DATA_POINTS).find(
+        dp => dp.name.toLowerCase() === proposal.name.toLowerCase()
+      );
+      if (existingDataPoint) {
+        return { success: false, error: 'Data point already exists' };
+      }
+
+      // Submit proposal
+      const result = await ZKPGenerator.proposeDataPoint({
+        name: proposal.name,
+        description: proposal.description,
+        category: proposal.category,
+        dataType: proposal.dataType,
+        requiredFields: proposal.requiredFields,
+        optionalFields: proposal.optionalFields,
+        validation: proposal.validation,
+        examples: proposal.examples,
+        useCase: proposal.useCase,
+        proposedBy: proposal.proposedBy
+      });
+      
+      if (result.success) {
+        return { success: true, proposalId: result.proposalId };
+      } else {
+        return { success: false, error: result.error };
+      }
+    } catch (error) {
+      return { 
+        success: false, 
+        error: error instanceof Error ? error.message : 'Failed to propose data point' 
+      };
+    }
+  }
+
+  /**
+   * Vote on a data point proposal
+   */
+  async voteOnProposal(request: VoteRequest): Promise<VoteResponse> {
+    try {
+      const result = await ZKPGenerator.voteOnProposal(
+        request.proposalId, 
+        request.voterId, 
+        request.vote
+      );
+      
+      return { success: result.success, error: result.error };
+    } catch (error) {
+      return { 
+        success: false, 
+        error: error instanceof Error ? error.message : 'Failed to vote on proposal' 
+      };
+    }
+  }
+
+  /**
+   * Get pending data point proposals
+   */
+  getPendingProposals(): DataPointProposal[] {
+    return ZKPGenerator.getPendingProposals();
+  }
+
+  /**
+   * Get proposal by ID
+   */
+  getProposal(proposalId: string): DataPointProposal | undefined {
+    return ZKPGenerator.getProposal(proposalId);
+  }
+
+  /**
+   * Get available standard data points
+   */
+  getAvailableDataPoints(): StandardDataPoint[] {
+    return Object.values(STANDARD_DATA_POINTS);
+  }
+
+  /**
+   * Get data points by category
+   */
+  getDataPointsByCategory(category: string): StandardDataPoint[] {
+    return Object.values(STANDARD_DATA_POINTS).filter(dp => dp.category === category);
   }
 
   // Event handling

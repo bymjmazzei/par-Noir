@@ -87,7 +87,6 @@ export class OrbitDBService {
       
       this.isInitialized = true;
       
-      console.log('🚀 OrbitDB service initialized successfully');
     } catch (error) {
       throw new IdentityError(
         'Failed to initialize OrbitDB service',
@@ -113,7 +112,6 @@ export class OrbitDBService {
         } : undefined
       });
 
-      console.log('✅ IPFS connection established');
     } catch (error) {
       throw new IdentityError(
         'Failed to initialize IPFS connection',
@@ -148,7 +146,6 @@ export class OrbitDBService {
       // await this.database.load();
 
       if (process.env.NODE_ENV === 'development') {
-        console.log('✅ OrbitDB database initialized');
       }
     } catch (error) {
       throw new IdentityError(
@@ -181,7 +178,6 @@ export class OrbitDBService {
         };
       }
     } catch (error) {
-      console.error('Failed to store pN metadata:', error);
       return {
         success: false,
         error: error instanceof Error ? error.message : 'Unknown error'
@@ -196,13 +192,11 @@ export class OrbitDBService {
     try {
       // For now, we'll need to store the CID somewhere
       // In a full implementation, you'd have an index
-      console.log('Note: getPNMetadata requires CID storage - implement index system');
       return {
         success: false,
         error: 'CID index not implemented yet'
       };
     } catch (error) {
-      console.error('Failed to get pN metadata:', error);
       return {
         success: false,
         error: error instanceof Error ? error.message : 'Unknown error'

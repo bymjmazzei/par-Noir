@@ -99,7 +99,6 @@ export const LicenseModal: React.FC<LicenseModalProps> = ({
       }
     };
 
-    console.log('Creating Coinbase checkout with data:', checkoutData);
     
     // Validate checkout data
     if (!CoinbaseProxy.validateCheckoutData(checkoutData)) {
@@ -115,14 +114,10 @@ export const LicenseModal: React.FC<LicenseModalProps> = ({
     setError('');
     
     try {
-      console.log('Starting crypto purchase process...');
       const checkout = await createCoinbaseCheckout();
-      console.log('Checkout created successfully:', checkout);
-      console.log('Checkout URL:', checkout.hosted_url);
       setPaymentRequest(checkout);
       setShowCryptoPayment(true);
     } catch (error) {
-      console.error('Failed to create crypto payment:', error);
       setError(error instanceof Error ? error.message : 'Failed to create payment request');
     } finally {
       setIsProcessing(false);
@@ -150,7 +145,6 @@ export const LicenseModal: React.FC<LicenseModalProps> = ({
       setIdentityName(identityData.metadata?.displayName || identityData.metadata?.username || 'Unknown Identity');
     } catch (error) {
       alert('Invalid identity file. Please upload a valid .pn, .id, .json, or .identity file.');
-      console.error('Identity file parsing error:', error);
     }
   };
 
@@ -399,7 +393,6 @@ export const LicenseModal: React.FC<LicenseModalProps> = ({
                 
                 <button
                   onClick={() => {
-                    console.log('Opening Coinbase checkout URL:', paymentRequest.hosted_url);
                     window.open(paymentRequest.hosted_url, '_blank', 'noopener,noreferrer');
                   }}
                   className="inline-flex items-center px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition-colors"

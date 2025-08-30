@@ -65,7 +65,6 @@ export class CloudSyncManager {
         this.isConnected = true;
         
         if (process.env.NODE_ENV === 'development') {
-          console.log('Cloud sync initialized successfully');
         }
         
         // Start periodic sync
@@ -78,7 +77,6 @@ export class CloudSyncManager {
       }
     } catch (error) {
       if (process.env.NODE_ENV === 'development') {
-        console.error('Failed to initialize cloud sync:', error);
       }
       this.isConnected = false;
     }
@@ -119,7 +117,6 @@ export class CloudSyncManager {
       this.syncQueue.push(fullUpdate);
       
       if (process.env.NODE_ENV === 'development') {
-        console.log('Update queued for later sync');
       }
     }
   }
@@ -154,7 +151,6 @@ export class CloudSyncManager {
       return updates;
     } catch (error) {
       if (process.env.NODE_ENV === 'development') {
-        console.error('Failed to retrieve updates:', error);
       }
       return [];
     }
@@ -179,7 +175,6 @@ export class CloudSyncManager {
         }));
     } catch (error) {
       if (process.env.NODE_ENV === 'development') {
-        console.error('Failed to retrieve nickname updates:', error);
       }
       return [];
     }
@@ -195,11 +190,9 @@ export class CloudSyncManager {
       await orbitCloudAPI.storeUpdate(update);
 
       if (process.env.NODE_ENV === 'development') {
-        console.log('Update stored successfully');
       }
     } catch (error) {
       if (process.env.NODE_ENV === 'development') {
-        console.error('Failed to store update:', error);
       }
       // Queue for retry
       this.syncQueue.push(update);
@@ -215,7 +208,6 @@ export class CloudSyncManager {
     const updates = [...this.syncQueue];
     
     if (process.env.NODE_ENV === 'development') {
-      console.log(`Processing ${updates.length} queued updates`);
     }
     this.syncQueue = [];
 
@@ -224,7 +216,6 @@ export class CloudSyncManager {
         await this.sendToCloud(update);
       } catch (error) {
         if (process.env.NODE_ENV === 'development') {
-          console.error('Failed to process queued update:', error);
         }
         // Re-queue failed updates
         this.syncQueue.push(update);

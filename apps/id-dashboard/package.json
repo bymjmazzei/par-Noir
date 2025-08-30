@@ -31,16 +31,20 @@
     "test:coverage": "jest --coverage"
   },
   "dependencies": {
+    "@sendgrid/mail": "^8.1.5",
     "@types/qrcode": "^1.5.5",
+    "axios": "^1.11.0",
     "firebase": "^12.1.0",
     "form-data": "^4.0.4",
+    "ipfs-http-client": "^60.0.1",
     "jsqr": "^1.4.0",
     "lucide-react": "^0.263.1",
     "qrcode": "^1.5.4",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "react-router-dom": "^6.8.1",
-    "tailwind-merge": "^2.0.0"
+    "tailwind-merge": "^2.0.0",
+    "twilio": "^5.8.2"
   },
   "devDependencies": {
     "@playwright/test": "^1.54.2",

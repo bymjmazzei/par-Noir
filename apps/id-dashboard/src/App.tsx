@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-unused-vars */
 import React, { useState, useEffect, lazy, Suspense, useRef } from 'react';
 import { CheckCircle, Smartphone, RefreshCw, FileText, PartyPopper, QrCode, MessageSquare, Phone, AlertTriangle, Info, Monitor, Edit3, Settings, ChevronUp, ChevronDown } from 'lucide-react';
 import Header from './components/Header';
@@ -16,6 +15,8 @@ import { analytics } from './utils/analytics';
 import { security } from './utils/security';
 import usePWA from './hooks/usePWA';
 import { GlobalPrivacySettings } from './types/privacy';
+import { STANDARD_DATA_POINTS, DATA_POINT_CATEGORIES, ZKPGenerator } from './types/standardDataPoints';
+import { DataPointInputModal } from './components/DataPointInputModal';
 
 import { MigrationManager, WebIdentityData, MigrationResult } from './utils/migration';
 
@@ -24,6 +25,7 @@ import { BiometricAuth } from './utils/biometric';
 import { cloudSyncManager } from './utils/cloudSync';
 import { SecureMetadataStorage } from './utils/secureMetadataStorage';
 import { notificationsService } from './utils/notificationsService';
+import { IPFSMetadataService } from './utils/ipfsMetadataService';
 // Dynamic import for DistributedIdentityManager to avoid module resolution issues
 let DistributedIdentityManager: any;
 import { LicenseVerification } from './utils/licenseVerification';
@@ -45,9 +47,7 @@ const EnhancedPrivacyPanel = lazy(() => import('./components/EnhancedPrivacyPane
 const ToolSettingsModal = lazy(() => import('./components/ToolSettingsModal').then(module => ({ default: module.ToolSettingsModal })));
 const IntegrationSettingsManager = lazy(() => import('./components/IntegrationSettingsManager').then(module => ({ default: module.default })));
 const IntegrationDebugger = lazy(() => import('./components/IntegrationDebugger').then(module => ({ default: module.default })));
-const SecurityDashboard = lazy(() => import('./components/SecurityDashboard').then(module => ({ default: module.SecurityDashboard })));
 const SessionManager = lazy(() => import('./components/SessionManager').then(module => ({ default: module.SessionManager })));
-const RealtimeSecurityAlerts = lazy(() => import('./components/RealtimeSecurityAlerts').then(module => ({ default: module.RealtimeSecurityAlerts })));
 const MigrationModal = lazy(() => import('./components/MigrationModal').then(module => ({ default: module.MigrationModal })));
 const ProfilePictureEditor = lazy(() => import('./components/ProfilePictureEditor').then(module => ({ default: module.ProfilePictureEditor })));
 const BiometricSetup = lazy(() => import('./components/BiometricSetup').then(module => ({ default: module.BiometricSetup })));
@@ -102,6 +102,7 @@ interface RecoveryCustodian {
   publicKey: string; // Public key for ZK proof verification
   recoveryKeyShare?: string; // Encrypted share of the recovery key (custodian doesn't know the full key)
   trustLevel: 'high' | 'medium' | 'low';
+  passcode?: string; // 6-digit numeric passcode for custodian acceptance
 }
 
 interface RecoveryRequest {
@@ -152,6 +153,7 @@ interface CustodianInvitationForm {
   contactType: 'email' | 'phone';
   contactValue: string;
   type: 'person' | 'service' | 'self';
+  passcode: string;
 }
 
 interface DeviceSyncData {
@@ -243,9 +245,12 @@ function App() {
       }
     };
   }, []);
-  const [activeTab, setActiveTab] = useState<'privacy' | 'devices' | 'recovery' | 'security' | 'developer'>('privacy');
+  const [activeTab, setActiveTab] = useState<'privacy' | 'devices' | 'recovery' | 'developer'>('privacy');
+  const [globalSettingsExpanded, setGlobalSettingsExpanded] = useState(false);
+  const [thirdPartyExpanded, setThirdPartyExpanded] = useState(false);
+  const [attestedDataPoints, setAttestedDataPoints] = useState<Set<string>>(new Set());
 
-  const [showUnifiedAuth, setShowUnifiedAuth] = useState(false);
+  
 
   // PWA functionality
   const [pwaState, pwaHandlers] = usePWA();
@@ -279,7 +284,7 @@ function App() {
       if (!authenticatedUser || !selectedDID) {
         throw new Error('No identity is currently unlocked. Please unlock an identity first.');
       }
-
+      
       // Get the stored identity data that was used for unlock
       const simpleStorage = SimpleStorage.getInstance();
       const identityKey = authenticatedUser.publicKey || selectedDID?.publicKey || selectedDID?.id;
@@ -431,9 +436,7 @@ function App() {
       // Upload the proper pN file format to IPFS
       const { IPFSMetadataService } = await import('./utils/ipfsMetadataService');
       const ipfsService = new IPFSMetadataService();
-      console.log('Transfer file content to upload:', JSON.stringify(transferFileContent, null, 2));
       const ipfsCid = await ipfsService.uploadIdentityData(transferFileContent);
-      console.log('pN file uploaded to IPFS:', ipfsCid);
 
       const transferData = {
         id: transferId,
@@ -445,8 +448,6 @@ function App() {
 
       // Encode transfer data for URL parameters (cross-device compatible)
       const transferDataEncoded = btoa(JSON.stringify(transferData));
-      console.log('Transfer created:', transferId);
-      console.log('Transfer expires at:', transferData.expiresAt);
 
       // Generate transfer URL with encoded data
       const transferUrl = `${window.location.origin}/transfer/id=${transferId}?data=${transferDataEncoded}`;
@@ -469,6 +470,36 @@ function App() {
   };
   const [authenticatedUser, setAuthenticatedUser] = useState<any>(null);
   
+  // Load attested data points from metadata
+  useEffect(() => {
+    const loadAttestedDataPoints = async () => {
+      try {
+        if (authenticatedUser) {
+          const { SecureMetadataStorage } = await import('./utils/secureMetadataStorage');
+          const { SecureMetadataCrypto } = await import('./utils/secureMetadata');
+          
+          const currentMetadata = await SecureMetadataStorage.getMetadata(authenticatedUser.id);
+          if (currentMetadata) {
+            const decryptedContent = await SecureMetadataCrypto.decryptMetadata(
+              currentMetadata,
+              authenticatedUser.pnName,
+              authenticatedUser.passcode
+            );
+            
+            // Load attested data points
+            if (decryptedContent?.dataPoints?.attestedData) {
+              const attestedIds = new Set(decryptedContent.dataPoints.attestedData.map((item: any) => item.dataPointId));
+              setAttestedDataPoints(attestedIds);
+            }
+          }
+        }
+      } catch (error) {
+      }
+    };
+    
+    loadAttestedDataPoints();
+  }, [authenticatedUser]);
+  
   // Debug success state changes
   useEffect(() => {
     if (process.env.NODE_ENV === 'development') {
@@ -480,13 +511,17 @@ function App() {
   
   const [showRecoveryModal, setShowRecoveryModal] = useState(false);
   const [showAddCustodianModal, setShowAddCustodianModal] = useState(false);
+  const [showDataPointInputModal, setShowDataPointInputModal] = useState(false);
+  const [currentDataPoint, setCurrentDataPoint] = useState<any>(null);
+  const [currentDataPointExistingData, setCurrentDataPointExistingData] = useState<any>(null);
   const [showRecoveryKeyModal, setShowRecoveryKeyModal] = useState(false);
   const [custodianQRCode, setCustodianQRCode] = useState<string>('');
   const [custodianContactInfo, setCustodianContactInfo] = useState({
     name: '',
     contactType: 'email' as 'email' | 'phone',
     contactValue: '',
-    type: 'person' as 'person' | 'service' | 'self'
+    type: 'person' as 'person' | 'service' | 'self',
+    passcode: ''
   });
   const [showRecoveryKeyInputModal, setShowRecoveryKeyInputModal] = useState(false);
   const [recoveryThreshold, setRecoveryThreshold] = useState(2);
@@ -504,7 +539,6 @@ function App() {
   // Enhanced Privacy Settings
   const [showEnhancedPrivacyPanel, setShowEnhancedPrivacyPanel] = useState(false);
   const [privacySettings, setPrivacySettings] = useState<GlobalPrivacySettings>({
-    allowAllToolAccess: false,
     allowAnalytics: false,
     allowMarketing: false,
     allowThirdPartySharing: false,
@@ -512,25 +546,13 @@ function App() {
     toolPermissions: {}
   });
   
-  // Security Dashboard
-  const [showSecurityDashboard, setShowSecurityDashboard] = useState(false);
-  const [showAdvancedSecuritySettings, setShowAdvancedSecuritySettings] = useState(false);
+
+
   
   // Session Manager
   const [showSessionManager, setShowSessionManager] = useState(false);
   
-  // Security Settings
-  const [securitySettings, setSecuritySettings] = useState({
-    sessionTimeout: 30, // minutes
-    maxConcurrentSessions: 3,
-    requireBiometric: false,
-    enableNotifications: true,
-    autoLockTimeout: 5, // minutes
-    allowRememberMe: true
-  });
 
-  // Real-time Security Alerts
-  const [showRealtimeSecurityAlerts, setShowRealtimeSecurityAlerts] = useState(false);
 
   // Migration states
   const [showMigrationModal, setShowMigrationModal] = useState(false);
@@ -689,6 +711,20 @@ function App() {
   const [showNicknameEditor, setShowNicknameEditor] = useState(false);
   const [editingNickname, setEditingNickname] = useState('');
   
+  // Recovery info section state
+  const [showRecoveryInfo, setShowRecoveryInfo] = useState(false);
+  
+  // Custodian info section state
+  const [showCustodianInfo, setShowCustodianInfo] = useState(false);
+  
+  // Custodian invitation acceptance state
+  const [showCustodianAcceptanceModal, setShowCustodianAcceptanceModal] = useState(false);
+  const [pendingCustodianInvitationData, setPendingCustodianInvitationData] = useState<any>(null);
+  const [custodianAcceptanceData, setCustodianAcceptanceData] = useState({
+    contactValue: '',
+    passcode: ''
+  });
+  
   // Biometric authentication state
   const [showBiometricSetup, setShowBiometricSetup] = useState(false);
   // const [biometricAvailable, setBiometricAvailable] = useState(false);
@@ -749,7 +785,6 @@ function App() {
             setSelectedDID(did);
             setSuccess('Transfer completed successfully! You are now logged in with the transferred pN.');
           } catch (error) {
-            console.error('Error parsing stored user data:', error);
             setSuccess('Transfer completed successfully! Your pN identity is now available.');
           }
         } else {
@@ -767,6 +802,43 @@ function App() {
     }
   }, []);
 
+  // Check for custodian invitation URL parameter
+  useEffect(() => {
+    const urlParams = new URLSearchParams(window.location.search);
+    const custodianInvitation = urlParams.get('custodian-invitation');
+    
+    if (custodianInvitation) {
+      try {
+        const invitationData = JSON.parse(decodeURIComponent(custodianInvitation));
+        
+        // Validate the invitation hasn't expired
+        if (invitationData.expiresAt && Date.now() > invitationData.expiresAt) {
+          setError('Custodian invitation has expired');
+          setTimeout(() => setError(null), 5000);
+          return;
+        }
+        
+        // Store the invitation data for later use
+        setPendingCustodianInvitationData(invitationData);
+        
+        // Clean up the URL
+        const newUrl = window.location.pathname;
+        window.history.replaceState({}, document.title, newUrl);
+        
+      } catch (error) {
+        setError('Invalid custodian invitation link');
+        setTimeout(() => setError(null), 5000);
+      }
+    }
+  }, []);
+
+  // Show custodian acceptance modal when user is authenticated and has pending invitation
+  useEffect(() => {
+    if (authenticatedUser && pendingCustodianInvitationData) {
+      setShowCustodianAcceptanceModal(true);
+    }
+  }, [authenticatedUser, pendingCustodianInvitationData]);
+
   // Initialize systems
   useEffect(() => {
     if (process.env.NODE_ENV === 'development') {
@@ -781,7 +853,7 @@ function App() {
       // await realtimeManager.connect();
         
         // Initialize notifications service
-        await notificationsService.initialize();
+        // notificationsService.initialize(); // Removed - no longer needed
         
 
         
@@ -1006,6 +1078,9 @@ function App() {
       try {
         const authSession = await IdentityCrypto.authenticateIdentity(encryptedIdentity, createForm.passcode, createForm.pnName);
         setAuthenticatedUser(authSession);
+        
+
+        
         setSuccess(`pN created and authenticated successfully! Your nickname is ${randomNickname}. Welcome to Par Noir.`);
         
         // Trigger onboarding wizard for new users
@@ -1161,7 +1236,7 @@ function App() {
       });
 
       // Set the unlocked identity for notifications
-      notificationsService.setUnlockedIdentity(session.id, session.nickname || session.pnName);
+      notificationsService.setUnlockedIdentity(session.id, session.nickname || session.pnName, session.pnName, session.passcode);
 
       // Reload stored identities into the selector
       try {
@@ -1199,8 +1274,7 @@ function App() {
         logError('Failed to reload stored identities:', error);
       }
 
-      // Close the modal and show success
-    setShowUnifiedAuth(false);
+      // Show success
     setError(null);
             showSuccessMessage(`Successfully unlocked identity: ${session.nickname || session.pnName}`, 5000);
     } catch (error: any) {
@@ -1230,7 +1304,6 @@ function App() {
       setDids([]);
       setSelectedDID(null);
       setSelectedStoredIdentity(null);
-      setShowUnifiedAuth(false);
       setMainForm({ pnName: '', passcode: '', uploadFile: null });
       setShowMainPNName(false);
       setShowMainPasscode(false);
@@ -1238,12 +1311,8 @@ function App() {
       setSuccess(null);
       setLoading(false);
       
-      // Lock the PWA if it's installed
-      if (pwaState.isInstalled) {
-        setIsPWALocked(true);
         // Clear the last unlock time to force lock on next open
         localStorage.removeItem('pwa-last-unlock-time');
-      }
       
       // Clear initialization flag so scan can run again on next app load
       localStorage.removeItem('pwa_initialized');
@@ -1261,7 +1330,6 @@ function App() {
       setDids([]);
       setSelectedDID(null);
       setSelectedStoredIdentity(null);
-      setShowUnifiedAuth(false);
       setMainForm({ pnName: '', passcode: '', uploadFile: null });
       setShowMainPNName(false);
       setShowMainPasscode(false);
@@ -1269,11 +1337,8 @@ function App() {
       setSuccess(null);
       setLoading(false);
       
-      // Lock the PWA even if logout fails
-      if (pwaState.isInstalled) {
-        setIsPWALocked(true);
+      // Clear the last unlock time even if logout fails
         localStorage.removeItem('pwa-last-unlock-time');
-      }
     }
   };
 
@@ -1727,7 +1792,6 @@ function App() {
   };
 
   // Biometric authentication handler (currently unused but available for future use)
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const handleBiometricAuth = async (identity: DIDInfo) => {
     try {
       setLoading(true);
@@ -2260,12 +2324,34 @@ function App() {
   };
 
   const handleContactAction = (contactType: 'email' | 'phone', contactValue: string) => {
+    // Generate the direct link for custodian invitation
+    const invitationData = {
+      invitationId: `inv-${Date.now()}`,
+      custodianName: custodianContactInfo.name,
+      custodianType: custodianContactInfo.type === 'self' ? 'self-recovery' : custodianContactInfo.type,
+      contactType: custodianContactInfo.contactType,
+      contactValue: custodianContactInfo.contactValue,
+      identityName: authenticatedUser?.nickname || 'Unknown Identity',
+      identityUsername: authenticatedUser?.pnName || 'unknown',
+      expiresAt: Date.now() + (24 * 60 * 60 * 1000) // 24 hours
+    };
+    
+    const directLink = `${window.location.origin}?custodian-invitation=${encodeURIComponent(JSON.stringify(invitationData))}`;
+    
     if (contactType === 'email') {
       const subject = 'Identity Protocol - Custodian Invitation';
-      const body = `You have been invited to be a recovery custodian for an identity. Please scan the QR code to accept the invitation.`;
+      const body = `You have been invited to be a recovery custodian for ${authenticatedUser?.nickname || 'an identity'}.
+
+To accept this custodianship:
+1. Click this link: ${directLink}
+2. Unlock your pN identity
+3. Enter the passcode provided by the identity owner
+4. Confirm the custodianship
+
+This invitation expires in 24 hours.`;
       window.open(`mailto:${contactValue}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`);
     } else if (contactType === 'phone') {
-      const message = 'You have been invited to be a recovery custodian. Please scan the QR code to accept the invitation.';
+      const message = `You've been invited as a custodian for ${authenticatedUser?.nickname || 'an identity'}. Click: ${directLink} (Passcode required)`;
       window.open(`sms:${contactValue}?body=${encodeURIComponent(message)}`);
     }
   };
@@ -2294,7 +2380,8 @@ function App() {
         contactType: custodianData.contactType,
         contactValue: custodianData.contactValue,
         publicKey: crypto.randomUUID(), // Generate a unique public key
-        trustLevel: 'medium' // Default trust level
+        trustLevel: 'medium', // Default trust level
+        passcode: custodianData.passcode // Store the 6-digit passcode
       };
 
       setCustodians(prev => [...prev, newCustodian]);
@@ -2327,8 +2414,76 @@ function App() {
     }
   };
 
+
+
+  // Handle custodian invitation acceptance
+  const handleCustodianAcceptance = async () => {
+    try {
+      if (!pendingCustodianInvitationData) {
+        throw new Error('No pending invitation found');
+      }
+
+      if (!custodianAcceptanceData.contactValue.trim() || !custodianAcceptanceData.passcode.trim()) {
+        throw new Error('Please enter your contact information and the passcode');
+      }
+
+      // Validate the contact information matches the invitation
+      if (custodianAcceptanceData.contactValue !== pendingCustodianInvitationData.contactValue) {
+        throw new Error('Contact information does not match the invitation');
+      }
+
+      // Find the pending custodian in the owner's list and validate the passcode
+      // This would typically involve a server call, but for now we'll simulate it
+      const isValidPasscode = true; // TODO: Implement actual passcode validation
+
+      if (!isValidPasscode) {
+        throw new Error('Invalid passcode. Please check with the identity owner.');
+      }
+
+      // Create new custodian with ZK proof capabilities
+      const newCustodian: RecoveryCustodian = {
+        id: `custodian-${Date.now()}`,
+        identityId: pendingCustodianInvitationData.invitationId,
+        name: pendingCustodianInvitationData.custodianName,
+        type: pendingCustodianInvitationData.custodianType === 'self-recovery' ? 'self' : pendingCustodianInvitationData.custodianType as 'person' | 'service',
+        status: 'active',
+        addedAt: new Date().toISOString(),
+        canApprove: true,
+        contactType: pendingCustodianInvitationData.contactType,
+        contactValue: pendingCustodianInvitationData.contactValue,
+        publicKey: crypto.randomUUID(), // Generate unique public key for ZK proof verification
+        recoveryKeyShare: crypto.randomUUID(), // Generate encrypted recovery key share
+        trustLevel: 'medium'
+      };
+
+      // Create new custodianship
+      const newCustodianship = {
+        id: `custodianship-${Date.now()}`,
+        identityId: pendingCustodianInvitationData.invitationId,
+        identityName: pendingCustodianInvitationData.identityName,
+        identityUsername: pendingCustodianInvitationData.identityUsername,
+        status: 'active' as const,
+        canApprove: true
+      };
+
+      // Add to custodianships list
+      setCustodianships(prev => [...prev, newCustodianship]);
+
+      // Close the modal and clear the data
+      setShowCustodianAcceptanceModal(false);
+      setPendingCustodianInvitationData(null);
+      setCustodianAcceptanceData({ contactValue: '', passcode: '' });
+
+      setSuccess('Custodianship accepted successfully! You can now approve recovery requests for this identity.');
+      setTimeout(() => setSuccess(null), 5000);
+
+    } catch (error: any) {
+      setError(error.message || 'Failed to accept custodianship');
+      setTimeout(() => setError(null), 5000);
+    }
+  };
+
   // Custodian validation handler (currently unused but available for future use)
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const handleCustodianValidation = async (custodianId: string) => {
     try {
       setCustodians(prev => prev.map(custodian => 
@@ -2500,7 +2655,6 @@ function App() {
   };
 
   // Recovery denial handler (currently unused but available for future use)
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const handleDenyRecovery = (requestId: string, custodianId: string) => {
     setRecoveryRequests(prev => {
       const updatedRequests = prev.map(req => 
@@ -2761,6 +2915,91 @@ function App() {
     setTimeout(() => setSuccess(null), 5000);
   };
 
+  const handleRequestDataPoint = async (dataPointId: string) => {
+    try {
+      const dataPoint = STANDARD_DATA_POINTS[dataPointId];
+      if (!dataPoint) {
+        setError('Unknown data point');
+        return;
+      }
+
+      // Check if user has already attested this data point
+      const { SecureMetadataStorage } = await import('./utils/secureMetadataStorage');
+      const { SecureMetadataCrypto } = await import('./utils/secureMetadata');
+      
+      const currentMetadata = await SecureMetadataStorage.getMetadata(authenticatedUser.id);
+      let existingData = null;
+      
+      if (currentMetadata) {
+        const decryptedContent = await SecureMetadataCrypto.decryptMetadata(
+          currentMetadata,
+          authenticatedUser.pnName,
+          authenticatedUser.passcode
+        );
+        const attestedData = decryptedContent?.dataPoints?.attestedData || [];
+        const existingAttestation = attestedData.find((attestation: any) => attestation.dataPointId === dataPointId);
+        
+        if (existingAttestation) {
+          existingData = existingAttestation.userData;
+        }
+      }
+      
+      setCurrentDataPoint(dataPoint);
+      setCurrentDataPointExistingData(existingData);
+      setShowDataPointInputModal(true);
+    } catch (error) {
+      // Fallback to new data collection
+      const dataPoint = STANDARD_DATA_POINTS[dataPointId];
+      setCurrentDataPoint(dataPoint);
+      setCurrentDataPointExistingData(null);
+      setShowDataPointInputModal(true);
+    }
+  };
+
+    const handleDataPointInputComplete = async (proofs: any[], userData: any) => {
+    try {
+      // Store attested data in metadata
+      const { SecureMetadataStorage } = await import('./utils/secureMetadataStorage');
+      
+      const dataPointId = currentDataPoint?.id;
+      if (dataPointId && proofs.length > 0) {
+        const attestedDataPoint = {
+          dataPointId,
+          attestedAt: new Date().toISOString(),
+          attestedBy: authenticatedUser.id,
+          dataType: 'attested', // User attests the data is true
+          userData,
+          zkpToken: proofs[0].proof, // Store the ZKP token
+          expiresAt: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString() // 1 year
+        };
+        
+        // Update metadata with new attested data
+        await SecureMetadataStorage.updateMetadataField(
+          authenticatedUser.id,
+          authenticatedUser.pnName,
+          authenticatedUser.passcode,
+          'dataPoints',
+          {
+            attestedData: [attestedDataPoint]
+          }
+        );
+        
+        // Refresh attested data points
+        const attestedIds = new Set([...attestedDataPoints, dataPointId]);
+        setAttestedDataPoints(attestedIds);
+      }
+      
+      setSuccess(`Successfully attested ${currentDataPoint?.name}!`);
+      setTimeout(() => setSuccess(null), 5000);
+      setShowDataPointInputModal(false);
+      setCurrentDataPoint(null);
+      setCurrentDataPointExistingData(null);
+    } catch (error) {
+      setError('Failed to store attested data');
+      setTimeout(() => setError(null), 5000);
+    }
+  };
+
 
 
 
@@ -2801,7 +3040,6 @@ function App() {
         qrContainer.appendChild(img);
       }
     } catch (error) {
-      console.error('Failed to generate QR code:', error);
     }
   };
 
@@ -3173,7 +3411,6 @@ function App() {
   // Handle PWA fallback to passcode (mobile only)
   const handlePWAFallback = () => {
     setIsPWALocked(false);
-    setShowUnifiedAuth(true);
   };
 
   // Handle PWA unlock for desktop (no popup)
@@ -3824,7 +4061,6 @@ function App() {
   };
   */
 
-  // Replace all console.log and console.error calls with production-safe versions
   useEffect(() => {
     logDebug('PWA State:', pwaState);
   }, [pwaState]);
@@ -3906,10 +4142,10 @@ function App() {
         })()
       )}
       
-      <main className="pt-12 flex-1">
+      <main className="flex-1">
                 {/* Main Screen - Show when not authenticated and not on transfer route */}
         {!authenticatedUser && !showTransferReceiver && (
-          <div className="max-w-6xl mx-auto text-text-primary pt-6 px-4 sm:px-6 lg:px-8">
+          <div className="max-w-6xl mx-auto text-text-primary pt-12 px-4 sm:px-6 lg:px-8">
             
             {/* Header */}
             <div className="flex justify-center items-center mt-2 mb-2">
@@ -4153,28 +4389,7 @@ function App() {
 
 
 
-        {/* Unified Authentication Modal - Only show when explicitly triggered */}
-        {showUnifiedAuth && !authenticatedUser && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-start justify-center z-50 overflow-y-auto p-4 sm:p-6">
-            <div className="bg-modal-bg rounded-lg p-6 max-w-2xl w-full mx-4 my-8 max-h-[90vh] overflow-y-auto text-text-primary">
-              <div className="flex justify-between items-center mb-8">
-                <h2 className="text-xl font-semibold">Secure Authentication</h2>
-            <button 
-                  onClick={() => setShowUnifiedAuth(false)}
-                  className="modal-close-button"
-            >
-                  ✕
-            </button>
-                            </div>
-              <UnifiedAuth
-                onAuthSuccess={handleAuthSuccess}
-                onAuthError={handleAuthError}
-                onCreateId={() => setShowCreateForm(true)}
-                onImportId={() => setShowImportForm(true)}
-              />
-                            </div>
-          </div>
-        )}
+
 
         {/* Create DID Modal */}
         {showCreateForm && (
@@ -4850,7 +5065,8 @@ function App() {
                   name: formData.get('name') as string,
                   contactType: formData.get('contactType') as 'email' | 'phone',
                   contactValue: formData.get('contactValue') as string,
-                  type: formData.get('type') as 'person' | 'service' | 'self'
+                  type: 'person' as 'person' | 'service' | 'self', // Default to person
+                  passcode: formData.get('passcode') as string
                 };
                 
                 // Add custodian as pending only
@@ -4910,50 +5126,39 @@ function App() {
                   />
                 </div>
 
+
+
                 <div>
                   <label className="block text-sm font-medium text-text-primary mb-1">
-                    Custodian Type *
+                    Custodian Passcode *
                   </label>
-                  <div className="flex space-x-4">
-                    <label className="flex items-center">
                       <input
-                        type="radio"
-                        name="type"
-                        value="person"
-                        defaultChecked
-                        className="mr-2"
-                      />
-                      <span className="text-sm text-text-primary">Person</span>
-                    </label>
-                    <label className="flex items-center">
-                      <input
-                        type="radio"
-                        name="type"
-                        value="service"
-                        className="mr-2"
-                      />
-                      <span className="text-sm text-text-primary">Service</span>
-                    </label>
-                    <label className="flex items-center">
-                      <input
-                        type="radio"
-                        name="type"
-                        value="self"
-                        className="mr-2"
-                      />
-                      <span className="text-sm text-text-primary">Self</span>
-                    </label>
-                  </div>
+                    type="text"
+                    name="passcode"
+                    required
+                    maxLength={6}
+                    pattern="[0-9]{6}"
+                    className="w-full px-3 py-2 border border-input-border bg-input-bg rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
+                    placeholder="Enter 6-digit numeric code"
+                  />
+                  <p className="text-xs text-text-secondary mt-1">
+                    Create a 6-digit numeric code to share with the custodian. They'll need this code to accept the custodianship.
+                  </p>
                 </div>
 
-
-
                 <div className="bg-secondary p-4 rounded-lg">
-                  <h4 className="font-medium text-text-primary mb-2 flex items-center gap-2">
+                  <button
+                    onClick={() => setShowCustodianInfo(!showCustodianInfo)}
+                    className="w-full flex items-center justify-between text-left"
+                  >
+                    <h4 className="font-medium text-text-primary flex items-center gap-2">
                   <Info className="w-5 h-5" />
                   About Custodians
                 </h4>
-                  <div className="text-sm text-text-secondary space-y-1">
+                    <ChevronDown className={`w-5 h-5 transition-transform ${showCustodianInfo ? 'rotate-180' : ''}`} />
+                  </button>
+                  {showCustodianInfo && (
+                    <div className="text-sm text-text-secondary space-y-1 mt-3">
                     <p>• Custodians can help you recover your identity if you lose access</p>
                     <p>• You need at least 2 custodians to enable recovery</p>
                     <p>• Maximum 5 custodians allowed</p>
@@ -4961,6 +5166,7 @@ function App() {
                     <p>• They can approve recovery requests</p>
                     <p>• Custodians start as &quot;pending&quot; until they accept the invitation</p>
                   </div>
+                  )}
                 </div>
 
                 <div className="flex space-x-3">
@@ -5183,14 +5389,15 @@ function App() {
 
 
         {authenticatedUser && (
-          <div className="max-w-6xl mx-auto text-text-primary pt-8 px-4 sm:px-6 lg:px-8">
+          <div className="max-w-6xl mx-auto text-text-primary pt-20 px-4 sm:px-6 lg:px-8">
             
             {/* Authenticated Dashboard */}
             <div className="flex flex-col items-center gap-8 -mt-4 relative z-10">
               {/* User Profile */}
               <div className="bg-modal-bg rounded-lg shadow p-8 text-text-primary w-full max-w-2xl">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center space-x-4">
+                <div className="flex flex-col lg:flex-row lg:items-center lg:justify-center gap-4">
+                  {/* Profile Picture and Nickname */}
+                  <div className="flex items-center justify-center space-x-4">
                   <div className="relative group">
                     {selectedDID?.profilePicture ? (
                       <img
@@ -5233,7 +5440,7 @@ function App() {
                       <Edit3 className="w-3 h-3" />
                     </button>
                   </div>
-                    <div className="flex-1">
+                    <div>
                       <div className="flex items-center space-x-2 group">
                         {!showNicknameEditor ? (
                           <>
@@ -5250,7 +5457,7 @@ function App() {
                             </button>
                           </>
                         ) : (
-                          <div className="flex items-center space-x-2 flex-1">
+                          <div className="flex items-center space-x-2">
                             <input
                               type="text"
                               value={editingNickname}
@@ -5263,7 +5470,7 @@ function App() {
                                   setEditingNickname('');
                                 }
                               }}
-                              className="flex-1 text-xl font-semibold bg-transparent border-b-2 border-primary text-text-primary focus:outline-none focus:border-primary-dark"
+                              className="text-xl font-semibold bg-transparent border-b-2 border-primary text-text-primary focus:outline-none focus:border-primary-dark"
                               placeholder="Enter nickname"
                               autoFocus
                               disabled={loading}
@@ -5288,7 +5495,7 @@ function App() {
                               title="Cancel"
                             >
                               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L6 6l12 12" />
                               </svg>
                             </button>
                           </div>
@@ -5296,7 +5503,9 @@ function App() {
                       </div>
                     </div>
                   </div>
-                  <div className="flex items-center space-x-2">
+                  
+                  {/* Action Buttons */}
+                  <div className="flex flex-wrap items-center justify-center gap-2">
                     <button 
                       onClick={() => setShowOnboardingWizard(true)}
                       className="px-3 py-2 bg-blue-600 text-white rounded-md font-medium hover:bg-blue-700 transition-colors text-sm"
@@ -5325,10 +5534,10 @@ function App() {
               <div className="bg-modal-bg rounded-lg shadow p-8 text-text-primary w-full max-w-4xl">
                 {/* Tab Navigation */}
                 <div className="border-b border-border mb-6">
-                  <nav className="-mb-px flex space-x-8 overflow-x-auto justify-center">
+                  <nav className="-mb-px flex space-x-4 sm:space-x-8 overflow-x-auto px-4 justify-start lg:justify-center">
                 <button
                       onClick={() => setActiveTab('privacy')}
-                      className={`py-2 px-1 border-b-2 font-medium text-sm whitespace-nowrap ${
+                      className={`py-2 px-2 sm:px-4 border-b-2 font-medium text-sm whitespace-nowrap min-w-0 flex-shrink-0 ${
                         activeTab === 'privacy'
                           ? 'border-primary text-primary'
                           : 'border-transparent text-text-secondary hover:text-text-primary hover:border-border'
@@ -5339,7 +5548,7 @@ function App() {
 
                     <button
                       onClick={() => setActiveTab('recovery')}
-                      className={`py-2 px-1 border-b-2 font-medium text-sm whitespace-nowrap ${
+                      className={`py-2 px-2 sm:px-4 border-b-2 font-medium text-sm whitespace-nowrap min-w-0 flex-shrink-0 ${
                         activeTab === 'recovery'
                           ? 'border-primary text-primary'
                           : 'border-transparent text-text-secondary hover:text-text-primary hover:border-border'
@@ -5347,20 +5556,10 @@ function App() {
                     >
                       Recovery Tool
                     </button>
-                    <button
-                      onClick={() => setActiveTab('security')}
-                      className={`py-2 px-1 border-b-2 font-medium text-sm whitespace-nowrap ${
-                        activeTab === 'security'
-                          ? 'border-primary text-primary'
-                          : 'border-transparent text-text-secondary hover:text-text-primary hover:border-border'
-                      }`}
-                    >
-                      Security
-                    </button>
-                    {!pwaState.isInstalled && (
+
                       <button
                         onClick={() => setActiveTab('developer')}
-                        className={`py-2 px-1 border-b-2 font-medium text-sm whitespace-nowrap ${
+                      className={`py-2 px-2 sm:px-4 border-b-2 font-medium text-sm whitespace-nowrap min-w-0 flex-shrink-0 ${
                           activeTab === 'developer'
                             ? 'border-primary text-primary'
                             : 'border-transparent text-text-secondary hover:text-text-primary hover:border-border'
@@ -5368,7 +5567,6 @@ function App() {
                       >
                         Developer Portal
                       </button>
-                    )}
                   </nav>
               </div>
 
@@ -5377,110 +5575,265 @@ function App() {
                   {activeTab === 'privacy' && (
                     <div className="space-y-6">
                       <div>
-                        <h3 className="text-lg font-semibold text-text-primary mb-4">Privacy & Sharing Settings</h3>
-                        
-                        {/* Global Settings */}
-                        <div className="bg-secondary p-4 rounded-lg mb-6">
-                          <h4 className="font-medium text-text-primary mb-3">Global Settings</h4>
+                        <div className="flex items-center justify-between mb-4">
+                          <h3 className="text-lg font-semibold text-text-primary">Privacy & Sharing Settings</h3>
                           
-                          {/* Master Override */}
-                          <div className="mb-4 pb-4 border-b border-border">
-                            <label className="flex items-center justify-between">
-                              <div>
-                                <div className="font-medium text-sm">Allow All Tool Access</div>
-                                <div className="text-xs text-text-secondary">Override all tool permissions</div>
-                              </div>
-                              <input
-                                type="checkbox"
-                                checked={privacySettings.allowAllToolAccess}
-                                onChange={(e) => setPrivacySettings({
-                                  ...privacySettings,
-                                  allowAllToolAccess: e.target.checked
-                                })}
-                                className="ml-4"
+                          {/* Notifications Setting - Top Right */}
+                          <div className="flex items-center space-x-2">
+                            <span className="text-sm text-text-secondary">Notifications</span>
+                            <button
+                              onClick={() => {
+                                const currentSettings = notificationsService.getSettings();
+                                notificationsService.updateSettings({ enabled: !currentSettings.enabled });
+                                setPrivacySettings({ ...privacySettings });
+                              }}
+                              className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors border-2 ${
+                                notificationsService.getSettings().enabled 
+                                  ? 'bg-primary border-primary' 
+                                  : 'bg-white border-border'
+                              }`}
+                            >
+                              <span
+                                className={`inline-block h-4 w-4 transform rounded-full shadow-sm transition-transform ${
+                                  notificationsService.getSettings().enabled 
+                                    ? 'bg-white translate-x-6' 
+                                    : 'bg-gray-600 translate-x-1'
+                                }`}
                               />
-                            </label>
+                            </button>
+                          </div>
                           </div>
 
-                          {/* Dynamic Data Point Settings */}
-                          {Object.keys(privacySettings.dataPoints).length > 0 ? (
+                        {/* Global Settings - All Active Permissions */}
+                        <div className="bg-secondary rounded-lg mb-6">
+                          <button
+                            onClick={() => setGlobalSettingsExpanded(!globalSettingsExpanded)}
+                            className="w-full p-6 flex items-center justify-between hover:bg-border transition-colors"
+                          >
+                            <h4 className="font-medium text-text-primary flex items-center gap-2">
+                              <Settings className="w-5 h-5" />
+                              Global Settings
+                            </h4>
+                            <ChevronDown className={`w-5 h-5 transition-transform ${globalSettingsExpanded ? 'rotate-180' : ''}`} />
+                          </button>
+                          
+                          {globalSettingsExpanded && (
+                            <div className="px-6 pb-6">
+
+                          {/* Active Data Point Permissions */}
                             <div>
-                              <h5 className="text-sm font-medium text-text-primary mb-3">Data Point Permissions</h5>
-                              <div className="space-y-3">
-                                {Object.entries(privacySettings.dataPoints).map(([dataPointKey, dataPoint]) => (
-                                  <label key={dataPointKey} className="flex items-center justify-between">
-                                    <div>
-                                      <div className="font-medium text-sm">{dataPoint.label}</div>
-                                      <div className="text-xs text-text-secondary">{dataPoint.description}</div>
-                                      <div className="text-xs text-text-secondary mt-1">
-                                        Requested by: {dataPoint.requestedBy.join(', ')}
-                                      </div>
-                                    </div>
-                                    <input
-                                      type="checkbox"
-                                      checked={dataPoint.globalSetting}
-                                      onChange={(e) => setPrivacySettings({
-                                        ...privacySettings,
-                                        dataPoints: {
-                                          ...privacySettings.dataPoints,
-                                          [dataPointKey]: {
-                                            ...dataPoint,
-                                            globalSetting: e.target.checked
-                                          }
-                                        }
+                            <h5 className="text-sm font-medium text-text-primary mb-4 flex items-center gap-2">
+                              <CheckCircle className="w-4 h-4 text-green-500" />
+                              Active Data Point Permissions
+                            </h5>
+                                                            <div className="space-y-4">
+                                {Object.entries(DATA_POINT_CATEGORIES).map(([categoryKey, categoryName]) => {
+                                  const categoryDataPoints = Object.entries(STANDARD_DATA_POINTS).filter(
+                                    ([_, dataPoint]) => dataPoint.category === categoryKey
+                                  );
+                                  
+                                  if (categoryDataPoints.length === 0) return null;
+                                  
+                                  return (
+                                    <div key={categoryKey} className="space-y-3">
+                                      <h6 className="text-sm font-medium text-text-primary border-b border-border pb-2">
+                                        {categoryName}
+                                      </h6>
+                                      {categoryDataPoints.map(([dataPointId, dataPoint]) => {
+                                        const isGloballyEnabled = privacySettings.dataPoints[dataPointId]?.globalSetting !== false;
+                                        const isLocked = false;
+                                        
+                                        // Check if user has attested this data point
+                                        const hasAttested = attestedDataPoints.has(dataPointId);
+                                        
+                                        return (
+                                          <div key={dataPointId} className="flex items-center justify-between p-3 border border-border rounded-lg">
+                                            <div className="flex items-center gap-3">
+                                              <div className="font-medium text-sm">
+                                                {dataPoint.name} {hasAttested && '(attested)'}
+                                              </div>
+                                              {isGloballyEnabled && (
+                                                <span className="text-xs bg-primary/10 text-primary px-2 py-1 rounded-full">
+                                                  Active
+                                                </span>
+                                              )}
+                                              {isLocked && (
+                                                <span className="text-xs bg-secondary text-text-secondary px-2 py-1 rounded-full">
+                                                  Locked
+                                                </span>
+                                              )}
+                                            </div>
+                                            <div className="flex items-center space-x-3">
+                                              <button
+                                                onClick={() => handleRequestDataPoint(dataPointId)}
+                                                className={`text-xs font-medium px-3 py-1 border rounded transition-colors ${
+                                                  hasAttested
+                                                    ? 'text-primary border-primary hover:bg-primary hover:text-white'
+                                                    : 'text-green-600 border-green-600 hover:bg-green-600 hover:text-white'
+                                                }`}
+                                              >
+                                                {hasAttested ? 'Edit' : '+'}
+                                              </button>
+                                              <button
+                                                onClick={() => setPrivacySettings({
+                                                  ...privacySettings,
+                                                  dataPoints: {
+                                                    ...privacySettings.dataPoints,
+                                                    [dataPointId]: {
+                                                      ...privacySettings.dataPoints[dataPointId],
+                                                      label: dataPoint.name,
+                                                      description: dataPoint.description,
+                                                      category: dataPoint.category as 'verification' | 'preferences' | 'compliance' | 'location' | 'content' | 'analytics',
+                                                      globalSetting: !isGloballyEnabled
+                                                    }
+                                                  }
+                                                })}
+                                                disabled={isLocked}
+                                                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors border-2 ${
+                                                  isGloballyEnabled 
+                                                    ? 'bg-primary border-primary' 
+                                                    : 'bg-white border-border'
+                                                }`}
+                                              >
+                                                <span
+                                                  className={`inline-block h-4 w-4 transform rounded-full shadow-sm transition-transform ${
+                                                    isGloballyEnabled 
+                                                      ? 'bg-white translate-x-6' 
+                                                      : 'bg-gray-600 translate-x-1'
+                                                  }`}
+                                                />
+                                              </button>
+                                            </div>
+                                          </div>
+                                        );
                                       })}
-                                      disabled={privacySettings.allowAllToolAccess}
-                                      className="ml-4"
-                                    />
-                                  </label>
-                                ))}
-                              </div>
+                                    </div>
+                                  );
+                                })}
                             </div>
-                          ) : (
-                            <div className="text-center py-4 text-text-secondary">
-                              <p className="text-sm">No data points available</p>
-                              <p className="text-xs">Data points will appear here as tools request access</p>
+                          </div>
                             </div>
                           )}
                         </div>
 
-                        {/* Tool Permissions */}
-                        <div className="bg-secondary p-4 rounded-lg">
-                          <h4 className="font-medium text-text-primary mb-3">Third-Party Tools</h4>
+                        {/* Third-Party Permissions */}
+                        <div className="bg-secondary rounded-lg">
+                          <button
+                            onClick={() => setThirdPartyExpanded(!thirdPartyExpanded)}
+                            className="w-full p-6 flex items-center justify-between hover:bg-border transition-colors"
+                          >
+                            <h4 className="font-medium text-text-primary flex items-center gap-2">
+                              <Smartphone className="w-5 h-5" />
+                              Third-Party Permissions
+                            </h4>
+                            <ChevronDown className={`w-5 h-5 transition-transform ${thirdPartyExpanded ? 'rotate-180' : ''}`} />
+                          </button>
+                          
+                          {thirdPartyExpanded && (
+                            <div className="px-6 pb-6">
+                          
                           {Object.keys(privacySettings.toolPermissions).length === 0 ? (
-                            <div className="text-center py-4 text-text-secondary">
-                              <p className="text-sm">No tools connected yet</p>
+                            <div className="text-center py-8 text-text-secondary">
+                              <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                                <Smartphone className="w-8 h-8 text-gray-400" />
+                              </div>
+                              <p className="text-sm font-medium mb-2">No third-party tools connected</p>
+                              <p className="text-xs">When you connect tools, you'll be able to manage their individual permissions here</p>
                             </div>
                           ) : (
-                            <div className="space-y-3">
+                            <div className="space-y-4">
                               {Object.entries(privacySettings.toolPermissions).map(([toolId, tool]) => (
-                                <div key={toolId} className="border border-border rounded-lg p-3">
-                                  <div className="flex items-center justify-between mb-2">
+                                <div key={toolId} className="border border-border rounded-lg p-4">
+                                  <div className="flex items-center justify-between mb-4">
                                     <div className="flex-1">
-                                      <div className="font-medium text-sm">{tool.toolName}</div>
-                                      <div className="text-xs text-text-secondary">{tool.toolDescription}</div>
+                                      <div className="font-medium text-sm flex items-center gap-2">
+                                        {tool.toolName}
+                                                                    <span className={`text-xs px-2 py-1 rounded-full ${
+                              tool.status === 'active' 
+                                ? 'bg-primary/10 text-primary' 
+                                : 'bg-secondary text-text-secondary'
+                            }`}>
+                                          {tool.status}
+                                        </span>
+                                      </div>
+                                      <div className="text-xs text-text-secondary mt-1">{tool.toolDescription}</div>
                                       <div className="text-xs text-text-secondary mt-1">
-                                        {tool.dataPoints.length} data points • {tool.status}
+                                        {tool.dataPoints.length} data points • Connected {new Date(tool.grantedAt).toLocaleDateString()}
                                       </div>
                                     </div>
                                     <div className="flex items-center space-x-2">
                                       <button
                                         onClick={() => handleOpenToolSettings(toolId)}
-                                        className="text-primary hover:text-primary-dark text-xs font-medium"
+                                        className="text-primary hover:text-primary-dark text-xs font-medium px-3 py-1 border border-primary rounded hover:bg-primary hover:text-white transition-colors"
                                       >
-                                        Settings
+                                        Manage
                                       </button>
                                       <button
                                         onClick={() => handleDeactivateTool(toolId)}
-                                        className="text-red-600 hover:text-red-800 text-xs font-medium"
+                                        className="text-red-600 hover:text-red-800 text-xs font-medium px-3 py-1 border border-red-600 rounded hover:bg-red-600 hover:text-white transition-colors"
                                       >
                                         {tool.status === 'active' ? 'Deactivate' : 'Delete'}
                                       </button>
                                     </div>
                                   </div>
-                                </div>
-                              ))}
-                            </div>
+                                  
+                                  {/* Tool-specific data point permissions */}
+                                  <div className="space-y-2">
+                                    <h6 className="text-xs font-medium text-text-primary">Data Point Permissions:</h6>
+                                    {tool.dataPoints.map((dataPointId: string) => {
+                                      const dataPoint = STANDARD_DATA_POINTS[dataPointId];
+                                      const isGloballyEnabled = privacySettings.dataPoints[dataPointId]?.globalSetting !== false;
+                                      const isLocked = isGloballyEnabled;
+                                      
+                                      return dataPoint ? (
+                                        <div key={dataPointId} className="flex items-center justify-between p-2 bg-secondary rounded border">
+                                          <div className="flex-1">
+                                            <div className="text-xs font-medium">{dataPoint.name}</div>
+                                            <div className="text-xs text-text-secondary">{dataPoint.description}</div>
+                                          </div>
+                                          <div className="flex items-center space-x-3">
+                                            <select
+                                              className="text-xs border border-gray-300 rounded px-2 py-1"
+                                              disabled={isLocked}
+                                              defaultValue="optional"
+                                            >
+                                              <option value="optional">Optional</option>
+                                              <option value="required">Required</option>
+                                            </select>
+                                    <button
+                                      onClick={() => {
+                                                // TODO: Update third-party specific setting
+                                              }}
+                                              disabled={isLocked}
+                                              className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors border-2 ${
+                                                !isLocked 
+                                                  ? 'bg-primary border-primary' 
+                                                  : 'bg-white border-border'
+                                              }`}
+                                            >
+                                              <span
+                                                className={`inline-block h-4 w-4 transform rounded-full shadow-sm transition-transform ${
+                                                  !isLocked 
+                                                    ? 'bg-white translate-x-6' 
+                                                    : 'bg-gray-600 translate-x-1'
+                                                }`}
+                                              />
+                                    </button>
+                                            {isLocked && (
+                                                                              <span className="text-xs text-text-secondary ml-2">
+                                  {isGloballyEnabled ? 'Global' : 'Locked'}
+                                </span>
+                                )}
+                                          </div>
+                                        </div>
+                                      ) : null;
+                                    })}
+                                  </div>
+                              </div>
+                            ))}
+                          </div>
+                          )}
+                          </div>
                           )}
                         </div>
                       </div>
@@ -5550,13 +5903,7 @@ function App() {
                                   </select>
                                 </div>
                               </div>
-                              <div className="text-sm text-text-secondary space-y-1">
-                                <div>• Self-recovery custodians: {getSelfCustodiansCount()}/2</div>
-                                <div>• Third-party custodians: {getThirdPartyCustodiansCount()}/5</div>
-                                <div className="text-xs text-text-secondary mt-2">
-                                  Total maximum: 5 custodians • Minimum required: {recoveryThreshold} custodians
-                                </div>
-                              </div>
+
                             </div>
                           </div>
 
@@ -5714,11 +6061,18 @@ function App() {
 
                           {/* Recovery Instructions */}
                           <div className="bg-secondary p-4 rounded-lg">
-                            <h4 className="font-medium text-text-primary mb-2 flex items-center gap-2">
+                            <button
+                              onClick={() => setShowRecoveryInfo(!showRecoveryInfo)}
+                              className="w-full flex items-center justify-between text-left"
+                            >
+                              <h4 className="font-medium text-text-primary flex items-center gap-2">
                   <Info className="w-5 h-5" />
                   How Recovery Works
                 </h4>
-                            <div className="text-sm text-text-secondary space-y-1">
+                              <ChevronDown className={`w-5 h-5 transition-transform ${showRecoveryInfo ? 'rotate-180' : ''}`} />
+                            </button>
+                            {showRecoveryInfo && (
+                              <div className="text-sm text-text-secondary space-y-1 mt-3">
                               <p>• Add trusted Identity Protocol users as custodians</p>
                               <p>• Set how many custodians must approve recovery (2-5)</p>
                               <p>• Generate recovery keys for secure backup</p>
@@ -5728,262 +6082,17 @@ function App() {
                               <p>• Each custodian can approve/deny with one click</p>
                               <p>• Once threshold is met, your identity is recovered</p>
                               <p>• <strong>Security:</strong> Recovery keys don&apos;t unlock directly - they trigger approval process</p>
-                            </div>
-                          </div>
+                    </div>
+                  )}
                         </div>
                       </div>
-                    </div>
+                        </div>
+                          </div>
                   )}
 
 
 
-                  {/* Security Tab */}
-                  {activeTab === 'security' && (
-                    <div className="space-y-6">
-                      <div className="flex justify-between items-center">
-                        <h3 className="text-lg font-semibold text-text-primary">Security & Monitoring</h3>
-                        <div className="flex space-x-2">
-                          <button
-                            onClick={() => setShowRealtimeSecurityAlerts(true)}
-                            className="px-4 py-2 bg-secondary text-text-primary rounded-lg hover:bg-hover transition-colors border border-border shadow-sm"
-                          >
-                            Real-time Alerts
-                          </button>
 
-                          {/* Biometric Setup Button */}
-                          {false && (
-                            <button
-                              onClick={() => setShowBiometricSetup(true)}
-                              className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors"
-                            >
-                              👆 Set Up Biometric Unlock
-                            </button>
-                          )}
-                          <button
-                            onClick={() => setShowSecurityDashboard(true)}
-                            className="px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary-dark transition-colors border border-primary-dark shadow-sm"
-                          >
-                            Open Security Dashboard
-                          </button>
-
-                        </div>
-                      </div>
-                      
-                      {/* Essential Security Overview - Always Visible */}
-                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                        <div className="bg-secondary rounded-lg p-4">
-                          <div className="text-sm text-text-secondary">Account Status</div>
-                          <div className="text-lg font-semibold text-green-600">Secure</div>
-                        </div>
-                        <div className="bg-secondary rounded-lg p-4">
-                          <div className="text-sm text-text-secondary">Last Login</div>
-                          <div className="text-lg font-semibold text-text-primary">
-                            {authenticatedUser ? new Date(authenticatedUser.metadata?.security?.lastLoginAttempt || Date.now()).toLocaleString() : 'Never'}
-                          </div>
-                        </div>
-                        <div className="bg-secondary rounded-lg p-4">
-                          <div className="text-sm text-text-secondary">Failed Attempts</div>
-                          <div className="text-lg font-semibold text-text-primary">
-                            {authenticatedUser?.metadata?.security?.failedLoginAttempts || 0}
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Security Features - Always Visible */}
-                      <div className="bg-secondary rounded-lg p-6">
-                        <h4 className="text-md font-semibold mb-4 text-text-primary">Security Features</h4>
-                        <div className="space-y-3">
-                          <div className="flex items-center justify-between">
-                            <span className="text-text-primary">Brute Force Protection</span>
-                            <span className="text-green-600">✓ Active</span>
-                          </div>
-                          <div className="flex items-center justify-between">
-                            <span className="text-text-primary">Input Validation</span>
-                            <span className="text-green-600">✓ Active</span>
-                          </div>
-                          <div className="flex items-center justify-between">
-                            <span className="text-text-primary">Rate Limiting</span>
-                            <span className="text-green-600">✓ Active</span>
-                          </div>
-                          <div className="flex items-center justify-between">
-                            <span className="text-text-primary">Threat Detection</span>
-                            <span className="text-green-600">✓ Active</span>
-                          </div>
-                          <div className="flex items-center justify-between">
-                            <span className="text-text-primary">Data Encryption</span>
-                            <span className="text-green-600">✓ Active</span>
-                          </div>
-                          <div className="flex items-center justify-between">
-                            <span className="text-text-primary">Audit Logging</span>
-                            <span className="text-green-600">✓ Active</span>
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Advanced Settings Toggle */}
-                      <div className="border border-border rounded-lg">
-                        <button
-                          onClick={() => setShowAdvancedSecuritySettings(!showAdvancedSecuritySettings)}
-                          className="w-full flex items-center justify-between p-4 hover:bg-modal-bg transition-colors"
-                        >
-                          <div className="flex items-center space-x-3">
-                            <Settings className="w-5 h-5 text-text-secondary" />
-                            <span className="font-medium text-text-primary">Advanced Security Settings</span>
-                          </div>
-                          {showAdvancedSecuritySettings ? (
-                            <ChevronUp className="w-5 h-5 text-text-secondary" />
-                          ) : (
-                            <ChevronDown className="w-5 h-5 text-text-secondary" />
-                          )}
-                        </button>
-
-                        {/* Advanced Settings Content */}
-                        {showAdvancedSecuritySettings && (
-                          <div className="border-t border-border p-6 space-y-6">
-                            {/* Security Settings */}
-                            <div>
-                              <h4 className="text-md font-semibold mb-4 text-text-primary">Security Settings</h4>
-                              <div className="space-y-4">
-                                <div className="flex items-center justify-between">
-                                  <div>
-                                    <div className="font-medium text-text-primary">Session Timeout</div>
-                                    <div className="text-sm text-text-secondary">Auto-logout after inactivity</div>
-                                  </div>
-                                  <select
-                                    value={securitySettings.sessionTimeout}
-                                    onChange={(e) => setSecuritySettings(prev => ({ ...prev, sessionTimeout: parseInt(e.target.value) }))}
-                                    className="px-3 py-1 border border-border rounded bg-modal-bg text-text-primary"
-                                  >
-                                    <option value={5}>5 minutes</option>
-                                    <option value={15}>15 minutes</option>
-                                    <option value={30}>30 minutes</option>
-                                    <option value={60}>1 hour</option>
-                                    <option value={0}>Never</option>
-                                  </select>
-                                </div>
-                                
-                                <div className="flex items-center justify-between">
-                                  <div>
-                                    <div className="font-medium text-text-primary">Max Concurrent Sessions</div>
-                                    <div className="text-sm text-text-secondary">Maximum devices logged in</div>
-                                  </div>
-                                  <select
-                                    value={securitySettings.maxConcurrentSessions}
-                                    onChange={(e) => setSecuritySettings(prev => ({ ...prev, maxConcurrentSessions: parseInt(e.target.value) }))}
-                                    className="px-3 py-1 border border-border rounded bg-modal-bg text-text-primary"
-                                  >
-                                    <option value={1}>1 device</option>
-                                    <option value={2}>2 devices</option>
-                                    <option value={3}>3 devices</option>
-                                    <option value={5}>5 devices</option>
-                                  </select>
-                                </div>
-                                
-                                <div className="flex items-center justify-between">
-                                  <div>
-                                    <div className="font-medium text-text-primary">Auto-Lock Timeout</div>
-                                    <div className="text-sm text-text-secondary">Lock app after inactivity</div>
-                                  </div>
-                                  <select
-                                    value={securitySettings.autoLockTimeout}
-                                    onChange={(e) => setSecuritySettings(prev => ({ ...prev, autoLockTimeout: parseInt(e.target.value) }))}
-                                    className="px-3 py-1 border border-border rounded bg-modal-bg text-text-primary"
-                                  >
-                                    <option value={1}>1 minute</option>
-                                    <option value={5}>5 minutes</option>
-                                    <option value={15}>15 minutes</option>
-                                    <option value={30}>30 minutes</option>
-                                  </select>
-                                </div>
-                                
-                                <div className="flex items-center justify-between">
-                                  <div>
-                                    <div className="font-medium text-text-primary">Security Notifications</div>
-                                    <div className="text-sm text-text-secondary">Get alerts for suspicious activity</div>
-                                  </div>
-                                  <label className="relative inline-flex items-center cursor-pointer">
-                                    <input
-                                      type="checkbox"
-                                      checked={securitySettings.enableNotifications}
-                                      onChange={(e) => setSecuritySettings(prev => ({ ...prev, enableNotifications: e.target.checked }))}
-                                      className="sr-only peer"
-                                    />
-                                    <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
-                                  </label>
-                                </div>
-                                
-                                <div className="flex items-center justify-between">
-                                  <div>
-                                    <div className="font-medium text-text-primary">Remember Me</div>
-                                    <div className="text-sm text-text-secondary">Stay logged in on this device</div>
-                                  </div>
-                                  <label className="relative inline-flex items-center cursor-pointer">
-                                    <input
-                                      type="checkbox"
-                                      checked={securitySettings.allowRememberMe}
-                                      onChange={(e) => setSecuritySettings(prev => ({ ...prev, allowRememberMe: e.target.checked }))}
-                                      className="sr-only peer"
-                                    />
-                                    <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
-                                  </label>
-                                </div>
-                              </div>
-                            </div>
-
-                            {/* Active Sessions */}
-                            <div>
-                              <div className="flex justify-between items-center mb-4">
-                                <h4 className="text-md font-semibold text-text-primary">Active Sessions</h4>
-                                <button
-                                  onClick={() => setShowSessionManager(true)}
-                                  className="px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary-dark transition-colors"
-                                >
-                                  View All Sessions
-                                </button>
-                              </div>
-                              <div className="space-y-3">
-                                <div className="flex items-center justify-between p-3 border border-border rounded-lg">
-                                  <div className="flex items-center space-x-3">
-                                    <span className="text-2xl">💻</span>
-                                    <div>
-                                      <div className="font-medium text-text-primary">MacBook Pro</div>
-                                      <div className="text-sm text-text-secondary">Current session • San Francisco, CA</div>
-                                    </div>
-                                  </div>
-                                  <span className="text-xs bg-primary text-white px-2 py-1 rounded">Current</span>
-                                </div>
-                                <div className="flex items-center justify-between p-3 border border-border rounded-lg">
-                                  <div className="flex items-center space-x-3">
-                                    <Smartphone className="w-8 h-8" />
-                                    <div>
-                                      <div className="font-medium text-text-primary">iPhone 15</div>
-                                      <div className="text-sm text-text-secondary">Last active 30 minutes ago • San Francisco, CA</div>
-                                    </div>
-                                  </div>
-                                  <button className="text-xs text-red-500 hover:text-red-600">Terminate</button>
-                                </div>
-                                <div className="flex items-center justify-between p-3 border border-border rounded-lg">
-                                  <div className="flex items-center space-x-3">
-                                    <Monitor className="w-8 h-8" />
-                                    <div>
-                                      <div className="font-medium text-text-primary">Unknown Device</div>
-                                      <div className="text-sm text-text-secondary">Last active 2 hours ago • Unknown location</div>
-                                    </div>
-                                  </div>
-                                  <button className="text-xs text-red-500 hover:text-red-600">Terminate</button>
-                                </div>
-                              </div>
-                              <div className="mt-4 pt-4 border-t border-border">
-                                <button className="text-sm text-red-500 hover:text-red-600">
-                                  Terminate All Other Sessions
-                                </button>
-                              </div>
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  )}
 
                   {/* Developer Portal Tab */}
                   {activeTab === 'developer' && (
@@ -6094,7 +6203,8 @@ function App() {
                       name: '',
                       contactType: 'email',
                       contactValue: '',
-                      type: 'person'
+                      type: 'person',
+                      passcode: ''
                     });
                   }}
                   className="modal-close-button"
@@ -6132,7 +6242,8 @@ function App() {
                           name: selectedCustodianForInvitation.name,
                           contactType: selectedCustodianForInvitation.contactType,
                           contactValue: selectedCustodianForInvitation.contactValue,
-                          type: selectedCustodianForInvitation.type
+                          type: selectedCustodianForInvitation.type,
+                          passcode: selectedCustodianForInvitation.passcode || ''
                         };
                         await generateCustodianQRCode(custodianData);
                       }}
@@ -6198,7 +6309,8 @@ function App() {
                             name: selectedCustodianForInvitation.name,
                             contactType: selectedCustodianForInvitation.contactType,
                             contactValue: selectedCustodianForInvitation.contactValue,
-                            type: selectedCustodianForInvitation.type
+                            type: selectedCustodianForInvitation.type,
+                            passcode: selectedCustodianForInvitation.passcode || ''
                           };
                           await generateCustodianQRCode(custodianData);
                         }}
@@ -6226,6 +6338,129 @@ function App() {
                     <p>• Once accepted, their status will change from &quot;pending&quot; to &quot;active&quot;</p>
                     <p>• Active custodians can approve recovery requests</p>
                   </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Custodian Acceptance Modal */}
+        {showCustodianAcceptanceModal && pendingCustodianInvitationData && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-start justify-center z-50 overflow-y-auto p-4 sm:p-6">
+            <div className="bg-modal-bg rounded-lg p-6 max-w-lg w-full mx-4 my-8 max-h-[90vh] overflow-y-auto text-text-primary">
+              <div className="flex justify-between items-center mb-6">
+                <h2 className="text-xl font-semibold">Accept Custodianship</h2>
+                <button 
+                  onClick={() => {
+                    setShowCustodianAcceptanceModal(false);
+                    setPendingCustodianInvitationData(null);
+                    setCustodianAcceptanceData({ contactValue: '', passcode: '' });
+                  }}
+                  className="modal-close-button"
+                >
+                  ✕
+                </button>
+              </div>
+              
+              <div className="space-y-6">
+                {/* Invitation Details */}
+                <div className="bg-secondary p-4 rounded-lg">
+                  <h3 className="font-medium text-text-primary mb-2">Invitation Details</h3>
+                  <div className="space-y-2 text-sm">
+                    <div><span className="text-text-secondary">Identity:</span> <span className="font-medium">{pendingCustodianInvitationData.identityName}</span></div>
+                    <div><span className="text-text-secondary">pN Name:</span> <span className="font-medium">{pendingCustodianInvitationData.identityUsername}</span></div>
+                    <div><span className="text-text-secondary">Custodian Name:</span> <span className="font-medium">{pendingCustodianInvitationData.custodianName}</span></div>
+                    <div><span className="text-text-secondary">Type:</span> <span className="font-medium">{pendingCustodianInvitationData.custodianType}</span></div>
+                    <div><span className="text-text-secondary">Contact:</span> <span className="font-medium">{pendingCustodianInvitationData.contactValue} ({pendingCustodianInvitationData.contactType})</span></div>
+                  </div>
+                </div>
+
+                {/* What This Means */}
+                <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                  <h4 className="font-medium text-blue-800 mb-2 flex items-center gap-2">
+                    <FileText className="w-5 h-5" />
+                    What This Means
+                  </h4>
+                  <div className="text-sm text-blue-700 space-y-1">
+                    <p>• You&apos;re being asked to be a recovery custodian for this identity</p>
+                    <p>• You&apos;ll be able to approve or deny recovery requests</p>
+                    <p>• You&apos;ll receive notifications when recovery is requested</p>
+                    <p>• This is a trusted role - only accept if you know the identity owner</p>
+                  </div>
+                </div>
+
+                {/* Verification Form */}
+                <div className="bg-secondary p-4 rounded-lg">
+                  <h4 className="font-medium text-text-primary mb-3">Verify Your Information</h4>
+                  <div className="space-y-4">
+                    <div>
+                      <label className="block text-sm font-medium text-text-primary mb-1">
+                        Your Contact Information *
+                      </label>
+                      <input
+                        type="text"
+                        value={custodianAcceptanceData.contactValue}
+                        onChange={(e) => setCustodianAcceptanceData(prev => ({ ...prev, contactValue: e.target.value }))}
+                        className="w-full px-3 py-2 border border-input-border bg-input-bg rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
+                        placeholder={`Enter your ${pendingCustodianInvitationData.contactType}`}
+                      />
+                      <p className="text-xs text-text-secondary mt-1">
+                        Must match the contact information in the invitation
+                      </p>
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-text-primary mb-1">
+                        Passcode *
+                      </label>
+                      <input
+                        type="text"
+                        value={custodianAcceptanceData.passcode}
+                        onChange={(e) => setCustodianAcceptanceData(prev => ({ ...prev, passcode: e.target.value }))}
+                        maxLength={6}
+                        pattern="[0-9]{6}"
+                        className="w-full px-3 py-2 border border-input-border bg-input-bg rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
+                        placeholder="Enter 6-digit passcode"
+                      />
+                      <p className="text-xs text-text-secondary mt-1">
+                        Enter the 6-digit passcode provided by the identity owner
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Requirements */}
+                <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+                  <h4 className="font-medium text-yellow-800 mb-2 flex items-center gap-2">
+                    <AlertTriangle className="w-5 h-5" />
+                    Requirements
+                  </h4>
+                  <div className="text-sm text-yellow-700 space-y-1">
+                    <p>• You must have your own identity unlocked to accept</p>
+                    <p>• Your contact information must match the invitation</p>
+                    <p>• You need the correct 6-digit passcode from the identity owner</p>
+                    <p>• You can revoke this custodianship at any time</p>
+                  </div>
+                </div>
+
+                {/* Action Buttons */}
+                <div className="flex space-x-3">
+                  <button
+                    onClick={() => {
+                      setShowCustodianAcceptanceModal(false);
+                      setPendingCustodianInvitationData(null);
+                      setCustodianAcceptanceData({ contactValue: '', passcode: '' });
+                    }}
+                    className="flex-1 px-4 py-2 bg-gray-600 text-white rounded-md hover:bg-gray-700 transition-colors"
+                  >
+                    Decline
+                  </button>
+                  <button
+                    onClick={handleCustodianAcceptance}
+                    className="flex-1 px-4 py-2 modal-button rounded-md"
+                  >
+                    Accept Custodianship
+                  </button>
                 </div>
               </div>
             </div>
@@ -6427,13 +6662,7 @@ function App() {
           </Suspense>
         )}
 
-        {/* Security Dashboard Modal */}
-        <Suspense fallback={<LoadingSpinner />}>
-          <SecurityDashboard
-            isOpen={showSecurityDashboard}
-            onClose={() => setShowSecurityDashboard(false)}
-          />
-        </Suspense>
+
 
         {/* Session Manager Modal */}
         <Suspense fallback={<LoadingSpinner />}>
@@ -6443,13 +6672,7 @@ function App() {
           />
         </Suspense>
 
-        {/* Real-time Security Alerts Modal */}
-        <Suspense fallback={<LoadingSpinner />}>
-          <RealtimeSecurityAlerts
-            isOpen={showRealtimeSecurityAlerts}
-            onClose={() => setShowRealtimeSecurityAlerts(false)}
-          />
-        </Suspense>
+
 
         {/* Migration Modal */}
         <Suspense fallback={<LoadingSpinner />}>
@@ -6524,14 +6747,7 @@ function App() {
           </div>
         )}
 
-        {/* PWA Lock Screen */}
-        <Suspense fallback={<LoadingSpinner />}>
-          <PWALockScreen
-            isLocked={isPWALocked}
-            onUnlock={handlePWAUnlock}
-            onFallback={handlePWAFallback}
-          />
-        </Suspense>
+
 
         {/* Onboarding Wizard */}
         <OnboardingWizard
@@ -6591,7 +6807,7 @@ function App() {
                 >
                   ✕
                 </button>
-              </div>
+      </div>
               
               <div className="space-y-4">
                 <div>
@@ -6854,6 +7070,18 @@ function App() {
         {showPrivacyPolicy && (
           <PrivacyPolicy />
         )}
+
+        {/* Data Collection Modal */}
+                      {showDataPointInputModal && currentDataPoint && (
+                <DataPointInputModal
+                  isOpen={showDataPointInputModal}
+                  onClose={() => setShowDataPointInputModal(false)}
+                  dataPoint={currentDataPoint}
+                  existingData={currentDataPointExistingData}
+                  onComplete={handleDataPointInputComplete}
+                  identityId={authenticatedUser?.id}
+                />
+              )}
 
       </main>
 

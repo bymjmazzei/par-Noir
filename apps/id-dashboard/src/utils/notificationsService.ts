@@ -1,167 +1,134 @@
-// Notifications Service - Handles push notifications, local notifications, and notification management
+// Notifications Service for pN Identity Management
+// Handles notification storage, retrieval, and management using pN metadata
+
+import { SecureMetadataStorage } from './secureMetadataStorage';
+import { NotificationEvent, NotificationSettings } from './secureMetadata';
 
 export interface Notification {
   id: string;
-  type: 'recovery-request' | 'custodian-approval' | 'integration-update' | 'security-alert' | 'sync-complete' | 'device-pairing';
+  type: 'recovery-request' | 'security-alert' | 'custodian-approval' | 'integration-update' | 'device-pairing' | 'sync-complete' | 'data-request' | 'system-update';
   title: string;
   message: string;
   timestamp: string;
   read: boolean;
-  identityId: string; // Which ID this notification belongs to
-  identityNickname: string; // Nickname of the ID for display
+  identityId: string;
+  identityNickname: string;
   actionUrl?: string;
   priority: 'low' | 'medium' | 'high' | 'critical';
   metadata?: any;
 }
 
-export interface PushNotificationPayload {
-  title: string;
-  body: string;
-  icon?: string;
-  badge?: string;
-  tag?: string;
-  data?: any;
-  identityId?: string;
-  identityNickname?: string;
+interface UnlockedIdentity {
+  id: string;
+  pnName: string;
+  passcode: string;
+  nickname: string;
 }
 
-export interface NotificationSettings {
-  enabled: boolean;
-  recoveryRequests: boolean;
-  custodianApprovals: boolean;
-  integrationUpdates: boolean;
-  securityAlerts: boolean;
-  syncNotifications: boolean;
-  devicePairing: boolean;
-  sound: boolean;
-  vibration: boolean;
-  showInApp: boolean;
-  showSystem: boolean;
-}
+// Notification expiration rules (in milliseconds)
+const EXPIRATION_RULES = {
+  'recovery-request': 7 * 24 * 60 * 60 * 1000, // 7 days
+  'security-alert': 30 * 24 * 60 * 60 * 1000, // 30 days
+  'custodian-approval': 14 * 24 * 60 * 60 * 1000, // 14 days
+  'integration-update': 3 * 24 * 60 * 60 * 1000, // 3 days
+  'device-pairing': 24 * 60 * 60 * 1000, // 1 day
+  'sync-complete': 24 * 60 * 60 * 1000, // 1 day
+  'data-request': 7 * 24 * 60 * 60 * 1000, // 7 days
+  'system-update': 30 * 24 * 60 * 60 * 1000 // 30 days
+};
 
-export class NotificationsService {
-  private static instance: NotificationsService;
+class NotificationsService {
   private notifications: Notification[] = [];
-  private settings: NotificationSettings;
-  private isInitialized = false;
-  private pushSubscription: PushSubscription | null = null;
-  private currentUnlockedIdentity: { id: string; nickname: string } | null = null;
+  private currentUnlockedIdentity: UnlockedIdentity | null = null;
+  private settings: NotificationSettings = {
+    enabled: true,
+    recoveryRequests: true,
+    custodianApprovals: true,
+    integrationUpdates: true,
+    securityAlerts: true,
+    syncNotifications: false,
+    devicePairing: true,
+    sound: true,
+    vibration: true,
+    showInApp: true,
+    showSystem: false
+  };
 
   constructor() {
-    this.settings = this.loadSettings();
-    this.notifications = this.loadNotifications();
+    this.loadNotifications();
+    this.loadSettings();
+    this.initializeMetadataService();
   }
 
-  static getInstance(): NotificationsService {
-    if (!NotificationsService.instance) {
-      NotificationsService.instance = new NotificationsService();
-    }
-    return NotificationsService.instance;
-  }
-
-  async initialize(): Promise<void> {
-    if (this.isInitialized) return;
-
+  private async initializeMetadataService(): Promise<void> {
     try {
-      // Check if service workers are supported
-      if ('serviceWorker' in navigator && 'PushManager' in window) {
-        await this.registerServiceWorker();
-        await this.requestNotificationPermission();
-        await this.subscribeToPushNotifications();
-      }
-
-      this.isInitialized = true;
-      // Silently handle successful initialization in production
+      // Initialize metadata-based notifications
       if (process.env.NODE_ENV === 'development') {
-        // Development logging only
+        console.log('Metadata-based Notifications service initialized');
       }
     } catch (error) {
-      // Silently handle initialization failures in production
       if (process.env.NODE_ENV === 'development') {
-        // Development logging only
+        console.error('Failed to initialize notifications service:', error);
       }
     }
   }
 
-  private async registerServiceWorker(): Promise<void> {
-    try {
-      // const registration = await navigator.serviceWorker.register('/sw.js');
-      // Silently handle service worker registration in production
-      if (process.env.NODE_ENV === 'development') {
-        // Development logging only
-      }
-    } catch (error) {
-      // Silently handle service worker registration failures in production
-      if (process.env.NODE_ENV === 'development') {
-        // Development logging only
-      }
-    }
-  }
-
-  private async requestNotificationPermission(): Promise<void> {
-    try {
-      // const permission = await Notification.requestPermission();
-      // Silently handle notification permission request in production
-      if (process.env.NODE_ENV === 'development') {
-        // Development logging only
-      }
-    } catch (error) {
-      // Silently handle notification permission request failures in production
-      if (process.env.NODE_ENV === 'development') {
-        // Development logging only
-      }
-    }
-  }
-
-  private async subscribeToPushNotifications(): Promise<void> {
-    try {
-      const registration = await navigator.serviceWorker.ready;
-      const subscription = await registration.pushManager.subscribe({
-        userVisibleOnly: true,
-        applicationServerKey: this.urlBase64ToUint8Array(process.env.REACT_APP_VAPID_PUBLIC_KEY || '')
-      });
-
-      this.pushSubscription = subscription;
-      // Silently handle push notification subscription in production
-      if (process.env.NODE_ENV === 'development') {
-        // Development logging only
-      }
-    } catch (error) {
-      // Silently handle push notification subscription failures in production
-      if (process.env.NODE_ENV === 'development') {
-        // Development logging only
-      }
-    }
-  }
-
-  // Set the currently unlocked identity (called when user unlocks an ID)
-  setUnlockedIdentity(identityId: string, nickname: string): void {
-    this.currentUnlockedIdentity = { id: identityId, nickname };
-    // Silently handle identity unlock in production
+  setUnlockedIdentity(identityId: string, pnName: string, passcode: string, nickname: string): void {
+    this.currentUnlockedIdentity = { id: identityId, pnName, passcode, nickname };
     if (process.env.NODE_ENV === 'development') {
-      // Development logging only
+      console.log(`Identity unlocked: ${nickname} (${identityId})`);
     }
   }
 
-  // Clear the unlocked identity (called when user locks an ID)
   clearUnlockedIdentity(): void {
     this.currentUnlockedIdentity = null;
-    // Silently handle identity lock in production
     if (process.env.NODE_ENV === 'development') {
-      // Development logging only
+      console.log('Identity locked');
     }
   }
 
-  // Get notifications for the currently unlocked identity
-  getNotificationsForCurrentIdentity(): Notification[] {
+  async checkForNewNotifications(): Promise<void> {
+    try {
+      if (!this.currentUnlockedIdentity) {
+        return;
+      }
+
+      // Check for new notifications in pN metadata
+      const newNotifications = await this.getNotificationsFromMetadata(this.currentUnlockedIdentity.id);
+      
+      if (newNotifications.length > 0) {
+        // Add new notifications to local storage
+        this.notifications.push(...newNotifications);
+        this.saveNotifications();
+        
+        if (process.env.NODE_ENV === 'development') {
+          console.log(`Found ${newNotifications.length} new notifications in pN metadata`);
+        }
+      }
+    } catch (error) {
+      if (process.env.NODE_ENV === 'development') {
+        console.error('Failed to check for new notifications:', error);
+      }
+    }
+  }
+
+  async getNotifications(): Promise<Notification[]> {
     if (!this.currentUnlockedIdentity) {
       return [];
     }
     return this.notifications.filter(n => n.identityId === this.currentUnlockedIdentity!.id);
   }
 
-  // Get unread count for the currently unlocked identity
-  getUnreadCountForCurrentIdentity(): number {
+  async getUnreadNotifications(): Promise<Notification[]> {
+    if (!this.currentUnlockedIdentity) {
+      return [];
+    }
+    return this.notifications.filter(n => 
+      n.identityId === this.currentUnlockedIdentity!.id && !n.read
+    );
+  }
+
+  async getUnreadCount(): Promise<number> {
     if (!this.currentUnlockedIdentity) {
       return 0;
     }
@@ -170,236 +137,71 @@ export class NotificationsService {
     ).length;
   }
 
-  // Create notifications for different events
-  async createRecoveryRequestNotification(data: {
-    requestingUser: string;
-    identityId: string;
-    identityNickname: string;
-    recoveryCode?: string;
-  }): Promise<void> {
-    const notification: Notification = {
-      id: `recovery-${Date.now()}`,
-      type: 'recovery-request',
-      title: 'Recovery Request',
-      message: `${data.requestingUser} is requesting access to your identity. Recovery code: ${data.recoveryCode || 'N/A'}`,
-      timestamp: new Date().toISOString(),
-      read: false,
-      identityId: data.identityId,
-      identityNickname: data.identityNickname,
-      priority: 'high',
-      actionUrl: `/recovery/${data.identityId}`,
-      metadata: data
-    };
-
-    await this.addNotification(notification);
-    
-    // Send push notification with ID context
-    await this.sendPushNotification({
-      title: 'New Notification',
-      body: `You have a new notification in ${data.identityNickname}`,
-      tag: 'recovery-request',
-      data: { type: 'recovery-request', identityId: data.identityId },
-      identityId: data.identityId,
-      identityNickname: data.identityNickname
+  async markAsRead(notificationIds: string[]): Promise<void> {
+    this.notifications.forEach(notification => {
+      if (notificationIds.includes(notification.id)) {
+        notification.read = true;
+      }
     });
-  }
-
-  async createCustodianApprovalNotification(data: {
-    custodianName: string;
-    identityId: string;
-    identityNickname: string;
-    action: 'approved' | 'denied';
-  }): Promise<void> {
-    const notification: Notification = {
-      id: `custodian-${Date.now()}`,
-      type: 'custodian-approval',
-      title: 'Custodian Action',
-      message: `${data.custodianName} has ${data.action} access to your identity "${data.identityNickname}"`,
-      timestamp: new Date().toISOString(),
-      read: false,
-      identityId: data.identityId,
-      identityNickname: data.identityNickname,
-      priority: 'medium',
-      actionUrl: `/custodians`,
-      metadata: data
-    };
-
-    await this.addNotification(notification);
-    await this.sendPushNotification({
-      title: 'New Notification',
-      body: `You have a new notification in ${data.identityNickname}`,
-      tag: 'custodian-approval',
-      data: { type: 'custodian-approval', action: data.action },
-      identityId: data.identityId,
-      identityNickname: data.identityNickname
-    });
-  }
-
-  async createIntegrationUpdateNotification(data: {
-    integrationName: string;
-    identityId: string;
-    identityNickname: string;
-    updateType: 'connected' | 'disconnected' | 'updated' | 'error';
-    details?: string;
-  }): Promise<void> {
-    const notification: Notification = {
-      id: `integration-${Date.now()}`,
-      type: 'integration-update',
-      title: 'Integration Update',
-      message: `${data.integrationName} has been ${data.updateType}${data.details ? `: ${data.details}` : ''}`,
-      timestamp: new Date().toISOString(),
-      read: false,
-      identityId: data.identityId,
-      identityNickname: data.identityNickname,
-      priority: 'medium',
-      actionUrl: `/integrations`,
-      metadata: data
-    };
-
-    await this.addNotification(notification);
-    await this.sendPushNotification({
-      title: 'New Notification',
-      body: `You have a new notification in ${data.identityNickname}`,
-      tag: 'integration-update',
-      data: { type: 'integration-update', integrationName: data.integrationName },
-      identityId: data.identityId,
-      identityNickname: data.identityNickname
-    });
-  }
-
-  async createSecurityAlertNotification(data: {
-    alertType: 'login' | 'recovery' | 'device' | 'custodian';
-    identityId: string;
-    identityNickname: string;
-    details: string;
-    severity: 'low' | 'medium' | 'high' | 'critical';
-  }): Promise<void> {
-    const notification: Notification = {
-      id: `security-${Date.now()}`,
-      type: 'security-alert',
-      title: 'Security Alert',
-      message: data.details,
-      timestamp: new Date().toISOString(),
-      read: false,
-      identityId: data.identityId,
-      identityNickname: data.identityNickname,
-      priority: data.severity,
-      actionUrl: `/security`,
-      metadata: data
-    };
-
-    await this.addNotification(notification);
-    await this.sendPushNotification({
-      title: 'New Notification',
-      body: `You have a new notification in ${data.identityNickname}`,
-      tag: 'security-alert',
-      data: { type: 'security-alert', alertType: data.alertType },
-      identityId: data.identityId,
-      identityNickname: data.identityNickname
-    });
-  }
-
-  async createSyncCompleteNotification(data: {
-    syncedItems: number;
-    failedItems: number;
-    identityId: string;
-    identityNickname: string;
-  }): Promise<void> {
-    const notification: Notification = {
-      id: `sync-${Date.now()}`,
-      type: 'sync-complete',
-      title: 'Sync Complete',
-      message: `Successfully synced ${data.syncedItems} items${data.failedItems > 0 ? `, ${data.failedItems} failed` : ''}`,
-      timestamp: new Date().toISOString(),
-      read: false,
-      identityId: data.identityId,
-      identityNickname: data.identityNickname,
-      priority: 'low',
-      metadata: data
-    };
-
-    await this.addNotification(notification);
-    await this.sendPushNotification({
-      title: 'New Notification',
-      body: `You have a new notification in ${data.identityNickname}`,
-      tag: 'sync-complete',
-      data: { type: 'sync-complete', syncedItems: data.syncedItems },
-      identityId: data.identityId,
-      identityNickname: data.identityNickname
-    });
-  }
-
-  async createDevicePairingNotification(data: {
-    deviceName: string;
-    deviceType: string;
-    identityId: string;
-    identityNickname: string;
-    action: 'paired' | 'unpaired';
-  }): Promise<void> {
-    const notification: Notification = {
-      id: `device-${Date.now()}`,
-      type: 'device-pairing',
-      title: 'Device Pairing',
-      message: `${data.deviceName} (${data.deviceType}) has been ${data.action}`,
-      timestamp: new Date().toISOString(),
-      read: false,
-      identityId: data.identityId,
-      identityNickname: data.identityNickname,
-      priority: 'medium',
-      actionUrl: `/devices`,
-      metadata: data
-    };
-
-    await this.addNotification(notification);
-    await this.sendPushNotification({
-      title: 'New Notification',
-      body: `You have a new notification in ${data.identityNickname}`,
-      tag: 'device-pairing',
-      data: { type: 'device-pairing', deviceName: data.deviceName },
-      identityId: data.identityId,
-      identityNickname: data.identityNickname
-    });
-  }
-
-  // Notification management
-  async addNotification(notification: Notification): Promise<void> {
-    this.notifications.unshift(notification);
     this.saveNotifications();
     
-    if (this.settings.showInApp) {
-      this.showInAppNotification(notification);
+    // Update metadata
+    if (this.currentUnlockedIdentity) {
+      await this.markNotificationAsReadInMetadata(this.currentUnlockedIdentity.id, notificationIds);
     }
-    
-    if (this.settings.showSystem && Notification.permission === 'granted') {
-      this.showSystemNotification(notification);
-    }
-  }
-
-  async markAsRead(notificationId: string): Promise<void> {
-    const notification = this.notifications.find(n => n.id === notificationId);
-    if (notification) {
-      notification.read = true;
-      this.saveNotifications();
-    }
-  }
-
-  async markAllAsRead(): Promise<void> {
-    this.notifications.forEach(n => n.read = true);
-    this.saveNotifications();
   }
 
   async deleteNotification(notificationId: string): Promise<void> {
     this.notifications = this.notifications.filter(n => n.id !== notificationId);
     this.saveNotifications();
+    
+    // Update metadata
+    if (this.currentUnlockedIdentity) {
+      await this.deleteNotificationFromMetadata(this.currentUnlockedIdentity.id, notificationId);
+    }
   }
 
-  async clearAllNotifications(): Promise<void> {
-    this.notifications = [];
+  async createNotification(
+    type: Notification['type'],
+    title: string,
+    message: string,
+    identityId: string,
+    identityNickname: string,
+    priority: Notification['priority'] = 'medium',
+    actionUrl?: string,
+    metadata?: any
+  ): Promise<void> {
+    const notification: Notification = {
+      id: this.generateNotificationId(),
+      type,
+      title,
+      message,
+      timestamp: new Date().toISOString(),
+      read: false,
+      identityId,
+      identityNickname,
+      actionUrl,
+      priority,
+      metadata
+    };
+
+    this.notifications.push(notification);
     this.saveNotifications();
+
+    // Store in pN metadata if identity is unlocked
+    if (this.currentUnlockedIdentity && this.currentUnlockedIdentity.id === identityId) {
+      await this.storeNotificationInMetadata(notification);
+    }
+
+    // Show in-app notification
+    this.showInAppNotification(notification);
   }
 
-  getNotifications(): Notification[] {
-    return this.notifications;
+  async createTestNotification(identityNickname: string): Promise<void> {
+    // Don't store test notifications in metadata (none priority)
+    if (process.env.NODE_ENV === 'development') {
+      console.log(`Test notification created for: ${identityNickname}`);
+    }
   }
 
   async getNotificationCount(identityId: string): Promise<number> {
@@ -410,21 +212,33 @@ export class NotificationsService {
     return this.notifications.filter(n => n.identityId === identityId && !n.read).length;
   }
 
-  getUnreadCount(): number {
-    return this.notifications.filter(n => !n.read).length;
+  // getUnreadCount(): number {
+  //   return this.notifications.filter(n => !n.read).length;
+  // }
+
+  getNotificationsByType(type: Notification['type']): Notification[] {
+    return this.notifications.filter(n => n.type === type);
   }
 
-  // Get current unlocked identity info
-  getCurrentUnlockedIdentity(): { id: string; nickname: string } | null {
-    return this.currentUnlockedIdentity;
+  async updateSettings(newSettings: Partial<NotificationSettings>): Promise<void> {
+    this.settings = { ...this.settings, ...newSettings };
+    this.saveSettings();
+    
+    // Update metadata
+    if (this.currentUnlockedIdentity) {
+      await this.updateNotificationSettingsInMetadata(this.currentUnlockedIdentity.id, this.settings);
+    }
+  }
+
+  getSettings(): NotificationSettings {
+    return { ...this.settings };
   }
 
   // Get notification count for a specific identity (without unlocking it)
   getNotificationCountForIdentity(identityId: string): number {
     const count = this.notifications.filter(n => n.identityId === identityId).length;
-    // Silently handle notification count retrieval in production
     if (process.env.NODE_ENV === 'development') {
-      // Development logging only
+      console.log(`Notification count for ${identityId}: ${count}`);
     }
     return count;
   }
@@ -432,159 +246,262 @@ export class NotificationsService {
   // Get unread notification count for a specific identity (without unlocking it)
   getUnreadNotificationCountForIdentity(identityId: string): number {
     const count = this.notifications.filter(n => n.identityId === identityId && !n.read).length;
-    // Silently handle unread notification count retrieval in production
     if (process.env.NODE_ENV === 'development') {
-      // Development logging only
+      console.log(`Unread notification count for ${identityId}: ${count}`);
     }
     return count;
   }
 
-  getNotificationsByType(type: Notification['type']): Notification[] {
-    return this.notifications.filter(n => n.type === type);
-  }
-
-  // Settings management
-  updateSettings(settings: Partial<NotificationSettings>): void {
-    this.settings = { ...this.settings, ...settings };
-    this.saveSettings();
-  }
-
-  getSettings(): NotificationSettings {
-    return this.settings;
-  }
-
-  // Private methods
-  private async sendPushNotification(_payload: PushNotificationPayload): Promise<void> {
-    if (!this.pushSubscription || !this.settings.enabled) return;
-
+  // Metadata-based notification methods
+  private async storeNotificationInMetadata(notification: Notification): Promise<void> {
     try {
-      // In a real implementation, this would send to your push service
-      // Silently handle push notification sending in production
-      if (process.env.NODE_ENV === 'development') {
-        // Development logging only
+      if (!this.currentUnlockedIdentity) {
+        return;
       }
-    } catch (error) {
-      // Silently handle push notification sending failures in production
-      if (process.env.NODE_ENV === 'development') {
-        // Development logging only
-      }
-    }
-  }
 
-  private showInAppNotification(_notification: Notification): void {
-    // Show in-app notification toast
-    // Silently handle in-app notification display in production
-    if (process.env.NODE_ENV === 'development') {
-      // Development logging only
-    }
-  }
-
-  private showSystemNotification(notification: Notification): void {
-    if (Notification.permission === 'granted') {
-      const systemNotification = new Notification(notification.title, {
-        body: notification.message,
-        icon: '/icons/icon-192x192.png',
-        badge: '/icons/icon-192x192.png',
-        tag: notification.id,
-        data: notification.metadata
-      });
-
-      systemNotification.onclick = () => {
-        window.focus();
-        if (notification.actionUrl) {
-          window.location.href = notification.actionUrl;
+      // Get current metadata
+      const currentMetadata = await SecureMetadataStorage.getMetadata(this.currentUnlockedIdentity.id);
+      
+      if (currentMetadata) {
+        // Initialize notifications section if it doesn't exist
+        if (!currentMetadata.notifications) {
+          currentMetadata.notifications = {
+            unread: [],
+            read: [],
+            lastChecked: new Date().toISOString(),
+            settings: this.settings
+          };
         }
-      };
+        
+        // Create notification event
+        const notificationEvent: NotificationEvent = {
+          id: notification.id,
+          type: notification.type,
+          timestamp: notification.timestamp,
+          sender: 'system',
+          encryptedPayload: this.encryptNotificationData({
+            title: notification.title,
+            message: notification.message,
+            actionUrl: notification.actionUrl,
+            metadata: notification.metadata
+          }),
+          signature: 'system-signature',
+          priority: notification.priority
+        };
+        
+        // Add notification to unread array
+        currentMetadata.notifications.unread.push(notificationEvent);
+        currentMetadata.notifications.lastChecked = new Date().toISOString();
+        
+        // Update metadata
+        await SecureMetadataStorage.updateMetadata(this.currentUnlockedIdentity.id, currentMetadata);
+      }
+    } catch (error) {
+      // Handle error silently in production
     }
   }
 
-  private loadNotifications(): Notification[] {
+  private async getNotificationsFromMetadata(identityId: string): Promise<Notification[]> {
     try {
-      const stored = localStorage.getItem('notifications');
-      return stored ? JSON.parse(stored) : [];
-    } catch (error) {
-      // Silently handle notification loading failures in production
-      if (process.env.NODE_ENV === 'development') {
-        // Development logging only
+      if (!this.currentUnlockedIdentity) {
+        return [];
       }
+
+      // Get current metadata
+      const currentMetadata = await SecureMetadataStorage.getMetadata(identityId);
+      
+      if (currentMetadata && currentMetadata.notifications?.unread) {
+        // Convert NotificationEvent to Notification
+        return currentMetadata.notifications.unread.map((event: any) => {
+          try {
+            const decryptedPayload = this.decryptNotificationData(event.encryptedPayload);
+            return {
+              id: event.id,
+              type: event.type,
+              title: decryptedPayload.title,
+              message: decryptedPayload.message,
+              timestamp: event.timestamp,
+              read: false,
+              identityId: identityId,
+              identityNickname: this.currentUnlockedIdentity?.nickname || 'Unknown',
+              actionUrl: decryptedPayload.actionUrl,
+              priority: event.priority,
+              metadata: decryptedPayload.metadata
+            };
+          } catch (error) {
+            return null;
+          }
+        }).filter(Boolean) as Notification[];
+      }
+      
       return [];
+    } catch (error) {
+      return [];
+    }
+  }
+
+  private async markNotificationAsReadInMetadata(identityId: string, notificationIds: string[]): Promise<void> {
+    try {
+      if (!this.currentUnlockedIdentity) {
+        return;
+      }
+
+      // Get current metadata
+      const currentMetadata = await SecureMetadataStorage.getMetadata(identityId);
+      
+      if (currentMetadata && currentMetadata.notifications) {
+        // Move notifications from unread to read
+        const unreadNotifications = currentMetadata.notifications.unread || [];
+        const readNotifications = currentMetadata.notifications.read || [];
+        
+        // Find notifications to mark as read
+        const notificationsToMove = unreadNotifications.filter((n: any) => 
+          notificationIds.includes(n.id)
+        );
+        
+        // Remove from unread
+        currentMetadata.notifications.unread = unreadNotifications.filter((n: any) => 
+          !notificationIds.includes(n.id)
+        );
+        
+        // Add to read
+        currentMetadata.notifications.read = [...readNotifications, ...notificationsToMove];
+        currentMetadata.notifications.lastChecked = new Date().toISOString();
+        
+        // Update metadata
+        await SecureMetadataStorage.updateMetadata(identityId, currentMetadata);
+      }
+    } catch (error) {
+      // Handle error silently in production
+    }
+  }
+
+  private async deleteNotificationFromMetadata(identityId: string, notificationId: string): Promise<void> {
+    try {
+      if (!this.currentUnlockedIdentity) {
+        return;
+      }
+
+      // Get current metadata
+      const currentMetadata = await SecureMetadataStorage.getMetadata(identityId);
+      
+      if (currentMetadata && currentMetadata.notifications) {
+        // Remove from both unread and read arrays
+        currentMetadata.notifications.unread = currentMetadata.notifications.unread.filter((n: any) => 
+          n.id !== notificationId
+        );
+        currentMetadata.notifications.read = currentMetadata.notifications.read.filter((n: any) => 
+          n.id !== notificationId
+        );
+        
+        // Update metadata
+        await SecureMetadataStorage.updateMetadata(identityId, currentMetadata);
+      }
+    } catch (error) {
+      // Handle error silently in production
+    }
+  }
+
+  private async updateNotificationSettingsInMetadata(identityId: string, settings: NotificationSettings): Promise<void> {
+    try {
+      if (!this.currentUnlockedIdentity) {
+        return;
+      }
+
+      // Get current metadata
+      const currentMetadata = await SecureMetadataStorage.getMetadata(identityId);
+      
+      if (currentMetadata) {
+        // Initialize notifications section if it doesn't exist
+        if (!currentMetadata.notifications) {
+          currentMetadata.notifications = {
+            unread: [],
+            read: [],
+            lastChecked: new Date().toISOString(),
+            settings: settings
+          };
+        } else {
+          // Update settings
+          currentMetadata.notifications.settings = settings;
+        }
+        
+        // Update metadata
+        await SecureMetadataStorage.updateMetadata(identityId, currentMetadata);
+      }
+    } catch (error) {
+      // Handle error silently in production
+    }
+  }
+
+  // Utility methods
+  private generateNotificationId(): string {
+    return `notification_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+  }
+
+  private encryptNotificationData(data: any): string {
+    // Simple encryption for development - in production, use proper encryption
+    return btoa(JSON.stringify(data));
+  }
+
+  private decryptNotificationData(encryptedData: string): any {
+    // Simple decryption for development - in production, use proper decryption
+    return JSON.parse(atob(encryptedData));
+  }
+
+  private showInAppNotification(notification: Notification): void {
+    if (process.env.NODE_ENV === 'development') {
+      console.log('Showing in-app notification:', notification.title);
+    }
+  }
+
+  private loadNotifications(): void {
+    try {
+      const stored = localStorage.getItem('pn_notifications');
+      if (stored) {
+        this.notifications = JSON.parse(stored);
+      }
+    } catch (error) {
+      if (process.env.NODE_ENV === 'development') {
+        console.error('Failed to load notifications:', error);
+      }
+      this.notifications = [];
     }
   }
 
   private saveNotifications(): void {
     try {
-      localStorage.setItem('notifications', JSON.stringify(this.notifications));
+      localStorage.setItem('pn_notifications', JSON.stringify(this.notifications));
     } catch (error) {
-      // Silently handle notification saving failures in production
       if (process.env.NODE_ENV === 'development') {
-        // Development logging only
+        console.error('Failed to save notifications:', error);
       }
     }
   }
 
-  private loadSettings(): NotificationSettings {
+  private loadSettings(): void {
     try {
-      const stored = localStorage.getItem('notification-settings');
-      return stored ? JSON.parse(stored) : {
-        enabled: true,
-        recoveryRequests: true,
-        custodianApprovals: true,
-        integrationUpdates: true,
-        securityAlerts: true,
-        syncNotifications: false,
-        devicePairing: true,
-        sound: true,
-        vibration: true,
-        showInApp: true,
-        showSystem: true
-      };
-    } catch (error) {
-      // Silently handle notification settings loading failures in production
-      if (process.env.NODE_ENV === 'development') {
-        // Development logging only
+      const stored = localStorage.getItem('pn_notification_settings');
+      if (stored) {
+        this.settings = { ...this.settings, ...JSON.parse(stored) };
       }
-      return {
-        enabled: true,
-        recoveryRequests: true,
-        custodianApprovals: true,
-        integrationUpdates: true,
-        securityAlerts: true,
-        syncNotifications: false,
-        devicePairing: true,
-        sound: true,
-        vibration: true,
-        showInApp: true,
-        showSystem: true
-      };
+    } catch (error) {
+      if (process.env.NODE_ENV === 'development') {
+        console.error('Failed to load notification settings:', error);
+      }
     }
   }
 
   private saveSettings(): void {
     try {
-      localStorage.setItem('notification-settings', JSON.stringify(this.settings));
+      localStorage.setItem('pn_notification_settings', JSON.stringify(this.settings));
     } catch (error) {
-      // Silently handle notification settings saving failures in production
       if (process.env.NODE_ENV === 'development') {
-        // Development logging only
+        console.error('Failed to save notification settings:', error);
       }
     }
-  }
-
-  private urlBase64ToUint8Array(base64String: string): Uint8Array {
-    const padding = '='.repeat((4 - base64String.length % 4) % 4);
-    const base64 = (base64String + padding)
-      .replace(/-/g, '+')
-      .replace(/_/g, '/');
-
-    const rawData = window.atob(base64);
-    const outputArray = new Uint8Array(rawData.length);
-
-    for (let i = 0; i < rawData.length; ++i) {
-      outputArray[i] = rawData.charCodeAt(i);
-    }
-    return outputArray;
   }
 }
 
 // Export singleton instance
-export const notificationsService = NotificationsService.getInstance();
+export const notificationsService = new NotificationsService();
+
