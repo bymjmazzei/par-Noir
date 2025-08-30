@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Debug - parnoir.com</title>
+    <style>
+        body { font-family: Arial, sans-serif; padding: 20px; background: #f0f0f0; }
+        .success { color: green; font-weight: bold; }
+        .error { color: red; font-weight: bold; }
+        .info { background: white; padding: 20px; border-radius: 5px; margin: 10px 0; }
+        .test-result { margin: 10px 0; padding: 10px; border-radius: 5px; }
+        .loading { background: #fff3cd; border: 1px solid #ffeaa7; }
+        .success-bg { background: #d4edda; border: 1px solid #c3e6cb; }
+        .error-bg { background: #f8d7da; border: 1px solid #f5c6cb; }
+    </style>
+</head>
+<body>
+    <h1>🔍 React App Debug - parnoir.com</h1>
+    
+    <div class="info">
+        <h2>Testing React App Resources</h2>
+        <div id="test-results"></div>
+    </div>
+
+    <div class="info">
+        <h2>Browser Console</h2>
+        <p>Open your browser's Developer Tools (F12) and check the Console tab for any JavaScript errors.</p>
+        <div id="console-output"></div>
+    </div>
+
+    <div class="info">
+        <h2>Test Links</h2>
+        <p><a href="index.html" target="_blank">Open React App</a></p>
+        <p><a href="test-simple.html" target="_blank">Open Simple Test</a></p>
+    </div>
+
+    <script>
+        const testResults = document.getElementById('test-results');
+        const consoleOutput = document.getElementById('console-output');
+
+        // Test resources
+        const resources = [
+            '/assets/js/index-BH26mxB-.js',
+            '/assets/js/react-vendor-CQugEivN.js',
+            '/assets/js/components-D97AB8da.js',
+            '/assets/index-CJZN9kat.css',
+            '/manifest.json',
+            '/sw.js'
+        ];
+
+        let testsCompleted = 0;
+        let testsPassed = 0;
+
+        function addTestResult(resource, success, message) {
+            const div = document.createElement('div');
+            div.className = `test-result ${success ? 'success-bg' : 'error-bg'}`;
+            div.innerHTML = `
+                <strong>${success ? '✅' : '❌'} ${resource}</strong><br>
+                ${message}
+            `;
+            testResults.appendChild(div);
+            
+            testsCompleted++;
+            if (success) testsPassed++;
+            
+            if (testsCompleted === resources.length) {
+                const summary = document.createElement('div');
+                summary.className = `test-result ${testsPassed === testsCompleted ? 'success-bg' : 'error-bg'}`;
+                summary.innerHTML = `<strong>Summary: ${testsPassed}/${testsCompleted} resources loaded successfully</strong>`;
+                testResults.appendChild(summary);
+            }
+        }
+
+        // Test each resource
+        resources.forEach(resource => {
+            fetch(resource)
+                .then(response => {
+                    if (response.ok) {
+                        addTestResult(resource, true, `Status: ${response.status} - Loaded successfully`);
+                    } else {
+                        addTestResult(resource, false, `Status: ${response.status} - Failed to load`);
+                    }
+                })
+                .catch(error => {
+                    addTestResult(resource, false, `Error: ${error.message}`);
+                });
+        });
+
+        // Capture console errors
+        const originalError = console.error;
+        const originalLog = console.log;
+        
+        console.error = function(...args) {
+            const div = document.createElement('div');
+            div.className = 'test-result error-bg';
+            div.innerHTML = `<strong>❌ Console Error:</strong> ${args.join(' ')}`;
+            consoleOutput.appendChild(div);
+            originalError.apply(console, args);
+        };
+
+        console.log = function(...args) {
+            const div = document.createElement('div');
+            div.className = 'test-result loading';
+            div.innerHTML = `<strong>📝 Console Log:</strong> ${args.join(' ')}`;
+            consoleOutput.appendChild(div);
+            originalLog.apply(console, args);
+        };
+
+        // Test if React is working
+        setTimeout(() => {
+            if (typeof React !== 'undefined') {
+                addTestResult('React Library', true, 'React is loaded and available');
+            } else {
+                addTestResult('React Library', false, 'React is not loaded');
+            }
+        }, 2000);
+    </script>
+</body>
+</html>

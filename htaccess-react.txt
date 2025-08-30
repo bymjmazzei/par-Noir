@@ -1,0 +1,114 @@
+# Enable directory browsing
+Options +Indexes
+
+# Set default index file
+DirectoryIndex index.html
+
+# Enable compression
+<IfModule mod_deflate.c>
+    AddOutputFilterByType DEFLATE text/plain
+    AddOutputFilterByType DEFLATE text/html
+    AddOutputFilterByType DEFLATE text/xml
+    AddOutputFilterByType DEFLATE text/css
+    AddOutputFilterByType DEFLATE application/xml
+    AddOutputFilterByType DEFLATE application/xhtml+xml
+    AddOutputFilterByType DEFLATE application/rss+xml
+    AddOutputFilterByType DEFLATE application/javascript
+    AddOutputFilterByType DEFLATE application/x-javascript
+    AddOutputFilterByType DEFLATE application/json
+    AddOutputFilterByType DEFLATE application/ld+json
+</IfModule>
+
+# Set MIME types - CRITICAL FOR REACT APPS
+<IfModule mod_mime.c>
+    # JavaScript files
+    AddType application/javascript .js
+    AddType application/javascript .mjs
+    AddType application/javascript .jsx
+    
+    # CSS files
+    AddType text/css .css
+    
+    # Image files
+    AddType image/svg+xml .svg
+    AddType image/png .png
+    AddType image/jpeg .jpg .jpeg
+    AddType image/gif .gif
+    AddType image/webp .webp
+    AddType image/ico .ico
+    
+    # Font files
+    AddType font/woff .woff
+    AddType font/woff2 .woff2
+    AddType font/ttf .ttf
+    AddType font/otf .otf
+    AddType font/eot .eot
+    
+    # JSON files
+    AddType application/json .json
+    
+    # XML files
+    AddType application/xml .xml
+    AddType text/xml .xml
+    
+    # Manifest files
+    AddType application/manifest+json .webmanifest
+    AddType application/manifest+json .manifest
+</IfModule>
+
+# Force correct MIME types for specific file patterns
+<FilesMatch "\.(js|mjs|jsx)$">
+    ForceType application/javascript
+</FilesMatch>
+
+<FilesMatch "\.css$">
+    ForceType text/css
+</FilesMatch>
+
+<FilesMatch "\.(json|webmanifest|manifest)$">
+    ForceType application/json
+</FilesMatch>
+
+# React Router Support - Redirect all requests to index.html
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+    RewriteBase /
+    
+    # Handle Angular and React Router
+    RewriteCond %{REQUEST_FILENAME} !-f
+    RewriteCond %{REQUEST_FILENAME} !-d
+    RewriteRule . /index.html [L]
+</IfModule>
+
+# Security headers
+<IfModule mod_headers.c>
+    Header always set X-Content-Type-Options nosniff
+    Header always set X-Frame-Options DENY
+    Header always set X-XSS-Protection "1; mode=block"
+    Header always set Referrer-Policy "strict-origin-when-cross-origin"
+    
+    # Set correct MIME types via headers as backup
+    <FilesMatch "\.js$">
+        Header always set Content-Type "application/javascript"
+    </FilesMatch>
+    
+    <FilesMatch "\.css$">
+        Header always set Content-Type "text/css"
+    </FilesMatch>
+    
+    <FilesMatch "\.json$">
+        Header always set Content-Type "application/json"
+    </FilesMatch>
+</IfModule>
+
+# Cache static assets
+<IfModule mod_expires.c>
+    ExpiresActive on
+    ExpiresByType text/css "access plus 1 year"
+    ExpiresByType application/javascript "access plus 1 year"
+    ExpiresByType image/png "access plus 1 year"
+    ExpiresByType image/jpg "access plus 1 year"
+    ExpiresByType image/jpeg "access plus 1 year"
+    ExpiresByType image/svg+xml "access plus 1 year"
+    ExpiresByType application/json "access plus 1 year"
+</IfModule>

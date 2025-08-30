@@ -1,0 +1,13 @@
+# Nuclear option: Route ALL requests through PHP router
+# This bypasses the server's MIME type handling completely
+
+RewriteEngine On
+RewriteBase /
+
+# Route ALL requests through the PHP router
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteCond %{REQUEST_FILENAME} !-d
+RewriteRule ^(.*)$ router.php [L,QSA]
+
+# Also route existing files through PHP router to force MIME types
+RewriteRule ^(.*)$ router.php [L,QSA]

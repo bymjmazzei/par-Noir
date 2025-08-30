@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Test - parnoir.com</title>
+    <style>
+        body { font-family: Arial, sans-serif; padding: 20px; }
+        .success { color: green; font-weight: bold; }
+    </style>
+</head>
+<body>
+    <h1 class="success">✅ parnoir.com is working!</h1>
+    <p>If you can see this page, the hosting and DNS are working correctly.</p>
+    <p>This means the issue is with the React app files.</p>
+    <hr>
+    <h2>Debug Info:</h2>
+    <p><strong>Current time:</strong> <span id="time"></span></p>
+    <p><strong>User Agent:</strong> <span id="ua"></span></p>
+    
+    <script>
+        document.getElementById('time').textContent = new Date().toLocaleString();
+        document.getElementById('ua').textContent = navigator.userAgent;
+    </script>
+</body>
+</html>
