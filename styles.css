@@ -216,16 +216,17 @@ body {
   max-width: 1200px;
   margin: 0 auto;
   padding: 0 2rem;
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4rem;
   align-items: center;
-  text-align: center;
   position: relative;
   z-index: 2;
 }
 
 .hero-content {
   z-index: 2;
+  text-align: left;
 }
 
 .hero-badge {
@@ -427,7 +428,7 @@ body {
   justify-content: center;
   align-items: center;
   position: relative;
-  height: 500px;
+  height: 400px;
   overflow: hidden;
 }
 
@@ -1472,6 +1473,8 @@ footer::before {
 /* Responsive Design Updates */
 @media (max-width: 768px) {
   .hero-container {
+    grid-template-columns: 1fr;
+    gap: 2rem;
     padding: 0 1rem;
     text-align: center;
   }
@@ -1485,6 +1488,10 @@ footer::before {
   .hero-subtitle {
     font-size: 1.1rem;
     margin-bottom: 2rem;
+  }
+  
+  .hero-content {
+    text-align: center;
   }
   
   .hero-visual {
