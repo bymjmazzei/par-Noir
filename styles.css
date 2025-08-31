@@ -4520,6 +4520,13 @@ footer::before {
   }
 }
 
+/* Fix footer centering on wider screens */
+@media (min-width: 961px) {
+  .footer .container {
+    padding: 0 2rem;
+  }
+}
+
 
 
 
