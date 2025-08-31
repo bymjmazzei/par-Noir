@@ -544,10 +544,18 @@ section:nth-child(odd) {
   .problem-grid {
     grid-template-columns: 1fr;
     gap: 2rem;
+    padding: 0 1rem;
   }
   
   .problem-item {
     padding: 2rem 1.5rem;
+    min-width: 0;
+  }
+  
+  .problem-item h3 {
+    font-size: 1.25rem;
+    word-wrap: break-word;
+    overflow-wrap: break-word;
   }
 }
 
@@ -2363,6 +2371,7 @@ footer::before {
   max-width: 1200px;
   margin-left: auto;
   margin-right: auto;
+  padding: 0 2rem;
 }
 
 .problem-item {
@@ -2375,6 +2384,8 @@ footer::before {
   transition: all 0.4s ease;
   position: relative;
   overflow: hidden;
+  min-width: 0;
+  word-wrap: break-word;
 }
 
 .problem-item:hover {
@@ -2410,11 +2421,16 @@ footer::before {
   color: var(--text-primary);
   text-transform: uppercase;
   letter-spacing: 1px;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+  hyphens: auto;
 }
 
 .problem-item p {
   color: var(--text-secondary);
   line-height: 1.6;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
 }
 
 /* Solution section */
