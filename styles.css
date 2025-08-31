@@ -2436,96 +2436,12 @@ footer::before {
   background: rgba(0, 0, 0, 0.2);
 }
 
-/* Problem grid styling */
-.problem-grid {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 3rem;
-  margin-top: 3rem;
-  width: 100%;
-  max-width: 1200px;
-  margin-left: auto;
-  margin-right: auto;
-  padding: 0 2rem;
-}
-
-/* Carousel containers */
+/* Legacy carousel styles - keeping for backward compatibility */
 .carousel-widget {
   position: relative;
   width: 100%;
   max-width: 1200px;
   margin: 0 auto;
-}
-
-/* Carousel dots */
-.carousel-dots {
-  display: flex;
-  justify-content: center;
-  gap: 0.5rem;
-  margin-top: 2rem;
-}
-
-.dot {
-  width: 12px;
-  height: 12px;
-  border-radius: 50%;
-  background: rgba(255, 255, 255, 0.3);
-  cursor: pointer;
-  transition: all 0.3s ease;
-}
-
-.dot.active {
-  background: var(--text-primary);
-  transform: scale(1.2);
-}
-
-.dot:hover {
-  background: rgba(255, 255, 255, 0.5);
-  transform: scale(1.1);
-}
-  width: 20px;
-  height: 20px;
-}
-
-.carousel-prev {
-  left: 0;
-}
-
-.carousel-next {
-  right: 0;
-}
-
-.problem-grid.carousel-mode {
-  display: flex;
-  overflow: hidden;
-  gap: 2rem;
-  margin: 3rem 0;
-  scroll-behavior: smooth;
-}
-
-.problem-item.carousel-mode {
-  flex: 0 0 100%;
-  min-height: 400px;
-  padding: 2.5rem 2rem;
-  word-wrap: break-word;
-  overflow-wrap: break-word;
-  box-sizing: border-box;
-  display: none;
-}
-
-.problem-item.carousel-mode:first-child {
-  display: block;
-}
-
-.problem-item.carousel-mode h3 {
-  font-size: 1.5rem;
-  white-space: nowrap;
-}
-
-.problem-item.carousel-mode p {
-  word-wrap: break-word;
-  overflow-wrap: break-word;
-  hyphens: auto;
 }
 
 /* Vision timeline carousel mode */
@@ -2570,6 +2486,7 @@ footer::before {
   margin: 0 auto;
 }
 
+/* Legacy carousel grid styles - keeping for backward compatibility */
 .carousel-grid {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
@@ -2629,74 +2546,6 @@ footer::before {
   color: var(--text-secondary);
   line-height: 1.6;
   margin-bottom: 2rem;
-}
-
-/* Carousel mode styles */
-.carousel-grid.carousel-mode {
-  display: flex;
-  overflow: hidden;
-  gap: 2rem;
-  margin: 3rem 0;
-  scroll-behavior: smooth;
-}
-
-.carousel-item.carousel-mode {
-  flex: 0 0 100%;
-  min-height: 400px;
-  padding: 2.5rem 2rem;
-  word-wrap: break-word;
-  overflow-wrap: break-word;
-  box-sizing: border-box;
-  display: none;
-}
-
-.carousel-item.carousel-mode:first-child {
-  display: block;
-}
-
-.carousel-item.carousel-mode h3 {
-  font-size: 1.5rem;
-  white-space: nowrap;
-}
-
-.carousel-item.carousel-mode p {
-  word-wrap: break-word;
-  overflow-wrap: break-word;
-  hyphens: auto;
-}
-
-/* Problem grid carousel mode */
-.problem-grid.carousel-mode {
-  display: flex;
-  overflow: hidden;
-  gap: 2rem;
-  margin: 3rem 0;
-  scroll-behavior: smooth;
-}
-
-.problem-item.carousel-mode {
-  flex: 0 0 100%;
-  min-height: 400px;
-  padding: 2.5rem 2rem;
-  word-wrap: break-word;
-  overflow-wrap: break-word;
-  box-sizing: border-box;
-  display: none;
-}
-
-.problem-item.carousel-mode:first-child {
-  display: block;
-}
-
-.problem-item.carousel-mode h3 {
-  font-size: 1.5rem;
-  white-space: nowrap;
-}
-
-.problem-item.carousel-mode p {
-  word-wrap: break-word;
-  overflow-wrap: break-word;
-  hyphens: auto;
 }
 
 /* Vision timeline carousel mode */
@@ -4608,6 +4457,195 @@ footer::before {
   
   .step-content h4 {
     font-size: 1.1rem;
+  }
+}
+
+/* Unified 3-Column Tile System */
+.tile-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 3rem;
+  margin-top: 3rem;
+  width: 100%;
+  max-width: 1200px;
+  margin-left: auto;
+  margin-right: auto;
+  padding: 0 2rem;
+}
+
+.tile-item {
+  padding: 3rem;
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid var(--border-glow);
+  border-radius: 20px;
+  backdrop-filter: blur(10px);
+  transition: all 0.4s ease;
+  position: relative;
+  overflow: hidden;
+  text-align: center;
+  min-width: 300px; /* Ensure minimum width for tiles */
+  box-sizing: border-box;
+}
+
+.tile-item:hover {
+  transform: translateY(-10px);
+  box-shadow: var(--shadow-strong);
+  border-color: var(--accent);
+}
+
+.tile-icon {
+  width: clamp(60px, 15vw, 80px);
+  height: clamp(60px, 15vw, 80px);
+  background: var(--gradient-glow);
+  border-radius: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 auto 2rem;
+  border: 1px solid var(--border-glow);
+}
+
+.tile-icon svg {
+  width: clamp(30px, 7.5vw, 40px);
+  height: clamp(30px, 7.5vw, 40px);
+  stroke: var(--accent);
+  stroke-width: 2;
+  fill: none;
+}
+
+.tile-item h3 {
+  font-size: clamp(1.25rem, 3vw, 1.5rem);
+  font-weight: 700;
+  margin-bottom: 1rem;
+  color: var(--text-primary);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.tile-item p {
+  color: var(--text-secondary);
+  line-height: 1.6;
+  margin-bottom: 2rem;
+  font-size: clamp(0.9rem, 2.5vw, 1rem);
+}
+
+/* Carousel container */
+.tile-carousel {
+  position: relative;
+  width: 100%;
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+/* Carousel dots */
+.carousel-dots {
+  display: flex;
+  justify-content: center;
+  gap: 0.5rem;
+  margin-top: 2rem;
+  z-index: 10;
+  position: relative;
+}
+
+.dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.3);
+  cursor: pointer;
+  transition: all 0.3s ease;
+  border: none;
+  outline: none;
+}
+
+.dot.active {
+  background: var(--text-primary);
+  transform: scale(1.2);
+}
+
+.dot:hover {
+  background: rgba(255, 255, 255, 0.5);
+  transform: scale(1.1);
+}
+
+/* Responsive breakpoint - when 3 tiles don't fit */
+@media (max-width: 960px) {
+  .tile-grid {
+    display: flex !important;
+    overflow: hidden;
+    gap: 2rem;
+    margin: 3rem 0;
+    scroll-behavior: smooth;
+    padding: 0 1rem;
+  }
+  
+  .tile-item {
+    flex: 0 0 calc(100% - 4rem) !important;
+    min-height: 400px;
+    padding: 2.5rem 2rem;
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+    box-sizing: border-box;
+    display: none;
+  }
+  
+  .tile-item:first-child {
+    display: block !important;
+  }
+  
+  .tile-item h3 {
+    font-size: clamp(1.25rem, 4vw, 1.5rem);
+    white-space: normal;
+  }
+  
+  .tile-item p {
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+    hyphens: auto;
+    font-size: clamp(0.9rem, 3vw, 1rem);
+  }
+  
+  /* Show dots when in carousel mode */
+  .carousel-dots {
+    display: flex;
+  }
+}
+
+/* Desktop - hide dots when showing all 3 tiles */
+@media (min-width: 961px) {
+  .carousel-dots {
+    display: none;
+  }
+}
+
+/* Small mobile responsive */
+@media (max-width: 480px) {
+  .tile-grid {
+    gap: 1.5rem;
+  }
+  
+  .tile-item {
+    padding: 1.5rem 1rem;
+    flex: 0 0 calc(100% - 3rem) !important;
+  }
+  
+  .tile-item h3 {
+    font-size: clamp(1rem, 4vw, 1.25rem);
+    white-space: normal;
+  }
+  
+  .tile-item p {
+    font-size: clamp(0.85rem, 3vw, 0.95rem);
+  }
+  
+  .tile-icon {
+    width: clamp(50px, 12vw, 60px);
+    height: clamp(50px, 12vw, 60px);
+  }
+  
+  .tile-icon svg {
+    width: clamp(25px, 6vw, 30px);
+    height: clamp(25px, 6vw, 30px);
   }
 }
 

@@ -220,11 +220,11 @@ function throttle(func, limit) {
     }
 }
 
-// Universal Carousel System
-class CarouselManager {
+// Unified Tile Carousel System
+class TileCarouselManager {
     constructor() {
         this.carousels = new Map();
-        this.breakpoint = 768; // Switch to carousel mode below this width
+        this.breakpoint = 960; // Switch to carousel mode below this width
         this.init();
     }
 
@@ -235,107 +235,45 @@ class CarouselManager {
     }
 
     initializeCarousels() {
-        console.log('Initializing carousels...');
+        console.log('Initializing tile carousels...');
         
-        // Problem section carousel
-        const problemGrid = document.querySelector('.problem-grid');
-        const problemItems = document.querySelectorAll('.problem-item');
-        const problemDots = document.querySelectorAll('.problem-carousel .dot');
+        // Find all tile carousels
+        const tileCarousels = document.querySelectorAll('.tile-carousel');
         
-        console.log('Problem section:', {
-            grid: problemGrid,
-            items: problemItems.length,
-            dots: problemDots.length
+        tileCarousels.forEach(carousel => {
+            const carouselId = carousel.getAttribute('data-carousel-id');
+            const grid = carousel.querySelector('.tile-grid');
+            const items = carousel.querySelectorAll('.tile-item');
+            const dots = carousel.querySelectorAll('.dot');
+            
+            console.log(`Carousel ${carouselId}:`, {
+                grid: grid,
+                items: items.length,
+                dots: dots.length
+            });
+            
+            if (grid && items.length > 0) {
+                this.carousels.set(carouselId, {
+                    grid: grid,
+                    items: Array.from(items),
+                    dots: Array.from(dots),
+                    currentSlide: 0,
+                    isCarouselMode: false
+                });
+                console.log(`Carousel ${carouselId} initialized`);
+                
+                // Set up dot click handlers for this specific carousel
+                dots.forEach((dot, index) => {
+                    dot.addEventListener('click', () => {
+                        console.log(`Dot clicked for ${carouselId}, slide ${index}`);
+                        this.goToSlide(carouselId, index);
+                    });
+                });
+            }
         });
-        
-        if (problemGrid && problemItems.length > 0) {
-            this.carousels.set('problem', {
-                grid: problemGrid,
-                items: Array.from(problemItems),
-                dots: Array.from(problemDots),
-                currentSlide: 0,
-                isCarouselMode: false
-            });
-            console.log('Problem carousel initialized');
-        }
-
-        // Vision section carousel
-        const visionTimeline = document.querySelector('.vision-timeline');
-        const timelineItems = document.querySelectorAll('.timeline-item');
-        const visionDots = document.querySelectorAll('.vision-carousel .dot');
-        
-        console.log('Vision section:', {
-            timeline: visionTimeline,
-            items: timelineItems.length,
-            dots: visionDots.length
-        });
-        
-        if (visionTimeline && timelineItems.length > 0) {
-            this.carousels.set('vision', {
-                grid: visionTimeline,
-                items: Array.from(timelineItems),
-                dots: Array.from(visionDots),
-                currentSlide: 0,
-                isCarouselMode: false
-            });
-            console.log('Vision carousel initialized');
-        }
-
-        // Features section carousel
-        const featuresGrid = document.querySelector('.carousel-grid[data-carousel-id="features"]');
-        const featuresItems = document.querySelectorAll('.carousel-grid[data-carousel-id="features"] .carousel-item');
-        const featuresDots = document.querySelectorAll('.carousel-widget[data-carousel-id="features"] .dot');
-        
-        if (featuresGrid && featuresItems.length > 0) {
-            this.carousels.set('features', {
-                grid: featuresGrid,
-                items: Array.from(featuresItems),
-                dots: Array.from(featuresDots),
-                currentSlide: 0,
-                isCarouselMode: false
-            });
-        }
-
-        // CTA section carousel
-        const ctaGrid = document.querySelector('.carousel-grid[data-carousel-id="cta"]');
-        const ctaItems = document.querySelectorAll('.carousel-grid[data-carousel-id="cta"] .carousel-item');
-        const ctaDots = document.querySelectorAll('.carousel-widget[data-carousel-id="cta"] .dot');
-        
-        if (ctaGrid && ctaItems.length > 0) {
-            this.carousels.set('cta', {
-                grid: ctaGrid,
-                items: Array.from(ctaItems),
-                dots: Array.from(ctaDots),
-                currentSlide: 0,
-                isCarouselMode: false
-            });
-        }
-
-        // Set up dot click handlers
-        this.setupDotHandlers();
     }
 
-    setupDotHandlers() {
-        // Problem dots
-        document.querySelectorAll('.problem-carousel .dot').forEach((dot, index) => {
-            dot.addEventListener('click', () => this.goToSlide('problem', index));
-        });
 
-        // Vision dots
-        document.querySelectorAll('.vision-carousel .dot').forEach((dot, index) => {
-            dot.addEventListener('click', () => this.goToSlide('vision', index));
-        });
-
-        // Features dots
-        document.querySelectorAll('.carousel-widget[data-carousel-id="features"] .dot').forEach((dot, index) => {
-            dot.addEventListener('click', () => this.goToSlide('features', index));
-        });
-
-        // CTA dots
-        document.querySelectorAll('.carousel-widget[data-carousel-id="cta"] .dot').forEach((dot, index) => {
-            dot.addEventListener('click', () => this.goToSlide('cta', index));
-        });
-    }
 
     checkWindowSize() {
         const windowWidth = window.innerWidth;
@@ -400,8 +338,31 @@ class CarouselManager {
     }
 
     goToSlide(carouselId, slideIndex) {
-        this.showSlide(carouselId, slideIndex);
+        const carousel = this.carousels.get(carouselId);
+        if (!carousel) {
+            console.error(`Carousel ${carouselId} not found`);
+            return;
+        }
+
+        console.log(`Going to slide ${slideIndex} for carousel ${carouselId}`);
+
+        // Always show slide regardless of carousel mode
+        // Hide all slides
+        carousel.items.forEach((item, index) => {
+            item.style.display = 'none';
+            if (carousel.dots[index]) carousel.dots[index].classList.remove('active');
+        });
+
+        // Show current slide
+        if (carousel.items[slideIndex]) {
+            carousel.items[slideIndex].style.display = 'block';
+            if (carousel.dots[slideIndex]) carousel.dots[slideIndex].classList.add('active');
+        }
+
+        carousel.currentSlide = slideIndex;
     }
+
+
 
     throttle(func, limit) {
         let inThrottle;
@@ -417,16 +378,16 @@ class CarouselManager {
     }
 }
 
-// Global carousel manager instance
-let carouselManager;
+// Global tile carousel manager instance
+let tileCarouselManager;
 
 // Initialize all effects
 document.addEventListener('DOMContentLoaded', function() {
     // Add narrative styles first
     addNarrativeStyles();
     
-    // Initialize carousel system
-    carouselManager = new CarouselManager();
+    // Initialize tile carousel system
+    tileCarouselManager = new TileCarouselManager();
     
     // Initialize all interactive features
     initializeVideoInteraction();
@@ -438,7 +399,7 @@ document.addEventListener('DOMContentLoaded', function() {
     initializeNavigation();
     initializeScrollAnimations();
     
-    console.log('Par Noir narrative site initialized with carousel system');
+    console.log('Par Noir narrative site initialized with unified tile carousel system');
 });
 
 // Add smooth scroll behavior for improved UX
@@ -446,13 +407,13 @@ document.documentElement.style.scrollBehavior = 'smooth';
 
 // Global functions for dot clicks (for backward compatibility)
 function goToSlide(carouselId, n) {
-    if (carouselManager) {
-        carouselManager.goToSlide(carouselId, n);
+    if (tileCarouselManager) {
+        tileCarouselManager.goToSlide(carouselId, n);
     }
 }
 
 function goToVisionSlide(n) {
-    if (carouselManager) {
-        carouselManager.goToSlide('vision', n);
+    if (tileCarouselManager) {
+        tileCarouselManager.goToSlide('vision', n);
     }
 }
