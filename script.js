@@ -303,24 +303,56 @@ function toggleMobileMenu() {
 
 // Dynamic carousel functionality based on window width
 let currentSlide = 0;
+let currentVisionSlide = 0;
+let currentCTASlide = 0;
 let isCarouselMode = false;
+let isVisionCarouselMode = false;
+let isCTACarouselMode = false;
+
 const slides = document.querySelectorAll('.problem-item');
-const dots = document.querySelectorAll('.dot');
+const visionSlides = document.querySelectorAll('.timeline-item');
+const ctaSlides = document.querySelectorAll('.cta-box');
+
+const dots = document.querySelectorAll('.problem-carousel .dot');
+const visionDots = document.querySelectorAll('.vision-carousel .dot');
+const ctaDots = document.querySelectorAll('.cta-carousel .dot');
+
 const carouselBtns = document.querySelectorAll('.carousel-btn');
 const carouselDots = document.querySelector('.carousel-dots');
 const problemGrid = document.querySelector('.problem-grid');
+const visionGrid = document.querySelector('.vision-timeline');
+const ctaGrid = document.querySelector('.cta-grid');
 
 function checkWindowSize() {
     const windowWidth = window.innerWidth;
-    const containerWidth = problemGrid ? problemGrid.offsetWidth : 0;
+    const problemContainerWidth = problemGrid ? problemGrid.offsetWidth : 0;
+    const visionContainerWidth = visionGrid ? visionGrid.offsetWidth : 0;
+    const ctaContainerWidth = ctaGrid ? ctaGrid.offsetWidth : 0;
     
     // Switch to carousel mode if window is narrow or content would be cramped
-    const shouldUseCarousel = windowWidth < 800 || (containerWidth > 0 && containerWidth < 600);
+    const shouldUseCarousel = windowWidth < 800 || (problemContainerWidth > 0 && problemContainerWidth < 600);
+    const shouldUseVisionCarousel = windowWidth < 800 || (visionContainerWidth > 0 && visionContainerWidth < 600);
+    const shouldUseCTACarousel = windowWidth < 800 || (ctaContainerWidth > 0 && ctaContainerWidth < 600);
     
+    // Problem carousel
     if (shouldUseCarousel && !isCarouselMode) {
         enableCarouselMode();
     } else if (!shouldUseCarousel && isCarouselMode) {
         disableCarouselMode();
+    }
+    
+    // Vision carousel
+    if (shouldUseVisionCarousel && !isVisionCarouselMode) {
+        enableVisionCarouselMode();
+    } else if (!shouldUseVisionCarousel && isVisionCarouselMode) {
+        disableVisionCarouselMode();
+    }
+    
+    // CTA carousel
+    if (shouldUseCTACarousel && !isCTACarouselMode) {
+        enableCTACarouselMode();
+    } else if (!shouldUseCTACarousel && isCTACarouselMode) {
+        disableCTACarouselMode();
     }
 }
 
@@ -355,6 +387,56 @@ function disableCarouselMode() {
     
     // Reset dots
     dots.forEach(dot => dot.classList.remove('active'));
+}
+
+function enableVisionCarouselMode() {
+    isVisionCarouselMode = true;
+    
+    // Add carousel classes
+    if (visionGrid) visionGrid.classList.add('carousel-mode');
+    visionSlides.forEach(slide => slide.classList.add('carousel-mode'));
+    
+    // Show first slide
+    showVisionSlide(0);
+}
+
+function disableVisionCarouselMode() {
+    isVisionCarouselMode = false;
+    
+    // Remove carousel classes
+    if (visionGrid) visionGrid.classList.remove('carousel-mode');
+    visionSlides.forEach(slide => {
+        slide.classList.remove('carousel-mode');
+        slide.style.display = 'block';
+    });
+    
+    // Reset dots
+    visionDots.forEach(dot => dot.classList.remove('active'));
+}
+
+function enableCTACarouselMode() {
+    isCTACarouselMode = true;
+    
+    // Add carousel classes
+    if (ctaGrid) ctaGrid.classList.add('carousel-mode');
+    ctaSlides.forEach(slide => slide.classList.add('carousel-mode'));
+    
+    // Show first slide
+    showCTASlide(0);
+}
+
+function disableCTACarouselMode() {
+    isCTACarouselMode = false;
+    
+    // Remove carousel classes
+    if (ctaGrid) ctaGrid.classList.remove('carousel-mode');
+    ctaSlides.forEach(slide => {
+        slide.classList.remove('carousel-mode');
+        slide.style.display = 'block';
+    });
+    
+    // Reset dots
+    ctaDots.forEach(dot => dot.classList.remove('active'));
 }
 
 function showSlide(n) {
@@ -392,4 +474,80 @@ function moveCarousel(direction) {
 function goToSlide(n) {
     if (!isCarouselMode) return;
     showSlide(n);
+}
+
+// Vision carousel functions
+function showVisionSlide(n) {
+    if (!isVisionCarouselMode) return;
+    
+    // Hide all slides
+    for (let i = 0; i < visionSlides.length; i++) {
+        visionSlides[i].style.display = 'none';
+        if (visionDots[i]) visionDots[i].classList.remove('active');
+    }
+    
+    // Show current slide
+    if (visionSlides[n]) {
+        visionSlides[n].style.display = 'block';
+        if (visionDots[n]) visionDots[n].classList.add('active');
+    }
+    
+    currentVisionSlide = n;
+}
+
+function moveVisionCarousel(direction) {
+    if (!isVisionCarouselMode) return;
+    
+    let newSlide = currentVisionSlide + direction;
+    
+    if (newSlide >= visionSlides.length) {
+        newSlide = 0;
+    } else if (newSlide < 0) {
+        newSlide = visionSlides.length - 1;
+    }
+    
+    showVisionSlide(newSlide);
+}
+
+function goToVisionSlide(n) {
+    if (!isVisionCarouselMode) return;
+    showVisionSlide(n);
+}
+
+// CTA carousel functions
+function showCTASlide(n) {
+    if (!isCTACarouselMode) return;
+    
+    // Hide all slides
+    for (let i = 0; i < ctaSlides.length; i++) {
+        ctaSlides[i].style.display = 'none';
+        if (ctaDots[i]) ctaDots[i].classList.remove('active');
+    }
+    
+    // Show current slide
+    if (ctaSlides[n]) {
+        ctaSlides[n].style.display = 'block';
+        if (ctaDots[n]) ctaDots[n].classList.add('active');
+    }
+    
+    currentCTASlide = n;
+}
+
+function moveCTACarousel(direction) {
+    if (!isCTACarouselMode) return;
+    
+    let newSlide = currentCTASlide + direction;
+    
+    if (newSlide >= ctaSlides.length) {
+        newSlide = 0;
+    } else if (newSlide < 0) {
+        newSlide = ctaSlides.length - 1;
+    }
+    
+    showCTASlide(newSlide);
+}
+
+function goToCTASlide(n) {
+    if (!isCTACarouselMode) return;
+    showCTASlide(n);
 }

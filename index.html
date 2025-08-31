@@ -237,33 +237,50 @@
                 <p class="section-subtitle">A world where identity serves humanity, not corporations.</p>
             </div>
             <div class="vision-content">
-                <div class="vision-timeline">
-                    <div class="timeline-item">
-                        <div class="timeline-icon">
-                            <svg viewBox="0 0 24 24">
-                                <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
-                            </svg>
+                <div class="vision-carousel">
+                    <button class="carousel-btn carousel-prev" onclick="moveVisionCarousel(-1)">
+                        <svg viewBox="0 0 24 24">
+                            <path d="M15.41 7.41L14 6l-6 6 6 6 1.41-1.41L10.83 12z"/>
+                        </svg>
+                    </button>
+                    <div class="vision-timeline">
+                        <div class="timeline-item">
+                            <div class="timeline-icon">
+                                <svg viewBox="0 0 24 24">
+                                    <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
+                                </svg>
+                            </div>
+                            <h3>The Semantic Web</h3>
+                            <p>Your data becomes truly portable, working seamlessly across any platform or service that respects your sovereignty.</p>
                         </div>
-                        <h3>The Semantic Web</h3>
-                        <p>Your data becomes truly portable, working seamlessly across any platform or service that respects your sovereignty.</p>
+                        <div class="timeline-item">
+                            <div class="timeline-icon">
+                                <svg viewBox="0 0 24 24">
+                                    <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
+                                </svg>
+                            </div>
+                            <h3>AI That Serves You</h3>
+                            <p>Personal AI assistants that know you intimately but are controlled by you entirely—no corporate surveillance.</p>
+                        </div>
+                        <div class="timeline-item">
+                            <div class="timeline-icon">
+                                <svg viewBox="0 0 24 24">
+                                    <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
+                                </svg>
+                            </div>
+                            <h3>Internet of Trust</h3>
+                            <p>Every device, every interaction, every connection is authenticated and secure—without sacrificing privacy.</p>
+                        </div>
                     </div>
-                    <div class="timeline-item">
-                        <div class="timeline-icon">
-                            <svg viewBox="0 0 24 24">
-                                <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
-                            </svg>
-                        </div>
-                        <h3>AI That Serves You</h3>
-                        <p>Personal AI assistants that know you intimately but are controlled by you entirely—no corporate surveillance.</p>
-                    </div>
-                    <div class="timeline-item">
-                        <div class="timeline-icon">
-                            <svg viewBox="0 0 24 24">
-                                <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
-                            </svg>
-                        </div>
-                        <h3>Internet of Trust</h3>
-                        <p>Every device, every interaction, every connection is authenticated and secure—without sacrificing privacy.</p>
+                    <button class="carousel-btn carousel-next" onclick="moveVisionCarousel(1)">
+                        <svg viewBox="0 0 24 24">
+                            <path d="M8.59 16.59L10 18l6-6-6-6-1.41 1.41L13.17 12z"/>
+                        </svg>
+                    </button>
+                    <div class="carousel-dots vision-dots">
+                        <span class="dot active" onclick="goToVisionSlide(0)"></span>
+                        <span class="dot" onclick="goToVisionSlide(1)"></span>
+                        <span class="dot" onclick="goToVisionSlide(2)"></span>
                     </div>
                 </div>
             </div>
@@ -320,36 +337,53 @@
                 <h2>Choose Your Path to Freedom</h2>
                 <p>Whether you're here to use, build, or understand—there's a place for you in the par Noir ecosystem.</p>
             </div>
-            <div class="cta-grid">
-                <div class="cta-box">
-                    <div class="cta-icon">
-                        <svg viewBox="0 0 24 24">
-                            <path d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/>
-                        </svg>
+            <div class="cta-carousel">
+                <button class="carousel-btn carousel-prev" onclick="moveCTACarousel(-1)">
+                    <svg viewBox="0 0 24 24">
+                        <path d="M15.41 7.41L14 6l-6 6 6 6 1.41-1.41L10.83 12z"/>
+                    </svg>
+                </button>
+                <div class="cta-grid">
+                    <div class="cta-box">
+                        <div class="cta-icon">
+                            <svg viewBox="0 0 24 24">
+                                <path d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/>
+                            </svg>
+                        </div>
+                        <h3>Users</h3>
+                        <p>Join the community and take control of your digital identity.</p>
+                        <a href="https://pn.parnoir.com" class="btn btn-primary">Create Your pN</a>
                     </div>
-                                            <h3>Users</h3>
-                    <p>Join the community and take control of your digital identity.</p>
-                    <a href="https://pn.parnoir.com" class="btn btn-primary">Create Your pN</a>
+                    <div class="cta-box">
+                        <div class="cta-icon">
+                            <svg viewBox="0 0 24 24">
+                                <path d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4"/>
+                            </svg>
+                        </div>
+                        <h3>Developers</h3>
+                        <p>Build the future with our open-source protocol and comprehensive SDK.</p>
+                        <a href="developer-portal.html" class="btn btn-primary">Start Building</a>
+                    </div>
+                    <div class="cta-box">
+                        <div class="cta-icon">
+                            <svg viewBox="0 0 24 24">
+                                <path d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"/>
+                            </svg>
+                        </div>
+                        <h3>Thinkers</h3>
+                        <p>Dive deep into the philosophy and technical specifications.</p>
+                        <a href="whitepaper.html" class="btn btn-primary">White Paper</a>
+                    </div>
                 </div>
-                <div class="cta-box">
-                    <div class="cta-icon">
-                        <svg viewBox="0 0 24 24">
-                            <path d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4"/>
-                        </svg>
-                    </div>
-                                            <h3>Developers</h3>
-                    <p>Build the future with our open-source protocol and comprehensive SDK.</p>
-                    <a href="developer-portal.html" class="btn btn-primary">Start Building</a>
-                </div>
-                <div class="cta-box">
-                    <div class="cta-icon">
-                        <svg viewBox="0 0 24 24">
-                            <path d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"/>
-                        </svg>
-                    </div>
-                                            <h3>Thinkers</h3>
-                    <p>Dive deep into the philosophy and technical specifications.</p>
-                    <a href="whitepaper.html" class="btn btn-primary">White Paper</a>
+                <button class="carousel-btn carousel-next" onclick="moveCTACarousel(1)">
+                    <svg viewBox="0 0 24 24">
+                        <path d="M8.59 16.59L10 18l6-6-6-6-1.41 1.41L13.17 12z"/>
+                    </svg>
+                </button>
+                <div class="carousel-dots cta-dots">
+                    <span class="dot active" onclick="goToCTASlide(0)"></span>
+                    <span class="dot" onclick="goToCTASlide(1)"></span>
+                    <span class="dot" onclick="goToCTASlide(2)"></span>
                 </div>
             </div>
         </div>
