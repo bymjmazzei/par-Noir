@@ -196,7 +196,7 @@ body {
   min-height: auto;
   display: flex;
   align-items: center;
-  padding: 6rem 0 3rem;
+  padding: 8rem 0 3rem;
   position: relative;
 }
 
@@ -1557,6 +1557,10 @@ footer::before {
 
 /* Responsive Design Updates */
 @media (max-width: 768px) {
+  .hero {
+    padding: 7rem 0 2rem;
+  }
+  
   .hero-container {
     grid-template-columns: 1fr;
     gap: 2rem;
@@ -2002,7 +2006,7 @@ footer::before {
 /* Extra small mobile devices */
 @media (max-width: 480px) {
   .hero {
-    padding: 4rem 0 2rem;
+    padding: 6rem 0 2rem;
   }
   
   .hero-visual {
