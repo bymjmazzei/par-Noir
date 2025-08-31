@@ -570,7 +570,8 @@ section:nth-child(odd) {
   }
   
   .problem-item h3 {
-    font-size: 1.25rem;
+    font-size: 1rem;
+    white-space: nowrap;
   }
   
   .problem-icon {
@@ -2167,9 +2168,8 @@ footer::before {
   }
   
   .problem-item h3 {
-    font-size: 1.25rem;
-    word-wrap: break-word;
-    overflow-wrap: break-word;
+    font-size: 1.1rem;
+    white-space: nowrap;
   }
   
   /* Mobile menu overlay */
@@ -2416,15 +2416,13 @@ footer::before {
 }
 
 .problem-item h3 {
-  font-size: 1.5rem;
+  font-size: 1.25rem;
   font-weight: 700;
   margin-bottom: 1rem;
   color: var(--text-primary);
   text-transform: uppercase;
   letter-spacing: 1px;
-  word-wrap: break-word;
-  overflow-wrap: break-word;
-  hyphens: auto;
+  white-space: nowrap;
 }
 
 .problem-item p {
