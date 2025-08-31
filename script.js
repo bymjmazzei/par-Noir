@@ -360,6 +360,12 @@ function checkWindowSize() {
         disableCTACarouselMode();
     }
     
+    // Debug logging
+    console.log('Window width:', windowWidth);
+    console.log('CTA container width:', ctaContainerWidth);
+    console.log('Should use CTA carousel:', shouldUseCTACarousel);
+    console.log('Is CTA carousel mode:', isCTACarouselMode);
+    
     // Features carousel
     if (shouldUseFeaturesCarousel && !isFeaturesCarouselMode) {
         enableFeaturesCarouselMode();
