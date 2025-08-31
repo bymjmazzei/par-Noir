@@ -1528,7 +1528,7 @@ footer::before {
 /* Responsive Design Updates */
 @media (max-width: 960px) {
   .hero {
-    padding: 7rem 0 2rem;
+    padding: 5rem 0 2rem;
   }
   
   .hero-container {
