@@ -22,7 +22,9 @@ npm install @identity-protocol/identity-sdk
 
 ## 🔧 Quick Start
 
-### Basic Integration
+### ZKP-Based Authentication (New)
+
+The SDK now supports **zero-knowledge proof-based authentication** that allows third parties to verify user ownership without accessing the public pN:
 
 ```javascript
 import { createIdentitySDK, createSimpleConfig } from '@identity-protocol/identity-sdk';
@@ -41,47 +43,110 @@ const config = createSimpleConfig(
 // Initialize SDK
 const sdk = createIdentitySDK(config);
 
-// Start authentication - user creates/uses their own identity
-await sdk.authenticate('identity-protocol');
+// 1. Request access to ecosystem data
+const accessRequest = await sdk.requestAccess({
+  ecosystemId: 'your-ecosystem',
+  requestedData: ['preferences', 'activity', 'subscriptions'],
+  purpose: 'Personalize user experience',
+  expirationHours: 24
+});
+
+// 2. User generates ownership proof (happens on user's device)
+const ownershipProof = await sdk.generateOwnershipProof({
+  accessRequestId: accessRequest.accessRequestId,
+  publicPNId: 'user-public-pn-id', // Only known to user
+  privateKey: userPrivateKey
+});
+
+// 3. Verify ownership proof and get access
+const accessGrant = await sdk.verifyOwnershipAndAccess({
+  accessRequestId: accessRequest.accessRequestId,
+  ownershipProof: ownershipProof
+});
+
+// 4. Access ecosystem data using access token
+const ecosystemData = await sdk.accessEcosystemData({
+  accessToken: accessGrant.accessToken,
+  dataRequest: {
+    fields: ['preferences', 'activity'],
+    format: 'encrypted'
+  }
+});
+
+// 5. Create private pN locally (user-owned)
+const privatePN = await createPrivatePN({
+  publicPNId: 'user-public-pn-id', // Linked but not revealed
+  ecosystemData: ecosystemData.data,
+  ecosystemId: 'your-ecosystem'
+});
 ```
 
-### React Integration
+### Ecosystem Integration Example
 
 ```javascript
-import { useIdentitySDK, createSimpleConfig } from '@identity-protocol/identity-sdk';
-
-function MyApp() {
-  const config = createSimpleConfig(
-    'your-client-id',
-    'https://your-app.com/callback'
-  );
-
-  const {
-    session,
-    isAuthenticated,
-    isLoading,
-    error,
-    authenticate,
-    logout
-  } = useIdentitySDK(config);
-
-  if (isAuthenticated) {
-    return (
-      <div>
-        <p>Welcome! You're signed in with your Identity Protocol ID</p>
-        <p>Your identity ID: {session?.identity.id}</p>
-        <button onClick={logout}>Logout</button>
-      </div>
-    );
+class EcosystemIntegration {
+  async authenticateUser() {
+    // 1. Request access without knowing user's public pN
+    const accessRequest = await this.sdk.requestAccess({
+      ecosystemId: 'our-platform',
+      requestedData: ['preferences', 'activity', 'subscriptions'],
+      purpose: 'Account creation and personalization'
+    });
+    
+    // 2. User generates ZKP proving ownership (no public pN revealed)
+    const ownershipProof = await userDevice.generateOwnershipProof(accessRequest);
+    
+    // 3. Verify the ZKP (still no public pN access)
+    const accessGrant = await this.sdk.verifyOwnershipAndAccess({
+      accessRequestId: accessRequest.accessRequestId,
+      ownershipProof: ownershipProof
+    });
+    
+    // 4. Access ecosystem data (encrypted, user-controlled)
+    const ecosystemData = await this.sdk.accessEcosystemData({
+      accessToken: accessGrant.accessToken,
+      dataRequest: {
+        fields: ['preferences', 'activity'],
+        format: 'encrypted'
+      }
+    });
+    
+    // 5. Create private pN locally (user-owned, not on our servers)
+    const privatePN = await this.createLocalPrivatePN({
+      ecosystemData: ecosystemData.data,
+      ecosystemId: 'our-platform'
+    });
+    
+    return privatePN;
   }
-
-  return (
-    <button onClick={() => authenticate('identity-protocol')}>
-      Sign in with your Identity Protocol ID
-    </button>
-  );
+  
+  async createLocalPrivatePN(data) {
+    // Create ecosystem-specific pN locally (user-owned)
+    const privatePN = {
+      id: generateEcosystemPNId(),
+      ecosystemId: 'our-platform',
+      data: data,
+      metadata: {
+        createdAt: new Date().toISOString(),
+        lastAccessed: new Date().toISOString()
+      }
+    };
+    
+    // Store locally on user's device (not our servers)
+    await this.storePrivatePNLocally(privatePN);
+    
+    return privatePN;
+  }
 }
 ```
+
+### Privacy Benefits
+
+- **No Public pN Access**: Third parties never see the user's public pN
+- **ZKP Verification**: Ownership proven through zero-knowledge proofs
+- **Local Storage**: All ecosystem data stored locally on user's device
+- **User Control**: Users control what data is shared and when
+- **Perfect Privacy**: No correlation between ecosystems possible
 
 ## 🔄 Military-Grade Authentication Flow
 

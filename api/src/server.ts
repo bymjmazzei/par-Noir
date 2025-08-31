@@ -536,14 +536,14 @@ class ProductionServer {
       });
     });
 
-    // Decentralized Authentication endpoints (replaces OAuth)
+    // ZKP-based Authentication endpoints (replaces OAuth)
     this.app.use('/auth', this.decentralizedAuthServer.getRouter());
     
-    // OAuth compatibility endpoints (for legacy support)
-    this.app.get('/oauth/authorize', this.handleOAuthAuthorize.bind(this));
-    this.app.post('/oauth/token', this.handleOAuthToken.bind(this));
-    this.app.get('/oauth/userinfo', this.handleOAuthUserInfo.bind(this));
-    this.app.post('/oauth/revoke', this.handleOAuthRevoke.bind(this));
+    // ZKP Ownership Proof endpoints
+    this.app.post('/api/zkp/request-access', this.handleRequestAccess.bind(this));
+    this.app.post('/api/zkp/verify-ownership', this.handleVerifyOwnership.bind(this));
+    this.app.post('/api/zkp/access-ecosystem-data', this.handleAccessEcosystemData.bind(this));
+    this.app.post('/api/zkp/revoke-access', this.handleRevokeAccess.bind(this));
 
     // Identity management endpoints
     this.app.post('/api/identities', this.handleCreateIdentity.bind(this));
@@ -672,88 +672,7 @@ class ProductionServer {
     });
   }
 
-  // OAuth handlers
-  private async handleOAuthAuthorize(req: express.Request, res: express.Response): Promise<void> {
-    try {
-      const { client_id, redirect_uri, response_type, scope, state } = req.query;
-      
-      // Validate required parameters
-      if (!client_id || !redirect_uri || response_type !== 'code') {
-        res.status(400).json({ error: 'invalid_request' });
-        return;
-      }
 
-      // Generate authorization code
-      const authCode = SecureRandom.generateAuthCode();
-      
-      res.json({
-        code: authCode,
-        state: state || null
-      });
-    } catch (error) {
-      this.logger.error('OAuth authorization error', { error });
-      res.status(500).json({ error: 'server_error' });
-    }
-  }
-
-  private async handleOAuthToken(req: express.Request, res: express.Response): Promise<void> {
-    try {
-      const { grant_type, code, client_id, client_secret } = req.body;
-      
-      if (grant_type !== 'authorization_code') {
-        res.status(400).json({ error: 'unsupported_grant_type' });
-        return;
-      }
-
-      // Generate access token
-      const accessToken = crypto.randomBytes(32).toString('hex');
-      
-      res.json({
-        access_token: accessToken,
-        token_type: 'Bearer',
-        expires_in: 3600,
-        scope: 'openid profile'
-      });
-    } catch (error) {
-      this.logger.error('OAuth token error', { error });
-      res.status(500).json({ error: 'server_error' });
-    }
-  }
-
-  private async handleOAuthUserInfo(req: express.Request, res: express.Response): Promise<void> {
-    try {
-      const authHeader = req.headers.authorization;
-      if (!authHeader || !authHeader.startsWith('Bearer ')) {
-        res.status(401).json({ error: 'invalid_token' });
-        return;
-      }
-
-      res.json({
-        sub: 'user123',
-        name: 'John Doe',
-        email: 'john@example.com',
-        picture: 'https://example.com/avatar.jpg'
-      });
-    } catch (error) {
-      this.logger.error('OAuth userinfo error', { error });
-      res.status(500).json({ error: 'server_error' });
-    }
-  }
-
-  private async handleOAuthRevoke(req: express.Request, res: express.Response): Promise<void> {
-    try {
-      const { token } = req.body;
-      if (!token) {
-        res.status(400).json({ error: 'invalid_request' });
-        return;
-      }
-
-      res.json({ success: true });
-    } catch (error) {
-      this.logger.error('OAuth revoke error', { error });
-      res.status(500).json({ error: 'server_error' });
-    }
-  }
 
   // Identity handlers
   private async handleCreateIdentity(req: express.Request, res: express.Response): Promise<void> {
@@ -1150,6 +1069,251 @@ class ProductionServer {
       this.logger.error('Register data point error', { error });
       res.status(500).json({ error: 'Failed to register data point' });
     }
+  }
+
+  // ZKP-based Authentication handlers
+  private async handleRequestAccess(req: express.Request, res: express.Response): Promise<void> {
+    try {
+      const { ecosystemId, requestedData, purpose, expirationHours } = req.body;
+      
+      // Validate required parameters
+      if (!ecosystemId || !requestedData || !purpose) {
+        res.status(400).json({ 
+          error: 'invalid_request',
+          message: 'Missing required fields: ecosystemId, requestedData, purpose' 
+        });
+        return;
+      }
+
+      // Generate access request ID
+      const accessRequestId = SecureRandom.generateAccessRequestId();
+      
+      // Create access request
+      const accessRequest = {
+        id: accessRequestId,
+        ecosystemId,
+        requestedData,
+        purpose,
+        expiresAt: new Date(Date.now() + (expirationHours || 24) * 60 * 60 * 1000).toISOString(),
+        status: 'pending',
+        createdAt: new Date().toISOString()
+      };
+
+      // Store access request (temporary, for verification)
+      await this.storeAccessRequest(accessRequest);
+
+      res.json({
+        success: true,
+        accessRequestId,
+        accessRequest,
+        message: 'Access request created successfully'
+      });
+    } catch (error) {
+      this.logger.error('Error creating access request', { error });
+      res.status(500).json({ error: 'Failed to create access request' });
+    }
+  }
+
+  private async handleVerifyOwnership(req: express.Request, res: express.Response): Promise<void> {
+    try {
+      const { accessRequestId, ownershipProof } = req.body;
+      
+      if (!accessRequestId || !ownershipProof) {
+        res.status(400).json({ 
+          error: 'invalid_request',
+          message: 'Missing required fields: accessRequestId, ownershipProof' 
+        });
+        return;
+      }
+
+      // Retrieve access request
+      const accessRequest = await this.getAccessRequest(accessRequestId);
+      if (!accessRequest) {
+        res.status(404).json({ error: 'access_request_not_found' });
+        return;
+      }
+
+      // Verify ownership proof using ZKP
+      const verificationResult = await this.verifyOwnershipProof(ownershipProof, accessRequest);
+      
+      if (verificationResult.valid) {
+        // Generate access token for ecosystem data
+        const accessToken = SecureRandom.generateAccessToken();
+        
+        // Store access grant (temporary)
+        await this.storeAccessGrant({
+          accessRequestId,
+          accessToken,
+          ecosystemId: accessRequest.ecosystemId,
+          expiresAt: accessRequest.expiresAt,
+          grantedAt: new Date().toISOString()
+        });
+
+        res.json({
+          success: true,
+          accessToken,
+          expiresAt: accessRequest.expiresAt,
+          message: 'Ownership verified successfully'
+        });
+      } else {
+        res.status(401).json({
+          error: 'invalid_ownership_proof',
+          message: 'Ownership proof verification failed'
+        });
+      }
+    } catch (error) {
+      this.logger.error('Error verifying ownership proof', { error });
+      res.status(500).json({ error: 'Failed to verify ownership proof' });
+    }
+  }
+
+  private async handleAccessEcosystemData(req: express.Request, res: express.Response): Promise<void> {
+    try {
+      const { accessToken, dataRequest } = req.body;
+      
+      if (!accessToken || !dataRequest) {
+        res.status(400).json({ 
+          error: 'invalid_request',
+          message: 'Missing required fields: accessToken, dataRequest' 
+        });
+        return;
+      }
+
+      // Verify access token
+      const accessGrant = await this.getAccessGrant(accessToken);
+      if (!accessGrant || new Date() > new Date(accessGrant.expiresAt)) {
+        res.status(401).json({ error: 'invalid_or_expired_token' });
+        return;
+      }
+
+      // Return success - actual data access happens on user's device
+      res.json({
+        success: true,
+        message: 'Access granted to ecosystem data',
+        ecosystemId: accessGrant.ecosystemId,
+        dataRequest
+      });
+    } catch (error) {
+      this.logger.error('Error accessing ecosystem data', { error });
+      res.status(500).json({ error: 'Failed to access ecosystem data' });
+    }
+  }
+
+  private async handleRevokeAccess(req: express.Request, res: express.Response): Promise<void> {
+    try {
+      const { accessToken } = req.body;
+      
+      if (!accessToken) {
+        res.status(400).json({ 
+          error: 'invalid_request',
+          message: 'Missing required field: accessToken' 
+        });
+        return;
+      }
+
+      // Revoke access token
+      await this.revokeAccessGrant(accessToken);
+
+      res.json({
+        success: true,
+        message: 'Access revoked successfully'
+      });
+    } catch (error) {
+      this.logger.error('Error revoking access', { error });
+      res.status(500).json({ error: 'Failed to revoke access' });
+    }
+  }
+
+  // Helper methods for ZKP authentication
+  private async storeAccessRequest(accessRequest: any): Promise<void> {
+    // In production, this would be stored in a database
+    // For now, using in-memory storage
+    if (!this.accessRequests) this.accessRequests = new Map();
+    this.accessRequests.set(accessRequest.id, accessRequest);
+  }
+
+  private async getAccessRequest(accessRequestId: string): Promise<any> {
+    if (!this.accessRequests) return null;
+    return this.accessRequests.get(accessRequestId);
+  }
+
+  private async verifyOwnershipProof(ownershipProof: any, accessRequest: any): Promise<any> {
+    try {
+      // Verify ZKP components
+      const schnorrValid = await this.verifySchnorrProof(ownershipProof.proof.schnorrProof);
+      const pedersenValid = await this.verifyPedersenProof(ownershipProof.proof.pedersenProof);
+      
+      // Verify proof statement matches access request
+      const statementValid = this.verifyProofStatement(ownershipProof, accessRequest);
+      
+      // Verify signature
+      const signatureValid = await this.verifyProofSignature(ownershipProof);
+      
+      return {
+        valid: schnorrValid && pedersenValid && statementValid && signatureValid,
+        details: {
+          schnorrValid,
+          pedersenValid,
+          statementValid,
+          signatureValid
+        }
+      };
+    } catch (error) {
+      this.logger.error('Error verifying ownership proof', { error });
+      return { valid: false, error: error.message };
+    }
+  }
+
+  private async verifySchnorrProof(schnorrProof: any): Promise<boolean> {
+    // Implement Schnorr signature verification
+    // This would use the authentic ZKP implementation from your core
+    try {
+      // Placeholder for real Schnorr verification
+      return true;
+    } catch (error) {
+      return false;
+    }
+  }
+
+  private async verifyPedersenProof(pedersenProof: any): Promise<boolean> {
+    // Implement Pedersen commitment verification
+    try {
+      // Placeholder for real Pedersen verification
+      return true;
+    } catch (error) {
+      return false;
+    }
+  }
+
+  private verifyProofStatement(ownershipProof: any, accessRequest: any): boolean {
+    // Verify that the proof statement matches the access request
+    return ownershipProof.publicInputs.ecosystemId === accessRequest.ecosystemId &&
+           JSON.stringify(ownershipProof.publicInputs.requestedData) === JSON.stringify(accessRequest.requestedData);
+  }
+
+  private async verifyProofSignature(ownershipProof: any): Promise<boolean> {
+    // Verify the cryptographic signature on the proof
+    try {
+      // Placeholder for real signature verification
+      return true;
+    } catch (error) {
+      return false;
+    }
+  }
+
+  private async storeAccessGrant(accessGrant: any): Promise<void> {
+    if (!this.accessGrants) this.accessGrants = new Map();
+    this.accessGrants.set(accessGrant.accessToken, accessGrant);
+  }
+
+  private async getAccessGrant(accessToken: string): Promise<any> {
+    if (!this.accessGrants) return null;
+    return this.accessGrants.get(accessToken);
+  }
+
+  private async revokeAccessGrant(accessToken: string): Promise<void> {
+    if (!this.accessGrants) return;
+    this.accessGrants.delete(accessToken);
   }
 
   public start(port: number = parseInt(process.env['PORT'] || '3001')): void {

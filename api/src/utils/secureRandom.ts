@@ -99,6 +99,30 @@ export class SecureRandom {
   }
 
   /**
+   * Generate a secure access request ID for ZKP authentication
+   * @returns Secure random access request ID
+   */
+  static generateAccessRequestId(): string {
+    return `ar_${this.generateHex(16)}`;
+  }
+
+  /**
+   * Generate a secure access token for ecosystem data access
+   * @returns Secure random access token
+   */
+  static generateAccessToken(): string {
+    return `at_${this.generateHex(32)}`;
+  }
+
+  /**
+   * Generate a secure authorization code (for legacy OAuth compatibility)
+   * @returns Secure random authorization code
+   */
+  static generateAuthCode(): string {
+    return `ac_${this.generateHex(24)}`;
+  }
+
+  /**
    * Generate a secure random token for authentication
    * @param prefix - Optional prefix for the token
    * @returns Secure random token
@@ -229,14 +253,6 @@ export class SecureRandom {
   }
 
   /**
-   * Generate a secure random authorization code
-   * @returns Secure random authorization code
-   */
-  static generateAuthCode(): string {
-    return this.generateId(15);
-  }
-
-  /**
    * Generate a secure random recovery ID
    * @returns Secure random recovery ID
    */
@@ -274,14 +290,6 @@ export class SecureRandom {
    */
   static generateBiometricToken(): string {
     return `biometric_${Date.now()}_${this.generateId(9)}`;
-  }
-
-  /**
-   * Generate a secure random access token
-   * @returns Secure random access token
-   */
-  static generateAccessToken(): string {
-    return this.generateId(15);
   }
 }
 

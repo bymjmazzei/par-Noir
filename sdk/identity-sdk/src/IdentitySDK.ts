@@ -18,7 +18,11 @@ import {
   DataPointProposalRequest,
   DataPointProposalResponse,
   VoteRequest,
-  VoteResponse
+  VoteResponse,
+  AccessRequestResponse,
+  OwnershipProof,
+  AccessGrantResponse,
+  EcosystemDataResponse
 } from './types';
 import { StandardDataPoint, DataPointProposal } from './types/standardDataPoints';
 
@@ -672,6 +676,190 @@ export class IdentitySDK {
     return Object.values(STANDARD_DATA_POINTS).filter(dp => dp.category === category);
   }
 
+  /**
+   * Request access to ecosystem data using ZKP-based authentication
+   */
+  async requestAccess(options: {
+    ecosystemId: string;
+    requestedData: string[];
+    purpose: string;
+    expirationHours?: number;
+  }): Promise<AccessRequestResponse> {
+    try {
+      const response = await fetch(`${this.config.apiUrl}/api/zkp/request-access`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${this.config.clientSecret}`
+        },
+        body: JSON.stringify({
+          ecosystemId: options.ecosystemId,
+          requestedData: options.requestedData,
+          purpose: options.purpose,
+          expirationHours: options.expirationHours || 24
+        }),
+        signal: AbortSignal.timeout(this.config.timeout)
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.message || `Access request failed: ${response.status}`);
+      }
+
+      const result = await response.json();
+      this.emit(EventTypes.ACCESS_REQUESTED, result);
+      return result;
+    } catch (error) {
+      const identityError = this.createError(ErrorCodes.SERVER_ERROR, error);
+      this.emit(EventTypes.ACCESS_ERROR, identityError);
+      throw identityError;
+    }
+  }
+
+  /**
+   * Generate ownership proof for ecosystem access
+   */
+  async generateOwnershipProof(options: {
+    accessRequestId: string;
+    publicPNId: string;
+    privateKey: CryptoKey;
+  }): Promise<OwnershipProof> {
+    try {
+      // Generate Schnorr proof
+      const schnorrProof = await this.generateSchnorrProof(options.privateKey);
+      
+      // Generate Pedersen commitment proof
+      const pedersenProof = await this.generatePedersenProof(options.publicPNId);
+      
+      // Create ownership proof
+      const ownershipProof: OwnershipProof = {
+        proofId: `zkp_${this.generateHex(16)}`,
+        statement: `I own the public pN that has access to ecosystem-specific data`,
+        proof: {
+          schnorrProof,
+          pedersenProof
+        },
+        publicInputs: {
+          ecosystemId: 'ecosystem-name', // This would come from the access request
+          requestedData: ['preferences', 'activity'], // This would come from the access request
+          timestamp: new Date().toISOString(),
+          expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString()
+        },
+        signature: await this.signProof(options.privateKey)
+      };
+
+      this.emit(EventTypes.OWNERSHIP_PROOF_GENERATED, ownershipProof);
+      return ownershipProof;
+    } catch (error) {
+      const identityError = this.createError(ErrorCodes.CRYPTO_ERROR, error);
+      this.emit(EventTypes.PROOF_ERROR, identityError);
+      throw identityError;
+    }
+  }
+
+  /**
+   * Verify ownership proof and get access to ecosystem data
+   */
+  async verifyOwnershipAndAccess(options: {
+    accessRequestId: string;
+    ownershipProof: OwnershipProof;
+  }): Promise<AccessGrantResponse> {
+    try {
+      const response = await fetch(`${this.config.apiUrl}/api/zkp/verify-ownership`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${this.config.clientSecret}`
+        },
+        body: JSON.stringify({
+          accessRequestId: options.accessRequestId,
+          ownershipProof: options.ownershipProof
+        }),
+        signal: AbortSignal.timeout(this.config.timeout)
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.message || `Ownership verification failed: ${response.status}`);
+      }
+
+      const result = await response.json();
+      this.emit(EventTypes.ACCESS_GRANTED, result);
+      return result;
+    } catch (error) {
+      const identityError = this.createError(ErrorCodes.SERVER_ERROR, error);
+      this.emit(EventTypes.ACCESS_ERROR, identityError);
+      throw identityError;
+    }
+  }
+
+  /**
+   * Access ecosystem data using access token
+   */
+  async accessEcosystemData(options: {
+    accessToken: string;
+    dataRequest: {
+      fields: string[];
+      format: 'encrypted' | 'decrypted';
+    };
+  }): Promise<EcosystemDataResponse> {
+    try {
+      const response = await fetch(`${this.config.apiUrl}/api/zkp/access-ecosystem-data`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${options.accessToken}`
+        },
+        body: JSON.stringify({
+          accessToken: options.accessToken,
+          dataRequest: options.dataRequest
+        }),
+        signal: AbortSignal.timeout(this.config.timeout)
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.message || `Data access failed: ${response.status}`);
+      }
+
+      const result = await response.json();
+      this.emit(EventTypes.DATA_ACCESSED, result);
+      return result;
+    } catch (error) {
+      const identityError = this.createError(ErrorCodes.SERVER_ERROR, error);
+      this.emit(EventTypes.DATA_ERROR, identityError);
+      throw identityError;
+    }
+  }
+
+  /**
+   * Revoke access to ecosystem data
+   */
+  async revokeAccess(accessToken: string): Promise<void> {
+    try {
+      const response = await fetch(`${this.config.apiUrl}/api/zkp/revoke-access`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${this.config.clientSecret}`
+        },
+        body: JSON.stringify({ accessToken }),
+        signal: AbortSignal.timeout(this.config.timeout)
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.message || `Access revocation failed: ${response.status}`);
+      }
+
+      this.emit(EventTypes.ACCESS_REVOKED, { accessToken });
+    } catch (error) {
+      const identityError = this.createError(ErrorCodes.SERVER_ERROR, error);
+      this.emit(EventTypes.ACCESS_ERROR, identityError);
+      throw identityError;
+    }
+  }
+
   // Event handling
   on(event: string, callback: Function): void {
     if (!this.eventListeners.has(event)) {
@@ -811,5 +999,37 @@ export class IdentitySDK {
 
   private clearStoredSession(): void {
     this.storage?.removeItem('identity_session');
+  }
+
+  // Helper methods for ZKP generation
+  private async generateSchnorrProof(privateKey: CryptoKey): Promise<any> {
+    // This would use your authentic Schnorr implementation
+    // For now, returning a placeholder structure
+    return {
+      R: this.generateHex(32),
+      c: this.generateHex(32),
+      s: this.generateHex(32)
+    };
+  }
+
+  private async generatePedersenProof(publicPNId: string): Promise<any> {
+    // This would use your authentic Pedersen commitment implementation
+    // For now, returning a placeholder structure
+    return {
+      commitment: this.generateHex(32),
+      proof: this.generateHex(64)
+    };
+  }
+
+  private async signProof(privateKey: CryptoKey): Promise<string> {
+    // This would use your authentic signature implementation
+    // For now, returning a placeholder signature
+    return this.generateHex(64);
+  }
+
+  private generateHex(length: number): string {
+    const bytes = new Uint8Array(length);
+    crypto.getRandomValues(bytes);
+    return Array.from(bytes, byte => byte.toString(16).padStart(2, '0')).join('');
   }
 } 

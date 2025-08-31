@@ -194,4 +194,49 @@ export interface VoteRequest {
 export interface VoteResponse {
   success: boolean;
   error?: string;
+}
+
+export interface EcosystemDataResponse {
+  success: boolean;
+  data?: any;
+  message?: string;
+  error?: string;
+}
+
+export interface AccessRequestResponse {
+  success: boolean;
+  accessRequestId: string;
+  accessRequest: {
+    id: string;
+    ecosystemId: string;
+    requestedData: string[];
+    purpose: string;
+    expiresAt: string;
+    status: string;
+    createdAt: string;
+  };
+  message: string;
+}
+
+export interface OwnershipProof {
+  proofId: string;
+  statement: string;
+  proof: {
+    schnorrProof: any;
+    pedersenProof: any;
+  };
+  publicInputs: {
+    ecosystemId: string;
+    requestedData: string[];
+    timestamp: string;
+    expiresAt: string;
+  };
+  signature: string;
+}
+
+export interface AccessGrantResponse {
+  success: boolean;
+  accessToken: string;
+  expiresAt: string;
+  message: string;
 } 
