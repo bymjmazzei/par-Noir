@@ -2935,7 +2935,7 @@ section:nth-child(odd) {
   flex-direction: column;
   justify-content: center;
   align-items: center;
-  margin: 4rem auto 0 auto;
+  margin: 0 auto;
   padding: 2.5rem;
   background: rgba(255, 255, 255, 0.03);
   border: 1px solid var(--border-glow);
