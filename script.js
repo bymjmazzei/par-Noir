@@ -275,6 +275,9 @@ document.addEventListener('DOMContentLoaded', function() {
     initializeScrollAnimations();
     initializeMouseTrail();
     
+    // Initialize carousel
+    initializeCarousel();
+    
     console.log('Par Noir narrative site initialized');
 });
 
@@ -297,8 +300,22 @@ function toggleMobileMenu() {
 
 // Carousel functionality
 let currentSlideIndex = 0;
-const slides = document.querySelectorAll('.problem-item');
-const dots = document.querySelectorAll('.dot');
+let slides = [];
+let dots = [];
+
+function initializeCarousel() {
+    slides = document.querySelectorAll('.problem-item');
+    dots = document.querySelectorAll('.dot');
+    
+    if (slides.length > 0) {
+        showSlide(0);
+        
+        // Auto-advance carousel every 5 seconds
+        setInterval(() => {
+            moveCarousel(1);
+        }, 5000);
+    }
+}
 
 function showSlide(index) {
     // Hide all slides
@@ -325,6 +342,8 @@ function showSlide(index) {
 }
 
 function moveCarousel(direction) {
+    if (slides.length === 0) return;
+    
     const newIndex = currentSlideIndex + direction;
     
     if (newIndex >= 0 && newIndex < slides.length) {
@@ -337,16 +356,6 @@ function moveCarousel(direction) {
 }
 
 function currentSlide(index) {
+    if (slides.length === 0) return;
     showSlide(index - 1); // Convert to 0-based index
 }
-
-// Initialize carousel on page load
-document.addEventListener('DOMContentLoaded', function() {
-    // Show first slide by default
-    showSlide(0);
-    
-    // Auto-advance carousel every 5 seconds
-    setInterval(() => {
-        moveCarousel(1);
-    }, 5000);
-});

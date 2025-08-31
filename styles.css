@@ -2368,6 +2368,12 @@ footer::before {
   margin: 0 auto;
 }
 
+/* Hide carousel elements on desktop */
+.carousel-btn,
+.carousel-dots {
+  display: none;
+}
+
 /* Carousel navigation buttons */
 .carousel-btn {
   position: absolute;
@@ -2435,6 +2441,11 @@ footer::before {
     padding: 0 1rem;
   }
   
+  .carousel-btn,
+  .carousel-dots {
+    display: flex;
+  }
+  
   .carousel-btn {
     width: 40px;
     height: 40px;
@@ -2468,6 +2479,9 @@ footer::before {
     opacity: 0.5;
     transform: scale(0.9);
     transition: all 0.3s ease;
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+    box-sizing: border-box;
   }
   
   .problem-item.active {
@@ -2478,6 +2492,12 @@ footer::before {
   .problem-item h3 {
     font-size: 1.5rem;
     white-space: nowrap;
+  }
+  
+  .problem-item p {
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+    hyphens: auto;
   }
 }
 
