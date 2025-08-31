@@ -304,32 +304,39 @@ function toggleMobileMenu() {
 // Dynamic carousel functionality based on window width
 let currentSlide = 0;
 let currentVisionSlide = 0;
+let currentCTASlide = 0;
 let currentFeaturesSlide = 0;
 let isCarouselMode = false;
 let isVisionCarouselMode = false;
+let isCTACarouselMode = false;
 let isFeaturesCarouselMode = false;
 
 const slides = document.querySelectorAll('.problem-item');
 const visionSlides = document.querySelectorAll('.timeline-item');
+const ctaSlides = document.querySelectorAll('.cta-box');
 
 const dots = document.querySelectorAll('.problem-carousel .dot');
 const visionDots = document.querySelectorAll('.vision-carousel .dot');
+const ctaDots = document.querySelectorAll('.cta-carousel .dot');
 const featuresDots = document.querySelectorAll('.features-carousel .dot');
 
 const carouselDots = document.querySelector('.carousel-dots');
 const problemGrid = document.querySelector('.problem-grid');
 const visionGrid = document.querySelector('.vision-timeline');
+const ctaGrid = document.querySelector('.cta-grid');
 const featuresGrid = document.querySelector('.features-carousel .cta-grid');
 
 function checkWindowSize() {
     const windowWidth = window.innerWidth;
     const problemContainerWidth = problemGrid ? problemGrid.offsetWidth : 0;
     const visionContainerWidth = visionGrid ? visionGrid.offsetWidth : 0;
+    const ctaContainerWidth = ctaGrid ? ctaGrid.offsetWidth : 0;
     const featuresContainerWidth = featuresGrid ? featuresGrid.offsetWidth : 0;
     
     // Switch to carousel mode if window is narrow or content would be cramped
     const shouldUseCarousel = windowWidth < 800 || (problemContainerWidth > 0 && problemContainerWidth < 600);
     const shouldUseVisionCarousel = windowWidth < 800 || (visionContainerWidth > 0 && visionContainerWidth < 600);
+    const shouldUseCTACarousel = windowWidth < 800 || (ctaContainerWidth > 0 && ctaContainerWidth < 600);
     const shouldUseFeaturesCarousel = windowWidth < 800 || (featuresContainerWidth > 0 && featuresContainerWidth < 600);
     
     // Problem carousel
@@ -344,6 +351,13 @@ function checkWindowSize() {
         enableVisionCarouselMode();
     } else if (!shouldUseVisionCarousel && isVisionCarouselMode) {
         disableVisionCarouselMode();
+    }
+    
+    // CTA carousel
+    if (shouldUseCTACarousel && !isCTACarouselMode) {
+        enableCTACarouselMode();
+    } else if (!shouldUseCTACarousel && isCTACarouselMode) {
+        disableCTACarouselMode();
     }
     
     // Debug logging
@@ -405,6 +419,31 @@ function disableVisionCarouselMode() {
     
     // Reset dots
     visionDots.forEach(dot => dot.classList.remove('active'));
+}
+
+function enableCTACarouselMode() {
+    isCTACarouselMode = true;
+    
+    // Add carousel classes
+    if (ctaGrid) ctaGrid.classList.add('carousel-mode');
+    ctaSlides.forEach(slide => slide.classList.add('carousel-mode'));
+    
+    // Show first slide
+    showCTASlide(0);
+}
+
+function disableCTACarouselMode() {
+    isCTACarouselMode = false;
+    
+    // Remove carousel classes
+    if (ctaGrid) ctaGrid.classList.remove('carousel-mode');
+    ctaSlides.forEach(slide => {
+        slide.classList.remove('carousel-mode');
+        slide.style.display = 'block';
+    });
+    
+    // Reset dots
+    ctaDots.forEach(dot => dot.classList.remove('active'));
 }
 
 
@@ -507,6 +546,30 @@ function moveVisionCarousel(direction) {
 function goToVisionSlide(n) {
     if (!isVisionCarouselMode) return;
     showVisionSlide(n);
+}
+
+// CTA carousel functions
+function showCTASlide(n) {
+    if (!isCTACarouselMode) return;
+    
+    // Hide all slides
+    for (let i = 0; i < ctaSlides.length; i++) {
+        ctaSlides[i].style.display = 'none';
+        if (ctaDots[i]) ctaDots[i].classList.remove('active');
+    }
+    
+    // Show current slide
+    if (ctaSlides[n]) {
+        ctaSlides[n].style.display = 'block';
+        if (ctaDots[n]) ctaDots[n].classList.add('active');
+    }
+    
+    currentCTASlide = n;
+}
+
+function goToCTASlide(n) {
+    if (!isCTACarouselMode) return;
+    showCTASlide(n);
 }
 
 
