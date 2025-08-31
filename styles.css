@@ -2493,7 +2493,7 @@ footer::before {
 }
 
 /* CTA grid carousel mode */
-.cta-grid.carousel-mode {
+.cta-carousel .cta-grid.carousel-mode {
   display: flex;
   overflow: hidden;
   gap: 2rem;
@@ -2501,7 +2501,7 @@ footer::before {
   scroll-behavior: smooth;
 }
 
-.cta-box.carousel-mode {
+.cta-carousel .cta-box.carousel-mode {
   flex: 0 0 100%;
   min-height: 400px;
   padding: 2.5rem 2rem;
@@ -2511,16 +2511,16 @@ footer::before {
   display: none;
 }
 
-.cta-box.carousel-mode:first-child {
+.cta-carousel .cta-box.carousel-mode:first-child {
   display: block;
 }
 
-.cta-box.carousel-mode h3 {
+.cta-carousel .cta-box.carousel-mode h3 {
   font-size: 1.5rem;
   white-space: nowrap;
 }
 
-.cta-box.carousel-mode p {
+.cta-carousel .cta-box.carousel-mode p {
   word-wrap: break-word;
   overflow-wrap: break-word;
   hyphens: auto;
