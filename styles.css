@@ -2676,7 +2676,7 @@ section:nth-child(odd) {
   font-size: 1.1rem;
   color: var(--text-secondary);
   line-height: 1.8;
-  margin-bottom: 6rem;
+  margin-bottom: 1.5rem;
 }
 
 .solution-benefits {
