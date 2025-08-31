@@ -119,12 +119,12 @@ For answers to common questions about this code of conduct, see the FAQ at https
 ### **Community Leaders**
 - **Email**: conduct@identityprotocol.com
 - **GitHub**: @identityprotocol-maintainers
-- **Discord**: Identity Protocol Community Server
 
 ### **Emergency Contacts**
 - **Security Issues**: security@parnoir.com
 - **Legal Issues**: legal@parnoir.com
 - **General Support**: support@parnoir.com
+- **Licensing**: licensing@parnoir.com
 
 ## 🎉 **Our Commitment to You**
 

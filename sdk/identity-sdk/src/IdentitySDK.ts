@@ -199,10 +199,25 @@ export class IdentitySDK {
   }
 
   private isCommercialUse(platform: string, options?: CommercialUseOptions | DataCollectionRequest): boolean {
-    // Detect commercial use patterns
+    // Basic authentication operations are always free
+    if (options && 'operationType' in options) {
+      const freeOperations = [
+        'basic_authentication',
+        'identity_creation', 
+        'standard_login',
+        'basic_sdk_integration',
+        'core_identity_management',
+        'basic_security_features',
+        'standard_api_endpoints'
+      ];
+      
+      if (freeOperations.includes(options.operationType)) {
+        return false;
+      }
+    }
+
     const commercialIndicators = [
       options && 'commercialUse' in options && options.commercialUse === true,
-      options && 'revenueGeneration' in options && options.revenueGeneration === true,
       options && 'paidService' in options && options.paidService === true,
       options && 'enterpriseFeatures' in options && options.enterpriseFeatures === true,
       platform.includes('enterprise'),

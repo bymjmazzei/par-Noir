@@ -2,6 +2,26 @@
 
 A **military-grade quantum-resistant identity system** that enables users to create their own identities with **authentic zero-knowledge proofs** and **NIST PQC Round 3 algorithms**. Users control what personal data they share with each platform, providing **privacy-first authentication** with **FIPS 140-3 Level 4** equivalent security.
 
+## 🆓 **Free for All: Basic Authentication**
+
+**Basic authentication and identity creation are completely free for all uses**, including commercial applications. This includes:
+- ✅ **Identity creation and management**
+- ✅ **Standard login flows and authentication**
+- ✅ **Basic SDK integration**
+- ✅ **Core security features**
+- ✅ **Standard API endpoints**
+- ✅ **Unlimited users** for basic authentication
+
+## 💼 **Commercial Licensing: Enterprise Features**
+
+**Enterprise features require a commercial license** for commercial use:
+- 🔒 **Multi-tenant support**
+- 🔒 **White-label solutions**
+- 🔒 **Advanced analytics and reporting**
+- 🔒 **Bulk operations and high-frequency API calls**
+- 🔒 **Custom integrations and enterprise support**
+- 🔒 **Advanced security features and compliance tools**
+
 ## 🏆 **Military-Grade Security Features**
 
 ### 🔐 **Authentic Zero-Knowledge Proofs (Not Simulations)**
@@ -51,6 +71,7 @@ A **military-grade quantum-resistant identity system** that enables users to cre
 - **🔄 Decentralized Authentication**: Self-sovereign authentication with no central authority
 - **📋 Compliance Ready**: Request additional data collection from users
 - **📱 Cross-Platform**: Works in browsers, mobile apps, and desktop applications
+- **🆓 Free Basic Auth**: Core authentication features free for all uses
 
 ## 📦 **Installation**
 
@@ -173,6 +194,7 @@ const complianceData = await sdk.requestDataCollection({
 - **OAuth-Like API**: Familiar authentication patterns
 - **Data Collection**: Request additional data from users
 - **Cross-Platform**: Works everywhere
+- **Free Basic Auth**: Core authentication features free for all uses
 
 ## 🔒 **Military-Grade Security Features**
 
@@ -192,6 +214,7 @@ const complianceData = await sdk.requestDataCollection({
 - **Web Applications**: Full browser support
 - **Mobile Apps**: React Native, Flutter, native apps
 - **Desktop Apps**: Electron, Tauri, native desktop
+- **Progressive Web Apps**: Service worker support
 
 ## 🏆 **Milestone: First Military-Grade Identity**
 
@@ -203,7 +226,6 @@ const complianceData = await sdk.requestDataCollection({
 - ✅ **Production Ready**: No simulations, no mock components, real cryptography
 
 This represents the complete transition from simulated/prototype cryptography to **authentic military-grade quantum-resistant cryptography** with zero mock or pretend components.
-- **Progressive Web Apps**: Service worker support
 
 ## 🛠️ **Development**
 
@@ -263,7 +285,8 @@ We welcome contributions! Please see our [Contributing Guide](CONTRIBUTING.md) f
 
 ## 📄 **License**
 
-MIT License - see [LICENSE](LICENSE) for details.
+**Basic Authentication**: MIT License - Free for all uses  
+**Enterprise Features**: Commercial License Required - Contact licensing@parnoir.com
 
 ## 🆘 **Support**
 
@@ -271,6 +294,7 @@ MIT License - see [LICENSE](LICENSE) for details.
 - **Issues**: [GitHub Issues](https://github.com/identity-protocol/identity-sdk/issues)
 - **Discussions**: [GitHub Discussions](https://github.com/identity-protocol/identity-sdk/discussions)
 - **Email**: support@identity-protocol.com
+- **Licensing**: licensing@parnoir.com
 
 ---
 

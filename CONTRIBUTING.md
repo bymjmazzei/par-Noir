@@ -333,12 +333,13 @@ describe('IdentityManager', () => {
 - **Documentation**: docs.parnoir.com
 - **Issues**: GitHub Issues
 - **Discussions**: GitHub Discussions
-- **Community**: community.parnoir.com
+- **Community**: GitHub Discussions
 
 ### **Contact**
 - **General Questions**: support@parnoir.com
 - **Security Issues**: security@parnoir.com
 - **Technical Support**: dev-support@parnoir.com
+- **Licensing**: licensing@parnoir.com
 
 ## 🎉 **Recognition**
 

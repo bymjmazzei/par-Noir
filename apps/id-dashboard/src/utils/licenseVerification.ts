@@ -73,26 +73,16 @@ export interface UsagePattern {
   gracePeriodActive: boolean; // Whether grace period is currently active
 }
 
-// Detection thresholds
+// Detection thresholds for commercial usage
 const DETECTION_THRESHOLDS = {
   API_CALL_FREQUENCY_THRESHOLD: 100, // calls per hour
-  ENTERPRISE_FEATURES: [
-    'advanced_analytics',
-    'bulk_operations',
-    'api_access',
-    'enterprise_support',
-    'custom_integrations',
-    'white_label',
-    'multi_tenant',
-    'advanced_security'
-  ],
+  // Removed USER_COUNT_THRESHOLD - basic auth is unlimited
   SCALE_THRESHOLDS: {
-    USER_COUNT_THRESHOLD: 10, // users
+    // Removed USER_COUNT_THRESHOLD - basic auth is unlimited
     INTEGRATION_COUNT_THRESHOLD: 5, // integrations
-    WHITE_LABEL_THRESHOLD: true, // any white label usage
-    MULTI_TENANT_THRESHOLD: true // any multi-tenant usage
+    BULK_OPERATION_THRESHOLD: 1000 // records per operation
   },
-  GRACE_PERIOD_DAYS: 3 // 3-day grace period before enforcement
+  GRACE_PERIOD_DAYS: 30
 };
 
 // Mock ZKP implementation (in production, use actual ZKP library)
@@ -243,11 +233,12 @@ export class LicenseVerification {
     const scaleIndicators = userActivity ? await this.analyzeScaleIndicators(userActivity) : null;
     
     // Determine if usage pattern indicates commercial use
+    // Removed user count check - basic auth is unlimited
     const isCommercial = 
       apiCallFrequency > DETECTION_THRESHOLDS.API_CALL_FREQUENCY_THRESHOLD ||
       enterpriseFeatureAccess ||
       (scaleIndicators && (
-        scaleIndicators.userCount > DETECTION_THRESHOLDS.SCALE_THRESHOLDS.USER_COUNT_THRESHOLD ||
+        // Removed userCount check - basic auth is unlimited
         scaleIndicators.integrationCount > DETECTION_THRESHOLDS.SCALE_THRESHOLDS.INTEGRATION_COUNT_THRESHOLD ||
         scaleIndicators.whiteLabelUsage ||
         scaleIndicators.multiTenantUsage

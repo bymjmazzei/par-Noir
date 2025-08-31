@@ -35,13 +35,13 @@ export const LicenseModal: React.FC<LicenseModalProps> = ({
 
   const licenseTypes: Record<string, LicenseType> = {
     perpetual: {
-      name: 'Perpetual License',
+      name: 'Perpetual Enterprise License',
       price: '$3,999',
       licensingAgreement: 'https://identityprotocol.com/licensing/perpetual-agreement',
       cryptoDiscount: 0
     },
     annual: {
-      name: 'Annual License',
+      name: 'Annual Enterprise License',
       price: '$1,499/year',
       licensingAgreement: 'https://identityprotocol.com/licensing/annual-agreement',
       cryptoDiscount: 0
@@ -174,117 +174,108 @@ export const LicenseModal: React.FC<LicenseModalProps> = ({
   const accentColor = isDark ? '#6b7280' : '#3b82f6';
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-50">
-      <div
-        className="border rounded-lg p-6 max-w-md w-full mx-4 max-h-[90vh] overflow-y-auto"
-        style={{
-          backgroundColor: bgColor,
-          borderColor: borderColor
-        }}
-      >
-        <style dangerouslySetInnerHTML={{
-          __html: `
-            input[type="radio"]:checked {
-              accent-color: ${accentColor} !important;
-            }
-            input[type="radio"] {
-              accent-color: ${secondaryTextColor} !important;
-            }
-            input:focus, select:focus {
-              outline: none !important;
-              border-color: ${accentColor} !important;
-              box-shadow: 0 0 0 2px ${accentColor}40 !important;
-            }
-          `
-        }} />
-
-        <div className="flex justify-between items-center mb-4">
-          <h2 className="text-xl font-bold" style={{ color: textColor }}>Purchase Commercial License</h2>
-          <button
-            onClick={onClose}
-            className="text-xl"
-            style={{ color: secondaryTextColor }}
-          >
-            ×
+    <div className={`license-modal ${currentTheme}`}>
+      <div className="license-modal-content">
+        <div className="license-modal-header">
+          <h2>Enterprise License Required</h2>
+          <button onClick={onClose} className="close-button">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+              <path d="M18 6L6 18M6 6l12 12"/>
+            </svg>
           </button>
         </div>
 
-        {error && (
-          <div className="mb-4 p-3 rounded border" style={{ 
-            backgroundColor: isDark ? '#2a1a1a' : '#fff5f5',
-            borderColor: isDark ? '#cc4444' : '#fecaca',
-            color: isDark ? '#ffaaaa' : '#dc2626'
-          }}>
-            {error}
-          </div>
-        )}
+        <div className="license-modal-body">
+          <div className="license-info">
+            <div className="free-features">
+              <h3>✅ Free for All Uses</h3>
+              <ul>
+                <li>Basic authentication and identity creation</li>
+                <li>Standard login flows and SDK integration</li>
+                <li>Core security features</li>
+                <li>Unlimited users for basic authentication</li>
+              </ul>
+            </div>
 
-        <div className="mb-4">
-          <label className="block text-sm font-medium mb-2" style={{ color: secondaryTextColor }}>License Type</label>
-          <div className="space-y-2">
-            <label className="flex items-center" style={{ color: secondaryTextColor }}>
+            <div className="enterprise-features">
+              <h3>🔒 Enterprise Features Require License</h3>
+              <ul>
+                <li>Multi-tenant support</li>
+                <li>White-label solutions</li>
+                <li>Advanced analytics and reporting</li>
+                <li>Bulk operations and high-frequency API calls</li>
+                <li>Custom integrations and enterprise support</li>
+                <li>Advanced security features and compliance tools</li>
+              </ul>
+            </div>
+          </div>
+
+          <div className="mb-4">
+            <label className="block text-sm font-medium mb-2" style={{ color: secondaryTextColor }}>License Type</label>
+            <div className="space-y-2">
+              <label className="flex items-center" style={{ color: secondaryTextColor }}>
+                <input
+                  type="radio"
+                  value="perpetual"
+                  checked={licenseType === 'perpetual'}
+                  onChange={(e) => setLicenseType(e.target.value as any)}
+                  className="mr-2"
+                />
+                Perpetual License - $3,999 (One-time payment)
+              </label>
+              <label className="flex items-center" style={{ color: secondaryTextColor }}>
+                <input
+                  type="radio"
+                  value="annual"
+                  checked={licenseType === 'annual'}
+                  onChange={(e) => setLicenseType(e.target.value as any)}
+                  className="mr-2"
+                />
+                Annual License - $1,499/year (Renewable)
+              </label>
+            </div>
+          </div>
+
+          <div className="mb-4">
+            <label className="block text-sm font-medium mb-2" style={{ color: secondaryTextColor }}>Identity File</label>
+            <div className="relative">
               <input
-                type="radio"
-                value="perpetual"
-                checked={licenseType === 'perpetual'}
-                onChange={(e) => setLicenseType(e.target.value as any)}
-                className="mr-2"
+                type="file"
+                accept=".pn,.id,.json,.identity"
+                onChange={handleIdentityFileUpload}
+                className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                id="license-file-upload"
               />
-              Perpetual License - $3,999 (One-time payment)
-            </label>
-            <label className="flex items-center" style={{ color: secondaryTextColor }}>
-              <input
-                type="radio"
-                value="annual"
-                checked={licenseType === 'annual'}
-                onChange={(e) => setLicenseType(e.target.value as any)}
-                className="mr-2"
-              />
-              Annual License - $1,499/year (Renewable)
-            </label>
-          </div>
-        </div>
-
-        <div className="mb-4">
-          <label className="block text-sm font-medium mb-2" style={{ color: secondaryTextColor }}>Identity File</label>
-          <div className="relative">
-            <input
-              type="file"
-              accept=".pn,.id,.json,.identity"
-              onChange={handleIdentityFileUpload}
-              className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-              id="license-file-upload"
-            />
-            <label
-              htmlFor="license-file-upload"
-              className="flex items-center justify-center w-full px-4 py-3 border-2 border-dashed rounded-lg cursor-pointer transition-colors"
-              style={{ 
-                borderColor: borderColor,
-                backgroundColor: inputBgColor
-              }}
-            >
-              <div className="text-center">
-                <div className="text-2xl mb-2">↑</div>
-                <div className="text-sm font-medium" style={{ color: textColor }}>
-                  {identityFile ? identityFile.name : 'Tap to upload identity file'}
+              <label
+                htmlFor="license-file-upload"
+                className="flex items-center justify-center w-full px-4 py-3 border-2 border-dashed rounded-lg cursor-pointer transition-colors"
+                style={{ 
+                  borderColor: borderColor,
+                  backgroundColor: inputBgColor
+                }}
+              >
+                <div className="text-center">
+                  <div className="text-2xl mb-2">↑</div>
+                  <div className="text-sm font-medium" style={{ color: textColor }}>
+                    {identityFile ? identityFile.name : 'Tap to upload identity file'}
+                  </div>
+                  <div className="text-xs mt-1" style={{ color: secondaryTextColor }}>
+                    (.pn, .id, .json, .identity files)
+                  </div>
                 </div>
-                <div className="text-xs mt-1" style={{ color: secondaryTextColor }}>
-                  (.pn, .id, .json, .identity files)
-                </div>
-              </div>
-            </label>
+              </label>
+            </div>
+            <p className="text-xs mt-2" style={{ color: secondaryTextColor }}>
+              Your license will be bound to this specific identity file for security.
+            </p>
           </div>
-          <p className="text-xs mt-2" style={{ color: secondaryTextColor }}>
-            Your license will be bound to this specific identity file for security.
-          </p>
-        </div>
 
-        <div className="mb-4">
-          <label className="block text-sm font-medium mb-2" style={{ color: secondaryTextColor }}>Cryptocurrency</label>
-          <div className="text-sm mb-2" style={{ color: secondaryTextColor }}>
-            Pay with cryptocurrency
-          </div>
-                      <select
+          <div className="mb-4">
+            <label className="block text-sm font-medium mb-2" style={{ color: secondaryTextColor }}>Cryptocurrency</label>
+            <div className="text-sm mb-2" style={{ color: secondaryTextColor }}>
+              Pay with cryptocurrency
+            </div>
+                        <select
               value={cryptoCurrency}
               onChange={(e) => setCryptoCurrency(e.target.value as any)}
               className="w-full p-2 border rounded focus:outline-none"
@@ -299,59 +290,60 @@ export const LicenseModal: React.FC<LicenseModalProps> = ({
               <option value="XRP">Ripple (XRP)</option>
               <option value="USDT">Tether (USDT)</option>
             </select>
-        </div>
-
-        <div 
-          className="border p-4 rounded mb-6"
-          style={{ 
-            backgroundColor: inputBgColor,
-            borderColor: borderColor
-          }}
-        >
-          <h3 className="font-semibold mb-2" style={{ color: textColor }}>{licenseTypes[licenseType].name}</h3>
-          <p className="text-2xl font-bold mb-2" style={{ color: textColor }}>
-            ${getTotalPrice().toLocaleString()}
-          </p>
-
-          <div className="mt-3">
-            <a 
-              href={licenseTypes[licenseType].licensingAgreement}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center text-sm underline"
-              style={{ color: accentColor }}
-            >
-              <span>View Licensing Agreement</span>
-              <svg className="ml-1 w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/>
-              </svg>
-            </a>
           </div>
-        </div>
 
-        <div className="flex space-x-3">
-          <button
-            onClick={handlePurchase}
-            disabled={isProcessing}
-            className="flex-1 px-4 py-2 rounded-lg font-medium transition-colors"
-            style={{
-              backgroundColor: isProcessing ? (isDark ? '#666666' : '#cccccc') : (isDark ? '#ffffff' : '#000000'),
-              color: isProcessing ? (isDark ? '#cccccc' : '#666666') : (isDark ? '#000000' : '#ffffff')
+          <div 
+            className="border p-4 rounded mb-6"
+            style={{ 
+              backgroundColor: inputBgColor,
+              borderColor: borderColor
             }}
           >
-            {isProcessing ? 'Processing...' : 'Purchase License'}
-          </button>
-          <button
-            onClick={onClose}
-            disabled={isProcessing}
-            className="flex-1 px-4 py-2 rounded-lg font-medium transition-colors"
-            style={{
-              backgroundColor: isProcessing ? (isDark ? '#1a1a1a' : '#f5f5f5') : (isDark ? '#333333' : '#e0e0e0'),
-              color: isProcessing ? (isDark ? '#666666' : '#999999') : (isDark ? '#cccccc' : '#666666')
-            }}
-          >
-            Cancel
-          </button>
+            <h3 className="font-semibold mb-2" style={{ color: textColor }}>{licenseTypes[licenseType].name}</h3>
+            <p className="text-2xl font-bold mb-2" style={{ color: textColor }}>
+              ${getTotalPrice().toLocaleString()}
+            </p>
+
+            <div className="mt-3">
+              <a 
+                href={licenseTypes[licenseType].licensingAgreement}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center text-sm underline"
+                style={{ color: accentColor }}
+              >
+                <span>View Licensing Agreement</span>
+                <svg className="ml-1 w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/>
+                </svg>
+              </a>
+            </div>
+          </div>
+
+          <div className="flex space-x-3">
+            <button
+              onClick={handlePurchase}
+              disabled={isProcessing}
+              className="flex-1 px-4 py-2 rounded-lg font-medium transition-colors"
+              style={{
+                backgroundColor: isProcessing ? (isDark ? '#666666' : '#cccccc') : (isDark ? '#ffffff' : '#000000'),
+                color: isProcessing ? (isDark ? '#cccccc' : '#666666') : (isDark ? '#000000' : '#ffffff')
+              }}
+            >
+              {isProcessing ? 'Processing...' : 'Purchase License'}
+            </button>
+            <button
+              onClick={onClose}
+              disabled={isProcessing}
+              className="flex-1 px-4 py-2 rounded-lg font-medium transition-colors"
+              style={{
+                backgroundColor: isProcessing ? (isDark ? '#1a1a1a' : '#f5f5f5') : (isDark ? '#333333' : '#e0e0e0'),
+                color: isProcessing ? (isDark ? '#666666' : '#999999') : (isDark ? '#cccccc' : '#666666')
+              }}
+            >
+              Cancel
+            </button>
+          </div>
         </div>
       </div>
 
