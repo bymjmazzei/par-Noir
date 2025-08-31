@@ -1927,9 +1927,10 @@ footer::before {
 
 .heritage-timeline {
   display: flex;
+  flex-direction: column;
   justify-content: center;
   align-items: center;
-  gap: 4rem;
+  gap: 2rem;
   margin-top: 2rem;
 }
 
@@ -1956,7 +1957,7 @@ footer::before {
 /* Mobile responsive for timeline */
 @media (max-width: 768px) {
   .heritage-timeline {
-    gap: 2rem;
+    gap: 1.5rem;
   }
   
   .year {
