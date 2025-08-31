@@ -2952,7 +2952,9 @@ footer::before {
 
 .heritage-timeline {
   display: flex;
-  justify-content: space-between;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
   margin: 4rem auto 0 auto;
   padding: 2.5rem;
   background: rgba(255, 255, 255, 0.03);
@@ -2961,6 +2963,7 @@ footer::before {
   box-shadow: var(--shadow);
   width: 100%;
   max-width: 600px;
+  gap: 2rem;
 }
 
 .heritage-point {
