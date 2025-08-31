@@ -4494,7 +4494,7 @@ footer::before {
   }
 }
 
-/* Footer responsive styles */
+/* Footer responsive styles - only 768px and 480px breakpoints */
 @media (max-width: 768px) {
   .footer-logo {
     height: 110px;
@@ -4530,6 +4530,17 @@ footer::before {
   .footer-links {
     gap: 1rem;
     justify-content: center;
+  }
+}
+
+/* Ensure footer is not affected by any 960px breakpoints */
+@media (max-width: 960px) {
+  .footer .container {
+    padding: 0 2rem !important;
+  }
+  
+  .footer-content {
+    padding: 0 2rem !important;
   }
 }
 
