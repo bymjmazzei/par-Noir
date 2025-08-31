@@ -869,8 +869,8 @@ section:nth-child(odd) {
   text-shadow: 0 0 10px rgba(255, 255, 255, 0.05);
 }
 
-/* Footer */
-footer {
+/* Site Footer - Independent Component */
+.site-footer {
   background: rgba(0, 0, 0, 0.4);
   border-top: 1px solid var(--border-glow);
   padding: 2rem 0 2rem;
@@ -879,7 +879,7 @@ footer {
   backdrop-filter: blur(10px);
 }
 
-footer::before {
+.site-footer::before {
   content: '';
   position: absolute;
   top: 0;
@@ -890,25 +890,25 @@ footer::before {
   z-index: -1;
 }
 
-.footer-content {
-  display: grid;
-  grid-template-columns: 1fr auto;
-  gap: 3rem;
-  align-items: center;
-  margin-bottom: 2rem;
+.footer-wrapper {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 0 2rem;
   position: relative;
   z-index: 2;
-  max-width: 1200px;
-  margin-left: auto;
-  margin-right: auto;
-  padding: 0 2rem;
 }
 
-.footer-brand {
+.footer-main {
   display: flex;
   justify-content: center;
   align-items: center;
   margin-bottom: 2rem;
+}
+
+.footer-logo-section {
+  display: flex;
+  justify-content: center;
+  align-items: center;
 }
 
 .footer-logo {
@@ -918,35 +918,45 @@ footer::before {
   filter: drop-shadow(0 0 15px rgba(255, 255, 255, 0.4));
 }
 
-.footer-brand p {
-  color: var(--text-secondary);
-  font-style: italic;
-  text-shadow: 0 0 5px rgba(255, 255, 255, 0.05);
-}
-
-.footer-links {
+.footer-navigation {
   display: flex;
   gap: 2rem;
   justify-content: center;
   margin-bottom: 2rem;
 }
 
-.footer-links a {
+.footer-nav-column {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.footer-nav-column h4 {
+  color: var(--text-primary);
+  font-size: 1rem;
+  font-weight: 600;
+  margin-bottom: 0.5rem;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.footer-nav-column a {
   color: var(--text-secondary);
   text-decoration: none;
   transition: all 0.3s ease;
   position: relative;
+  font-size: 0.9rem;
 }
 
-.footer-links a:hover {
+.footer-nav-column a:hover {
   color: var(--accent);
   text-shadow: 0 0 10px var(--accent-glow);
 }
 
-.footer-links a::after {
+.footer-nav-column a::after {
   content: '';
   position: absolute;
-  bottom: -5px;
+  bottom: -2px;
   left: 0;
   width: 0;
   height: 1px;
@@ -954,17 +964,18 @@ footer::before {
   transition: width 0.3s ease;
 }
 
-.footer-links a:hover::after {
+.footer-nav-column a:hover::after {
   width: 100%;
 }
 
-.footer-bottom {
+.footer-copyright {
   text-align: center;
   padding-top: 2rem;
   border-top: 1px solid var(--border-glow);
   color: var(--text-muted);
   position: relative;
   z-index: 2;
+  font-size: 0.9rem;
 }
 
 /* Problem Solution */
@@ -4494,25 +4505,19 @@ footer::before {
   }
 }
 
-/* Footer responsive styles - only 768px and 480px breakpoints */
+/* Site Footer Responsive Styles - Independent */
 @media (max-width: 768px) {
   .footer-logo {
     height: 110px;
   }
   
-  .footer-brand {
-    margin-bottom: 2rem;
-    justify-content: center;
-  }
-  
-  .footer-links {
+  .footer-navigation {
     flex-direction: column;
     gap: 1.5rem;
     text-align: center;
-    justify-content: center;
   }
   
-  .footer-column {
+  .footer-nav-column {
     margin-bottom: 1rem;
   }
 }
@@ -4522,25 +4527,12 @@ footer::before {
     height: 80px;
   }
   
-  .footer-brand {
-    margin-bottom: 1.5rem;
-    justify-content: center;
+  .footer-wrapper {
+    padding: 0 1rem;
   }
   
-  .footer-links {
+  .footer-navigation {
     gap: 1rem;
-    justify-content: center;
-  }
-}
-
-/* Ensure footer is not affected by any 960px breakpoints */
-@media (max-width: 960px) {
-  .footer .container {
-    padding: 0 2rem !important;
-  }
-  
-  .footer-content {
-    padding: 0 2rem !important;
   }
 }
 
