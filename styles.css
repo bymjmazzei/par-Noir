@@ -540,23 +540,6 @@ section:nth-child(odd) {
   .toc-grid {
     margin-top: 2.5rem !important;
   }
-  
-  .problem-grid {
-    grid-template-columns: 1fr;
-    gap: 2rem;
-    padding: 0 1rem;
-  }
-  
-  .problem-item {
-    padding: 2rem 1.5rem;
-    min-width: 0;
-  }
-  
-  .problem-item h3 {
-    font-size: 1.25rem;
-    word-wrap: break-word;
-    overflow-wrap: break-word;
-  }
 }
 
 @media (max-width: 480px) {
@@ -2169,6 +2152,24 @@ footer::before {
     cursor: pointer;
     padding: 0.5rem;
     z-index: 1002;
+  }
+  
+  /* Switch to single column earlier to prevent text truncation */
+  .problem-grid {
+    grid-template-columns: 1fr;
+    gap: 2rem;
+    padding: 0 1rem;
+  }
+  
+  .problem-item {
+    padding: 2rem 1.5rem;
+    min-width: 0;
+  }
+  
+  .problem-item h3 {
+    font-size: 1.25rem;
+    word-wrap: break-word;
+    overflow-wrap: break-word;
   }
   
   /* Mobile menu overlay */
