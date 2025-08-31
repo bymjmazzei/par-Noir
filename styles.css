@@ -2181,25 +2181,25 @@ section:nth-child(odd) {
 
 /* New Narrative-Driven Design Elements */
 
-/* Mobile menu toggle - hidden by default */
-.nav-menu-toggle {
+/* Mobile Navigation Toggle - hidden by default */
+.nav-mobile-toggle {
   display: none;
 }
 
-/* Mobile menu - hidden by default */
-.nav-menu-mobile {
+/* Mobile Navigation Menu - hidden by default */
+.nav-mobile-menu {
   display: none;
 }
 
 /* Mobile navigation styles */
 @media (max-width: 960px) {
   /* Hide desktop menu */
-  .nav-menu {
+  .nav-menu-section {
     display: none;
   }
   
   /* Show mobile menu toggle */
-  .nav-menu-toggle {
+  .nav-mobile-toggle {
     display: block;
     background: none;
     border: none;

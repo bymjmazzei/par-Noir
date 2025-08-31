@@ -13,24 +13,24 @@
     <!-- Background -->
     <div class="background"></div>
     
-    <!-- Navigation -->
-    <nav class="nav">
-        <div class="nav-container">
-            <div class="nav-brand">
-                <a href="http://localhost:3002/" title="Go to par Noir App">
+    <!-- Site Navigation - Independent Component -->
+    <nav class="site-navigation">
+        <div class="nav-wrapper">
+            <div class="nav-brand-section">
+                <a href="index.html" title="Back to Home">
                     <img src="branding/Par-Noir-Logo-White.png" alt="Par Noir" class="nav-logo">
                 </a>
             </div>
-            <div class="nav-menu">
-                <a href="index.html" class="nav-link">Home</a>
-                <a href="#abstract" class="nav-link">Abstract</a>
-                <a href="#introduction" class="nav-link">Introduction</a>
-                <a href="#architecture" class="nav-link">Architecture</a>
-                <a href="#implementation" class="nav-link">Implementation</a>
-                <a href="#future" class="nav-link">Future Work</a>
-                <a href="developer-portal.html?v=1" class="nav-link">Developer Portal</a>
+            <div class="nav-menu-section">
+                <a href="index.html" class="nav-menu-link">Home</a>
+                <a href="#abstract" class="nav-menu-link">Abstract</a>
+                <a href="#introduction" class="nav-menu-link">Introduction</a>
+                <a href="#architecture" class="nav-menu-link">Architecture</a>
+                <a href="#implementation" class="nav-menu-link">Implementation</a>
+                <a href="#future" class="nav-menu-link">Future Work</a>
+                <a href="developer-portal.html" class="nav-menu-link nav-developers">Developers</a>
             </div>
-            <button class="nav-menu-toggle" onclick="toggleMobileMenu()">
+            <button class="nav-mobile-toggle" onclick="toggleMobileMenu()">
                 <svg viewBox="0 0 24 24" width="24" height="24">
                     <path fill="currentColor" d="M3 18h18v-2H3v2zm0-5h18v-2H3v2zm0-7v2h18V6H3z"/>
                 </svg>
@@ -38,17 +38,16 @@
         </div>
     </nav>
 
-    <!-- Mobile Menu -->
-    <div class="nav-menu-mobile" id="mobileMenu">
-        <button class="nav-menu-close" onclick="toggleMobileMenu()">×</button>
+    <!-- Mobile Navigation Menu -->
+    <div class="nav-mobile-menu" id="mobileMenu">
+        <button class="nav-mobile-close" onclick="toggleMobileMenu()">×</button>
+        <a href="index.html" onclick="toggleMobileMenu()">Home</a>
         <a href="#abstract" onclick="toggleMobileMenu()">Abstract</a>
         <a href="#introduction" onclick="toggleMobileMenu()">Introduction</a>
         <a href="#architecture" onclick="toggleMobileMenu()">Architecture</a>
         <a href="#implementation" onclick="toggleMobileMenu()">Implementation</a>
-        <a href="#security" onclick="toggleMobileMenu()">Security</a>
         <a href="#future" onclick="toggleMobileMenu()">Future Work</a>
-        <a href="developer-portal.html">Developer Portal</a>
-        <a href="index.html">Back to Home</a>
+        <a href="developer-portal.html" onclick="toggleMobileMenu()">Developers</a>
     </div>
 
     <!-- Hero Section -->
