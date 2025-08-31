@@ -17,7 +17,7 @@ function toggleMobileMenu() {
 // Close mobile menu when clicking outside
 document.addEventListener('click', function(event) {
     const mobileMenu = document.getElementById('mobileMenu');
-    const menuToggle = document.querySelector('.nav-menu-toggle');
+    const menuToggle = document.querySelector('.nav-mobile-toggle');
     
     if (mobileMenu && !mobileMenu.contains(event.target) && !menuToggle.contains(event.target)) {
         mobileMenu.classList.remove('active');
