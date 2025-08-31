@@ -2741,6 +2741,7 @@ footer::before {
   max-width: 1200px;
   margin-left: auto;
   margin-right: auto;
+  padding: 0 2rem;
 }
 
 .solution-text {
@@ -2750,7 +2751,7 @@ footer::before {
 .solution-main-title {
   font-size: 2rem;
   font-weight: 700;
-  margin: 2rem 0 0 0;
+  margin: 3rem 0 0 0;
   color: var(--text-primary);
   background: var(--gradient-text);
   -webkit-background-clip: text;
@@ -2760,24 +2761,24 @@ footer::before {
   width: 100%;
 }
 
-
-
 .solution-text p {
   font-size: 1.1rem;
   color: var(--text-secondary);
   line-height: 1.8;
-  margin-bottom: 2rem;
+  margin-bottom: 3rem;
 }
 
 .solution-benefits {
   list-style: none;
   padding: 0;
+  margin-left: 2rem;
 }
 
 .solution-benefits li {
   padding: 0.5rem 0;
   color: var(--text-secondary);
   font-size: 1.1rem;
+  line-height: 1.6;
 }
 
 .master-key-visual {
