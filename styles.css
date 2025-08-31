@@ -866,7 +866,7 @@ section:nth-child(odd) {
 footer {
   background: rgba(0, 0, 0, 0.4);
   border-top: 1px solid var(--border-glow);
-  padding: 4rem 0 2rem;
+  padding: 2rem 0 2rem;
   position: relative;
   z-index: 2;
   backdrop-filter: blur(10px);
@@ -901,11 +901,11 @@ footer::before {
   display: flex;
   justify-content: center;
   align-items: center;
-  margin-bottom: 3rem;
+  margin-bottom: 2rem;
 }
 
 .footer-logo {
-  height: 80px;
+  height: 110px;
   width: auto;
   opacity: 0.8;
   filter: drop-shadow(0 0 15px rgba(255, 255, 255, 0.4));
@@ -2954,7 +2954,7 @@ footer::before {
 
 /* Final CTA section */
 .final-cta {
-  padding: 8rem 0;
+  padding: 4rem 0;
   background: rgba(0, 0, 0, 0.5);
   text-align: center;
 }
@@ -4484,17 +4484,19 @@ footer::before {
 /* Footer responsive styles */
 @media (max-width: 768px) {
   .footer-logo {
-    height: 60px;
+    height: 110px;
   }
   
   .footer-brand {
     margin-bottom: 2rem;
+    justify-content: center;
   }
   
   .footer-links {
     flex-direction: column;
     gap: 1.5rem;
     text-align: center;
+    justify-content: center;
   }
   
   .footer-column {
@@ -4504,15 +4506,17 @@ footer::before {
 
 @media (max-width: 480px) {
   .footer-logo {
-    height: 50px;
+    height: 80px;
   }
   
   .footer-brand {
     margin-bottom: 1.5rem;
+    justify-content: center;
   }
   
   .footer-links {
     gap: 1rem;
+    justify-content: center;
   }
 }
 
