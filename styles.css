@@ -2476,17 +2476,14 @@ footer::before {
     flex: 0 0 100%;
     min-height: 400px;
     padding: 2.5rem 2rem;
-    opacity: 0.5;
-    transform: scale(0.9);
-    transition: all 0.3s ease;
     word-wrap: break-word;
     overflow-wrap: break-word;
     box-sizing: border-box;
+    display: none;
   }
   
-  .problem-item.active {
-    opacity: 1;
-    transform: scale(1);
+  .problem-item:first-child {
+    display: block;
   }
   
   .problem-item h3 {

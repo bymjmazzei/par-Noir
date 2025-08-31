@@ -276,7 +276,7 @@ document.addEventListener('DOMContentLoaded', function() {
     initializeMouseTrail();
     
     // Initialize carousel
-    initializeCarousel();
+    showSlide(0);
     
     console.log('Par Noir narrative site initialized');
 });
@@ -298,64 +298,39 @@ function toggleMobileMenu() {
     }
 }
 
-// Carousel functionality
-let currentSlideIndex = 0;
-let slides = [];
-let dots = [];
+// Simple carousel functionality
+let currentSlide = 0;
+const slides = document.querySelectorAll('.problem-item');
+const dots = document.querySelectorAll('.dot');
 
-function initializeCarousel() {
-    slides = document.querySelectorAll('.problem-item');
-    dots = document.querySelectorAll('.dot');
-    
-    if (slides.length > 0) {
-        showSlide(0);
-        
-        // Auto-advance carousel every 5 seconds
-        setInterval(() => {
-            moveCarousel(1);
-        }, 5000);
-    }
-}
-
-function showSlide(index) {
+function showSlide(n) {
     // Hide all slides
-    slides.forEach(slide => {
-        slide.classList.remove('active');
-    });
-    
-    // Remove active class from all dots
-    dots.forEach(dot => {
-        dot.classList.remove('active');
-    });
+    for (let i = 0; i < slides.length; i++) {
+        slides[i].style.display = 'none';
+        dots[i].classList.remove('active');
+    }
     
     // Show current slide
-    if (slides[index]) {
-        slides[index].classList.add('active');
+    if (slides[n]) {
+        slides[n].style.display = 'block';
+        dots[n].classList.add('active');
     }
     
-    // Activate current dot
-    if (dots[index]) {
-        dots[index].classList.add('active');
-    }
-    
-    currentSlideIndex = index;
+    currentSlide = n;
 }
 
 function moveCarousel(direction) {
-    if (slides.length === 0) return;
+    let newSlide = currentSlide + direction;
     
-    const newIndex = currentSlideIndex + direction;
-    
-    if (newIndex >= 0 && newIndex < slides.length) {
-        showSlide(newIndex);
-    } else if (newIndex < 0) {
-        showSlide(slides.length - 1); // Loop to last slide
-    } else {
-        showSlide(0); // Loop to first slide
+    if (newSlide >= slides.length) {
+        newSlide = 0;
+    } else if (newSlide < 0) {
+        newSlide = slides.length - 1;
     }
+    
+    showSlide(newSlide);
 }
 
-function currentSlide(index) {
-    if (slides.length === 0) return;
-    showSlide(index - 1); // Convert to 0-based index
+function goToSlide(n) {
+    showSlide(n);
 }
