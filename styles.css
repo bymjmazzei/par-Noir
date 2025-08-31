@@ -2508,7 +2508,7 @@ footer::before {
   word-wrap: break-word;
   overflow-wrap: break-word;
   box-sizing: border-box;
-  display: block;
+  display: none;
 }
 
 .cta-box.carousel-mode:first-child {
