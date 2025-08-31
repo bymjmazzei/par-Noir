@@ -305,9 +305,11 @@ function toggleMobileMenu() {
 let currentSlide = 0;
 let currentVisionSlide = 0;
 let currentCTASlide = 0;
+let currentFeaturesSlide = 0;
 let isCarouselMode = false;
 let isVisionCarouselMode = false;
 let isCTACarouselMode = false;
+let isFeaturesCarouselMode = false;
 
 const slides = document.querySelectorAll('.problem-item');
 const visionSlides = document.querySelectorAll('.timeline-item');
@@ -316,23 +318,27 @@ const ctaSlides = document.querySelectorAll('.cta-box');
 const dots = document.querySelectorAll('.problem-carousel .dot');
 const visionDots = document.querySelectorAll('.vision-carousel .dot');
 const ctaDots = document.querySelectorAll('.cta-carousel .dot');
+const featuresDots = document.querySelectorAll('.features-carousel .dot');
 
 const carouselBtns = document.querySelectorAll('.carousel-btn');
 const carouselDots = document.querySelector('.carousel-dots');
 const problemGrid = document.querySelector('.problem-grid');
 const visionGrid = document.querySelector('.vision-timeline');
 const ctaGrid = document.querySelector('.cta-grid');
+const featuresGrid = document.querySelector('.features-carousel .cta-grid');
 
 function checkWindowSize() {
     const windowWidth = window.innerWidth;
     const problemContainerWidth = problemGrid ? problemGrid.offsetWidth : 0;
     const visionContainerWidth = visionGrid ? visionGrid.offsetWidth : 0;
     const ctaContainerWidth = ctaGrid ? ctaGrid.offsetWidth : 0;
+    const featuresContainerWidth = featuresGrid ? featuresGrid.offsetWidth : 0;
     
     // Switch to carousel mode if window is narrow or content would be cramped
     const shouldUseCarousel = windowWidth < 800 || (problemContainerWidth > 0 && problemContainerWidth < 600);
     const shouldUseVisionCarousel = windowWidth < 800 || (visionContainerWidth > 0 && visionContainerWidth < 600);
     const shouldUseCTACarousel = windowWidth < 800 || (ctaContainerWidth > 0 && ctaContainerWidth < 600);
+    const shouldUseFeaturesCarousel = windowWidth < 800 || (featuresContainerWidth > 0 && featuresContainerWidth < 600);
     
     // Problem carousel
     if (shouldUseCarousel && !isCarouselMode) {
@@ -353,6 +359,13 @@ function checkWindowSize() {
         enableCTACarouselMode();
     } else if (!shouldUseCTACarousel && isCTACarouselMode) {
         disableCTACarouselMode();
+    }
+    
+    // Features carousel
+    if (shouldUseFeaturesCarousel && !isFeaturesCarouselMode) {
+        enableFeaturesCarouselMode();
+    } else if (!shouldUseFeaturesCarousel && isFeaturesCarouselMode) {
+        disableFeaturesCarouselMode();
     }
 }
 
@@ -437,6 +450,31 @@ function disableCTACarouselMode() {
     
     // Reset dots
     ctaDots.forEach(dot => dot.classList.remove('active'));
+}
+
+function enableFeaturesCarouselMode() {
+    isFeaturesCarouselMode = true;
+    
+    // Add carousel classes
+    if (featuresGrid) featuresGrid.classList.add('carousel-mode');
+    ctaSlides.forEach(slide => slide.classList.add('carousel-mode'));
+    
+    // Show first slide
+    showFeaturesSlide(0);
+}
+
+function disableFeaturesCarouselMode() {
+    isFeaturesCarouselMode = false;
+    
+    // Remove carousel classes
+    if (featuresGrid) featuresGrid.classList.remove('carousel-mode');
+    ctaSlides.forEach(slide => {
+        slide.classList.remove('carousel-mode');
+        slide.style.display = 'block';
+    });
+    
+    // Reset dots
+    featuresDots.forEach(dot => dot.classList.remove('active'));
 }
 
 function showSlide(n) {
@@ -550,4 +588,42 @@ function moveCTACarousel(direction) {
 function goToCTASlide(n) {
     if (!isCTACarouselMode) return;
     showCTASlide(n);
+}
+
+// Features carousel functions
+function showFeaturesSlide(n) {
+    if (!isFeaturesCarouselMode) return;
+    
+    // Hide all slides
+    for (let i = 0; i < ctaSlides.length; i++) {
+        ctaSlides[i].style.display = 'none';
+        if (featuresDots[i]) featuresDots[i].classList.remove('active');
+    }
+    
+    // Show current slide
+    if (ctaSlides[n]) {
+        ctaSlides[n].style.display = 'block';
+        if (featuresDots[n]) featuresDots[n].classList.add('active');
+    }
+    
+    currentFeaturesSlide = n;
+}
+
+function moveFeaturesCarousel(direction) {
+    if (!isFeaturesCarouselMode) return;
+    
+    let newSlide = currentFeaturesSlide + direction;
+    
+    if (newSlide >= ctaSlides.length) {
+        newSlide = 0;
+    } else if (newSlide < 0) {
+        newSlide = ctaSlides.length - 1;
+    }
+    
+    showFeaturesSlide(newSlide);
+}
+
+function goToFeaturesSlide(n) {
+    if (!isFeaturesCarouselMode) return;
+    showFeaturesSlide(n);
 }

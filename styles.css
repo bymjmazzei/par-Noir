@@ -2363,7 +2363,8 @@ footer::before {
 /* Carousel containers */
 .problem-carousel,
 .vision-carousel,
-.cta-carousel {
+.cta-carousel,
+.features-carousel {
   position: relative;
   width: 100%;
   max-width: 1200px;
@@ -2557,6 +2558,40 @@ footer::before {
 }
 
 .cta-box.carousel-mode p {
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+  hyphens: auto;
+}
+
+/* Features carousel mode - uses same styling as CTA since it uses cta-grid */
+.features-carousel .cta-grid.carousel-mode {
+  display: flex;
+  overflow: hidden;
+  gap: 2rem;
+  margin: 3rem 0;
+  scroll-behavior: smooth;
+}
+
+.features-carousel .cta-box.carousel-mode {
+  flex: 0 0 100%;
+  min-height: 400px;
+  padding: 2.5rem 2rem;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+  box-sizing: border-box;
+  display: none;
+}
+
+.features-carousel .cta-box.carousel-mode:first-child {
+  display: block;
+}
+
+.features-carousel .cta-box.carousel-mode h3 {
+  font-size: 1.5rem;
+  white-space: nowrap;
+}
+
+.features-carousel .cta-box.carousel-mode p {
   word-wrap: break-word;
   overflow-wrap: break-word;
   hyphens: auto;

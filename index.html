@@ -194,36 +194,53 @@
                 <h2 class="section-title">What par Noir Does</h2>
                 <p class="section-subtitle">Three core functions that change everything.</p>
             </div>
-            <div class="cta-grid">
-                <div class="cta-box">
-                    <div class="cta-icon">
-                        <svg viewBox="0 0 24 24">
-                            <path d="M18 8h-1V6c0-2.76-2.24-5-5-5S7 3.24 7 6v2H6c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V10c0-1.1-.9-2-2-2zM12 17c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2zM15.1 8H8.9V6c0-1.71 1.39-3.1 3.1-3.1s3.1 1.39 3.1 3.1v2z"/>
-                        </svg>
+            <div class="features-carousel">
+                <button class="carousel-btn carousel-prev" onclick="moveFeaturesCarousel(-1)">
+                    <svg viewBox="0 0 24 24">
+                        <path d="M15.41 7.41L14 6l-6 6 6 6 1.41-1.41L10.83 12z"/>
+                    </svg>
+                </button>
+                <div class="cta-grid">
+                    <div class="cta-box">
+                        <div class="cta-icon">
+                            <svg viewBox="0 0 24 24">
+                                <path d="M18 8h-1V6c0-2.76-2.24-5-5-5S7 3.24 7 6v2H6c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V10c0-1.1-.9-2-2-2zM12 17c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2zM15.1 8H8.9V6c0-1.71 1.39-3.1 3.1-3.1s3.1 1.39 3.1 3.1v2z"/>
+                            </svg>
+                        </div>
+                        <h3>Sovereign Identity</h3>
+                        <p>Your identity lives with you—not on corporate servers. One key unlocks your entire digital life.</p>
                     </div>
-                    <h3>Sovereign Identity</h3>
-                    <p>Your identity lives with you—not on corporate servers. One key unlocks your entire digital life.</p>
+                    <div class="cta-box">
+                        <div class="cta-icon">
+                            <svg viewBox="0 0 24 24">
+                                <path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                            </svg>
+                        </div>
+                        <h3>Zero Knowledge</h3>
+                        <p>Prove facts about yourself without revealing the underlying data. Age verification, qualifications, and more—all without exposing personal information.</p>
+                    </div>
+                    <div class="cta-box">
+                        <div class="cta-icon">
+                            <svg viewBox="0 0 24 24">
+                                <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+                                <circle cx="9" cy="7" r="4"/>
+                                <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
+                                <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+                            </svg>
+                        </div>
+                        <h3>Social Recovery</h3>
+                        <p>Lost your key? Your trusted network can help you recover—without anyone having control.</p>
+                    </div>
                 </div>
-                <div class="cta-box">
-                    <div class="cta-icon">
-                        <svg viewBox="0 0 24 24">
-                            <path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
-                        </svg>
-                    </div>
-                    <h3>Zero Knowledge</h3>
-                    <p>Prove facts about yourself without revealing the underlying data. Age verification, qualifications, and more—all without exposing personal information.</p>
-                </div>
-                <div class="cta-box">
-                    <div class="cta-icon">
-                        <svg viewBox="0 0 24 24">
-                            <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
-                            <circle cx="9" cy="7" r="4"/>
-                            <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
-                            <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
-                        </svg>
-                    </div>
-                    <h3>Social Recovery</h3>
-                    <p>Lost your key? Your trusted network can help you recover—without anyone having control.</p>
+                <button class="carousel-btn carousel-next" onclick="moveFeaturesCarousel(1)">
+                    <svg viewBox="0 0 24 24">
+                        <path d="M8.59 16.59L10 18l6-6-6-6-1.41 1.41L13.17 12z"/>
+                    </svg>
+                </button>
+                <div class="carousel-dots features-dots">
+                    <span class="dot active" onclick="goToFeaturesSlide(0)"></span>
+                    <span class="dot" onclick="goToFeaturesSlide(1)"></span>
+                    <span class="dot" onclick="goToFeaturesSlide(2)"></span>
                 </div>
             </div>
         </div>
