@@ -461,7 +461,14 @@ section {
 
 /* Mobile section spacing */
 @media (max-width: 960px) {
-  section {
+  .hero,
+  .narrative-section,
+  .problem-section,
+  .solution-section,
+  .features-section,
+  .vision-section,
+  .legacy-section,
+  .final-cta {
     padding: 2rem 0;
   }
   
@@ -1944,7 +1951,6 @@ footer::before {
   .event {
     font-size: 0.9rem;
   }
-}
   
   /* CTA section responsive */
   .cta-grid {
@@ -1956,8 +1962,15 @@ footer::before {
     padding: 2rem 1.5rem;
   }
   
-  /* Container responsive */
-  .container {
+  /* Container responsive - exclude footer */
+  .hero .container,
+  .narrative-section .container,
+  .problem-section .container,
+  .solution-section .container,
+  .features-section .container,
+  .vision-section .container,
+  .legacy-section .container,
+  .final-cta .container {
     padding: 0 1rem;
   }
   
@@ -4520,12 +4533,7 @@ footer::before {
   }
 }
 
-/* Fix footer centering on wider screens */
-@media (min-width: 961px) {
-  .footer .container {
-    padding: 0 2rem;
-  }
-}
+
 
 
 
