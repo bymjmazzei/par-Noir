@@ -4192,6 +4192,18 @@ footer::before {
   margin-right: auto;
 }
 
+/* Hero sections without visual content - always centered */
+.hero-container:not(:has(.hero-visual)) {
+  grid-template-columns: 1fr;
+  text-align: center;
+  max-width: 800px;
+  margin: 0 auto;
+}
+
+.hero-container:not(:has(.hero-visual)) .hero-content {
+  max-width: 100%;
+}
+
 .features-title {
   font-size: 1.25rem;
   font-weight: 600;
@@ -4314,6 +4326,16 @@ footer::before {
   
   .features-preview {
     margin-top: 2rem;
+  }
+  
+  /* Whitepaper specific responsive */
+  .whitepaper-container .hero-container {
+    grid-template-columns: 1fr;
+    text-align: center;
+  }
+  
+  .whitepaper-container .hero-content {
+    max-width: 100%;
   }
 }
 
