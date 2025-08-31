@@ -1915,31 +1915,48 @@ footer::before {
   }
   
   /* Legacy section responsive */
-  .legacy-content {
-    grid-template-columns: 1fr !important;
-    gap: 1.5rem !important;
-    text-align: center;
-  }
-  
-  .founder-image {
-    width: 200px;
-    height: 200px;
-    margin: 0 auto 2rem;
-  }
-  
-  .founder-story {
-    padding: 0 1rem;
-  }
-  
+.legacy-content {
+  text-align: center;
+  max-width: 800px;
+  margin: 0 auto;
+}
+
+.founder-story {
+  margin-bottom: 3rem;
+}
+
+.heritage-timeline {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 4rem;
+  margin-top: 2rem;
+}
+
+.heritage-point {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 0.5rem;
+}
+
+.year {
+  font-size: 2.5rem;
+  font-weight: 700;
+  color: var(--accent);
+}
+
+.event {
+  font-size: 1rem;
+  color: var(--text-secondary);
+  max-width: 200px;
+}
+
+/* Mobile responsive for timeline */
+@media (max-width: 768px) {
   .heritage-timeline {
-    margin: 3rem auto 0 auto;
-    padding: 2rem;
-    max-width: 100%;
-  }
-  
-  .heritage-timeline .heritage-point {
-    flex-direction: column;
-    gap: 0.5rem;
+    gap: 2rem;
   }
   
   .year {
@@ -1947,8 +1964,9 @@ footer::before {
   }
   
   .event {
-    font-size: 0.8rem;
+    font-size: 0.9rem;
   }
+}
   
   /* CTA section responsive */
   .cta-grid {
