@@ -899,15 +899,16 @@ footer::before {
 
 .footer-brand {
   display: flex;
+  justify-content: center;
   align-items: center;
-  gap: 1.5rem;
+  margin-bottom: 3rem;
 }
 
 .footer-logo {
-  height: 48px;
+  height: 80px;
   width: auto;
-  opacity: 0.7;
-  filter: drop-shadow(0 0 10px rgba(255, 255, 255, 0.3));
+  opacity: 0.8;
+  filter: drop-shadow(0 0 15px rgba(255, 255, 255, 0.4));
 }
 
 .footer-brand p {
@@ -919,6 +920,8 @@ footer::before {
 .footer-links {
   display: flex;
   gap: 2rem;
+  justify-content: center;
+  margin-bottom: 2rem;
 }
 
 .footer-links a {
@@ -4475,6 +4478,41 @@ footer::before {
   
   .tile-item p {
     font-size: clamp(0.9rem, 3vw, 1rem);
+  }
+}
+
+/* Footer responsive styles */
+@media (max-width: 768px) {
+  .footer-logo {
+    height: 60px;
+  }
+  
+  .footer-brand {
+    margin-bottom: 2rem;
+  }
+  
+  .footer-links {
+    flex-direction: column;
+    gap: 1.5rem;
+    text-align: center;
+  }
+  
+  .footer-column {
+    margin-bottom: 1rem;
+  }
+}
+
+@media (max-width: 480px) {
+  .footer-logo {
+    height: 50px;
+  }
+  
+  .footer-brand {
+    margin-bottom: 1.5rem;
+  }
+  
+  .footer-links {
+    gap: 1rem;
   }
 }
 
