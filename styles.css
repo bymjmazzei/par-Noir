@@ -4199,6 +4199,14 @@ section:nth-child(odd) {
   flex-wrap: wrap;
 }
 
+.gate-actions .btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  min-height: 44px;
+}
+
 .features-preview {
   margin-top: 3rem;
   max-width: 800px;
@@ -4218,7 +4226,7 @@ section:nth-child(odd) {
 
 .features-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  grid-template-columns: repeat(4, 1fr);
   gap: 1.5rem;
   max-width: 800px;
   margin: 0 auto;
@@ -4333,6 +4341,14 @@ section:nth-child(odd) {
     gap: 1rem;
   }
   
+  .gate-actions .btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    min-height: 44px;
+  }
+  
   .feature-item {
     padding: 1rem;
   }
@@ -4371,6 +4387,14 @@ section:nth-child(odd) {
   .features-grid {
     grid-template-columns: 1fr;
     gap: 0.75rem;
+  }
+  
+  .gate-actions .btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    min-height: 44px;
   }
   
   .feature-item {
