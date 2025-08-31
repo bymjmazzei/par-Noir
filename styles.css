@@ -1564,6 +1564,95 @@ footer::before {
     text-align: center;
   }
   
+  /* Force carousel mode on mobile for 3-column sections */
+  .problem-grid {
+    display: flex !important;
+    overflow: hidden;
+    gap: 2rem;
+    margin: 3rem 0;
+    scroll-behavior: smooth;
+  }
+  
+  .problem-item {
+    flex: 0 0 100% !important;
+    min-height: 400px;
+    padding: 2.5rem 2rem;
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+    box-sizing: border-box;
+    display: none;
+  }
+  
+  .problem-item:first-child {
+    display: block !important;
+  }
+  
+  .vision-timeline {
+    display: flex !important;
+    overflow: hidden;
+    gap: 2rem;
+    margin: 3rem 0;
+    scroll-behavior: smooth;
+  }
+  
+  .timeline-item {
+    flex: 0 0 100% !important;
+    min-height: 400px;
+    padding: 2.5rem 2rem;
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+    box-sizing: border-box;
+    display: none;
+  }
+  
+  .timeline-item:first-child {
+    display: block !important;
+  }
+  
+  .carousel-grid {
+    display: flex !important;
+    overflow: hidden;
+    gap: 2rem;
+    margin: 3rem 0;
+    scroll-behavior: smooth;
+  }
+  
+  .carousel-item {
+    flex: 0 0 100% !important;
+    min-height: 400px;
+    padding: 2.5rem 2rem;
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+    box-sizing: border-box;
+    display: none;
+  }
+  
+  .carousel-item:first-child {
+    display: block !important;
+  }
+  
+  .cta-grid {
+    display: flex !important;
+    overflow: hidden;
+    gap: 2rem;
+    margin: 3rem 0;
+    scroll-behavior: smooth;
+  }
+  
+  .cta-box {
+    flex: 0 0 100% !important;
+    min-height: 400px;
+    padding: 2.5rem 2rem;
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+    box-sizing: border-box;
+    display: none;
+  }
+  
+  .cta-box:first-child {
+    display: block !important;
+  }
+  
   .hero-title {
     font-size: clamp(2rem, 8vw, 3rem);
     line-height: 1.2;
@@ -2361,23 +2450,12 @@ footer::before {
 }
 
 /* Carousel containers */
-.problem-carousel,
-.vision-carousel,
-.cta-carousel,
-.features-carousel {
+.carousel-widget {
   position: relative;
   width: 100%;
   max-width: 1200px;
   margin: 0 auto;
 }
-
-/* Carousel elements - will be controlled by JavaScript */
-.carousel-btn,
-.carousel-dots {
-  display: none;
-}
-
-
 
 /* Carousel dots */
 .carousel-dots {
@@ -2401,17 +2479,9 @@ footer::before {
   transform: scale(1.2);
 }
 
-/* Carousel styling - controlled by JavaScript */
-.carousel-dots {
-  display: flex;
-}
-
-/* Ensure carousel dots are visible by default */
-.carousel-dots {
-  display: flex !important;
-  justify-content: center;
-  gap: 0.5rem;
-  margin-top: 2rem;
+.dot:hover {
+  background: rgba(255, 255, 255, 0.5);
+  transform: scale(1.1);
 }
   width: 20px;
   height: 20px;
@@ -2590,6 +2660,108 @@ footer::before {
 }
 
 .carousel-item.carousel-mode p {
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+  hyphens: auto;
+}
+
+/* Problem grid carousel mode */
+.problem-grid.carousel-mode {
+  display: flex;
+  overflow: hidden;
+  gap: 2rem;
+  margin: 3rem 0;
+  scroll-behavior: smooth;
+}
+
+.problem-item.carousel-mode {
+  flex: 0 0 100%;
+  min-height: 400px;
+  padding: 2.5rem 2rem;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+  box-sizing: border-box;
+  display: none;
+}
+
+.problem-item.carousel-mode:first-child {
+  display: block;
+}
+
+.problem-item.carousel-mode h3 {
+  font-size: 1.5rem;
+  white-space: nowrap;
+}
+
+.problem-item.carousel-mode p {
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+  hyphens: auto;
+}
+
+/* Vision timeline carousel mode */
+.vision-timeline.carousel-mode {
+  display: flex;
+  overflow: hidden;
+  gap: 2rem;
+  margin: 3rem 0;
+  scroll-behavior: smooth;
+}
+
+.timeline-item.carousel-mode {
+  flex: 0 0 100%;
+  min-height: 400px;
+  padding: 2.5rem 2rem;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+  box-sizing: border-box;
+  display: none;
+}
+
+.timeline-item.carousel-mode:first-child {
+  display: block;
+}
+
+.timeline-item.carousel-mode h3 {
+  font-size: 1.5rem;
+  white-space: nowrap;
+}
+
+.timeline-item.carousel-mode p {
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+  hyphens: auto;
+}
+
+/* CTA grid carousel mode */
+.cta-grid.carousel-mode {
+  display: flex;
+  overflow: hidden;
+  gap: 2rem;
+  margin: 3rem 0;
+  scroll-behavior: smooth;
+}
+
+.cta-box.carousel-mode {
+  flex: 0 0 100%;
+  min-height: 400px;
+  padding: 2.5rem 2rem;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+  box-sizing: border-box;
+  display: none;
+}
+
+.cta-box.carousel-mode:first-child {
+  display: block;
+}
+
+.cta-box.carousel-mode h3 {
+  font-size: 1.5rem;
+  white-space: nowrap;
+}
+
+.cta-box.carousel-mode p {
   word-wrap: break-word;
   overflow-wrap: break-word;
   hyphens: auto;

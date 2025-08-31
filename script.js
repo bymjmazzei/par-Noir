@@ -3,7 +3,15 @@
 // Mobile menu functionality
 function toggleMobileMenu() {
     const mobileMenu = document.getElementById('mobileMenu');
-    mobileMenu.classList.toggle('active');
+    const body = document.body;
+    
+    if (mobileMenu.classList.contains('active')) {
+        mobileMenu.classList.remove('active');
+        body.style.overflow = 'auto';
+    } else {
+        mobileMenu.classList.add('active');
+        body.style.overflow = 'hidden';
+    }
 }
 
 // Close mobile menu when clicking outside
@@ -13,6 +21,7 @@ document.addEventListener('click', function(event) {
     
     if (mobileMenu && !mobileMenu.contains(event.target) && !menuToggle.contains(event.target)) {
         mobileMenu.classList.remove('active');
+        document.body.style.overflow = 'auto';
     }
 });
 
@@ -29,8 +38,6 @@ document.querySelectorAll('a[href^="#"]').forEach(anchor => {
         }
     });
 });
-
-
 
 // Video placeholder interaction
 function initializeVideoInteraction() {
@@ -60,7 +67,7 @@ function initializeNarrativeAnimations() {
     }, observerOptions);
     
     // Observe narrative elements
-    document.querySelectorAll('.problem-item, .timeline-item, .cta-box, .founder-image, .heritage-point').forEach(el => {
+    document.querySelectorAll('.problem-item, .timeline-item, .carousel-item, .cta-box, .founder-image, .heritage-point').forEach(el => {
         observer.observe(el);
     });
 }
@@ -107,12 +114,6 @@ function initializeHeritageTimeline() {
             point.style.boxShadow = 'none';
         });
     });
-}
-
-// Parallax effect for background (now static but keeping function for potential future use)
-function initializeParallax() {
-    // Background remains static - no movement
-    // This function is kept for potential future enhancements
 }
 
 // Enhanced navigation with scroll direction detection
@@ -167,45 +168,6 @@ function initializeScrollAnimations() {
     });
 }
 
-// Subtle mouse trail effect (reduced from previous version)
-function initializeMouseTrail() {
-    const trail = [];
-    const maxTrailLength = 10;
-    
-    document.addEventListener('mousemove', throttle((e) => {
-        const particle = document.createElement('div');
-        particle.style.position = 'fixed';
-        particle.style.left = e.clientX + 'px';
-        particle.style.top = e.clientY + 'px';
-        particle.style.width = '1px';
-        particle.style.height = '1px';
-        particle.style.background = 'rgba(255, 255, 255, 0.2)';
-        particle.style.borderRadius = '50%';
-        particle.style.pointerEvents = 'none';
-        particle.style.zIndex = '9999';
-        particle.style.transition = 'opacity 0.3s ease';
-        
-        document.body.appendChild(particle);
-        trail.push(particle);
-        
-        // Remove old particles
-        if (trail.length > maxTrailLength) {
-            const oldParticle = trail.shift();
-            oldParticle.style.opacity = '0';
-            setTimeout(() => {
-                if (oldParticle.parentNode) {
-                    oldParticle.parentNode.removeChild(oldParticle);
-                }
-            }, 300);
-        }
-        
-        // Fade out particles
-        setTimeout(() => {
-            particle.style.opacity = '0';
-        }, 50);
-    }, 50));
-}
-
 // Add CSS animations for narrative elements
 function addNarrativeStyles() {
     const style = document.createElement('style');
@@ -230,13 +192,13 @@ function addNarrativeStyles() {
             backdrop-filter: blur(30px);
         }
         
-        .problem-item, .timeline-item, .cta-box {
+        .problem-item, .timeline-item, .carousel-item, .cta-box {
             opacity: 0;
             transform: translateY(30px);
             transition: all 0.6s ease;
         }
         
-        .problem-item.animate-in, .timeline-item.animate-in, .cta-box.animate-in {
+        .problem-item.animate-in, .timeline-item.animate-in, .carousel-item.animate-in, .cta-box.animate-in {
             opacity: 1;
             transform: translateY(0);
         }
@@ -258,10 +220,213 @@ function throttle(func, limit) {
     }
 }
 
+// Universal Carousel System
+class CarouselManager {
+    constructor() {
+        this.carousels = new Map();
+        this.breakpoint = 768; // Switch to carousel mode below this width
+        this.init();
+    }
+
+    init() {
+        this.initializeCarousels();
+        this.checkWindowSize();
+        window.addEventListener('resize', this.throttle(() => this.checkWindowSize(), 100));
+    }
+
+    initializeCarousels() {
+        console.log('Initializing carousels...');
+        
+        // Problem section carousel
+        const problemGrid = document.querySelector('.problem-grid');
+        const problemItems = document.querySelectorAll('.problem-item');
+        const problemDots = document.querySelectorAll('.problem-carousel .dot');
+        
+        console.log('Problem section:', {
+            grid: problemGrid,
+            items: problemItems.length,
+            dots: problemDots.length
+        });
+        
+        if (problemGrid && problemItems.length > 0) {
+            this.carousels.set('problem', {
+                grid: problemGrid,
+                items: Array.from(problemItems),
+                dots: Array.from(problemDots),
+                currentSlide: 0,
+                isCarouselMode: false
+            });
+            console.log('Problem carousel initialized');
+        }
+
+        // Vision section carousel
+        const visionTimeline = document.querySelector('.vision-timeline');
+        const timelineItems = document.querySelectorAll('.timeline-item');
+        const visionDots = document.querySelectorAll('.vision-carousel .dot');
+        
+        console.log('Vision section:', {
+            timeline: visionTimeline,
+            items: timelineItems.length,
+            dots: visionDots.length
+        });
+        
+        if (visionTimeline && timelineItems.length > 0) {
+            this.carousels.set('vision', {
+                grid: visionTimeline,
+                items: Array.from(timelineItems),
+                dots: Array.from(visionDots),
+                currentSlide: 0,
+                isCarouselMode: false
+            });
+            console.log('Vision carousel initialized');
+        }
+
+        // Features section carousel
+        const featuresGrid = document.querySelector('.carousel-grid[data-carousel-id="features"]');
+        const featuresItems = document.querySelectorAll('.carousel-grid[data-carousel-id="features"] .carousel-item');
+        const featuresDots = document.querySelectorAll('.carousel-widget[data-carousel-id="features"] .dot');
+        
+        if (featuresGrid && featuresItems.length > 0) {
+            this.carousels.set('features', {
+                grid: featuresGrid,
+                items: Array.from(featuresItems),
+                dots: Array.from(featuresDots),
+                currentSlide: 0,
+                isCarouselMode: false
+            });
+        }
+
+        // CTA section carousel
+        const ctaGrid = document.querySelector('.carousel-grid[data-carousel-id="cta"]');
+        const ctaItems = document.querySelectorAll('.carousel-grid[data-carousel-id="cta"] .carousel-item');
+        const ctaDots = document.querySelectorAll('.carousel-widget[data-carousel-id="cta"] .dot');
+        
+        if (ctaGrid && ctaItems.length > 0) {
+            this.carousels.set('cta', {
+                grid: ctaGrid,
+                items: Array.from(ctaItems),
+                dots: Array.from(ctaDots),
+                currentSlide: 0,
+                isCarouselMode: false
+            });
+        }
+
+        // Set up dot click handlers
+        this.setupDotHandlers();
+    }
+
+    setupDotHandlers() {
+        // Problem dots
+        document.querySelectorAll('.problem-carousel .dot').forEach((dot, index) => {
+            dot.addEventListener('click', () => this.goToSlide('problem', index));
+        });
+
+        // Vision dots
+        document.querySelectorAll('.vision-carousel .dot').forEach((dot, index) => {
+            dot.addEventListener('click', () => this.goToSlide('vision', index));
+        });
+
+        // Features dots
+        document.querySelectorAll('.carousel-widget[data-carousel-id="features"] .dot').forEach((dot, index) => {
+            dot.addEventListener('click', () => this.goToSlide('features', index));
+        });
+
+        // CTA dots
+        document.querySelectorAll('.carousel-widget[data-carousel-id="cta"] .dot').forEach((dot, index) => {
+            dot.addEventListener('click', () => this.goToSlide('cta', index));
+        });
+    }
+
+    checkWindowSize() {
+        const windowWidth = window.innerWidth;
+        const shouldUseCarousel = windowWidth < this.breakpoint;
+        
+        console.log('Window width:', windowWidth, 'Should use carousel:', shouldUseCarousel);
+
+        this.carousels.forEach((carousel, id) => {
+            console.log(`Checking carousel ${id}:`, carousel.isCarouselMode);
+            if (shouldUseCarousel && !carousel.isCarouselMode) {
+                console.log(`Enabling carousel mode for ${id}`);
+                this.enableCarouselMode(id);
+            } else if (!shouldUseCarousel && carousel.isCarouselMode) {
+                console.log(`Disabling carousel mode for ${id}`);
+                this.disableCarouselMode(id);
+            }
+        });
+    }
+
+    enableCarouselMode(carouselId) {
+        const carousel = this.carousels.get(carouselId);
+        if (!carousel) return;
+
+        carousel.isCarouselMode = true;
+        carousel.grid.classList.add('carousel-mode');
+        carousel.items.forEach(item => item.classList.add('carousel-mode'));
+        
+        this.showSlide(carouselId, 0);
+    }
+
+    disableCarouselMode(carouselId) {
+        const carousel = this.carousels.get(carouselId);
+        if (!carousel) return;
+
+        carousel.isCarouselMode = false;
+        carousel.grid.classList.remove('carousel-mode');
+        carousel.items.forEach(item => {
+            item.classList.remove('carousel-mode');
+            item.style.display = 'block';
+        });
+        
+        carousel.dots.forEach(dot => dot.classList.remove('active'));
+    }
+
+    showSlide(carouselId, slideIndex) {
+        const carousel = this.carousels.get(carouselId);
+        if (!carousel || !carousel.isCarouselMode) return;
+
+        // Hide all slides
+        carousel.items.forEach((item, index) => {
+            item.style.display = 'none';
+            if (carousel.dots[index]) carousel.dots[index].classList.remove('active');
+        });
+
+        // Show current slide
+        if (carousel.items[slideIndex]) {
+            carousel.items[slideIndex].style.display = 'block';
+            if (carousel.dots[slideIndex]) carousel.dots[slideIndex].classList.add('active');
+        }
+
+        carousel.currentSlide = slideIndex;
+    }
+
+    goToSlide(carouselId, slideIndex) {
+        this.showSlide(carouselId, slideIndex);
+    }
+
+    throttle(func, limit) {
+        let inThrottle;
+        return function() {
+            const args = arguments;
+            const context = this;
+            if (!inThrottle) {
+                func.apply(context, args);
+                inThrottle = true;
+                setTimeout(() => inThrottle = false, limit);
+            }
+        }
+    }
+}
+
+// Global carousel manager instance
+let carouselManager;
+
 // Initialize all effects
 document.addEventListener('DOMContentLoaded', function() {
     // Add narrative styles first
     addNarrativeStyles();
+    
+    // Initialize carousel system
+    carouselManager = new CarouselManager();
     
     // Initialize all interactive features
     initializeVideoInteraction();
@@ -270,467 +435,24 @@ document.addEventListener('DOMContentLoaded', function() {
     initializeHeritageTimeline();
     
     // Initialize core functionality
-    initializeParallax();
     initializeNavigation();
     initializeScrollAnimations();
-    initializeMouseTrail();
     
-             // Initialize universal carousel system
-         initializeCarousels();
-         checkWindowSize();
-    
-    // Listen for window resize
-    window.addEventListener('resize', checkWindowSize);
-    
-    console.log('Par Noir narrative site initialized');
+    console.log('Par Noir narrative site initialized with carousel system');
 });
 
 // Add smooth scroll behavior for improved UX
 document.documentElement.style.scrollBehavior = 'smooth';
 
-// Mobile menu toggle function
-function toggleMobileMenu() {
-    const mobileMenu = document.getElementById('mobileMenu');
-    const body = document.body;
-    
-    if (mobileMenu.classList.contains('active')) {
-        mobileMenu.classList.remove('active');
-        body.style.overflow = 'auto';
-    } else {
-        mobileMenu.classList.add('active');
-        body.style.overflow = 'hidden';
-    }
-}
-
-// Universal Carousel System
-const carousels = {};
-
-function initializeCarousels() {
-    const carouselWidgets = document.querySelectorAll('.carousel-widget');
-    
-    carouselWidgets.forEach(widget => {
-        const carouselId = widget.getAttribute('data-carousel-id');
-        const grid = widget.querySelector('.carousel-grid');
-        const items = widget.querySelectorAll('.carousel-item');
-        const dots = widget.querySelectorAll('.carousel-dots .dot');
-        
-        carousels[carouselId] = {
-            widget,
-            grid,
-            items,
-            dots,
-            currentSlide: 0,
-            isCarouselMode: false
-        };
-    });
-}
-
-function checkWindowSize() {
-    const windowWidth = window.innerWidth;
-    
-    Object.keys(carousels).forEach(carouselId => {
-        const carousel = carousels[carouselId];
-        const containerWidth = carousel.grid ? carousel.grid.offsetWidth : 0;
-        
-        // Switch to carousel mode if window is narrow or content would be cramped
-        const shouldUseCarousel = windowWidth < 800 || (containerWidth > 0 && containerWidth < 600);
-        
-        if (shouldUseCarousel && !carousel.isCarouselMode) {
-            enableCarouselMode(carouselId);
-        } else if (!shouldUseCarousel && carousel.isCarouselMode) {
-            disableCarouselMode(carouselId);
-        }
-    });
-    
-    // Debug logging
-    console.log('Window width:', windowWidth);
-}
-
-function enableCarouselMode(carouselId) {
-    const carousel = carousels[carouselId];
-    if (!carousel) return;
-    
-    carousel.isCarouselMode = true;
-    
-    // Add carousel classes
-    if (carousel.grid) carousel.grid.classList.add('carousel-mode');
-    carousel.items.forEach(item => item.classList.add('carousel-mode'));
-    
-    // Show first slide
-    showSlide(carouselId, 0);
-}
-
-function disableCarouselMode(carouselId) {
-    const carousel = carousels[carouselId];
-    if (!carousel) return;
-    
-    carousel.isCarouselMode = false;
-    
-    // Remove carousel classes
-    if (carousel.grid) carousel.grid.classList.remove('carousel-mode');
-    carousel.items.forEach(item => {
-        item.classList.remove('carousel-mode');
-        item.style.display = 'block';
-    });
-    
-    // Reset dots
-    carousel.dots.forEach(dot => dot.classList.remove('active'));
-}
-
-function showSlide(carouselId, n) {
-    const carousel = carousels[carouselId];
-    if (!carousel || !carousel.isCarouselMode) return;
-    
-    // Hide all slides
-    for (let i = 0; i < carousel.items.length; i++) {
-        carousel.items[i].style.display = 'none';
-        if (carousel.dots[i]) carousel.dots[i].classList.remove('active');
-    }
-    
-    // Show current slide
-    if (carousel.items[n]) {
-        carousel.items[n].style.display = 'block';
-        if (carousel.dots[n]) carousel.dots[n].classList.add('active');
-    }
-    
-    carousel.currentSlide = n;
-}
-
+// Global functions for dot clicks (for backward compatibility)
 function goToSlide(carouselId, n) {
-    showSlide(carouselId, n);
-}
-
-function checkWindowSize() {
-    const windowWidth = window.innerWidth;
-    const problemContainerWidth = problemGrid ? problemGrid.offsetWidth : 0;
-    const visionContainerWidth = visionGrid ? visionGrid.offsetWidth : 0;
-    const ctaContainerWidth = ctaGrid ? ctaGrid.offsetWidth : 0;
-    const featuresContainerWidth = featuresGrid ? featuresGrid.offsetWidth : 0;
-    
-    // Switch to carousel mode if window is narrow or content would be cramped
-    const shouldUseCarousel = windowWidth < 800 || (problemContainerWidth > 0 && problemContainerWidth < 600);
-    const shouldUseVisionCarousel = windowWidth < 800 || (visionContainerWidth > 0 && visionContainerWidth < 600);
-    const shouldUseCTACarousel = windowWidth < 800 || (ctaContainerWidth > 0 && ctaContainerWidth < 600);
-    const shouldUseFeaturesCarousel = windowWidth < 800 || (featuresContainerWidth > 0 && featuresContainerWidth < 600);
-    
-    // Problem carousel
-    if (shouldUseCarousel && !isCarouselMode) {
-        enableCarouselMode();
-    } else if (!shouldUseCarousel && isCarouselMode) {
-        disableCarouselMode();
+    if (carouselManager) {
+        carouselManager.goToSlide(carouselId, n);
     }
-    
-    // Vision carousel
-    if (shouldUseVisionCarousel && !isVisionCarouselMode) {
-        enableVisionCarouselMode();
-    } else if (!shouldUseVisionCarousel && isVisionCarouselMode) {
-        disableVisionCarouselMode();
-    }
-    
-    // CTA carousel
-    if (shouldUseCTACarousel && !isCTACarouselMode) {
-        enableCTACarouselMode();
-    } else if (!shouldUseCTACarousel && isCTACarouselMode) {
-        disableCTACarouselMode();
-    }
-    
-    // Debug logging
-    console.log('Window width:', windowWidth);
-    
-    // Features carousel
-    if (shouldUseFeaturesCarousel && !isFeaturesCarouselMode) {
-        enableFeaturesCarouselMode();
-    } else if (!shouldUseFeaturesCarousel && isFeaturesCarouselMode) {
-        disableFeaturesCarouselMode();
-    }
-}
-
-function enableCarouselMode() {
-    isCarouselMode = true;
-    
-    // Add carousel classes
-    if (problemGrid) problemGrid.classList.add('carousel-mode');
-    slides.forEach(slide => slide.classList.add('carousel-mode'));
-    
-    // Show first slide
-    showSlide(0);
-}
-
-function disableCarouselMode() {
-    isCarouselMode = false;
-    
-    // Remove carousel classes
-    if (problemGrid) problemGrid.classList.remove('carousel-mode');
-    slides.forEach(slide => {
-        slide.classList.remove('carousel-mode');
-        slide.style.display = 'block';
-    });
-    
-    // Reset dots
-    dots.forEach(dot => dot.classList.remove('active'));
-}
-
-function enableVisionCarouselMode() {
-    isVisionCarouselMode = true;
-    
-    // Add carousel classes
-    if (visionGrid) visionGrid.classList.add('carousel-mode');
-    visionSlides.forEach(slide => slide.classList.add('carousel-mode'));
-    
-    // Show first slide
-    showVisionSlide(0);
-}
-
-function disableVisionCarouselMode() {
-    isVisionCarouselMode = false;
-    
-    // Remove carousel classes
-    if (visionGrid) visionGrid.classList.remove('carousel-mode');
-    visionSlides.forEach(slide => {
-        slide.classList.remove('carousel-mode');
-        slide.style.display = 'block';
-    });
-    
-    // Reset dots
-    visionDots.forEach(dot => dot.classList.remove('active'));
-}
-
-function enableCTACarouselMode() {
-    isCTACarouselMode = true;
-    
-    // Add carousel classes
-    if (ctaGrid) ctaGrid.classList.add('carousel-mode');
-    ctaSlides.forEach(slide => slide.classList.add('carousel-mode'));
-    
-    // Show first slide
-    showCTASlide(0);
-}
-
-function disableCTACarouselMode() {
-    isCTACarouselMode = false;
-    
-    // Remove carousel classes
-    if (ctaGrid) ctaGrid.classList.remove('carousel-mode');
-    ctaSlides.forEach(slide => {
-        slide.classList.remove('carousel-mode');
-        slide.style.display = 'block';
-    });
-    
-    // Reset dots
-    ctaDots.forEach(dot => dot.classList.remove('active'));
-}
-
-
-
-function enableFeaturesCarouselMode() {
-    isFeaturesCarouselMode = true;
-    
-    // Add carousel classes
-    if (featuresGrid) featuresGrid.classList.add('carousel-mode');
-    ctaSlides.forEach(slide => slide.classList.add('carousel-mode'));
-    
-    // Show first slide
-    showFeaturesSlide(0);
-}
-
-function disableFeaturesCarouselMode() {
-    isFeaturesCarouselMode = false;
-    
-    // Remove carousel classes
-    if (featuresGrid) featuresGrid.classList.remove('carousel-mode');
-    ctaSlides.forEach(slide => {
-        slide.classList.remove('carousel-mode');
-        slide.style.display = 'block';
-    });
-    
-    // Reset dots
-    featuresDots.forEach(dot => dot.classList.remove('active'));
-}
-
-function showSlide(n) {
-    if (!isCarouselMode) return;
-    
-    // Hide all slides
-    for (let i = 0; i < slides.length; i++) {
-        slides[i].style.display = 'none';
-        if (dots[i]) dots[i].classList.remove('active');
-    }
-    
-    // Show current slide
-    if (slides[n]) {
-        slides[n].style.display = 'block';
-        if (dots[n]) dots[n].classList.add('active');
-    }
-    
-    currentSlide = n;
-}
-
-function moveCarousel(direction) {
-    if (!isCarouselMode) return;
-    
-    let newSlide = currentSlide + direction;
-    
-    if (newSlide >= slides.length) {
-        newSlide = 0;
-    } else if (newSlide < 0) {
-        newSlide = slides.length - 1;
-    }
-    
-    showSlide(newSlide);
-}
-
-function goToSlide(n) {
-    if (!isCarouselMode) return;
-    showSlide(n);
-}
-
-// Vision carousel functions
-function showVisionSlide(n) {
-    if (!isVisionCarouselMode) return;
-    
-    // Hide all slides
-    for (let i = 0; i < visionSlides.length; i++) {
-        visionSlides[i].style.display = 'none';
-        if (visionDots[i]) visionDots[i].classList.remove('active');
-    }
-    
-    // Show current slide
-    if (visionSlides[n]) {
-        visionSlides[n].style.display = 'block';
-        if (visionDots[n]) visionDots[n].classList.add('active');
-    }
-    
-    currentVisionSlide = n;
-}
-
-function moveVisionCarousel(direction) {
-    if (!isVisionCarouselMode) return;
-    
-    let newSlide = currentVisionSlide + direction;
-    
-    if (newSlide >= visionSlides.length) {
-        newSlide = 0;
-    } else if (newSlide < 0) {
-        newSlide = visionSlides.length - 1;
-    }
-    
-    showVisionSlide(newSlide);
 }
 
 function goToVisionSlide(n) {
-    if (!isVisionCarouselMode) return;
-    showVisionSlide(n);
-}
-
-// CTA carousel functions
-function showCTASlide(n) {
-    if (!isCTACarouselMode) return;
-    
-    // Hide all slides
-    for (let i = 0; i < ctaSlides.length; i++) {
-        ctaSlides[i].style.display = 'none';
-        if (ctaDots[i]) ctaDots[i].classList.remove('active');
+    if (carouselManager) {
+        carouselManager.goToSlide('vision', n);
     }
-    
-    // Show current slide
-    if (ctaSlides[n]) {
-        ctaSlides[n].style.display = 'block';
-        if (ctaDots[n]) ctaDots[n].classList.add('active');
-    }
-    
-    currentCTASlide = n;
-}
-
-function goToCTASlide(n) {
-    if (!isCTACarouselMode) return;
-    showCTASlide(n);
-}
-
-
-
-// Features carousel functions
-function showFeaturesSlide(n) {
-    if (!isFeaturesCarouselMode) return;
-    
-    // Hide all slides
-    for (let i = 0; i < ctaSlides.length; i++) {
-        ctaSlides[i].style.display = 'none';
-        if (featuresDots[i]) featuresDots[i].classList.remove('active');
-    }
-    
-    // Show current slide
-    if (ctaSlides[n]) {
-        ctaSlides[n].style.display = 'block';
-        if (featuresDots[n]) featuresDots[n].classList.add('active');
-    }
-    
-    currentFeaturesSlide = n;
-}
-
-function moveFeaturesCarousel(direction) {
-    if (!isFeaturesCarouselMode) return;
-    
-    let newSlide = currentFeaturesSlide + direction;
-    
-    if (newSlide >= ctaSlides.length) {
-        newSlide = 0;
-    } else if (newSlide < 0) {
-        newSlide = ctaSlides.length - 1;
-    }
-    
-    showFeaturesSlide(newSlide);
-}
-
-function goToFeaturesSlide(n) {
-    if (!isFeaturesCarouselMode) return;
-    showFeaturesSlide(n);
-}
-
-// CTA carousel functions
-function enableCTACarouselMode() {
-    isCTACarouselMode = true;
-    
-    // Add carousel classes
-    if (ctaGrid) ctaGrid.classList.add('carousel-mode');
-    ctaSlides.forEach(slide => slide.classList.add('carousel-mode'));
-    
-    // Show first slide
-    showCTASlide(0);
-}
-
-function disableCTACarouselMode() {
-    isCTACarouselMode = false;
-    
-    // Remove carousel classes
-    if (ctaGrid) ctaGrid.classList.remove('carousel-mode');
-    ctaSlides.forEach(slide => {
-        slide.classList.remove('carousel-mode');
-        slide.style.display = 'block';
-    });
-    
-    // Reset dots
-    ctaDots.forEach(dot => dot.classList.remove('active'));
-}
-
-function showCTASlide(n) {
-    if (!isCTACarouselMode) return;
-    
-    // Hide all slides
-    for (let i = 0; i < ctaSlides.length; i++) {
-        ctaSlides[i].style.display = 'none';
-        if (ctaDots[i]) ctaDots[i].classList.remove('active');
-    }
-    
-    // Show current slide
-    if (ctaSlides[n]) {
-        ctaSlides[n].style.display = 'block';
-        if (ctaDots[n]) ctaDots[n].classList.add('active');
-    }
-    
-    currentCTASlide = n;
-}
-
-function goToCTASlide(n) {
-    if (!isCTACarouselMode) return;
-    showCTASlide(n);
 }
