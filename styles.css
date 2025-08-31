@@ -531,10 +531,7 @@ body {
   transform: translateX(4px);
 }
 
-/* Preserve specific text case in buttons */
-.btn-preserve-case {
-  text-transform: none !important;
-}
+
 
 /* Hero Visual */
 .hero-visual {
