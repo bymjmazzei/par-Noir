@@ -2492,8 +2492,77 @@ footer::before {
   hyphens: auto;
 }
 
-/* CTA grid carousel mode */
-.cta-carousel .cta-grid.carousel-mode {
+/* Universal Carousel Widget */
+.carousel-widget {
+  position: relative;
+  width: 100%;
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.carousel-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 3rem;
+  max-width: 1200px;
+  margin: 0 auto;
+  width: 100%;
+}
+
+.carousel-item {
+  padding: 3rem;
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid var(--border-glow);
+  border-radius: 20px;
+  backdrop-filter: blur(10px);
+  transition: all 0.4s ease;
+  position: relative;
+  overflow: hidden;
+}
+
+.carousel-item:hover {
+  transform: translateY(-10px);
+  box-shadow: var(--shadow-strong);
+  border-color: var(--accent);
+}
+
+.carousel-icon {
+  width: 80px;
+  height: 80px;
+  background: var(--gradient-glow);
+  border-radius: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 auto 2rem;
+  border: 1px solid var(--border-glow);
+}
+
+.carousel-icon svg {
+  width: 40px;
+  height: 40px;
+  stroke: var(--accent);
+  stroke-width: 2;
+  fill: none;
+}
+
+.carousel-item h3 {
+  font-size: 1.5rem;
+  font-weight: 700;
+  margin-bottom: 1rem;
+  color: var(--text-primary);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.carousel-item p {
+  color: var(--text-secondary);
+  line-height: 1.6;
+  margin-bottom: 2rem;
+}
+
+/* Carousel mode styles */
+.carousel-grid.carousel-mode {
   display: flex;
   overflow: hidden;
   gap: 2rem;
@@ -2501,7 +2570,7 @@ footer::before {
   scroll-behavior: smooth;
 }
 
-.cta-carousel .cta-box.carousel-mode {
+.carousel-item.carousel-mode {
   flex: 0 0 100%;
   min-height: 400px;
   padding: 2.5rem 2rem;
@@ -2511,16 +2580,16 @@ footer::before {
   display: none;
 }
 
-.cta-carousel .cta-box.carousel-mode:first-child {
+.carousel-item.carousel-mode:first-child {
   display: block;
 }
 
-.cta-carousel .cta-box.carousel-mode h3 {
+.carousel-item.carousel-mode h3 {
   font-size: 1.5rem;
   white-space: nowrap;
 }
 
-.cta-carousel .cta-box.carousel-mode p {
+.carousel-item.carousel-mode p {
   word-wrap: break-word;
   overflow-wrap: break-word;
   hyphens: auto;

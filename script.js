@@ -275,8 +275,9 @@ document.addEventListener('DOMContentLoaded', function() {
     initializeScrollAnimations();
     initializeMouseTrail();
     
-    // Initialize carousel based on window size
-    checkWindowSize();
+             // Initialize universal carousel system
+         initializeCarousels();
+         checkWindowSize();
     
     // Listen for window resize
     window.addEventListener('resize', checkWindowSize);
@@ -301,30 +302,103 @@ function toggleMobileMenu() {
     }
 }
 
-// Dynamic carousel functionality based on window width
-let currentSlide = 0;
-let currentVisionSlide = 0;
-let currentCTASlide = 0;
-let currentFeaturesSlide = 0;
-let isCarouselMode = false;
-let isVisionCarouselMode = false;
-let isCTACarouselMode = false;
-let isFeaturesCarouselMode = false;
+// Universal Carousel System
+const carousels = {};
 
-const slides = document.querySelectorAll('.problem-item');
-const visionSlides = document.querySelectorAll('.timeline-item');
-const ctaSlides = document.querySelectorAll('.cta-carousel .cta-box');
+function initializeCarousels() {
+    const carouselWidgets = document.querySelectorAll('.carousel-widget');
+    
+    carouselWidgets.forEach(widget => {
+        const carouselId = widget.getAttribute('data-carousel-id');
+        const grid = widget.querySelector('.carousel-grid');
+        const items = widget.querySelectorAll('.carousel-item');
+        const dots = widget.querySelectorAll('.carousel-dots .dot');
+        
+        carousels[carouselId] = {
+            widget,
+            grid,
+            items,
+            dots,
+            currentSlide: 0,
+            isCarouselMode: false
+        };
+    });
+}
 
-const dots = document.querySelectorAll('.problem-carousel .dot');
-const visionDots = document.querySelectorAll('.vision-carousel .dot');
-const ctaDots = document.querySelectorAll('.cta-carousel .dot');
-const featuresDots = document.querySelectorAll('.features-carousel .dot');
+function checkWindowSize() {
+    const windowWidth = window.innerWidth;
+    
+    Object.keys(carousels).forEach(carouselId => {
+        const carousel = carousels[carouselId];
+        const containerWidth = carousel.grid ? carousel.grid.offsetWidth : 0;
+        
+        // Switch to carousel mode if window is narrow or content would be cramped
+        const shouldUseCarousel = windowWidth < 800 || (containerWidth > 0 && containerWidth < 600);
+        
+        if (shouldUseCarousel && !carousel.isCarouselMode) {
+            enableCarouselMode(carouselId);
+        } else if (!shouldUseCarousel && carousel.isCarouselMode) {
+            disableCarouselMode(carouselId);
+        }
+    });
+    
+    // Debug logging
+    console.log('Window width:', windowWidth);
+}
 
-const carouselDots = document.querySelector('.carousel-dots');
-const problemGrid = document.querySelector('.problem-grid');
-const visionGrid = document.querySelector('.vision-timeline');
-const ctaGrid = document.querySelector('.cta-carousel .cta-grid');
-const featuresGrid = document.querySelector('.features-carousel .cta-grid');
+function enableCarouselMode(carouselId) {
+    const carousel = carousels[carouselId];
+    if (!carousel) return;
+    
+    carousel.isCarouselMode = true;
+    
+    // Add carousel classes
+    if (carousel.grid) carousel.grid.classList.add('carousel-mode');
+    carousel.items.forEach(item => item.classList.add('carousel-mode'));
+    
+    // Show first slide
+    showSlide(carouselId, 0);
+}
+
+function disableCarouselMode(carouselId) {
+    const carousel = carousels[carouselId];
+    if (!carousel) return;
+    
+    carousel.isCarouselMode = false;
+    
+    // Remove carousel classes
+    if (carousel.grid) carousel.grid.classList.remove('carousel-mode');
+    carousel.items.forEach(item => {
+        item.classList.remove('carousel-mode');
+        item.style.display = 'block';
+    });
+    
+    // Reset dots
+    carousel.dots.forEach(dot => dot.classList.remove('active'));
+}
+
+function showSlide(carouselId, n) {
+    const carousel = carousels[carouselId];
+    if (!carousel || !carousel.isCarouselMode) return;
+    
+    // Hide all slides
+    for (let i = 0; i < carousel.items.length; i++) {
+        carousel.items[i].style.display = 'none';
+        if (carousel.dots[i]) carousel.dots[i].classList.remove('active');
+    }
+    
+    // Show current slide
+    if (carousel.items[n]) {
+        carousel.items[n].style.display = 'block';
+        if (carousel.dots[n]) carousel.dots[n].classList.add('active');
+    }
+    
+    carousel.currentSlide = n;
+}
+
+function goToSlide(carouselId, n) {
+    showSlide(carouselId, n);
+}
 
 function checkWindowSize() {
     const windowWidth = window.innerWidth;
