@@ -33,7 +33,7 @@ class VerificationService {
    * Generate a verification code
    */
   private generateCode(): string {
-    return Math.random().toString().slice(2, 2 + this.CODE_LENGTH);
+    return SecureRandom.generateId(this.CODE_LENGTH);
   }
 
   /**

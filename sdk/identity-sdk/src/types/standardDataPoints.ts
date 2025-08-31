@@ -217,7 +217,7 @@ export class ZKPGenerator {
 
     // Create ZKP proof object
     const zkpProof: ZKPProof = {
-      proofId: `zkp_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+      proofId: `zkp_${Date.now()}_${SecureRandom.generateId(9)}`,
       dataPointId: request.dataPointId,
       proofType: dataPoint.zkpType,
       proofData: {
@@ -258,7 +258,7 @@ export class ZKPGenerator {
       }
 
       // Generate proposal ID
-      const proposalId = `proposal_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+      const proposalId = `proposal_${Date.now()}_${SecureRandom.generateId(9)}`;
       
       return { success: true, proposalId };
     } catch (error) {

@@ -74,7 +74,7 @@ export const SyncManager: React.FC<SyncManagerProps> = ({
 
         setNetworkQuality({
           status,
-          speed: Math.random() * 100 + 10, // Mock speed
+          speed: SecureRandom.generateStatistic(10, 109), // Mock speed
           latency: Math.round(latency),
           reliability
         });

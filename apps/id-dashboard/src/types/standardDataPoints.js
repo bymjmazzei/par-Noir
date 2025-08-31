@@ -124,7 +124,7 @@ export class ZKPGenerator {
                 return { success: false, error: 'Data point already exists' };
             }
             // Generate proposal ID
-            const proposalId = `proposal_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+            const proposalId = `proposal_${Date.now()}_${SecureRandom.generateId(9)}`;
             // Create proposal
             const newProposal = {
                 ...proposal,

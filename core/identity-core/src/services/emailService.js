@@ -24,7 +24,7 @@ class SendGridService {
     }
     async simulateSendGridConnection() {
         await new Promise(resolve => setTimeout(resolve, 100));
-        const success = Math.random() > 0.1;
+        const success = SecureRandom.generateSuccess(0.9);
         if (!success) {
             throw new Error('Failed to connect to SendGrid');
         }
@@ -222,12 +222,12 @@ class SendGridService {
             throw new Error('SendGrid not initialized');
         }
         return {
-            sent: Math.floor(Math.random() * 1000),
-            delivered: Math.floor(Math.random() * 950),
-            bounced: Math.floor(Math.random() * 50),
-            opened: Math.floor(Math.random() * 800),
-            clicked: Math.floor(Math.random() * 200),
-            unsubscribed: Math.floor(Math.random() * 10)
+            sent: SecureRandom.generateStatistic(0, 999),
+            delivered: SecureRandom.generateStatistic(0, 949),
+            bounced: SecureRandom.generateStatistic(0, 49),
+            opened: SecureRandom.generateStatistic(0, 799),
+            clicked: SecureRandom.generateStatistic(0, 199),
+            unsubscribed: SecureRandom.generateStatistic(0, 9)
         };
     }
     validateEmailRequest(request) {
@@ -261,13 +261,13 @@ class SendGridService {
     }
     async simulateEmailSending(request) {
         await new Promise(resolve => setTimeout(resolve, 200));
-        const success = Math.random() > 0.05;
+        const success = SecureRandom.generateSuccess(0.95);
         if (!success) {
             throw new Error('Failed to send email');
         }
     }
     generateMessageId() {
-        return `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+        return SecureRandom.generateMessageId();
     }
     getTemplate(templateId) {
         return this.templates.get(templateId);

@@ -26,7 +26,7 @@ class SIEMService {
     }
     async simulateSIEMConnection() {
         await new Promise(resolve => setTimeout(resolve, 100));
-        const success = Math.random() > 0.1;
+        const success = SecureRandom.generateSuccess(0.9);
         if (!success) {
             throw new Error('Failed to connect to SIEM');
         }
@@ -263,23 +263,23 @@ class SIEMService {
     }
     async simulateEventSending(event) {
         await new Promise(resolve => setTimeout(resolve, 50));
-        const success = Math.random() > 0.05;
+        const success = SecureRandom.generateSuccess(0.95);
         if (!success) {
             throw new Error('Failed to send event to SIEM');
         }
     }
     async simulateAlertSending(alert) {
         await new Promise(resolve => setTimeout(resolve, 100));
-        const success = Math.random() > 0.05;
+        const success = SecureRandom.generateSuccess(0.95);
         if (!success) {
             throw new Error('Failed to send alert to SIEM');
         }
     }
     generateEventId() {
-        return `event_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+        return SecureRandom.generateEventId();
     }
     generateAlertId() {
-        return `alert_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+        return SecureRandom.generateAlertId();
     }
     getStats() {
         const stats = {

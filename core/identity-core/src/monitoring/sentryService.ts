@@ -112,7 +112,7 @@ export class SentryService {
     await new Promise(resolve => setTimeout(resolve, 100));
     
     // Simulate connection test
-    const success = Math.random() > 0.1; // 90% success rate
+    const success = SecureRandom.generateSuccess(0.9); // 90% success rate
     
     if (!success) {
       throw new Error('Failed to connect to Sentry');
@@ -241,7 +241,7 @@ export class SentryService {
    * Start performance span
    */
   startSpan(name: string, op: string, description?: string): string {
-    const spanId = `span_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    const spanId = `span_${Date.now()}_${SecureRandom.generateId(9)}`;
     
     const span: SentryPerformance = {
       name,
@@ -423,7 +423,7 @@ export class SentryService {
     await new Promise(resolve => setTimeout(resolve, 50));
     
     // Simulate success/failure
-    const success = Math.random() > 0.05; // 95% success rate
+    const success = SecureRandom.generateSuccess(0.95); // 95% success rate
     
     if (!success) {
       throw new Error('Failed to send event to Sentry');
@@ -438,7 +438,7 @@ export class SentryService {
     await new Promise(resolve => setTimeout(resolve, 30));
     
     // Simulate success/failure
-    const success = Math.random() > 0.05; // 95% success rate
+    const success = SecureRandom.generateSuccess(0.95); // 95% success rate
     
     if (!success) {
       throw new Error('Failed to send performance data to Sentry');
@@ -588,7 +588,7 @@ export class SentryService {
    * Generate event ID
    */
   private generateEventId(): string {
-    return `event_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    return SecureRandom.generateEventId();
   }
 
   /**

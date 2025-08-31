@@ -144,7 +144,7 @@ export class HSMManager {
     await new Promise(resolve => setTimeout(resolve, 100));
     
     // Simulate connection test
-    if (Math.random() < 0.1) { // 10% failure rate for testing
+    if (SecureRandom.generateSuccess(0.9)) { // 10% failure rate for testing
       throw new Error('HSM connection failed');
     }
   }
@@ -385,7 +385,7 @@ export class HSMManager {
 
   private async simulateHSMVerification(keyId: string, data: string, signature: string, algorithm: string): Promise<boolean> {
     await new Promise(resolve => setTimeout(resolve, 50));
-    return Math.random() > 0.01; // 99% success rate
+    return SecureRandom.generateSuccess(0.99); // 99% success rate
   }
 
   private async simulateHSMEncryption(keyId: string, data: string, algorithm: string): Promise<string> {
@@ -450,7 +450,7 @@ export class HSMManager {
    */
   private generateKeyId(): string {
     const timestamp = Date.now().toString(36);
-    const random = Math.random().toString(36).substring(2);
+    const random = SecureRandom.generateId();
     return `hsm-${timestamp}-${random}`;
   }
 

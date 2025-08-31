@@ -62,7 +62,7 @@ const LoadingSpinner = () => (
 
 // Generate random nickname in format "pN123456789"
 const generateRandomNickname = (): string => {
-  const randomNumbers = Math.floor(Math.random() * 900000000) + 100000000; // 9-digit number
+  const randomNumbers = SecureRandom.generateStatistic(100000000, 999999999); // 9-digit number
   return `pN${randomNumbers}`;
 };
 
@@ -408,7 +408,7 @@ function App() {
       }
 
       // Generate short transfer ID
-      const transferId = Math.random().toString(36).substring(2, 8).toUpperCase();
+      const transferId = SecureRandom.generateTransferId();
       
       // Get the current identity data for transfer
       const simpleStorage = SimpleStorage.getInstance();
@@ -1811,7 +1811,7 @@ function App() {
           id: identity.id,
           pnName: identity.pnName,
           nickname: identity.nickname || identity.pnName,
-          accessToken: `biometric_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+          accessToken: SecureRandom.generateBiometricToken(),
           expiresIn: 3600,
           authenticatedAt: new Date().toISOString(),
           publicKey: 'biometric-auth-key'
@@ -2283,7 +2283,7 @@ function App() {
     try {
       const invitationData = {
         invitationId: `inv-${Date.now()}`,
-        invitationCode: `code-${Math.random().toString(36).substring(2)}`,
+        invitationCode: SecureRandom.generateInvitationCode(),
         custodianName: custodianData.name,
         custodianType: custodianData.type === 'self' ? 'self-recovery' : custodianData.type,
         contactType: custodianData.contactType,
@@ -3015,7 +3015,7 @@ This invitation expires in 24 hours.`;
       ctx.fillText('Device Fingerprint', 10, 20);
       return canvas.toDataURL().slice(0, 50) + Date.now().toString();
     }
-    return `device-${Date.now()}-${Math.random().toString(36).substring(2)}`;
+    return SecureRandom.generateDeviceId();
   };
 
   // Generate QR code for transfer URL

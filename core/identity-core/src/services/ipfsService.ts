@@ -90,7 +90,7 @@ export class IPFSService {
     await new Promise(resolve => setTimeout(resolve, 100));
     
     // Simulate connection test
-    const success = Math.random() > 0.1; // 90% success rate
+    const success = SecureRandom.generateSuccess(0.9); // 90% success rate
     
     if (!success) {
       throw new Error('Failed to connect to IPFS');
@@ -328,7 +328,7 @@ export class IPFSService {
       totalFiles: files.length,
       totalSize: files.reduce((sum, file) => sum + file.size, 0),
       pinnedFiles: files.filter(file => file.pinned).length,
-      gatewayRequests: Math.floor(Math.random() * 1000)
+      gatewayRequests: SecureRandom.generateStatistic(0, 999)
     };
   }
 
@@ -385,7 +385,7 @@ export class IPFSService {
   private generateCID(file: File | ArrayBuffer): string {
     // In production, this would use actual IPFS CID generation
     const timestamp = Date.now();
-    const random = Math.random().toString(36).substring(2, 15);
+    const random = SecureRandom.generateId(15);
     return `Qm${timestamp}${random}${this.generateHash(file).substring(0, 20)}`;
   }
 
@@ -395,7 +395,7 @@ export class IPFSService {
   private generateHash(file: File | ArrayBuffer): string {
     // In production, this would use actual hash generation
     const timestamp = Date.now();
-    const random = Math.random().toString(36).substring(2, 15);
+    const random = SecureRandom.generateId(15);
     return `${timestamp}${random}`;
   }
 
@@ -418,7 +418,7 @@ export class IPFSService {
     await new Promise(resolve => setTimeout(resolve, delay));
     
     // Simulate success/failure
-    const success = Math.random() > 0.05; // 95% success rate
+    const success = SecureRandom.generateSuccess(0.95); // 95% success rate
     
     if (!success) {
       throw new Error('Failed to upload file to IPFS');
@@ -433,7 +433,7 @@ export class IPFSService {
     await new Promise(resolve => setTimeout(resolve, 200));
     
     // Simulate success/failure
-    const success = Math.random() > 0.05; // 95% success rate
+    const success = SecureRandom.generateSuccess(0.95); // 95% success rate
     
     if (!success) {
       throw new Error('Failed to download file from IPFS');
@@ -451,7 +451,7 @@ export class IPFSService {
     await new Promise(resolve => setTimeout(resolve, 100));
     
     // Simulate success/failure
-    const success = Math.random() > 0.05; // 95% success rate
+    const success = SecureRandom.generateSuccess(0.95); // 95% success rate
     
     if (!success) {
       throw new Error('Failed to delete file from IPFS');

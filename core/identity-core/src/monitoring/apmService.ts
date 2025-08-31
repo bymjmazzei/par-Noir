@@ -159,7 +159,7 @@ export class APMService {
     await new Promise(resolve => setTimeout(resolve, 100));
     
     // Simulate connection test
-    const success = Math.random() > 0.1; // 90% success rate
+    const success = SecureRandom.generateSuccess(0.9); // 90% success rate
     
     if (!success) {
       throw new Error('Failed to connect to APM');
@@ -170,7 +170,7 @@ export class APMService {
    * Start transaction
    */
   startTransaction(name: string, type: string): string {
-    const transactionId = `tx_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    const transactionId = `tx_${Date.now()}_${SecureRandom.generateId(9)}`;
     
     const transaction: APMTransaction = {
       id: transactionId,
@@ -219,7 +219,7 @@ export class APMService {
     subtype?: string,
     action?: string
   ): string {
-    const spanId = `span_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    const spanId = `span_${Date.now()}_${SecureRandom.generateId(9)}`;
     
     const span: APMSpan = {
       id: spanId,
@@ -266,7 +266,7 @@ export class APMService {
     spanId?: string,
     context?: APMError['context']
   ): string {
-    const errorId = `error_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    const errorId = `error_${Date.now()}_${SecureRandom.generateId(9)}`;
     
     const apmError: APMError = {
       id: errorId,
@@ -370,10 +370,10 @@ export class APMService {
   private updatePerformanceMetrics(): void {
     // Simulate performance data
     this.metrics.performance = {
-      memoryUsage: Math.random() * 100,
-      cpuUsage: Math.random() * 100,
-      responseTime: Math.random() * 1000,
-      throughput: Math.random() * 1000
+      memoryUsage: SecureRandom.generateStatistic(0, 99),
+      cpuUsage: SecureRandom.generateStatistic(0, 99),
+      responseTime: SecureRandom.generateStatistic(0, 999),
+      throughput: SecureRandom.generateStatistic(0, 999)
     };
   }
 
@@ -443,7 +443,7 @@ export class APMService {
     await new Promise(resolve => setTimeout(resolve, 20));
     
     // Simulate success/failure
-    const success = Math.random() > 0.05; // 95% success rate
+    const success = SecureRandom.generateSuccess(0.95); // 95% success rate
     
     if (!success) {
       throw new Error(`Failed to send ${type} to APM`);
@@ -495,7 +495,7 @@ export class APMService {
     await new Promise(resolve => setTimeout(resolve, 50));
     
     // Simulate success/failure
-    const success = Math.random() > 0.05; // 95% success rate
+    const success = SecureRandom.generateSuccess(0.95); // 95% success rate
     
     if (!success) {
       throw new Error('Failed to send batch to APM');

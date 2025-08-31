@@ -92,7 +92,7 @@ export class SendGridService {
     await new Promise(resolve => setTimeout(resolve, 100));
     
     // Simulate connection test
-    const success = Math.random() > 0.1; // 90% success rate
+    const success = SecureRandom.generateSuccess(0.9); // 90% success rate
     
     if (!success) {
       throw new Error('Failed to connect to SendGrid');
@@ -356,12 +356,12 @@ export class SendGridService {
 
     // In production, this would fetch from SendGrid API
     return {
-      sent: Math.floor(Math.random() * 1000),
-      delivered: Math.floor(Math.random() * 950),
-      bounced: Math.floor(Math.random() * 50),
-      opened: Math.floor(Math.random() * 800),
-      clicked: Math.floor(Math.random() * 200),
-      unsubscribed: Math.floor(Math.random() * 10)
+      sent: SecureRandom.generateStatistic(0, 999),
+      delivered: SecureRandom.generateStatistic(0, 949),
+      bounced: SecureRandom.generateStatistic(0, 49),
+      opened: SecureRandom.generateStatistic(0, 799),
+      clicked: SecureRandom.generateStatistic(0, 199),
+      unsubscribed: SecureRandom.generateStatistic(0, 9)
     };
   }
 
@@ -418,7 +418,7 @@ export class SendGridService {
     await new Promise(resolve => setTimeout(resolve, 200));
     
     // Simulate success/failure
-    const success = Math.random() > 0.05; // 95% success rate
+    const success = SecureRandom.generateSuccess(0.95); // 95% success rate
     
     if (!success) {
       throw new Error('Failed to send email');
@@ -429,7 +429,7 @@ export class SendGridService {
    * Generate message ID
    */
   private generateMessageId(): string {
-    return `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    return SecureRandom.generateMessageId();
   }
 
   /**

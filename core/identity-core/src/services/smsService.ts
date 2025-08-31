@@ -81,7 +81,7 @@ export class TwilioService {
     await new Promise(resolve => setTimeout(resolve, 100));
     
     // Simulate connection test
-    const success = Math.random() > 0.1; // 90% success rate
+    const success = SecureRandom.generateSuccess(0.9); // 90% success rate
     
     if (!success) {
       throw new Error('Failed to connect to Twilio');
@@ -223,10 +223,10 @@ export class TwilioService {
 
     // In production, this would fetch from Twilio API
     return {
-      sent: Math.floor(Math.random() * 1000),
-      delivered: Math.floor(Math.random() * 950),
-      failed: Math.floor(Math.random() * 30),
-      undelivered: Math.floor(Math.random() * 20)
+      sent: SecureRandom.generateStatistic(0, 999),
+      delivered: SecureRandom.generateStatistic(0, 949),
+      failed: SecureRandom.generateStatistic(0, 29),
+      undelivered: SecureRandom.generateStatistic(0, 19)
     };
   }
 
@@ -240,7 +240,7 @@ export class TwilioService {
 
     // In production, this would fetch from Twilio API
     const statuses = ['sent', 'delivered', 'failed', 'undelivered'];
-    const randomStatus = statuses[Math.floor(Math.random() * statuses.length)];
+    const randomStatus = statuses[SecureRandom.generateStatistic(0, statuses.length - 1)];
     
     return {
       success: randomStatus !== 'failed',
@@ -289,7 +289,7 @@ export class TwilioService {
     await new Promise(resolve => setTimeout(resolve, 300));
     
     // Simulate success/failure
-    const success = Math.random() > 0.05; // 95% success rate
+    const success = SecureRandom.generateSuccess(0.95); // 95% success rate
     
     if (!success) {
       throw new Error('Failed to send SMS');
@@ -300,7 +300,7 @@ export class TwilioService {
    * Generate message ID
    */
   private generateMessageId(): string {
-    return `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    return SecureRandom.generateMessageId();
   }
 
   /**
@@ -373,7 +373,7 @@ export class TwilioService {
     }
 
     // In production, this would purchase via Twilio API
-    return Math.random() > 0.1; // 90% success rate
+    return SecureRandom.generateSuccess(0.9); // 90% success rate
   }
 
   /**
@@ -385,7 +385,7 @@ export class TwilioService {
     }
 
     // In production, this would release via Twilio API
-    return Math.random() > 0.1; // 90% success rate
+    return SecureRandom.generateSuccess(0.9); // 90% success rate
   }
 }
 

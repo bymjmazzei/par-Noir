@@ -146,13 +146,13 @@ export class QRCodeManager {
                 deviceId: `device-${Date.now()}`,
                 deviceName: 'Mock Device',
                 deviceType: 'mobile',
-                syncKey: `sync-${Math.random().toString(36).substring(2)}`,
-                identityId: `did:key:${Math.random().toString(36).substring(2)}`,
-                deviceFingerprint: `fp-${Math.random().toString(36).substring(2)}`
+                syncKey: `sync-${SecureRandom.generateId()}`,
+                identityId: `did:key:${SecureRandom.generateId()}`,
+                deviceFingerprint: `fp-${SecureRandom.generateId()}`
               },
               timestamp: Date.now(),
               expiresAt: Date.now() + (5 * 60 * 1000),
-              signature: `sig-${Math.random().toString(36).substring(2)}`
+              signature: `sig-${SecureRandom.generateId()}`
             };
 
             resolve(mockData);
@@ -296,9 +296,9 @@ export class QRCodeManager {
       });
 
       // Fallback for demo
-      return `fp-${Math.random().toString(36).substring(2)}`;
+      return `fp-${SecureRandom.generateId()}`;
     } catch (error) {
-      return `fp-${Math.random().toString(36).substring(2)}`;
+      return `fp-${SecureRandom.generateId()}`;
     }
   }
 
@@ -316,9 +316,9 @@ export class QRCodeManager {
       });
 
       // Fallback for demo
-      return `sync-${Math.random().toString(36).substring(2)}`;
+      return `sync-${SecureRandom.generateId()}`;
     } catch (error) {
-      return `sync-${Math.random().toString(36).substring(2)}`;
+      return `sync-${SecureRandom.generateId()}`;
     }
   }
 } 

@@ -157,7 +157,7 @@ export class ThreatDetectionEngine {
 
   private calculateRiskScore(data: any): number {
     // Implement risk scoring logic
-    return Math.random() * 0.5; // Placeholder
+    return SecureRandom.generateStatistic(0, 50) / 100; // Placeholder
   }
 }
 
@@ -777,7 +777,7 @@ export class AdvancedSecurityManager {
     for (const [enclaveId, enclave] of this.secureEnclaves.entries()) {
       try {
         // Simulate health check
-        const healthScore = Math.random() * 0.2 + 0.8; // 0.8 to 1.0
+        const healthScore = SecureRandom.generateStatistic(80, 100) / 100; // 0.8 to 1.0
         enclave.healthScore = healthScore;
         enclave.lastHealthCheck = new Date().toISOString();
         

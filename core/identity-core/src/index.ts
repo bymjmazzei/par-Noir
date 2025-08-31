@@ -488,7 +488,7 @@ export class IdentityCore {
   async generateChallenge(didId: string): Promise<ChallengeResponse> {
     try {
       const challenge = await CryptoManager.hash(
-        `${didId}:${Date.now()}:${Math.random()}`
+        `${didId}:${Date.now()}:${SecureRandom.generateId()}`
       );
 
       return {

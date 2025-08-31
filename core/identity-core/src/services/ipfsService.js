@@ -23,7 +23,7 @@ class IPFSService {
     }
     async simulateIPFSConnection() {
         await new Promise(resolve => setTimeout(resolve, 100));
-        const success = Math.random() > 0.1;
+        const success = SecureRandom.generateSuccess(0.9);
         if (!success) {
             throw new Error('Failed to connect to IPFS');
         }
@@ -184,7 +184,7 @@ class IPFSService {
             totalFiles: files.length,
             totalSize: files.reduce((sum, file) => sum + file.size, 0),
             pinnedFiles: files.filter(file => file.pinned).length,
-            gatewayRequests: Math.floor(Math.random() * 1000)
+            gatewayRequests: SecureRandom.generateStatistic(0, 999)
         };
     }
     validateFile(file) {
@@ -222,12 +222,12 @@ class IPFSService {
     }
     generateCID(file) {
         const timestamp = Date.now();
-        const random = Math.random().toString(36).substring(2, 15);
+        const random = SecureRandom.generateId(15);
         return `Qm${timestamp}${random}${this.generateHash(file).substring(0, 20)}`;
     }
     generateHash(file) {
         const timestamp = Date.now();
-        const random = Math.random().toString(36).substring(2, 15);
+        const random = SecureRandom.generateId(15);
         return `${timestamp}${random}`;
     }
     isValidCID(cid) {
@@ -238,14 +238,14 @@ class IPFSService {
         const size = this.getFileSize(file);
         const delay = Math.min(size / 1024, 5000);
         await new Promise(resolve => setTimeout(resolve, delay));
-        const success = Math.random() > 0.05;
+        const success = SecureRandom.generateSuccess(0.95);
         if (!success) {
             throw new Error('Failed to upload file to IPFS');
         }
     }
     async simulateFileDownload(cid) {
         await new Promise(resolve => setTimeout(resolve, 200));
-        const success = Math.random() > 0.05;
+        const success = SecureRandom.generateSuccess(0.95);
         if (!success) {
             throw new Error('Failed to download file from IPFS');
         }
@@ -253,7 +253,7 @@ class IPFSService {
     }
     async simulateFileDeletion(cid) {
         await new Promise(resolve => setTimeout(resolve, 100));
-        const success = Math.random() > 0.05;
+        const success = SecureRandom.generateSuccess(0.95);
         if (!success) {
             throw new Error('Failed to delete file from IPFS');
         }

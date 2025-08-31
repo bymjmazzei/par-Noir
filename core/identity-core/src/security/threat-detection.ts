@@ -589,11 +589,11 @@ export class ThreatDetectionSystem {
    * Utility methods
    */
   private generateEventId(): string {
-    return `event-${Date.now()}-${Math.random().toString(36).substring(2)}`;
+    return `event-${Date.now()}-${SecureRandom.generateId()}`;
   }
 
   private generateAlertId(): string {
-    return `alert-${Date.now()}-${Math.random().toString(36).substring(2)}`;
+    return `alert-${Date.now()}-${SecureRandom.generateId()}`;
   }
 
   private log(level: string, message: string): void {

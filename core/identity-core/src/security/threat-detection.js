@@ -372,10 +372,10 @@ class ThreatDetectionSystem {
         }
     }
     generateEventId() {
-        return `event-${Date.now()}-${Math.random().toString(36).substring(2)}`;
+        return `event-${Date.now()}-${SecureRandom.generateId()}`;
     }
     generateAlertId() {
-        return `alert-${Date.now()}-${Math.random().toString(36).substring(2)}`;
+        return `alert-${Date.now()}-${SecureRandom.generateId()}`;
     }
     log(level, message) {
         if (this.shouldLog(level)) {

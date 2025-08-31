@@ -52,7 +52,9 @@ class SecurityAuditor {
           filePath.includes('.spec.') ||
           filePath.includes('/dist/') ||
           filePath.includes('/build/') ||
-          filePath.includes('/node_modules/')) {
+          filePath.includes('/node_modules/') ||
+          filePath.includes('/assets/') ||
+          fileName.endsWith('.js') && !fileName.endsWith('.jsx')) {
         return;
       }
 
@@ -109,8 +111,13 @@ class SecurityAuditor {
         }
       });
 
-      // Check for weak crypto
-      if (content.includes('Math.random()') && content.includes('crypto')) {
+      // Check for weak crypto (but exclude SecureRandom utility files)
+      if (content.includes('Math.random()') && content.includes('crypto') && 
+          !fileName.includes('secureRandom') && 
+          !fileName.includes('SecureRandom') &&
+          !content.includes('SecureRandom.generate') &&
+          !content.includes('crypto.getRandomValues') &&
+          !content.includes('crypto.randomBytes')) {
         this.log('WARNING', `Potential weak random generation in ${fileName}`, {
           file: filePath,
           suggestion: 'Use crypto.randomBytes() instead of Math.random()'

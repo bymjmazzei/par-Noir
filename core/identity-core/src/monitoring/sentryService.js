@@ -25,7 +25,7 @@ class SentryService {
     }
     async simulateSentryConnection() {
         await new Promise(resolve => setTimeout(resolve, 100));
-        const success = Math.random() > 0.1;
+        const success = SecureRandom.generateSuccess(0.9);
         if (!success) {
             throw new Error('Failed to connect to Sentry');
         }
@@ -111,7 +111,7 @@ class SentryService {
         this.breadcrumbs = [];
     }
     startSpan(name, op, description) {
-        const spanId = `span_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+        const spanId = `span_${Date.now()}_${SecureRandom.generateId(9)}`;
         const span = {
             name,
             op,
@@ -210,14 +210,14 @@ class SentryService {
     }
     async simulateEventSending(event) {
         await new Promise(resolve => setTimeout(resolve, 50));
-        const success = Math.random() > 0.05;
+        const success = SecureRandom.generateSuccess(0.95);
         if (!success) {
             throw new Error('Failed to send event to Sentry');
         }
     }
     async simulatePerformanceSending(span) {
         await new Promise(resolve => setTimeout(resolve, 30));
-        const success = Math.random() > 0.05;
+        const success = SecureRandom.generateSuccess(0.95);
         if (!success) {
             throw new Error('Failed to send performance data to Sentry');
         }
@@ -322,7 +322,7 @@ class SentryService {
         };
     }
     generateEventId() {
-        return `event_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+        return SecureRandom.generateEventId();
     }
     isReady() {
         return this.isInitialized;

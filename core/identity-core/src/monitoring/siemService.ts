@@ -132,7 +132,7 @@ export class SIEMService {
     await new Promise(resolve => setTimeout(resolve, 100));
     
     // Simulate connection test
-    const success = Math.random() > 0.1; // 90% success rate
+    const success = SecureRandom.generateSuccess(0.9); // 90% success rate
     
     if (!success) {
       throw new Error('Failed to connect to SIEM');
@@ -535,7 +535,7 @@ export class SIEMService {
     await new Promise(resolve => setTimeout(resolve, 50));
     
     // Simulate success/failure
-    const success = Math.random() > 0.05; // 95% success rate
+    const success = SecureRandom.generateSuccess(0.95); // 95% success rate
     
     if (!success) {
       throw new Error('Failed to send event to SIEM');
@@ -550,7 +550,7 @@ export class SIEMService {
     await new Promise(resolve => setTimeout(resolve, 100));
     
     // Simulate success/failure
-    const success = Math.random() > 0.05; // 95% success rate
+    const success = SecureRandom.generateSuccess(0.95); // 95% success rate
     
     if (!success) {
       throw new Error('Failed to send alert to SIEM');
@@ -561,14 +561,14 @@ export class SIEMService {
    * Generate event ID
    */
   private generateEventId(): string {
-    return `event_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    return SecureRandom.generateEventId();
   }
 
   /**
    * Generate alert ID
    */
   private generateAlertId(): string {
-    return `alert_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    return SecureRandom.generateAlertId();
   }
 
   /**

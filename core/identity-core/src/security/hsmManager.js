@@ -310,7 +310,7 @@ class HSMManager {
     }
     generateKeyId() {
         const timestamp = Date.now().toString(36);
-        const random = Math.random().toString(36).substring(2);
+        const random = SecureRandom.generateId();
         return `hsm-${timestamp}-${random}`;
     }
     arrayBufferToBase64(buffer) {

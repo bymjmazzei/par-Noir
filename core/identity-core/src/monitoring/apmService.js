@@ -28,13 +28,13 @@ class APMService {
     }
     async simulateAPMConnection() {
         await new Promise(resolve => setTimeout(resolve, 100));
-        const success = Math.random() > 0.1;
+        const success = SecureRandom.generateSuccess(0.9);
         if (!success) {
             throw new Error('Failed to connect to APM');
         }
     }
     startTransaction(name, type) {
-        const transactionId = `tx_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+        const transactionId = `tx_${Date.now()}_${SecureRandom.generateId(9)}`;
         const transaction = {
             id: transactionId,
             name,
@@ -58,7 +58,7 @@ class APMService {
         this.transactions.delete(transactionId);
     }
     startSpan(transactionId, name, type, subtype, action) {
-        const spanId = `span_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+        const spanId = `span_${Date.now()}_${SecureRandom.generateId(9)}`;
         const span = {
             id: spanId,
             transactionId,
@@ -88,7 +88,7 @@ class APMService {
         }
     }
     captureError(error, transactionId, spanId, context) {
-        const errorId = `error_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+        const errorId = `error_${Date.now()}_${SecureRandom.generateId(9)}`;
         const apmError = {
             id: errorId,
             transactionId,
@@ -157,10 +157,10 @@ class APMService {
     }
     updatePerformanceMetrics() {
         this.metrics.performance = {
-            memoryUsage: Math.random() * 100,
-            cpuUsage: Math.random() * 100,
-            responseTime: Math.random() * 1000,
-            throughput: Math.random() * 1000
+            memoryUsage: SecureRandom.generateStatistic(0, 99),
+            cpuUsage: SecureRandom.generateStatistic(0, 99),
+            responseTime: SecureRandom.generateStatistic(0, 999),
+            throughput: SecureRandom.generateStatistic(0, 999)
         };
     }
     initializeMetrics() {
@@ -209,7 +209,7 @@ class APMService {
     }
     async simulateDataSending(type, data) {
         await new Promise(resolve => setTimeout(resolve, 20));
-        const success = Math.random() > 0.05;
+        const success = SecureRandom.generateSuccess(0.95);
         if (!success) {
             throw new Error(`Failed to send ${type} to APM`);
         }
@@ -240,7 +240,7 @@ class APMService {
     }
     async simulateBatchSending(batch) {
         await new Promise(resolve => setTimeout(resolve, 50));
-        const success = Math.random() > 0.05;
+        const success = SecureRandom.generateSuccess(0.95);
         if (!success) {
             throw new Error('Failed to send batch to APM');
         }

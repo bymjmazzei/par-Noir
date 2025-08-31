@@ -17,6 +17,7 @@ import crypto from 'crypto';
 
 // Import decentralized authentication server
 import DecentralizedAuthServer from '../decentralized-auth-server';
+import SecureRandom from './utils/secureRandom';
 
 // Load environment variables
 dotenv.config();
@@ -683,7 +684,7 @@ class ProductionServer {
       }
 
       // Generate authorization code
-      const authCode = Math.random().toString(36).substring(2, 15);
+      const authCode = SecureRandom.generateAuthCode();
       
       res.json({
         code: authCode,
@@ -765,7 +766,7 @@ class ProductionServer {
       }
 
       const identity = {
-        id: `did:identity:${Math.random().toString(36).substring(2, 15)}`,
+        id: SecureRandom.generateIdentityId(),
         username,
         displayName,
         email,
@@ -791,7 +792,7 @@ class ProductionServer {
       res.json({ 
         success: true, 
         message: 'Identity authenticated',
-        token: Math.random().toString(36).substring(2, 15)
+        token: SecureRandom.generateAccessToken()
       });
     } catch (error) {
       this.logger.error('Error authenticating identity', { error });
@@ -832,7 +833,7 @@ class ProductionServer {
         return;
       }
 
-      const recoveryId = Math.random().toString(36).substring(2, 15);
+      const recoveryId = SecureRandom.generateRecoveryId();
       
       res.json({ 
         success: true, 
@@ -883,7 +884,7 @@ class ProductionServer {
       }
 
       // Simulate IPFS upload
-      const cid = `Qm${Math.random().toString(36).substring(2, 15)}`;
+      const cid = SecureRandom.generateCID();
       
       res.json({ 
         success: true, 
@@ -924,7 +925,7 @@ class ProductionServer {
         return;
       }
 
-      const webhookId = Math.random().toString(36).substring(2, 15);
+      const webhookId = SecureRandom.generateWebhookId();
       
       res.json({ 
         success: true, 

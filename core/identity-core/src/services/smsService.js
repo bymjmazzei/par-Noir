@@ -22,7 +22,7 @@ class TwilioService {
     }
     async simulateTwilioConnection() {
         await new Promise(resolve => setTimeout(resolve, 100));
-        const success = Math.random() > 0.1;
+        const success = SecureRandom.generateSuccess(0.9);
         if (!success) {
             throw new Error('Failed to connect to Twilio');
         }
@@ -103,10 +103,10 @@ class TwilioService {
             throw new Error('Twilio not initialized');
         }
         return {
-            sent: Math.floor(Math.random() * 1000),
-            delivered: Math.floor(Math.random() * 950),
-            failed: Math.floor(Math.random() * 30),
-            undelivered: Math.floor(Math.random() * 20)
+            sent: SecureRandom.generateStatistic(0, 999),
+            delivered: SecureRandom.generateStatistic(0, 949),
+            failed: SecureRandom.generateStatistic(0, 29),
+            undelivered: SecureRandom.generateStatistic(0, 19)
         };
     }
     async getMessageStatus(messageId) {
@@ -114,7 +114,7 @@ class TwilioService {
             throw new Error('Twilio not initialized');
         }
         const statuses = ['sent', 'delivered', 'failed', 'undelivered'];
-        const randomStatus = statuses[Math.floor(Math.random() * statuses.length)];
+        const randomStatus = statuses[SecureRandom.generateStatistic(0, statuses.length - 1)];
         return {
             success: randomStatus !== 'failed',
             messageId,
@@ -142,13 +142,13 @@ class TwilioService {
     }
     async simulateSMSSending(request) {
         await new Promise(resolve => setTimeout(resolve, 300));
-        const success = Math.random() > 0.05;
+        const success = SecureRandom.generateSuccess(0.95);
         if (!success) {
             throw new Error('Failed to send SMS');
         }
     }
     generateMessageId() {
-        return `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+        return SecureRandom.generateMessageId();
     }
     formatPhoneNumber(phoneNumber) {
         const digits = phoneNumber.replace(/\D/g, '');
@@ -189,13 +189,13 @@ class TwilioService {
         if (!this.isInitialized) {
             throw new Error('Twilio not initialized');
         }
-        return Math.random() > 0.1;
+        return SecureRandom.generateSuccess(0.9);
     }
     async releasePhoneNumber(phoneNumber) {
         if (!this.isInitialized) {
             throw new Error('Twilio not initialized');
         }
-        return Math.random() > 0.1;
+        return SecureRandom.generateSuccess(0.9);
     }
 }
 exports.TwilioService = TwilioService;

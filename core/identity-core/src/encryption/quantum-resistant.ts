@@ -371,20 +371,20 @@ export class AuthenticQuantumResistantCrypto {
     
     for (let attempt = 0; attempt < maxAttempts; attempt++) {
       // Generate uniform random integer in [-tau, tau]
-      const u = Math.random();
+      const u = SecureRandom.generateNumber(0, 100) / 100;
       const x = Math.floor((2 * tau + 1) * u) - tau;
       
       // Acceptance probability: exp(-(x^2)/(2*sigma^2))
       const acceptanceProb = Math.exp(-(x * x) / (2 * sigma * sigma));
       
-      if (Math.random() < acceptanceProb) {
+      if (SecureRandom.generateNumber(0, 100) / 100 < acceptanceProb) {
         return x;
       }
     }
     
     // Fallback to Box-Muller if rejection sampling fails
-    const u = Math.random();
-    const v = Math.random();
+    const u = SecureRandom.generateNumber(0, 100) / 100;
+    const v = SecureRandom.generateNumber(0, 100) / 100;
     const z = Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v);
     return Math.round(z * sigma);
   }

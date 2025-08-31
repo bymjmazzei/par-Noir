@@ -55,7 +55,7 @@ export class NotificationAPI {
 
       // Create notification event
       const notificationEvent: NotificationEvent = {
-        id: `ext-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+        id: `ext-${Date.now()}-${SecureRandom.generateId(9)}`,
         type: request.type,
         timestamp: new Date().toISOString(),
         sender: request.senderId,

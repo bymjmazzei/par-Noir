@@ -435,7 +435,7 @@ class NotificationsService {
 
   // Utility methods
   private generateNotificationId(): string {
-    return `notification_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    return `notification_${Date.now()}_${SecureRandom.generateId(9)}`;
   }
 
   private encryptNotificationData(data: any): string {

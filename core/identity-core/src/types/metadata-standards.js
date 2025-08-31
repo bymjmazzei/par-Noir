@@ -67,7 +67,7 @@ const isExpired = (timestamp) => {
 };
 exports.isExpired = isExpired;
 const generateUniqueId = () => {
-    return `id-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    return `id-${Date.now()}-${SecureRandom.generateId(9)}`;
 };
 exports.generateUniqueId = generateUniqueId;
 const validateEmail = (email) => {

@@ -752,11 +752,11 @@ export class IdentitySDK {
   }
 
   private generateState(): string {
-    return Math.random().toString(36).substring(2);
+    return SecureRandom.generateId();
   }
 
   private generateNonce(): string {
-    return Math.random().toString(36).substring(2);
+    return SecureRandom.generateId();
   }
 
   private createError(code: string, error: any): IdentityError {
