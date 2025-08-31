@@ -60,7 +60,7 @@ function initializeNarrativeAnimations() {
     
     const observer = new IntersectionObserver((entries) => {
         entries.forEach(entry => {
-            if (entry.isIntersecting) {
+            if (entry.isIntersecting && entry.target) {
                 entry.target.classList.add('animate-in');
             }
         });
@@ -68,7 +68,9 @@ function initializeNarrativeAnimations() {
     
     // Observe narrative elements
     document.querySelectorAll('.problem-item, .timeline-item, .carousel-item, .cta-box, .founder-image, .heritage-point').forEach(el => {
-        observer.observe(el);
+        if (el) {
+            observer.observe(el);
+        }
     });
 }
 
@@ -81,16 +83,20 @@ function initializeMasterKeyInteraction() {
         keyIcon.addEventListener('mouseenter', () => {
             connections.forEach((connection, index) => {
                 setTimeout(() => {
-                    connection.style.transform = 'scaleX(1.3)';
-                    connection.style.opacity = '1';
+                    if (connection) {
+                        connection.style.transform = 'scaleX(1.3)';
+                        connection.style.opacity = '1';
+                    }
                 }, index * 100);
             });
         });
         
         keyIcon.addEventListener('mouseleave', () => {
             connections.forEach(connection => {
-                connection.style.transform = 'scaleX(1)';
-                connection.style.opacity = '0.3';
+                if (connection) {
+                    connection.style.transform = 'scaleX(1)';
+                    connection.style.opacity = '0.3';
+                }
             });
         });
     }
@@ -101,24 +107,28 @@ function initializeHeritageTimeline() {
     const heritagePoints = document.querySelectorAll('.heritage-point');
     
     heritagePoints.forEach((point, index) => {
-        point.addEventListener('mouseenter', () => {
-            // Highlight the connection between past and present
-            point.style.transform = 'scale(1.05)';
+        if (point) {
+            point.addEventListener('mouseenter', () => {
+                // Highlight the connection between past and present
+                point.style.transform = 'scale(1.05)';
+                
+                // Add a subtle glow effect
+                point.style.boxShadow = '0 0 20px rgba(255, 255, 255, 0.1)';
+            });
             
-            // Add a subtle glow effect
-            point.style.boxShadow = '0 0 20px rgba(255, 255, 255, 0.1)';
-        });
-        
-        point.addEventListener('mouseleave', () => {
-            point.style.transform = 'scale(1)';
-            point.style.boxShadow = 'none';
-        });
+            point.addEventListener('mouseleave', () => {
+                point.style.transform = 'scale(1)';
+                point.style.boxShadow = 'none';
+            });
+        }
     });
 }
 
 // Enhanced navigation with scroll direction detection
 function initializeNavigation() {
-    const nav = document.querySelector('.nav');
+    const nav = document.querySelector('.site-navigation');
+    if (!nav) return; // Exit if navigation doesn't exist
+    
     let lastScrollY = window.scrollY;
     
     window.addEventListener('scroll', throttle(() => {
@@ -152,7 +162,7 @@ function initializeScrollAnimations() {
     
     const observer = new IntersectionObserver((entries) => {
         entries.forEach(entry => {
-            if (entry.isIntersecting) {
+            if (entry.isIntersecting && entry.target) {
                 entry.target.style.opacity = '1';
                 entry.target.style.transform = 'translateY(0)';
             }
@@ -161,10 +171,12 @@ function initializeScrollAnimations() {
     
     // Observe elements for animation
     document.querySelectorAll('.feature-card, .protocol-card, .solution-text, .legacy-text').forEach(el => {
-        el.style.opacity = '0';
-        el.style.transform = 'translateY(30px)';
-        el.style.transition = 'opacity 0.6s ease, transform 0.6s ease';
-        observer.observe(el);
+        if (el) {
+            el.style.opacity = '0';
+            el.style.transform = 'translateY(30px)';
+            el.style.transition = 'opacity 0.6s ease, transform 0.6s ease';
+            observer.observe(el);
+        }
     });
 }
 
@@ -187,7 +199,7 @@ function addNarrativeStyles() {
             }
         }
         
-        .nav.scrolled {
+        .site-navigation.scrolled {
             background: rgba(0, 0, 0, 0.9);
             backdrop-filter: blur(30px);
         }
