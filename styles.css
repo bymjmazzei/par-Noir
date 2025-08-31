@@ -467,6 +467,7 @@ body {
   position: relative;
   overflow: hidden;
   backdrop-filter: blur(10px);
+  text-transform: uppercase;
   letter-spacing: 1px;
   font-size: 0.875rem;
 }
@@ -528,6 +529,11 @@ body {
 
 .btn:hover .btn-icon {
   transform: translateX(4px);
+}
+
+/* Preserve specific text case in buttons */
+.btn-preserve-case {
+  text-transform: none !important;
 }
 
 /* Hero Visual */
