@@ -275,8 +275,11 @@ document.addEventListener('DOMContentLoaded', function() {
     initializeScrollAnimations();
     initializeMouseTrail();
     
-    // Initialize carousel
-    showSlide(0);
+    // Initialize carousel based on window size
+    checkWindowSize();
+    
+    // Listen for window resize
+    window.addEventListener('resize', checkWindowSize);
     
     console.log('Par Noir narrative site initialized');
 });
@@ -298,28 +301,83 @@ function toggleMobileMenu() {
     }
 }
 
-// Simple carousel functionality
+// Dynamic carousel functionality based on window width
 let currentSlide = 0;
+let isCarouselMode = false;
 const slides = document.querySelectorAll('.problem-item');
 const dots = document.querySelectorAll('.dot');
+const carouselBtns = document.querySelectorAll('.carousel-btn');
+const carouselDots = document.querySelector('.carousel-dots');
+const problemGrid = document.querySelector('.problem-grid');
+
+function checkWindowSize() {
+    const windowWidth = window.innerWidth;
+    const containerWidth = problemGrid ? problemGrid.offsetWidth : 0;
+    
+    // Switch to carousel mode if window is narrow or content would be cramped
+    const shouldUseCarousel = windowWidth < 800 || (containerWidth > 0 && containerWidth < 600);
+    
+    if (shouldUseCarousel && !isCarouselMode) {
+        enableCarouselMode();
+    } else if (!shouldUseCarousel && isCarouselMode) {
+        disableCarouselMode();
+    }
+}
+
+function enableCarouselMode() {
+    isCarouselMode = true;
+    
+    // Show carousel elements
+    carouselBtns.forEach(btn => btn.style.display = 'flex');
+    if (carouselDots) carouselDots.style.display = 'flex';
+    
+    // Add carousel classes
+    if (problemGrid) problemGrid.classList.add('carousel-mode');
+    slides.forEach(slide => slide.classList.add('carousel-mode'));
+    
+    // Show first slide
+    showSlide(0);
+}
+
+function disableCarouselMode() {
+    isCarouselMode = false;
+    
+    // Hide carousel elements
+    carouselBtns.forEach(btn => btn.style.display = 'none');
+    if (carouselDots) carouselDots.style.display = 'none';
+    
+    // Remove carousel classes
+    if (problemGrid) problemGrid.classList.remove('carousel-mode');
+    slides.forEach(slide => {
+        slide.classList.remove('carousel-mode');
+        slide.style.display = 'block';
+    });
+    
+    // Reset dots
+    dots.forEach(dot => dot.classList.remove('active'));
+}
 
 function showSlide(n) {
+    if (!isCarouselMode) return;
+    
     // Hide all slides
     for (let i = 0; i < slides.length; i++) {
         slides[i].style.display = 'none';
-        dots[i].classList.remove('active');
+        if (dots[i]) dots[i].classList.remove('active');
     }
     
     // Show current slide
     if (slides[n]) {
         slides[n].style.display = 'block';
-        dots[n].classList.add('active');
+        if (dots[n]) dots[n].classList.add('active');
     }
     
     currentSlide = n;
 }
 
 function moveCarousel(direction) {
+    if (!isCarouselMode) return;
+    
     let newSlide = currentSlide + direction;
     
     if (newSlide >= slides.length) {
@@ -332,5 +390,6 @@ function moveCarousel(direction) {
 }
 
 function goToSlide(n) {
+    if (!isCarouselMode) return;
     showSlide(n);
 }
