@@ -22,8 +22,22 @@
                 <a href="#gate" class="nav-link active">Developer Portal</a>
                 <a href="https://github.com/identity-protocol" target="_blank" class="nav-link">GitHub</a>
             </div>
+            <button class="nav-menu-toggle" onclick="toggleMobileMenu()">
+                <svg viewBox="0 0 24 24" width="24" height="24">
+                    <path fill="currentColor" d="M3 18h18v-2H3v2zm0-5h18v-2H3v2zm0-7v2h18V6H3z"/>
+                </svg>
+            </button>
         </div>
     </nav>
+
+    <!-- Mobile Menu -->
+    <div class="nav-menu-mobile" id="mobileMenu">
+        <button class="nav-menu-close" onclick="toggleMobileMenu()">×</button>
+        <a href="index.html">Home</a>
+        <a href="#gate">Developer Portal</a>
+        <a href="https://github.com/bymjmazzei/par-Noir" target="_blank">GitHub</a>
+        <a href="whitepaper.html">White Paper</a>
+    </div>
 
     <!-- Gate Section -->
     <section id="gate" class="hero">

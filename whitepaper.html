@@ -30,8 +30,26 @@
                 <a href="#future" class="nav-link">Future Work</a>
                 <a href="developer-portal.html?v=1" class="nav-link">Developer Portal</a>
             </div>
+            <button class="nav-menu-toggle" onclick="toggleMobileMenu()">
+                <svg viewBox="0 0 24 24" width="24" height="24">
+                    <path fill="currentColor" d="M3 18h18v-2H3v2zm0-5h18v-2H3v2zm0-7v2h18V6H3z"/>
+                </svg>
+            </button>
         </div>
     </nav>
+
+    <!-- Mobile Menu -->
+    <div class="nav-menu-mobile" id="mobileMenu">
+        <button class="nav-menu-close" onclick="toggleMobileMenu()">×</button>
+        <a href="#abstract" onclick="toggleMobileMenu()">Abstract</a>
+        <a href="#introduction" onclick="toggleMobileMenu()">Introduction</a>
+        <a href="#architecture" onclick="toggleMobileMenu()">Architecture</a>
+        <a href="#implementation" onclick="toggleMobileMenu()">Implementation</a>
+        <a href="#security" onclick="toggleMobileMenu()">Security</a>
+        <a href="#future" onclick="toggleMobileMenu()">Future Work</a>
+        <a href="developer-portal.html">Developer Portal</a>
+        <a href="index.html">Back to Home</a>
+    </div>
 
     <!-- Hero Section -->
     <section class="hero">
