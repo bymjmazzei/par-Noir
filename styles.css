@@ -2765,7 +2765,7 @@ footer::before {
   font-size: 1.1rem;
   color: var(--text-secondary);
   line-height: 1.8;
-  margin-bottom: 3rem;
+  margin-bottom: 6rem;
 }
 
 .solution-benefits {
