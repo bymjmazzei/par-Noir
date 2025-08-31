@@ -467,7 +467,6 @@ body {
   position: relative;
   overflow: hidden;
   backdrop-filter: blur(10px);
-  text-transform: uppercase;
   letter-spacing: 1px;
   font-size: 0.875rem;
 }
