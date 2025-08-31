@@ -220,174 +220,12 @@ function throttle(func, limit) {
     }
 }
 
-// Unified Tile Carousel System
-class TileCarouselManager {
-    constructor() {
-        this.carousels = new Map();
-        this.breakpoint = 960; // Switch to carousel mode below this width
-        this.init();
-    }
 
-    init() {
-        this.initializeCarousels();
-        this.checkWindowSize();
-        window.addEventListener('resize', this.throttle(() => this.checkWindowSize(), 100));
-    }
-
-    initializeCarousels() {
-        console.log('Initializing tile carousels...');
-        
-        // Find all tile carousels
-        const tileCarousels = document.querySelectorAll('.tile-carousel');
-        
-        tileCarousels.forEach(carousel => {
-            const carouselId = carousel.getAttribute('data-carousel-id');
-            const grid = carousel.querySelector('.tile-grid');
-            const items = carousel.querySelectorAll('.tile-item');
-            const dots = carousel.querySelectorAll('.dot');
-            
-            console.log(`Carousel ${carouselId}:`, {
-                grid: grid,
-                items: items.length,
-                dots: dots.length
-            });
-            
-            if (grid && items.length > 0) {
-                this.carousels.set(carouselId, {
-                    grid: grid,
-                    items: Array.from(items),
-                    dots: Array.from(dots),
-                    currentSlide: 0,
-                    isCarouselMode: false
-                });
-                console.log(`Carousel ${carouselId} initialized`);
-                
-                // Set up dot click handlers for this specific carousel
-                dots.forEach((dot, index) => {
-                    dot.addEventListener('click', () => {
-                        console.log(`Dot clicked for ${carouselId}, slide ${index}`);
-                        this.goToSlide(carouselId, index);
-                    });
-                });
-            }
-        });
-    }
-
-
-
-    checkWindowSize() {
-        const windowWidth = window.innerWidth;
-        const shouldUseCarousel = windowWidth < this.breakpoint;
-        
-        console.log('Window width:', windowWidth, 'Should use carousel:', shouldUseCarousel);
-
-        this.carousels.forEach((carousel, id) => {
-            console.log(`Checking carousel ${id}:`, carousel.isCarouselMode);
-            if (shouldUseCarousel && !carousel.isCarouselMode) {
-                console.log(`Enabling carousel mode for ${id}`);
-                this.enableCarouselMode(id);
-            } else if (!shouldUseCarousel && carousel.isCarouselMode) {
-                console.log(`Disabling carousel mode for ${id}`);
-                this.disableCarouselMode(id);
-            }
-        });
-    }
-
-    enableCarouselMode(carouselId) {
-        const carousel = this.carousels.get(carouselId);
-        if (!carousel) return;
-
-        carousel.isCarouselMode = true;
-        carousel.grid.classList.add('carousel-mode');
-        carousel.items.forEach(item => item.classList.add('carousel-mode'));
-        
-        this.showSlide(carouselId, 0);
-    }
-
-    disableCarouselMode(carouselId) {
-        const carousel = this.carousels.get(carouselId);
-        if (!carousel) return;
-
-        carousel.isCarouselMode = false;
-        carousel.grid.classList.remove('carousel-mode');
-        carousel.items.forEach(item => {
-            item.classList.remove('carousel-mode');
-            item.style.display = 'block';
-        });
-        
-        carousel.dots.forEach(dot => dot.classList.remove('active'));
-    }
-
-    showSlide(carouselId, slideIndex) {
-        const carousel = this.carousels.get(carouselId);
-        if (!carousel || !carousel.isCarouselMode) return;
-
-        // Hide all slides
-        carousel.items.forEach((item, index) => {
-            item.style.display = 'none';
-            if (carousel.dots[index]) carousel.dots[index].classList.remove('active');
-        });
-
-        // Show current slide
-        if (carousel.items[slideIndex]) {
-            carousel.items[slideIndex].style.display = 'block';
-            if (carousel.dots[slideIndex]) carousel.dots[slideIndex].classList.add('active');
-        }
-
-        carousel.currentSlide = slideIndex;
-    }
-
-    goToSlide(carouselId, slideIndex) {
-        const carousel = this.carousels.get(carouselId);
-        if (!carousel) {
-            console.error(`Carousel ${carouselId} not found`);
-            return;
-        }
-
-        console.log(`Going to slide ${slideIndex} for carousel ${carouselId}`);
-
-        // Always show slide regardless of carousel mode
-        // Hide all slides
-        carousel.items.forEach((item, index) => {
-            item.style.display = 'none';
-            if (carousel.dots[index]) carousel.dots[index].classList.remove('active');
-        });
-
-        // Show current slide
-        if (carousel.items[slideIndex]) {
-            carousel.items[slideIndex].style.display = 'block';
-            if (carousel.dots[slideIndex]) carousel.dots[slideIndex].classList.add('active');
-        }
-
-        carousel.currentSlide = slideIndex;
-    }
-
-
-
-    throttle(func, limit) {
-        let inThrottle;
-        return function() {
-            const args = arguments;
-            const context = this;
-            if (!inThrottle) {
-                func.apply(context, args);
-                inThrottle = true;
-                setTimeout(() => inThrottle = false, limit);
-            }
-        }
-    }
-}
-
-// Global tile carousel manager instance
-let tileCarouselManager;
 
 // Initialize all effects
 document.addEventListener('DOMContentLoaded', function() {
     // Add narrative styles first
     addNarrativeStyles();
-    
-    // Initialize tile carousel system
-    tileCarouselManager = new TileCarouselManager();
     
     // Initialize all interactive features
     initializeVideoInteraction();
@@ -399,21 +237,8 @@ document.addEventListener('DOMContentLoaded', function() {
     initializeNavigation();
     initializeScrollAnimations();
     
-    console.log('Par Noir narrative site initialized with unified tile carousel system');
+    console.log('Par Noir narrative site initialized');
 });
 
 // Add smooth scroll behavior for improved UX
 document.documentElement.style.scrollBehavior = 'smooth';
-
-// Global functions for dot clicks (for backward compatibility)
-function goToSlide(carouselId, n) {
-    if (tileCarouselManager) {
-        tileCarouselManager.goToSlide(carouselId, n);
-    }
-}
-
-function goToVisionSlide(n) {
-    if (tileCarouselManager) {
-        tileCarouselManager.goToSlide('vision', n);
-    }
-}

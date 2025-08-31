@@ -4460,7 +4460,7 @@ footer::before {
   }
 }
 
-/* Unified 3-Column Tile System */
+/* Simple 3-Column Tile System */
 .tile-grid {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
@@ -4483,7 +4483,6 @@ footer::before {
   position: relative;
   overflow: hidden;
   text-align: center;
-  min-width: 300px; /* Ensure minimum width for tiles */
   box-sizing: border-box;
 }
 
@@ -4529,92 +4528,31 @@ footer::before {
   font-size: clamp(0.9rem, 2.5vw, 1rem);
 }
 
-/* Carousel container */
+/* Simple container */
 .tile-carousel {
-  position: relative;
   width: 100%;
   max-width: 1200px;
   margin: 0 auto;
 }
 
-/* Carousel dots */
-.carousel-dots {
-  display: flex;
-  justify-content: center;
-  gap: 0.5rem;
-  margin-top: 2rem;
-  z-index: 10;
-  position: relative;
-}
-
-.dot {
-  width: 12px;
-  height: 12px;
-  border-radius: 50%;
-  background: rgba(255, 255, 255, 0.3);
-  cursor: pointer;
-  transition: all 0.3s ease;
-  border: none;
-  outline: none;
-}
-
-.dot.active {
-  background: var(--text-primary);
-  transform: scale(1.2);
-}
-
-.dot:hover {
-  background: rgba(255, 255, 255, 0.5);
-  transform: scale(1.1);
-}
-
-/* Responsive breakpoint - when 3 tiles don't fit */
+/* Responsive - 3 columns to 1 column at 960px */
 @media (max-width: 960px) {
   .tile-grid {
-    display: flex !important;
-    overflow: hidden;
+    grid-template-columns: 1fr;
     gap: 2rem;
-    margin: 3rem 0;
-    scroll-behavior: smooth;
     padding: 0 1rem;
   }
   
   .tile-item {
-    flex: 0 0 calc(100% - 4rem) !important;
-    min-height: 400px;
     padding: 2.5rem 2rem;
-    word-wrap: break-word;
-    overflow-wrap: break-word;
-    box-sizing: border-box;
-    display: none;
-  }
-  
-  .tile-item:first-child {
-    display: block !important;
   }
   
   .tile-item h3 {
     font-size: clamp(1.25rem, 4vw, 1.5rem);
-    white-space: normal;
   }
   
   .tile-item p {
-    word-wrap: break-word;
-    overflow-wrap: break-word;
-    hyphens: auto;
     font-size: clamp(0.9rem, 3vw, 1rem);
-  }
-  
-  /* Show dots when in carousel mode */
-  .carousel-dots {
-    display: flex;
-  }
-}
-
-/* Desktop - hide dots when showing all 3 tiles */
-@media (min-width: 961px) {
-  .carousel-dots {
-    display: none;
   }
 }
 
@@ -4626,12 +4564,10 @@ footer::before {
   
   .tile-item {
     padding: 1.5rem 1rem;
-    flex: 0 0 calc(100% - 3rem) !important;
   }
   
   .tile-item h3 {
     font-size: clamp(1rem, 4vw, 1.25rem);
-    white-space: normal;
   }
   
   .tile-item p {
