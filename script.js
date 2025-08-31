@@ -320,7 +320,6 @@ const visionDots = document.querySelectorAll('.vision-carousel .dot');
 const ctaDots = document.querySelectorAll('.cta-carousel .dot');
 const featuresDots = document.querySelectorAll('.features-carousel .dot');
 
-const carouselBtns = document.querySelectorAll('.carousel-btn');
 const carouselDots = document.querySelector('.carousel-dots');
 const problemGrid = document.querySelector('.problem-grid');
 const visionGrid = document.querySelector('.vision-timeline');
@@ -372,10 +371,6 @@ function checkWindowSize() {
 function enableCarouselMode() {
     isCarouselMode = true;
     
-    // Show carousel elements
-    carouselBtns.forEach(btn => btn.style.display = 'flex');
-    if (carouselDots) carouselDots.style.display = 'flex';
-    
     // Add carousel classes
     if (problemGrid) problemGrid.classList.add('carousel-mode');
     slides.forEach(slide => slide.classList.add('carousel-mode'));
@@ -386,10 +381,6 @@ function enableCarouselMode() {
 
 function disableCarouselMode() {
     isCarouselMode = false;
-    
-    // Hide carousel elements
-    carouselBtns.forEach(btn => btn.style.display = 'none');
-    if (carouselDots) carouselDots.style.display = 'none';
     
     // Remove carousel classes
     if (problemGrid) problemGrid.classList.remove('carousel-mode');

@@ -2377,44 +2377,7 @@ footer::before {
   display: none;
 }
 
-/* Carousel navigation buttons */
-.carousel-btn {
-  position: absolute;
-  top: 50%;
-  transform: translateY(-50%);
-  background: rgba(255, 255, 255, 0.1);
-  border: 1px solid var(--border-glow);
-  color: var(--text-primary);
-  width: 50px;
-  height: 50px;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  transition: all 0.3s ease;
-  z-index: 10;
-  backdrop-filter: blur(10px);
-}
 
-.carousel-btn:hover {
-  background: rgba(255, 255, 255, 0.2);
-  transform: translateY(-50%) scale(1.1);
-}
-
-.carousel-btn svg {
-  width: 24px;
-  height: 24px;
-  fill: currentColor;
-}
-
-.carousel-prev {
-  left: -25px;
-}
-
-.carousel-next {
-  right: -25px;
-}
 
 /* Carousel dots */
 .carousel-dots {
@@ -2439,17 +2402,17 @@ footer::before {
 }
 
 /* Carousel styling - controlled by JavaScript */
-.carousel-btn,
 .carousel-dots {
   display: flex;
 }
 
-.carousel-btn {
-  width: 40px;
-  height: 40px;
+/* Ensure carousel dots are visible by default */
+.carousel-dots {
+  display: flex !important;
+  justify-content: center;
+  gap: 0.5rem;
+  margin-top: 2rem;
 }
-
-.carousel-btn svg {
   width: 20px;
   height: 20px;
 }
