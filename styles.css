@@ -4383,40 +4383,7 @@ section:nth-child(odd) {
   }
 }
 
-@media (max-width: 960px) {
-  .gate-card {
-    padding: 1.5rem;
-    margin: 1.5rem 0;
-  }
-  
-  .gate-actions {
-    flex-direction: column;
-    align-items: center;
-  }
-  
-  .gate-actions .btn {
-    width: 100%;
-    max-width: 300px;
-  }
-  
-  .features-grid {
-    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-    gap: 1rem;
-  }
-  
-  .feature-item {
-    padding: 1rem;
-  }
-  
-  /* Gate card responsive */
-  .gate-card {
-    max-width: 100%;
-  }
-  
-  .features-preview {
-    margin-top: 2rem;
-  }
-}
+
 
 /* Protocol Flow Chart Styling */
 .protocol-flow {
