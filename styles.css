@@ -470,7 +470,7 @@ section {
   }
 }
 
-@media (max-width: 480px) {
+@media (max-width: 960px) {
   section {
     padding: 2rem 0;
   }
@@ -542,7 +542,7 @@ section:nth-child(odd) {
   }
 }
 
-@media (max-width: 480px) {
+@media (max-width: 960px) {
   .section-header {
     margin-bottom: 1rem;
   }
@@ -1556,7 +1556,7 @@ footer::before {
 }
 
 /* Responsive Design Updates */
-@media (max-width: 768px) {
+@media (max-width: 960px) {
   .hero {
     padding: 7rem 0 2rem;
   }
@@ -1959,7 +1959,7 @@ footer::before {
 }
 
 /* Mobile responsive for timeline */
-@media (max-width: 768px) {
+@media (max-width: 960px) {
   .heritage-timeline {
     gap: 1.5rem;
   }
@@ -2003,97 +2003,7 @@ footer::before {
   }
 }
 
-/* Extra small mobile devices */
-@media (max-width: 480px) {
-  .hero {
-    padding: 6rem 0 2rem;
-  }
-  
-  .hero-visual {
-    height: 200px;
-  }
-  
-  .hero-title {
-    font-size: 1.75rem;
-  }
-  
-  .hero-subtitle {
-    font-size: 1rem;
-  }
-  
-  .container {
-    padding: 0 0.75rem;
-  }
-  
-  .btn {
-    padding: 0.75rem 1.25rem;
-    font-size: 0.875rem;
-  }
-  
-  .section-title {
-    font-size: 1.75rem;
-  }
-  
-  .section-subtitle {
-    font-size: 1rem;
-  }
-  
-  .problem-item,
-  .feature-card,
-  .cta-box,
-  .timeline-item {
-    padding: 1.5rem 1rem;
-  }
-  
-  .founder-image {
-    width: 150px;
-    height: 150px;
-  }
-  
-  .heritage-timeline {
-    padding: 1.5rem;
-  }
-  
-  .year {
-    font-size: 1.75rem;
-  }
-  
-  .event {
-    font-size: 0.75rem;
-  }
-  
-  /* Footer responsive for small mobile */
-  .footer-content {
-    gap: 1.5rem;
-  }
-  
-  .footer-brand {
-    gap: 0.75rem;
-  }
-  
-  .footer-logo {
-    height: 28px;
-  }
-  
-  .footer-links {
-    gap: 1.5rem;
-  }
-  
-  .footer-column h4 {
-    font-size: 0.9rem;
-    margin-bottom: 0.5rem;
-  }
-  
-  .footer-column a {
-    font-size: 0.85rem;
-    padding: 0.2rem 0;
-  }
-  
-  .footer-bottom {
-    padding-top: 1.5rem;
-    font-size: 0.85rem;
-  }
-}
+
   
   /* Mobile menu button */
   .nav-menu-toggle {
@@ -3268,7 +3178,7 @@ footer::before {
   }
 }
 
-@media (max-width: 480px) {
+@media (max-width: 960px) {
   .code-content {
     padding: 0.75rem;
   }
@@ -3286,7 +3196,7 @@ footer::before {
   }
 }
 
-@media (max-width: 480px) {
+@media (max-width: 960px) {
   .features-section .features-title {
     font-size: 1.5rem;
     margin-bottom: 2rem;
@@ -3904,7 +3814,7 @@ footer::before {
   }
 }
 
-@media (max-width: 480px) {
+@media (max-width: 960px) {
   .code-example pre {
     padding: 0.75rem;
     font-size: 0.75rem;
@@ -4285,7 +4195,7 @@ footer::before {
 }
 
 /* Responsive adjustments for gate page */
-@media (max-width: 768px) {
+@media (max-width: 960px) {
   .gate-card {
     padding: 1.5rem;
     margin: 1.5rem 0;
@@ -4464,7 +4374,7 @@ footer::before {
 }
 
 /* Responsive design for flow chart */
-@media (max-width: 768px) {
+@media (max-width: 960px) {
   .protocol-flow {
     gap: 1.5rem;
     margin: 2rem 0;
@@ -4502,7 +4412,7 @@ footer::before {
   }
 }
 
-@media (max-width: 480px) {
+@media (max-width: 960px) {
   .protocol-flow::before {
     left: 1.5rem;
   }
@@ -4627,34 +4537,7 @@ footer::before {
   }
 }
 
-/* Small mobile responsive */
-@media (max-width: 480px) {
-  .tile-grid {
-    gap: 1.5rem;
-  }
-  
-  .tile-item {
-    padding: 1.5rem 1rem;
-  }
-  
-  .tile-item h3 {
-    font-size: clamp(1rem, 4vw, 1.25rem);
-  }
-  
-  .tile-item p {
-    font-size: clamp(0.85rem, 3vw, 0.95rem);
-  }
-  
-  .tile-icon {
-    width: clamp(50px, 12vw, 60px);
-    height: clamp(50px, 12vw, 60px);
-  }
-  
-  .tile-icon svg {
-    width: clamp(25px, 6vw, 30px);
-    height: clamp(25px, 6vw, 30px);
-  }
-}
+
 
 
 
