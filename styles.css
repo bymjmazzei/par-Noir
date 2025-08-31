@@ -227,7 +227,7 @@ body {
   left: 100%;
 }
 
-/* Hero */
+/* Marketing Hero - Two Column Layout */
 .hero {
   min-height: auto;
   display: flex;
@@ -263,6 +263,75 @@ body {
 .hero-content {
   z-index: 2;
   text-align: left;
+}
+
+/* Whitepaper Hero - Single Column Layout */
+.whitepaper-hero {
+  min-height: auto;
+  display: flex;
+  align-items: center;
+  padding: 8rem 0 3rem;
+  position: relative;
+}
+
+.whitepaper-hero::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: radial-gradient(circle at 30% 30%, rgba(255, 255, 255, 0.03) 0%, transparent 50%),
+              radial-gradient(circle at 70% 70%, rgba(255, 255, 255, 0.02) 0%, transparent 50%);
+  z-index: 1;
+}
+
+.whitepaper-hero-wrapper {
+  max-width: 800px;
+  margin: 0 auto;
+  padding: 0 2rem;
+  position: relative;
+  z-index: 2;
+  text-align: center;
+}
+
+.whitepaper-hero-content {
+  z-index: 2;
+  text-align: center;
+}
+
+/* Developer Portal Hero - Single Column Layout */
+.developer-hero {
+  min-height: auto;
+  display: flex;
+  align-items: center;
+  padding: 8rem 0 3rem;
+  position: relative;
+}
+
+.developer-hero::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: radial-gradient(circle at 30% 30%, rgba(255, 255, 255, 0.03) 0%, transparent 50%),
+              radial-gradient(circle at 70% 70%, rgba(255, 255, 255, 0.02) 0%, transparent 50%);
+  z-index: 1;
+}
+
+.developer-hero-wrapper {
+  max-width: 1000px;
+  margin: 0 auto;
+  padding: 0 2rem;
+  position: relative;
+  z-index: 2;
+}
+
+.developer-hero-content {
+  z-index: 2;
+  text-align: center;
 }
 
 .hero-badge {
