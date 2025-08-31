@@ -460,16 +460,6 @@ section {
 }
 
 /* Mobile section spacing */
-@media (max-width: 1024px) {
-  section {
-    padding: 3rem 0;
-  }
-  
-  .narrative-section {
-    padding: 2rem 0;
-  }
-}
-
 @media (max-width: 960px) {
   section {
     padding: 2rem 0;
@@ -522,26 +512,6 @@ section:nth-child(odd) {
 }
 
 /* Mobile section header spacing */
-@media (max-width: 1024px) {
-  .section-header {
-    margin-bottom: 1.5rem;
-  }
-  
-  .hero {
-    padding: 3rem 0 1.5rem;
-  }
-  
-  .problem-grid,
-  .solution-content,
-  .quickstart-grid,
-  .docs-grid,
-  .examples-grid,
-  .community-grid,
-  .toc-grid {
-    margin-top: 1.5rem !important;
-  }
-}
-
 @media (max-width: 960px) {
   .section-header {
     margin-bottom: 1rem;
@@ -2159,7 +2129,7 @@ footer::before {
 }
 
 /* Mobile navigation styles */
-@media (max-width: 1024px) {
+@media (max-width: 960px) {
   /* Hide desktop menu */
   .nav-menu {
     display: none;
