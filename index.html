@@ -96,36 +96,53 @@
                 <h2 class="section-title">The Problem</h2>
                 <p class="section-subtitle">Your digital identity is broken. Here's why.</p>
             </div>
-            <div class="problem-grid">
-                <div class="problem-item">
-                    <div class="problem-icon">
-                        <svg viewBox="0 0 24 24">
-                            <path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4z"/>
-                            <path d="M9 12l2 2 4-4"/>
-                        </svg>
+            <div class="problem-carousel">
+                <button class="carousel-btn carousel-prev" onclick="moveCarousel(-1)">
+                    <svg viewBox="0 0 24 24">
+                        <path d="M15.41 7.41L14 6l-6 6 6 6 1.41-1.41L10.83 12z"/>
+                    </svg>
+                </button>
+                <div class="problem-grid">
+                    <div class="problem-item">
+                        <div class="problem-icon">
+                            <svg viewBox="0 0 24 24">
+                                <path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4z"/>
+                                <path d="M9 12l2 2 4-4"/>
+                            </svg>
+                        </div>
+                        <h3>Data Breaches</h3>
+                        <p>Your personal information is scattered across hundreds of platforms, each a potential point of failure.</p>
                     </div>
-                    <h3>Data Breaches</h3>
-                    <p>Your personal information is scattered across hundreds of platforms, each a potential point of failure.</p>
+                    <div class="problem-item">
+                        <div class="problem-icon">
+                            <svg viewBox="0 0 24 24">
+                                <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/>
+                                <rect x="8" y="2" width="8" height="4" rx="1" ry="1"/>
+                            </svg>
+                        </div>
+                        <h3>Platform Owned</h3>
+                        <p>You don't own your digital identity—you rent it from Big Tech platforms that can revoke it at will.</p>
+                    </div>
+                    <div class="problem-item">
+                        <div class="problem-icon">
+                            <svg viewBox="0 0 24 24">
+                                <path d="M9.26 13a2 2 0 0 1 0-2l7.88-7.88a2 2 0 1 1 2.83 2.83L12.09 14a2 2 0 0 1-2.83 0z"/>
+                                <path d="M14.12 6.88L17.5 3.5a2 2 0 0 1 2.83 0l1.06 1.06a2 2 0 0 1 0 2.83L18 10.83M8.56 2.44L12 6l-7 7H2v-3l7-7.56z"/>
+                            </svg>
+                        </div>
+                        <h3>Fragmentation</h3>
+                        <p>Your identity is fragmented across countless logins, passwords, and accounts—none of which truly belong to you.</p>
+                    </div>
                 </div>
-                <div class="problem-item">
-                    <div class="problem-icon">
-                        <svg viewBox="0 0 24 24">
-                            <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/>
-                            <rect x="8" y="2" width="8" height="4" rx="1" ry="1"/>
-                        </svg>
-                    </div>
-                    <h3>Platform Owned</h3>
-                    <p>You don't own your digital identity—you rent it from Big Tech platforms that can revoke it at will.</p>
-                </div>
-                <div class="problem-item">
-                    <div class="problem-icon">
-                        <svg viewBox="0 0 24 24">
-                            <path d="M9.26 13a2 2 0 0 1 0-2l7.88-7.88a2 2 0 1 1 2.83 2.83L12.09 14a2 2 0 0 1-2.83 0z"/>
-                            <path d="M14.12 6.88L17.5 3.5a2 2 0 0 1 2.83 0l1.06 1.06a2 2 0 0 1 0 2.83L18 10.83M8.56 2.44L12 6l-7 7H2v-3l7-7.56z"/>
-                        </svg>
-                    </div>
-                    <h3>Fragmentation</h3>
-                    <p>Your identity is fragmented across countless logins, passwords, and accounts—none of which truly belong to you.</p>
+                <button class="carousel-btn carousel-next" onclick="moveCarousel(1)">
+                    <svg viewBox="0 0 24 24">
+                        <path d="M8.59 16.59L10 18l6-6-6-6-1.41 1.41L13.17 12z"/>
+                    </svg>
+                </button>
+                <div class="carousel-dots">
+                    <span class="dot active" onclick="currentSlide(1)"></span>
+                    <span class="dot" onclick="currentSlide(2)"></span>
+                    <span class="dot" onclick="currentSlide(3)"></span>
                 </div>
             </div>
         </div>

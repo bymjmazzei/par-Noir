@@ -2360,45 +2360,124 @@ footer::before {
   padding: 0 2rem;
 }
 
+/* Carousel container */
+.problem-carousel {
+  position: relative;
+  width: 100%;
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+/* Carousel navigation buttons */
+.carousel-btn {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid var(--border-glow);
+  color: var(--text-primary);
+  width: 50px;
+  height: 50px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  z-index: 10;
+  backdrop-filter: blur(10px);
+}
+
+.carousel-btn:hover {
+  background: rgba(255, 255, 255, 0.2);
+  transform: translateY(-50%) scale(1.1);
+}
+
+.carousel-btn svg {
+  width: 24px;
+  height: 24px;
+  fill: currentColor;
+}
+
+.carousel-prev {
+  left: -25px;
+}
+
+.carousel-next {
+  right: -25px;
+}
+
+/* Carousel dots */
+.carousel-dots {
+  display: flex;
+  justify-content: center;
+  gap: 0.5rem;
+  margin-top: 2rem;
+}
+
+.dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.3);
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.dot.active {
+  background: var(--text-primary);
+  transform: scale(1.2);
+}
+
 /* Mobile carousel styling */
 @media (max-width: 1024px) {
-  .problem-grid {
-    display: flex;
-    overflow-x: auto;
-    scroll-snap-type: x mandatory;
-    gap: 2rem;
+  .problem-carousel {
     padding: 0 1rem;
-    margin: 3rem 0;
-    scrollbar-width: none; /* Firefox */
-    -ms-overflow-style: none; /* IE and Edge */
   }
   
-  .problem-grid::-webkit-scrollbar {
-    display: none; /* Chrome, Safari, Opera */
+  .carousel-btn {
+    width: 40px;
+    height: 40px;
+  }
+  
+  .carousel-btn svg {
+    width: 20px;
+    height: 20px;
+  }
+  
+  .carousel-prev {
+    left: 0;
+  }
+  
+  .carousel-next {
+    right: 0;
+  }
+  
+  .problem-grid {
+    display: flex;
+    overflow: hidden;
+    gap: 2rem;
+    margin: 3rem 0;
+    scroll-behavior: smooth;
   }
   
   .problem-item {
-    flex: 0 0 300px;
-    scroll-snap-align: start;
+    flex: 0 0 100%;
     min-height: 400px;
     padding: 2.5rem 2rem;
+    opacity: 0.5;
+    transform: scale(0.9);
+    transition: all 0.3s ease;
+  }
+  
+  .problem-item.active {
+    opacity: 1;
+    transform: scale(1);
   }
   
   .problem-item h3 {
     font-size: 1.5rem;
     white-space: nowrap;
-  }
-  
-  /* Carousel scroll indicators */
-  .problem-grid::before,
-  .problem-grid::after {
-    content: '';
-    flex: 0 0 1rem;
-  }
-  
-  /* Smooth scrolling */
-  .problem-grid {
-    scroll-behavior: smooth;
   }
 }
 

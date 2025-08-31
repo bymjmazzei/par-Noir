@@ -294,3 +294,59 @@ function toggleMobileMenu() {
         body.style.overflow = 'hidden';
     }
 }
+
+// Carousel functionality
+let currentSlideIndex = 0;
+const slides = document.querySelectorAll('.problem-item');
+const dots = document.querySelectorAll('.dot');
+
+function showSlide(index) {
+    // Hide all slides
+    slides.forEach(slide => {
+        slide.classList.remove('active');
+    });
+    
+    // Remove active class from all dots
+    dots.forEach(dot => {
+        dot.classList.remove('active');
+    });
+    
+    // Show current slide
+    if (slides[index]) {
+        slides[index].classList.add('active');
+    }
+    
+    // Activate current dot
+    if (dots[index]) {
+        dots[index].classList.add('active');
+    }
+    
+    currentSlideIndex = index;
+}
+
+function moveCarousel(direction) {
+    const newIndex = currentSlideIndex + direction;
+    
+    if (newIndex >= 0 && newIndex < slides.length) {
+        showSlide(newIndex);
+    } else if (newIndex < 0) {
+        showSlide(slides.length - 1); // Loop to last slide
+    } else {
+        showSlide(0); // Loop to first slide
+    }
+}
+
+function currentSlide(index) {
+    showSlide(index - 1); // Convert to 0-based index
+}
+
+// Initialize carousel on page load
+document.addEventListener('DOMContentLoaded', function() {
+    // Show first slide by default
+    showSlide(0);
+    
+    // Auto-advance carousel every 5 seconds
+    setInterval(() => {
+        moveCarousel(1);
+    }, 5000);
+});
