@@ -13,22 +13,22 @@
     <!-- Background -->
     <div class="background"></div>
     
-    <!-- Navigation -->
-    <nav class="nav">
-        <div class="nav-container">
-            <div class="nav-brand">
+    <!-- Site Navigation - Independent Component -->
+    <nav class="site-navigation">
+        <div class="nav-wrapper">
+            <div class="nav-brand-section">
                 <img src="branding/Par-Noir-Logo-White.png" alt="Par Noir" class="nav-logo">
             </div>
-            <div class="nav-menu">
-                <a href="#problem" class="nav-link">The Problem</a>
-                <a href="#solution" class="nav-link">The Solution</a>
-                <a href="#features" class="nav-link">Features</a>
-                <a href="#vision" class="nav-link">Vision</a>
-                <a href="#legacy" class="nav-link">Legacy</a>
-                <a href="whitepaper.html" class="nav-link">White Paper</a>
-                <a href="developer-portal.html" class="nav-link nav-dev">Go to Docs</a>
+            <div class="nav-menu-section">
+                <a href="#problem" class="nav-menu-link">Problem</a>
+                <a href="#solution" class="nav-menu-link">Solution</a>
+                <a href="#features" class="nav-menu-link">Features</a>
+                <a href="#vision" class="nav-menu-link">Vision</a>
+                <a href="#legacy" class="nav-menu-link">Legacy</a>
+                <a href="whitepaper.html" class="nav-menu-link">White Paper</a>
+                <a href="developer-portal.html" class="nav-menu-link nav-developers">Developers</a>
             </div>
-            <button class="nav-menu-toggle" onclick="toggleMobileMenu()">
+            <button class="nav-mobile-toggle" onclick="toggleMobileMenu()">
                 <svg viewBox="0 0 24 24" width="24" height="24">
                     <path fill="currentColor" d="M3 18h18v-2H3v2zm0-5h18v-2H3v2zm0-7v2h18V6H3z"/>
                 </svg>
@@ -36,16 +36,16 @@
         </div>
     </nav>
 
-    <!-- Mobile Menu -->
-    <div class="nav-menu-mobile" id="mobileMenu">
-        <button class="nav-menu-close" onclick="toggleMobileMenu()">×</button>
-        <a href="#problem" onclick="toggleMobileMenu()">The Problem</a>
-        <a href="#solution" onclick="toggleMobileMenu()">The Solution</a>
+    <!-- Mobile Navigation Menu -->
+    <div class="nav-mobile-menu" id="mobileMenu">
+        <button class="nav-mobile-close" onclick="toggleMobileMenu()">×</button>
+        <a href="#problem" onclick="toggleMobileMenu()">Problem</a>
+        <a href="#solution" onclick="toggleMobileMenu()">Solution</a>
         <a href="#features" onclick="toggleMobileMenu()">Features</a>
         <a href="#vision" onclick="toggleMobileMenu()">Vision</a>
         <a href="#legacy" onclick="toggleMobileMenu()">Legacy</a>
         <a href="whitepaper.html" onclick="toggleMobileMenu()">White Paper</a>
-        <a href="developer-portal.html">Go to Docs</a>
+        <a href="developer-portal.html">Developers</a>
     </div>
 
     <!-- Hero: Above the Fold -->
@@ -71,7 +71,7 @@
                             <path d="M8 5v14l11-7z"/>
                         </svg>
                     </a>
-                    <a href="developer-portal.html" class="btn btn-secondary">Go to Docs</a>
+                    <a href="developer-portal.html" class="btn btn-secondary">Developers</a>
                 </div>
             </div>
             <div class="hero-visual">
