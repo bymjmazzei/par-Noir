@@ -313,7 +313,7 @@ let isFeaturesCarouselMode = false;
 
 const slides = document.querySelectorAll('.problem-item');
 const visionSlides = document.querySelectorAll('.timeline-item');
-const ctaSlides = document.querySelectorAll('.cta-box');
+const ctaSlides = document.querySelectorAll('.cta-carousel .cta-box');
 
 const dots = document.querySelectorAll('.problem-carousel .dot');
 const visionDots = document.querySelectorAll('.vision-carousel .dot');
@@ -323,7 +323,7 @@ const featuresDots = document.querySelectorAll('.features-carousel .dot');
 const carouselDots = document.querySelector('.carousel-dots');
 const problemGrid = document.querySelector('.problem-grid');
 const visionGrid = document.querySelector('.vision-timeline');
-const ctaGrid = document.querySelector('.cta-grid');
+const ctaGrid = document.querySelector('.cta-carousel .cta-grid');
 const featuresGrid = document.querySelector('.features-carousel .cta-grid');
 
 function checkWindowSize() {
@@ -610,4 +610,53 @@ function moveFeaturesCarousel(direction) {
 function goToFeaturesSlide(n) {
     if (!isFeaturesCarouselMode) return;
     showFeaturesSlide(n);
+}
+
+// CTA carousel functions
+function enableCTACarouselMode() {
+    isCTACarouselMode = true;
+    
+    // Add carousel classes
+    if (ctaGrid) ctaGrid.classList.add('carousel-mode');
+    ctaSlides.forEach(slide => slide.classList.add('carousel-mode'));
+    
+    // Show first slide
+    showCTASlide(0);
+}
+
+function disableCTACarouselMode() {
+    isCTACarouselMode = false;
+    
+    // Remove carousel classes
+    if (ctaGrid) ctaGrid.classList.remove('carousel-mode');
+    ctaSlides.forEach(slide => {
+        slide.classList.remove('carousel-mode');
+        slide.style.display = 'block';
+    });
+    
+    // Reset dots
+    ctaDots.forEach(dot => dot.classList.remove('active'));
+}
+
+function showCTASlide(n) {
+    if (!isCTACarouselMode) return;
+    
+    // Hide all slides
+    for (let i = 0; i < ctaSlides.length; i++) {
+        ctaSlides[i].style.display = 'none';
+        if (ctaDots[i]) ctaDots[i].classList.remove('active');
+    }
+    
+    // Show current slide
+    if (ctaSlides[n]) {
+        ctaSlides[n].style.display = 'block';
+        if (ctaDots[n]) ctaDots[n].classList.add('active');
+    }
+    
+    currentCTASlide = n;
+}
+
+function goToCTASlide(n) {
+    if (!isCTACarouselMode) return;
+    showCTASlide(n);
 }
