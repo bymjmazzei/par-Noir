@@ -31,6 +31,7 @@ let DistributedIdentityManager: any;
 import { LicenseVerification } from './utils/licenseVerification';
 
 import { InputValidator } from './utils/validation';
+import { SecureRandom } from './utils/secureRandom';
 
 import SimpleStorage, { SimpleIdentity } from './utils/simpleStorage';
 import IdentitySelector from './components/IdentitySelector';

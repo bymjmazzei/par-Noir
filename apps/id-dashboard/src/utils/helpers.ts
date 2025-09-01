@@ -1,5 +1,7 @@
 // Helper utility functions
 
+import { SecureRandom } from './secureRandom';
+
 /**
  * Format a date as a relative time string (e.g., "2 hours ago")
  */

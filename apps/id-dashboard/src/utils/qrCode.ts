@@ -1,4 +1,5 @@
 import QRCode from 'qrcode';
+import { SecureRandom } from './secureRandom';
 
 export interface QRCodeData {
   type: 'device-pairing' | 'custodian-invitation' | 'recovery-key';

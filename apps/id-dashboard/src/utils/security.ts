@@ -1,3 +1,5 @@
+import { SecureRandom } from './secureRandom';
+
 export interface SecurityEvent {
   type: 'threat_detected' | 'rate_limit_exceeded' | 'suspicious_activity' | 'authentication_failure';
   severity: 'low' | 'medium' | 'high' | 'critical';
