@@ -104,6 +104,7 @@
             <div class="nav-menu-section">
                 <a href="#problem" class="nav-menu-link">Problem</a>
                 <a href="#solution" class="nav-menu-link">Solution</a>
+                <a href="#how-it-works" class="nav-menu-link">How It Works</a>
                 <a href="#features" class="nav-menu-link">Features</a>
                 <a href="#vision" class="nav-menu-link">Vision</a>
                 <a href="#legacy" class="nav-menu-link">Legacy</a>
@@ -123,6 +124,7 @@
         <button class="nav-mobile-close" onclick="toggleMobileMenu()">×</button>
         <a href="#problem" onclick="toggleMobileMenu()">Problem</a>
         <a href="#solution" onclick="toggleMobileMenu()">Solution</a>
+        <a href="#how-it-works" onclick="toggleMobileMenu()">How It Works</a>
         <a href="#features" onclick="toggleMobileMenu()">Features</a>
         <a href="#vision" onclick="toggleMobileMenu()">Vision</a>
         <a href="#legacy" onclick="toggleMobileMenu()">Legacy</a>
@@ -250,6 +252,173 @@
                         </div>
                     </div>
                     <h3 class="solution-main-title">par Noir is Your Master Key</h3>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Section 2.5: How It Works -->
+    <section id="how-it-works" class="narrative-section how-it-works-section">
+        <div class="container">
+            <div class="section-header">
+                <h2 class="section-title">How It Works</h2>
+                <p class="section-subtitle">Your digital identity, your rules. Every time.</p>
+            </div>
+            <div class="workflow-container">
+                <div class="workflow-steps">
+                    <div class="workflow-step">
+                        <div class="step-number">1</div>
+                        <div class="step-content">
+                            <h3>Create Your pN</h3>
+                            <p>Generate your sovereign digital identity with a single cryptographic key. This is your master key to the digital world.</p>
+                        </div>
+                    </div>
+                    <div class="workflow-step">
+                        <div class="step-number">2</div>
+                        <div class="step-content">
+                            <h3>Attest & Verify Data Points</h3>
+                            <p>Securely store verified information about yourself—age, qualifications, memberships—using zero-knowledge proofs. You control what's stored and who can verify it.</p>
+                        </div>
+                    </div>
+                    <div class="workflow-step">
+                        <div class="step-number">3</div>
+                        <div class="step-content">
+                            <h3>Access Platforms</h3>
+                            <p>Use your pN to access any platform or service. No more creating accounts or remembering passwords—your pN is your universal access key.</p>
+                        </div>
+                    </div>
+                    <div class="workflow-step">
+                        <div class="step-number">4</div>
+                        <div class="step-content">
+                            <h3>Platform Requests Data</h3>
+                            <p>When a platform needs specific information (like age verification or qualifications), it requests access to your verified data points.</p>
+                        </div>
+                    </div>
+                    <div class="workflow-step">
+                        <div class="step-number">5</div>
+                        <div class="step-content">
+                            <h3>You Grant or Deny</h3>
+                            <p>You decide what to share, when to share it, and with whom. Each request requires your explicit permission—no automatic data sharing.</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="workflow-visual">
+                    <div class="permission-flow">
+                        <div class="user-node">
+                            <div class="node-icon">
+                                <svg viewBox="0 0 24 24">
+                                    <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
+                                    <circle cx="12" cy="7" r="4"/>
+                                </svg>
+                            </div>
+                            <span>You & Your pN</span>
+                        </div>
+                        <div class="flow-arrows">
+                            <div class="arrow">→</div>
+                            <div class="arrow">→</div>
+                            <div class="arrow">→</div>
+                        </div>
+                        <div class="platform-node">
+                            <div class="node-icon">
+                                <svg viewBox="0 0 24 24">
+                                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                                    <polyline points="14,2 14,8 20,8"/>
+                                    <line x1="16" y1="13" x2="8" y2="13"/>
+                                    <line x1="16" y1="17" x2="8" y2="17"/>
+                                    <polyline points="10,9 9,9 8,9"/>
+                                </svg>
+                            </div>
+                            <span>Platform</span>
+                        </div>
+                        <div class="permission-dialog">
+                            <div class="dialog-content">
+                                <h4>Permission Request</h4>
+                                <p>"Can we verify you're over 18?"</p>
+                                <div class="permission-actions">
+                                    <button class="btn-allow">✓ Allow</button>
+                                    <button class="btn-deny">✗ Deny</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="workflow-example">
+                <h3>Real-World Example</h3>
+                <div class="example-scenario">
+                    <p><strong>Scenario:</strong> You want to access an age-restricted platform</p>
+                    <ol>
+                        <li>You create your pN and have your age verified by a trusted authority</li>
+                        <li>You use your pN to access the platform</li>
+                        <li>The platform requests: "Prove you're over 18"</li>
+                        <li>You choose to share only the fact that you're over 18—not your actual age</li>
+                        <li>Access granted, privacy maintained</li>
+                    </ol>
+                </div>
+            </div>
+            
+            <div class="technical-architecture">
+                <h3>How the Technology Works</h3>
+                <div class="architecture-grid">
+                    <div class="architecture-component">
+                        <div class="component-icon">
+                            <svg viewBox="0 0 24 24">
+                                <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
+                            </svg>
+                        </div>
+                        <h4>IPFS Metadata Storage</h4>
+                        <p>Your verified data points are stored as zero-knowledge proofs in your IPFS metadata file. This creates a decentralized, tamper-proof record that's accessible only through your permissions.</p>
+                    </div>
+                    <div class="architecture-component">
+                        <div class="component-icon">
+                            <svg viewBox="0 0 24 24">
+                                <path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                            </svg>
+                        </div>
+                        <h4>Zero-Knowledge Proofs</h4>
+                        <p>Instead of storing raw data, par Noir uses cryptographic proofs that verify facts about you without revealing the underlying information. Your age, qualifications, and other data remain private.</p>
+                    </div>
+                    <div class="architecture-component">
+                        <div class="component-icon">
+                            <svg viewBox="0 0 24 24">
+                                <path d="M18 8h-1V6c0-2.76-2.24-5-5-5S7 3.24 7 6v2H6c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V10c0-1.1-.9-2-2-2zM12 17c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2zM15.1 8H8.9V6c0-1.71 1.39-3.1 3.1-3.1s3.1 1.39 3.1 3.1v2z"/>
+                            </svg>
+                        </div>
+                        <h4>Permission-Based Access</h4>
+                        <p>Your IPFS metadata file is secured by your cryptographic key. Only you can grant access to specific data points, and each request requires your explicit approval.</p>
+                    </div>
+                    <div class="architecture-component">
+                        <div class="component-icon">
+                            <svg viewBox="0 0 24 24">
+                                <path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4z"/>
+                                <path d="M9 12l2 2 4-4"/>
+                            </svg>
+                        </div>
+                        <h4>Decentralized Security</h4>
+                        <p>No central server stores your data. Your identity is distributed across IPFS nodes, making it resilient to attacks and censorship while maintaining complete privacy.</p>
+                    </div>
+                </div>
+                
+                <div class="security-model">
+                    <h4>Security Architecture</h4>
+                    <div class="security-layers">
+                        <div class="security-layer">
+                            <span class="layer-name">Layer 1: Cryptographic Keys</span>
+                            <span class="layer-desc">Your master key controls access to your entire identity</span>
+                        </div>
+                        <div class="security-layer">
+                            <span class="layer-name">Layer 2: Zero-Knowledge Proofs</span>
+                            <span class="layer-desc">Data is cryptographically protected, never stored in plain text</span>
+                        </div>
+                        <div class="security-layer">
+                            <span class="layer-name">Layer 3: IPFS Distribution</span>
+                            <span class="layer-desc">Decentralized storage prevents single points of failure</span>
+                        </div>
+                        <div class="security-layer">
+                            <span class="layer-name">Layer 4: Permission System</span>
+                            <span class="layer-desc">Granular control over what data is shared and with whom</span>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
