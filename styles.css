@@ -2442,56 +2442,7 @@ section:nth-child(odd) {
   background: rgba(0, 0, 0, 0.3);
 }
 
-.workflow-steps {
-  display: flex;
-  flex-direction: column;
-  gap: 2rem;
-  max-width: 800px;
-  margin: 3rem auto 0;
-}
 
-.workflow-step {
-  display: flex;
-  align-items: flex-start;
-  gap: 1.5rem;
-  padding: 1.5rem;
-  background: rgba(255, 255, 255, 0.02);
-  border: 1px solid var(--border-glow);
-  border-radius: 16px;
-  transition: all 0.3s ease;
-}
-
-.workflow-step:hover {
-  transform: translateY(-2px);
-  box-shadow: var(--shadow-glow);
-  border-color: var(--accent);
-}
-
-.step-number {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 48px;
-  height: 48px;
-  background: var(--gradient-primary);
-  color: var(--bg-primary);
-  border-radius: 50%;
-  font-weight: 700;
-  font-size: 1.2rem;
-  flex-shrink: 0;
-}
-
-.step-content h3 {
-  font-size: 1.3rem;
-  font-weight: 600;
-  margin-bottom: 0.5rem;
-  color: var(--text-primary);
-}
-
-.step-content p {
-  color: var(--text-secondary);
-  line-height: 1.6;
-}
 
 
 
@@ -2531,20 +2482,7 @@ section:nth-child(odd) {
 
 /* Responsive design for How It Works section */
 @media (max-width: 768px) {
-  .workflow-steps {
-    max-width: 100%;
-    margin: 2rem auto 0;
-  }
-  
-  .workflow-step {
-    padding: 1rem;
-  }
-  
-  .step-number {
-    width: 40px;
-    height: 40px;
-    font-size: 1rem;
-  }
+  /* Mobile styles for remaining elements */
 }
 
 /* Technical Architecture Section */
