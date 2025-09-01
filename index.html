@@ -266,65 +266,52 @@
             </div>
 
             
-            <div class="technical-architecture">
-                <div class="architecture-grid">
-                    <div class="architecture-component">
-                        <div class="component-icon">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
-                            </svg>
-                        </div>
-                        <h4>IPFS Metadata Storage</h4>
-                        <p>Your verified data points are stored as zero-knowledge proofs in your IPFS metadata file. This creates a decentralized, tamper-proof record that's accessible only through your permissions.</p>
-                    </div>
-                    <div class="architecture-component">
-                        <div class="component-icon">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                <path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
-                            </svg>
-                        </div>
-                        <h4>Zero-Knowledge Proofs</h4>
-                        <p>Instead of storing raw data, par Noir uses cryptographic proofs that verify facts about you without revealing the underlying information. Your age, qualifications, and other data remain private.</p>
-                    </div>
-                    <div class="architecture-component">
-                        <div class="component-icon">
+            <div class="security-architecture">
+                <h3>Security Architecture</h3>
+                <div class="security-layers">
+                    <div class="security-layer">
+                        <div class="layer-icon">
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                                 <path d="M18 8h-1V6c0-2.76-2.24-5-5-5S7 3.24 7 6v2H6c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V10c0-1.1-.9-2-2-2zM12 17c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2zM15.1 8H8.9V6c0-1.71 1.39-3.1 3.1-3.1s3.1 1.39 3.1 3.1v2z"/>
                             </svg>
                         </div>
-                        <h4>Permission-Based Access</h4>
-                        <p>Your IPFS metadata file is secured by your cryptographic key. Only you can grant access to specific data points, and each request requires your explicit approval.</p>
+                        <div class="layer-content">
+                            <span class="layer-name">Layer 1: Triple-Component Authentication</span>
+                            <span class="layer-desc">Your pN requires three components to decrypt: the pN file, your pN name, and your passcode. Without all three, your data remains completely inaccessible.</span>
+                        </div>
                     </div>
-                    <div class="architecture-component">
-                        <div class="component-icon">
+                    <div class="security-layer">
+                        <div class="layer-icon">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
+                            </svg>
+                        </div>
+                        <div class="layer-content">
+                            <span class="layer-name">Layer 2: Encrypted IPFS Storage</span>
+                            <span class="layer-desc">Your credentials derive an encryption key that secures your metadata on IPFS. The decentralized storage ensures no central point of failure while maintaining complete privacy.</span>
+                        </div>
+                    </div>
+                    <div class="security-layer">
+                        <div class="layer-icon">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                            </svg>
+                        </div>
+                        <div class="layer-content">
+                            <span class="layer-name">Layer 3: Zero-Knowledge Proofs</span>
+                            <span class="layer-desc">Cryptographic proofs generated from your encrypted metadata allow verification of facts without revealing underlying data. Prove you're over 18 without sharing your age or birthday.</span>
+                        </div>
+                    </div>
+                    <div class="security-layer">
+                        <div class="layer-icon">
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                                 <path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4z"/>
                                 <path d="M9 12l2 2 4-4"/>
                             </svg>
                         </div>
-                        <h4>Decentralized Security</h4>
-                        <p>No central server stores your data. Your identity is distributed across IPFS nodes, making it resilient to attacks and censorship while maintaining complete privacy.</p>
-                    </div>
-                </div>
-                
-                <div class="security-model">
-                    <h4>Security Architecture</h4>
-                    <div class="security-layers">
-                        <div class="security-layer">
-                            <span class="layer-name">Layer 1: pN File & Binary Password System</span>
-                            <span class="layer-desc">Your pN name and passcode create a binary authentication system that controls access to your identity file</span>
-                        </div>
-                        <div class="security-layer">
-                            <span class="layer-name">Layer 2: pN-Encrypted IPFS Metadata</span>
-                            <span class="layer-desc">Your pN is used to encrypt and store metadata on IPFS, ensuring only you can decrypt your data</span>
-                        </div>
-                        <div class="security-layer">
-                            <span class="layer-name">Layer 3: Zero-Knowledge Proofs from Encrypted Data</span>
-                            <span class="layer-desc">ZKPs are generated from your encrypted metadata, allowing verification without revealing underlying data</span>
-                        </div>
-                        <div class="security-layer">
-                            <span class="layer-name">Layer 4: Granular Permission System</span>
-                            <span class="layer-desc">Each data access request requires explicit approval, with fine-grained control over what's shared</span>
+                        <div class="layer-content">
+                            <span class="layer-name">Layer 4: Permission-Based Access Control</span>
+                            <span class="layer-desc">Every data access request requires your explicit approval. You control what's shared, when it's shared, and with whom—no automatic data sharing ever occurs.</span>
                         </div>
                     </div>
                 </div>
