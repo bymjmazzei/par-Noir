@@ -6864,7 +6864,17 @@ This invitation expires in 24 hours.`;
                     </button>
                   <button
                     onClick={handleExportAuth}
-                    className="flex-1 px-4 py-2 bg-primary text-white rounded-md hover:bg-primary-dark"
+                    className="flex-1 px-4 py-2 rounded-md font-medium transition-colors"
+                    style={{
+                      backgroundColor: '#000000',
+                      color: '#ffffff'
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.backgroundColor = '#333333';
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.backgroundColor = '#000000';
+                    }}
                   >
                     Verify
                   </button>
@@ -6985,7 +6995,21 @@ This invitation expires in 24 hours.`;
                     <button
                       onClick={handleTransferSetup}
                       disabled={!transferPasscode || transferPasscode.length < 4}
-                      className="flex-1 px-4 py-2 bg-primary text-white rounded-md hover:bg-primary-dark disabled:opacity-50 disabled:cursor-not-allowed"
+                      className="flex-1 px-4 py-2 rounded-md font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                      style={{
+                        backgroundColor: '#000000',
+                        color: '#ffffff'
+                      }}
+                      onMouseEnter={(e) => {
+                        if (!e.currentTarget.disabled) {
+                          e.currentTarget.style.backgroundColor = '#333333';
+                        }
+                      }}
+                      onMouseLeave={(e) => {
+                        if (!e.currentTarget.disabled) {
+                          e.currentTarget.style.backgroundColor = '#000000';
+                        }
+                      }}
                     >
                       Create Transfer
                     </button>
@@ -7030,7 +7054,17 @@ This invitation expires in 24 hours.`;
                         setSuccess('URL copied to clipboard!');
                         setTimeout(() => setSuccess(null), 3000);
                       }}
-                      className="flex-1 px-4 py-2 bg-primary text-white rounded-md hover:bg-primary-dark"
+                      className="flex-1 px-4 py-2 rounded-md font-medium transition-colors"
+                      style={{
+                        backgroundColor: '#000000',
+                        color: '#ffffff'
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.backgroundColor = '#333333';
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.backgroundColor = '#000000';
+                      }}
                     >
                       Copy URL
                     </button>
