@@ -197,8 +197,8 @@ export class ProductionServicesManager {
   private static async initializeIPFSService(): Promise<ServiceResult> {
     try {
       const config = {
-        apiKey: process.env.REACT_APP_PINATA_API_KEY || '',
-        secretKey: process.env.REACT_APP_PINATA_SECRET_KEY || '',
+        apiKey: process.env.REACT_APP_IPFS_PROJECT_ID || '',
+        secretKey: process.env.REACT_APP_IPFS_PROJECT_SECRET || '',
         gatewayUrl: process.env.REACT_APP_IPFS_GATEWAY_URL || 'https://gateway.pinata.cloud'
       };
 

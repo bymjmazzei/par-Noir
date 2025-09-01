@@ -131,12 +131,12 @@ export default defineConfig({
     __APP_VERSION__: JSON.stringify(process.env.npm_package_version),
     __BUILD_TIME__: JSON.stringify(new Date().toISOString()),
     'process.env.REACT_APP_IPFS_PROJECT_ID': JSON.stringify(process.env.REACT_APP_IPFS_PROJECT_ID),
+    'process.env.REACT_APP_IPFS_PROJECT_SECRET': JSON.stringify(process.env.REACT_APP_IPFS_PROJECT_SECRET),
+    'process.env.REACT_APP_IPFS_GATEWAY_URL': JSON.stringify(process.env.REACT_APP_IPFS_GATEWAY_URL),
     'process.env.REACT_APP_SENDGRID_API_KEY': JSON.stringify(process.env.REACT_APP_SENDGRID_API_KEY),
     'process.env.REACT_APP_TWILIO_ACCOUNT_SID': JSON.stringify(process.env.REACT_APP_TWILIO_ACCOUNT_SID),
     'process.env.REACT_APP_TWILIO_AUTH_TOKEN': JSON.stringify(process.env.REACT_APP_TWILIO_AUTH_TOKEN),
     'process.env.REACT_APP_TWILIO_FROM_NUMBER': JSON.stringify(process.env.REACT_APP_TWILIO_FROM_NUMBER),
-    'process.env.REACT_APP_PINATA_API_KEY': JSON.stringify(process.env.REACT_APP_PINATA_API_KEY),
-    'process.env.REACT_APP_IPFS_GATEWAY_URL': JSON.stringify(process.env.REACT_APP_IPFS_GATEWAY_URL),
     'process.env.REACT_APP_COINBASE_COMMERCE_API_KEY': JSON.stringify(process.env.REACT_APP_COINBASE_COMMERCE_API_KEY)
   },
   esbuild: {
