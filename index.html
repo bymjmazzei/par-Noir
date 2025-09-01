@@ -405,20 +405,37 @@
                     <h4>Security Architecture</h4>
                     <div class="security-layers">
                         <div class="security-layer">
-                            <span class="layer-name">Layer 1: Cryptographic Keys</span>
-                            <span class="layer-desc">Your master key controls access to your entire identity</span>
+                            <span class="layer-name">Layer 1: pN File & Binary Password System</span>
+                            <span class="layer-desc">Your pN name and passcode create a binary authentication system that controls access to your identity file</span>
                         </div>
                         <div class="security-layer">
-                            <span class="layer-name">Layer 2: Zero-Knowledge Proofs</span>
-                            <span class="layer-desc">Data is cryptographically protected, never stored in plain text</span>
+                            <span class="layer-name">Layer 2: pN-Encrypted IPFS Metadata</span>
+                            <span class="layer-desc">Your pN is used to encrypt and store metadata on IPFS, ensuring only you can decrypt your data</span>
                         </div>
                         <div class="security-layer">
-                            <span class="layer-name">Layer 3: IPFS Distribution</span>
-                            <span class="layer-desc">Decentralized storage prevents single points of failure</span>
+                            <span class="layer-name">Layer 3: Zero-Knowledge Proofs from Encrypted Data</span>
+                            <span class="layer-desc">ZKPs are generated from your encrypted metadata, allowing verification without revealing underlying data</span>
                         </div>
                         <div class="security-layer">
-                            <span class="layer-name">Layer 4: Permission System</span>
-                            <span class="layer-desc">Granular control over what data is shared and with whom</span>
+                            <span class="layer-name">Layer 4: Granular Permission System</span>
+                            <span class="layer-desc">Each data access request requires explicit approval, with fine-grained control over what's shared</span>
+                        </div>
+                    </div>
+                    <div class="encryption-details">
+                        <h5>Encryption & Storage Details</h5>
+                        <div class="encryption-info">
+                            <div class="encryption-item">
+                                <strong>Encryption Method:</strong> AES-256-GCM with your pN as the key
+                            </div>
+                            <div class="encryption-item">
+                                <strong>Storage Location:</strong> IPFS (InterPlanetary File System) distributed network
+                            </div>
+                            <div class="encryption-item">
+                                <strong>Key Derivation:</strong> Your pN name and passcode generate the encryption key
+                            </div>
+                            <div class="encryption-item">
+                                <strong>Access Control:</strong> Only you can decrypt your metadata using your pN credentials
+                            </div>
                         </div>
                     </div>
                 </div>
