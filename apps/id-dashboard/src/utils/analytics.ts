@@ -347,5 +347,7 @@ export class PrivacyAnalytics {
   }
 }
 
-// Export singleton instance
-export const analytics = PrivacyAnalytics.getInstance(); 
+// Export singleton instance (lazy initialization)
+export const analytics = {
+  getInstance: () => PrivacyAnalytics.getInstance()
+}; 

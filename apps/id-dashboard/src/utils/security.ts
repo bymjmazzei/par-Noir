@@ -410,5 +410,7 @@ export class AdvancedSecurity {
   }
 }
 
-// Export singleton instance
-export const security = AdvancedSecurity.getInstance(); 
+// Export singleton instance (lazy initialization)
+export const security = {
+  getInstance: () => AdvancedSecurity.getInstance()
+}; 

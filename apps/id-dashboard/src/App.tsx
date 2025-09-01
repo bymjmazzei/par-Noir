@@ -848,7 +848,7 @@ function App() {
     const initializeSystems = async () => {
       try {
         // Initialize analytics
-        await analytics.initialize();
+        await analytics.getInstance().initialize();
         
               // Initialize realtime manager (disabled in dev mode)
       // await realtimeManager.connect();
@@ -859,7 +859,7 @@ function App() {
 
         
         // Track page view
-        analytics.trackPageView('dashboard');
+        analytics.getInstance().trackPageView('dashboard');
 
         // Check for migration needs (PWA only)
         if (!migrationChecked) {
@@ -924,7 +924,7 @@ function App() {
       const pnNameValidation = InputValidator.validatePNName(createForm.pnName);
       if (!pnNameValidation.isValid) {
         setError(`pN Name validation failed: ${pnNameValidation.errors.join(', ')}`);
-        analytics.trackError(new Error(`pN Name validation failed: ${pnNameValidation.errors.join(', ')}`), 'create-form', 'high');
+        analytics.getInstance().trackError(new Error(`pN Name validation failed: ${pnNameValidation.errors.join(', ')}`), 'create-form', 'high');
         return;
       }
 
@@ -933,7 +933,7 @@ function App() {
       const passcodeValidation = InputValidator.validatePasscode(createForm.passcode);
       if (!passcodeValidation.isValid) {
         setError(`Passcode validation failed: ${passcodeValidation.errors.join(', ')}`);
-        analytics.trackError(new Error(`Passcode validation failed: ${passcodeValidation.errors.join(', ')}`), 'create-form', 'high');
+        analytics.getInstance().trackError(new Error(`Passcode validation failed: ${passcodeValidation.errors.join(', ')}`), 'create-form', 'high');
         return;
       }
 
@@ -961,7 +961,7 @@ function App() {
         keyGenerator: (userId?: string) => `create_identity_${userId || 'anonymous'}`
       };
 
-      if (!security.checkRateLimit(rateLimitConfig)) {
+      if (!security.getInstance().checkRateLimit(rateLimitConfig)) {
         setError('Too many requests. Please wait a moment and try again.');
         return;
       }
@@ -1111,16 +1111,16 @@ function App() {
       setTimeout(() => setSuccess(null), 5000);
       
       // Track successful identity creation
-      analytics.trackEvent('identity', 'created', 'success');
-      analytics.trackFeatureUsage('identity_creation', 'completed');
+      analytics.getInstance().trackEvent('identity', 'created', 'success');
+      analytics.getInstance().trackFeatureUsage('identity_creation', 'completed');
     } catch (error: any) {
       logError('Create DID error:', error);
       setError(error.message || 'Failed to create DID');
       setTimeout(() => setError(null), 5000);
       
       // Track error
-      analytics.trackError(error, 'create-form', 'medium');
-      security.monitorAuthentication(false, createForm.pnName, 'identity_creation');
+      analytics.getInstance().trackError(error, 'create-form', 'medium');
+      security.getInstance().monitorAuthentication(false, createForm.pnName, 'identity_creation');
     } finally {
       setLoading(false);
     }

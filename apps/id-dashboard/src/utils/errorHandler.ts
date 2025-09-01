@@ -585,5 +585,7 @@ export class ErrorHandler {
   }
 }
 
-// Export singleton instance
-export const errorHandler = ErrorHandler.getInstance();
+// Export singleton instance (lazy initialization)
+export const errorHandler = {
+  getInstance: () => ErrorHandler.getInstance()
+};
