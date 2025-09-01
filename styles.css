@@ -2506,123 +2506,119 @@ section:nth-child(odd) {
   min-height: 400px;
 }
 
-.permission-flow {
+.workflow-diagram {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 2rem;
-  position: relative;
+  gap: 1.5rem;
+  width: 100%;
+  max-width: 400px;
 }
 
-.user-node,
-.platform-node {
+.diagram-step {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1rem;
+  text-align: center;
+}
+
+.step-visual {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 80px;
+}
+
+.pN-creation {
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 0.5rem;
   padding: 1.5rem;
   background: rgba(255, 255, 255, 0.05);
-  border: 2px solid var(--border-glow);
+  border: 2px solid var(--accent);
   border-radius: 16px;
-  min-width: 200px;
-}
-
-.user-node {
-  border-color: var(--accent);
   box-shadow: var(--shadow-glow);
 }
 
-.node-icon {
+.key-visual {
   width: 48px;
   height: 48px;
   color: var(--accent);
 }
 
-.node-icon svg {
+.key-visual svg {
   width: 100%;
   height: 100%;
 }
 
-.user-node span,
-.platform-node span {
+.pN-creation span {
   font-weight: 600;
   color: var(--text-primary);
+  font-size: 0.9rem;
 }
 
-.flow-arrows {
+.data-points {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 1rem;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--border-glow);
+  border-radius: 12px;
+}
+
+.data-point {
+  padding: 0.5rem 1rem;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--border-glow);
+  border-radius: 8px;
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+  font-weight: 500;
+}
+
+.permission-request {
   display: flex;
   flex-direction: column;
   gap: 1rem;
-  align-items: center;
+  width: 100%;
+  max-width: 300px;
 }
 
-.arrow {
+.request-bubble,
+.response-bubble {
+  padding: 1rem;
+  border-radius: 12px;
+  font-size: 0.9rem;
+  font-weight: 500;
+}
+
+.request-bubble {
+  background: rgba(239, 68, 68, 0.1);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  color: #ef4444;
+  align-self: flex-start;
+}
+
+.response-bubble {
+  background: rgba(34, 197, 94, 0.1);
+  border: 1px solid rgba(34, 197, 94, 0.3);
+  color: #22c55e;
+  align-self: flex-end;
+}
+
+.diagram-arrow {
   font-size: 2rem;
   color: var(--accent);
   font-weight: bold;
 }
 
-.permission-dialog {
-  position: absolute;
-  right: -20px;
-  top: 50%;
-  transform: translateY(-50%);
-  background: rgba(0, 0, 0, 0.9);
-  border: 2px solid var(--accent);
-  border-radius: 12px;
-  padding: 1.5rem;
-  backdrop-filter: blur(10px);
-  box-shadow: var(--shadow-strong);
-  min-width: 250px;
-}
-
-.dialog-content h4 {
-  font-size: 1.1rem;
-  font-weight: 600;
-  margin-bottom: 0.5rem;
-  color: var(--text-primary);
-}
-
-.dialog-content p {
+.diagram-step p {
   color: var(--text-secondary);
-  margin-bottom: 1rem;
-  font-style: italic;
-}
-
-.permission-actions {
-  display: flex;
-  gap: 0.5rem;
-}
-
-.btn-allow,
-.btn-deny {
-  padding: 0.5rem 1rem;
-  border: none;
-  border-radius: 8px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  flex: 1;
-}
-
-.btn-allow {
-  background: rgba(34, 197, 94, 0.2);
-  color: #22c55e;
-  border: 1px solid rgba(34, 197, 94, 0.3);
-}
-
-.btn-allow:hover {
-  background: rgba(34, 197, 94, 0.3);
-}
-
-.btn-deny {
-  background: rgba(239, 68, 68, 0.2);
-  color: #ef4444;
-  border: 1px solid rgba(239, 68, 68, 0.3);
-}
-
-.btn-deny:hover {
-  background: rgba(239, 68, 68, 0.3);
+  font-size: 0.9rem;
+  font-weight: 500;
 }
 
 .workflow-example {
@@ -2670,18 +2666,16 @@ section:nth-child(odd) {
     min-height: 300px;
   }
   
-  .permission-dialog {
-    position: relative;
-    right: auto;
-    top: auto;
-    transform: none;
-    margin-top: 1rem;
+  .workflow-diagram {
+    max-width: 300px;
   }
   
-  .user-node,
-  .platform-node {
-    min-width: 150px;
+  .pN-creation {
     padding: 1rem;
+  }
+  
+  .permission-request {
+    max-width: 250px;
   }
   
   .workflow-step {
