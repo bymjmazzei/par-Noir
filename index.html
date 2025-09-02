@@ -147,7 +147,7 @@
                             <path d="M12 5v14m-7-7h14"/>
                         </svg>
                     </a>
-                    <a href="#video" class="btn btn-secondary" onclick="playVideo(); return false;">
+                    <a href="#video" class="btn btn-secondary" onclick="loadYouTubeVideo(); return false;">
                         <span>WATCH THE STORY</span>
                         <svg class="btn-icon" viewBox="0 0 24 24">
                             <path d="M8 5v14l11-7z"/>
@@ -158,21 +158,21 @@
             </div>
             <div class="hero-visual">
                 <div class="video-container" id="video">
-                    <video 
-                        id="promo-video" 
-                        class="hero-video" 
-                        poster="branding/Par-Noir-Logo-White.png"
-                        preload="metadata"
-                        controls
-                        playsinline
-                        muted
-                    >
-                        <source src="branding/pN%20Promo%20Video%20Final%20Cut.MOV" type="video/quicktime">
-                        <source src="branding/pN%20Promo%20Video%20Final%20Cut.MOV" type="video/mp4">
-                        Your browser does not support the video tag.
-                    </video>
-                    <div class="video-overlay" id="videoOverlay">
-                        <div class="video-play-button" onclick="playVideo()">
+                    <!-- YouTube Video Embed - Replace VIDEO_ID with your actual YouTube video ID -->
+                    <div class="youtube-embed-container">
+                        <iframe 
+                            id="youtube-video"
+                            class="youtube-video"
+                            src="https://www.youtube.com/embed/VIDEO_ID?rel=0&modestbranding=1&showinfo=0&controls=1&autoplay=0"
+                            title="par Noir - pN Promo Video"
+                            frameborder="0"
+                            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                            allowfullscreen
+                        ></iframe>
+                    </div>
+                    <!-- Fallback placeholder when video is loading -->
+                    <div class="video-placeholder" id="videoPlaceholder">
+                        <div class="video-play-button" onclick="loadYouTubeVideo()">
                             <svg viewBox="0 0 24 24">
                                 <path d="M8 5v14l11-7z"/>
                             </svg>

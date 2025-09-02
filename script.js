@@ -39,34 +39,35 @@ document.querySelectorAll('a[href^="#"]').forEach(anchor => {
     });
 });
 
-// Video playback functionality
-function playVideo() {
-    const video = document.getElementById('promo-video');
-    const overlay = document.getElementById('videoOverlay');
+// YouTube video functionality
+function loadYouTubeVideo() {
+    const videoContainer = document.getElementById('video');
+    const placeholder = document.getElementById('videoPlaceholder');
+    const youtubeContainer = document.querySelector('.youtube-embed-container');
     
-    if (video && overlay) {
-        video.play();
-        overlay.style.display = 'none';
+    if (videoContainer && placeholder && youtubeContainer) {
+        // Hide placeholder and show YouTube video
+        placeholder.style.display = 'none';
+        youtubeContainer.style.display = 'block';
         
-        // Show overlay again when video ends
-        video.addEventListener('ended', () => {
-            overlay.style.display = 'flex';
-        });
+        // Add a subtle animation
+        youtubeContainer.style.opacity = '0';
+        youtubeContainer.style.transform = 'scale(0.95)';
         
-        // Show overlay when video is paused
-        video.addEventListener('pause', () => {
-            overlay.style.display = 'flex';
-        });
+        setTimeout(() => {
+            youtubeContainer.style.opacity = '1';
+            youtubeContainer.style.transform = 'scale(1)';
+        }, 100);
     }
 }
 
-// Video placeholder interaction (legacy - keeping for compatibility)
+// Video placeholder interaction
 function initializeVideoInteraction() {
     const videoButton = document.querySelector('.video-play-button');
     
     if (videoButton) {
         videoButton.addEventListener('click', () => {
-            playVideo();
+            loadYouTubeVideo();
         });
     }
 }
