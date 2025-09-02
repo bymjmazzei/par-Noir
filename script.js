@@ -39,14 +39,34 @@ document.querySelectorAll('a[href^="#"]').forEach(anchor => {
     });
 });
 
-// Video placeholder interaction
+// Video playback functionality
+function playVideo() {
+    const video = document.getElementById('promo-video');
+    const overlay = document.getElementById('videoOverlay');
+    
+    if (video && overlay) {
+        video.play();
+        overlay.style.display = 'none';
+        
+        // Show overlay again when video ends
+        video.addEventListener('ended', () => {
+            overlay.style.display = 'flex';
+        });
+        
+        // Show overlay when video is paused
+        video.addEventListener('pause', () => {
+            overlay.style.display = 'flex';
+        });
+    }
+}
+
+// Video placeholder interaction (legacy - keeping for compatibility)
 function initializeVideoInteraction() {
     const videoButton = document.querySelector('.video-play-button');
     
     if (videoButton) {
         videoButton.addEventListener('click', () => {
-            // For now, just show an alert - replace with actual video modal
-            alert('Founder video coming soon! This will open a modal with the story of Par Noir and its connection to the legacy of freedom.');
+            playVideo();
         });
     }
 }

@@ -147,8 +147,8 @@
                             <path d="M12 5v14m-7-7h14"/>
                         </svg>
                     </a>
-                    <a href="#video" class="btn btn-secondary">
-                        <span>Watch the Story</span>
+                    <a href="#video" class="btn btn-secondary" onclick="playVideo(); return false;">
+                        <span>WATCH THE STORY</span>
                         <svg class="btn-icon" viewBox="0 0 24 24">
                             <path d="M8 5v14l11-7z"/>
                         </svg>
@@ -158,13 +158,26 @@
             </div>
             <div class="hero-visual">
                 <div class="video-container" id="video">
-                    <div class="video-placeholder">
-                        <div class="video-play-button">
+                    <video 
+                        id="promo-video" 
+                        class="hero-video" 
+                        poster="branding/Par-Noir-Logo-White.png"
+                        preload="metadata"
+                        controls
+                        playsinline
+                        muted
+                    >
+                        <source src="branding/pN%20Promo%20Video%20Final%20Cut.MOV" type="video/quicktime">
+                        <source src="branding/pN%20Promo%20Video%20Final%20Cut.MOV" type="video/mp4">
+                        Your browser does not support the video tag.
+                    </video>
+                    <div class="video-overlay" id="videoOverlay">
+                        <div class="video-play-button" onclick="playVideo()">
                             <svg viewBox="0 0 24 24">
                                 <path d="M8 5v14l11-7z"/>
                             </svg>
                         </div>
-                        <p>Founder Video Coming Soon</p>
+                        <p>Watch the pN Story</p>
                     </div>
                 </div>
             </div>

@@ -2300,6 +2300,7 @@ section:nth-child(odd) {
   display: flex;
   align-items: center;
   justify-content: center;
+  position: relative;
 }
 
 .video-placeholder {
@@ -2331,6 +2332,37 @@ section:nth-child(odd) {
   height: 30px;
   fill: var(--bg-primary);
   margin-left: 4px;
+}
+
+/* Hero video styling */
+.hero-video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 20px;
+}
+
+.video-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.7);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  border-radius: 20px;
+  transition: opacity 0.3s ease;
+}
+
+.video-overlay p {
+  color: var(--text-primary);
+  font-size: 1.1rem;
+  font-weight: 500;
+  margin-top: 1rem;
+  text-align: center;
 }
 
 /* Narrative sections */
