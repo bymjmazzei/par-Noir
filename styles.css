@@ -577,7 +577,6 @@ section {
   .solution-section,
   .features-section,
   .vision-section,
-  .legacy-section,
   .final-cta {
     padding: 2rem 0;
   }
@@ -1914,41 +1913,7 @@ section:nth-child(odd) {
     padding: 1.5rem;
   }
   
-  /* Legacy section responsive */
-  .legacy-content {
-    grid-template-columns: 1fr;
-    gap: 2rem;
-    text-align: center;
-  }
-  
-  .founder-image {
-    width: 200px;
-    height: 200px;
-    margin: 0 auto 2rem;
-  }
-  
-  .founder-story {
-    padding: 0 1rem;
-  }
-  
-  .heritage-timeline {
-    margin: 3rem auto 0 auto;
-    padding: 2rem;
-    max-width: 100%;
-  }
-  
-  .heritage-timeline .heritage-point {
-    flex-direction: column;
-    gap: 0.5rem;
-  }
-  
-  .year {
-    font-size: 2rem;
-  }
-  
-  .event {
-    font-size: 0.8rem;
-  }
+
   
   /* CTA section responsive */
   .cta-grid {
@@ -2021,59 +1986,7 @@ section:nth-child(odd) {
     padding: 1.5rem;
   }
   
-  /* Legacy section responsive */
-.legacy-content {
-  text-align: center;
-  max-width: 800px;
-  margin: 0 auto;
-}
 
-.founder-story {
-  margin-bottom: 3rem;
-}
-
-.heritage-timeline {
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  align-items: center;
-  gap: 2rem;
-  margin-top: 2rem;
-}
-
-.heritage-point {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  text-align: center;
-  gap: 0.5rem;
-}
-
-.year {
-  font-size: 2.5rem;
-  font-weight: 700;
-  color: var(--accent);
-}
-
-.event {
-  font-size: 1rem;
-  color: var(--text-secondary);
-  max-width: 200px;
-}
-
-/* Mobile responsive for timeline */
-@media (max-width: 960px) {
-  .heritage-timeline {
-    gap: 1.5rem;
-  }
-  
-  .year {
-    font-size: 2rem;
-  }
-  
-  .event {
-    font-size: 0.9rem;
-  }
   
   /* CTA section responsive */
   .cta-grid {
@@ -2092,7 +2005,6 @@ section:nth-child(odd) {
   .solution-section .container,
   .features-section .container,
   .vision-section .container,
-  .legacy-section .container,
   .final-cta .container {
     padding: 0 1rem;
   }
@@ -3090,102 +3002,7 @@ section:nth-child(odd) {
   line-height: 1.6;
 }
 
-/* Legacy section */
-.legacy-section {
-  background: rgba(0, 0, 0, 0.4);
-  text-align: center;
-}
 
-.legacy-content {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 2rem;
-  align-items: center;
-  width: 100%;
-  max-width: 1200px;
-  margin: 0 auto;
-  padding: 0;
-}
-
-.legacy-section .section-title {
-  text-align: center;
-  margin-bottom: 2rem;
-  font-size: clamp(2.5rem, 5vw, 3.5rem);
-  font-weight: 800;
-  background: var(--gradient-text);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
-  width: 100%;
-}
-
-.founder-story {
-  margin: 0;
-  text-align: left;
-  padding-left: 2rem;
-}
-
-.lead-text {
-  font-size: 1.3rem;
-  font-weight: 600;
-  margin-bottom: 1.5rem;
-  color: var(--text-primary);
-  line-height: 1.6;
-  text-align: left;
-}
-
-.founder-story p {
-  font-size: 1.1rem;
-  color: var(--text-secondary);
-  line-height: 1.8;
-  margin-bottom: 1.5rem;
-  text-align: left;
-}
-
-.heritage-timeline {
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  align-items: center;
-  margin: 0 auto;
-  padding: 2.5rem;
-  background: rgba(255, 255, 255, 0.03);
-  border: 1px solid var(--border-glow);
-  border-radius: 16px;
-  box-shadow: var(--shadow);
-  width: 100%;
-  max-width: 600px;
-  gap: 2rem;
-}
-
-.heritage-point {
-  text-align: center;
-  display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
-}
-
-.year {
-  font-size: 2.5rem;
-  font-weight: 900;
-  color: var(--accent);
-  text-shadow: 0 0 20px var(--accent-glow);
-}
-
-.event {
-  font-size: 0.9rem;
-  color: var(--text-secondary);
-  text-transform: uppercase;
-  letter-spacing: 1px;
-}
-
-.legacy-visual {
-  text-align: center;
-}
-
-.founder-image-placeholder {
-  margin-bottom: 2rem;
-}
 
 .founder-image-placeholder p {
   font-size: 1.2rem;
@@ -4254,22 +4071,9 @@ section:nth-child(odd) {
     gap: 2rem;
   }
   
-  .legacy-content {
-    grid-template-columns: 1fr;
-    gap: 2rem;
-    text-align: center;
-  }
-  
   .solution-main-title {
     font-size: 1.5rem;
     margin: 1.5rem 0 0 0;
-  }
-  
-  .heritage-timeline {
-    flex-direction: column;
-    gap: 1.5rem;
-    margin-top: 3rem;
-    width: 100%;
   }
   
   .quill-to-code {
@@ -4278,11 +4082,6 @@ section:nth-child(odd) {
   
   .quill, .code {
     font-size: 2rem;
-  }
-  
-  .founder-image {
-    width: 200px;
-    height: 200px;
   }
   
   .cta-grid {
