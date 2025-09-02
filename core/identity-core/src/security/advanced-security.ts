@@ -5,6 +5,7 @@
  */
 
 import { IdentityError, IdentityErrorCodes } from '../types';
+import { SecureRandom } from '../utils/secureRandom';
 
 export interface SecurityConfig {
   threatDetectionEnabled: boolean;

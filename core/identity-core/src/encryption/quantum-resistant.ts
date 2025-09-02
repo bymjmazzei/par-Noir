@@ -5,6 +5,7 @@
  */
 
 import { CryptoKeyPair } from './crypto';
+import { SecureRandom } from '../utils/secureRandom';
 
 export interface QuantumResistantConfig {
   enabled: boolean;

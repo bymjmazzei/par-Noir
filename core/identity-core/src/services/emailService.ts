@@ -3,6 +3,8 @@
  * Provides email functionality for recovery and notifications
  */
 
+import { SecureRandom } from '../utils/secureRandom';
+
 export interface SendGridConfig {
   apiKey: string;
   fromEmail: string;

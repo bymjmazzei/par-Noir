@@ -4,6 +4,8 @@
  * Maintains backward compatibility with local key storage
  */
 
+import { SecureRandom } from '../utils/secureRandom';
+
 export interface HSMConfig {
   enabled: boolean;
   provider: 'aws-kms' | 'azure-keyvault' | 'gcp-kms' | 'local-hsm';

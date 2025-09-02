@@ -1,6 +1,8 @@
 // IPFS service using direct Pinata API calls for decentralized file storage
 // This avoids the deprecated SDK and axios vulnerabilities
 
+import { logger } from './logger';
+
 export interface IPFSConfig {
   apiKey: string;
   secretKey: string;
@@ -73,7 +75,14 @@ class IPFSService {
       });
 
       if (!response.ok) {
-        throw new Error(`IPFS upload failed: ${response.status} ${response.statusText}`);
+        const errorText = await response.text();
+        logger.error('IPFS upload failed:', {
+          status: response.status,
+          statusText: response.statusText,
+          errorText: errorText,
+          headers: Object.fromEntries(response.headers.entries())
+        });
+        throw new Error(`IPFS upload failed: ${response.status} ${response.statusText} - ${errorText}`);
       }
 
       const result = await response.json();

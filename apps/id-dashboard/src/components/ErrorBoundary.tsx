@@ -1,4 +1,5 @@
 import { Component, ErrorInfo, ReactNode } from 'react';
+import { logger } from '../utils/logger';
 
 interface Props {
   children: ReactNode;
@@ -37,13 +38,11 @@ export class ErrorBoundary extends Component<Props, State> {
     const { error, errorInfo } = this.state;
     if (error) {
       // In production, this would send to error reporting service
-      if (process.env.NODE_ENV === 'development') {
-        console.error('Error Boundary caught error:', {
-          message: error.message,
-          stack: error.stack,
-          componentStack: errorInfo?.componentStack
-        });
-      }
+      logger.error('Error Boundary caught error:', {
+        message: error.message,
+        stack: error.stack,
+        componentStack: errorInfo?.componentStack
+      });
       // TODO: Implement production error reporting service
     }
   };

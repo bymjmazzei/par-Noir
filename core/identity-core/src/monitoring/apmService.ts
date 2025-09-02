@@ -3,6 +3,8 @@
  * Provides comprehensive performance monitoring and metrics
  */
 
+import { SecureRandom } from '../utils/secureRandom';
+
 export interface APMConfig {
   serviceName: string;
   serverUrl: string;

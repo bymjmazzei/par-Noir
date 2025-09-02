@@ -3,6 +3,7 @@
 // Mock crypto API for tests
 Object.defineProperty(global, 'crypto', {
   value: {
+    randomUUID: jest.fn(() => 'test-uuid-' + Date.now()),
     getRandomValues: jest.fn((arr) => {
       for (let i = 0; i < arr.length; i++) {
         arr[i] = Math.floor(Math.random() * 256);
@@ -148,7 +149,17 @@ Object.defineProperty(global, 'indexedDB', {
 // Mock window.crypto for browser environment
 Object.defineProperty(global, 'window', {
   value: {
-    crypto: global.crypto
+    crypto: global.crypto,
+    location: {
+      hostname: 'localhost',
+      origin: 'http://localhost:3000',
+      protocol: 'http:',
+      host: 'localhost:3000'
+    },
+    navigator: {
+      userAgent: 'Jest Test Environment',
+      platform: 'Test Platform'
+    }
   },
   writable: true,
 });

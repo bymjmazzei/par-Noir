@@ -4,6 +4,8 @@
  * Runs in the background without affecting user experience
  */
 
+import { SecureRandom } from '../utils/secureRandom';
+
 export interface ThreatDetectionConfig {
   enabled: boolean;
   sensitivity: 'low' | 'medium' | 'high';

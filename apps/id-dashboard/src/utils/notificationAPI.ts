@@ -2,6 +2,7 @@
 // Allows external services to send notifications to pNs
 
 import { NotificationEvent } from './secureMetadata';
+import { logger } from './logger';
 
 export interface ThirdPartyNotificationRequest {
   targetIdentityId: string; // The pN ID to send notification to
@@ -183,13 +184,11 @@ export class NotificationAPI {
       // For now, we'll use a placeholder that would be implemented
       // to work with the existing pN metadata infrastructure
       
-      if (process.env.NODE_ENV === 'development') {
-        console.log('Storing notification in metadata:', {
-          targetIdentityId,
-          notificationId: notificationEvent.id,
-          type: notificationEvent.type
-        });
-      }
+      logger.debug('Storing notification in metadata:', {
+        targetIdentityId,
+        notificationId: notificationEvent.id,
+        type: notificationEvent.type
+      });
 
       // TODO: Implement actual metadata storage
       // This would use the existing metadata infrastructure to:
@@ -200,9 +199,7 @@ export class NotificationAPI {
       return { success: true };
 
     } catch (error) {
-      if (process.env.NODE_ENV === 'development') {
-        console.error('Failed to store notification in metadata:', error);
-      }
+      logger.error('Failed to store notification in metadata:', error);
       return {
         success: false,
         error: error instanceof Error ? error.message : 'Unknown error'

@@ -23,6 +23,7 @@ import { PrivacyManager, ToolAccessRequest } from './utils/privacy-manager';
 import { DeviceSecurityManager } from './security/device-security';
 import { WebAuthnManager } from './security/webauthn';
 import { SupplyChainSecurityManager } from './security/supply-chain-security';
+import { SecureRandom } from './utils/secureRandom';
 
 export class IdentityCore {
   private storage: IndexedDBStorage;

@@ -3,6 +3,8 @@
  * Provides decentralized file storage for the Identity Protocol
  */
 
+import { SecureRandom } from '../utils/secureRandom';
+
 export interface IPFSConfig {
   apiKey: string;
   apiSecret: string;

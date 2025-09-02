@@ -6,6 +6,8 @@
  * decentralized identity management with custodian-based recovery.
  */
 
+import { SecureRandom } from '../utils/secureRandom';
+
 // ============================================================================
 // 1. CORE IDENTITY DOCUMENT STANDARDS
 // ============================================================================

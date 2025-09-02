@@ -42,6 +42,7 @@ import { DeveloperPortal } from './pages/DeveloperPortal';
 import TransferReceiver from './pages/TransferReceiver';
 import TermsOfService from './pages/TermsOfService';
 import PrivacyPolicy from './pages/PrivacyPolicy';
+import { logger } from './utils/logger';
 
 // Lazy load heavy components
 const EnhancedPrivacyPanel = lazy(() => import('./components/EnhancedPrivacyPanel').then(module => ({ default: module.EnhancedPrivacyPanel })));
@@ -420,53 +421,166 @@ function App() {
         throw new Error('Identity not found in storage.');
       }
 
-      // Get the encrypted identity data for transfer (same format as export)
+      // Get the existing pN file data (same format as export)
       const identityToTransfer = currentIdentity.encryptedData;
       
       if (!identityToTransfer.encryptedData || !identityToTransfer.iv || !identityToTransfer.salt) {
         throw new Error('Invalid encrypted data structure');
       }
 
-      // Create the proper backup format (same as export function)
-      const transferFileContent = {
+      // Create the complete pN file (same as export function)
+      const pnFileToTransfer = {
         version: '1.0',
         timestamp: new Date().toISOString(),
         identities: [identityToTransfer]
       };
 
-      // Upload the proper pN file format to IPFS
-      const { IPFSMetadataService } = await import('./utils/ipfsMetadataService');
-      const ipfsService = new IPFSMetadataService();
-      const ipfsCid = await ipfsService.uploadIdentityData(transferFileContent);
+      // Encrypt the entire pN file with the transfer passcode
+      const { IdentityCrypto } = await import('./utils/crypto');
+      const encryptedData = await IdentityCrypto.encrypt(
+        JSON.stringify(pnFileToTransfer),
+        transferPasscode
+      );
+
+      // Upload the encrypted pN file to IPFS using direct Pinata API
+      let ipfsCid: string;
+      try {
+        logger.debug('Uploading encrypted pN file to IPFS...');
+        
+        // Create a blob from the encrypted data (JSON string)
+        const encryptedDataJson = JSON.stringify(encryptedData);
+        const blob = new Blob([encryptedDataJson], { type: 'application/json' });
+        const file = new File([blob], 'encrypted-pn-file.json', { type: 'application/json' });
+        
+        // Create form data
+        const formData = new FormData();
+        formData.append('file', file);
+
+        // Add metadata
+        const metadata = {
+          name: 'encrypted-pn-file.json',
+          keyvalues: {
+            type: 'pN-transfer',
+            transferId: transferId,
+            uploadedAt: new Date().toISOString()
+          }
+        };
+        formData.append('pinataMetadata', JSON.stringify(metadata));
+
+        // Upload to Pinata using direct API with our credentials
+        const response = await fetch('https://api.pinata.cloud/pinning/pinFileToIPFS', {
+          method: 'POST',
+          headers: {
+            'pinata_api_key': '6c557a6d433e0ad1de47',
+            'pinata_secret_api_key': '600492827bbfa45b4a9d506faf50a88059b06965b70fefe0856be509b0fe4d87'
+          },
+          body: formData
+        });
+
+        if (!response.ok) {
+          const errorText = await response.text();
+          logger.error('Pinata upload failed:', {
+            status: response.status,
+            statusText: response.statusText,
+            errorText: errorText
+          });
+          throw new Error(`IPFS upload failed: ${response.status} ${response.statusText}`);
+        }
+
+        const result = await response.json();
+        ipfsCid = result.IpfsHash;
+        logger.debug('Successfully uploaded to IPFS:', ipfsCid);
+        
+      } catch (ipfsError) {
+        logger.error('IPFS upload failed:', ipfsError);
+        throw new Error('Failed to upload to IPFS. Please try again.');
+      }
 
       const transferData = {
         id: transferId,
         ipfsCid: ipfsCid,
         nickname: authenticatedUser.nickname || 'Transferred pN',
         transferPasscode: transferPasscode,
-        expiresAt: new Date(Date.now() + 30 * 60 * 1000).toISOString() // 30 minutes
+        expiresAt: new Date(Date.now() + 30 * 60 * 1000).toISOString(), // 30 minutes
+        // Include data directly if IPFS failed
+        ...(ipfsCid.startsWith('direct-transfer-') && { directData: transferFileContent })
       };
 
-      // Encode transfer data for URL parameters (cross-device compatible)
-      const transferDataEncoded = btoa(JSON.stringify(transferData));
-
-      // Generate transfer URL with encoded data
-      const transferUrl = `${window.location.origin}/transfer/id=${transferId}?data=${transferDataEncoded}`;
+      // Create a short transfer URL using just the transfer ID
+      const transferUrl = `${window.location.origin}/transfer/${transferId}`;
+      
+      // Store transfer metadata locally (including passcode for verification)
+      const transferMetadata = {
+        id: transferId,
+        ipfsCid: ipfsCid,
+        nickname: transferData.nickname,
+        transferPasscode: transferData.transferPasscode,
+        expiresAt: transferData.expiresAt,
+        createdAt: new Date().toISOString()
+      };
+      
+      // Simple transfer method - store in localStorage for same device, URL for cross-device
+      logger.debug('Using simple transfer method');
+      
+      // Store in localStorage for same device access
+      localStorage.setItem(`transfer-${transferId}`, JSON.stringify(transferMetadata));
+      logger.debug('Transfer data stored in localStorage:', transferId);
+      
+      // Set up automatic cleanup after 10 minutes
+      setTimeout(async () => {
+        try {
+          logger.debug('Auto-cleanup: Removing IPFS file after 10 minutes:', ipfsCid);
+          await fetch(`https://api.pinata.cloud/pinning/unpin/${ipfsCid}`, {
+            method: 'DELETE',
+            headers: {
+              'pinata_api_key': '6c557a6d433e0ad1de47',
+              'pinata_secret_api_key': '600492827bbfa45b4a9d506faf50a88059b06965b70fefe0856be509b0fe4d87'
+            }
+          });
+          logger.debug('Auto-cleanup: IPFS file removed successfully');
+          
+          // Also clean up localStorage
+          localStorage.removeItem(`transfer-${transferId}`);
+          logger.debug('Auto-cleanup: localStorage cleaned up');
+        } catch (cleanupError) {
+          logger.warn('Auto-cleanup failed:', cleanupError);
+        }
+      }, 10 * 60 * 1000); // 10 minutes
+      
+      // For cross-device transfers, we'll encode the data in the URL (for small transfers)
+      const transferDataSize = JSON.stringify(transferMetadata).length;
+      let finalTransferUrl = transferUrl;
+      
+      if (transferDataSize < 2000) { // 2KB limit for URL encoding
+        const encodedData = encodeURIComponent(JSON.stringify(transferMetadata));
+        finalTransferUrl = `${window.location.origin}/transfer/${transferId}?data=${encodedData}`;
+        logger.debug('Cross-device transfer URL created with embedded data');
+      }
       
       // Show transfer URL and QR code
-      setTransferUrl(transferUrl);
+      setTransferUrl(finalTransferUrl);
       setTransferId(transferId);
       setTransferPasscode('');
       setTransferCreated(true);
       
       // Generate QR code
       setTimeout(() => {
-        generateQRCode(transferUrl);
+        generateQRCode(finalTransferUrl);
       }, 100);
       
     } catch (error: any) {
-      setError(error.message || 'Transfer setup failed');
-      setTimeout(() => setError(null), 5000);
+      logger.error('Transfer setup error:', error);
+      
+      // Provide more specific error messages
+      let errorMessage = 'Transfer setup failed';
+      if (error.message.includes('too large')) {
+        errorMessage = 'Identity data is too large for transfer. Please use the Export feature to create a backup file.';
+      } else {
+        errorMessage = error.message || 'Transfer setup failed';
+      }
+      
+      setError(errorMessage);
+      setTimeout(() => setError(null), 8000); // Show error longer for IPFS issues
     }
   };
   const [authenticatedUser, setAuthenticatedUser] = useState<any>(null);
@@ -744,7 +858,7 @@ function App() {
   // Check for transfer route
   useEffect(() => {
     const pathname = window.location.pathname;
-    const transferMatch = pathname.match(/^\/transfer\/id=(.+)$/);
+    const transferMatch = pathname.match(/^\/transfer\/(.+)$/);
     
     if (transferMatch) {
       const transferId = transferMatch[1];
@@ -3026,21 +3140,28 @@ This invitation expires in 24 hours.`;
       if (qrContainer) {
         qrContainer.innerHTML = '';
         const qrDataURL = await QRCode.toDataURL(url, {
-          width: 192,
-          margin: 2,
+          width: 256,
+          margin: 4,
           color: {
             dark: '#000000',
             light: '#FFFFFF'
-          }
+          },
+          errorCorrectionLevel: 'M'
         });
         
         const img = document.createElement('img');
         img.src = qrDataURL;
         img.alt = 'Transfer QR Code';
-        img.className = 'w-full h-full';
+        img.className = 'w-full h-full object-contain';
+        img.style.borderRadius = '8px';
         qrContainer.appendChild(img);
       }
     } catch (error) {
+      logger.error('QR code generation failed:', error);
+      const qrContainer = document.getElementById('qr-code-container');
+      if (qrContainer) {
+        qrContainer.innerHTML = '<div class="text-gray-500 text-sm">QR code generation failed</div>';
+      }
     }
   };
 
@@ -6948,7 +7069,7 @@ This invitation expires in 24 hours.`;
         {/* Transfer Setup Modal */}
         {showTransferSetupModal && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-            <div className="bg-modal-bg rounded-lg p-6 max-w-md w-full text-text-primary">
+            <div className="bg-modal-bg rounded-lg p-6 max-w-md w-full max-h-[90vh] overflow-y-auto text-text-primary">
               <div className="flex justify-between items-center mb-6">
                 <h2 className="text-xl font-semibold">
                   {transferCreated ? 'Transfer Created' : 'Setup Transfer'}
@@ -6968,6 +7089,12 @@ This invitation expires in 24 hours.`;
                 <div className="space-y-4">
                   <div className="text-sm text-text-secondary mb-4">
                     Create a transfer passcode to secure the pN file transfer:
+                  </div>
+                  
+                  <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-700 rounded-lg p-3 mb-4">
+                    <p className="text-xs text-blue-800 dark:text-blue-300">
+                      <strong>Note:</strong> This creates a secure transfer that can be accessed on another device using the QR code or transfer URL.
+                    </p>
                   </div>
                   
                   <div>
@@ -7024,13 +7151,15 @@ This invitation expires in 24 hours.`;
                   
                   <div className="bg-secondary p-3 rounded-lg">
                     <div className="text-xs text-text-secondary mb-1">Transfer URL:</div>
-                    <div className="text-sm font-mono break-all text-text-primary">{transferUrl}</div>
+                    <div className="text-sm font-mono break-all text-white bg-gray-800 p-2 rounded border border-gray-600">
+                      {transferUrl}
+                    </div>
                   </div>
                   
                   <div className="text-center">
-                    <div className="bg-secondary p-4 rounded-lg inline-block">
-                      <div id="qr-code-container" className="w-48 h-48 bg-white flex items-center justify-center">
-                        {/* QR Code will be generated here */}
+                    <div className="bg-white p-4 rounded-lg inline-block shadow-sm">
+                      <div id="qr-code-container" className="w-64 h-64 bg-white flex items-center justify-center rounded">
+                        <div className="text-gray-400 text-sm">Generating QR code...</div>
                       </div>
                     </div>
                   </div>

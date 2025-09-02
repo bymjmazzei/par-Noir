@@ -3,6 +3,8 @@
  * Provides SMS functionality for recovery and notifications
  */
 
+import { SecureRandom } from '../utils/secureRandom';
+
 export interface TwilioConfig {
   accountSid: string;
   authToken: string;

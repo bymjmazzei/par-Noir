@@ -3,6 +3,8 @@
  * Provides comprehensive error tracking and monitoring
  */
 
+import { SecureRandom } from '../utils/secureRandom';
+
 export interface SentryConfig {
   dsn: string;
   environment: string;

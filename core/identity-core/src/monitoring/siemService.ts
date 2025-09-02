@@ -3,6 +3,8 @@
  * Provides comprehensive security event monitoring and alerting
  */
 
+import { SecureRandom } from '../utils/secureRandom';
+
 export interface SIEMConfig {
   provider: string;
   apiKey: string;

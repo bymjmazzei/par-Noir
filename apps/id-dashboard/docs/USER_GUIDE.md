@@ -49,10 +49,22 @@ Your identity is protected by a 4-factor recovery system:
 4. **Recovery Contact** - Email or phone for recovery
 
 ### Recovery Custodians
+**🚨 CRITICAL: Without custodians, you could permanently lose your identity if you lose your device or forget your passcode.**
+
 - Up to 5 custodians can be set up
 - Minimum 2 custodians required
 - Custodians can approve recovery requests
 - You can adjust custodians without changing your ID
+- **This is your primary recovery method - there is no "forgot password" or customer support**
+
+### Identity File Export
+**💾 ESSENTIAL: Export your identity file as a backup to restore on other devices.**
+
+- Creates an encrypted JSON file (e.g., "your-nickname-backup.json")
+- Contains your complete identity data and settings
+- Can be imported on any device using "Import Identity"
+- Store securely in password manager, encrypted cloud storage, or external drive
+- **This is your secondary recovery method if you lose your device**
 
 ### Recovery Keys
 - Download recovery keys for offline backup
@@ -148,10 +160,13 @@ If you completely lose access:
 ## 🔒 Security Best Practices
 
 1. **Strong Passcode**: Use a unique, strong passcode
-2. **Trusted Custodians**: Only add people you trust completely
-3. **Secure Storage**: Keep recovery keys in a safe place
-4. **Regular Backups**: Export your data regularly
+2. **Trusted Custodians**: Only add people you trust completely - this is your lifeline for recovery
+3. **Identity File Backup**: Export your identity file regularly and store it securely
+4. **Secure Storage**: Keep recovery keys and backup files in safe places
 5. **Update Recovery Info**: Keep your recovery contact current
+6. **Test Recovery**: Periodically test that your custodians can help you recover
+7. **Multiple Backups**: Store your identity file in multiple secure locations
+8. **Never Share Passcode**: Your passcode is the key to your identity - never share it
 
 ## 📱 Mobile Usage
 
@@ -166,8 +181,10 @@ The dashboard is fully optimized for mobile devices:
 Your identity data is stored locally on your device:
 - **Privacy First**: Your data never leaves your device
 - **Offline Access**: Works without internet connection
-- **Encrypted Storage**: All data is encrypted
+- **Encrypted Storage**: All data is encrypted with your passcode
 - **Export Only**: Data is only shared when you explicitly export
+- **User Control**: You are in complete control - no company or server controls your identity
+- **No Recovery Service**: There is no "forgot password" or customer support - you must set up your own recovery methods
 
 ---
 
