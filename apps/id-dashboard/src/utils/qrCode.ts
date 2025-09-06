@@ -1,5 +1,4 @@
 import QRCode from 'qrcode';
-import { SecureRandom } from './secureRandom';
 
 export interface QRCodeData {
   type: 'device-pairing' | 'custodian-invitation' | 'recovery-key';
@@ -147,13 +146,13 @@ export class QRCodeManager {
                 deviceId: `device-${Date.now()}`,
                 deviceName: 'Mock Device',
                 deviceType: 'mobile',
-                syncKey: `sync-${SecureRandom.generateId()}`,
-                identityId: `did:key:${SecureRandom.generateId()}`,
-                deviceFingerprint: `fp-${SecureRandom.generateId()}`
+                syncKey: `sync-${Math.random().toString(36).substring(2)}`,
+                identityId: `did:key:${Math.random().toString(36).substring(2)}`,
+                deviceFingerprint: `fp-${Math.random().toString(36).substring(2)}`
               },
               timestamp: Date.now(),
               expiresAt: Date.now() + (5 * 60 * 1000),
-              signature: `sig-${SecureRandom.generateId()}`
+              signature: `sig-${Math.random().toString(36).substring(2)}`
             };
 
             resolve(mockData);
@@ -297,9 +296,9 @@ export class QRCodeManager {
       });
 
       // Fallback for demo
-      return `fp-${SecureRandom.generateId()}`;
+      return `fp-${Math.random().toString(36).substring(2)}`;
     } catch (error) {
-      return `fp-${SecureRandom.generateId()}`;
+      return `fp-${Math.random().toString(36).substring(2)}`;
     }
   }
 
@@ -317,9 +316,9 @@ export class QRCodeManager {
       });
 
       // Fallback for demo
-      return `sync-${SecureRandom.generateId()}`;
+      return `sync-${Math.random().toString(36).substring(2)}`;
     } catch (error) {
-      return `sync-${SecureRandom.generateId()}`;
+      return `sync-${Math.random().toString(36).substring(2)}`;
     }
   }
 } 

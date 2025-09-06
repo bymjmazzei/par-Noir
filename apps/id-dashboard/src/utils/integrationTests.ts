@@ -29,7 +29,7 @@ export class IntegrationTests {
     try {
       
       // Test configuration availability
-      const apiKey = process.env.REACT_APP_IPFS_PROJECT_ID;
+      const apiKey = process.env.REACT_APP_PINATA_API_KEY;
       const gatewayUrl = process.env.REACT_APP_IPFS_GATEWAY_URL;
       
       if (!apiKey) {
@@ -113,7 +113,7 @@ export class IntegrationTests {
         'REACT_APP_SENDGRID_API_KEY',
         'REACT_APP_FROM_EMAIL',
         'REACT_APP_FROM_NAME',
-        'REACT_APP_IPFS_PROJECT_ID',
+        'REACT_APP_PINATA_API_KEY',
         'REACT_APP_IPFS_GATEWAY_URL',
         'REACT_APP_COINBASE_COMMERCE_API_KEY'
       ];

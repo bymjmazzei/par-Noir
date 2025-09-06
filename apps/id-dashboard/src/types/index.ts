@@ -45,3 +45,9 @@ export interface IdentityConfig {
   retryAttempts?: number;
   debug?: boolean;
 }
+
+// Export all data point related types and utilities
+export * from './DataPointTypes';
+export * from './StandardDataPointsRegistry';
+export * from '../utils/ZKPGenerator';
+export * from '../utils/DataPointProposal';

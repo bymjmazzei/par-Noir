@@ -1,3 +1,4 @@
+import { cryptoWorkerManager } from './cryptoWorkerManager';
 // Deployment configuration - Update these values for production deployment
 export const deploymentConfig = {
   // Production API endpoints
@@ -68,8 +69,8 @@ export const deploymentConfig = {
   
   // Production analytics settings
   analytics: {
-    googleAnalyticsId: 'G-XXXXXXXXXX', // Replace with actual GA ID
-    sentryDsn: 'https://xxxxxxxxxxxxxxxxxxxxx@xxxxx.ingest.sentry.io/xxxxx', // Replace with actual Sentry DSN
+    googleAnalyticsId: process.env.GOOGLE_ANALYTICS_ID || '',
+    sentryDsn: process.env.SENTRY_DSN || '',
   },
   
   // Production error reporting settings

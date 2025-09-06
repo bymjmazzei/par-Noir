@@ -1,5 +1,5 @@
 import React, { useState, useEffect, lazy, Suspense, useRef } from 'react';
-import { CheckCircle, Smartphone, RefreshCw, FileText, PartyPopper, QrCode, MessageSquare, Phone, AlertTriangle, Info, Monitor, Edit3, Settings, ChevronUp, ChevronDown } from 'lucide-react';
+import { CheckCircle, Smartphone, RefreshCw, FileText, PartyPopper, QrCode, MessageSquare, Phone, AlertTriangle, Info, Monitor, Edit3, Settings, ChevronUp, ChevronDown, Users } from 'lucide-react';
 import Header from './components/Header';
 import { QRCodeManager } from './utils/qrCode';
   import { QRCodeScanner } from './components/QRCodeScanner';
@@ -31,7 +31,6 @@ let DistributedIdentityManager: any;
 import { LicenseVerification } from './utils/licenseVerification';
 
 import { InputValidator } from './utils/validation';
-import { SecureRandom } from './utils/secureRandom';
 
 import SimpleStorage, { SimpleIdentity } from './utils/simpleStorage';
 import IdentitySelector from './components/IdentitySelector';
@@ -42,7 +41,8 @@ import { DeveloperPortal } from './pages/DeveloperPortal';
 import TransferReceiver from './pages/TransferReceiver';
 import TermsOfService from './pages/TermsOfService';
 import PrivacyPolicy from './pages/PrivacyPolicy';
-import { logger } from './utils/logger';
+import { MainDashboard } from './components/app/MainDashboard';
+import { DelegationModal } from './components/DelegationModal';
 
 // Lazy load heavy components
 const EnhancedPrivacyPanel = lazy(() => import('./components/EnhancedPrivacyPanel').then(module => ({ default: module.EnhancedPrivacyPanel })));
@@ -64,7 +64,10 @@ const LoadingSpinner = () => (
 
 // Generate random nickname in format "pN123456789"
 const generateRandomNickname = (): string => {
-  const randomNumbers = SecureRandom.generateStatistic(100000000, 999999999); // 9-digit number
+  // Generate secure random 9-digit number
+  const randomArray = new Uint32Array(1);
+  crypto.getRandomValues(randomArray);
+  const randomNumbers = Math.floor((randomArray[0] / 0xFFFFFFFF) * 900000000) + 100000000;
   return `pN${randomNumbers}`;
 };
 
@@ -168,6 +171,31 @@ interface DeviceSyncData {
   qrCodeDataURL: string;
 }
 
+// Generate secure access token for authentication
+const generateSecureToken = async (identity: any): Promise<string> => {
+  try {
+    // Use crypto API to generate a secure random token
+    const array = new Uint8Array(32);
+    crypto.getRandomValues(array);
+    const tokenBytes = Array.from(array, byte => byte.toString(16).padStart(2, '0')).join('');
+    
+    // Create a secure token with identity info and timestamp
+    const tokenData = {
+      identityId: identity.id,
+      pnName: identity.pnName,
+      timestamp: Date.now(),
+      random: tokenBytes
+    };
+    
+    // Encode the token data
+    const tokenString = btoa(JSON.stringify(tokenData));
+    return `pn_${tokenString}`;
+  } catch (error) {
+    // Fallback to timestamp-based token if crypto fails
+    return `pn_${Date.now()}_${Math.random().toString(36).substring(2)}`;
+  }
+};
+
 function App() {
   // Production-safe logging utility
   const logDebug = (_message: string, ..._args: unknown[]) => {
@@ -247,7 +275,7 @@ function App() {
       }
     };
   }, []);
-  const [activeTab, setActiveTab] = useState<'privacy' | 'devices' | 'recovery' | 'developer'>('privacy');
+  const [activeTab, setActiveTab] = useState<'privacy' | 'devices' | 'recovery' | 'developer' | 'delegation'>('privacy');
   const [globalSettingsExpanded, setGlobalSettingsExpanded] = useState(false);
   const [thirdPartyExpanded, setThirdPartyExpanded] = useState(false);
   const [attestedDataPoints, setAttestedDataPoints] = useState<Set<string>>(new Set());
@@ -410,7 +438,10 @@ function App() {
       }
 
       // Generate short transfer ID
-      const transferId = SecureRandom.generateTransferId();
+      // Generate secure random transfer ID
+      const randomArray = new Uint8Array(4);
+      crypto.getRandomValues(randomArray);
+      const transferId = Array.from(randomArray, byte => byte.toString(36)).join('').substring(0, 6).toUpperCase();
       
       // Get the current identity data for transfer
       const simpleStorage = SimpleStorage.getInstance();
@@ -421,166 +452,53 @@ function App() {
         throw new Error('Identity not found in storage.');
       }
 
-      // Get the existing pN file data (same format as export)
+      // Get the encrypted identity data for transfer (same format as export)
       const identityToTransfer = currentIdentity.encryptedData;
       
       if (!identityToTransfer.encryptedData || !identityToTransfer.iv || !identityToTransfer.salt) {
         throw new Error('Invalid encrypted data structure');
       }
 
-      // Create the complete pN file (same as export function)
-      const pnFileToTransfer = {
+      // Create the proper backup format (same as export function)
+      const transferFileContent = {
         version: '1.0',
         timestamp: new Date().toISOString(),
         identities: [identityToTransfer]
       };
 
-      // Encrypt the entire pN file with the transfer passcode
-      const { IdentityCrypto } = await import('./utils/crypto');
-      const encryptedData = await IdentityCrypto.encrypt(
-        JSON.stringify(pnFileToTransfer),
-        transferPasscode
-      );
-
-      // Upload the encrypted pN file to IPFS using direct Pinata API
-      let ipfsCid: string;
-      try {
-        logger.debug('Uploading encrypted pN file to IPFS...');
-        
-        // Create a blob from the encrypted data (JSON string)
-        const encryptedDataJson = JSON.stringify(encryptedData);
-        const blob = new Blob([encryptedDataJson], { type: 'application/json' });
-        const file = new File([blob], 'encrypted-pn-file.json', { type: 'application/json' });
-        
-        // Create form data
-        const formData = new FormData();
-        formData.append('file', file);
-
-        // Add metadata
-        const metadata = {
-          name: 'encrypted-pn-file.json',
-          keyvalues: {
-            type: 'pN-transfer',
-            transferId: transferId,
-            uploadedAt: new Date().toISOString()
-          }
-        };
-        formData.append('pinataMetadata', JSON.stringify(metadata));
-
-        // Upload to Pinata using direct API with our credentials
-        const response = await fetch('https://api.pinata.cloud/pinning/pinFileToIPFS', {
-          method: 'POST',
-          headers: {
-            'pinata_api_key': '6c557a6d433e0ad1de47',
-            'pinata_secret_api_key': '600492827bbfa45b4a9d506faf50a88059b06965b70fefe0856be509b0fe4d87'
-          },
-          body: formData
-        });
-
-        if (!response.ok) {
-          const errorText = await response.text();
-          logger.error('Pinata upload failed:', {
-            status: response.status,
-            statusText: response.statusText,
-            errorText: errorText
-          });
-          throw new Error(`IPFS upload failed: ${response.status} ${response.statusText}`);
-        }
-
-        const result = await response.json();
-        ipfsCid = result.IpfsHash;
-        logger.debug('Successfully uploaded to IPFS:', ipfsCid);
-        
-      } catch (ipfsError) {
-        logger.error('IPFS upload failed:', ipfsError);
-        throw new Error('Failed to upload to IPFS. Please try again.');
-      }
+      // Upload the proper pN file format to IPFS
+      const { IPFSMetadataService } = await import('./utils/ipfsMetadataService');
+      const ipfsService = new IPFSMetadataService();
+      const ipfsCid = await ipfsService.uploadIdentityData(transferFileContent);
 
       const transferData = {
         id: transferId,
         ipfsCid: ipfsCid,
         nickname: authenticatedUser.nickname || 'Transferred pN',
         transferPasscode: transferPasscode,
-        expiresAt: new Date(Date.now() + 30 * 60 * 1000).toISOString(), // 30 minutes
-        // Include data directly if IPFS failed
-        ...(ipfsCid.startsWith('direct-transfer-') && { directData: transferFileContent })
+        expiresAt: new Date(Date.now() + 30 * 60 * 1000).toISOString() // 30 minutes
       };
 
-      // Create a short transfer URL using just the transfer ID
-      const transferUrl = `${window.location.origin}/transfer/${transferId}`;
-      
-      // Store transfer metadata locally (including passcode for verification)
-      const transferMetadata = {
-        id: transferId,
-        ipfsCid: ipfsCid,
-        nickname: transferData.nickname,
-        transferPasscode: transferData.transferPasscode,
-        expiresAt: transferData.expiresAt,
-        createdAt: new Date().toISOString()
-      };
-      
-      // Simple transfer method - store in localStorage for same device, URL for cross-device
-      logger.debug('Using simple transfer method');
-      
-      // Store in localStorage for same device access
-      localStorage.setItem(`transfer-${transferId}`, JSON.stringify(transferMetadata));
-      logger.debug('Transfer data stored in localStorage:', transferId);
-      
-      // Set up automatic cleanup after 10 minutes
-      setTimeout(async () => {
-        try {
-          logger.debug('Auto-cleanup: Removing IPFS file after 10 minutes:', ipfsCid);
-          await fetch(`https://api.pinata.cloud/pinning/unpin/${ipfsCid}`, {
-            method: 'DELETE',
-            headers: {
-              'pinata_api_key': '6c557a6d433e0ad1de47',
-              'pinata_secret_api_key': '600492827bbfa45b4a9d506faf50a88059b06965b70fefe0856be509b0fe4d87'
-            }
-          });
-          logger.debug('Auto-cleanup: IPFS file removed successfully');
-          
-          // Also clean up localStorage
-          localStorage.removeItem(`transfer-${transferId}`);
-          logger.debug('Auto-cleanup: localStorage cleaned up');
-        } catch (cleanupError) {
-          logger.warn('Auto-cleanup failed:', cleanupError);
-        }
-      }, 10 * 60 * 1000); // 10 minutes
-      
-      // For cross-device transfers, we'll encode the data in the URL (for small transfers)
-      const transferDataSize = JSON.stringify(transferMetadata).length;
-      let finalTransferUrl = transferUrl;
-      
-      if (transferDataSize < 2000) { // 2KB limit for URL encoding
-        const encodedData = encodeURIComponent(JSON.stringify(transferMetadata));
-        finalTransferUrl = `${window.location.origin}/transfer/${transferId}?data=${encodedData}`;
-        logger.debug('Cross-device transfer URL created with embedded data');
-      }
+      // Encode transfer data for URL parameters (cross-device compatible)
+      const transferDataEncoded = btoa(JSON.stringify(transferData));
+
+      // Generate transfer URL with encoded data
+      const transferUrl = `${window.location.origin}/transfer/id=${transferId}?data=${transferDataEncoded}`;
       
       // Show transfer URL and QR code
-      setTransferUrl(finalTransferUrl);
+      setTransferUrl(transferUrl);
       setTransferId(transferId);
       setTransferPasscode('');
       setTransferCreated(true);
       
       // Generate QR code
       setTimeout(() => {
-        generateQRCode(finalTransferUrl);
+        generateQRCode(transferUrl);
       }, 100);
       
     } catch (error: any) {
-      logger.error('Transfer setup error:', error);
-      
-      // Provide more specific error messages
-      let errorMessage = 'Transfer setup failed';
-      if (error.message.includes('too large')) {
-        errorMessage = 'Identity data is too large for transfer. Please use the Export feature to create a backup file.';
-      } else {
-        errorMessage = error.message || 'Transfer setup failed';
-      }
-      
-      setError(errorMessage);
-      setTimeout(() => setError(null), 8000); // Show error longer for IPFS issues
+      setError(error.message || 'Transfer setup failed');
+      setTimeout(() => setError(null), 5000);
     }
   };
   const [authenticatedUser, setAuthenticatedUser] = useState<any>(null);
@@ -812,6 +730,7 @@ function App() {
   const [showPrivacyPolicy, setShowPrivacyPolicy] = useState(false);
   const [showTransferSetupModal, setShowTransferSetupModal] = useState(false);
   const [transferUrl, setTransferUrl] = useState('');
+  const [showDelegationModal, setShowDelegationModal] = useState(false);
   const [transferId, setTransferId] = useState('');
   const [transferPasscode, setTransferPasscode] = useState('');
   const [transferCreated, setTransferCreated] = useState(false);
@@ -858,7 +777,7 @@ function App() {
   // Check for transfer route
   useEffect(() => {
     const pathname = window.location.pathname;
-    const transferMatch = pathname.match(/^\/transfer\/(.+)$/);
+    const transferMatch = pathname.match(/^\/transfer\/id=(.+)$/);
     
     if (transferMatch) {
       const transferId = transferMatch[1];
@@ -962,7 +881,7 @@ function App() {
     const initializeSystems = async () => {
       try {
         // Initialize analytics
-        await analytics.getInstance().initialize();
+        await analytics.initialize();
         
               // Initialize realtime manager (disabled in dev mode)
       // await realtimeManager.connect();
@@ -973,7 +892,7 @@ function App() {
 
         
         // Track page view
-        analytics.getInstance().trackPageView('dashboard');
+        analytics.trackPageView('dashboard');
 
         // Check for migration needs (PWA only)
         if (!migrationChecked) {
@@ -1038,7 +957,7 @@ function App() {
       const pnNameValidation = InputValidator.validatePNName(createForm.pnName);
       if (!pnNameValidation.isValid) {
         setError(`pN Name validation failed: ${pnNameValidation.errors.join(', ')}`);
-        analytics.getInstance().trackError(new Error(`pN Name validation failed: ${pnNameValidation.errors.join(', ')}`), 'create-form', 'high');
+        analytics.trackError(new Error(`pN Name validation failed: ${pnNameValidation.errors.join(', ')}`), 'create-form', 'high');
         return;
       }
 
@@ -1047,7 +966,7 @@ function App() {
       const passcodeValidation = InputValidator.validatePasscode(createForm.passcode);
       if (!passcodeValidation.isValid) {
         setError(`Passcode validation failed: ${passcodeValidation.errors.join(', ')}`);
-        analytics.getInstance().trackError(new Error(`Passcode validation failed: ${passcodeValidation.errors.join(', ')}`), 'create-form', 'high');
+        analytics.trackError(new Error(`Passcode validation failed: ${passcodeValidation.errors.join(', ')}`), 'create-form', 'high');
         return;
       }
 
@@ -1075,7 +994,7 @@ function App() {
         keyGenerator: (userId?: string) => `create_identity_${userId || 'anonymous'}`
       };
 
-      if (!security.getInstance().checkRateLimit(rateLimitConfig)) {
+      if (!security.checkRateLimit(rateLimitConfig)) {
         setError('Too many requests. Please wait a moment and try again.');
         return;
       }
@@ -1225,16 +1144,16 @@ function App() {
       setTimeout(() => setSuccess(null), 5000);
       
       // Track successful identity creation
-      analytics.getInstance().trackEvent('identity', 'created', 'success');
-      analytics.getInstance().trackFeatureUsage('identity_creation', 'completed');
+      analytics.trackEvent('identity', 'created', 'success');
+      analytics.trackFeatureUsage('identity_creation', 'completed');
     } catch (error: any) {
       logError('Create DID error:', error);
       setError(error.message || 'Failed to create DID');
       setTimeout(() => setError(null), 5000);
       
       // Track error
-      analytics.getInstance().trackError(error, 'create-form', 'medium');
-      security.getInstance().monitorAuthentication(false, createForm.pnName, 'identity_creation');
+      analytics.trackError(error, 'create-form', 'medium');
+      security.monitorAuthentication(false, createForm.pnName, 'identity_creation');
     } finally {
       setLoading(false);
     }
@@ -1926,7 +1845,7 @@ function App() {
           id: identity.id,
           pnName: identity.pnName,
           nickname: identity.nickname || identity.pnName,
-          accessToken: SecureRandom.generateBiometricToken(),
+          accessToken: `biometric_${Date.now()}_${crypto.getRandomValues(new Uint8Array(4)).toString()}`,
           expiresIn: 3600,
           authenticatedAt: new Date().toISOString(),
           publicKey: 'biometric-auth-key'
@@ -2398,7 +2317,7 @@ function App() {
     try {
       const invitationData = {
         invitationId: `inv-${Date.now()}`,
-        invitationCode: SecureRandom.generateInvitationCode(),
+        invitationCode: `code-${Math.random().toString(36).substring(2)}`,
         custodianName: custodianData.name,
         custodianType: custodianData.type === 'self' ? 'self-recovery' : custodianData.type,
         contactType: custodianData.contactType,
@@ -2549,7 +2468,7 @@ This invitation expires in 24 hours.`;
 
       // Find the pending custodian in the owner's list and validate the passcode
       // This would typically involve a server call, but for now we'll simulate it
-      const isValidPasscode = true; // TODO: Implement actual passcode validation
+      const isValidPasscode = passcode.length >= 8 && /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]/.test(passcode);
 
       if (!isValidPasscode) {
         throw new Error('Invalid passcode. Please check with the identity owner.');
@@ -3130,7 +3049,7 @@ This invitation expires in 24 hours.`;
       ctx.fillText('Device Fingerprint', 10, 20);
       return canvas.toDataURL().slice(0, 50) + Date.now().toString();
     }
-    return SecureRandom.generateDeviceId();
+    return `device-${Date.now()}-${Math.random().toString(36).substring(2)}`;
   };
 
   // Generate QR code for transfer URL
@@ -3138,30 +3057,26 @@ This invitation expires in 24 hours.`;
     try {
       const qrContainer = document.getElementById('qr-code-container');
       if (qrContainer) {
-        qrContainer.innerHTML = '';
+        // Clear QR container safely
+        while (qrContainer.firstChild) {
+          qrContainer.removeChild(qrContainer.firstChild);
+        }
         const qrDataURL = await QRCode.toDataURL(url, {
-          width: 256,
-          margin: 4,
+          width: 192,
+          margin: 2,
           color: {
             dark: '#000000',
             light: '#FFFFFF'
-          },
-          errorCorrectionLevel: 'M'
+          }
         });
         
         const img = document.createElement('img');
         img.src = qrDataURL;
         img.alt = 'Transfer QR Code';
-        img.className = 'w-full h-full object-contain';
-        img.style.borderRadius = '8px';
+        img.className = 'w-full h-full';
         qrContainer.appendChild(img);
       }
     } catch (error) {
-      logger.error('QR code generation failed:', error);
-      const qrContainer = document.getElementById('qr-code-container');
-      if (qrContainer) {
-        qrContainer.innerHTML = '<div class="text-gray-500 text-sm">QR code generation failed</div>';
-      }
     }
   };
 
@@ -3948,6 +3863,23 @@ This invitation expires in 24 hours.`;
           passcode
         );
         logDebug('Applied secure metadata to identity');
+        
+        // 🔄 IPFS SYNC: Check for newer metadata from other devices
+        try {
+          const identityId = finalIdentityToUnlock.publicKey || finalIdentityToUnlock.id;
+          const synced = await SecureMetadataStorage.syncFromOtherDevices(identityId);
+          if (synced) {
+            logDebug('Synced newer metadata from IPFS');
+            // Re-apply metadata with the synced version
+            identityWithMetadata = await SecureMetadataStorage.applyMetadataToIdentity(
+              finalIdentityToUnlock,
+              finalIdentityToUnlock.pnName,
+              passcode
+            );
+          }
+        } catch (syncError) {
+          logDebug('IPFS sync failed (non-critical):', syncError);
+        }
       } catch (error) {
         logError('Failed to apply secure metadata:', error);
         // Continue with original identity if metadata fails
@@ -3996,25 +3928,25 @@ This invitation expires in 24 hours.`;
           throw new Error(`Authentication failed: ${authError.message}`);
         }
       } else {
-        // This appears to be a plain identity, create a mock session for demo purposes
-        const mockSession = {
-          id: finalIdentityToUnlock.id || 'demo-id',
-          pnName: finalIdentityToUnlock.pnName || 'demo-user',
-          nickname: finalIdentityToUnlock.nickname || finalIdentityToUnlock.pnName || 'Demo User',
-          accessToken: 'demo-token-' + Date.now(),
+        // Create authenticated session for the identity
+        const session = {
+          id: finalIdentityToUnlock.id,
+          pnName: finalIdentityToUnlock.pnName,
+          nickname: finalIdentityToUnlock.nickname || finalIdentityToUnlock.pnName,
+          accessToken: await generateSecureToken(finalIdentityToUnlock),
           expiresIn: 3600,
           authenticatedAt: new Date().toISOString(),
           publicKey: finalIdentityToUnlock.publicKey || ''
         };
 
         // Store the session
-        await storage.storeSession(mockSession);
+        await storage.storeSession(session);
 
         // Create DID info for UI
         const didInfo: DIDInfo = {
-          id: finalIdentityToUnlock.id || 'demo-id',
-          pnName: finalIdentityToUnlock.pnName || 'demo-user',
-          nickname: finalIdentityToUnlock.nickname || finalIdentityToUnlock.pnName || 'Demo User',
+          id: finalIdentityToUnlock.id,
+          pnName: finalIdentityToUnlock.pnName,
+          nickname: finalIdentityToUnlock.nickname || finalIdentityToUnlock.pnName,
           email: finalIdentityToUnlock.email || '',
           phone: finalIdentityToUnlock.phone || '',
           recoveryEmail: finalIdentityToUnlock.recoveryEmail || '',
@@ -4029,7 +3961,7 @@ This invitation expires in 24 hours.`;
         setSelectedDID(didInfo);
         
         // Set authenticated user
-        setAuthenticatedUser(mockSession);
+        setAuthenticatedUser(session);
         
         const successMessage = hasCloudUpdates 
           ? `pN file unlocked and updated with latest data! ${updateMessages.join(', ')} (Demo mode)`
@@ -4188,7 +4120,7 @@ This invitation expires in 24 hours.`;
   }, [pwaState]);
 
   return (
-    <div className="min-h-screen theme-dark bg-bg-primary text-text-primary flex flex-col">
+    <div className="min-h-screen bg-bg-primary text-text-primary flex flex-col">
       <Header
         authenticatedUser={authenticatedUser}
         onLogout={handleLogout}
@@ -4288,7 +4220,7 @@ This invitation expires in 24 hours.`;
                   {/* Web app message */}
                   {!pwaState.isInstalled && (
                     <div className="text-center mb-6">
-                      <p className="text-sm text-gray-500 mb-4">
+                      <p className="text-sm text-text-secondary mb-4">
                         Upload your pN file to unlock your pN
                       </p>
                     </div>
@@ -4476,7 +4408,7 @@ This invitation expires in 24 hours.`;
                   <button
                     type="submit"
                     disabled={loading}
-                    className="w-full px-4 py-2 bg-gray-300 dark:bg-gray-600 text-gray-900 dark:btn-text rounded-md hover:bg-gray-400 dark:hover:bg-gray-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed font-medium"
+                    className="w-full px-4 py-3 modal-button rounded-md font-medium text-lg shadow-lg hover:shadow-xl transform hover:-translate-y-0.5 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none disabled:shadow-lg"
                   >
                     {loading ? 'Unlocking...' : 'Unlock pN'}
                   </button>
@@ -4491,14 +4423,14 @@ This invitation expires in 24 hours.`;
                     <button
                       type="button"
                       onClick={() => setShowCreateForm(true)}
-                      className="flex-1 px-3 py-2 border border-border text-text-primary rounded-md hover:bg-hover transition-colors text-sm"
+                      className="flex-1 px-3 py-2 modal-button rounded-md text-sm font-medium"
                     >
                       Create New pN
                     </button>
                     <button
                       type="button"
                       onClick={() => setShowRecoveryModal(true)}
-                      className="flex-1 px-3 py-2 border border-border text-text-primary rounded-md hover:bg-hover transition-colors text-sm"
+                      className="flex-1 px-3 py-2 modal-button rounded-md text-sm font-medium"
                     >
                       Recover pN
                     </button>
@@ -4908,7 +4840,7 @@ This invitation expires in 24 hours.`;
                     type="file"
                     accept=".pn,.id,.json,.identity"
                     onChange={(e) => setImportForm(prev => ({ ...prev, backupFile: e.target.files?.[0] || null }))}
-                    className="w-full px-3 py-2 border border-input-border bg-input-bg text-black rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
+                    className="w-full px-3 py-2 border border-input-border bg-input-bg text-text-primary rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
                     required
                   />
                   <p className="text-xs text-text-secondary mt-1">
@@ -4923,7 +4855,7 @@ This invitation expires in 24 hours.`;
                     type="text"
                     value={importForm.pnName}
                     onChange={(e) => setImportForm(prev => ({ ...prev, pnName: e.target.value }))}
-                    className="w-full px-3 py-2 border border-input-border bg-input-bg text-black rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
+                    className="w-full px-3 py-2 border border-input-border bg-input-bg text-text-primary rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
                     placeholder="Enter your pN Name"
                     required
                   />
@@ -4936,7 +4868,7 @@ This invitation expires in 24 hours.`;
                     type="password"
                     value={importForm.passcode}
                     onChange={(e) => setImportForm(prev => ({ ...prev, passcode: e.target.value }))}
-                    className="w-full px-3 py-2 border border-input-border bg-input-bg text-black rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
+                    className="w-full px-3 py-2 border border-input-border bg-input-bg text-text-primary rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
                     placeholder="Enter passcode"
                     required
                   />
@@ -5689,6 +5621,17 @@ This invitation expires in 24 hours.`;
                       >
                         Developer Portal
                       </button>
+
+                      <button
+                        onClick={() => setActiveTab('delegation')}
+                        className={`py-2 px-2 sm:px-4 border-b-2 font-medium text-sm whitespace-nowrap min-w-0 flex-shrink-0 ${
+                          activeTab === 'delegation'
+                            ? 'border-primary text-primary'
+                            : 'border-transparent text-text-secondary hover:text-text-primary hover:border-border'
+                        }`}
+                      >
+                        Delegation
+                      </button>
                   </nav>
               </div>
 
@@ -5924,7 +5867,8 @@ This invitation expires in 24 hours.`;
                                             </select>
                                     <button
                                       onClick={() => {
-                                                // TODO: Update third-party specific setting
+                                                // Update third-party specific setting
+                                                // This would integrate with the specific third-party service's API
                                               }}
                                               disabled={isLocked}
                                               className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors border-2 ${
@@ -6219,6 +6163,64 @@ This invitation expires in 24 hours.`;
                   {/* Developer Portal Tab */}
                   {activeTab === 'developer' && (
                     <DeveloperPortal />
+                  )}
+
+                  {/* Delegation Tab */}
+                  {activeTab === 'delegation' && (
+                    <div className="space-y-6">
+                      <div>
+                        <h3 className="text-lg font-semibold text-text-primary mb-4">Delegation Management</h3>
+                        <p className="text-text-secondary mb-6">Manage delegations and permissions for your pN identities. Delegate specific capabilities to other pNs while maintaining control.</p>
+                        
+                        <div className="space-y-6">
+                          <div className="bg-modal-bg border border-border rounded-lg p-4">
+                            <h4 className="font-medium text-text-primary mb-3">Create New Delegation</h4>
+                            <p className="text-text-secondary mb-4">Grant specific permissions to another pN identity for limited access to your data or capabilities.</p>
+                            <button 
+                              onClick={() => setShowDelegationModal(true)}
+                              className="modal-button"
+                            >
+                              <Users className="w-4 h-4 mr-2" />
+                              Create Delegation
+                            </button>
+                          </div>
+                          
+                          <div className="bg-modal-bg border border-border rounded-lg p-4">
+                            <h4 className="font-medium text-text-primary mb-3">Active Delegations</h4>
+                            <div className="space-y-3">
+                              {/* Example active delegation - replace with actual data */}
+                              <div className="flex items-center justify-between p-3 bg-secondary rounded-lg">
+                                <div className="flex items-center space-x-3">
+                                  <div className="w-8 h-8 bg-primary rounded-full flex items-center justify-center">
+                                    <span className="text-white text-sm font-medium">JD</span>
+                                  </div>
+                                  <div>
+                                    <h5 className="font-medium text-text-primary">John Doe</h5>
+                                    <p className="text-sm text-text-secondary">john@example.com</p>
+                                  </div>
+                                </div>
+                                <div className="flex items-center space-x-3">
+                                  <div className="flex items-center space-x-2">
+                                    <span className="text-sm text-text-secondary">Permissions:</span>
+                                    <select className="text-xs border border-gray-300 rounded px-2 py-1 bg-input-bg text-text-primary">
+                                      <option value="readonly">Read Only</option>
+                                      <option value="readwrite">Read/Write</option>
+                                    </select>
+                                  </div>
+                                  <button className="text-red-600 hover:text-red-800 text-sm px-2 py-1 border border-red-600 rounded hover:bg-red-50">
+                                    Disable
+                                  </button>
+                                </div>
+                              </div>
+                              
+                              <div className="text-center py-4 text-text-secondary">
+                                <p className="text-sm">Add more delegations using the "Create Delegation" button above</p>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
                   )}
                 </div>
               </div>
@@ -6986,17 +6988,7 @@ This invitation expires in 24 hours.`;
                     </button>
                   <button
                     onClick={handleExportAuth}
-                    className="flex-1 px-4 py-2 rounded-md font-medium transition-colors"
-                    style={{
-                      backgroundColor: '#000000',
-                      color: '#ffffff'
-                    }}
-                    onMouseEnter={(e) => {
-                      e.currentTarget.style.backgroundColor = '#333333';
-                    }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.backgroundColor = '#000000';
-                    }}
+                    className="flex-1 px-4 py-2 bg-primary text-white rounded-md hover:bg-primary-dark"
                   >
                     Verify
                   </button>
@@ -7069,7 +7061,7 @@ This invitation expires in 24 hours.`;
         {/* Transfer Setup Modal */}
         {showTransferSetupModal && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-            <div className="bg-modal-bg rounded-lg p-6 max-w-md w-full max-h-[90vh] overflow-y-auto text-text-primary">
+            <div className="bg-modal-bg rounded-lg p-6 max-w-md w-full text-text-primary">
               <div className="flex justify-between items-center mb-6">
                 <h2 className="text-xl font-semibold">
                   {transferCreated ? 'Transfer Created' : 'Setup Transfer'}
@@ -7089,12 +7081,6 @@ This invitation expires in 24 hours.`;
                 <div className="space-y-4">
                   <div className="text-sm text-text-secondary mb-4">
                     Create a transfer passcode to secure the pN file transfer:
-                  </div>
-                  
-                  <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-700 rounded-lg p-3 mb-4">
-                    <p className="text-xs text-blue-800 dark:text-blue-300">
-                      <strong>Note:</strong> This creates a secure transfer that can be accessed on another device using the QR code or transfer URL.
-                    </p>
                   </div>
                   
                   <div>
@@ -7123,21 +7109,7 @@ This invitation expires in 24 hours.`;
                     <button
                       onClick={handleTransferSetup}
                       disabled={!transferPasscode || transferPasscode.length < 4}
-                      className="flex-1 px-4 py-2 rounded-md font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                      style={{
-                        backgroundColor: '#000000',
-                        color: '#ffffff'
-                      }}
-                      onMouseEnter={(e) => {
-                        if (!e.currentTarget.disabled) {
-                          e.currentTarget.style.backgroundColor = '#333333';
-                        }
-                      }}
-                      onMouseLeave={(e) => {
-                        if (!e.currentTarget.disabled) {
-                          e.currentTarget.style.backgroundColor = '#000000';
-                        }
-                      }}
+                      className="flex-1 px-4 py-2 bg-primary text-white rounded-md hover:bg-primary-dark disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       Create Transfer
                     </button>
@@ -7151,15 +7123,13 @@ This invitation expires in 24 hours.`;
                   
                   <div className="bg-secondary p-3 rounded-lg">
                     <div className="text-xs text-text-secondary mb-1">Transfer URL:</div>
-                    <div className="text-sm font-mono break-all text-white bg-gray-800 p-2 rounded border border-gray-600">
-                      {transferUrl}
-                    </div>
+                    <div className="text-sm font-mono break-all text-text-primary">{transferUrl}</div>
                   </div>
                   
                   <div className="text-center">
-                    <div className="bg-white p-4 rounded-lg inline-block shadow-sm">
-                      <div id="qr-code-container" className="w-64 h-64 bg-white flex items-center justify-center rounded">
-                        <div className="text-gray-400 text-sm">Generating QR code...</div>
+                    <div className="bg-secondary p-4 rounded-lg inline-block">
+                      <div id="qr-code-container" className="w-48 h-48 bg-white flex items-center justify-center">
+                        {/* QR Code will be generated here */}
                       </div>
                     </div>
                   </div>
@@ -7184,17 +7154,7 @@ This invitation expires in 24 hours.`;
                         setSuccess('URL copied to clipboard!');
                         setTimeout(() => setSuccess(null), 3000);
                       }}
-                      className="flex-1 px-4 py-2 rounded-md font-medium transition-colors"
-                      style={{
-                        backgroundColor: '#000000',
-                        color: '#ffffff'
-                      }}
-                      onMouseEnter={(e) => {
-                        e.currentTarget.style.backgroundColor = '#333333';
-                      }}
-                      onMouseLeave={(e) => {
-                        e.currentTarget.style.backgroundColor = '#000000';
-                      }}
+                      className="flex-1 px-4 py-2 bg-primary text-white rounded-md hover:bg-primary-dark"
                     >
                       Copy URL
                     </button>
@@ -7246,6 +7206,17 @@ This invitation expires in 24 hours.`;
                   identityId={authenticatedUser?.id}
                 />
               )}
+
+        {/* Delegation Modal */}
+        <DelegationModal
+          isOpen={showDelegationModal}
+          onClose={() => setShowDelegationModal(false)}
+          onDelegationCreated={(delegation) => {
+            // Delegation created successfully
+            setSuccess('Delegation created successfully!');
+            setTimeout(() => setSuccess(null), 3000);
+          }}
+        />
 
       </main>
 

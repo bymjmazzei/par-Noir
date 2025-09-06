@@ -1,6 +1,7 @@
+// import { cryptoWorkerManager } from './encryption/cryptoWorkerManager';
 /**
  * Standardized DID Validation Utility
- * Provides consistent DID format validation across the Identity Protocol
+ * Provi consistent DID format validation across the Identity Protocol
  */
 
 export interface DIDValidationResult {

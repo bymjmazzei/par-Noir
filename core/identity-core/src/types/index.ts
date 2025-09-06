@@ -1,3 +1,4 @@
+import { cryptoWorkerManager } from '../encryption/cryptoWorkerManager';
 /**
  * Core types and interfaces for the Identity Protocol
  */
@@ -19,6 +20,7 @@ export interface DIDMetadata {
   avatar?: string;
   preferences: DIDPreferences;
   customFields?: Record<string, any>;
+  lastUpdated?: string;
   security?: {
     accountLockedUntil?: string;
     lastLoginAttempt?: string;
@@ -76,12 +78,17 @@ export interface CreateDIDOptions {
   displayName?: string;
   email?: string;
   preferences?: Partial<DIDPreferences>;
+  backupEnabled?: boolean;
 }
 
 export interface AuthenticateOptions {
   pnName: string;
   passcode: string;
   biometric?: boolean;
+  ipAddress?: string;
+  userAgent?: string;
+  deviceFingerprint?: string;
+  hardwareToken?: string;
 }
 
 export interface UpdateMetadataOptions {
@@ -89,6 +96,9 @@ export interface UpdateMetadataOptions {
   passcode: string;
   metadata: Partial<DIDMetadata>;
   toolId?: string;
+  displayName?: string;
+  email?: string;
+  preferences?: Partial<DIDPreferences>;
 }
 
 export interface GrantToolAccessOptions {
@@ -102,13 +112,19 @@ export interface GrantToolAccessOptions {
 export interface ChallengeResponse {
   challenge: string;
   expiresAt: string;
+  type?: string;
 }
 
 export interface SignatureVerification {
-  did: string;
-  challenge: string;
-  signature: string;
+  did?: string;
+  challenge?: string;
+  signature?: string;
   verified: boolean;
+  isValid?: boolean;
+  verifiedAt?: string;
+  algorithm?: string;
+  keyType?: string;
+  error?: string;
 }
 
 export interface IdentityCoreConfig {
@@ -160,6 +176,8 @@ export const IdentityErrorCodes = {
   NOT_FOUND_ERROR: 'NOT_FOUND_ERROR',
   PRIVACY_ERROR: 'PRIVACY_ERROR',
   SECURITY_ERROR: 'SECURITY_ERROR',
+  UPDATE_ERROR: 'UPDATE_ERROR',
+  DELETION_ERROR: 'DELETION_ERROR',
 } as const;
 
 export type IdentityErrorCode = typeof IdentityErrorCodes[keyof typeof IdentityErrorCodes];
@@ -317,7 +335,7 @@ export interface DeviceSyncInfo {
   devices: {
     [deviceId: string]: {
       name: string;
-      type: 'mobile' | 'desktop' | 'tablet' | 'other';
+      type: 'mobile' | 'ktop' | 'tablet' | 'other';
       lastSync: string;
       syncStatus: 'synced' | 'pending' | 'error';
       isTrusted: boolean;

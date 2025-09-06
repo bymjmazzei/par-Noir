@@ -40,24 +40,10 @@ export const COMMERCIAL_OPERATIONS = {
   ADVANCED_SECURITY: 'advanced_security'
 };
 
-// Free operations that don't require commercial licensing
-export const FREE_OPERATIONS = {
-  // Basic Authentication
-  BASIC_AUTHENTICATION: 'basic_authentication',
-  IDENTITY_CREATION: 'identity_creation',
-  STANDARD_LOGIN: 'standard_login',
-  BASIC_SDK_INTEGRATION: 'basic_sdk_integration',
-  
-  // Core Features
-  CORE_IDENTITY_MANAGEMENT: 'core_identity_management',
-  BASIC_SECURITY_FEATURES: 'basic_security_features',
-  STANDARD_API_ENDPOINTS: 'standard_api_endpoints'
-};
-
 // Enforcement thresholds
 const ENFORCEMENT_THRESHOLDS = {
-  API_CALL_LIMIT: 100,
-  // Removed USER_COUNT_LIMIT - basic auth is unlimited
+  API_CALL_LIMIT: 100, // calls per hour
+  USER_COUNT_LIMIT: 10, // users
   INTEGRATION_COUNT_LIMIT: 5, // integrations
   BULK_OPERATION_LIMIT: 1000 // records per operation
 };
@@ -119,13 +105,8 @@ export class DecentralizedEnforcement {
   
   // Check if operation requires commercial license
   private static isCommercialOperation(operation: CommercialOperation): boolean {
-    // Basic authentication operations are always free
-    if (FREE_OPERATIONS[operation.operationType as keyof typeof FREE_OPERATIONS]) {
-      return false;
-    }
-    
-    // Check if operation is in commercial operations list
-    return COMMERCIAL_OPERATIONS[operation.operationType as keyof typeof COMMERCIAL_OPERATIONS] !== undefined;
+    const commercialOperationTypes = Object.values(COMMERCIAL_OPERATIONS);
+    return commercialOperationTypes.includes(operation.operationId);
   }
   
   // Enforce API rate limiting

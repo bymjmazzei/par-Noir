@@ -83,6 +83,6 @@ export declare class ThreatDetectionSystem {
     getConfig(): ThreatDetectionConfig;
     updateConfig(newConfig: Partial<ThreatDetectionConfig>): void;
     isEnabled(): boolean;
-    destroy(): void;
+    troy(): void;
 }
 //# sourceMappingURL=threat-detection.d.ts.map

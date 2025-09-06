@@ -83,8 +83,8 @@ class ErrorMonitor {
   }
 
   private generateSessionId(): string {
-    return SecureRandom.generateId(15) + 
-           SecureRandom.generateId(15);
+    return Math.random().toString(36).substring(2, 15) + 
+           Math.random().toString(36).substring(2, 15);
   }
 
   private async sendToMonitoringService(_errorEvent: ErrorEvent): Promise<void> {

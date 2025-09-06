@@ -61,6 +61,6 @@ export declare class SecurityMonitor {
     private arrayBufferToBase64;
     private base64ToArrayBuffer;
     private log;
-    destroy(): void;
+    troy(): void;
 }
 //# sourceMappingURL=security-monitor.d.ts.map

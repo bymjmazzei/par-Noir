@@ -22,7 +22,7 @@ export interface SecurityEvent {
         ip_address?: string;
     };
     source_ip?: string;
-    destination_ip?: string;
+    tination_ip?: string;
     user_agent?: string;
     session_id?: string;
     request_id?: string;
@@ -94,7 +94,7 @@ export declare class SIEMService {
     logAuthEvent(eventType: 'login' | 'logout' | 'failed_login' | 'password_reset' | 'account_locked', userId: string, success: boolean, details?: Record<string, any>): Promise<string>;
     logDIDEvent(operation: 'create' | 'update' | 'delete' | 'resolve' | 'verify', didId: string, success: boolean, details?: Record<string, any>): Promise<string>;
     logSuspiciousActivity(activity: string, userId: string, indicators: SecurityIndicator[], details?: Record<string, any>): Promise<string>;
-    logNetworkEvent(eventType: string, sourceIp: string, destinationIp: string, severity: 'low' | 'medium' | 'high' | 'critical', details?: Record<string, any>): Promise<string>;
+    logNetworkEvent(eventType: string, sourceIp: string, tinationIp: string, severity: 'low' | 'medium' | 'high' | 'critical', details?: Record<string, any>): Promise<string>;
     createAlert(title: string, description: string, events: SecurityEvent[], severity: 'low' | 'medium' | 'high' | 'critical'): Promise<string>;
     updateAlertStatus(alertId: string, status: SecurityAlert['status'], assignedTo?: string, notes?: string): Promise<boolean>;
     checkThreatIntel(event: SecurityEvent): Promise<ThreatIntel[]>;

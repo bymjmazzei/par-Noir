@@ -5,6 +5,9 @@ import { resolve } from 'path'
 // https://vitejs.dev/config/
 export default defineConfig({
   plugins: [react()],
+  worker: {
+    format: 'es'
+  },
   publicDir: 'public',
   resolve: {
     alias: {
@@ -126,8 +129,8 @@ export default defineConfig({
     host: true,
   },
   define: {
-    // Force production mode
-    'process.env.NODE_ENV': JSON.stringify('production'),
+    // Force development mode
+    'process.env.NODE_ENV': JSON.stringify('development'),
     __APP_VERSION__: JSON.stringify(process.env.npm_package_version),
     __BUILD_TIME__: JSON.stringify(new Date().toISOString()),
     'process.env.REACT_APP_IPFS_PROJECT_ID': JSON.stringify(process.env.REACT_APP_IPFS_PROJECT_ID),

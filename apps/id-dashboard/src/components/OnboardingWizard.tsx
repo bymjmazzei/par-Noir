@@ -60,22 +60,15 @@ export const OnboardingWizard: React.FC<OnboardingWizardProps> = ({
       description: 'Let\'s get you set up with the essential features to make the most of your new digital identity.',
       icon: <User className="w-8 h-8 text-blue-600" />,
       infoContent: `Your Identity Dashboard is your personal command center for managing your digital identity. 
-
-IMPORTANT: You are in complete control of your identity. Unlike traditional systems, your identity data is stored locally on your device and encrypted with your passcode. This means:
-
-• YOU own your identity - no company or server controls it
-• YOU are responsible for keeping it safe and accessible
-• If you lose your device AND don't have proper backups, you could permanently lose your identity
-• There is no "forgot password" or "reset account" - you must set up recovery methods
-
+      
 Here you can:
 • Set up your identity nickname for easy recognition
-• Export your identity file for backup (ESSENTIAL)
-• Configure recovery custodians to protect your identity (CRITICAL)
+• Configure recovery custodians to protect your identity
+• Export your identity and recovery keys for backup
 • Manage privacy settings and security features
 • Sync your identity across multiple devices
 
-This wizard will guide you through each important feature step by step. You can skip any step or come back to it later, but we strongly recommend completing the file export and custodian setup steps.`
+This wizard will guide you through each important feature step by step. You can skip any step or come back to it later.`
     },
     {
       id: 'nickname',
@@ -99,47 +92,6 @@ Key benefits:
 The nickname is stored locally on your device and is not shared with external services unless you explicitly choose to do so.`
     },
     {
-      id: 'export-id',
-      title: 'Export Your Identity',
-      description: 'Create a secure backup of your identity that you can store safely.',
-      icon: <Download className="w-8 h-8 text-orange-600" />,
-      action: () => {
-        if (onExportID) {
-          onExportID();
-          setCompletedSteps(prev => new Set([...prev, 'export-id']));
-        }
-      },
-      infoContent: `💾 ESSENTIAL: Exporting your identity creates an encrypted backup file that you can use to restore your identity on other devices.
-
-This is your SECOND line of defense if you lose access to your current device.
-
-What's included in the export:
-• Your complete encrypted identity data
-• Your nickname and metadata
-• Recovery custodian information
-• All your identity settings and preferences
-
-Security features:
-• The export file is encrypted with your passcode
-• Only you can decrypt and use the backup
-• File format: JSON (e.g., "your-nickname-backup.json")
-• You can import it on any device to restore your identity
-
-WHERE TO STORE YOUR BACKUP:
-• Password manager (1Password, Bitwarden, etc.)
-• Encrypted cloud storage (with strong password)
-• External hard drive or USB stick (in a safe place)
-• Multiple locations for redundancy
-
-HOW TO USE YOUR BACKUP:
-• Download the backup file to your new device
-• Use the "Import Identity" feature in the dashboard
-• Enter your passcode to decrypt and restore your identity
-• Your custodians and all settings will be restored
-
-⚠️ CRITICAL: Without this backup file, if you lose your device, you'll need to rely entirely on your custodians for recovery. Having both custodians AND a backup file gives you the best protection.`
-    },
-    {
       id: 'custodians',
       title: 'Set Up Recovery Custodians',
       description: 'Add trusted people or services who can help you recover your identity if needed.',
@@ -150,30 +102,48 @@ HOW TO USE YOUR BACKUP:
           setCompletedSteps(prev => new Set([...prev, 'custodians']));
         }
       },
-      infoContent: `🚨 CRITICAL: Recovery custodians are your lifeline if you lose access to your identity.
+      infoContent: `Recovery custodians are trusted people or services who can help you recover access to your identity if you lose your device or forget your passcode.
 
-Without custodians, if you lose your device or forget your passcode, you will PERMANENTLY lose your identity. There is no way to recover it.
-
-How custodians work:
+How it works:
 • You add 2-5 trusted custodians (people or services)
-• Each custodian gets a secure invitation via email/SMS
-• They must accept the invitation to become your custodian
+• Each custodian gets a secure invitation
 • If you need recovery, custodians approve your request
 • Once approved, you can regain access to your identity
 
 Security features:
 • Custodians can only approve recovery requests
-• They cannot access your private data or see your identity content
+• They cannot access your private data
 • You can remove or change custodians anytime
-• Recovery requires approval from multiple custodians (typically 2-3)
+• Recovery requires approval from multiple custodians
 
-WHO TO CHOOSE AS CUSTODIANS:
-• Trusted family members or close friends
-• Professional contacts you trust completely
-• Multiple people in case one is unavailable
-• People who understand the importance of this responsibility
+This is crucial for protecting your identity - without custodians, you could permanently lose access if something happens to your device.`
+    },
+    {
+      id: 'export-id',
+      title: 'Export Your Identity',
+      description: 'Create a secure backup of your identity that you can store safely.',
+      icon: <Download className="w-8 h-8 text-orange-600" />,
+      action: () => {
+        if (onExportID) {
+          onExportID();
+          setCompletedSteps(prev => new Set([...prev, 'export-id']));
+        }
+      },
+      infoContent: `Exporting your identity creates an encrypted backup file that contains all your identity data.
 
-⚠️ WARNING: If you skip this step and later lose your device or forget your passcode, your identity will be lost forever. This is not like a regular account where you can call support.`
+What's included in the export:
+• Your encrypted DID document
+• Your nickname and metadata
+• Recovery custodian information
+• Privacy settings and preferences
+
+Security features:
+• The export file is encrypted with your passcode
+• Only you can decrypt and use the backup
+• Store it in a secure location (password manager, safe, etc.)
+• You can import it on other devices if needed
+
+Important: Keep this backup safe! It's your lifeline if you need to restore your identity on a new device.`
     },
     {
       id: 'recovery-key',
@@ -287,25 +257,17 @@ What you've accomplished:
 • Configured privacy and security settings
 • Learned how to manage your identity across devices
 
-IMPORTANT REMINDERS:
-• You are in complete control of your identity - no company or server controls it
-• If you lose your device AND don't have custodians/backup, you will permanently lose your identity
-• There is no "forgot password" or customer support for recovery
-• Your identity data is stored locally on your device and encrypted with your passcode
-
 Next steps:
+• Explore the dashboard to discover additional features
 • Test the recovery process to ensure it works
-• Store your backup file in a secure location
-• Verify your custodians understand their responsibility
 • Set up additional identities if needed
 • Start using your identity with compatible services
 
-Security best practices:
+Remember:
 • Keep your backups secure and up to date
 • Regularly review your privacy settings
 • Test recovery procedures periodically
-• Keep your custodians informed and updated
-• Never share your passcode with anyone
+• Your identity is yours - you have complete control
 
 You can always return to this wizard or access any feature from the main dashboard.`
     }
@@ -345,19 +307,17 @@ You can always return to this wizard or access any feature from the main dashboa
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-2 sm:p-4">
-      <div className="bg-white dark:bg-modal-bg rounded-lg shadow-xl max-w-2xl w-full max-h-[95vh] sm:max-h-[90vh] overflow-hidden">
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+      <div className="bg-white dark:bg-modal-bg rounded-lg shadow-xl max-w-2xl w-full max-h-[90vh] overflow-hidden">
         {/* Header */}
-        <div className="flex items-center justify-between p-4 sm:p-6 border-b border-gray-200 dark:border-gray-700">
-          <div className="flex items-center space-x-2 sm:space-x-3 min-w-0 flex-1">
-            <div className="flex-shrink-0">
-              {currentStepData.icon}
-            </div>
-            <div className="min-w-0 flex-1">
-              <h2 className="text-lg sm:text-xl font-semibold text-gray-900 dark:text-text-primary truncate">
+        <div className="flex items-center justify-between p-6 border-b border-gray-200 dark:border-gray-700">
+          <div className="flex items-center space-x-3">
+            {currentStepData.icon}
+            <div>
+              <h2 className="text-xl font-semibold text-gray-900 dark:text-text-primary">
                 {currentStepData.title}
               </h2>
-              <p className="text-xs sm:text-sm text-gray-600 dark:text-text-secondary">
+              <p className="text-sm text-gray-600 dark:text-text-secondary">
                 Step {currentStep + 1} of {steps.length}
               </p>
             </div>
@@ -381,26 +341,26 @@ You can always return to this wizard or access any feature from the main dashboa
         </div>
 
         {/* Progress Bar */}
-        <div className="px-4 sm:px-6 py-3 bg-gray-50 dark:bg-gray-800">
-          <div className="flex items-center justify-between w-full">
+        <div className="px-6 py-3 bg-gray-50 dark:bg-gray-800">
+          <div className="flex items-center space-x-2">
             {steps.map((step, index) => (
-              <div key={step.id} className="flex items-center flex-1">
+              <div key={step.id} className="flex items-center">
                 <div
-                  className={`w-6 h-6 sm:w-8 sm:h-8 rounded-full flex items-center justify-center text-xs sm:text-sm font-medium flex-shrink-0 ${
+                  className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium ${
                     index <= currentStep
                       ? 'bg-blue-600 dark:bg-primary text-white'
                       : 'bg-gray-200 dark:bg-gray-600 text-gray-600 dark:text-gray-300'
                   }`}
                 >
                   {completedSteps.has(step.id) ? (
-                    <CheckCircle className="w-3 h-3 sm:w-4 sm:h-4" />
+                    <CheckCircle className="w-4 h-4" />
                   ) : (
                     index + 1
                   )}
                 </div>
                 {index < steps.length - 1 && (
                   <div
-                    className={`flex-1 h-1 mx-1 sm:mx-2 ${
+                    className={`w-12 h-1 mx-2 ${
                       index < currentStep ? 'bg-blue-600 dark:bg-primary' : 'bg-gray-200 dark:bg-gray-600'
                     }`}
                   />
@@ -411,7 +371,7 @@ You can always return to this wizard or access any feature from the main dashboa
         </div>
 
         {/* Content */}
-        <div className="p-4 sm:p-6 overflow-y-auto max-h-[60vh]">
+        <div className="p-6 overflow-y-auto max-h-[60vh]">
           {showInfo ? (
             <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-700 rounded-lg p-4">
               <div className="flex items-start space-x-3">
@@ -455,44 +415,33 @@ You can always return to this wizard or access any feature from the main dashboa
 
               {currentStepData.id === 'custodians' && (
                 <div className="space-y-4">
-                  <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-700 rounded-lg p-4">
-                    <p className="text-sm text-red-800 dark:text-red-300">
-                      <strong>🚨 CRITICAL:</strong> Without custodians, you could permanently lose your identity if you lose your device or forget your passcode. 
-                      You need at least 2 custodians to create your identity.
-                    </p>
-                  </div>
                   <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-700 rounded-lg p-4">
                     <p className="text-sm text-yellow-800 dark:text-yellow-300">
-                      <strong>Remember:</strong> This is not like a regular account. There is no "forgot password" or customer support to help you recover your identity.
+                      <strong>Important:</strong> Setting up recovery custodians is crucial for protecting your identity. 
+                      You'll need at least 2 custodians to create your identity.
                     </p>
                   </div>
                   <button
                     onClick={handleStepAction}
-                    className="w-full bg-purple-600 text-white py-2 px-4 rounded-md hover:bg-purple-700 transition-colors font-semibold"
+                    className="w-full bg-purple-600 text-white py-2 px-4 rounded-md hover:bg-purple-700 transition-colors"
                   >
-                    Set Up Custodians (Required)
+                    Set Up Custodians
                   </button>
                 </div>
               )}
 
               {currentStepData.id === 'export-id' && (
                 <div className="space-y-4">
-                  <div className="bg-orange-50 dark:bg-orange-900/20 border border-orange-200 dark:border-orange-700 rounded-lg p-4">
-                    <p className="text-sm text-orange-800 dark:text-orange-300">
-                      <strong>💾 ESSENTIAL BACKUP:</strong> This creates an encrypted JSON file that you can use to restore your identity on other devices. 
-                      Store this file safely - it's your backup if you lose your device.
-                    </p>
-                  </div>
-                  <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-700 rounded-lg p-4">
-                    <p className="text-sm text-blue-800 dark:text-blue-300">
-                      <strong>File format:</strong> Your backup will be saved as "your-nickname-backup.json" and can be imported on any device using the "Import Identity" feature.
+                  <div className="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-700 rounded-lg p-4">
+                    <p className="text-sm text-green-800 dark:text-green-300">
+                      <strong>Backup your identity:</strong> This creates an encrypted file that you can use to restore your identity on other devices.
                     </p>
                   </div>
                   <button
                     onClick={handleStepAction}
-                    className="w-full bg-orange-600 text-white py-2 px-4 rounded-md hover:bg-orange-700 transition-colors font-semibold"
+                    className="w-full bg-orange-600 text-white py-2 px-4 rounded-md hover:bg-orange-700 transition-colors"
                   >
-                    Export Identity File (Recommended)
+                    Export Identity
                   </button>
                 </div>
               )}
@@ -553,20 +502,6 @@ You can always return to this wizard or access any feature from the main dashboa
                   <p className="text-gray-700 dark:text-text-primary">
                     You've successfully completed the setup! Your identity is now ready to use.
                   </p>
-                  {!completedSteps.has('custodians') && (
-                    <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-700 rounded-lg p-4">
-                      <p className="text-sm text-red-800 dark:text-red-300">
-                        <strong>⚠️ WARNING:</strong> You haven't set up custodians yet. Without custodians, you could permanently lose your identity if you lose your device or forget your passcode. We strongly recommend completing this step.
-                      </p>
-                    </div>
-                  )}
-                  {!completedSteps.has('export-id') && (
-                    <div className="bg-orange-50 dark:bg-orange-900/20 border border-orange-200 dark:border-orange-700 rounded-lg p-4">
-                      <p className="text-sm text-orange-800 dark:text-orange-300">
-                        <strong>💾 RECOMMENDED:</strong> You haven't exported your identity file yet. This backup file is essential for restoring your identity on other devices. We strongly recommend completing this step.
-                      </p>
-                    </div>
-                  )}
                 </div>
               )}
             </div>
@@ -574,7 +509,7 @@ You can always return to this wizard or access any feature from the main dashboa
         </div>
 
         {/* Footer */}
-        <div className="flex items-center justify-between p-4 sm:p-6 border-t border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800">
+        <div className="flex items-center justify-between p-6 border-t border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800">
           <button
             onClick={handleSkip}
             className="flex items-center space-x-2 text-gray-600 dark:text-text-secondary hover:text-gray-800 dark:hover:text-text-primary transition-colors"
@@ -583,21 +518,20 @@ You can always return to this wizard or access any feature from the main dashboa
             <span>Skip Wizard</span>
           </button>
 
-          <div className="flex items-center space-x-2 sm:space-x-3">
+          <div className="flex items-center space-x-3">
             {!isFirstStep && (
               <button
                 onClick={handlePrevious}
-                className="flex items-center space-x-1 sm:space-x-2 px-3 sm:px-4 py-2 text-gray-600 dark:text-text-secondary hover:text-gray-800 dark:hover:text-text-primary transition-colors text-sm sm:text-base"
+                className="flex items-center space-x-2 px-4 py-2 text-gray-600 dark:text-text-secondary hover:text-gray-800 dark:hover:text-text-primary transition-colors"
               >
                 <ChevronLeft className="w-4 h-4" />
-                <span className="hidden sm:inline">Previous</span>
-                <span className="sm:hidden">Prev</span>
+                <span>Previous</span>
               </button>
             )}
             
             <button
               onClick={handleNext}
-              className="flex items-center space-x-1 sm:space-x-2 px-3 sm:px-4 py-2 bg-blue-600 dark:bg-primary text-white rounded-md hover:bg-blue-700 dark:hover:bg-primary-dark transition-colors text-sm sm:text-base"
+              className="flex items-center space-x-2 px-4 py-2 bg-blue-600 dark:bg-primary text-white rounded-md hover:bg-blue-700 dark:hover:bg-primary-dark transition-colors"
             >
               <span>{isLastStep ? 'Finish' : 'Next'}</span>
               {!isLastStep && <ChevronRight className="w-4 h-4" />}

@@ -31,27 +31,84 @@ export class SecureMetadataStorage {
   }
 
   /**
-   * Store metadata in cloud for cross-platform sync
+   * Store metadata in cloud for cross-platform sync via OrbitDB (mutable IPFS)
    */
   static async storeMetadataInCloud(identityId: string, secureMetadata: SecureMetadata): Promise<void> {
     try {
-      const cloudData = this.getCloudMetadata();
-      cloudData[identityId] = secureMetadata;
-      localStorage.setItem(this.CLOUD_SYNC_KEY, JSON.stringify(cloudData));
+      // Import OrbitDB service dynamically to avoid circular dependencies
+      const { OrbitDBService } = await import('./orbitDBService');
+      
+      // Create OrbitDB service instance
+      const orbitDBService = new OrbitDBService();
+      await orbitDBService.initialize();
+      
+      // Create metadata object for OrbitDB (mutable storage)
+      const metadataObject = {
+        pnId: identityId,
+        identityId: identityId,
+        encryptedMetadata: secureMetadata,
+        timestamp: new Date().toISOString(),
+        version: Date.now()
+      };
+
+      // Store in OrbitDB (handles mutability automatically)
+      const result = await orbitDBService.storePNMetadata(metadataObject);
+      
+      if (result.success) {
+        // Store sync status locally (no CID tracking needed with OrbitDB)
+        const cloudData = this.getCloudMetadata();
+        cloudData[identityId] = {
+          ...secureMetadata,
+          lastSynced: new Date().toISOString(),
+          orbitDBAddress: result.cid // OrbitDB address, not IPFS CID
+        };
+        localStorage.setItem(this.CLOUD_SYNC_KEY, JSON.stringify(cloudData));
+      } else {
+        throw new Error(result.error || 'OrbitDB storage failed');
+      }
     } catch (error) {
-      // Don't throw - cloud storage is optional
+      // Don't throw - cloud storage is optional, but log for debugging
+      // OrbitDB metadata sync failed - error handled gracefully
     }
   }
 
   /**
-   * Retrieve metadata from cloud
+   * Retrieve metadata from cloud (OrbitDB - mutable IPFS)
    */
   static async getMetadataFromCloud(identityId: string): Promise<SecureMetadata | null> {
     try {
+      // Import OrbitDB service dynamically
+      const { OrbitDBService } = await import('./orbitDBService');
+      
+      // Create OrbitDB service instance
+      const orbitDBService = new OrbitDBService();
+      await orbitDBService.initialize();
+      
+      // Get latest metadata from OrbitDB (always returns latest version)
+      const result = await orbitDBService.getPNMetadata(identityId);
+      
+      if (result.success && result.data) {
+        // Update local cache with latest data
+        const cloudData = this.getCloudMetadata();
+        cloudData[identityId] = {
+          ...result.data.encryptedMetadata,
+          lastSynced: new Date().toISOString(),
+          orbitDBAddress: result.cid
+        };
+        localStorage.setItem(this.CLOUD_SYNC_KEY, JSON.stringify(cloudData));
+        return result.data.encryptedMetadata;
+      }
+      
+      // Fallback to cached data if OrbitDB fetch fails
       const cloudData = this.getCloudMetadata();
-      return cloudData[identityId] || null;
+      const cachedMetadata = cloudData[identityId];
+      return cachedMetadata || null;
     } catch (error) {
-      return null;
+      // Failed to get metadata from OrbitDB, using cached data
+      // Fallback to cached data
+      const cloudData = this.getCloudMetadata();
+      const cachedMetadata = cloudData[identityId];
+      return cachedMetadata || null;
     }
   }
 
@@ -292,8 +349,54 @@ export class SecureMetadataStorage {
       delete cloudData[identityId];
       localStorage.setItem(this.CLOUD_SYNC_KEY, JSON.stringify(cloudData));
       
+      // No CID tracking needed with OrbitDB
+      
     } catch (error) {
       // Silently handle clear errors
+    }
+  }
+
+  // CID tracking methods removed - OrbitDB handles mutability automatically
+
+  /**
+   * Sync metadata from another device using OrbitDB
+   * OrbitDB handles mutability automatically - always returns latest version
+   */
+  static async syncFromOtherDevices(identityId: string): Promise<boolean> {
+    try {
+      const { OrbitDBService } = await import('./orbitDBService');
+      
+      // Get current local metadata
+      const localMetadata = await this.getMetadata(identityId);
+      if (!localMetadata) {
+        return false;
+      }
+
+      // Create OrbitDB service instance
+      const orbitDBService = new OrbitDBService();
+      await orbitDBService.initialize();
+
+      // Get latest metadata from OrbitDB (always returns latest version)
+      const result = await orbitDBService.getPNMetadata(identityId);
+      if (!result.success || !result.data) {
+        return false;
+      }
+
+      // Check if the OrbitDB version is newer than local
+      const localTimestamp = localMetadata.timestamp || '0';
+      const orbitDBTimestamp = result.data.timestamp || '0';
+      
+      if (new Date(orbitDBTimestamp) > new Date(localTimestamp)) {
+        // OrbitDB version is newer, update local storage
+        await this.storeMetadata(identityId, result.data.encryptedMetadata);
+        // Synced newer metadata from OrbitDB
+        return true;
+      }
+
+      return false;
+    } catch (error) {
+      // Failed to sync from other devices - error handled gracefully
+      return false;
     }
   }
 

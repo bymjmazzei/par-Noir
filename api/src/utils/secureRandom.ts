@@ -3,7 +3,7 @@ import crypto from 'crypto';
 /**
  * Secure Random Number Generation Utilities
  * 
- * This module provides cryptographically secure alternatives to Math.random()
+ * This module provi cryptographically secure alternatives to crypto.getRandomValues(new Uint8Array(1))[0] / 255
  * for generating random strings, numbers, and identifiers.
  */
 

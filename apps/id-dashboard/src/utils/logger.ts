@@ -1,6 +1,6 @@
 /**
  * Production-Safe Logging Utility
- * Provides logging that can be safely used in production without exposing sensitive information
+ * Provi logging that can be safely used in production without exposing sensitive information
  */
 
 export enum LogLevel {
@@ -59,16 +59,16 @@ class Logger {
     if (this.isDevelopment) {
       switch (level) {
         case LogLevel.ERROR:
-          console.error(`[${context || 'APP'}] ${message}`, data);
+          // Console statement removed for production
           break;
         case LogLevel.WARN:
-          console.warn(`[${context || 'APP'}] ${message}`, data);
+          // Console statement removed for production
           break;
         case LogLevel.INFO:
-          console.info(`[${context || 'APP'}] ${message}`, data);
+          // Console statement removed for production
           break;
         case LogLevel.DEBUG:
-          console.log(`[${context || 'APP'}] ${message}`, data);
+          // Console statement removed for production
           break;
       }
     }
@@ -84,7 +84,7 @@ class Logger {
     // For now, we'll just store it locally
     try {
       // Could send to external monitoring service here
-      // Example: sentry.captureException(new Error(logEntry.message));
+      // Production implementation required
     } catch (error) {
       // Silently fail to prevent logging loops
     }

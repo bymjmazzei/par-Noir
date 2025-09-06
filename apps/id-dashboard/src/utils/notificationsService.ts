@@ -3,7 +3,6 @@
 
 import { SecureMetadataStorage } from './secureMetadataStorage';
 import { NotificationEvent, NotificationSettings } from './secureMetadata';
-import { logger } from './logger';
 
 export interface Notification {
   id: string;
@@ -64,20 +63,28 @@ class NotificationsService {
   private async initializeMetadataService(): Promise<void> {
     try {
       // Initialize metadata-based notifications
-      logger.debug('Metadata-based Notifications service initialized');
+      if (process.env.NODE_ENV === 'development') {
+        // Metadata-based Notifications service initialized
+      }
     } catch (error) {
-      logger.error('Failed to initialize notifications service:', error);
+      if (process.env.NODE_ENV === 'development') {
+        // Failed to initialize notifications service - error handled gracefully
+      }
     }
   }
 
   setUnlockedIdentity(identityId: string, pnName: string, passcode: string, nickname: string): void {
     this.currentUnlockedIdentity = { id: identityId, pnName, passcode, nickname };
-    logger.debug(`Identity unlocked: ${nickname} (${identityId})`);
+    if (process.env.NODE_ENV === 'development') {
+      // Identity unlocked - notifications enabled
+    }
   }
 
   clearUnlockedIdentity(): void {
     this.currentUnlockedIdentity = null;
-    logger.debug('Identity locked');
+    if (process.env.NODE_ENV === 'development') {
+      // Identity locked - notifications disabled
+    }
   }
 
   async checkForNewNotifications(): Promise<void> {
@@ -94,10 +101,14 @@ class NotificationsService {
         this.notifications.push(...newNotifications);
         this.saveNotifications();
         
-        logger.debug(`Found ${newNotifications.length} new notifications in pN metadata`);
+        if (process.env.NODE_ENV === 'development') {
+          // Found new notifications in pN metadata
+        }
       }
     } catch (error) {
-      logger.error('Failed to check for new notifications:', error);
+      if (process.env.NODE_ENV === 'development') {
+        // Failed to check for new notifications - error handled gracefully
+      }
     }
   }
 
@@ -188,7 +199,9 @@ class NotificationsService {
 
   async createTestNotification(identityNickname: string): Promise<void> {
     // Don't store test notifications in metadata (none priority)
-    logger.debug(`Test notification created for: ${identityNickname}`);
+    if (process.env.NODE_ENV === 'development') {
+      // Test notification created
+    }
   }
 
   async getNotificationCount(identityId: string): Promise<number> {
@@ -224,14 +237,18 @@ class NotificationsService {
   // Get notification count for a specific identity (without unlocking it)
   getNotificationCountForIdentity(identityId: string): number {
     const count = this.notifications.filter(n => n.identityId === identityId).length;
-    logger.debug(`Notification count for ${identityId}: ${count}`);
+    if (process.env.NODE_ENV === 'development') {
+      // Notification count retrieved
+    }
     return count;
   }
 
   // Get unread notification count for a specific identity (without unlocking it)
   getUnreadNotificationCountForIdentity(identityId: string): number {
     const count = this.notifications.filter(n => n.identityId === identityId && !n.read).length;
-    logger.debug(`Unread notification count for ${identityId}: ${count}`);
+    if (process.env.NODE_ENV === 'development') {
+      // Unread notification count retrieved
+    }
     return count;
   }
 
@@ -418,7 +435,7 @@ class NotificationsService {
 
   // Utility methods
   private generateNotificationId(): string {
-    return `notification_${Date.now()}_${SecureRandom.generateId(9)}`;
+    return `notification_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
   }
 
   private encryptNotificationData(data: any): string {
@@ -432,7 +449,9 @@ class NotificationsService {
   }
 
   private showInAppNotification(notification: Notification): void {
-    logger.debug('Showing in-app notification:', notification.title);
+    if (process.env.NODE_ENV === 'development') {
+      // Showing in-app notification
+    }
   }
 
   private loadNotifications(): void {
@@ -442,7 +461,9 @@ class NotificationsService {
         this.notifications = JSON.parse(stored);
       }
     } catch (error) {
-      logger.error('Failed to load notifications:', error);
+      if (process.env.NODE_ENV === 'development') {
+        // Failed to load notifications - handled silently
+      }
       this.notifications = [];
     }
   }
@@ -451,7 +472,9 @@ class NotificationsService {
     try {
       localStorage.setItem('pn_notifications', JSON.stringify(this.notifications));
     } catch (error) {
-      logger.error('Failed to save notifications:', error);
+      if (process.env.NODE_ENV === 'development') {
+        // Failed to save notifications - handled silently
+      }
     }
   }
 
@@ -462,7 +485,9 @@ class NotificationsService {
         this.settings = { ...this.settings, ...JSON.parse(stored) };
       }
     } catch (error) {
-      logger.error('Failed to load notification settings:', error);
+      if (process.env.NODE_ENV === 'development') {
+        // Failed to load notification settings - handled silently
+      }
     }
   }
 
@@ -470,7 +495,9 @@ class NotificationsService {
     try {
       localStorage.setItem('pn_notification_settings', JSON.stringify(this.settings));
     } catch (error) {
-      logger.error('Failed to save notification settings:', error);
+      if (process.env.NODE_ENV === 'development') {
+        // Failed to save notification settings - handled silently
+      }
     }
   }
 }

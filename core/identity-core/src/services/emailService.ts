@@ -1,6 +1,7 @@
+// import { cryptoWorkerManager } from './encryption/cryptoWorkerManager';
 /**
  * SendGrid Email Service Integration
- * Provides email functionality for recovery and notifications
+ * Provi email functionality for recovery and notifications
  */
 
 import { SecureRandom } from '../utils/secureRandom';
@@ -70,7 +71,7 @@ export class SendGridService {
    */
   async initialize(): Promise<void> {
     if (!this.config.enabled) {
-      console.log('SendGrid is disabled');
+      // SendGrid is disabled
       return;
     }
 
@@ -80,7 +81,7 @@ export class SendGridService {
       await this.simulateSendGridConnection();
       
       this.isInitialized = true;
-      console.log('SendGrid initialized successfully');
+      // Console statement removed for production
     } catch (error) {
       throw new Error(`Failed to initialize SendGrid: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }

@@ -23,7 +23,15 @@
     "docs:build": "typedoc",
     "docs:serve": "serve docs",
     "security:audit": "node scripts/security-audit.js",
-    "security:check": "npm run security:audit && npm run lint"
+    "security:test": "node scripts/security-testing.js",
+    "security:penetration": "node scripts/penetration-testing.js",
+    "security:full": "npm run security:audit && npm run security:test && npm run security:penetration",
+    "security:comprehensive": "node scripts/comprehensive-security-test.js",
+    "secrets:rotate": "node scripts/rotate-secrets.js",
+    "security:check": "npm run security:audit && npm run security:test && npm run lint",
+    "performance:optimize": "node scripts/performance-optimizer.js",
+    "integration:test": "node scripts/integration-tester.js",
+    "test:all": "npm run test && npm run security:comprehensive && npm run performance:optimize && npm run integration:test"
   },
   "workspaces": [
     "core/*",

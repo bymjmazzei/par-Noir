@@ -1,3 +1,4 @@
+import { cryptoWorkerManager } from './cryptoWorkerManager';
 import { StandardDataPoint, ZKPProof, DataPointProposal } from './standardDataPoints';
 
 // Core Identity Types
@@ -90,7 +91,7 @@ export interface IdentityError extends Error {
   details?: Record<string, any>;
 }
 
-export enum ErrorCodes {
+export enum ErrorCo {
   INVALID_CLIENT = 'invalid_client',
   INVALID_REQUEST = 'invalid_request',
   INVALID_SCOPE = 'invalid_scope',

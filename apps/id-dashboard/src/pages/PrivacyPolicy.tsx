@@ -7,7 +7,7 @@ const PrivacyPolicy: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen theme-dark bg-bg-primary text-text-primary">
+    <div className="min-h-screen bg-bg-primary text-text-primary">
       {/* Header */}
       <div className="bg-modal-bg border-b border-border">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">

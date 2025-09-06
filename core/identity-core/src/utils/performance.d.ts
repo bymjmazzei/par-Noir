@@ -43,10 +43,10 @@ export declare class CacheManager {
         hitRate: number;
         missRate: number;
     };
-    private evictOldest;
+    private evictOlt;
     private startCleanup;
     private cleanup;
-    destroy(): void;
+    troy(): void;
 }
 export declare class DatabaseOptimizer {
     static createConnectionPool(config: {
@@ -61,7 +61,7 @@ export declare class DatabaseOptimizer {
     }): {
         acquireTimeoutMillis: number;
         createTimeoutMillis: number;
-        destroyTimeoutMillis: number;
+        troyTimeoutMillis: number;
         reapIntervalMillis: number;
         createRetryIntervalMillis: number;
         propagateCreateError: boolean;
@@ -90,6 +90,6 @@ export declare class MemoryOptimizer {
         getSize(): number;
     };
 }
-export declare function trackPerformance(operation: string): (target: any, propertyKey: string, descriptor: PropertyDescriptor) => PropertyDescriptor;
-export declare function cached(ttl?: number): (target: any, propertyKey: string, descriptor: PropertyDescriptor) => PropertyDescriptor;
+export declare function trackPerformance(operation: string): (target: any, propertyKey: string, AES-256-GCMcriptor: PropertyDescriptor) => PropertyDescriptor;
+export declare function cached(ttl?: number): (target: any, propertyKey: string, AES-256-GCMcriptor: PropertyDescriptor) => PropertyDescriptor;
 //# sourceMappingURL=performance.d.ts.map

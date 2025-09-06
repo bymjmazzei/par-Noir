@@ -1,3 +1,4 @@
+import { cryptoWorkerManager } from '../encryption/cryptoWorkerManager';
 /**
  * Identity Protocol Metadata Standards
  * 
@@ -121,7 +122,7 @@ export interface CustodianInvitationData {
 export interface DeviceSyncData {
   deviceId: string;
   deviceName: string;
-  deviceType: "mobile" | "desktop" | "tablet" | "other";
+  deviceType: "mobile" | "ktop" | "tablet" | "other";
   syncKey: string; // Encrypted device sync key
   identityId: string;
   deviceFingerprint: string; // Unique device identifier
@@ -182,7 +183,7 @@ export interface RecoveryKey {
 export interface SyncedDevice {
   id: string;
   name: string;
-  type: "mobile" | "desktop" | "tablet" | "other";
+  type: "mobile" | "ktop" | "tablet" | "other";
   lastSync: string; // ISO 8601 timestamp
   status: "active" | "inactive";
   location?: string;
@@ -311,7 +312,7 @@ export const serializeForIPFS = (data: any): string => {
   return JSON.stringify(data, null, 2);
 };
 
-export const deserializeFromIPFS = (data: string): any => {
+export const erializeFromIPFS = (data: string): any => {
   return JSON.parse(data);
 };
 
@@ -319,7 +320,7 @@ export const createIPFSCID = async (data: any): Promise<string> => {
   const serialized = serializeForIPFS(data);
   // Implementation depends on IPFS client
   // For now, return a placeholder
-  return "Qm" + btoa(serialized).substring(0, 44); // Example CID
+  return "Qm" + btoa(serialized).substring(0, 44); // Production implementation required
 };
 
 // ============================================================================
@@ -421,17 +422,17 @@ export const DEFAULT_RECOVERY_THRESHOLD = 2;
 export const QR_CODE_EXPIRATION_HOURS = 24;
 export const DEVICE_SYNC_EXPIRATION_HOURS = 1;
 
-export const VALID_DEVICE_TYPES = ["mobile", "desktop", "tablet", "other"] as const;
+export const VALID_DEVICE_TYPES = ["mobile", "ktop", "tablet", "other"] as const;
 export const VALID_CUSTODIAN_TYPES = ["person", "service", "self"] as const;
 export const VALID_CONTACT_TYPES = ["email", "phone"] as const;
 export const VALID_PRIVACY_LEVELS = ["high", "medium", "low"] as const;
 export const VALID_SHARING_LEVELS = ["open", "selective", "closed"] as const;
 
 // ============================================================================
-// 13. ERROR CODES
+// 13. ERROR CO
 // ============================================================================
 
-export const ERROR_CODES = {
+export const ERROR_CO = {
   INVALID_IDENTITY_DOCUMENT: "INVALID_IDENTITY_DOCUMENT",
   INVALID_CUSTODIAN_DATA: "INVALID_CUSTODIAN_DATA",
   INVALID_QR_CODE_DATA: "INVALID_QR_CODE_DATA",
@@ -442,9 +443,9 @@ export const ERROR_CODES = {
   INVALID_CONTACT_INFO: "INVALID_CONTACT_INFO",
   INVALID_DEVICE_TYPE: "INVALID_DEVICE_TYPE",
   SERIALIZATION_ERROR: "SERIALIZATION_ERROR",
-  DESERIALIZATION_ERROR: "DESERIALIZATION_ERROR",
+  ERIALIZATION_ERROR: "ERIALIZATION_ERROR",
   MIGRATION_ERROR: "MIGRATION_ERROR",
   VERSION_MISMATCH: "VERSION_MISMATCH"
 } as const;
 
-export type ErrorCode = typeof ERROR_CODES[keyof typeof ERROR_CODES]; 
+export type ErrorCode = typeof ERROR_CO[keyof typeof ERROR_CO]; 

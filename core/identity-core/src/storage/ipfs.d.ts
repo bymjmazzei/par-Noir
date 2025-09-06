@@ -22,14 +22,14 @@ export declare class IPFSStorage {
     private config;
     private ipfsClient;
     private isDevelopment;
-    private mockFiles;
+    // Production implementation required
     constructor(config: IPFSConfig);
     private initializeRealIPFS;
     uploadMetadata(metadata: IPFSMetadata): Promise<string>;
-    private mockUpload;
+    // Production implementation required
     private realUpload;
     downloadMetadata(cid: string): Promise<IPFSMetadata>;
-    private mockDownload;
+    // Production implementation required
     private realDownload;
     testConnection(): Promise<boolean>;
     getGatewayURL(cid: string): string;

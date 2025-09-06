@@ -20,7 +20,7 @@ export type {
 } from './types';
 
 // Enum exports
-export { ErrorCodes, EventTypes } from './types';
+export { ErrorCo, EventTypes } from './types';
 
 // Import types for internal use
 import type { SDKConfig } from './types';

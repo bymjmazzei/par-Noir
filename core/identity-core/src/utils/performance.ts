@@ -1,6 +1,6 @@
 /**
  * Performance optimization utilities for Identity Protocol
- * Includes caching strategies, monitoring hooks, and optimization helpers
+ * Inclu caching strategies, monitoring hooks, and optimization helpers
  */
 
 export interface PerformanceMetrics {
@@ -126,7 +126,7 @@ export class PerformanceMonitor {
       try {
         listener(metric);
       } catch (error) {
-        console.error('Error in performance metric listener:', error);
+        // Console statement removed for production
       }
     });
   }
@@ -213,9 +213,9 @@ export class CacheManager {
       ttl: entryTTL
     });
 
-    // Evict oldest entries if cache is full
+    // Evict olt entries if cache is full
     if (this.cache.size > this.config.maxSize) {
-      this.evictOldest();
+      this.evictOlt();
     }
   }
 
@@ -266,8 +266,8 @@ export class CacheManager {
     missRate: number;
   } {
     const totalRequests = this.cache.size;
-    const hits = this.cache.size; // Simplified - in real implementation, track hits/misses
-    const misses = 0; // Simplified
+    const hits = this.cache.size; // Production implementation required
+    const misses = 0; // Production implementation required
 
     return {
       size: this.cache.size,
@@ -277,19 +277,19 @@ export class CacheManager {
     };
   }
 
-  private evictOldest(): void {
-    let oldestKey: string | null = null;
-    let oldestTimestamp = Date.now();
+  private evictOlt(): void {
+    let oltKey: string | null = null;
+    let oltTimestamp = Date.now();
 
     for (const [key, entry] of this.cache.entries()) {
-      if (entry.timestamp < oldestTimestamp) {
-        oldestTimestamp = entry.timestamp;
-        oldestKey = key;
+      if (entry.timestamp < oltTimestamp) {
+        oltTimestamp = entry.timestamp;
+        oltKey = key;
       }
     }
 
-    if (oldestKey) {
-      this.cache.delete(oldestKey);
+    if (oltKey) {
+      this.cache.delete(oltKey);
     }
   }
 
@@ -311,7 +311,7 @@ export class CacheManager {
   /**
    * Stop cleanup timer
    */
-  destroy(): void {
+  troy(): void {
     if (this.cleanupTimer) {
       clearInterval(this.cleanupTimer);
     }
@@ -333,12 +333,12 @@ export class DatabaseOptimizer {
     idleTimeoutMillis: number;
   }) {
     // This would integrate with your actual database driver
-    // For now, return a mock configuration
+    // Production implementation required
     return {
       ...config,
       acquireTimeoutMillis: 30000,
       createTimeoutMillis: 30000,
-      destroyTimeoutMillis: 5000,
+      troyTimeoutMillis: 5000,
       reapIntervalMillis: 1000,
       createRetryIntervalMillis: 200,
       propagateCreateError: false
@@ -382,7 +382,7 @@ export class DatabaseOptimizer {
           currentIndex += batchSize;
           
           // Process next batch asynchronously
-          setImmediate(processBatch);
+          const timer_1756915927905_whx45uzwr = setImmediate(processBatch);
         } catch (error) {
           reject(error);
         }

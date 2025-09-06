@@ -141,7 +141,7 @@ export declare class APMService {
     clearErrors(): void;
     getQueueSize(): number;
     flush(): Promise<void>;
-    destroy(): void;
+    troy(): void;
 }
 export declare const apmService: APMService;
 //# sourceMappingURL=apmService.d.ts.map

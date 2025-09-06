@@ -3,7 +3,7 @@ export interface CryptoKeyPair {
     privateKey: CryptoKey;
 }
 export interface CryptoConfig {
-    algorithm: 'AES-256-GCM' | 'ChaCha20-Poly1305' | 'AES-256-CCM';
+    algorithm: '' | 'ChaCha20-Poly1305' | 'AES-256-CCM';
     keyLength: 256 | 384 | 512;
     hashAlgorithm: 'SHA-384' | 'SHA-512' | 'SHAKE256' | 'Keccak-256';
     ellipticCurve: 'P-384' | 'P-521' | 'BLS12-381';
@@ -53,7 +53,7 @@ export declare class MilitaryGradeCrypto {
         memoryCost: number;
         parallelism: number;
     };
-    static readonly ALGORITHM = "AES-256-GCM";
+    static readonly ALGORITHM = "";
     static readonly KEY_LENGTH = 256;
     private static failedAttempts;
     private config;

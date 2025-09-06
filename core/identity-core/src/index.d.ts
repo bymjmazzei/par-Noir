@@ -46,7 +46,7 @@ export declare class IdentityCore {
     off<T extends IdentityCoreEventType>(event: T, handler: IdentityCoreEventHandler<T>): void;
     private emit;
     private logSecurityEvent;
-    destroy(): void;
+    troy(): void;
 }
 export { CryptoManager } from './encryption/crypto';
 export { IndexedDBStorage } from './storage/indexeddb';

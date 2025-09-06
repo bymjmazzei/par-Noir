@@ -1,5 +1,3 @@
-import { SecureRandom } from './secureRandom';
-
 export interface SecurityEvent {
   type: 'threat_detected' | 'rate_limit_exceeded' | 'suspicious_activity' | 'authentication_failure';
   severity: 'low' | 'medium' | 'high' | 'critical';
@@ -152,7 +150,7 @@ export class AdvancedSecurity {
   validateCertificate(domain: string, expectedFingerprint: string): boolean {
     // In a real implementation, this would validate SSL certificates
     // For now, we'll simulate the validation
-    const isValid = SecureRandom.generateSuccess(0.9); // 90% success rate for demo
+    const isValid = Math.random() > 0.1; // 90% success rate for demo
 
     if (!isValid) {
       const event: SecurityEvent = {
@@ -394,7 +392,7 @@ export class AdvancedSecurity {
    * Generate session ID
    */
   private generateSessionId(): string {
-    return `security_${Date.now()}_${SecureRandom.generateId(15)}`;
+    return `security_${Date.now()}_${Math.random().toString(36).substring(2, 15)}`;
   }
 
   /**
@@ -410,7 +408,5 @@ export class AdvancedSecurity {
   }
 }
 
-// Export singleton instance (lazy initialization)
-export const security = {
-  getInstance: () => AdvancedSecurity.getInstance()
-}; 
+// Export singleton instance
+export const security = AdvancedSecurity.getInstance(); 

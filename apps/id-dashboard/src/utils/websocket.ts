@@ -23,7 +23,7 @@ export class WebSocketManager {
 
   constructor(config: Partial<WebSocketConfig> = {}) {
     this.config = {
-      url: config.url || 'ws://localhost:3001/socket.io/?EIO=4&transport=websocket',
+      url: config.url || 'ws://localhost:3002/socket.io/?EIO=4&transport=websocket',
       reconnectInterval: config.reconnectInterval || 5000,
       maxReconnectAttempts: config.maxReconnectAttempts || 5
     };

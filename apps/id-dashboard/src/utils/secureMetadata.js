@@ -20,7 +20,7 @@ export class SecureMetadataCrypto {
         }
         catch (error) {
             if (process.env.NODE_ENV === 'development') {
-                console.error('Failed to encrypt metadata:', error);
+                // Failed to encrypt metadata - error handled by caller
             }
             throw new Error('Metadata encryption failed');
         }
@@ -41,7 +41,7 @@ export class SecureMetadataCrypto {
         }
         catch (error) {
             if (process.env.NODE_ENV === 'development') {
-                console.error('Failed to decrypt metadata:', error);
+                // Failed to decrypt metadata - error handled by caller
             }
             throw new Error('Metadata decryption failed - check your credentials');
         }
@@ -63,7 +63,7 @@ export class SecureMetadataCrypto {
         }
         catch (error) {
             if (process.env.NODE_ENV === 'development') {
-                console.error('Failed to update metadata field:', error);
+                // Failed to update metadata field - error handled by caller
             }
             throw new Error('Metadata update failed');
         }

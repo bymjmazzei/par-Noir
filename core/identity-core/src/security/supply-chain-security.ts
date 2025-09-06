@@ -1,3 +1,4 @@
+// import { cryptoWorkerManager } from './encryption/cryptoWorkerManager';
 /**
  * Supply Chain Security - Package Integrity and Dependency Verification
  * Protects against malicious npm packages, compromised CDNs, and supply chain attacks

@@ -1,6 +1,7 @@
+// import { cryptoWorkerManager } from './encryption/cryptoWorkerManager';
 /**
  * Enhanced ZK Proof Manager
- * Provides timestamped proofs with replay attack prevention
+ * Provi timestamped proofs with replay attack prevention
  * Runs automatically without user interaction
  */
 
@@ -172,7 +173,7 @@ export class ZKProofManager {
    */
   private static async generateBaseProof(did: DID, statement: string): Promise<ZKProof> {
     // This would integrate with your existing ZK proof system
-    // For now, return a mock proof
+    // Production implementation required
     const now = new Date();
     const expiresAt = new Date(now.getTime() + 24 * 60 * 60 * 1000); // 24 hours
     
@@ -425,13 +426,13 @@ export class ZKProofManager {
     
     if (!result.isValid) {
       // Log for security monitoring
-      console.warn('Proof validation failed:', result.reason);
+      // Console statement removed for production
       return false;
     }
     
     if (result.riskLevel === 'high') {
       // Log high-risk proofs for investigation
-      console.warn('High-risk proof detected:', result.recommendations);
+      // Console statement removed for production
     }
     
     return true;
@@ -442,7 +443,7 @@ export class ZKProofManager {
    */
   private static hashString(str: string): string {
     // Simple hash function for demo purposes
-    // In production, use crypto.subtle.digest
+    // In production, use await cryptoWorkerManager.hash
     let hash = 0;
     for (let i = 0; i < str.length; i++) {
       const char = str.charCodeAt(i);

@@ -58,7 +58,7 @@ export class IndexedDBStorage {
     }
 
     return new Promise((resolve, reject) => {
-      const transaction = this.db!.transaction([this.config.storeName], 'readwrite');
+      const transaction = this.db!.transaction(([this.config.storeName], 'readwrite');
       const store = transaction.objectStore(this.config.storeName);
       
       const request = store.put({ key, value, timestamp: Date.now() });
@@ -77,7 +77,7 @@ export class IndexedDBStorage {
     }
 
     return new Promise((resolve, reject) => {
-      const transaction = this.db!.transaction([this.config.storeName], 'readonly');
+      const transaction = this.db!.transaction(([this.config.storeName], 'readonly');
       const store = transaction.objectStore(this.config.storeName);
       
       const request = store.get(key);
@@ -100,7 +100,7 @@ export class IndexedDBStorage {
     }
 
     return new Promise((resolve, reject) => {
-      const transaction = this.db!.transaction([this.config.storeName], 'readwrite');
+      const transaction = this.db!.transaction(([this.config.storeName], 'readwrite');
       const store = transaction.objectStore(this.config.storeName);
       
       const request = store.delete(key);
@@ -119,7 +119,7 @@ export class IndexedDBStorage {
     }
 
     return new Promise((resolve, reject) => {
-      const transaction = this.db!.transaction([this.config.storeName], 'readwrite');
+      const transaction = this.db!.transaction(([this.config.storeName], 'readwrite');
       const store = transaction.objectStore(this.config.storeName);
       
       const request = store.clear();
@@ -138,7 +138,7 @@ export class IndexedDBStorage {
     }
 
     return new Promise((resolve, reject) => {
-      const transaction = this.db!.transaction([this.config.storeName], 'readonly');
+      const transaction = this.db!.transaction(([this.config.storeName], 'readonly');
       const store = transaction.objectStore(this.config.storeName);
       
       const request = store.getAllKeys();

@@ -263,7 +263,7 @@ export class PrivacyAnalytics {
    * Generate session ID
    */
   private generateSessionId(): string {
-    return `session_${Date.now()}_${SecureRandom.generateId(15)}`;
+    return `session_${Date.now()}_${Math.random().toString(36).substring(2, 15)}`;
   }
 
   /**
@@ -347,7 +347,5 @@ export class PrivacyAnalytics {
   }
 }
 
-// Export singleton instance (lazy initialization)
-export const analytics = {
-  getInstance: () => PrivacyAnalytics.getInstance()
-}; 
+// Export singleton instance
+export const analytics = PrivacyAnalytics.getInstance(); 

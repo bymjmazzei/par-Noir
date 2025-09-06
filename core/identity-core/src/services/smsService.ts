@@ -1,6 +1,7 @@
+// import { cryptoWorkerManager } from './encryption/cryptoWorkerManager';
 /**
  * Twilio SMS Service Integration
- * Provides SMS functionality for recovery and notifications
+ * Provi SMS functionality for recovery and notifications
  */
 
 import { SecureRandom } from '../utils/secureRandom';
@@ -59,7 +60,7 @@ export class TwilioService {
    */
   async initialize(): Promise<void> {
     if (!this.config.enabled) {
-      console.log('Twilio is disabled');
+      // Twilio is disabled
       return;
     }
 
@@ -69,7 +70,7 @@ export class TwilioService {
       await this.simulateTwilioConnection();
       
       this.isInitialized = true;
-      console.log('Twilio initialized successfully');
+      // Twilio initialized successfully
     } catch (error) {
       throw new Error(`Failed to initialize Twilio: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }

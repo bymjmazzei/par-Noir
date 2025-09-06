@@ -212,16 +212,16 @@ export class BackgroundMonitor {
       
       switch (level) {
         case 'error':
-          console.error(`${timestamp} ${prefix} ${message}`);
+          // Console statement removed for production
           break;
         case 'warn':
-          console.warn(`${timestamp} ${prefix} ${message}`);
+          // Console statement removed for production
           break;
         case 'info':
-          console.info(`${timestamp} ${prefix} ${message}`);
+          // Console statement removed for production
           break;
         case 'debug':
-          console.debug(`${timestamp} ${prefix} ${message}`);
+          // Console statement removed for production
           break;
       }
     }

@@ -1,8 +1,6 @@
 // IPFS service using direct Pinata API calls for decentralized file storage
 // This avoids the deprecated SDK and axios vulnerabilities
 
-import { logger } from './logger';
-
 export interface IPFSConfig {
   apiKey: string;
   secretKey: string;
@@ -64,28 +62,40 @@ class IPFSService {
       };
       formData.append('pinataMetadata', JSON.stringify(metadata));
 
-      // Upload to Pinata using direct API
+      // Upload to Pinata using direct API with timeout and retry
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout
+
       const response = await fetch('https://api.pinata.cloud/pinning/pinFileToIPFS', {
         method: 'POST',
         headers: {
           'pinata_api_key': this.config.apiKey,
           'pinata_secret_api_key': this.config.secretKey
         },
-        body: formData
+        body: formData,
+        signal: controller.signal
       });
 
+      clearTimeout(timeoutId);
+
       if (!response.ok) {
-        const errorText = await response.text();
-        logger.error('IPFS upload failed:', {
-          status: response.status,
-          statusText: response.statusText,
-          errorText: errorText,
-          headers: Object.fromEntries(response.headers.entries())
-        });
-        throw new Error(`IPFS upload failed: ${response.status} ${response.statusText} - ${errorText}`);
+        throw new Error(`IPFS upload failed: ${response.status} ${response.statusText}`);
       }
 
       const result = await response.json();
+
+      // Validate response structure
+      if (!result || typeof result !== 'object') {
+        throw new Error('Invalid response format from IPFS service');
+      }
+
+      if (!result.IpfsHash || typeof result.IpfsHash !== 'string') {
+        throw new Error('Invalid IPFS hash in response');
+      }
+
+      if (result.IpfsHash.length < 10) {
+        throw new Error('IPFS hash too short - invalid response');
+      }
 
       const uploadResult: IPFSUploadResult = {
         cid: result.IpfsHash,

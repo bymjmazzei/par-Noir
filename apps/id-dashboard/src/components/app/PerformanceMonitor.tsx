@@ -1,0 +1,27 @@
+import { useEffect } from "react";
+import { recordMetric } from "../../utils/performanceMonitor";
+import { cryptoWorkerManager } from "../../utils/cryptoWorkerManager";
+import { optimizedIdentityStorage } from "../../utils/optimizedStorage";
+
+export const usePerformanceMonitoring = () => {
+  useEffect(() => {
+    // Monitor crypto worker health
+    const checkCryptoWorker = setInterval(() => {
+      const isHealthy = cryptoWorkerManager.isHealthy();
+      recordMetric('crypto_worker_health', isHealthy ? 1 : 0, 'boolean');
+    }, 30000); // Every 30 seconds
+
+    // Monitor storage performance
+    const checkStoragePerformance = setInterval(() => {
+      const stats = optimizedIdentityStorage.getStats();
+      recordMetric('storage_total_identities', stats.totalIdentities, 'count');
+      recordMetric('storage_cache_size', stats.cacheSize, 'count');
+      recordMetric('storage_batch_queue_size', stats.batchQueueSize, 'count');
+    }, 60000); // Every minute
+
+    return () => {
+      clearInterval(checkCryptoWorker);
+      clearInterval(checkStoragePerformance);
+    };
+  }, []);
+};

@@ -1,6 +1,7 @@
+// import { cryptoWorkerManager } from './encryption/cryptoWorkerManager';
 /**
  * Secure Session Management System
- * Provides automatic session security with device fingerprinting
+ * Provi automatic session security with device fingerprinting
  * Runs silently in the background without user interaction
  */
 
@@ -263,7 +264,7 @@ export class SessionManager {
    */
   private static hashString(str: string): string {
     // Simple hash function for demo purposes
-    // In production, use crypto.subtle.digest
+    // In production, use await cryptoWorkerManager.hash
     let hash = 0;
     for (let i = 0; i < str.length; i++) {
       const char = str.charCodeAt(i);
@@ -281,7 +282,7 @@ export class SessionManager {
     
     if (!result.isValid) {
       // Log for security monitoring
-      console.warn('Session validation failed:', result.reason);
+      // Console statement removed for production
       
       // Automatically revoke invalid sessions
       this.revokeSession(session.sessionId);
@@ -291,7 +292,7 @@ export class SessionManager {
     
     if (result.riskLevel === 'high') {
       // Log high-risk sessions for investigation
-      console.warn('High-risk session detected:', result.recommendations);
+      // Console statement removed for production
     }
     
     return true;

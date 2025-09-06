@@ -2,7 +2,6 @@
 // Uses secure IPFS HTTP client instead of vulnerable Pinata SDK
 
 import { ipfsService } from './ipfsService';
-import { logger } from './logger';
 
 export interface PNMetadata {
   pnId: string;
@@ -33,26 +32,37 @@ export class IPFSMetadataService {
     if (this.isInitialized) return;
 
     try {
-      // Always use the hardcoded Pinata credentials for now
-      const apiKey = '6c557a6d433e0ad1de47';
-      const secretKey = '600492827bbfa45b4a9d506faf50a88059b06965b70fefe0856be509b0fe4d87';
-      
-      logger.debug('Using hardcoded Pinata credentials');
-      
+      // Initialize IPFS service with validated environment variables
+      const apiKey = process.env.REACT_APP_PINATA_API_KEY;
+      const secretKey = process.env.REACT_APP_PINATA_SECRET_KEY;
+      const gatewayUrl = process.env.REACT_APP_IPFS_GATEWAY_URL || 'https://gateway.pinata.cloud';
+
+      // Validate API keys
+      if (!apiKey || !secretKey) {
+        throw new Error('IPFS configuration missing - API keys not provided');
+      }
+
+      if (apiKey.length < 32 || secretKey.length < 32) {
+        throw new Error('IPFS configuration invalid - API keys too short');
+      }
+
+      // Validate gateway URL
+      try {
+        new URL(gatewayUrl);
+      } catch {
+        throw new Error('IPFS configuration invalid - invalid gateway URL');
+      }
+
       const config = {
-        apiKey: apiKey,
-        secretKey: secretKey,
-        gatewayUrl: 'https://gateway.pinata.cloud'
+        apiKey,
+        secretKey,
+        gatewayUrl
       };
 
-      logger.debug('Initializing IPFS service with credentials:', { apiKey: config.apiKey.substring(0, 8) + '...', secretKey: config.secretKey.substring(0, 8) + '...' });
       await ipfsService.initialize(config);
       this.isInitialized = true;
-      logger.debug('IPFS service initialized with Pinata credentials');
-      
     } catch (error) {
-      logger.error('IPFS initialization failed:', error);
-      this.isInitialized = true; // Still mark as initialized to use fallback
+      // Don't throw - IPFS is optional
     }
   }
 
@@ -98,33 +108,16 @@ export class IPFSMetadataService {
     try {
       await this.initialize();
 
-      logger.debug('IPFS service available:', ipfsService.isAvailable());
-      logger.debug('IPFS service initialized:', this.isInitialized);
-
-      // Try to use configured IPFS service first
-      if (ipfsService.isAvailable()) {
-        logger.debug('Attempting to upload to IPFS with configured service...');
-        const result = await ipfsService.uploadFile(encryptedData, 'identity-data.json');
-        logger.debug('IPFS upload successful:', result.cid);
-        return result.cid;
+      if (!ipfsService.isAvailable()) {
+        throw new Error('IPFS service not available');
       }
 
-      logger.debug('IPFS service not available, trying fallback...');
-      // Fallback: Use public IPFS gateway
-      return await this.uploadToPublicIPFS(encryptedData);
+      // Upload encrypted data to IPFS
+      const result = await ipfsService.uploadFile(encryptedData, 'identity-data.json');
+      return result.cid;
     } catch (error) {
-      logger.error('IPFS upload error:', error);
       throw new Error('Failed to upload identity data to IPFS');
     }
-  }
-
-  /**
-   * Upload to public IPFS gateway as fallback
-   */
-  private async uploadToPublicIPFS(data: any): Promise<string> {
-    // Since we don't have proper IPFS credentials, we'll throw an error
-    // to inform the user that IPFS is not available
-    throw new Error('IPFS service is not configured. Please configure IPFS credentials or use the Export feature instead.');
   }
 
   /**
@@ -134,46 +127,15 @@ export class IPFSMetadataService {
     try {
       await this.initialize();
 
-      // Try to use configured IPFS service first
-      if (ipfsService.isAvailable()) {
-        const data = await ipfsService.getFileAsJSON(cid);
-        return data;
+      if (!ipfsService.isAvailable()) {
+        throw new Error('IPFS service not available');
       }
 
-      // Fallback: Use public IPFS gateway
-      return await this.downloadFromPublicIPFS(cid);
+      // Download data from IPFS
+      const data = await ipfsService.getFileAsJSON(cid);
+      return data;
     } catch (error) {
       throw new Error('Failed to download identity data from IPFS');
-    }
-  }
-
-  /**
-   * Download from public IPFS gateway as fallback
-   */
-  private async downloadFromPublicIPFS(cid: string): Promise<any> {
-    try {
-      // Try multiple public gateways
-      const gateways = [
-        `https://ipfs.io/ipfs/${cid}`,
-        `https://gateway.pinata.cloud/ipfs/${cid}`,
-        `https://cloudflare-ipfs.com/ipfs/${cid}`
-      ];
-
-      for (const gateway of gateways) {
-        try {
-          const response = await fetch(gateway);
-          if (response.ok) {
-            return await response.json();
-          }
-        } catch (error) {
-          // Try next gateway
-          continue;
-        }
-      }
-
-      throw new Error('All IPFS gateways failed');
-    } catch (error) {
-      throw new Error('Failed to download from public IPFS gateways');
     }
   }
 

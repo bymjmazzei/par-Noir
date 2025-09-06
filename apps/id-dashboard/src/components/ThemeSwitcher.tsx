@@ -15,8 +15,12 @@ export const ThemeSwitcher: React.FC<ThemeSwitcherProps> = ({ className = '' }) 
     const savedTheme = localStorage.getItem('theme') as Theme;
     if (savedTheme && (savedTheme === 'dark' || savedTheme === 'light')) {
       setCurrentTheme(savedTheme);
+      // Apply theme immediately on load
+      document.documentElement.className = `theme-${savedTheme}`;
     } else {
       setCurrentTheme('dark'); // Default to dark
+      // Apply default theme immediately on load
+      document.documentElement.className = 'theme-dark';
     }
   }, []);
 

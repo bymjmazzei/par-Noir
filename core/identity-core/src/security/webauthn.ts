@@ -1,3 +1,4 @@
+// import { cryptoWorkerManager } from './encryption/cryptoWorkerManager';
 /**
  * WebAuthn Integration - Hardware Security Key Support
  * Implements FIDO2/WebAuthn for hardware-based authentication
@@ -459,7 +460,7 @@ export class WebAuthnManager {
       // 2. Verify authenticator data
       // 3. Verify signature using public key
       
-      return true; // Placeholder
+      return true; // Production implementation required
     } catch (error) {
       return false;
     }

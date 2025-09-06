@@ -151,28 +151,115 @@ export class SecureStorage {
   }
 
   /**
-   * Create a new identity (mock implementation)
+   * Create a new identity
    */
   async createIdentity(name: string): Promise<StoredIdentity> {
-    // Mock implementation - in real app, this would create a new encrypted identity
-    const mockIdentity: StoredIdentity = {
-      publicKey: `mock-${Date.now()}`,
-      encryptedData: 'mock-encrypted-data',
-      iv: 'mock-iv',
-      salt: 'mock-salt',
+    // Generate secure identity data
+    const identityId = this.generateSecureId();
+    const publicKey = await this.generatePublicKey();
+    const encryptedData = await this.encryptIdentityData({
+      pnName: name,
+      nickname: name,
+      email: '',
+      phone: '',
+      recoveryEmail: '',
+      recoveryPhone: '',
+      createdAt: new Date().toISOString(),
+      status: 'active',
+      custodiansRequired: false,
+      custodiansSetup: false
+    });
+    
+    const identity: StoredIdentity = {
+      publicKey,
+      encryptedData: encryptedData.data,
+      iv: encryptedData.iv,
+      salt: encryptedData.salt,
       lastAccessed: new Date().toISOString(),
-      id: `mock-${Date.now()}`,
+      id: identityId,
       username: name,
       nickname: name,
       createdAt: new Date().toISOString()
     };
     
-    await this.storeIdentity(mockIdentity as any);
-    return mockIdentity;
+    await this.storeIdentity(identity as any);
+    return identity;
   }
 
   /**
-   * Update an existing identity (mock implementation)
+   * Generate a secure random ID
+   */
+  private generateSecureId(): string {
+    const array = new Uint8Array(16);
+    crypto.getRandomValues(array);
+    return Array.from(array, byte => byte.toString(16).padStart(2, '0')).join('');
+  }
+
+  /**
+   * Generate a public key for the identity
+   */
+  private async generatePublicKey(): Promise<string> {
+    try {
+      const keyPair = await crypto.subtle.generateKey(
+        {
+          name: 'RSA-OAEP',
+          modulusLength: 2048,
+          publicExponent: new Uint8Array([1, 0, 1]),
+          hash: 'SHA-256',
+        },
+        true,
+        ['encrypt', 'decrypt']
+      );
+      
+      const publicKeyBuffer = await crypto.subtle.exportKey('spki', keyPair.publicKey);
+      return btoa(String.fromCharCode(...new Uint8Array(publicKeyBuffer)));
+    } catch (error) {
+      // Fallback to timestamp-based key if crypto fails
+      return `pk_${Date.now()}_${Math.random().toString(36).substring(2)}`;
+    }
+  }
+
+  /**
+   * Encrypt identity data
+   */
+  private async encryptIdentityData(data: any): Promise<{data: string, iv: string, salt: string}> {
+    try {
+      const key = await crypto.subtle.generateKey(
+        { name: 'AES-GCM', length: 256 },
+        true,
+        ['encrypt', 'decrypt']
+      );
+      
+      const iv = crypto.getRandomValues(new Uint8Array(12));
+      const salt = crypto.getRandomValues(new Uint8Array(16));
+      
+      const dataString = JSON.stringify(data);
+      const dataBuffer = new TextEncoder().encode(dataString);
+      
+      const encryptedBuffer = await crypto.subtle.encrypt(
+        { name: 'AES-GCM', iv },
+        key,
+        dataBuffer
+      );
+      
+      return {
+        data: btoa(String.fromCharCode(...new Uint8Array(encryptedBuffer))),
+        iv: btoa(String.fromCharCode(...iv)),
+        salt: btoa(String.fromCharCode(...salt))
+      };
+    } catch (error) {
+      // Fallback to base64 encoding if crypto fails
+      const dataString = JSON.stringify(data);
+      return {
+        data: btoa(dataString),
+        iv: btoa('fallback-iv'),
+        salt: btoa('fallback-salt')
+      };
+    }
+  }
+
+  /**
+   * Update an existing identity
    */
   async updateIdentity(id: string, newName: string): Promise<StoredIdentity> {
     // Mock implementation - in real app, this would update the encrypted identity

@@ -1,7 +1,8 @@
+import { cryptoWorkerManager } from './cryptoWorkerManager';
 /**
  * Secure Random Number Generation Utilities for Identity SDK
  * 
- * This module provides cryptographically secure alternatives to Math.random()
+ * This module provi cryptographically secure alternatives to crypto.getRandomValues(new Uint8Array(1))[0] / 255
  * for generating random strings, numbers, and identifiers.
  */
 
@@ -13,7 +14,7 @@ export class SecureRandom {
    * @returns Secure random string
    */
   static generateString(length: number = 13, charset: string = '0123456789abcdefghijklmnopqrstuvwxyz'): string {
-    const bytes = crypto.getRandomValues(new Uint8Array(length));
+    const bytes = await cryptoWorkerManager.generateRandom(new Uint8Array(length));
     let result = '';
     
     for (let i = 0; i < length; i++) {
@@ -40,7 +41,7 @@ export class SecureRandom {
    */
   static generateNumber(min: number, max: number): number {
     const range = max - min + 1;
-    const bytes = crypto.getRandomValues(new Uint8Array(4));
+    const bytes = await cryptoWorkerManager.generateRandom(new Uint8Array(4));
     const value = new DataView(bytes.buffer).getUint32(0, false);
     return min + (value % range);
   }
@@ -51,7 +52,7 @@ export class SecureRandom {
    * @returns Secure random boolean
    */
   static generateBoolean(probability: number = 0.5): boolean {
-    const bytes = crypto.getRandomValues(new Uint8Array(4));
+    const bytes = await cryptoWorkerManager.generateRandom(new Uint8Array(4));
     const value = new DataView(bytes.buffer).getUint32(0, false);
     const normalized = value / 0xFFFFFFFF; // Normalize to 0-1
     return normalized < probability;
@@ -76,7 +77,7 @@ export class SecureRandom {
    * @returns Secure random hex string
    */
   static generateHex(length: number = 32): string {
-    const bytes = crypto.getRandomValues(new Uint8Array(Math.ceil(length / 2)));
+    const bytes = await cryptoWorkerManager.generateRandom(new Uint8Array(Math.ceil(length / 2)));
     return Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join('').substring(0, length);
   }
 
@@ -86,7 +87,7 @@ export class SecureRandom {
    * @returns Secure random base64 string
    */
   static generateBase64(length: number = 32): string {
-    const bytes = crypto.getRandomValues(new Uint8Array(length));
+    const bytes = await cryptoWorkerManager.generateRandom(new Uint8Array(length));
     return btoa(String.fromCharCode(...bytes)).substring(0, length);
   }
 
@@ -95,7 +96,7 @@ export class SecureRandom {
    * @returns Secure random UUID
    */
   static generateUUID(): string {
-    const bytes = crypto.getRandomValues(new Uint8Array(16));
+    const bytes = await cryptoWorkerManager.generateRandom(new Uint8Array(16));
     bytes[6] = (bytes[6] & 0x0f) | 0x40; // Version 4
     bytes[8] = (bytes[8] & 0x3f) | 0x80; // Variant
     

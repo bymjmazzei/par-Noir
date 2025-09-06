@@ -1,312 +1,179 @@
 /**
- * Secure Random Number Generation Utilities for Core Identity Module
- * 
- * This module provides cryptographically secure alternatives to Math.random()
- * for generating random strings, numbers, and identifiers.
+ * Secure Random Number Generator
+ * Provides cryptographically secure random number generation
  */
 
 export class SecureRandom {
   /**
-   * Generate a cryptographically secure random string
-   * @param length - Length of the string to generate
-   * @param charset - Character set to use (default: alphanumeric)
-   * @returns Secure random string
+   * Generate cryptographically secure random bytes
    */
-  static generateString(length: number = 13, charset: string = '0123456789abcdefghijklmnopqrstuvwxyz'): string {
-    const bytes = crypto.getRandomValues(new Uint8Array(length));
-    let result = '';
-    
-    for (let i = 0; i < length; i++) {
-      result += charset[bytes[i] % charset.length];
-    }
-    
-    return result;
+  static generateBytes(length: number): Uint8Array {
+    const array = new Uint8Array(length);
+    crypto.getRandomValues(array);
+    return array;
   }
 
   /**
-   * Generate a secure random identifier (similar to SecureRandom.generateId(15))
-   * @param length - Length of the identifier (default: 13)
-   * @returns Secure random identifier
-   */
-  static generateId(length: number = 13): string {
-    return this.generateString(length, '0123456789abcdefghijklmnopqrstuvwxyz');
-  }
-
-  /**
-   * Generate a secure random number between min and max (inclusive)
-   * @param min - Minimum value
-   * @param max - Maximum value
-   * @returns Secure random number
+   * Generate a cryptographically secure random number between min and max (inclusive)
    */
   static generateNumber(min: number, max: number): number {
     const range = max - min + 1;
-    const bytes = crypto.getRandomValues(new Uint8Array(4));
+    const bytes = this.generateBytes(4);
     const value = new DataView(bytes.buffer).getUint32(0, false);
     return min + (value % range);
   }
 
   /**
-   * Generate a secure random boolean with given probability
-   * @param probability - Probability of true (0.0 to 1.0)
-   * @returns Secure random boolean
+   * Generate a cryptographically secure random BigInt between min and max (inclusive)
    */
-  static generateBoolean(probability: number = 0.5): boolean {
-    const bytes = crypto.getRandomValues(new Uint8Array(4));
-    const value = new DataView(bytes.buffer).getUint32(0, false);
-    const normalized = value / 0xFFFFFFFF; // Normalize to 0-1
-    return normalized < probability;
+  static generateBigInt(min: bigint, max: bigint): bigint {
+    const range = max - min + 1n;
+    const bytes = this.generateBytes(8);
+    const value = new DataView(bytes.buffer).getBigUint64(0, false);
+    return min + (value % range);
   }
 
   /**
-   * Generate a secure random element from an array
-   * @param array - Array to select from
-   * @returns Random element from array
+   * Generate a cryptographically secure random string of specified length
    */
-  static selectFromArray<T>(array: T[]): T {
-    if (array.length === 0) {
-      throw new Error('Cannot select from empty array');
+  static generateString(length: number, charset: string = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789'): string {
+    let result = '';
+    for (let i = 0; i < length; i++) {
+      result += charset.charAt(this.generateNumber(0, charset.length - 1));
     }
-    const index = this.generateNumber(0, array.length - 1);
-    return array[index];
+    return result;
   }
 
   /**
-   * Generate a secure random hex string
-   * @param length - Length of hex string (default: 32)
-   * @returns Secure random hex string
-   */
-  static generateHex(length: number = 32): string {
-    const bytes = crypto.getRandomValues(new Uint8Array(Math.ceil(length / 2)));
-    return Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join('').substring(0, length);
-  }
-
-  /**
-   * Generate a secure random base64 string
-   * @param length - Length of base64 string (default: 32)
-   * @returns Secure random base64 string
-   */
-  static generateBase64(length: number = 32): string {
-    const bytes = crypto.getRandomValues(new Uint8Array(length));
-    return btoa(String.fromCharCode(...bytes)).substring(0, length);
-  }
-
-  /**
-   * Generate a secure random UUID v4
-   * @returns Secure random UUID
+   * Generate a cryptographically secure UUID v4
    */
   static generateUUID(): string {
-    const bytes = crypto.getRandomValues(new Uint8Array(16));
-    bytes[6] = (bytes[6] & 0x0f) | 0x40; // Version 4
-    bytes[8] = (bytes[8] & 0x3f) | 0x80; // Variant
+    const bytes = this.generateBytes(16);
     
-    const hex = Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join('');
+    // Set version (4) and variant bits
+    bytes[6] = (bytes[6] & 0x0f) | 0x40;
+    bytes[8] = (bytes[8] & 0x3f) | 0x80;
+    
+    const hex = Array.from(bytes, byte => byte.toString(16).padStart(2, '0')).join('');
     return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20, 32)}`;
   }
 
   /**
-   * Generate a secure random token for authentication
-   * @param prefix - Optional prefix for the token
-   * @returns Secure random token
+   * Fill an array with cryptographically secure random values
    */
-  static generateToken(prefix: string = ''): string {
-    const token = this.generateHex(32);
-    return prefix ? `${prefix}_${token}` : token;
+  static fillArray(array: Uint8Array): void {
+    crypto.getRandomValues(array);
   }
 
   /**
-   * Generate a secure random message ID
-   * @returns Secure random message ID
+   * Generate a secure random identifier of specified length
    */
-  static generateMessageId(): string {
-    return `msg_${Date.now()}_${this.generateId(9)}`;
+  static generateId(length: number = 9): string {
+    return this.generateString(length, 'abcdefghijklmnopqrstuvwxyz0123456789');
   }
 
   /**
-   * Generate a secure random event ID
-   * @returns Secure random event ID
+   * Generate a success/failure boolean based on probability
    */
-  static generateEventId(): string {
-    return `event_${Date.now()}_${this.generateId(9)}`;
+  static generateSuccess(probability: number): boolean {
+    return this.generateNumber(0, 100) / 100 < probability;
   }
 
   /**
-   * Generate a secure random session ID
-   * @returns Secure random session ID
-   */
-  static generateSessionId(): string {
-    return `session_${Date.now()}_${this.generateId(15)}`;
-  }
-
-  /**
-   * Generate a secure random device ID
-   * @returns Secure random device ID
-   */
-  static generateDeviceId(): string {
-    return `device_${Date.now()}_${this.generateId(10)}`;
-  }
-
-  /**
-   * Generate a secure random recovery code
-   * @returns Secure random recovery code
-   */
-  static generateRecoveryCode(): string {
-    return `recovery_${this.generateId(10)}`;
-  }
-
-  /**
-   * Generate a secure random invitation code
-   * @returns Secure random invitation code
-   */
-  static generateInvitationCode(): string {
-    return `code_${this.generateId()}`;
-  }
-
-  /**
-   * Generate a secure random transfer ID
-   * @returns Secure random transfer ID
-   */
-  static generateTransferId(): string {
-    return this.generateId(8).toUpperCase();
-  }
-
-  /**
-   * Generate a secure random proof ID
-   * @returns Secure random proof ID
-   */
-  static generateProofId(): string {
-    return `zkp_${Date.now()}_${this.generateId(9)}`;
-  }
-
-  /**
-   * Generate a secure random proposal ID
-   * @returns Secure random proposal ID
-   */
-  static generateProposalId(): string {
-    return `proposal_${Date.now()}_${this.generateId(9)}`;
-  }
-
-  /**
-   * Generate a secure random notification ID
-   * @returns Secure random notification ID
-   */
-  static generateNotificationId(): string {
-    return `notification_${Date.now()}_${this.generateId(9)}`;
-  }
-
-  /**
-   * Generate a secure random span ID
-   * @returns Secure random span ID
-   */
-  static generateSpanId(): string {
-    return `span_${Date.now()}_${this.generateId(9)}`;
-  }
-
-  /**
-   * Generate a secure random error ID
-   * @returns Secure random error ID
-   */
-  static generateErrorId(): string {
-    return `error_${Date.now()}_${this.generateId(9)}`;
-  }
-
-  /**
-   * Generate a secure random alert ID
-   * @returns Secure random alert ID
-   */
-  static generateAlertId(): string {
-    return `alert_${Date.now()}_${this.generateId(9)}`;
-  }
-
-  /**
-   * Generate a secure random transaction ID
-   * @returns Secure random transaction ID
-   */
-  static generateTransactionId(): string {
-    return `tx_${Date.now()}_${this.generateId(9)}`;
-  }
-
-  /**
-   * Generate a secure random webhook ID
-   * @returns Secure random webhook ID
-   */
-  static generateWebhookId(): string {
-    return this.generateId(15);
-  }
-
-  /**
-   * Generate a secure random authorization code
-   * @returns Secure random authorization code
-   */
-  static generateAuthCode(): string {
-    return this.generateId(15);
-  }
-
-  /**
-   * Generate a secure random recovery ID
-   * @returns Secure random recovery ID
-   */
-  static generateRecoveryId(): string {
-    return this.generateId(15);
-  }
-
-  /**
-   * Generate a secure random CID (Content Identifier)
-   * @returns Secure random CID
-   */
-  static generateCID(): string {
-    return `Qm${this.generateId(15)}`;
-  }
-
-  /**
-   * Generate a secure random identity ID
-   * @returns Secure random identity ID
-   */
-  static generateIdentityId(): string {
-    return `did:identity:${this.generateId(15)}`;
-  }
-
-  /**
-   * Generate a secure random metadata ID
-   * @returns Secure random metadata ID
-   */
-  static generateMetadataId(): string {
-    return `id_${Date.now()}_${this.generateId(9)}`;
-  }
-
-  /**
-   * Generate a secure random biometric token
-   * @returns Secure random biometric token
-   */
-  static generateBiometricToken(): string {
-    return `biometric_${Date.now()}_${this.generateId(9)}`;
-  }
-
-  /**
-   * Generate a secure random access token
-   * @returns Secure random access token
-   */
-  static generateAccessToken(): string {
-    return this.generateId(15);
-  }
-
-  /**
-   * Generate a secure random number for statistics/monitoring
-   * @param min - Minimum value
-   * @param max - Maximum value
-   * @returns Secure random number
+   * Generate a random statistic within a range
    */
   static generateStatistic(min: number, max: number): number {
     return this.generateNumber(min, max);
   }
 
   /**
-   * Generate a secure random success/failure boolean
-   * @param successRate - Probability of success (0.0 to 1.0)
-   * @returns Secure random boolean
+   * Generate a message ID
    */
-  static generateSuccess(successRate: number = 0.9): boolean {
-    return this.generateBoolean(successRate);
+  static generateMessageId(): string {
+    return `msg_${Date.now()}_${this.generateId(12)}`;
+  }
+
+  /**
+   * Generate an event ID
+   */
+  static generateEventId(): string {
+    return `evt_${Date.now()}_${this.generateId(12)}`;
+  }
+
+  /**
+   * Generate a transaction ID
+   */
+  static generateTransactionId(): string {
+    return `tx_${Date.now()}_${this.generateId(12)}`;
+  }
+
+  /**
+   * Generate a span ID
+   */
+  static generateSpanId(): string {
+    return `span_${Date.now()}_${this.generateId(12)}`;
+  }
+
+  /**
+   * Generate an error ID
+   */
+  static generateErrorId(): string {
+    return `err_${Date.now()}_${this.generateId(12)}`;
+  }
+
+  /**
+   * Generate an alert ID
+   */
+  static generateAlertId(): string {
+    return `alert_${Date.now()}_${this.generateId(12)}`;
+  }
+
+  /**
+   * Generate a session ID
+   */
+  static generateSessionId(): string {
+    return `sess_${Date.now()}_${this.generateId(12)}`;
+  }
+
+  /**
+   * Generate a notification ID
+   */
+  static generateNotificationId(): string {
+    return `notif_${Date.now()}_${this.generateId(12)}`;
+  }
+
+  /**
+   * Generate a verification code
+   */
+  static generateVerificationCode(length: number = 6): string {
+    return this.generateString(length, '0123456789');
+  }
+
+  /**
+   * Generate a fingerprint ID
+   */
+  static generateFingerprintId(): string {
+    return `fp_${Date.now()}_${this.generateId(12)}`;
+  }
+
+  /**
+   * Generate a sync ID
+   */
+  static generateSyncId(): string {
+    return `sync_${Date.now()}_${this.generateId(12)}`;
+  }
+
+  /**
+   * Generate a proposal ID
+   */
+  static generateProposalId(): string {
+    return `proposal_${Date.now()}_${this.generateId(12)}`;
+  }
+
+  /**
+   * Generate a security ID
+   */
+  static generateSecurityId(): string {
+    return `security_${Date.now()}_${this.generateId(12)}`;
   }
 }
-
-export default SecureRandom;

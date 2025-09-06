@@ -1,6 +1,6 @@
 /**
  * Metadata Validation System
- * Provides silent background validation and sanitization of metadata
+ * Provi silent background validation and sanitization of metadata
  * Runs automatically without user interaction
  */
 
@@ -358,7 +358,7 @@ export class MetadataValidator {
     
     if (!result.isValid) {
       // Log issues for developers but don't show to users
-      console.warn('Metadata validation issues auto-fixed:', result.issues);
+      // Console statement removed for production
       
       // Return sanitized data
       return result.sanitizedData;

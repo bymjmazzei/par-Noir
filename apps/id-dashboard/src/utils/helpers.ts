@@ -1,7 +1,5 @@
 // Helper utility functions
 
-import { SecureRandom } from './secureRandom';
-
 /**
  * Format a date as a relative time string (e.g., "2 hours ago")
  */
@@ -62,7 +60,7 @@ export function generateRandomString(length: number): string {
   const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
   let result = '';
   for (let i = 0; i < length; i++) {
-    result += chars.charAt(SecureRandom.generateStatistic(0, chars.length - 1));
+    result += chars.charAt(Math.floor(Math.random() * chars.length));
   }
   return result;
 }

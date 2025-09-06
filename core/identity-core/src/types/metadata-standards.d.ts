@@ -90,7 +90,7 @@ export interface CustodianInvitationData {
 export interface DeviceSyncData {
     deviceId: string;
     deviceName: string;
-    deviceType: "mobile" | "desktop" | "tablet" | "other";
+    deviceType: "mobile" | "ktop" | "tablet" | "other";
     syncKey: string;
     identityId: string;
     deviceFingerprint: string;
@@ -139,7 +139,7 @@ export interface RecoveryKey {
 export interface SyncedDevice {
     id: string;
     name: string;
-    type: "mobile" | "desktop" | "tablet" | "other";
+    type: "mobile" | "ktop" | "tablet" | "other";
     lastSync: string;
     status: "active" | "inactive";
     location?: string;
@@ -216,7 +216,7 @@ export declare const validateIdentityDocument: (doc: any) => boolean;
 export declare const validateCustodianInvitation: (invitation: any) => boolean;
 export declare const validateQRCodeData: (data: any) => boolean;
 export declare const serializeForIPFS: (data: any) => string;
-export declare const deserializeFromIPFS: (data: string) => any;
+export declare const erializeFromIPFS: (data: string) => any;
 export declare const createIPFSCID: (data: any) => Promise<string>;
 export interface ProtocolVersion {
     major: number;
@@ -243,12 +243,12 @@ export declare const MIN_CUSTODIANS = 2;
 export declare const DEFAULT_RECOVERY_THRESHOLD = 2;
 export declare const QR_CODE_EXPIRATION_HOURS = 24;
 export declare const DEVICE_SYNC_EXPIRATION_HOURS = 1;
-export declare const VALID_DEVICE_TYPES: readonly ["mobile", "desktop", "tablet", "other"];
+export declare const VALID_DEVICE_TYPES: readonly ["mobile", "ktop", "tablet", "other"];
 export declare const VALID_CUSTODIAN_TYPES: readonly ["person", "service", "self"];
 export declare const VALID_CONTACT_TYPES: readonly ["email", "phone"];
 export declare const VALID_PRIVACY_LEVELS: readonly ["high", "medium", "low"];
 export declare const VALID_SHARING_LEVELS: readonly ["open", "selective", "closed"];
-export declare const ERROR_CODES: {
+export declare const ERROR_CO: {
     readonly INVALID_IDENTITY_DOCUMENT: "INVALID_IDENTITY_DOCUMENT";
     readonly INVALID_CUSTODIAN_DATA: "INVALID_CUSTODIAN_DATA";
     readonly INVALID_QR_CODE_DATA: "INVALID_QR_CODE_DATA";
@@ -259,9 +259,9 @@ export declare const ERROR_CODES: {
     readonly INVALID_CONTACT_INFO: "INVALID_CONTACT_INFO";
     readonly INVALID_DEVICE_TYPE: "INVALID_DEVICE_TYPE";
     readonly SERIALIZATION_ERROR: "SERIALIZATION_ERROR";
-    readonly DESERIALIZATION_ERROR: "DESERIALIZATION_ERROR";
+    readonly ERIALIZATION_ERROR: "ERIALIZATION_ERROR";
     readonly MIGRATION_ERROR: "MIGRATION_ERROR";
     readonly VERSION_MISMATCH: "VERSION_MISMATCH";
 };
-export type ErrorCode = typeof ERROR_CODES[keyof typeof ERROR_CODES];
+export type ErrorCode = typeof ERROR_CO[keyof typeof ERROR_CO];
 //# sourceMappingURL=metadata-standards.d.ts.map

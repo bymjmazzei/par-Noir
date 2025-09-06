@@ -1,8 +1,6 @@
 // Verification Service for Data Point Validation
 // Uses API calls to send verification codes via email and SMS
 
-import { SecureRandom } from './secureRandom';
-
 export interface VerificationRequest {
   type: 'email' | 'phone' | 'location';
   target: string; // email address, phone number, or device identifier
@@ -35,7 +33,7 @@ class VerificationService {
    * Generate a verification code
    */
   private generateCode(): string {
-    return SecureRandom.generateId(this.CODE_LENGTH);
+    return Math.random().toString().slice(2, 2 + this.CODE_LENGTH);
   }
 
   /**

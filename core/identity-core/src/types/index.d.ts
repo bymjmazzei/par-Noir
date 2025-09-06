@@ -278,7 +278,7 @@ export interface DeviceSyncInfo {
     devices: {
         [deviceId: string]: {
             name: string;
-            type: 'mobile' | 'desktop' | 'tablet' | 'other';
+            type: 'mobile' | 'ktop' | 'tablet' | 'other';
             lastSync: string;
             syncStatus: 'synced' | 'pending' | 'error';
             isTrusted: boolean;

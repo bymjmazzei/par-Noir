@@ -2115,7 +2115,6 @@ section:nth-child(odd) {
   .section-subtitle {
     font-size: 1.1rem;
   }
-}
 
 @media (max-width: 480px) {
   .nav-container {
@@ -2263,7 +2262,6 @@ section:nth-child(odd) {
   }
   
 
-}
 
 /* Special nav link styling for developer docs */
 .nav-dev {

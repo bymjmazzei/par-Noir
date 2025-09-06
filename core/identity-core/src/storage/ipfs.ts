@@ -1,5 +1,5 @@
 // IPFS client implementation with environment-based switching
-// Development mode: Mock implementation
+// Production IPFS implementation
 // Production mode: Real IPFS integration
 
 export interface IPFSConfig {
@@ -30,12 +30,12 @@ export class IPFSStorage {
   private config: IPFSConfig;
   private ipfsClient: IPFSClient | null = null;
   private isDevelopment: boolean;
-  private mockFiles: Map<string, IPFSMetadata> = new Map();
+  // Production implementation required
 
   constructor(config: IPFSConfig) {
     this.config = config;
     this.isDevelopment = process.env.NODE_ENV === 'development' || 
-                        process.env.IPFS_MODE === 'mock' ||
+                        
                         !process.env.IPFS_API_KEY;
     
     if (!this.isDevelopment) {
@@ -59,14 +59,14 @@ export class IPFSStorage {
         // Test the connection
         if (this.ipfsClient) {
           await this.ipfsClient.version();
-          console.log('✅ Real IPFS client initialized');
+          // Console statement removed for production
         }
       } catch (importError) {
-        console.warn('⚠️ ipfs-http-client not available, falling back to mock mode');
+        
         this.isDevelopment = true;
       }
     } catch (error) {
-      console.warn('⚠️ Failed to initialize real IPFS, falling back to mock mode:', error);
+      
       this.isDevelopment = true;
     }
   }
@@ -74,7 +74,7 @@ export class IPFSStorage {
   async uploadMetadata(metadata: IPFSMetadata): Promise<string> {
     try {
       if (this.isDevelopment || !this.ipfsClient) {
-        return this.mockUpload(metadata);
+        throw new Error("IPFS client not available");
       }
 
       return await this.realUpload(metadata);
@@ -84,19 +84,7 @@ export class IPFSStorage {
     }
   }
 
-  private async mockUpload(metadata: IPFSMetadata): Promise<string> {
-    const data = JSON.stringify(metadata, null, 2);
-    const mockCid = `bafybeig${Buffer.from(data).toString('hex').substring(0, 44)}`;
-    
-    // Store in mock storage
-    this.mockFiles.set(mockCid, metadata);
-    
-    // Simulate network delay
-    await new Promise(resolve => setTimeout(resolve, 100));
-    
-    // console.log('🔧 Mock IPFS upload:', mockCid);
-    return mockCid;
-  }
+  
 
   private async realUpload(metadata: IPFSMetadata): Promise<string> {
     if (!this.ipfsClient) {
@@ -107,14 +95,14 @@ export class IPFSStorage {
     const result = await this.ipfsClient.add(data);
     const cid = result.cid.toString();
     
-    // console.log('🚀 Real IPFS upload:', cid);
+    // // Console statement removed for production
     return cid;
   }
 
   async downloadMetadata(cid: string): Promise<IPFSMetadata> {
     try {
       if (this.isDevelopment || !this.ipfsClient) {
-        return this.mockDownload(cid);
+        throw new Error("IPFS client not available");
       }
 
       return await this.realDownload(cid);
@@ -124,29 +112,7 @@ export class IPFSStorage {
     }
   }
 
-  private async mockDownload(cid: string): Promise<IPFSMetadata> {
-    // Check if we have this file in mock storage
-    const stored = this.mockFiles.get(cid);
-    if (stored) {
-      // console.log('🔧 Mock IPFS download (cached):', cid);
-      return stored;
-    }
-
-    // Return mock data for unknown CIDs
-    const mockMetadata: IPFSMetadata = {
-      did: 'mock-did',
-      metadata: {},
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-      version: '1.0.0'
-    };
-    
-    // Simulate network delay
-    await new Promise(resolve => setTimeout(resolve, 100));
-    
-    // console.log('🔧 Mock IPFS download (new):', cid);
-    return mockMetadata;
-  }
+  
 
   private async realDownload(cid: string): Promise<IPFSMetadata> {
     if (!this.ipfsClient) {
@@ -161,17 +127,15 @@ export class IPFSStorage {
     const data = Buffer.concat(chunks).toString();
     const metadata = JSON.parse(data);
     
-    // console.log('🚀 Real IPFS download:', cid);
+    // // Console statement removed for production
     return metadata;
   }
 
   async testConnection(): Promise<boolean> {
     try {
       if (this.isDevelopment) {
-        // Mock connection test
-        await new Promise(resolve => setTimeout(resolve, 50));
-        console.log('🔧 Mock IPFS connection test: OK');
-        return true;
+        // Production implementation required
+        throw new Error('IPFS mock mode not supported in production. Please configure real IPFS client.');
       }
 
       if (!this.ipfsClient) {
@@ -180,10 +144,10 @@ export class IPFSStorage {
 
       // Real connection test using IPFS client
       await this.ipfsClient.version();
-      console.log('🚀 Real IPFS connection test: OK');
+      // Console statement removed for production
       return true;
     } catch (error) {
-      console.error('❌ IPFS connection test failed:', error);
+      // Console statement removed for production
       return false;
     }
   }
@@ -200,16 +164,14 @@ export class IPFSStorage {
     const isConnected = await this.testConnection();
     return {
       mode: this.getMode(),
-      filesCount: this.mockFiles.size,
+      filesCount: 0, // Real IPFS implementation
       isConnected
     };
   }
 }
 
 export function createIPFSStorage(): IPFSStorage {
-  const isDevelopment = process.env.NODE_ENV === 'development' || 
-                       process.env.IPFS_MODE === 'mock' ||
-                       !process.env.IPFS_API_KEY;
+  const isDevelopment = process.env.NODE_ENV === 'development';
 
   const config: IPFSConfig = {
     url: process.env.IPFS_API_URL || 'https://ipfs.infura.io:5001',

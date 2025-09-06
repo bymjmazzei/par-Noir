@@ -1,4 +1,4 @@
-// Environment configuration for development vs deployment modes
+// Environment configuration for development vs deployment mo
 export interface EnvironmentConfig {
   mode: 'development' | 'production';
   apiEndpoints: {
@@ -124,7 +124,7 @@ export const log = {
   },
   info: (message: string, ...args: any[]) => {
     if (config.logging.enableConsoleLogs && ['debug', 'info'].includes(config.logging.level)) {
-      console.info(`[INFO] ${message}`, ...args);
+      // Console statement removed for production
     }
   },
   warn: (message: string, ...args: any[]) => {

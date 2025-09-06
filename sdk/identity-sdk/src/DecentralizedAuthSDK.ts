@@ -1,7 +1,8 @@
+import { cryptoWorkerManager } from './cryptoWorkerManager';
 /**
  * Decentralized Authentication SDK
  * 
- * Provides DID-based authentication without centralized OAuth servers
+ * Provi DID-based authentication without centralized OAuth servers
  * Users authenticate using their own cryptographic keys
  */
 
@@ -103,15 +104,15 @@ export class DecentralizedAuthSDK {
       this.ws = new WebSocket(`${wsUrl}/socket.io/?EIO=4&transport=websocket`);
 
       this.ws.onopen = () => {
-        console.log('WebSocket connected for decentralized authentication');
+        // WebSocket connected for decentralized authentication
       };
 
       this.ws.onerror = (error) => {
-        console.warn('WebSocket connection failed:', error);
+        // WebSocket connection failed
       };
 
       this.ws.onclose = () => {
-        console.log('WebSocket disconnected');
+        // WebSocket disconnected
         // Attempt to reconnect after 5 seconds
         setTimeout(() => {
           if (this.config.enableWebSocket) {
@@ -120,7 +121,7 @@ export class DecentralizedAuthSDK {
         }, 5000);
       };
     } catch (error) {
-      console.warn('Failed to initialize WebSocket:', error);
+      // Failed to initialize WebSocket
     }
   }
 
@@ -270,7 +271,7 @@ export class DecentralizedAuthSDK {
     const encoder = new TextEncoder();
     const data = encoder.encode(challenge);
     
-    const signature = await crypto.subtle.sign(
+    const signature = await await cryptoWorkerManager.sign(
       { name: 'Ed25519' },
       privateKey,
       data
@@ -292,7 +293,7 @@ export class DecentralizedAuthSDK {
   private async exportPublicKey(privateKey: CryptoKey): Promise<string> {
     // For Ed25519, we need to derive the public key from the private key
     // This is a simplified implementation - in production you'd want to store the public key separately
-    const exported = await crypto.subtle.exportKey('raw', privateKey);
+    const exported = await await cryptoWorkerManager.exportKey('raw', privateKey);
     return Buffer.from(exported).toString('base64');
   }
 
@@ -314,7 +315,7 @@ export class DecentralizedAuthSDK {
 
       return await response.json();
     } catch (error) {
-      console.error('Failed to get user info:', error);
+      // Failed to get user info
       return null;
     }
   }
@@ -338,7 +339,7 @@ export class DecentralizedAuthSDK {
       const data = await response.json();
       return data.authenticated === true;
     } catch (error) {
-      console.error('Failed to validate session:', error);
+      // Failed to validate session
       return false;
     }
   }
@@ -358,7 +359,7 @@ export class DecentralizedAuthSDK {
 
       return response.ok;
     } catch (error) {
-      console.error('Failed to logout:', error);
+      // Failed to logout
       return false;
     }
   }
@@ -378,7 +379,7 @@ export class DecentralizedAuthSDK {
 
       return await response.json();
     } catch (error) {
-      console.error('Failed to resolve DID:', error);
+      // Failed to resolve DID
       return null;
     }
   }
@@ -425,7 +426,7 @@ export class DecentralizedAuthSDK {
   /**
    * Clean up resources
    */
-  destroy(): void {
+  troy(): void {
     if (this.ws) {
       this.ws.close();
       this.ws = null;

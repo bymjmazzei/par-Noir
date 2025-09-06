@@ -1,5 +1,6 @@
+import { cryptoWorkerManager } from './cryptoWorkerManager';
 export interface GlobalPrivacySettings {
-  // Global overrides (always take precedence)
+  // Global overri (always take precedence)
   allowAnalytics: boolean;
   allowMarketing: boolean;
   allowThirdPartySharing: boolean;
