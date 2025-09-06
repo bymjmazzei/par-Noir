@@ -260,7 +260,7 @@ function App() {
   };
   
   // Function to handle error messages with proper timeout management
-  const showErrorMessage = (message: string, duration: number = 5000) => {
+  const showErrorMessage = (message: string, duration: number = 9000) => {
     setError(message);
     setTimeout(() => setError(null), duration);
   };
@@ -347,7 +347,7 @@ function App() {
       
     } catch (error: any) {
       setError(error.message || 'Authentication failed');
-      setTimeout(() => setError(null), 5000);
+      setTimeout(() => setError(null), 9000);
     }
   };
 
@@ -413,7 +413,7 @@ function App() {
       
     } catch (error: any) {
       setError(error.message || 'Download failed');
-      setTimeout(() => setError(null), 5000);
+      setTimeout(() => setError(null), 9000);
     }
   };
 
@@ -429,7 +429,7 @@ function App() {
       
     } catch (error: any) {
       setError(error.message || 'Transfer failed to start');
-      setTimeout(() => setError(null), 5000);
+      setTimeout(() => setError(null), 9000);
     }
   };
 
@@ -500,7 +500,7 @@ function App() {
       
     } catch (error: any) {
       setError(error.message || 'Transfer setup failed');
-      setTimeout(() => setError(null), 5000);
+      setTimeout(() => setError(null), 9000);
     }
   };
   const [authenticatedUser, setAuthenticatedUser] = useState<any>(null);
@@ -850,7 +850,7 @@ function App() {
         // Validate the invitation hasn't expired
         if (invitationData.expiresAt && Date.now() > invitationData.expiresAt) {
           setError('Custodian invitation has expired');
-          setTimeout(() => setError(null), 5000);
+          setTimeout(() => setError(null), 9000);
           return;
         }
         
@@ -863,7 +863,7 @@ function App() {
         
       } catch (error) {
         setError('Invalid custodian invitation link');
-        setTimeout(() => setError(null), 5000);
+        setTimeout(() => setError(null), 9000);
       }
     }
   }, []);
@@ -1151,7 +1151,7 @@ function App() {
     } catch (error: any) {
       logError('Create DID error:', error);
       setError(error.message || 'Failed to create DID');
-      setTimeout(() => setError(null), 5000);
+      setTimeout(() => setError(null), 9000);
       
       // Track error
       analytics.trackError(error, 'create-form', 'medium');
@@ -1239,7 +1239,7 @@ function App() {
       setTimeout(() => setSuccess(null), 5000);
     } catch (error: any) {
       setError(error.message || 'Failed to import DID');
-      setTimeout(() => setError(null), 5000);
+      setTimeout(() => setError(null), 9000);
     } finally {
       setLoading(false);
     }
@@ -1322,7 +1322,7 @@ function App() {
   const handleAuthError = (error: Error) => {
             logError('Authentication failed:', error);
     setError(error.message);
-    setTimeout(() => setError(null), 5000);
+    setTimeout(() => setError(null), 9000);
   };
 
   const handleLogout = async () => {
@@ -1867,14 +1867,14 @@ function App() {
         setSelectedDID(identity);
         setMainForm(prev => ({ ...prev, pnName: identity.pnName }));
         setError(result.error || 'Biometric authentication failed. Please enter your passcode.');
-        setTimeout(() => setError(null), 5000);
+        setTimeout(() => setError(null), 9000);
       } else {
         throw new Error(result.error || 'Biometric authentication failed');
       }
     } catch (error: any) {
       logError('Biometric authentication error:', error);
       setError(error.message || 'Biometric authentication failed');
-      setTimeout(() => setError(null), 5000);
+      setTimeout(() => setError(null), 9000);
     } finally {
       setLoading(false);
     }
@@ -2148,7 +2148,7 @@ function App() {
                       } catch (error: any) {
           logError('File unlock error:', error);
           setError(`Failed to unlock identity: ${error.message || 'Unknown error'}`);
-          setTimeout(() => setError(null), 5000);
+          setTimeout(() => setError(null), 9000);
       } finally {
         setLoading(false);
       }
@@ -2233,7 +2233,7 @@ function App() {
     } catch (error: any) {
               logError('Authentication error:', error);
       setError(error.message || 'Failed to unlock identity');
-      setTimeout(() => setError(null), 5000);
+      setTimeout(() => setError(null), 9000);
     } finally {
       setLoading(false);
     }
@@ -2309,7 +2309,7 @@ function App() {
       setTimeout(() => setSuccess(null), 5000);
     } catch (error: any) {
       setError(error.message || 'Failed to initiate recovery');
-      setTimeout(() => setError(null), 5000);
+      setTimeout(() => setError(null), 9000);
     } finally {
       setLoading(false);
     }
@@ -2446,7 +2446,7 @@ This invitation expires in 24 hours.`;
       setTimeout(() => setSuccess(null), 5000);
     } catch (error: any) {
       setError(error.message || 'Failed to add custodian');
-      setTimeout(() => setError(null), 5000);
+      setTimeout(() => setError(null), 9000);
     }
   };
 
@@ -2515,7 +2515,7 @@ This invitation expires in 24 hours.`;
 
     } catch (error: any) {
       setError(error.message || 'Failed to accept custodianship');
-      setTimeout(() => setError(null), 5000);
+      setTimeout(() => setError(null), 9000);
     }
   };
 
@@ -2537,7 +2537,7 @@ This invitation expires in 24 hours.`;
       setTimeout(() => setSuccess(null), 5000);
     } catch (error: any) {
       setError(error.message || 'Failed to validate custodian');
-      setTimeout(() => setError(null), 5000);
+      setTimeout(() => setError(null), 9000);
     }
   };
 
@@ -2684,7 +2684,7 @@ This invitation expires in 24 hours.`;
 
     } catch (error: any) {
       setError(`ZK proof generation failed: ${error.message}`);
-      setTimeout(() => setError(null), 5000);
+      setTimeout(() => setError(null), 9000);
     } finally {
       setLoading(false);
     }
@@ -2767,7 +2767,7 @@ This invitation expires in 24 hours.`;
       setTimeout(() => setSuccess(null), 5000);
     } catch (error: any) {
       setError(error.message || 'Failed to generate recovery key');
-      setTimeout(() => setError(null), 5000);
+      setTimeout(() => setError(null), 9000);
     } finally {
       setLoading(false);
     }
@@ -2872,7 +2872,7 @@ This invitation expires in 24 hours.`;
       setTimeout(() => setSuccess(null), 5000);
     } catch (error: any) {
       setError(error.message || 'Failed to initiate recovery with key');
-      setTimeout(() => setError(null), 5000);
+      setTimeout(() => setError(null), 9000);
     } finally {
       setLoading(false);
     }
@@ -3032,7 +3032,7 @@ This invitation expires in 24 hours.`;
       setCurrentDataPointExistingData(null);
     } catch (error) {
       setError('Failed to store attested data');
-      setTimeout(() => setError(null), 5000);
+      setTimeout(() => setError(null), 9000);
     }
   };
 
@@ -3601,7 +3601,7 @@ This invitation expires in 24 hours.`;
       // Check if user is authenticated
       if (!authenticatedUser) {
         setError('You must unlock your identity first to accept custodianship');
-        setTimeout(() => setError(null), 5000);
+        setTimeout(() => setError(null), 9000);
         return;
       }
 
@@ -3629,7 +3629,7 @@ This invitation expires in 24 hours.`;
 
     } catch (error: any) {
       setError(error.message || 'Failed to accept custodianship');
-      setTimeout(() => setError(null), 5000);
+      setTimeout(() => setError(null), 9000);
     }
   };
 
@@ -3682,7 +3682,7 @@ This invitation expires in 24 hours.`;
       setTimeout(() => setSuccess(null), 5000);
     } catch (error: any) {
       setError(error.message || 'Failed to accept custodian invitation');
-      setTimeout(() => setError(null), 5000);
+      setTimeout(() => setError(null), 9000);
     }
   };
 
@@ -3975,7 +3975,7 @@ This invitation expires in 24 hours.`;
     } catch (error: any) {
         logError('Unlock error:', error);
               setError(error.message || 'Failed to unlock pN file');
-      setTimeout(() => setError(null), 5000);
+      setTimeout(() => setError(null), 9000);
     } finally {
       setLoading(false);
     }
@@ -3983,7 +3983,7 @@ This invitation expires in 24 hours.`;
 
   useEffect(() => {
     if (error) {
-      const timer = setTimeout(() => setError(null), 5000);
+      const timer = setTimeout(() => setError(null), 9000);
       return () => clearTimeout(timer);
     }
   }, [error]);
@@ -4152,7 +4152,7 @@ This invitation expires in 24 hours.`;
                 successTimeoutRef.current = null;
               }
             }}
-            className="absolute top-1 right-1 text-green-600 hover:text-green-800"
+            className="modal-close-button"
           >
             ×
           </button>
@@ -4480,7 +4480,7 @@ This invitation expires in 24 hours.`;
                   }}
                   className="modal-close-button"
                 >
-                  ✕
+                  ×
                   </button>
                 </div>
                 
@@ -4832,7 +4832,7 @@ This invitation expires in 24 hours.`;
                   onClick={() => setShowImportForm(false)}
                   className="modal-close-button"
                 >
-                  ✕
+                  ×
                   </button>
                 </div>
               <form onSubmit={handleImportDID} className="space-y-4">
@@ -4908,7 +4908,7 @@ This invitation expires in 24 hours.`;
                   onClick={() => setShowRecoveryModal(false)}
                   className="modal-close-button"
                 >
-                  ✕
+                  ×
                   </button>
                 </div>
 
@@ -5112,7 +5112,7 @@ This invitation expires in 24 hours.`;
                   onClick={() => setShowAddCustodianModal(false)}
                   className="modal-close-button"
                 >
-                  ✕
+                  ×
                   </button>
                 </div>
               
@@ -5258,9 +5258,9 @@ This invitation expires in 24 hours.`;
                 <h2 className="text-xl font-semibold">Generate Recovery Key</h2>
                 <button
                   onClick={() => setShowRecoveryKeyModal(false)}
-                  className="text-gray-500 hover:text-gray-700"
+                  className="modal-close-button"
                 >
-                  ✕
+                  ×
                 </button>
               </div>
               <div className="space-y-4">
@@ -6695,11 +6695,11 @@ This invitation expires in 24 hours.`;
             <div className="bg-modal-bg rounded-lg p-6 max-w-md w-full mx-4 my-8 max-h-[90vh] overflow-y-auto text-text-primary">
               <div className="flex justify-between items-center mb-8">
                 <h2 className="text-xl font-semibold">Recovery Successful!</h2>
-                <button 
+                <button
                   onClick={() => setShowRecoveryCompleteModal(false)}
-                  className="text-gray-500 hover:text-gray-700"
+                  className="modal-close-button"
                 >
-                  ✕
+                  ×
                 </button>
               </div>
               
@@ -7015,9 +7015,9 @@ This invitation expires in 24 hours.`;
                       setShowExportPnName(false);
                       setShowExportPasscode(false);
                     }}
-                    className="text-gray-500 hover:text-gray-700"
+                    className="modal-close-button"
                   >
-                    ✕
+                    ×
                   </button>
               </div>
               
@@ -7075,9 +7075,9 @@ This invitation expires in 24 hours.`;
                     setShowTransferSetupModal(false);
                     setTransferCreated(false);
                   }}
-                  className="text-gray-500 hover:text-gray-700"
+                  className="modal-close-button"
                 >
-                  ✕
+                  ×
                 </button>
               </div>
               

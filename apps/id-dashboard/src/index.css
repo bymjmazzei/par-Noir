@@ -5,6 +5,28 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Modal Close Button */
+.modal-close-button {
+  background: none;
+  border: none;
+  font-size: 1.5rem;
+  color: var(--text-secondary);
+  cursor: pointer;
+  padding: 0.5rem;
+  border-radius: 0.375rem;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+}
+
+.modal-close-button:hover {
+  color: var(--text-primary);
+  background: var(--hover);
+}
+
 /* Native App Feel - PWA Enhancements */
 html, body {
   overscroll-behavior: none;
