@@ -263,7 +263,9 @@ export class PrivacyAnalytics {
    * Generate session ID
    */
   private generateSessionId(): string {
-    return `session_${Date.now()}_${Math.random().toString(36).substring(2, 15)}`;
+      const sessionRandomBytes = crypto.getRandomValues(new Uint8Array(8));
+      const sessionRandomString = Array.from(sessionRandomBytes).map(b => b.toString(36)).join('').substring(0, 13);
+      return `session_${Date.now()}_${sessionRandomString}`;
   }
 
   /**

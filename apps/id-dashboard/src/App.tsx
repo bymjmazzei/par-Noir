@@ -192,7 +192,9 @@ const generateSecureToken = async (identity: any): Promise<string> => {
     return `pn_${tokenString}`;
   } catch (error) {
     // Fallback to timestamp-based token if crypto fails
-    return `pn_${Date.now()}_${Math.random().toString(36).substring(2)}`;
+    const randomBytes = crypto.getRandomValues(new Uint8Array(8));
+    const randomString = Array.from(randomBytes).map(b => b.toString(36)).join('').substring(0, 8);
+    return `pn_${Date.now()}_${randomString}`;
   }
 };
 
@@ -2317,7 +2319,7 @@ function App() {
     try {
       const invitationData = {
         invitationId: `inv-${Date.now()}`,
-        invitationCode: `code-${Math.random().toString(36).substring(2)}`,
+        invitationCode: `code-${Array.from(crypto.getRandomValues(new Uint8Array(8))).map(b => b.toString(36)).join('').substring(0, 8)}`,
         custodianName: custodianData.name,
         custodianType: custodianData.type === 'self' ? 'self-recovery' : custodianData.type,
         contactType: custodianData.contactType,
@@ -3049,7 +3051,9 @@ This invitation expires in 24 hours.`;
       ctx.fillText('Device Fingerprint', 10, 20);
       return canvas.toDataURL().slice(0, 50) + Date.now().toString();
     }
-    return `device-${Date.now()}-${Math.random().toString(36).substring(2)}`;
+    const randomBytes = crypto.getRandomValues(new Uint8Array(8));
+    const randomString = Array.from(randomBytes).map(b => b.toString(36)).join('').substring(0, 8);
+    return `device-${Date.now()}-${randomString}`;
   };
 
   // Generate QR code for transfer URL

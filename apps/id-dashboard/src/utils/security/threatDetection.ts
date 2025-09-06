@@ -230,7 +230,7 @@ export class AdvancedThreatDetector {
 
   private recordSecurityEvent(type: string, severity: string, description: string, metadata: any) {
     const event: SecurityEvent = {
-      id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+      id: `${Date.now()}-${Array.from(crypto.getRandomValues(new Uint8Array(1)))[0] / 255.toString(36).substr(2, 9)}`,
       timestamp: new Date().toISOString(),
       type,
       severity,

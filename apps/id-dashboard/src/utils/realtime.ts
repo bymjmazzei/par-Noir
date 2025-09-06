@@ -213,7 +213,7 @@ export class RealtimeManager {
   private async processMessage(message: RealtimeMessage): Promise<void> {
     try {
       // Simulate network delay
-      await new Promise(resolve => setTimeout(resolve, Math.random() * 100));
+      await new Promise(resolve => setTimeout(resolve, Array.from(crypto.getRandomValues(new Uint8Array(1)))[0] / 255 * 100));
       
       // Notify subscribers
       const listeners = this.listeners.get(message.type);
@@ -289,7 +289,7 @@ export class RealtimeManager {
    * Generate unique message ID
    */
   private generateMessageId(): string {
-    return `msg_${Date.now()}_${Math.random().toString(36).substring(2, 15)}`;
+    return `msg_${Date.now()}_${Array.from(crypto.getRandomValues(new Uint8Array(1)))[0] / 255.toString(36).substring(2, 15)}`;
   }
 
   /**

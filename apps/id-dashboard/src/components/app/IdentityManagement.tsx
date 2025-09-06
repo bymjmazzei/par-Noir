@@ -22,7 +22,7 @@ export const useIdentityManagement = (
     return measureAsync('create_identity', async () => {
       try {
         const newIdentity: DIDInfo = {
-          id: `identity_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+          id: `identity_${Date.now()}_${Array.from(crypto.getRandomValues(new Uint8Array(8))).map(b => b.toString(36)).join('').substring(0, 9)}`,
           pnName: identityData.pnName,
           nickname: identityData.nickname || generateRandomNickname(),
           email: identityData.email,

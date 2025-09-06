@@ -64,9 +64,9 @@ export class QRScannerService {
       const mockQRData: QRCodeData = {
         type: 'device-pairing',
         data: {
-          deviceId: `device-${Math.random().toString(36).substring(2, 10)}`,
+          deviceId: `device-${Array.from(crypto.getRandomValues(new Uint8Array(1)))[0] / 255.toString(36).substring(2, 10)}`,
           deviceName: 'Mock Device',
-          publicKey: `key-${Math.random().toString(36).substring(2, 15)}`,
+          publicKey: `key-${Array.from(crypto.getRandomValues(new Uint8Array(1)))[0] / 255.toString(36).substring(2, 15)}`,
           timestamp: new Date().toISOString()
         },
         timestamp: new Date().toISOString()
@@ -113,8 +113,8 @@ export class QRScannerService {
       const mockQRData: QRCodeData = {
         type: 'recovery-code',
         data: {
-          recoveryCode: `recovery-${Math.random().toString(36).substring(2, 10)}`,
-          identityId: `identity-${Math.random().toString(36).substring(2, 15)}`,
+          recoveryCode: `recovery-${Array.from(crypto.getRandomValues(new Uint8Array(1)))[0] / 255.toString(36).substring(2, 10)}`,
+          identityId: `identity-${Array.from(crypto.getRandomValues(new Uint8Array(1)))[0] / 255.toString(36).substring(2, 15)}`,
           expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString()
         },
         timestamp: new Date().toISOString()

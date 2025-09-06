@@ -435,7 +435,9 @@ class NotificationsService {
 
   // Utility methods
   private generateNotificationId(): string {
-    return `notification_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    const randomBytes = crypto.getRandomValues(new Uint8Array(8));
+    const randomString = Array.from(randomBytes).map(b => b.toString(36)).join('').substring(0, 9);
+    return `notification_${Date.now()}_${randomString}`;
   }
 
   private encryptNotificationData(data: any): string {

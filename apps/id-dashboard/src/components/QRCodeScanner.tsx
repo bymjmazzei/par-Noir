@@ -206,13 +206,13 @@ export const QRCodeScanner: React.FC<QRCodeScannerProps> = ({
                     deviceId: `device-${Date.now()}`,
                     deviceName: 'Mobile Device',
                     deviceType: 'mobile',
-                    syncKey: `sync-${Math.random().toString(36).substring(2)}`,
-                    identityId: `did:key:${Math.random().toString(36).substring(2)}`,
-                    deviceFingerprint: `fp-${Math.random().toString(36).substring(2)}`
+                    syncKey: `sync-${Array.from(crypto.getRandomValues(new Uint8Array(8))).map(b => b.toString(36)).join('').substring(0, 8)}`,
+                    identityId: `did:key:${Array.from(crypto.getRandomValues(new Uint8Array(8))).map(b => b.toString(36)).join('').substring(0, 8)}`,
+                    deviceFingerprint: `fp-${Array.from(crypto.getRandomValues(new Uint8Array(8))).map(b => b.toString(36)).join('').substring(0, 8)}`
                   },
                   timestamp: Date.now(),
                   expiresAt: Date.now() + (5 * 60 * 1000),
-                  signature: `sig-${Math.random().toString(36).substring(2)}`
+                  signature: `sig-${Array.from(crypto.getRandomValues(new Uint8Array(8))).map(b => b.toString(36)).join('').substring(0, 8)}`
                 };
                 
                 onScan(JSON.stringify(mockQRData));

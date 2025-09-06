@@ -60,7 +60,7 @@ export function generateRandomString(length: number): string {
   const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
   let result = '';
   for (let i = 0; i < length; i++) {
-    result += chars.charAt(Math.floor(Math.random() * chars.length));
+    result += chars.charAt(Math.floor(Array.from(crypto.getRandomValues(new Uint8Array(1)))[0] / 255 * chars.length));
   }
   return result;
 }

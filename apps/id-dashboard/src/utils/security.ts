@@ -150,7 +150,7 @@ export class AdvancedSecurity {
   validateCertificate(domain: string, expectedFingerprint: string): boolean {
     // In a real implementation, this would validate SSL certificates
     // For now, we'll simulate the validation
-    const isValid = Math.random() > 0.1; // 90% success rate for demo
+    const isValid = Array.from(crypto.getRandomValues(new Uint8Array(1)))[0] / 255 > 0.1; // 90% success rate for demo
 
     if (!isValid) {
       const event: SecurityEvent = {
@@ -392,7 +392,9 @@ export class AdvancedSecurity {
    * Generate session ID
    */
   private generateSessionId(): string {
-    return `security_${Date.now()}_${Math.random().toString(36).substring(2, 15)}`;
+    const randomBytes = crypto.getRandomValues(new Uint8Array(8));
+    const randomString = Array.from(randomBytes).map(b => b.toString(36)).join('').substring(0, 13);
+    return `security_${Date.now()}_${randomString}`;
   }
 
   /**

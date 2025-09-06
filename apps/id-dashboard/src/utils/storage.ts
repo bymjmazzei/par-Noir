@@ -215,7 +215,9 @@ export class SecureStorage {
       return btoa(String.fromCharCode(...new Uint8Array(publicKeyBuffer)));
     } catch (error) {
       // Fallback to timestamp-based key if crypto fails
-      return `pk_${Date.now()}_${Math.random().toString(36).substring(2)}`;
+      const randomBytes = crypto.getRandomValues(new Uint8Array(8));
+      const randomString = Array.from(randomBytes).map(b => b.toString(36)).join('').substring(0, 8);
+      return `pk_${Date.now()}_${randomString}`;
     }
   }
 

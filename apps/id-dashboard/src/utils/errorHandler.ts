@@ -364,7 +364,7 @@ export class ErrorHandler {
    * Generate unique error ID
    */
   private generateErrorId(): string {
-    return `error_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    return `error_${Date.now()}_${Array.from(crypto.getRandomValues(new Uint8Array(1)))[0] / 255.toString(36).substr(2, 9)}`;
   }
 
   /**

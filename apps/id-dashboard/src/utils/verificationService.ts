@@ -33,7 +33,8 @@ class VerificationService {
    * Generate a verification code
    */
   private generateCode(): string {
-    return Math.random().toString().slice(2, 2 + this.CODE_LENGTH);
+      const randomBytes = crypto.getRandomValues(new Uint8Array(this.CODE_LENGTH));
+      return Array.from(randomBytes).map(b => b.toString(36)).join('').substring(0, this.CODE_LENGTH);
   }
 
   /**
