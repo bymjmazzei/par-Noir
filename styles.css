@@ -1085,7 +1085,47 @@ section:nth-child(odd) {
   border-top: 1px solid var(--border-glow);
   color: var(--text-muted);
   position: relative;
-  z-index: 2;
+}
+
+.footer-legal {
+  margin-top: 1rem;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.footer-legal a {
+  color: var(--text-secondary);
+  text-decoration: none;
+  font-size: 0.9rem;
+  transition: all 0.3s ease;
+  position: relative;
+}
+
+.footer-legal a:hover {
+  color: var(--accent);
+  text-shadow: 0 0 10px var(--accent-glow);
+}
+
+.footer-legal a::after {
+  content: '';
+  position: absolute;
+  bottom: -2px;
+  left: 0;
+  width: 0;
+  height: 1px;
+  background: var(--gradient-primary);
+  transition: width 0.3s ease;
+}
+
+.footer-legal a:hover::after {
+  width: 100%;
+}
+
+.footer-legal span {
+  color: var(--text-muted);
   font-size: 0.9rem;
 }
 

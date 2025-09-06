@@ -7229,15 +7229,19 @@ This invitation expires in 24 hours.`;
         <div className="max-w-6xl mx-auto">
           <div className="flex justify-center items-center space-x-6 text-sm">
             <a 
-              href="/terms" 
+              href="https://parnoir.com/terms" 
               className="text-text-secondary hover:text-primary transition-colors"
+              target="_blank"
+              rel="noopener noreferrer"
             >
               Terms of Service
             </a>
             <span className="text-text-secondary">•</span>
             <a 
-              href="/privacy" 
+              href="https://parnoir.com/privacy" 
               className="text-text-secondary hover:text-primary transition-colors"
+              target="_blank"
+              rel="noopener noreferrer"
             >
               Privacy Policy
             </a>
