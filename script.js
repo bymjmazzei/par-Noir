@@ -22,19 +22,26 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // Custom video player functionality
     const videoThumbnail = document.getElementById('videoThumbnail');
-    const videoIframeContainer = document.getElementById('videoIframeContainer');
-    const youtubeVideo = document.getElementById('youtube-video');
+    const videoPlayerContainer = document.getElementById('videoPlayerContainer');
+    const mainVideo = document.getElementById('mainVideo');
+    const videoPreview = document.getElementById('videoPreview');
 
-    if (videoThumbnail && videoIframeContainer && youtubeVideo) {
+    if (videoThumbnail && videoPlayerContainer && mainVideo && videoPreview) {
+        // Set preview video to show first frame
+        videoPreview.currentTime = 0;
+        
         videoThumbnail.addEventListener('click', function() {
             // Hide thumbnail
             videoThumbnail.style.display = 'none';
             
-            // Show iframe container
-            videoIframeContainer.style.display = 'block';
+            // Show video player container
+            videoPlayerContainer.style.display = 'block';
             
-            // Load the YouTube video
-            youtubeVideo.src = 'https://www.youtube.com/embed/S9Bpay4hrBM?rel=0&modestbranding=1&showinfo=0&controls=1&autoplay=1&iv_load_policy=3&cc_load_policy=0&fs=1&disablekb=0&enablejsapi=0&origin=https://parnoir.com&widget_referrer=https://parnoir.com';
+            // Play the main video
+            mainVideo.play().catch(function(error) {
+                console.log('Autoplay prevented:', error);
+                // If autoplay fails, user can click play manually
+            });
         });
     }
 });

@@ -158,10 +158,13 @@
             </div>
             <div class="hero-visual">
                 <div class="video-container" id="video">
-                    <!-- Custom Video Player - par Noir Promo Video -->
+                    <!-- Self-Hosted Video Player - par Noir Launch Promo -->
                     <div class="custom-video-player" id="customVideoPlayer">
                         <div class="video-thumbnail" id="videoThumbnail">
-                            <img src="https://img.youtube.com/vi/S9Bpay4hrBM/maxresdefault.jpg" alt="par Noir Promo Video" class="thumbnail-image">
+                            <video id="videoPreview" class="thumbnail-video" muted>
+                                <source src="par Noir Launch Promo.mp4" type="video/mp4">
+                                Your browser does not support the video tag.
+                            </video>
                             <div class="play-button-overlay">
                                 <div class="play-button">
                                     <svg width="60" height="60" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -170,16 +173,11 @@
                                 </div>
                             </div>
                         </div>
-                        <div class="video-iframe-container" id="videoIframeContainer" style="display: none;">
-                            <iframe
-                                id="youtube-video"
-                                class="youtube-video"
-                                src=""
-                                title="par Noir - pN Promo Video"
-                                frameborder="0"
-                                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                                allowfullscreen
-                            ></iframe>
+                        <div class="video-player-container" id="videoPlayerContainer" style="display: none;">
+                            <video id="mainVideo" class="main-video" controls autoplay>
+                                <source src="par Noir Launch Promo.mp4" type="video/mp4">
+                                Your browser does not support the video tag.
+                            </video>
                         </div>
                     </div>
                 </div>
