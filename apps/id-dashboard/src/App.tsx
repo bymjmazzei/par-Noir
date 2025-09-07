@@ -733,15 +733,7 @@ function App() {
   const [showTransferSetupModal, setShowTransferSetupModal] = useState(false);
   const [transferUrl, setTransferUrl] = useState('');
   const [showDelegationModal, setShowDelegationModal] = useState(false);
-  const [activeDelegations, setActiveDelegations] = useState([
-    {
-      id: 'delegation_1',
-      name: 'John Doe',
-      email: 'john@example.com',
-      permissions: 'readonly',
-      initials: 'JD'
-    }
-  ]);
+  const [activeDelegations, setActiveDelegations] = useState([]);
   const [transferId, setTransferId] = useState('');
   const [transferPasscode, setTransferPasscode] = useState('');
   const [transferCreated, setTransferCreated] = useState(false);
