@@ -158,17 +158,29 @@
             </div>
             <div class="hero-visual">
                 <div class="video-container" id="video">
-                    <!-- YouTube Video Embed - par Noir Promo Video -->
-                    <div class="youtube-embed-container">
-            <iframe
-                id="youtube-video"
-                class="youtube-video"
-                src="https://www.youtube-nocookie.com/embed/S9Bpay4hrBM?rel=0&modestbranding=1&showinfo=0&controls=1&autoplay=0&iv_load_policy=3&cc_load_policy=0&fs=1&disablekb=0&enablejsapi=0&origin=https://parnoir.com&widget_referrer=https://parnoir.com&start=0&end=0&loop=0&playlist=S9Bpay4hrBM"
-                title="par Noir - pN Promo Video"
-                frameborder="0"
-                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                allowfullscreen
-            ></iframe>
+                    <!-- Custom Video Player - par Noir Promo Video -->
+                    <div class="custom-video-player" id="customVideoPlayer">
+                        <div class="video-thumbnail" id="videoThumbnail">
+                            <img src="https://img.youtube.com/vi/S9Bpay4hrBM/maxresdefault.jpg" alt="par Noir Promo Video" class="thumbnail-image">
+                            <div class="play-button-overlay">
+                                <div class="play-button">
+                                    <svg width="60" height="60" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                        <path d="M8 5V19L19 12L8 5Z" fill="currentColor"/>
+                                    </svg>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="video-iframe-container" id="videoIframeContainer" style="display: none;">
+                            <iframe
+                                id="youtube-video"
+                                class="youtube-video"
+                                src=""
+                                title="par Noir - pN Promo Video"
+                                frameborder="0"
+                                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                                allowfullscreen
+                            ></iframe>
+                        </div>
                     </div>
                 </div>
             </div>
