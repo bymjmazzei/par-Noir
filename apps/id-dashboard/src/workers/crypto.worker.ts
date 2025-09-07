@@ -1,5 +1,5 @@
 // Enhanced Crypto Web Worker for all cryptographic operations
-// Handles Ed25519, ECDSA, , PBKDF2, SHA-512, ECDH, ChaCha20-Poly1305, AES-256-CCM
+// Handles Ed25519, ECDSA, PBKDF2, SHA-512, ECDH, ChaCha20-Poly1305, AES-256-CCM
 // Quantum-resistant cryptography, and polynomial operations
 
 // Define message types
@@ -7,7 +7,7 @@ interface CryptoWorkerMessage {
   id: string;
   type: 'generateKey' | 'encrypt' | 'decrypt' | 'sign' | 'verify' | 'hash' | 'generateRandom' | 
         'deriveKey' | 'importKey' | 'exportKey' | 'generateKeyPair' | 'computeSharedSecret' |
-        'pbkdf2' | 'scrypt' | 'standardOperation' | 'standardHash' | 'standardOperation';
+        'pbkdf2' | 'scrypt' | 'standardOperation' | 'standardHash';
   data: any;
 }
 

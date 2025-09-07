@@ -24,7 +24,9 @@ class CryptoWorkerManager {
 
   private async initializeWorker(): Promise<void> {
     try {
-      this.worker = new Worker(new URL('../workers/crypto.worker.ts', import.meta.url));
+      // Use the JavaScript worker to avoid ES module issues
+      const workerUrl = new URL('../workers/crypto.worker.js', import.meta.url);
+      this.worker = new Worker(workerUrl);
       this.worker.onmessage = (event) => {
         const response = event.data as CryptoWorkerResponse;
         const callback = this.callbacks.get(response.id);

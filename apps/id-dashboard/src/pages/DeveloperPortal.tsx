@@ -418,17 +418,7 @@ const sdk = createIdentitySDK({
             <h2 className="text-3xl lg:text-4xl font-bold text-text-primary mb-4">Join the Community</h2>
             <p className="text-xl text-text-secondary">Connect with developers building the future of digital identity.</p>
           </div>
-          <div className="grid md:grid-cols-3 gap-8">
-            <div className="text-center">
-              <div className="w-16 h-16 bg-indigo-500 bg-opacity-20 rounded-full flex items-center justify-center mx-auto mb-4">
-                <svg className="w-8 h-8 text-indigo-500" fill="currentColor" viewBox="0 0 24 24">
-                  <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
-                </svg>
-              </div>
-              <h3 className="text-lg font-semibold text-text-primary mb-2">Discord</h3>
-              <p className="text-text-secondary mb-4">Join our developer community for real-time support, discussions, and collaboration.</p>
-              <a href="https://discord.gg/parnoir" target="_blank" rel="noopener noreferrer" className="inline-flex items-center px-4 py-2 bg-primary hover:bg-hover text-bg-primary rounded-lg font-medium transition-colors">Join Discord</a>
-            </div>
+          <div className="flex justify-center">
             <div className="text-center">
               <div className="w-16 h-16 bg-secondary rounded-full flex items-center justify-center mx-auto mb-4">
                 <svg className="w-8 h-8 text-text-secondary" fill="currentColor" viewBox="0 0 24 24">
@@ -438,16 +428,6 @@ const sdk = createIdentitySDK({
               <h3 className="text-lg font-semibold text-text-primary mb-2">GitHub</h3>
               <p className="text-text-secondary mb-4">Contribute to the protocol, report issues, and explore the source code.</p>
               <a href="https://github.com/bymjmazzei/par-Noir" target="_blank" rel="noopener noreferrer" className="inline-flex items-center px-4 py-2 bg-primary hover:bg-hover text-bg-primary rounded-lg font-medium transition-colors">View on GitHub</a>
-            </div>
-            <div className="text-center">
-              <div className="w-16 h-16 bg-blue-500 bg-opacity-20 rounded-full flex items-center justify-center mx-auto mb-4">
-                <svg className="w-8 h-8 text-blue-500" fill="currentColor" viewBox="0 0 24 24">
-                  <path d="M23 3a10.9 10.9 0 0 1-3.14 1.53 4.48 4.48 0 0 0-7.86 3v1A10.66 10.66 0 0 1 3 4s-4 9 5 13a11.64 11.64 0 0 1-7 2c9 5 20 0 20-11.5a4.5 4.5 0 0 0-.08-.83A7.72 7.72 0 0 0 23 3z"/>
-                </svg>
-              </div>
-              <h3 className="text-lg font-semibold text-text-primary mb-2">Twitter</h3>
-              <p className="text-text-secondary mb-4">Stay updated with the latest news, updates, and community highlights.</p>
-              <a href="https://twitter.com/parnoir" target="_blank" rel="noopener noreferrer" className="inline-flex items-center px-4 py-2 bg-primary hover:bg-hover text-bg-primary rounded-lg font-medium transition-colors">Follow on Twitter</a>
             </div>
           </div>
         </section>
