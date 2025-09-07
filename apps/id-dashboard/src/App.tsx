@@ -5604,6 +5604,17 @@ This invitation expires in 24 hours.`;
                       Privacy & Sharing
                 </button>
 
+                      <button
+                        onClick={() => setActiveTab('delegation')}
+                        className={`py-2 px-2 sm:px-4 border-b-2 font-medium text-sm whitespace-nowrap min-w-0 flex-shrink-0 ${
+                          activeTab === 'delegation'
+                            ? 'border-primary text-primary'
+                            : 'border-transparent text-text-secondary hover:text-text-primary hover:border-border'
+                        }`}
+                      >
+                        Delegation
+                      </button>
+
                     <button
                       onClick={() => setActiveTab('recovery')}
                       className={`py-2 px-2 sm:px-4 border-b-2 font-medium text-sm whitespace-nowrap min-w-0 flex-shrink-0 ${
@@ -5624,17 +5635,6 @@ This invitation expires in 24 hours.`;
                         }`}
                       >
                         Developer Portal
-                      </button>
-
-                      <button
-                        onClick={() => setActiveTab('delegation')}
-                        className={`py-2 px-2 sm:px-4 border-b-2 font-medium text-sm whitespace-nowrap min-w-0 flex-shrink-0 ${
-                          activeTab === 'delegation'
-                            ? 'border-primary text-primary'
-                            : 'border-transparent text-text-secondary hover:text-text-primary hover:border-border'
-                        }`}
-                      >
-                        Delegation
                       </button>
                   </nav>
               </div>
@@ -6193,27 +6193,29 @@ This invitation expires in 24 hours.`;
                             <h4 className="font-medium text-text-primary mb-3">Active Delegations</h4>
                             <div className="space-y-3">
                               {/* Example active delegation - replace with actual data */}
-                              <div className="flex items-center justify-between p-3 bg-secondary rounded-lg">
-                                <div className="flex items-center space-x-3">
-                                  <div className="w-8 h-8 bg-primary rounded-full flex items-center justify-center">
-                                    <span className="text-white text-sm font-medium">JD</span>
+                              <div className="p-3 bg-secondary rounded-lg">
+                                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between space-y-3 sm:space-y-0">
+                                  <div className="flex items-center space-x-3">
+                                    <div className="w-8 h-8 bg-primary rounded-full flex items-center justify-center flex-shrink-0">
+                                      <span className="text-white text-sm font-medium">JD</span>
+                                    </div>
+                                    <div className="min-w-0 flex-1">
+                                      <h5 className="font-medium text-text-primary truncate">John Doe</h5>
+                                      <p className="text-sm text-text-secondary truncate">john@example.com</p>
+                                    </div>
                                   </div>
-                                  <div>
-                                    <h5 className="font-medium text-text-primary">John Doe</h5>
-                                    <p className="text-sm text-text-secondary">john@example.com</p>
+                                  <div className="flex flex-col sm:flex-row sm:items-center space-y-2 sm:space-y-0 sm:space-x-3">
+                                    <div className="flex flex-col sm:flex-row sm:items-center space-y-1 sm:space-y-0 sm:space-x-2">
+                                      <span className="text-sm text-text-secondary">Permissions:</span>
+                                      <select className="text-xs border border-gray-300 rounded px-2 py-1 bg-input-bg text-text-primary w-full sm:w-auto">
+                                        <option value="readonly">Read Only</option>
+                                        <option value="readwrite">Read/Write</option>
+                                      </select>
+                                    </div>
+                                    <button className="text-red-600 hover:text-red-800 text-sm px-3 py-1 border border-red-600 rounded hover:bg-red-50 w-full sm:w-auto">
+                                      Disable
+                                    </button>
                                   </div>
-                                </div>
-                                <div className="flex items-center space-x-3">
-                                  <div className="flex items-center space-x-2">
-                                    <span className="text-sm text-text-secondary">Permissions:</span>
-                                    <select className="text-xs border border-gray-300 rounded px-2 py-1 bg-input-bg text-text-primary">
-                                      <option value="readonly">Read Only</option>
-                                      <option value="readwrite">Read/Write</option>
-                                    </select>
-                                  </div>
-                                  <button className="text-red-600 hover:text-red-800 text-sm px-2 py-1 border border-red-600 rounded hover:bg-red-50">
-                                    Disable
-                                  </button>
                                 </div>
                               </div>
                               
