@@ -12,9 +12,14 @@ const NotificationsButton: React.FC<NotificationsButtonProps> = ({ isPWA = false
   const [unreadCount, setUnreadCount] = useState(0);
   const [showDropdown, setShowDropdown] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+  const [hasUnlockedIdentity, setHasUnlockedIdentity] = useState(false);
 
   useEffect(() => {
     const loadNotifications = async () => {
+      // Check if there's an unlocked identity
+      const hasUnlocked = (notificationsService as any).currentUnlockedIdentity !== null;
+      setHasUnlockedIdentity(hasUnlocked);
+      
       // Only show notifications for the currently unlocked identity
       const notifications = await notificationsService.getNotifications();
       const unread = await notificationsService.getUnreadCount();
@@ -41,6 +46,8 @@ const NotificationsButton: React.FC<NotificationsButtonProps> = ({ isPWA = false
     setShowDropdown(false);
     
     // Refresh notifications for current identity
+    const hasUnlocked = (notificationsService as any).currentUnlockedIdentity !== null;
+    setHasUnlockedIdentity(hasUnlocked);
     const notifications = await notificationsService.getNotifications();
     const unread = await notificationsService.getUnreadCount();
     setNotifications(notifications);
@@ -51,6 +58,8 @@ const NotificationsButton: React.FC<NotificationsButtonProps> = ({ isPWA = false
     const notifications = await notificationsService.getNotifications();
     const notificationIds = notifications.map(n => n.id);
     await notificationsService.markAsRead(notificationIds);
+    const hasUnlocked = (notificationsService as any).currentUnlockedIdentity !== null;
+    setHasUnlockedIdentity(hasUnlocked);
     const updatedNotifications = await notificationsService.getNotifications();
     const unread = await notificationsService.getUnreadCount();
     setNotifications(updatedNotifications);
@@ -199,9 +208,8 @@ const NotificationsButton: React.FC<NotificationsButtonProps> = ({ isPWA = false
           <div className="max-h-96 overflow-y-auto">
             {notifications.length === 0 ? (
               <div className="p-4 text-center text-text-secondary">
-                <div className="text-2xl mb-2">📭</div>
                 <p className="text-sm">
-                  {notifications.length > 0 
+                  {hasUnlockedIdentity 
                     ? 'No notifications for this ID' 
                     : 'Unlock an ID to see notifications'
                   }
