@@ -6,9 +6,17 @@ function loadYouTubeVideo() {
     const youtubeVideo = document.getElementById('youtube-video');
     
     if (videoPlaceholder && youtubeVideo) {
-        // Hide placeholder and show video
+        console.log('Loading video...');
+        
+        // Hide placeholder completely
         videoPlaceholder.style.display = 'none';
+        videoPlaceholder.style.visibility = 'hidden';
+        videoPlaceholder.style.opacity = '0';
+        
+        // Show video
         youtubeVideo.style.display = 'block';
+        youtubeVideo.style.visibility = 'visible';
+        youtubeVideo.style.opacity = '1';
         
         // Add autoplay to the video URL if not already present
         let videoSrc = youtubeVideo.src;
@@ -18,8 +26,11 @@ function loadYouTubeVideo() {
         }
         
         console.log('Video loaded:', videoSrc);
+        console.log('Placeholder hidden, video shown');
     } else {
         console.error('Video elements not found');
+        console.log('Placeholder element:', videoPlaceholder);
+        console.log('Video element:', youtubeVideo);
     }
 }
 
@@ -58,6 +69,15 @@ document.addEventListener('DOMContentLoaded', function() {
                 if (entry.isIntersecting) {
                     // Video container is visible, can load video if needed
                     console.log('Video container is visible');
+                    
+                    // Auto-load video after 2 seconds if user hasn't clicked play
+                    setTimeout(() => {
+                        const placeholder = document.getElementById('videoPlaceholder');
+                        if (placeholder && placeholder.style.display !== 'none') {
+                            console.log('Auto-loading video...');
+                            loadYouTubeVideo();
+                        }
+                    }, 2000);
                 }
             });
         });

@@ -2388,6 +2388,8 @@ section:nth-child(odd) {
   border-radius: 20px;
   border: none;
   display: none; /* Hidden by default, shown when play button is clicked */
+  position: relative;
+  z-index: 10;
 }
 
 /* Video placeholder styling */
