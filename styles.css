@@ -2387,6 +2387,7 @@ section:nth-child(odd) {
   height: 100%;
   border-radius: 20px;
   border: none;
+  display: none; /* Hidden by default, shown when play button is clicked */
 }
 
 /* Video placeholder styling */

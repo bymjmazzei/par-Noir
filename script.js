@@ -10,8 +10,16 @@ function loadYouTubeVideo() {
         videoPlaceholder.style.display = 'none';
         youtubeVideo.style.display = 'block';
         
-        // Load the video
-        youtubeVideo.src = youtubeVideo.src + '&autoplay=1';
+        // Add autoplay to the video URL if not already present
+        let videoSrc = youtubeVideo.src;
+        if (!videoSrc.includes('autoplay=1')) {
+            videoSrc += '&autoplay=1';
+            youtubeVideo.src = videoSrc;
+        }
+        
+        console.log('Video loaded:', videoSrc);
+    } else {
+        console.error('Video elements not found');
     }
 }
 
