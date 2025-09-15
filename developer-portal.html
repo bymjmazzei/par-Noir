@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    
+    <!-- Primary Meta Tags -->
+    <title>Developer Portal - par Noir | SDK Documentation & Tools</title>
+    <meta name="title" content="Developer Portal - par Noir | SDK Documentation & Tools">
+    <meta name="description" content="Access the par Noir developer portal with SDK documentation, code examples, API references, and tools for building sovereign identity applications.">
+    <meta name="keywords" content="par noir developer portal, sdk documentation, api reference, code examples, sovereign identity development, blockchain development">
+    <meta name="author" content="par Noir Protocol Team">
+    <meta name="robots" content="index, follow">
+    <meta name="language" content="English">
+    
+    <!-- Open Graph / Facebook -->
+    <meta property="og:type" content="website">
+    <meta property="og:url" content="https://parnoir.com/developer-portal.html">
+    <meta property="og:title" content="Developer Portal - par Noir | SDK Documentation & Tools">
+    <meta property="og:description" content="Access the par Noir developer portal with SDK documentation, code examples, API references, and tools for building sovereign identity applications.">
+    <meta property="og:image" content="https://parnoir.com/branding/Par-Noir-Logo-White.png">
+    <meta property="og:image:width" content="1200">
+    <meta property="og:image:height" content="630">
+    <meta property="og:site_name" content="par Noir">
+    <meta property="og:locale" content="en_US">
+    
+    <!-- Twitter -->
+    <meta property="twitter:card" content="summary_large_image">
+    <meta property="twitter:url" content="https://parnoir.com/developer-portal.html">
+    <meta property="twitter:title" content="Developer Portal - par Noir | SDK Documentation & Tools">
+    <meta property="twitter:description" content="Access the par Noir developer portal with SDK documentation, code examples, API references, and tools for building sovereign identity applications.">
+    <meta property="twitter:image" content="https://parnoir.com/branding/Par-Noir-Logo-White.png">
+    
+    <!-- Additional Meta Tags -->
+    <meta name="theme-color" content="#000000">
+    <meta name="msapplication-TileColor" content="#000000">
+    
+    <!-- Canonical URL -->
+    <link rel="canonical" href="https://parnoir.com/developer-portal.html">
+    
+    <!-- Favicon and Icons -->
+    <link rel="icon" type="image/png" href="branding/Par-Noir-Icon-White.png">
+    <link rel="apple-touch-icon" href="branding/Par-Noir-Icon-White.png">
+    
+    <!-- Preconnect to external domains -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    
+    <!-- Stylesheets -->
+    <link rel="stylesheet" href="styles.css">
+    
+    <!-- Structured Data -->
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "WebPage",
+      "name": "Developer Portal - par Noir",
+      "description": "Access the par Noir developer portal with SDK documentation, code examples, API references, and tools for building sovereign identity applications.",
+      "url": "https://parnoir.com/developer-portal.html",
+      "mainEntity": {
+        "@type": "SoftwareApplication",
+        "name": "par Noir SDK",
+        "description": "Software development kit for building sovereign identity applications",
+        "applicationCategory": "DeveloperApplication",
+        "operatingSystem": "Web",
+        "offers": {
+          "@type": "Offer",
+          "price": "0",
+          "priceCurrency": "USD"
+        }
+      },
+      "breadcrumb": {
+        "@type": "BreadcrumbList",
+        "itemListElement": [
+          {
+            "@type": "ListItem",
+            "position": 1,
+            "name": "Home",
+            "item": "https://parnoir.com"
+          },
+          {
+            "@type": "ListItem",
+            "position": 2,
+            "name": "Developer Portal",
+            "item": "https://parnoir.com/developer-portal.html"
+          }
+        ]
+      }
+    }
+    </script>
+</head>
+<body>
+    <!-- Background -->
+    <div class="background"></div>
+
+    <!-- Site Navigation - Independent Component -->
+    <nav class="site-navigation">
+        <div class="nav-wrapper">
+            <div class="nav-brand-section">
+                <a href="index.html" title="Back to Home">
+                    <img src="branding/Par-Noir-Logo-White.png" alt="par Noir" class="nav-logo">
+                </a>
+            </div>
+            <div class="nav-menu-section">
+                <a href="index.html" class="nav-menu-link">Home</a>
+                <a href="https://github.com/bymjmazzei/par-Noir" target="_blank" class="nav-menu-link">GitHub</a>
+                <a href="whitepaper.html" class="nav-menu-link">White Paper</a>
+            </div>
+            <button class="nav-mobile-toggle" onclick="toggleMobileMenu()">
+                <svg viewBox="0 0 24 24" width="24" height="24">
+                    <path fill="currentColor" d="M3 18h18v-2H3v2zm0-5h18v-2H3v2zm0-7v2h18V6H3z"/>
+                </svg>
+            </button>
+        </div>
+    </nav>
+
+    <!-- Mobile Navigation Menu -->
+    <div class="nav-mobile-menu" id="mobileMenu">
+        <button class="nav-mobile-close" onclick="toggleMobileMenu()">×</button>
+        <a href="index.html" onclick="toggleMobileMenu()">Home</a>
+        <a href="https://github.com/bymjmazzei/par-Noir" target="_blank" onclick="toggleMobileMenu()">GitHub</a>
+        <a href="whitepaper.html" onclick="toggleMobileMenu()">White Paper</a>
+    </div>
+
+    <!-- Developer Portal Hero Section - Independent Component -->
+    <section id="gate" class="developer-hero">
+        <div class="developer-hero-wrapper">
+            <div class="developer-hero-content">
+                <div class="hero-badge">Developer Portal</div>
+                <h1 class="hero-title">
+                    Unlock Your <span class="hero-highlight">Developer Access</span>
+                </h1>
+                <p class="hero-subtitle">
+                    Access the full developer portal with SDK documentation, examples, and tools. 
+                    You'll need to unlock your par Noir identity to proceed.
+                </p>
+                
+                <!-- Gate Card -->
+                <div class="gate-card">
+                    <div class="gate-icon">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/>
+                        </svg>
+                    </div>
+                    <h3 class="gate-title">Authentication Required</h3>
+                    <p class="gate-description">
+                        To access the developer portal, you need to unlock your par Noir identity file (.pn) 
+                        in the web application. This ensures only authenticated developers can access our tools.
+                    </p>
+                    
+                    <div class="gate-actions">
+                        <a href="https://pn.parnoir.com" class="btn btn-primary btn-large">
+                            <span>UNLOCK pN TO VIEW</span>
+                            <svg class="btn-icon" viewBox="0 0 24 24">
+                                <path d="M5 12h14m-7-7l7 7-7 7"/>
+                            </svg>
+                        </a>
+                        <a href="https://github.com/bymjmazzei/par-Noir" target="_blank" class="btn btn-secondary">
+                            <span>View on GitHub</span>
+                            <svg class="btn-icon" viewBox="0 0 24 24">
+                                <path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22"/>
+                            </svg>
+                        </a>
+                    </div>
+                </div>
+
+                <!-- Features Preview -->
+                <div class="features-preview">
+                    <h4 class="features-title">What's Inside the Developer Portal?</h4>
+                    <div class="features-grid">
+                        <div class="feature-item">
+                            <div class="feature-icon">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                                </svg>
+                            </div>
+                            <h5>Quick Start Guide</h5>
+                            <p>Get up and running in 5 minutes</p>
+                        </div>
+                        <div class="feature-item">
+                            <div class="feature-icon">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <path d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+                                </svg>
+                            </div>
+                            <h5>API Documentation</h5>
+                            <p>Complete SDK reference</p>
+                        </div>
+                        <div class="feature-item">
+                            <div class="feature-icon">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <path d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4"/>
+                                </svg>
+                            </div>
+                            <h5>Code Examples</h5>
+                            <p>Real-world implementations</p>
+                        </div>
+                        <div class="feature-item">
+                            <div class="feature-icon">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/>
+                                    <circle cx="9" cy="7" r="4"/>
+                                </svg>
+                            </div>
+                            <h5>Community</h5>
+                            <p>Connect with developers</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Footer -->
+    <footer class="site-footer">
+        <div class="footer-wrapper">
+            <div class="footer-main">
+                <div class="footer-logo-section">
+                    <img src="branding/Par-Noir-Logo-White.png" alt="par Noir" class="footer-logo">
+                </div>
+            </div>
+            <div class="footer-navigation">
+                <div class="footer-nav-column">
+                    <h4>Learn</h4>
+                    <a href="index.html#problem">The Problem</a>
+                    <a href="index.html#solution">The Solution</a>
+                    <a href="whitepaper.html">White Paper</a>
+                </div>
+                <div class="footer-nav-column">
+                    <h4>Build</h4>
+                    <a href="developer-portal.html">Developer Portal</a>
+                    <a href="https://github.com/bymjmazzei/par-Noir">GitHub</a>
+                    <a href="https://pn.parnoir.com">Create Identity</a>
+                </div>
+                <div class="footer-nav-column">
+                    <h4>Connect</h4>
+                    <a href="index.html#vision">The Vision</a>
+                    <a href="index.html#features">Features</a>
+                </div>
+            </div>
+            <div class="footer-copyright">
+                <p>&copy; 2025 par Noir. Continuing the legacy of freedom since 1776.</p>
+            </div>
+        </div>
+    </footer>
+
+    <script src="script.js"></script>
+</body>
+</html>

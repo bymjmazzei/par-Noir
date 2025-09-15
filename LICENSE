@@ -1,0 +1,59 @@
+DUAL LICENSE - COMMERCIAL AND OPEN SOURCE
+Copyright (c) 2024 Par Noir
+
+This software is dual-licensed under the following terms:
+
+1. COMMERCIAL USE LICENSE
+   For commercial use of enterprise features, including but not limited to:
+   - Enterprise features (multi-tenant, white-label, advanced analytics)
+   - Bulk operations and high-frequency API calls
+   - Custom integrations and enterprise support
+   - Advanced security features and compliance tools
+   - Use by for-profit organizations for enterprise applications
+   
+   A commercial license is required. Please contact licensing@parnoir.com
+   for commercial licensing terms and pricing.
+
+2. OPEN SOURCE LICENSE (MIT) - FREE FOR ALL USES
+   For all uses, including commercial use, the following features are licensed under the MIT License:
+   - Basic authentication and identity creation
+   - Core SDK integration and standard login flows
+   - Basic security features and identity management
+   - Standard API endpoints for authentication
+   - Personal and educational use of all features
+
+   Permission is hereby granted, free of charge, to any person obtaining a copy
+   of this software and associated documentation files (the "Software"), to deal
+   in the Software without restriction, including without limitation the rights
+   to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+   copies of the Software, and to permit persons to whom the Software is
+   furnished to do so, subject to the following conditions:
+
+   The above copyright notice and this permission notice shall be included in all
+   copies or substantial portions of the Software.
+
+   THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+   IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+   FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+   AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+   LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+   OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+   SOFTWARE.
+
+DEFINITIONS:
+- "Enterprise features" means advanced functionality including multi-tenant support, 
+  white-label solutions, bulk operations, advanced analytics, custom integrations, 
+  enterprise support, and advanced security features.
+- "Basic authentication" means core identity creation, standard login flows, 
+  basic SDK integration, and fundamental security features.
+- "Commercial use" means use of enterprise features by for-profit organizations 
+  or for revenue-generating activities.
+
+LICENSE COMPLIANCE:
+By using this software, you agree to comply with the appropriate license terms.
+Basic authentication features are free for all uses. Enterprise features require 
+a commercial license for commercial use. If you are unsure whether your use of 
+enterprise features constitutes commercial use, please contact licensing@parnoir.com 
+for clarification.
+
+For licensing inquiries: licensing@parnoir.com

@@ -1,0 +1,109 @@
+{
+  "name": "par-noir",
+  "version": "1.0.0",
+  "description": "A decentralized, user-owned identity ecosystem with local-first architecture",
+  "main": "index.js",
+  "scripts": {
+    "dev": "npm run dev:dashboard",
+    "dev:all": "concurrently \"npm run dev:dashboard\"",
+    "dev:dashboard": "cd apps/id-dashboard && npm run dev",
+    "dev:identity": "cd core/identity-core && npm run dev",
+    "dev:test-app": "cd apps/test-app && npm run dev",
+    "build": "npm run build:identity && npm run build:dashboard",
+    "build:identity": "cd core/identity-core && npm run build",
+    "build:dashboard": "cd apps/id-dashboard && npm run build",
+    "test": "npm run test:identity && npm run test:sdk",
+    "test:identity": "cd core/identity-core && npm test",
+    "test:sdk": "cd sdk/identity-sdk && npm test",
+    "lint": "npm run lint:identity",
+    "lint:identity": "cd core/identity-core && npm run lint",
+    "clean": "npm run clean:identity",
+    "clean:identity": "cd core/identity-core && npm run clean",
+    "docs": "npm run docs:build && npm run docs:serve",
+    "docs:build": "typedoc",
+    "docs:serve": "serve docs",
+    "security:audit": "node scripts/security-audit.js",
+    "security:test": "node scripts/security-testing.js",
+    "security:penetration": "node scripts/penetration-testing.js",
+    "security:full": "npm run security:audit && npm run security:test && npm run security:penetration",
+    "security:comprehensive": "node scripts/comprehensive-security-test.js",
+    "secrets:rotate": "node scripts/rotate-secrets.js",
+    "security:check": "npm run security:audit && npm run security:test && npm run lint",
+    "performance:optimize": "node scripts/performance-optimizer.js",
+    "integration:test": "node scripts/integration-tester.js",
+    "test:all": "npm run test && npm run security:comprehensive && npm run performance:optimize && npm run integration:test"
+  },
+  "workspaces": [
+    "core/*",
+    "sdk/*",
+    "apps/*"
+  ],
+  "keywords": [
+    "identity",
+    "did",
+    "decentralized",
+    "privacy",
+    "authentication",
+    "local-first",
+    "user-owned",
+    "cryptography"
+  ],
+  "author": "Par Noir Team",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/yourusername/par-noir.git"
+  },
+  "bugs": {
+    "url": "https://github.com/yourusername/par-noir/issues"
+  },
+  "homepage": "https://parnoir.com",
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@typescript-eslint/eslint-plugin": "^6.0.0",
+    "@typescript-eslint/parser": "^6.0.0",
+    "concurrently": "^8.0.0",
+    "eslint": "^8.0.0",
+    "eslint-config-prettier": "^9.0.0",
+    "eslint-plugin-prettier": "^5.0.0",
+    "fake-indexeddb": "^6.0.1",
+    "lint-staged": "^16.1.5",
+    "nanoid": "^5.1.5",
+    "on-headers": "^1.1.0",
+    "parse-duration": "^2.1.4",
+    "prettier": "^3.0.0",
+    "serve": "^14.2.1",
+    "typedoc": "^0.25.0",
+    "typescript": "^5.0.0"
+  },
+  "engines": {
+    "node": ">=18.0.0",
+    "npm": ">=9.0.0"
+  },
+
+  "config": {
+    "commitizen": {
+      "path": "cz-conventional-changelog"
+    }
+  },
+  "overrides": {
+    "nanoid": "^5.1.5",
+    "parse-duration": "^2.1.4",
+    "on-headers": "^1.1.0",
+    "ipfs-http-client": {
+      "nanoid": "^5.1.5",
+      "parse-duration": "^2.1.4"
+    },
+    "ipfs-core-utils": {
+      "nanoid": "^5.1.5",
+      "parse-duration": "^2.1.4"
+    },
+    "ipfs-core-types": {
+      "nanoid": "^5.1.5",
+      "parse-duration": "^2.1.4"
+    }
+  },
+  "dependencies": {
+    "ipfs-http-client": "^60.0.1"
+  }
+}

@@ -1,0 +1,522 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    
+    <!-- Primary Meta Tags -->
+    <title>par Noir - Sovereign Digital Identity Protocol | Own Your Digital Self</title>
+    <meta name="title" content="par Noir - Sovereign Digital Identity Protocol | Own Your Digital Self">
+    <meta name="description" content="par Noir is an open-source protocol for sovereign identity, building a more secure and equitable foundation for the internet. Create your digital identity with zero-knowledge proofs and complete privacy.">
+    <meta name="keywords" content="digital identity, sovereign identity, blockchain, privacy, zero-knowledge proofs, decentralized identity, self-sovereign identity, par noir, pn">
+    <meta name="author" content="par Noir Protocol Team">
+    <meta name="robots" content="index, follow">
+    <meta name="language" content="English">
+    <meta name="revisit-after" content="7 days">
+    
+    <!-- Open Graph / Facebook -->
+    <meta property="og:type" content="website">
+    <meta property="og:url" content="https://parnoir.com/">
+    <meta property="og:title" content="par Noir - Sovereign Digital Identity Protocol">
+    <meta property="og:description" content="Own your digital identity with par Noir. Open-source protocol for sovereign identity with zero-knowledge proofs and complete privacy.">
+    <meta property="og:image" content="https://parnoir.com/branding/Par-Noir-Logo-White.png">
+    <meta property="og:image:width" content="1200">
+    <meta property="og:image:height" content="630">
+    <meta property="og:site_name" content="par Noir">
+    <meta property="og:locale" content="en_US">
+    
+    <!-- Twitter -->
+    <meta property="twitter:card" content="summary_large_image">
+    <meta property="twitter:url" content="https://parnoir.com/">
+    <meta property="twitter:title" content="par Noir - Sovereign Digital Identity Protocol">
+    <meta property="twitter:description" content="Own your digital identity with par Noir. Open-source protocol for sovereign identity with zero-knowledge proofs and complete privacy.">
+    <meta property="twitter:image" content="https://parnoir.com/branding/Par-Noir-Logo-White.png">
+    
+    <!-- Additional Meta Tags -->
+    <meta name="theme-color" content="#000000">
+    <meta name="msapplication-TileColor" content="#000000">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="par Noir">
+    
+    <!-- Canonical URL -->
+    <link rel="canonical" href="https://parnoir.com/">
+    
+    <!-- Favicon and Icons -->
+    <link rel="icon" type="image/png" href="branding/Par-Noir-Icon-White.png">
+    <link rel="apple-touch-icon" href="branding/Par-Noir-Icon-White.png">
+    <link rel="manifest" href="manifest.json">
+    
+    <!-- Preconnect to external domains -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    
+    <!-- Stylesheets -->
+    <link rel="stylesheet" href="styles.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+    
+    <!-- Structured Data -->
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "Organization",
+      "name": "par Noir",
+      "url": "https://parnoir.com",
+      "logo": "https://parnoir.com/branding/Par-Noir-Logo-White.png",
+      "description": "Open-source protocol for sovereign digital identity with zero-knowledge proofs and complete privacy.",
+      "foundingDate": "2024",
+      "sameAs": [
+        "https://github.com/bymjmazzei/par-Noir"
+      ],
+      "contactPoint": {
+        "@type": "ContactPoint",
+        "contactType": "customer service",
+        "url": "https://parnoir.com"
+      }
+    }
+    </script>
+    
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "WebSite",
+      "name": "par Noir",
+      "url": "https://parnoir.com",
+      "description": "Sovereign digital identity protocol",
+      "potentialAction": {
+        "@type": "SearchAction",
+        "target": "https://parnoir.com/search?q={search_term_string}",
+        "query-input": "required name=search_term_string"
+      }
+    }
+    </script>
+</head>
+<body>
+    <!-- Background -->
+    <div class="background"></div>
+    
+    <!-- Site Navigation - Independent Component -->
+    <nav class="site-navigation">
+        <div class="nav-wrapper">
+            <div class="nav-brand-section">
+                <img src="branding/Par-Noir-Logo-White.png" alt="par Noir" class="nav-logo">
+            </div>
+            <div class="nav-menu-section">
+                <a href="#problem" class="nav-menu-link">Problem</a>
+                <a href="#solution" class="nav-menu-link">Solution</a>
+                <a href="#how-it-works" class="nav-menu-link">How It Works</a>
+                <a href="#features" class="nav-menu-link">Features</a>
+                <a href="#vision" class="nav-menu-link">Vision</a>
+                <a href="whitepaper.html" class="nav-menu-link">White Paper</a>
+                <a href="developer-portal.html" class="nav-menu-link nav-developers">Developers</a>
+            </div>
+            <button class="nav-mobile-toggle" onclick="toggleMobileMenu()">
+                <svg viewBox="0 0 24 24" width="24" height="24">
+                    <path fill="currentColor" d="M3 18h18v-2H3v2zm0-5h18v-2H3v2zm0-7v2h18V6H3z"/>
+                </svg>
+            </button>
+        </div>
+    </nav>
+
+    <!-- Mobile Navigation Menu -->
+    <div class="nav-mobile-menu" id="mobileMenu">
+        <button class="nav-mobile-close" onclick="toggleMobileMenu()">×</button>
+        <a href="#problem" onclick="toggleMobileMenu()">Problem</a>
+        <a href="#solution" onclick="toggleMobileMenu()">Solution</a>
+        <a href="#how-it-works" onclick="toggleMobileMenu()">How It Works</a>
+        <a href="#features" onclick="toggleMobileMenu()">Features</a>
+        <a href="#vision" onclick="toggleMobileMenu()">Vision</a>
+        <a href="whitepaper.html" onclick="toggleMobileMenu()">White Paper</a>
+        <a href="developer-portal.html">Developers</a>
+    </div>
+
+    <!-- Hero: Above the Fold -->
+    <section class="hero">
+        <div class="hero-container">
+            <div class="hero-content">
+                <h1 class="hero-title">
+                    It's Time to Own Your <span class="hero-highlight">Digital Self</span>
+                </h1>
+                <p class="hero-subtitle">
+                    par Noir is an open-source protocol for sovereign identity, building a more secure and equitable foundation for the internet.
+                </p>
+                <div class="hero-actions">
+                                            <a href="https://pn.parnoir.com" class="btn btn-primary btn-large">
+                            <span>CREATE YOUR pN</span>
+                        <svg class="btn-icon" viewBox="0 0 24 24">
+                            <path d="M12 5v14m-7-7h14"/>
+                        </svg>
+                    </a>
+                    <a href="#video" class="btn btn-secondary" onclick="loadYouTubeVideo(); return false;">
+                        <span>WATCH THE STORY</span>
+                        <svg class="btn-icon" viewBox="0 0 24 24">
+                            <path d="M8 5v14l11-7z"/>
+                        </svg>
+                    </a>
+                    <a href="developer-portal.html" class="btn btn-secondary">Developers</a>
+                </div>
+            </div>
+            <div class="hero-visual">
+                <div class="video-container" id="video">
+                    <!-- Self-Hosted Video Player - par Noir Launch Promo -->
+                    <div class="custom-video-player" id="customVideoPlayer">
+                        <div class="video-thumbnail" id="videoThumbnail">
+                            <video id="videoPreview" class="thumbnail-video" muted>
+                                <source src="par Noir Launch Promo.mp4" type="video/mp4">
+                                Your browser does not support the video tag.
+                            </video>
+                            <div class="play-button-overlay">
+                                <div class="play-button">
+                                    <svg width="60" height="60" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                        <path d="M8 5V19L19 12L8 5Z" fill="currentColor"/>
+                                    </svg>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="video-player-container" id="videoPlayerContainer" style="display: none;">
+                            <video id="mainVideo" class="main-video" controls autoplay>
+                                <source src="par Noir Launch Promo.mp4" type="video/mp4">
+                                Your browser does not support the video tag.
+                            </video>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Section 1: The Problem -->
+    <section id="problem" class="narrative-section">
+        <div class="container">
+            <div class="section-header">
+                <h2 class="section-title">The Problem</h2>
+                <p class="section-subtitle">Your digital identity is broken. Here's why.</p>
+            </div>
+            <div class="tile-carousel" data-carousel-id="problem">
+                <div class="tile-grid">
+                    <div class="tile-item">
+                        <div class="tile-icon">
+                            <svg viewBox="0 0 24 24">
+                                <path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4z"/>
+                                <path d="M9 12l2 2 4-4"/>
+                            </svg>
+                        </div>
+                        <h3>Data Breaches</h3>
+                        <p>Your personal information is scattered across hundreds of platforms, each a potential point of failure.</p>
+                    </div>
+                    <div class="tile-item">
+                        <div class="tile-icon">
+                            <svg viewBox="0 0 24 24">
+                                <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/>
+                                <rect x="8" y="2" width="8" height="4" rx="1" ry="1"/>
+                            </svg>
+                        </div>
+                        <h3>Platform Owned</h3>
+                        <p>You don't own your digital identity—you rent it from Big Tech platforms that can revoke it at will.</p>
+                    </div>
+                    <div class="tile-item">
+                        <div class="tile-icon">
+                            <svg viewBox="0 0 24 24">
+                                <path d="M9.26 13a2 2 0 0 1 0-2l7.88-7.88a2 2 0 1 1 2.83 2.83L12.09 14a2 2 0 0 1-2.83 0z"/>
+                                <path d="M14.12 6.88L17.5 3.5a2 2 0 0 1 2.83 0l1.06 1.06a2 2 0 0 1 0 2.83L18 10.83M8.56 2.44L12 6l-7 7H2v-3l7-7.56z"/>
+                            </svg>
+                        </div>
+                        <h3>Fragmentation</h3>
+                        <p>Your identity is fragmented across countless logins, passwords, and accounts—none of which truly belong to you.</p>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+    </section>
+
+    <!-- Section 2: The Solution -->
+    <section id="solution" class="narrative-section solution-section">
+        <div class="container">
+            <div class="section-header">
+                <h2 class="section-title">The Solution</h2>
+                <p class="section-subtitle">One master key. Infinite possibilities.</p>
+            </div>
+            <div class="solution-content">
+                <div class="solution-text">
+                    <p>
+                        Imagine having one cryptographic key that unlocks your entire digital life—without giving anyone else control. 
+                        That's par Noir. A protocol that gives you sovereign ownership of your digital identity.
+                    </p>
+                    <ul class="solution-benefits">
+                        <li>✓ You own your identity completely</li>
+                        <li>✓ No central authority can revoke it</li>
+                        <li>✓ Works across any platform or service</li>
+                        <li>✓ Private by design, open by nature</li>
+                    </ul>
+                </div>
+                <div class="solution-visual">
+                    <div class="master-key-visual">
+                        <div class="key-icon">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M18 8h-1V6c0-2.76-2.24-5-5-5S7 3.24 7 6v2H6c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V10c0-1.1-.9-2-2-2zM12 17c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2zM15.1 8H8.9V6c0-1.71 1.39-3.1 3.1-3.1s3.1 1.39 3.1 3.1v2z"/>
+                            </svg>
+                        </div>
+                        <div class="key-connections">
+                            <div class="connection"></div>
+                            <div class="connection"></div>
+                            <div class="connection"></div>
+                        </div>
+                    </div>
+                    <h3 class="solution-main-title">par Noir is Your Master Key</h3>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Section 2.5: How It Works -->
+    <section id="how-it-works" class="narrative-section how-it-works-section">
+        <div class="container">
+            <div class="section-header">
+                <h2 class="section-title">How It Works</h2>
+                <p class="section-subtitle">Your digital identity, your rules. Every time.</p>
+            </div>
+
+            
+            <div class="security-architecture">
+                <h3>Security Architecture</h3>
+                <div class="security-layers">
+                    <div class="security-layer">
+                        <div class="layer-icon">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M18 8h-1V6c0-2.76-2.24-5-5-5S7 3.24 7 6v2H6c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V10c0-1.1-.9-2-2-2zM12 17c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2zM15.1 8H8.9V6c0-1.71 1.39-3.1 3.1-3.1s3.1 1.39 3.1 3.1v2z"/>
+                            </svg>
+                        </div>
+                        <div class="layer-content">
+                            <span class="layer-name">Layer 1: Triple-Component Authentication</span>
+                            <span class="layer-desc">Your pN requires three components to decrypt: the pN file, your pN name, and your passcode. Without all three, your data remains completely inaccessible.</span>
+                        </div>
+                    </div>
+                    <div class="security-layer">
+                        <div class="layer-icon">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
+                            </svg>
+                        </div>
+                        <div class="layer-content">
+                            <span class="layer-name">Layer 2: Encrypted IPFS Storage</span>
+                            <span class="layer-desc">Your credentials derive an encryption key that secures your metadata on IPFS. The decentralized storage ensures no central point of failure while maintaining complete privacy.</span>
+                        </div>
+                    </div>
+                    <div class="security-layer">
+                        <div class="layer-icon">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                            </svg>
+                        </div>
+                        <div class="layer-content">
+                            <span class="layer-name">Layer 3: Zero-Knowledge Proofs</span>
+                            <span class="layer-desc">Cryptographic proofs generated from your encrypted metadata allow verification of facts without revealing underlying data. Prove you're over 18 without sharing your age or birthday.</span>
+                        </div>
+                    </div>
+                    <div class="security-layer">
+                        <div class="layer-icon">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4z"/>
+                                <path d="M9 12l2 2 4-4"/>
+                            </svg>
+                        </div>
+                        <div class="layer-content">
+                            <span class="layer-name">Layer 4: Permission-Based Access Control</span>
+                            <span class="layer-desc">Every data access request requires your explicit approval. You control what's shared, when it's shared, and with whom—no automatic data sharing ever occurs.</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="workflow-example">
+                <h3>Real-World Example</h3>
+                <div class="example-scenario">
+                    <p><strong>Scenario:</strong> You want to access an age-restricted platform</p>
+                    <ol>
+                        <li>You create your pN and attest your birthday to your identity</li>
+                        <li>You use your pN to access the platform</li>
+                        <li>The platform requests: "Prove you're over 18"</li>
+                        <li>You choose to share only the fact that you're over 18—without revealing your age or birthday</li>
+                        <li>Access granted, privacy maintained</li>
+                    </ol>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Section 3: The Features -->
+    <section id="features" class="narrative-section">
+        <div class="container">
+            <div class="section-header">
+                <h2 class="section-title">What par Noir Does</h2>
+                <p class="section-subtitle">Three core functions that change everything.</p>
+            </div>
+            <div class="tile-carousel" data-carousel-id="features">
+                <div class="tile-grid">
+                    <div class="tile-item">
+                        <div class="tile-icon">
+                            <svg viewBox="0 0 24 24">
+                                <path d="M18 8h-1V6c0-2.76-2.24-5-5-5S7 3.24 7 6v2H6c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V10c0-1.1-.9-2-2-2zM12 17c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2zM15.1 8H8.9V6c0-1.71 1.39-3.1 3.1-3.1s3.1 1.39 3.1 3.1v2z"/>
+                            </svg>
+                        </div>
+                        <h3>Sovereign Identity</h3>
+                        <p>Your identity lives with you—not on corporate servers. One key unlocks your entire digital life.</p>
+                    </div>
+                    <div class="tile-item">
+                        <div class="tile-icon">
+                            <svg viewBox="0 0 24 24">
+                                <path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                            </svg>
+                        </div>
+                        <h3>Zero Knowledge</h3>
+                        <p>Prove facts about yourself without revealing the underlying data. Age verification, qualifications, and more—all without exposing personal information.</p>
+                    </div>
+                    <div class="tile-item">
+                        <div class="tile-icon">
+                            <svg viewBox="0 0 24 24">
+                                <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+                                <circle cx="9" cy="7" r="4"/>
+                                <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
+                                <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+                            </svg>
+                        </div>
+                        <h3>Social Recovery</h3>
+                        <p>Lost your key? Your trusted network can help you recover—without anyone having control.</p>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+    </section>
+
+    <!-- Section 4: The Vision -->
+    <section id="vision" class="narrative-section vision-section">
+        <div class="container">
+            <div class="section-header">
+                <h2 class="section-title">The Future We're Building</h2>
+                <p class="section-subtitle">A world where identity serves humanity, not corporations.</p>
+            </div>
+            <div class="tile-carousel" data-carousel-id="vision">
+                <div class="tile-grid">
+                    <div class="tile-item">
+                        <div class="tile-icon">
+                            <svg viewBox="0 0 24 24">
+                                <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
+                            </svg>
+                        </div>
+                        <h3>The Semantic Web</h3>
+                        <p>Your data becomes truly portable, working seamlessly across any platform or service that respects your sovereignty.</p>
+                    </div>
+                    <div class="tile-item">
+                        <div class="tile-icon">
+                            <svg viewBox="0 0 24 24">
+                                <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
+                            </svg>
+                        </div>
+                        <h3>AI That Serves You</h3>
+                        <p>Personal AI assistants that know you intimately but are controlled by you entirely—no corporate surveillance.</p>
+                    </div>
+                    <div class="tile-item">
+                        <div class="tile-icon">
+                            <svg viewBox="0 0 24 24">
+                                <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
+                            </svg>
+                        </div>
+                        <h3>Internet of Trust</h3>
+                        <p>Every device, every interaction, every connection is authenticated and secure—without sacrificing privacy.</p>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+    </section>
+
+
+
+    <!-- Final CTA Section -->
+    <section class="final-cta">
+        <div class="container">
+            <div class="cta-header">
+                <h2>Choose Your Path to Freedom</h2>
+                <p>Whether you're here to use, build, or understand—there's a place for you in the par Noir ecosystem.</p>
+            </div>
+            <div class="tile-carousel" data-carousel-id="cta">
+                <div class="tile-grid">
+                    <div class="tile-item">
+                        <div class="tile-icon">
+                            <svg viewBox="0 0 24 24">
+                                <path d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/>
+                            </svg>
+                        </div>
+                        <h3>Users</h3>
+                        <p>Join the community and take control of your digital identity.</p>
+                        <a href="https://pn.parnoir.com" class="btn btn-primary">CREATE YOUR pN</a>
+                    </div>
+                    <div class="tile-item">
+                        <div class="tile-icon">
+                            <svg viewBox="0 0 24 24">
+                                <path d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4"/>
+                            </svg>
+                        </div>
+                        <h3>Developers</h3>
+                        <p>Build the future with our open-source protocol and comprehensive SDK.</p>
+                        <a href="developer-portal.html" class="btn btn-primary">Start Building</a>
+                    </div>
+                    <div class="tile-item">
+                        <div class="tile-icon">
+                            <svg viewBox="0 0 24 24">
+                                <path d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"/>
+                            </svg>
+                        </div>
+                        <h3>Thinkers</h3>
+                        <p>Dive deep into the philosophy and technical specifications.</p>
+                        <a href="whitepaper.html" class="btn btn-primary">White Paper</a>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+    </section>
+
+    <!-- Footer -->
+    <footer class="site-footer">
+        <div class="footer-wrapper">
+            <div class="footer-main">
+                <div class="footer-logo-section">
+                    <img src="branding/Par-Noir-Logo-White.png" alt="par Noir" class="footer-logo">
+                </div>
+            </div>
+            <div class="footer-navigation">
+                <div class="footer-nav-column">
+                    <h4>Learn</h4>
+                    <a href="#problem">The Problem</a>
+                    <a href="#solution">The Solution</a>
+                    <a href="whitepaper.html">White Paper</a>
+                </div>
+                <div class="footer-nav-column">
+                    <h4>Build</h4>
+                    <a href="developer-portal.html">Developer Portal</a>
+                    <a href="https://github.com/bymjmazzei/par-Noir">GitHub</a>
+                    <a href="https://pn.parnoir.com">Create Identity</a>
+                </div>
+                <div class="footer-nav-column">
+                    <h4>Connect</h4>
+                    <a href="#vision">The Vision</a>
+                    <a href="#features">Features</a>
+                </div>
+            </div>
+        <div class="footer-copyright">
+            <p>&copy; 2025 par Noir.</p>
+            <div class="footer-legal">
+                <a href="terms.html">Terms of Service</a>
+                <span>•</span>
+                <a href="privacy.html">Privacy Policy</a>
+            </div>
+        </div>
+        </div>
+    </footer>
+
+    <script src="script.js"></script>
+</body>
+</html>

@@ -1,0 +1,71 @@
+name: Deploy Developer Portal & Documentation to GitHub Pages
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'docs/**'
+      - 'index.html'
+      - 'developer-portal.html'
+      - 'whitepaper.html'
+      - 'styles.css'
+      - 'script.js'
+      - 'branding/**'
+      - '.github/workflows/deploy-docs.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        
+      - name: Build documentation and developer portal
+        run: |
+          # Create docs directory for GitHub Pages
+          mkdir -p docs-build
+          
+          # Copy documentation
+          cp -r docs/* docs-build/
+          
+          # Copy developer portal files (main landing page)
+          cp index.html docs-build/
+          cp developer-portal.html docs-build/
+          cp whitepaper.html docs-build/
+          cp payment-gateway.html docs-build/
+          cp styles.css docs-build/
+          cp script.js docs-build/
+          cp manifest.json docs-build/
+          cp sw.js docs-build/
+          cp offline.html docs-build/
+          cp browserconfig.xml docs-build/
+          
+          # Copy branding assets
+          cp -r branding docs-build/
+          cp -r icons docs-build/
+          cp -r screenshots docs-build/
+          cp -r licensing docs-build/
+          
+          # Copy founder photo
+          cp founder-photo.jpg docs-build/
+          
+          # Copy CNAME file for custom domain
+          cp CNAME docs-build/ 2>/dev/null || echo "parnoir.com" > docs-build/CNAME
+          
+          # Create .nojekyll file to disable Jekyll processing
+          touch docs-build/.nojekyll
+          
+      - name: Deploy to gh-pages branch
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          git checkout --orphan gh-pages
+          git rm -rf .
+          cp -r docs-build/* .
+          git add .
+          git commit -m "Deploy developer portal and documentation to GitHub Pages"
+          git push origin gh-pages --force

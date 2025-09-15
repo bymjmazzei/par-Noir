@@ -1,0 +1,15 @@
+#!/usr/bin/env sh
+. "$(dirname -- "$0")/_/husky.sh"
+
+echo "🔒 Running security audit before commit..."
+
+# Run security audit
+npm run security:audit
+
+# If security audit fails, prevent commit
+if [ $? -ne 0 ]; then
+  echo "❌ Security audit failed. Please fix security issues before committing."
+  exit 1
+fi
+
+echo "✅ Security audit passed. Proceeding with commit..."

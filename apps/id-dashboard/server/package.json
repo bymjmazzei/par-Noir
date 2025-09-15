@@ -1,0 +1,27 @@
+{
+  "name": "coinbase-api-server",
+  "version": "1.0.0",
+  "description": "Server-side API for Coinbase Commerce integration",
+  "main": "coinbase-api.js",
+  "scripts": {
+    "start": "node coinbase-api.js",
+    "dev": "nodemon coinbase-api.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "cors": "^2.8.5",
+    "node-fetch": "^2.6.7"
+  },
+  "devDependencies": {
+    "nodemon": "^2.0.22"
+  },
+  "keywords": [
+    "coinbase",
+    "commerce",
+    "api",
+    "crypto",
+    "payments"
+  ],
+  "author": "Identity Protocol",
+  "license": "MIT"
+}
