@@ -21,10 +21,8 @@ jobs:
           cp styles.css site-build/ || echo "styles.css not found"
           cp script.js site-build/ || echo "script.js not found"
           cp manifest.json site-build/ || echo "manifest.json not found"
-          cp sw.js site-build/ || echo "sw.js not found"
           cp offline.html site-build/ || echo "offline.html not found"
           cp browserconfig.xml site-build/ || echo "browserconfig.xml not found"
-          cp founder-photo.jpg site-build/ || echo "founder-photo.jpg not found"
           cp whitepaper.html site-build/ || echo "whitepaper.html not found"
           cp developer-portal.html site-build/ || echo "developer-portal.html not found"
 
