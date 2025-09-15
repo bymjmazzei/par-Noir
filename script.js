@@ -46,12 +46,11 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 });
 
-// Mobile menu toggle - FIXED VERSION
+// Mobile menu toggle
 function toggleMobileMenu() {
     const mobileMenu = document.getElementById('mobileMenu');
     if (mobileMenu) {
         mobileMenu.classList.toggle('active');
-        console.log('Mobile menu toggled!'); // Debug log
     }
 }
 
@@ -68,13 +67,3 @@ document.addEventListener('DOMContentLoaded', function() {
         document.body.classList.add('dark-theme');
     }
 });
-
-// YouTube video loading function (referenced in HTML)
-function loadYouTubeVideo() {
-    // This function is called from the "WATCH THE STORY" button
-    // The actual video loading is handled by the custom video player
-    const videoThumbnail = document.getElementById('videoThumbnail');
-    if (videoThumbnail) {
-        videoThumbnail.click();
-    }
-}
