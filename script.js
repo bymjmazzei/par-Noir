@@ -46,11 +46,12 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 });
 
-// Mobile menu toggle
+// Mobile menu toggle - FIXED VERSION
 function toggleMobileMenu() {
     const mobileMenu = document.getElementById('mobileMenu');
     if (mobileMenu) {
         mobileMenu.classList.toggle('active');
+        console.log('Mobile menu toggled!'); // Debug log
     }
 }
 
