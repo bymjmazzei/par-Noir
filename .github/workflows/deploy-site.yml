@@ -1,0 +1,53 @@
+name: Deploy par Noir Site to GitHub Pages
+
+on:
+  push:
+    branches: [ main ]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Create site directory
+        run: mkdir -p site-build
+
+      - name: Copy essential files
+        run: |
+          # Copy main files
+          cp index.html site-build/ || echo "index.html not found"
+          cp styles.css site-build/ || echo "styles.css not found"
+          cp script.js site-build/ || echo "script.js not found"
+          cp manifest.json site-build/ || echo "manifest.json not found"
+          cp sw.js site-build/ || echo "sw.js not found"
+          cp offline.html site-build/ || echo "offline.html not found"
+          cp browserconfig.xml site-build/ || echo "browserconfig.xml not found"
+          cp founder-photo.jpg site-build/ || echo "founder-photo.jpg not found"
+          cp whitepaper.html site-build/ || echo "whitepaper.html not found"
+          cp developer-portal.html site-build/ || echo "developer-portal.html not found"
+
+      - name: Copy directories
+        run: |
+          # Copy directories if they exist
+          cp -r assets site-build/ 2>/dev/null || echo "assets directory not found"
+          cp -r icons site-build/ 2>/dev/null || echo "icons directory not found"
+          cp -r branding site-build/ 2>/dev/null || echo "branding directory not found"
+          cp -r screenshots site-build/ 2>/dev/null || echo "screenshots directory not found"
+          cp -r licensing site-build/ 2>/dev/null || echo "licensing directory not found"
+
+      - name: Setup CNAME and nojekyll
+        run: |
+          echo "parnoir.com" > site-build/CNAME
+          touch site-build/.nojekyll
+
+      - name: List files
+        run: ls -la site-build/
+
+      - name: Deploy to GitHub Pages
+        uses: peaceiris/actions-gh-pages@v3
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./site-build
+          cname: parnoir.com

@@ -1,7 +1,6 @@
 import React, { useState, useCallback, useMemo, useEffect } from 'react';
-import { Eye, EyeOff, Shield, Lock, Unlock, Settings, Users, UserCheck, Globe, Smartphone, CheckCircle } from 'lucide-react';
+import { Eye, EyeOff, Shield, Lock, Unlock, Settings, Users, UserCheck, Globe, Smartphone } from 'lucide-react';
 import { GlobalPrivacySettings } from '../types/privacy';
-import { IDVerificationPopup } from './IDVerificationPopup';
 
 interface PrivacyControlsProps {
   identityId?: string;
@@ -29,8 +28,6 @@ export const PrivacyControls: React.FC<PrivacyControlsProps> = React.memo(({
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [dataAccessRequests, setDataAccessRequests] = useState<any[]>([]);
   const [activeConnections, setActiveConnections] = useState<any[]>([]);
-  const [showIDVerification, setShowIDVerification] = useState(false);
-  const [verifiedDataPoints, setVerifiedDataPoints] = useState<any[]>([]);
 
   // Load privacy settings
   const loadPrivacySettings = useCallback(async () => {
@@ -79,23 +76,9 @@ export const PrivacyControls: React.FC<PrivacyControlsProps> = React.memo(({
     setActiveConnections(prev => prev.filter(c => c.id !== connectionId));
   }, []);
 
-  // Load verified data points
-  const loadVerifiedDataPoints = useCallback(async () => {
-    if (!identityId) return;
-    
-    try {
-      const { VerifiedZKPGenerator } = await import('../utils/VerifiedZKPGenerator');
-      const verifiedPoints = await VerifiedZKPGenerator.getVerifiedDataPoints(identityId);
-      setVerifiedDataPoints(verifiedPoints);
-    } catch (error) {
-      console.error('Error loading verified data points:', error);
-    }
-  }, [identityId]);
-
   // Load initial data
   useEffect(() => {
     loadPrivacySettings();
-    loadVerifiedDataPoints();
     
     // Simulate some data access requests
     setDataAccessRequests([
@@ -125,7 +108,7 @@ export const PrivacyControls: React.FC<PrivacyControlsProps> = React.memo(({
         lastUsed: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString()
       }
     ]);
-  }, [loadPrivacySettings, loadVerifiedDataPoints]);
+  }, [loadPrivacySettings]);
 
   // Memoized privacy score
   const privacyScore = useMemo(() => {
@@ -235,50 +218,6 @@ export const PrivacyControls: React.FC<PrivacyControlsProps> = React.memo(({
             }
           </p>
         </div>
-      </div>
-
-      {/* Identity Verification Section */}
-      <div className="p-6 bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700">
-        <div className="flex items-center justify-between mb-4">
-          <div className="flex items-center space-x-3">
-            <CheckCircle className="w-6 h-6 text-green-600" />
-            <div>
-              <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
-                Identity Verification
-              </h3>
-              <p className="text-sm text-gray-600 dark:text-gray-400">
-                Verify your identity data with government-issued ID
-              </p>
-            </div>
-          </div>
-          
-          <button 
-            onClick={() => setShowIDVerification(true)}
-            className="inline-flex items-center px-4 py-2 bg-gradient-to-r from-purple-600 to-blue-600 text-white rounded-lg hover:from-purple-700 hover:to-blue-700 transition-all transform hover:-translate-y-0.5 shadow-lg"
-          >
-            <CheckCircle className="w-4 h-4 mr-2" />
-            VERIFY IDENTITY
-          </button>
-        </div>
-        
-        {verifiedDataPoints.length > 0 && (
-          <div className="mt-4">
-            <h4 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-              Verified Data Points:
-            </h4>
-            <div className="flex flex-wrap gap-2">
-              {verifiedDataPoints.map((dataPoint, index) => (
-                <span 
-                  key={index}
-                  className="inline-flex items-center px-2 py-1 bg-green-100 text-green-800 text-xs font-medium rounded-full"
-                >
-                  <CheckCircle className="w-3 h-3 mr-1" />
-                  {dataPoint}
-                </span>
-              ))}
-            </div>
-          </div>
-        )}
       </div>
 
       {/* Privacy Settings */}
@@ -534,21 +473,6 @@ export const PrivacyControls: React.FC<PrivacyControlsProps> = React.memo(({
             </div>
           </div>
         </div>
-      )}
-
-      {/* ID Verification Popup */}
-      {showIDVerification && (
-        <IDVerificationPopup
-          identityId={identityId}
-          onClose={() => setShowIDVerification(false)}
-          onComplete={(result) => {
-            if (result.isValid) {
-              // Reload verified data points to get the latest state
-              loadVerifiedDataPoints();
-            }
-            setShowIDVerification(false);
-          }}
-        />
       )}
     </div>
   );

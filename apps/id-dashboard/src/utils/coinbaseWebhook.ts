@@ -81,14 +81,7 @@ export class CoinbaseWebhookHandler {
         return;
       }
 
-      // Check if this is an ID verification payment
-      const serviceType = checkout.metadata.serviceType;
-      if (serviceType === 'identity_verification') {
-        await this.handleIDVerificationPayment(checkout);
-        return;
-      }
-
-      // Generate license information for regular licenses
+      // Generate license information
       const licenseKey = `LIC-${checkout.metadata.licenseType.toUpperCase()}-${checkout.metadata.identityHash.substring(0, 8)}-${Date.now()}`;
       const licenseInfo: LicenseInfo = {
         licenseKey,
@@ -109,49 +102,6 @@ export class CoinbaseWebhookHandler {
       await this.sendLicenseConfirmationEmail(licenseInfo, checkout);
 
     } catch (error) {
-      throw error;
-    }
-  }
-
-  /**
-   * Handle ID verification payment
-   */
-  private static async handleIDVerificationPayment(checkout: any): Promise<void> {
-    try {
-      const identityId = checkout.metadata.identityHash;
-      const checkoutId = checkout.id;
-      
-      // Store payment confirmation for ID verification
-      const paymentData = {
-        checkoutId,
-        identityId,
-        amount: checkout.pricing.local.amount,
-        currency: checkout.pricing.local.currency,
-        confirmedAt: new Date().toISOString(),
-        status: 'completed'
-      };
-      
-      // Store in localStorage for client-side access
-      localStorage.setItem(`id_verification_payment_${checkoutId}`, JSON.stringify(paymentData));
-      
-      // Trigger ID verification process
-      localStorage.setItem(`id_verification_trigger_${identityId}`, JSON.stringify({
-        identityId,
-        checkoutId,
-        triggeredAt: new Date().toISOString(),
-        status: 'payment_verified'
-      }));
-      
-      console.log('ID verification payment confirmed:', paymentData);
-      
-      // In production, you would:
-      // 1. Store payment data in database
-      // 2. Send confirmation email
-      // 3. Trigger verification process
-      // 4. Update user's verification status
-      
-    } catch (error) {
-      console.error('Error handling ID verification payment:', error);
       throw error;
     }
   }
