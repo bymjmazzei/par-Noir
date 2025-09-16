@@ -12,7 +12,7 @@ import {
 } from 'lucide-react';
 import { StorageFile, StorageProvider, StorageStats } from '../../types/storage';
 import { universalStorageService } from '../../services/universalStorageService';
-import { CloudflareUploadModal } from './CloudflareUploadModal';
+import { GoogleDriveUploadModal } from './GoogleDriveUploadModal';
 import { StorageFileManager } from './StorageFileManager';
 
 export const StorageTab: React.FC = () => {
@@ -286,7 +286,7 @@ export const StorageTab: React.FC = () => {
       </div>
 
       {/* Upload Modal */}
-      <CloudflareUploadModal
+      <GoogleDriveUploadModal
         isOpen={showUploadModal}
         onClose={() => setShowUploadModal(false)}
         onUploadComplete={handleUploadComplete}

@@ -75,7 +75,7 @@ export interface AccessRecord {
   userAgent?: string;
 }
 
-export type StorageProviderType = 'ipfs' | 'arweave' | 'storj' | 'filecoin' | 'cloudflare-r2';
+export type StorageProviderType = 'ipfs' | 'arweave' | 'storj' | 'filecoin' | 'cloudflare-r2' | 'google-drive';
 
 export interface StorageProvider {
   id: string;
@@ -97,6 +97,9 @@ export interface StorageCredentials {
   region?: string;
   bucket?: string;
   accountId?: string; // For Cloudflare R2
+  accessToken?: string; // For Google Drive OAuth
+  refreshToken?: string; // For Google Drive OAuth
+  clientId?: string; // For Google Drive OAuth
   // Encrypted and stored locally
 }
 

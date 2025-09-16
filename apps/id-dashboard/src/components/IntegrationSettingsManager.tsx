@@ -193,6 +193,37 @@ export const IntegrationSettingsManager: React.FC<IntegrationSettingsManagerProp
         },
         status: 'missing',
         testEndpoint: '/api/test/cloudflare-r2'
+      },
+      'google-drive': {
+        name: 'Google Drive Storage',
+        description: 'User-owned permanent storage with OAuth authentication',
+        category: 'storage',
+        required: false,
+        apiKeys: {
+          CLIENT_ID: {
+            label: 'Google Client ID',
+            value: IntegrationConfigManager.getApiKey('google-drive', 'CLIENT_ID') || process.env.REACT_APP_GOOGLE_CLIENT_ID || '',
+            type: 'text',
+            required: false,
+            description: 'Your Google OAuth client ID'
+          },
+          ACCESS_TOKEN: {
+            label: 'Access Token',
+            value: IntegrationConfigManager.getApiKey('google-drive', 'ACCESS_TOKEN') || '',
+            type: 'password',
+            required: false,
+            description: 'OAuth access token (auto-generated)'
+          },
+          REFRESH_TOKEN: {
+            label: 'Refresh Token',
+            value: IntegrationConfigManager.getApiKey('google-drive', 'REFRESH_TOKEN') || '',
+            type: 'password',
+            required: false,
+            description: 'OAuth refresh token (auto-generated)'
+          }
+        },
+        status: 'missing',
+        testEndpoint: '/api/test/google-drive'
       }
     };
 
