@@ -5689,6 +5689,31 @@ This invitation expires in 24 hours.`;
                           </div>
                           </div>
 
+                        {/* Identity Verification Button */}
+                        <div className="bg-secondary rounded-lg p-4 mb-6">
+                          <div className="flex items-center justify-between">
+                            <div>
+                              <h4 className="font-medium text-text-primary mb-1">Identity Verification</h4>
+                              <p className="text-sm text-text-secondary">
+                                {verifiedDataPoints.size > 0 
+                                  ? `${verifiedDataPoints.size} data points verified` 
+                                  : 'Verify your identity to create ZKPs for your data points'
+                                }
+                              </p>
+                            </div>
+                            <button
+                              onClick={() => setShowVerificationModal(true)}
+                              className={`px-4 py-2 rounded-lg font-medium ${
+                                verifiedDataPoints.size > 0
+                                  ? 'bg-green-600 text-white hover:bg-green-700'
+                                  : 'bg-blue-600 text-white hover:bg-blue-700'
+                              }`}
+                            >
+                              {verifiedDataPoints.size > 0 ? 'RE-VERIFY' : 'VERIFY'}
+                            </button>
+                          </div>
+                        </div>
+
                         {/* Global Settings - All Active Permissions */}
                         <div className="bg-secondary rounded-lg mb-6">
                           <button
@@ -6179,30 +6204,6 @@ This invitation expires in 24 hours.`;
                       </div>
                         </div>
 
-                        {/* Identity Verification Button */}
-                        <div className="bg-secondary rounded-lg p-4">
-                          <div className="flex items-center justify-between">
-                            <div>
-                              <h4 className="font-medium text-text-primary mb-1">Identity Verification</h4>
-                              <p className="text-sm text-text-secondary">
-                                {verifiedDataPoints.size > 0 
-                                  ? `${verifiedDataPoints.size} data points verified` 
-                                  : 'Verify your identity to create ZKPs for your data points'
-                                }
-                              </p>
-                            </div>
-                            <button
-                              onClick={() => setShowVerificationModal(true)}
-                              className={`px-4 py-2 rounded-lg font-medium ${
-                                verifiedDataPoints.size > 0
-                                  ? 'bg-green-600 text-white hover:bg-green-700'
-                                  : 'bg-blue-600 text-white hover:bg-blue-700'
-                              }`}
-                            >
-                              {verifiedDataPoints.size > 0 ? 'RE-VERIFY' : 'VERIFY'}
-                            </button>
-                          </div>
-                        </div>
                           </div>
                   )}
 
@@ -7339,7 +7340,7 @@ This invitation expires in 24 hours.`;
           console.log('Updated attested data points:', Array.from(updatedAttestedDataPoints));
           console.log('Updated verified data points:', Array.from(updatedVerifiedDataPoints));
         }}
-        identityId={selectedIdentity?.id || 'default'}
+        identityId={selectedStoredIdentity?.id || 'default'}
       />
 
     </div>
