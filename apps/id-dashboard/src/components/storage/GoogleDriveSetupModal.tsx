@@ -1,6 +1,6 @@
-// Google Drive OAuth Setup Modal - Simplified version
+// Google Drive OAuth Setup Modal - Proper OAuth flow
 import React, { useState, useCallback, useEffect } from 'react';
-import { X, CheckCircle, AlertCircle, ExternalLink, RefreshCw, ArrowRight, ArrowLeft } from 'lucide-react';
+import { X, CheckCircle, AlertCircle, ExternalLink, RefreshCw, ArrowRight, ArrowLeft, LogIn } from 'lucide-react';
 import { googleDriveService, GoogleDriveConfig } from '../../services/googleDriveService';
 import { IntegrationConfigManager } from '../../utils/integrationConfig';
 
@@ -18,8 +18,8 @@ export const GoogleDriveSetupModal: React.FC<GoogleDriveSetupModalProps> = ({
   const [currentStep, setCurrentStep] = useState(1);
   const [error, setError] = useState<string | null>(null);
   const [isAuthenticating, setIsAuthenticating] = useState(false);
-  const [accessToken, setAccessToken] = useState('');
-  const [clientId, setClientId] = useState('');
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [userEmail, setUserEmail] = useState('');
 
   const handleNext = useCallback(() => {
     if (currentStep < 3) {
@@ -33,148 +33,179 @@ export const GoogleDriveSetupModal: React.FC<GoogleDriveSetupModalProps> = ({
     }
   }, [currentStep]);
 
-  const handleManualAuth = useCallback(async () => {
-    if (!accessToken.trim()) {
-      setError('Please enter your Google Drive access token');
-      return;
-    }
-
+  const handleGoogleAuth = useCallback(async () => {
     setIsAuthenticating(true);
     setError(null);
 
     try {
-      // Create a mock config for testing
-      const config: GoogleDriveConfig = {
-        clientId: clientId || 'manual-setup',
-        accessToken: accessToken.trim(),
-        refreshToken: undefined
-      };
-
-      // Test the connection
-      await googleDriveService.initialize(config);
-      const isConnected = await googleDriveService.testConnection();
-      
-      if (isConnected) {
-        // Save to Integration Settings
-        IntegrationConfigManager.setApiKey('google-drive', 'CLIENT_ID', clientId || 'manual-setup');
-        IntegrationConfigManager.setApiKey('google-drive', 'ACCESS_TOKEN', accessToken.trim());
-        
-        onSetupComplete(config);
-        setCurrentStep(3); // Go to completion step
-      } else {
-        setError('Failed to connect to Google Drive. Please check your access token.');
-      }
+      const config = await googleDriveService.authenticate();
+      setIsAuthenticated(true);
+      setUserEmail('user@example.com'); // This would come from the auth response
+      setCurrentStep(3);
+      onSetupComplete(config);
     } catch (err: any) {
       setError(err.message || 'Authentication failed');
+      console.error('Google Drive authentication error:', err);
     } finally {
       setIsAuthenticating(false);
     }
-  }, [accessToken, clientId, onSetupComplete]);
+  }, [onSetupComplete]);
+
+  const handleTestConnection = useCallback(async () => {
+    try {
+      const isConnected = await googleDriveService.testConnection();
+      if (isConnected) {
+        setCurrentStep(3);
+      } else {
+        setError('Connection test failed');
+      }
+    } catch (err: any) {
+      setError(err.message || 'Connection test failed');
+    }
+  }, []);
+
+  const handleComplete = useCallback(() => {
+    onClose();
+  }, [onClose]);
+
+  // Check if already authenticated on mount
+  useEffect(() => {
+    if (isOpen) {
+      const accessToken = IntegrationConfigManager.getApiKey('google-drive', 'ACCESS_TOKEN');
+      if (accessToken) {
+        setIsAuthenticated(true);
+        setCurrentStep(2);
+      }
+    }
+  }, [isOpen]);
+
+  if (!isOpen) return null;
 
   const renderStepContent = () => {
     switch (currentStep) {
       case 1:
         return (
-          <div className="space-y-6">
-            <div className="text-center">
-              <h3 className="text-xl font-semibold text-text-primary mb-2">Setup Google Drive Storage</h3>
-              <p className="text-text-secondary">Connect your Google Drive for permanent, encrypted storage.</p>
+          <div className="text-center space-y-6">
+            <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto">
+              <LogIn className="w-8 h-8 text-blue-600" />
             </div>
             
-            <div className="bg-bg-light p-4 rounded-lg">
-              <h4 className="font-medium text-text-primary mb-3">What this enables:</h4>
-              <ul className="list-disc list-inside space-y-2 text-text-secondary">
-                <li>Permanent storage in your Google Drive</li>
-                <li>Files encrypted with pN standard (Google can't read them)</li>
-                <li>Fast loading and streaming via Google's CDN</li>
-                <li>Automatic thumbnails and previews</li>
-                <li>Reliable access from anywhere</li>
+            <div>
+              <h3 className="text-lg font-semibold text-gray-900 mb-2">
+                Connect Google Drive
+              </h3>
+              <p className="text-gray-600">
+                Sign in with your Google account to enable secure file storage in your own Google Drive.
+              </p>
+            </div>
+
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 text-left">
+              <h4 className="font-medium text-blue-900 mb-2">Benefits:</h4>
+              <ul className="text-sm text-blue-800 space-y-1">
+                <li>• Files stored in your own Google Drive</li>
+                <li>• Automatic token refresh (no manual re-authentication)</li>
+                <li>• Encrypted file names for privacy</li>
+                <li>• Fast access via Google's global CDN</li>
+                <li>• Automatic thumbnails and previews</li>
               </ul>
             </div>
 
-            <div className="bg-blue-500/10 border border-blue-500/20 rounded-lg p-4">
-              <h4 className="font-medium text-blue-400 mb-2">Note:</h4>
-              <p className="text-blue-300 text-sm">
-                For now, you'll need to manually get a Google Drive access token. 
-                Full OAuth integration will be added in a future update.
-              </p>
-            </div>
+            {error && (
+              <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+                <div className="flex items-center">
+                  <AlertCircle className="w-5 h-5 text-red-600 mr-2" />
+                  <p className="text-sm text-red-800">{error}</p>
+                </div>
+              </div>
+            )}
+
+            <button
+              onClick={handleGoogleAuth}
+              disabled={isAuthenticating}
+              className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white font-medium py-3 px-4 rounded-lg transition-colors flex items-center justify-center"
+            >
+              {isAuthenticating ? (
+                <>
+                  <RefreshCw className="w-5 h-5 mr-2 animate-spin" />
+                  Connecting...
+                </>
+              ) : (
+                <>
+                  <LogIn className="w-5 h-5 mr-2" />
+                  Sign in with Google
+                </>
+              )}
+            </button>
           </div>
         );
 
       case 2:
         return (
-          <div className="space-y-6">
-            <div className="text-center">
-              <h3 className="text-xl font-semibold text-text-primary mb-2">Enter Google Drive Credentials</h3>
-              <p className="text-text-secondary">Provide your Google Drive access token to connect.</p>
+          <div className="text-center space-y-6">
+            <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto">
+              <CheckCircle className="w-8 h-8 text-green-600" />
             </div>
             
-            <div className="space-y-4">
-              <div>
-                <label htmlFor="clientId" className="block text-sm font-medium text-text-secondary mb-1">
-                  Google Client ID (Optional)
-                </label>
-                <input
-                  type="text"
-                  id="clientId"
-                  value={clientId}
-                  onChange={(e) => setClientId(e.target.value)}
-                  className="w-full p-2 border border-border rounded-md bg-input-bg text-text-primary focus:ring-primary focus:border-primary"
-                  placeholder="Your Google OAuth client ID (optional)"
-                />
-              </div>
-              
-              <div>
-                <label htmlFor="accessToken" className="block text-sm font-medium text-text-secondary mb-1">
-                  Access Token *
-                </label>
-                <input
-                  type="password"
-                  id="accessToken"
-                  value={accessToken}
-                  onChange={(e) => setAccessToken(e.target.value)}
-                  className="w-full p-2 border border-border rounded-md bg-input-bg text-text-primary focus:ring-primary focus:border-primary"
-                  placeholder="Your Google Drive access token"
-                  required
-                />
-                <p className="text-xs text-text-secondary mt-1">
-                  Get this from Google Cloud Console or OAuth playground
-                </p>
+            <div>
+              <h3 className="text-lg font-semibold text-gray-900 mb-2">
+                Authentication Successful
+              </h3>
+              <p className="text-gray-600">
+                You're now connected to Google Drive. Let's test the connection and set up your storage folder.
+              </p>
+            </div>
+
+            <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+              <div className="flex items-center justify-center">
+                <CheckCircle className="w-5 h-5 text-green-600 mr-2" />
+                <span className="text-sm text-green-800">
+                  Connected as: {userEmail || 'Google Account'}
+                </span>
               </div>
             </div>
 
-            {error && (
-              <div className="bg-red-500/20 text-red-400 p-3 rounded-lg flex items-center space-x-2">
-                <AlertCircle size={20} />
-                <span>{error}</span>
-              </div>
-            )}
-
-            <div className="bg-yellow-500/10 border border-yellow-500/20 rounded-lg p-4">
-              <h4 className="font-medium text-yellow-400 mb-2">How to get an access token:</h4>
-              <ol className="list-decimal list-inside space-y-1 text-yellow-300 text-sm">
-                <li>Go to <a href="https://developers.google.com/oauthplayground" target="_blank" rel="noopener noreferrer" className="underline">Google OAuth 2.0 Playground</a></li>
-                <li>Select "Drive API v3" and "https://www.googleapis.com/auth/drive.file"</li>
-                <li>Click "Authorize APIs" and sign in with your Google account</li>
-                <li>Click "Exchange authorization code for tokens"</li>
-                <li>Copy the "Access token" value</li>
-              </ol>
-            </div>
+            <button
+              onClick={handleTestConnection}
+              className="w-full bg-green-600 hover:bg-green-700 text-white font-medium py-3 px-4 rounded-lg transition-colors flex items-center justify-center"
+            >
+              <CheckCircle className="w-5 h-5 mr-2" />
+              Test Connection & Setup
+            </button>
           </div>
         );
 
       case 3:
         return (
-          <div className="space-y-6">
-            <div className="text-center">
-              <h3 className="text-xl font-semibold text-green-400 mb-2">Setup Complete!</h3>
-              <CheckCircle size={48} className="text-green-500 mx-auto mb-6" />
-              <p className="text-text-primary text-center mb-4">
-                Your Google Drive storage is now configured and ready to use.
-                You can start uploading your permanent, encrypted media!
+          <div className="text-center space-y-6">
+            <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto">
+              <CheckCircle className="w-8 h-8 text-green-600" />
+            </div>
+            
+            <div>
+              <h3 className="text-lg font-semibold text-gray-900 mb-2">
+                Setup Complete!
+              </h3>
+              <p className="text-gray-600">
+                Google Drive storage is now ready. You can upload files and they'll be stored securely in your Google Drive.
               </p>
             </div>
+
+            <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+              <h4 className="font-medium text-green-900 mb-2">What's Next:</h4>
+              <ul className="text-sm text-green-800 space-y-1 text-left">
+                <li>• Upload files through the storage interface</li>
+                <li>• Files are automatically encrypted and stored in your Google Drive</li>
+                <li>• Access your files anytime through Google Drive or pN</li>
+                <li>• Tokens refresh automatically - no manual re-authentication needed</li>
+              </ul>
+            </div>
+
+            <button
+              onClick={handleComplete}
+              className="w-full bg-green-600 hover:bg-green-700 text-white font-medium py-3 px-4 rounded-lg transition-colors"
+            >
+              Start Using Storage
+            </button>
           </div>
         );
 
@@ -183,106 +214,47 @@ export const GoogleDriveSetupModal: React.FC<GoogleDriveSetupModalProps> = ({
     }
   };
 
-  if (!isOpen) return null;
-
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 p-4">
-      <div className="bg-modal-bg rounded-lg shadow-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
-        {/* Header */}
-        <div className="flex items-center justify-between p-6 border-b border-border">
-          <div>
-            <h2 className="text-2xl font-bold text-text-primary">Setup Google Drive Storage</h2>
-            <p className="text-text-secondary">Connect your Google Drive for permanent, encrypted storage</p>
-          </div>
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-lg shadow-xl max-w-md w-full max-h-[90vh] overflow-y-auto">
+        <div className="flex items-center justify-between p-6 border-b border-gray-200">
+          <h2 className="text-xl font-semibold text-gray-900">
+            Google Drive Setup
+          </h2>
           <button
             onClick={onClose}
-            className="text-text-secondary hover:text-text-primary transition-colors"
+            className="text-gray-400 hover:text-gray-600 transition-colors"
           >
-            <X size={24} />
+            <X className="w-6 h-6" />
           </button>
         </div>
 
-        {/* Progress Steps */}
-        <div className="p-6 border-b border-border">
-          <div className="flex items-center justify-between">
-            {[1, 2, 3].map((step) => (
-              <div key={step} className="flex items-center">
-                <div className={`flex items-center justify-center w-8 h-8 rounded-full border-2 ${
-                  step <= currentStep 
-                    ? 'bg-primary border-primary text-white' 
-                    : 'border-border text-text-secondary'
-                }`}>
-                  {step < currentStep ? (
-                    <CheckCircle size={16} />
-                  ) : (
-                    <span className="text-sm font-medium">{step}</span>
-                  )}
-                </div>
-                {step < 3 && (
-                  <div className={`flex-1 h-0.5 w-8 ${
-                    step < currentStep ? 'bg-primary' : 'bg-border'
-                  }`} />
-                )}
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {/* Step Content */}
         <div className="p-6">
           {renderStepContent()}
         </div>
 
-        {/* Navigation */}
-        <div className="flex items-center justify-between p-6 border-t border-border">
-          <button
-            onClick={handlePrevious}
-            disabled={currentStep === 1}
-            className="inline-flex items-center px-4 py-2 border border-border rounded-lg text-text-primary hover:bg-bg-light transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            <ArrowLeft className="w-4 h-4 mr-2" />
-            Previous
-          </button>
-
-          <div className="text-sm text-text-secondary">
-            Step {currentStep} of 3
+        {currentStep > 1 && currentStep < 3 && (
+          <div className="flex items-center justify-between p-6 border-t border-gray-200">
+            <button
+              onClick={handlePrevious}
+              className="flex items-center text-gray-600 hover:text-gray-800 transition-colors"
+            >
+              <ArrowLeft className="w-4 h-4 mr-1" />
+              Previous
+            </button>
+            
+            <div className="flex space-x-2">
+              {[1, 2, 3].map((step) => (
+                <div
+                  key={step}
+                  className={`w-2 h-2 rounded-full ${
+                    step <= currentStep ? 'bg-blue-600' : 'bg-gray-300'
+                  }`}
+                />
+              ))}
+            </div>
           </div>
-
-          {currentStep === 2 ? (
-            <button
-              onClick={handleManualAuth}
-              disabled={isAuthenticating || !accessToken.trim()}
-              className="inline-flex items-center px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary-dark transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {isAuthenticating ? (
-                <>
-                  <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
-                  Testing...
-                </>
-              ) : (
-                <>
-                  <CheckCircle className="w-4 h-4 mr-2" />
-                  Test & Save
-                </>
-              )}
-            </button>
-          ) : currentStep < 3 ? (
-            <button
-              onClick={handleNext}
-              className="inline-flex items-center px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary-dark transition-colors"
-            >
-              Next
-              <ArrowRight className="w-4 h-4 ml-2" />
-            </button>
-          ) : (
-            <button
-              onClick={onClose}
-              className="inline-flex items-center px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 transition-colors"
-            >
-              Finish
-            </button>
-          )}
-        </div>
+        )}
       </div>
     </div>
   );

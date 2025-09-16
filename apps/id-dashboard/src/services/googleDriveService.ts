@@ -2,13 +2,21 @@
 // Handles user-owned storage with pN encryption via Google Drive OAuth
 
 import { StorageFile, UploadOptions, UploadProgress, StorageError, STORAGE_ERROR_CODES } from '../types/storage';
+import { IntegrationConfigManager } from '../utils/integrationConfig';
 
-// For now, we'll use a simplified approach that works around CORS
-// In production, this should be replaced with a proper server-side proxy
-const USE_PROXY = false; // Set to true when proxy is available
-const PROXY_BASE_URL = process.env.NODE_ENV === 'production' 
-  ? 'https://pn.parnoir.com/api' 
-  : 'http://localhost:3002/api';
+// Google OAuth configuration
+const GOOGLE_CLIENT_ID = process.env.REACT_APP_GOOGLE_CLIENT_ID || '43740774041-mtanrvoco9osnvuj40tg46e7lt32cvks.apps.googleusercontent.com';
+const GOOGLE_API_KEY = process.env.REACT_APP_GOOGLE_API_KEY || 'AIzaSyBOKyclyG0Uobs0wNCQLSK89XCN2x6NNdk';
+const DISCOVERY_DOC = 'https://www.googleapis.com/discovery/v1/apis/drive/v3/rest';
+const SCOPES = 'https://www.googleapis.com/auth/drive';
+
+// Declare gapi types
+declare global {
+  interface Window {
+    gapi: any;
+    google: any;
+  }
+}
 
 export interface GoogleDriveConfig {
   clientId: string;
@@ -41,15 +49,140 @@ export interface GoogleDriveUploadResult {
 export class GoogleDriveService {
   private config: GoogleDriveConfig | null = null;
   private isInitialized = false;
-  private readonly GOOGLE_DRIVE_API = 'https://www.googleapis.com/drive/v3';
-  private readonly GOOGLE_UPLOAD_API = 'https://www.googleapis.com/upload/drive/v3';
+  private gapiLoaded = false;
+  private authInstance: any = null;
 
-  async initialize(config: GoogleDriveConfig): Promise<void> {
-    this.config = config;
+  async initialize(config?: GoogleDriveConfig): Promise<void> {
+    if (config) {
+      this.config = config;
+    }
+    
+    // Load Google API if not already loaded
+    await this.loadGoogleAPI();
+    
+    // Initialize Google API client
+    await this.initializeGoogleAPI();
+    
     this.isInitialized = true;
     
     // Test connection and create pN folder if needed
     await this.ensurePnFolder();
+  }
+
+  private async loadGoogleAPI(): Promise<void> {
+    if (this.gapiLoaded) return;
+
+    return new Promise((resolve, reject) => {
+      // Load the Google API script
+      const script = document.createElement('script');
+      script.src = 'https://apis.google.com/js/api.js';
+      script.onload = () => {
+        window.gapi.load('client:auth2', () => {
+          this.gapiLoaded = true;
+          resolve();
+        });
+      };
+      script.onerror = reject;
+      document.head.appendChild(script);
+    });
+  }
+
+  private async initializeGoogleAPI(): Promise<void> {
+    if (!this.gapiLoaded) {
+      throw new Error('Google API not loaded');
+    }
+
+    try {
+      // Initialize with minimal config first
+      await window.gapi.client.init({
+        apiKey: GOOGLE_API_KEY,
+        clientId: GOOGLE_CLIENT_ID,
+        scope: SCOPES
+      });
+
+      // Try to get auth instance
+      this.authInstance = window.gapi.auth2.getAuthInstance();
+      
+      // If no auth instance exists, create one
+      if (!this.authInstance) {
+        this.authInstance = await window.gapi.auth2.init({
+          client_id: GOOGLE_CLIENT_ID,
+          scope: SCOPES
+        });
+      }
+    } catch (error) {
+      console.error('Google API initialization error:', error);
+      throw new Error(`Failed to initialize Google API: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+
+  async authenticate(): Promise<GoogleDriveConfig> {
+    if (!this.authInstance) {
+      await this.initialize();
+    }
+
+    return new Promise((resolve, reject) => {
+      this.authInstance.signIn().then((user: any) => {
+        const authResponse = user.getAuthResponse();
+        const profile = user.getBasicProfile();
+
+        const config: GoogleDriveConfig = {
+          clientId: GOOGLE_CLIENT_ID,
+          accessToken: authResponse.access_token,
+          refreshToken: authResponse.refresh_token
+        };
+
+        // Save config to IntegrationConfigManager
+        IntegrationConfigManager.setApiKey('google-drive', 'CLIENT_ID', GOOGLE_CLIENT_ID);
+        IntegrationConfigManager.setApiKey('google-drive', 'ACCESS_TOKEN', authResponse.access_token);
+        IntegrationConfigManager.setApiKey('google-drive', 'REFRESH_TOKEN', authResponse.refresh_token);
+
+        this.config = config;
+        resolve(config);
+      }).catch((error: any) => {
+        reject(new Error(`Authentication failed: ${error.error || error.message || 'Unknown error'}`));
+      });
+    });
+  }
+
+  async refreshAccessToken(): Promise<string> {
+    if (!this.authInstance) {
+      throw new Error('Not authenticated');
+    }
+
+    return new Promise((resolve, reject) => {
+      this.authInstance.currentUser.get().reloadAuthResponse().then((authResponse: any) => {
+        const newAccessToken = authResponse.access_token;
+        
+        // Update stored token
+        IntegrationConfigManager.setApiKey('google-drive', 'ACCESS_TOKEN', newAccessToken);
+        
+        if (this.config) {
+          this.config.accessToken = newAccessToken;
+        }
+        
+        resolve(newAccessToken);
+      }).catch((error: any) => {
+        reject(new Error(`Token refresh failed: ${error.error || error.message || 'Unknown error'}`));
+      });
+    });
+  }
+
+  async signOut(): Promise<void> {
+    if (this.authInstance) {
+      await this.authInstance.signOut();
+    }
+    
+    // Clear stored tokens
+    IntegrationConfigManager.setApiKey('google-drive', 'ACCESS_TOKEN', '');
+    IntegrationConfigManager.setApiKey('google-drive', 'REFRESH_TOKEN', '');
+    
+    this.config = null;
+    this.isInitialized = false;
+  }
+
+  isAuthenticated(): boolean {
+    return this.authInstance && this.authInstance.isSignedIn.get();
   }
 
   async testConnection(): Promise<boolean> {
@@ -251,23 +384,18 @@ export class GoogleDriveService {
   }
 
   async deleteFile(fileId: string, userId: string): Promise<void> {
-    if (!this.isInitialized || !this.config) {
+    if (!this.isInitialized || !this.authInstance) {
       throw new StorageError({
         code: STORAGE_ERROR_CODES.PROVIDER_UNAVAILABLE,
-        message: 'Google Drive service not initialized',
+        message: 'Google Drive service not initialized or authenticated',
         retryable: false
       });
     }
 
     try {
-      const response = await fetch(`${PROXY_BASE_URL}/google-drive/files/${fileId}?accessToken=${encodeURIComponent(this.config.accessToken)}`, {
-        method: 'DELETE'
+      await window.gapi.client.drive.files.delete({
+        fileId: fileId
       });
-
-      if (!response.ok) {
-        const errorData = await response.text();
-        throw new Error(`Delete failed: ${response.status} ${errorData}`);
-      }
 
       console.log('Google Drive file deleted:', fileId);
 
@@ -282,71 +410,54 @@ export class GoogleDriveService {
   }
 
   async listFiles(userId: string): Promise<StorageFile[]> {
-    if (!this.isInitialized || !this.config) {
+    if (!this.isInitialized || !this.authInstance) {
       throw new StorageError({
         code: STORAGE_ERROR_CODES.PROVIDER_UNAVAILABLE,
-        message: 'Google Drive service not initialized',
+        message: 'Google Drive service not initialized or authenticated',
         retryable: false
       });
     }
 
     try {
-      if (USE_PROXY) {
-        // List files via proxy server
-        const response = await fetch(
-          `${PROXY_BASE_URL}/google-drive/files?accessToken=${encodeURIComponent(this.config.accessToken)}&folderId=${this.config.folderId || 'root'}`,
-          {
-            method: 'GET'
-          }
-        );
+      // List files using Google Drive API
+      const response = await window.gapi.client.drive.files.list({
+        q: `'${this.config?.folderId || 'root'}' in parents and name contains 'pn-encrypted-'`,
+        fields: 'files(id,name,size,mimeType,createdTime,modifiedTime,webViewLink,thumbnailLink)',
+        orderBy: 'createdTime desc'
+      });
 
-        if (!response.ok) {
-          const errorData = await response.text();
-          throw new Error(`List files failed: ${response.status} ${errorData}`);
+      const files = response.result.files || [];
+      
+      // Convert Google Drive files to StorageFile format
+      const storageFiles: StorageFile[] = files.map((file: any) => ({
+        id: file.id,
+        name: file.name.replace('pn-encrypted-', ''), // Remove encryption prefix
+        type: this.getFileTypeFromMime(file.mimeType),
+        size: parseInt(file.size || '0'),
+        cid: file.id, // Use Google Drive file ID as CID
+        url: file.webViewLink || `https://drive.google.com/file/d/${file.id}/view`,
+        visibility: 'private' as const, // Default to private, could be stored in metadata
+        uploadedAt: file.createdTime,
+        owner: userId,
+        provider: 'google-drive',
+        metadata: {
+          mimeType: file.mimeType,
+          originalFileName: file.name,
+          fileHash: file.id,
+        },
+        provenance: {
+          originalCreator: userId,
+          ownershipHistory: [],
+          modificationHistory: [],
+          accessLog: [],
+          verificationStatus: 'verified',
+          createdAt: file.createdTime,
+          lastModified: file.modifiedTime
         }
+      }));
 
-        const data = await response.json();
-        
-        // Convert Google Drive files to StorageFile format
-        const storageFiles: StorageFile[] = data.files
-          .filter((file: GoogleDriveFile) => file.name.includes('pn-encrypted-'))
-          .map((file: GoogleDriveFile) => ({
-            id: file.id,
-            name: file.name.replace('pn-encrypted-', ''), // Remove encryption prefix
-            type: this.getFileTypeFromMime(file.mimeType),
-            size: parseInt(file.size || '0'),
-            cid: file.id, // Use Google Drive file ID as CID
-            url: file.webViewLink || `https://drive.google.com/file/d/${file.id}/view`,
-            visibility: 'private' as const, // Default to private, could be stored in metadata
-            uploadedAt: file.createdTime,
-            owner: userId,
-            provider: 'google-drive',
-            provenance: {
-              originalCreator: userId,
-              ownershipHistory: [],
-              modificationHistory: [],
-              accessLog: [],
-              verificationStatus: 'verified',
-              createdAt: file.createdTime,
-              lastModified: file.modifiedTime
-            }
-          }));
-
-        console.log('Listed Google Drive files:', storageFiles.length);
-        return storageFiles;
-      } else {
-        // Fallback: Return empty list with instructions
-        console.log('Google Drive list files simulated (manual check required)');
-        alert(`To view your Google Drive files:
-
-1. Go to https://drive.google.com
-2. Look for the "par-noir-media" folder
-3. Files uploaded through pN will have names starting with "pn-encrypted-"
-
-Note: Direct API access is currently disabled due to CORS restrictions.`);
-        
-        return [];
-      }
+      console.log('Listed Google Drive files:', storageFiles.length);
+      return storageFiles;
 
     } catch (error) {
       console.error('Google Drive list files error:', error);
@@ -359,53 +470,43 @@ Note: Direct API access is currently disabled due to CORS restrictions.`);
   }
 
   private async ensurePnFolder(): Promise<string> {
-    if (!this.config) {
-      throw new Error('Google Drive not configured');
+    if (!this.isInitialized || !this.authInstance) {
+      throw new Error('Google Drive not initialized or authenticated');
     }
 
     try {
-      // Check if pN folder already exists via proxy
-      const response = await fetch(
-        `${PROXY_BASE_URL}/google-drive/files?accessToken=${encodeURIComponent(this.config.accessToken)}&folderId=root`,
-        {
-          method: 'GET'
-        }
-      );
-
-      if (!response.ok) {
-        throw new Error(`Check folder failed: ${response.status} ${response.statusText}`);
-      }
-
-      const data = await response.json();
-      const existingFolder = data.files.find((file: any) => 
-        file.name === 'par-noir-media' && file.mimeType === 'application/vnd.google-apps.folder'
-      );
-      
-      if (existingFolder) {
-        // Folder exists, use it
-        this.config.folderId = existingFolder.id;
-        return existingFolder.id;
-      }
-
-      // Create pN folder via proxy
-      const createResponse = await fetch(`${PROXY_BASE_URL}/google-drive/folders`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          accessToken: this.config.accessToken,
-          folderName: 'par-noir-media'
-        })
+      // Check if pN folder already exists
+      const response = await window.gapi.client.drive.files.list({
+        q: "name='par-noir-media' and mimeType='application/vnd.google-apps.folder'",
+        fields: 'files(id,name)'
       });
 
-      if (!createResponse.ok) {
-        throw new Error(`Create folder failed: ${createResponse.status} ${createResponse.statusText}`);
+      const folders = response.result.files || [];
+      
+      if (folders.length > 0) {
+        // Folder exists, use it
+        const folderId = folders[0].id;
+        if (this.config) {
+          this.config.folderId = folderId;
+        }
+        return folderId;
       }
 
-      const folderData = await createResponse.json();
-      this.config.folderId = folderData.id;
-      return folderData.id;
+      // Create pN folder
+      const createResponse = await window.gapi.client.drive.files.create({
+        resource: {
+          name: 'par-noir-media',
+          mimeType: 'application/vnd.google-apps.folder'
+        }
+      });
+
+      const folderId = createResponse.result.id;
+      if (this.config) {
+        this.config.folderId = folderId;
+      }
+      
+      console.log('Created pN folder:', folderId);
+      return folderId;
 
     } catch (error) {
       throw new Error(`Folder setup failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
@@ -417,8 +518,8 @@ Note: Direct API access is currently disabled due to CORS restrictions.`);
     fileId: string, 
     onProgress?: (progress: UploadProgress) => void
   ): Promise<{ cid: string; url: string }> {
-    if (!this.config) {
-      throw new Error('Google Drive not configured');
+    if (!this.isInitialized || !this.authInstance) {
+      throw new Error('Google Drive not initialized or authenticated');
     }
 
     try {
@@ -430,93 +531,74 @@ Note: Direct API access is currently disabled due to CORS restrictions.`);
         message: 'Preparing upload...'
       });
 
-      if (USE_PROXY) {
-        // Use proxy server approach
-        const arrayBuffer = await file.arrayBuffer();
-        const base64Data = btoa(String.fromCharCode(...new Uint8Array(arrayBuffer)));
-
-        onProgress?.({
-          fileId,
-          fileName: file instanceof File ? file.name : 'file',
-          progress: 30,
-          status: 'uploading',
-          message: 'Uploading to Google Drive...'
-        });
-
-        const uploadResponse = await fetch(`${PROXY_BASE_URL}/google-drive/upload`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({
-            accessToken: this.config.accessToken,
-            fileData: base64Data,
-            fileName: `pn-encrypted-${fileId}`,
-            folderId: this.config.folderId || 'root'
-          })
-        });
-
-        if (!uploadResponse.ok) {
-          const errorData = await uploadResponse.text();
-          throw new Error(`Upload failed: ${uploadResponse.status} ${errorData}`);
-        }
-
-        const result = await uploadResponse.json();
-        const googleFileId = result.id;
-
-        onProgress?.({
-          fileId,
-          fileName: file instanceof File ? file.name : 'file',
-          progress: 100,
-          status: 'completed',
-          message: 'Upload completed successfully!'
-        });
-
-        const cid = await this.generateCID(file);
-        const url = result.webViewLink || `https://drive.google.com/file/d/${googleFileId}/view`;
-
-        return { cid, url };
-      } else {
-        // Fallback: Simulate upload with clear instructions
-        onProgress?.({
-          fileId,
-          fileName: file instanceof File ? file.name : 'file',
-          progress: 50,
-          status: 'uploading',
-          message: 'Preparing for manual upload...'
-        });
-
-        // Simulate upload delay
-        await new Promise(resolve => setTimeout(resolve, 2000));
-
-        onProgress?.({
-          fileId,
-          fileName: file instanceof File ? file.name : 'file',
-          progress: 100,
-          status: 'completed',
-          message: 'Upload simulation completed!'
-        });
-
-        // Generate mock response
-        const cid = await this.generateCID(file);
-        const mockUrl = `https://drive.google.com/file/d/mock-${fileId}/view`;
-
-        console.log('Google Drive upload simulated (manual upload required):', { fileId, cid, url: mockUrl });
-
-        // Show instructions to user
-        alert(`Google Drive Upload Instructions:
-
-1. Go to https://drive.google.com
-2. Create a folder called "par-noir-media" if it doesn't exist
-3. Upload your file "${file instanceof File ? file.name : 'file'}" to that folder
-4. Rename the file to "pn-encrypted-${fileId}"
-5. Your file will be encrypted and stored in your Google Drive
-
-Note: Direct browser uploads to Google Drive API are blocked by CORS. 
-A server-side proxy will be implemented for seamless uploads.`);
-
-        return { cid, url: mockUrl };
+      // Ensure we have a valid access token
+      let accessToken = this.config?.accessToken;
+      if (!accessToken) {
+        accessToken = await this.refreshAccessToken();
       }
+
+      onProgress?.({
+        fileId,
+        fileName: file instanceof File ? file.name : 'file',
+        progress: 30,
+        status: 'uploading',
+        message: 'Uploading to Google Drive...'
+      });
+
+      // Create file metadata
+      const metadata = {
+        name: `pn-encrypted-${fileId}`,
+        parents: [this.config?.folderId || 'root']
+      };
+
+      // Upload file using Google Drive API
+      const form = new FormData();
+      form.append('metadata', new Blob([JSON.stringify(metadata)], { type: 'application/json' }));
+      form.append('file', file);
+
+      const response = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${accessToken}`
+        },
+        body: form
+      });
+
+      if (!response.ok) {
+        const errorData = await response.text();
+        throw new Error(`Upload failed: ${response.status} ${errorData}`);
+      }
+
+      const result = await response.json();
+
+      onProgress?.({
+        fileId,
+        fileName: file instanceof File ? file.name : 'file',
+        progress: 80,
+        status: 'processing',
+        message: 'Finalizing upload...'
+      });
+
+      // Get file info with web view link
+      const fileInfo = await window.gapi.client.drive.files.get({
+        fileId: result.id,
+        fields: 'id,name,webViewLink,size'
+      });
+
+      onProgress?.({
+        fileId,
+        fileName: file instanceof File ? file.name : 'file',
+        progress: 100,
+        status: 'completed',
+        message: 'Upload completed successfully!'
+      });
+
+      const cid = await this.generateCID(file);
+      const url = fileInfo.result.webViewLink || `https://drive.google.com/file/d/${result.id}/view`;
+
+      console.log('Google Drive upload completed:', { fileId: result.id, cid, url });
+
+      return { cid, url };
 
     } catch (error) {
       console.error('Google Drive upload error:', error);
