@@ -44,6 +44,7 @@ import PrivacyPolicy from './pages/PrivacyPolicy';
 import { MainDashboard } from './components/app/MainDashboard';
 import { DelegationModal } from './components/DelegationModal';
 import { IdentityVerificationModal } from './components/IdentityVerificationModal';
+import { StorageTab } from './components/storage/StorageTab';
 
 // Lazy load heavy components
 const EnhancedPrivacyPanel = lazy(() => import('./components/EnhancedPrivacyPanel').then(module => ({ default: module.EnhancedPrivacyPanel })));
@@ -278,7 +279,7 @@ function App() {
       }
     };
   }, []);
-  const [activeTab, setActiveTab] = useState<'privacy' | 'devices' | 'recovery' | 'developer' | 'delegation'>('privacy');
+  const [activeTab, setActiveTab] = useState<'privacy' | 'devices' | 'recovery' | 'developer' | 'delegation' | 'storage'>('privacy');
   const [globalSettingsExpanded, setGlobalSettingsExpanded] = useState(false);
   const [thirdPartyExpanded, setThirdPartyExpanded] = useState(false);
   const [attestedDataPoints, setAttestedDataPoints] = useState<Set<string>>(new Set());
@@ -5652,6 +5653,17 @@ This invitation expires in 24 hours.`;
                       >
                         Developer Portal
                       </button>
+
+                      <button
+                        onClick={() => setActiveTab('storage')}
+                        className={`py-2 px-2 sm:px-4 border-b-2 font-medium text-sm whitespace-nowrap min-w-0 flex-shrink-0 ${
+                          activeTab === 'storage'
+                            ? 'border-primary text-primary'
+                            : 'border-transparent text-text-secondary hover:text-text-primary hover:border-border'
+                        }`}
+                      >
+                        Storage
+                      </button>
                   </nav>
               </div>
 
@@ -6214,6 +6226,11 @@ This invitation expires in 24 hours.`;
                   {/* Developer Portal Tab */}
                   {activeTab === 'developer' && (
                     <DeveloperPortal />
+                  )}
+
+                  {/* Storage Tab */}
+                  {activeTab === 'storage' && (
+                    <StorageTab />
                   )}
 
                   {/* Delegation Tab */}
