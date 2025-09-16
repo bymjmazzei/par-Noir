@@ -57,8 +57,8 @@ export const defaultVerificationConfig: VerificationConfig = {
     veriff: {
       name: 'Veriff',
       enabled: true,
-      apiKey: process.env.REACT_APP_VERIFF_API_KEY || 'your_veriff_api_key_here',
-      apiSecret: process.env.REACT_APP_VERIFF_API_SECRET || 'your_veriff_api_secret_here',
+      apiKey: process.env.REACT_APP_VERIFF_API_KEY || '9b59a1b5-97e5-4180-9595-fa9f613eb1f5',
+      apiSecret: process.env.REACT_APP_VERIFF_API_SECRET || 'a2f7513b-47ac-4a29-b9ec-6b9bd035a453',
       baseUrl: 'https://stationapi.veriff.com',
       webhookUrl: process.env.REACT_APP_VERIFF_WEBHOOK_URL || 'https://yourdomain.com/api/veriff-webhook',
       supportedDocuments: ['drivers_license', 'passport', 'state_id', 'national_id'],

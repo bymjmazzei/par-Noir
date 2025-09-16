@@ -282,7 +282,7 @@ export const IdentityVerificationModal: React.FC<IdentityVerificationModalProps>
       const response = await fetch('https://stationapi.veriff.com/v1/sessions', {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${process.env.REACT_APP_VERIFF_API_KEY || 'your_veriff_api_key_here'}`,
+          'Authorization': `Bearer ${process.env.REACT_APP_VERIFF_API_KEY || '9b59a1b5-97e5-4180-9595-fa9f613eb1f5'}`,
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({
