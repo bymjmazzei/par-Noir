@@ -179,7 +179,7 @@ export const GoogleDriveUploadModal: React.FC<GoogleDriveUploadModalProps> = ({
   return (
     <>
       <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 p-4">
-        <div className="bg-modal-bg rounded-lg shadow-xl w-full max-w-2xl p-6 relative">
+        <div className="bg-modal-bg rounded-lg shadow-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto relative">
           <button onClick={onClose} className="absolute top-4 right-4 text-text-secondary hover:text-text-primary">
             <X size={24} />
           </button>
@@ -208,8 +208,9 @@ export const GoogleDriveUploadModal: React.FC<GoogleDriveUploadModalProps> = ({
               </div>
 
               <button
+                type="button"
                 onClick={() => setShowSetupModal(true)}
-                className="px-8 py-3 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors text-lg font-medium"
+                className="px-8 py-3 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors text-lg font-medium disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 Connect Google Drive
               </button>
@@ -285,9 +286,9 @@ export const GoogleDriveUploadModal: React.FC<GoogleDriveUploadModalProps> = ({
                     onChange={(e) => setVisibility(e.target.value as 'private' | 'public' | 'friends')}
                     className="w-full p-2 border border-border rounded-md bg-input-bg text-text-primary focus:ring-primary focus:border-primary"
                   >
-                    <option value="private">🔒 Private (Only you)</option>
-                    <option value="friends">👥 Friends (Shared with connections)</option>
-                    <option value="public">🌍 Public (Discoverable by anyone)</option>
+                    <option value="private">Private (Only you)</option>
+                    <option value="friends">Friends (Shared with connections)</option>
+                    <option value="public">Public (Discoverable by anyone)</option>
                   </select>
                 </div>
                 <div>
@@ -325,6 +326,15 @@ export const GoogleDriveUploadModal: React.FC<GoogleDriveUploadModalProps> = ({
                 </ul>
               </div>
 
+              {/* CORS Notice */}
+              <div className="mb-6 p-4 bg-yellow-500/10 border border-yellow-500/20 rounded-lg">
+                <h4 className="font-medium text-yellow-400 mb-2">Development Notice:</h4>
+                <p className="text-sm text-yellow-300">
+                  Uploads are currently simulated due to CORS restrictions. Full Google Drive integration 
+                  will be implemented with server-side proxy in the next update.
+                </p>
+              </div>
+
               {/* Error Display */}
               {error && (
                 <div className="bg-red-500/20 text-red-400 p-3 rounded-md flex items-center space-x-2 mb-4">
@@ -352,15 +362,17 @@ export const GoogleDriveUploadModal: React.FC<GoogleDriveUploadModalProps> = ({
               )}
 
               {/* Action Buttons */}
-              <div className="flex justify-end space-x-4">
+              <div className="flex justify-end space-x-4 pt-4 border-t border-border">
                 <button
+                  type="button"
                   onClick={onClose}
-                  className="px-6 py-2 border border-border rounded-md text-text-primary hover:bg-bg-light transition-colors"
+                  className="px-6 py-2 border border-border rounded-md text-text-primary hover:bg-bg-light transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                   disabled={uploading}
                 >
                   Cancel
                 </button>
                 <button
+                  type="button"
                   onClick={handleUpload}
                   className="px-6 py-2 bg-primary text-white rounded-md hover:bg-primary-dark transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                   disabled={selectedFiles.length === 0 || uploading}
