@@ -75,7 +75,7 @@ export interface AccessRecord {
   userAgent?: string;
 }
 
-export type StorageProviderType = 'ipfs' | 'arweave' | 'storj' | 'filecoin';
+export type StorageProviderType = 'ipfs' | 'arweave' | 'storj' | 'filecoin' | 'cloudflare-r2';
 
 export interface StorageProvider {
   id: string;
@@ -96,6 +96,7 @@ export interface StorageCredentials {
   endpoint?: string;
   region?: string;
   bucket?: string;
+  accountId?: string; // For Cloudflare R2
   // Encrypted and stored locally
 }
 

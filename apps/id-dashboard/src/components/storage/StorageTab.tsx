@@ -12,7 +12,7 @@ import {
 } from 'lucide-react';
 import { StorageFile, StorageProvider, StorageStats } from '../../types/storage';
 import { universalStorageService } from '../../services/universalStorageService';
-import { StorageUploadModal } from './StorageUploadModal';
+import { CloudflareUploadModal } from './CloudflareUploadModal';
 import { StorageFileManager } from './StorageFileManager';
 
 export const StorageTab: React.FC = () => {
@@ -286,17 +286,10 @@ export const StorageTab: React.FC = () => {
       </div>
 
       {/* Upload Modal */}
-      <StorageUploadModal
+      <CloudflareUploadModal
         isOpen={showUploadModal}
         onClose={() => setShowUploadModal(false)}
         onUploadComplete={handleUploadComplete}
-        config={{
-          maxFiles: 10,
-          allowedTypes: ['image/', 'video/', 'audio/', 'application/pdf', 'text/'],
-          maxFileSize: 100 * 1024 * 1024, // 100MB
-          defaultProvider: getActiveProvider()?.type,
-          defaultVisibility: 'private'
-        }}
       />
 
       {/* Provider Settings Modal - TODO: Implement */}

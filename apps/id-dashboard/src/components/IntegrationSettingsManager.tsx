@@ -148,6 +148,51 @@ export const IntegrationSettingsManager: React.FC<IntegrationSettingsManagerProp
         },
         status: 'missing',
         testEndpoint: '/api/test/payment'
+      },
+      'cloudflare-r2': {
+        name: 'Cloudflare R2 Storage',
+        description: 'User-owned permanent storage for media files',
+        category: 'storage',
+        required: false,
+        apiKeys: {
+          API_KEY: {
+            label: 'API Token',
+            value: IntegrationConfigManager.getApiKey('cloudflare-r2', 'API_KEY') || '',
+            type: 'password',
+            required: false,
+            description: 'Your Cloudflare API token'
+          },
+          API_SECRET: {
+            label: 'API Secret',
+            value: IntegrationConfigManager.getApiKey('cloudflare-r2', 'API_SECRET') || '',
+            type: 'password',
+            required: false,
+            description: 'Your Cloudflare API secret'
+          },
+          ACCOUNT_ID: {
+            label: 'Account ID',
+            value: IntegrationConfigManager.getApiKey('cloudflare-r2', 'ACCOUNT_ID') || '',
+            type: 'text',
+            required: false,
+            description: 'Your Cloudflare account ID'
+          },
+          BUCKET_NAME: {
+            label: 'Bucket Name',
+            value: IntegrationConfigManager.getApiKey('cloudflare-r2', 'BUCKET_NAME') || '',
+            type: 'text',
+            required: false,
+            description: 'Your R2 bucket name'
+          },
+          REGION: {
+            label: 'Region',
+            value: IntegrationConfigManager.getApiKey('cloudflare-r2', 'REGION') || 'auto',
+            type: 'text',
+            required: false,
+            description: 'Your preferred region (auto for automatic)'
+          }
+        },
+        status: 'missing',
+        testEndpoint: '/api/test/cloudflare-r2'
       }
     };
 
