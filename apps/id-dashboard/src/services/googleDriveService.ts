@@ -256,15 +256,20 @@ export class GoogleDriveService {
       const response = await fetch(`${this.GOOGLE_DRIVE_API}/files/${fileId}`, {
         method: 'DELETE',
         headers: {
-          'Authorization': `Bearer ${this.config.accessToken}`
+          'Authorization': `Bearer ${this.config.accessToken}`,
+          'Content-Type': 'application/json'
         }
       });
 
       if (!response.ok) {
-        throw new Error(`Delete failed: ${response.status} ${response.statusText}`);
+        const errorData = await response.text();
+        throw new Error(`Delete failed: ${response.status} ${errorData}`);
       }
 
+      console.log('Google Drive file deleted:', fileId);
+
     } catch (error) {
+      console.error('Google Drive delete error:', error);
       throw new StorageError({
         code: STORAGE_ERROR_CODES.NETWORK_ERROR,
         message: `Delete failed: ${error instanceof Error ? error.message : 'Unknown error'}`,
@@ -285,8 +290,9 @@ export class GoogleDriveService {
     try {
       // List files in the pN folder
       const folderId = this.config.folderId || 'root';
+      const query = `'${folderId}' in parents and name contains 'pn-encrypted-'`;
       const response = await fetch(
-        `${this.GOOGLE_DRIVE_API}/files?q='${folderId}' in parents and name contains 'pn-encrypted-'&fields=files(id,name,size,mimeType,createdTime,modifiedTime,webViewLink,thumbnailLink)`,
+        `${this.GOOGLE_DRIVE_API}/files?q=${encodeURIComponent(query)}&fields=files(id,name,size,mimeType,createdTime,modifiedTime,webViewLink,thumbnailLink)`,
         {
           method: 'GET',
           headers: {
@@ -297,7 +303,8 @@ export class GoogleDriveService {
       );
 
       if (!response.ok) {
-        throw new Error(`List files failed: ${response.status} ${response.statusText}`);
+        const errorData = await response.text();
+        throw new Error(`List files failed: ${response.status} ${errorData}`);
       }
 
       const data = await response.json();
@@ -309,7 +316,7 @@ export class GoogleDriveService {
         type: this.getFileTypeFromMime(file.mimeType),
         size: parseInt(file.size || '0'),
         cid: file.id, // Use Google Drive file ID as CID
-        url: file.webViewLink || '',
+        url: file.webViewLink || `https://drive.google.com/file/d/${file.id}/view`,
         visibility: 'private' as const, // Default to private, could be stored in metadata
         uploadedAt: file.createdTime,
         owner: userId,
@@ -325,9 +332,11 @@ export class GoogleDriveService {
         }
       }));
 
+      console.log('Listed Google Drive files:', storageFiles.length);
       return storageFiles;
 
     } catch (error) {
+      console.error('Google Drive list files error:', error);
       throw new StorageError({
         code: STORAGE_ERROR_CODES.NETWORK_ERROR,
         message: `List files failed: ${error instanceof Error ? error.message : 'Unknown error'}`,
@@ -402,40 +411,102 @@ export class GoogleDriveService {
     }
 
     try {
-      // For now, simulate upload since CORS is blocking direct API calls
-      // TODO: Implement server-side proxy or use Google Drive SDK
-      console.log('Simulating Google Drive upload due to CORS restrictions');
-      
-      // Simulate upload progress
+      // Step 1: Create file metadata
+      const metadata = {
+        name: `pn-encrypted-${fileId}`,
+        parents: [this.config.folderId || 'root']
+      };
+
       onProgress?.({
         fileId,
         fileName: file instanceof File ? file.name : 'file',
-        progress: 50,
+        progress: 10,
         status: 'uploading',
-        message: 'Uploading to Google Drive...'
+        message: 'Preparing upload...'
       });
 
-      // Simulate processing
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      // Step 2: Create the file with metadata first
+      const createResponse = await fetch(`${this.GOOGLE_DRIVE_API}/files`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${this.config.accessToken}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(metadata)
+      });
+
+      if (!createResponse.ok) {
+        const errorData = await createResponse.text();
+        throw new Error(`Failed to create file: ${createResponse.status} ${errorData}`);
+      }
+
+      const createdFile = await createResponse.json();
+      const googleFileId = createdFile.id;
+
+      onProgress?.({
+        fileId,
+        fileName: file instanceof File ? file.name : 'file',
+        progress: 30,
+        status: 'uploading',
+        message: 'Uploading file content...'
+      });
+
+      // Step 3: Upload file content using PATCH method (avoids CORS issues)
+      const uploadResponse = await fetch(`${this.GOOGLE_DRIVE_API}/files/${googleFileId}`, {
+        method: 'PATCH',
+        headers: {
+          'Authorization': `Bearer ${this.config.accessToken}`,
+          'Content-Type': file instanceof File ? file.type : 'application/octet-stream'
+        },
+        body: file
+      });
+
+      if (!uploadResponse.ok) {
+        const errorData = await uploadResponse.text();
+        throw new Error(`Failed to upload content: ${uploadResponse.status} ${errorData}`);
+      }
+
+      onProgress?.({
+        fileId,
+        fileName: file instanceof File ? file.name : 'file',
+        progress: 80,
+        status: 'processing',
+        message: 'Finalizing upload...'
+      });
+
+      // Step 4: Get the final file info
+      const finalResponse = await fetch(`${this.GOOGLE_DRIVE_API}/files/${googleFileId}?fields=id,name,webViewLink,size`, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${this.config.accessToken}`,
+          'Content-Type': 'application/json'
+        }
+      });
+
+      if (!finalResponse.ok) {
+        throw new Error(`Failed to get file info: ${finalResponse.status}`);
+      }
+
+      const finalFile = await finalResponse.json();
       
       onProgress?.({
         fileId,
         fileName: file instanceof File ? file.name : 'file',
         progress: 100,
         status: 'completed',
-        message: 'Upload completed (simulated)'
+        message: 'Upload completed successfully!'
       });
 
-      // Generate mock result
-      const mockFileId = `mock-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+      // Generate CID for compatibility
       const cid = await this.generateCID(file);
-      const url = `https://drive.google.com/file/d/${mockFileId}/view`;
+      const url = finalFile.webViewLink || `https://drive.google.com/file/d/${googleFileId}/view`;
 
-      console.log('Mock upload completed:', { fileId: mockFileId, cid, url });
+      console.log('Google Drive upload completed:', { fileId: googleFileId, cid, url });
 
       return { cid, url };
 
     } catch (error) {
+      console.error('Google Drive upload error:', error);
       throw new Error(`Google Drive upload failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   }

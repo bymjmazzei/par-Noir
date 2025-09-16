@@ -326,14 +326,6 @@ export const GoogleDriveUploadModal: React.FC<GoogleDriveUploadModalProps> = ({
                 </ul>
               </div>
 
-              {/* CORS Notice */}
-              <div className="mb-6 p-4 bg-yellow-500/10 border border-yellow-500/20 rounded-lg">
-                <h4 className="font-medium text-yellow-400 mb-2">Development Notice:</h4>
-                <p className="text-sm text-yellow-300">
-                  Uploads are currently simulated due to CORS restrictions. Full Google Drive integration 
-                  will be implemented with server-side proxy in the next update.
-                </p>
-              </div>
 
               {/* Error Display */}
               {error && (
