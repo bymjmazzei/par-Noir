@@ -67,3 +67,58 @@ document.addEventListener('DOMContentLoaded', function() {
         document.body.classList.add('dark-theme');
     }
 });
+
+// FAQ Tab Functionality
+document.addEventListener('DOMContentLoaded', function() {
+    const faqTabs = document.querySelectorAll('.faq-tab');
+    const faqTabContents = document.querySelectorAll('.faq-tab-content');
+
+    faqTabs.forEach(tab => {
+        tab.addEventListener('click', function() {
+            const targetTab = this.getAttribute('data-tab');
+            
+            // Remove active class from all tabs
+            faqTabs.forEach(t => t.classList.remove('active'));
+            
+            // Add active class to clicked tab
+            this.classList.add('active');
+            
+            // Hide all tab contents
+            faqTabContents.forEach(content => {
+                content.classList.remove('active');
+            });
+            
+            // Show target tab content
+            const targetContent = document.getElementById(targetTab);
+            if (targetContent) {
+                targetContent.classList.add('active');
+            }
+        });
+    });
+
+    // FAQ Collapsible Functionality
+    const faqQuestions = document.querySelectorAll('.faq-question');
+    
+    faqQuestions.forEach(question => {
+        question.addEventListener('click', function() {
+            const faqItem = this.closest('.faq-item');
+            const isActive = faqItem.classList.contains('active');
+            
+            // Close all other FAQ items in the same tab
+            const currentTab = faqItem.closest('.faq-tab-content');
+            const allItemsInTab = currentTab.querySelectorAll('.faq-item');
+            allItemsInTab.forEach(item => {
+                if (item !== faqItem) {
+                    item.classList.remove('active');
+                }
+            });
+            
+            // Toggle current item
+            if (isActive) {
+                faqItem.classList.remove('active');
+            } else {
+                faqItem.classList.add('active');
+            }
+        });
+    });
+});

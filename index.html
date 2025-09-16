@@ -106,6 +106,7 @@
                 <a href="#solution" class="nav-menu-link">Solution</a>
                 <a href="#how-it-works" class="nav-menu-link">How It Works</a>
                 <a href="#features" class="nav-menu-link">Features</a>
+                <a href="#faq" class="nav-menu-link">FAQ</a>
                 <a href="#vision" class="nav-menu-link">Vision</a>
                 <a href="whitepaper.html" class="nav-menu-link">White Paper</a>
                 <a href="developer-portal.html" class="nav-menu-link nav-developers">Developers</a>
@@ -125,6 +126,7 @@
         <a href="#solution" onclick="toggleMobileMenu()">Solution</a>
         <a href="#how-it-works" onclick="toggleMobileMenu()">How It Works</a>
         <a href="#features" onclick="toggleMobileMenu()">Features</a>
+        <a href="#faq" onclick="toggleMobileMenu()">FAQ</a>
         <a href="#vision" onclick="toggleMobileMenu()">Vision</a>
         <a href="whitepaper.html" onclick="toggleMobileMenu()">White Paper</a>
         <a href="developer-portal.html">Developers</a>
@@ -433,6 +435,325 @@
     </section>
 
 
+
+    <!-- FAQ Section -->
+    <section id="faq" class="faq-section">
+        <div class="container">
+            <div class="section-header">
+                <h2 class="section-title">Frequently Asked Questions</h2>
+                <p class="section-subtitle">Everything you need to know about par Noir and sovereign identity</p>
+            </div>
+            
+            <div class="faq-container">
+                <div class="faq-tabs">
+                    <button class="faq-tab active" data-tab="what">What</button>
+                    <button class="faq-tab" data-tab="how">How</button>
+                    <button class="faq-tab" data-tab="why">Why</button>
+                    <button class="faq-tab" data-tab="use-cases">Use Cases</button>
+                </div>
+                
+                <div class="faq-content">
+                    <!-- What Tab -->
+                    <div class="faq-tab-content active" id="what">
+                        <div class="faq-item">
+                            <button class="faq-question">
+                                <h3>What is par Noir?</h3>
+                                <span class="faq-icon">+</span>
+                            </button>
+                            <div class="faq-answer">
+                                <p>par Noir is an open-source protocol for sovereign digital identity. It gives you complete ownership and control of your digital identity through cryptographic keys, zero-knowledge proofs, and decentralized storage.</p>
+                            </div>
+                        </div>
+                        <div class="faq-item">
+                            <button class="faq-question">
+                                <h3>What is a pN?</h3>
+                                <span class="faq-icon">+</span>
+                            </button>
+                            <div class="faq-answer">
+                                <p>A pN (par Noir identity) is your sovereign digital identity file stored locally on your device. It contains your encrypted personal data and credentials, secured by three components: the pN file itself, your pN name, and your passcode.</p>
+                            </div>
+                        </div>
+                        <div class="faq-item">
+                            <button class="faq-question">
+                                <h3>What is zero-knowledge proof?</h3>
+                                <span class="faq-icon">+</span>
+                            </button>
+                            <div class="faq-answer">
+                                <p>Zero-knowledge proofs allow you to prove facts about yourself without revealing the underlying data. For example, you can prove you're over 18 without sharing your age or birthday.</p>
+                            </div>
+                        </div>
+                        <div class="faq-item">
+                            <button class="faq-question">
+                                <h3>What data can I store in my pN?</h3>
+                                <span class="faq-icon">+</span>
+                            </button>
+                            <div class="faq-answer">
+                                <p>You can store any personal information you choose: identity documents, qualifications, preferences, relationships, and more. Everything is encrypted and only you control access.</p>
+                            </div>
+                        </div>
+                        <div class="faq-item">
+                            <button class="faq-question">
+                                <h3>What is IPFS?</h3>
+                                <span class="faq-icon">+</span>
+                            </button>
+                            <div class="faq-answer">
+                                <p>IPFS (InterPlanetary File System) is a decentralized storage network that par Noir uses to store your encrypted metadata. It's resilient, censorship-resistant, and doesn't rely on any single company or server.</p>
+                            </div>
+                        </div>
+                        <div class="faq-item">
+                            <button class="faq-question">
+                                <h3>What makes par Noir different from other identity solutions?</h3>
+                                <span class="faq-icon">+</span>
+                            </button>
+                            <div class="faq-answer">
+                                <p>Unlike centralized identity providers or blockchain-based solutions, par Noir gives you complete ownership with no single point of failure. Your data is encrypted locally, metadata is decentralized, and you control all access through zero-knowledge proofs.</p>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- How Tab -->
+                    <div class="faq-tab-content" id="how">
+                        <div class="faq-item">
+                            <button class="faq-question">
+                                <h3>How do I create my pN?</h3>
+                                <span class="faq-icon">+</span>
+                            </button>
+                            <div class="faq-answer">
+                                <p>Visit pn.parnoir.com to create your pN. You'll choose a unique name, set a secure passcode, and your encrypted identity file will be generated and stored locally on your device. Your encrypted metadata will be stored on IPFS.</p>
+                            </div>
+                        </div>
+                        <div class="faq-item">
+                            <button class="faq-question">
+                                <h3>How does the three-component security work?</h3>
+                                <span class="faq-icon">+</span>
+                            </button>
+                            <div class="faq-answer">
+                                <p>Your pN requires three components to decrypt: the pN file (stored locally on your device), your pN name (you remember), and your passcode (you remember). These three components together encrypt your metadata stored on IPFS. Without all three, your data remains completely inaccessible.</p>
+                            </div>
+                        </div>
+                        <div class="faq-item">
+                            <button class="faq-question">
+                                <h3>How do I prove things about myself?</h3>
+                                <span class="faq-icon">+</span>
+                            </button>
+                            <div class="faq-answer">
+                                <p>When a service needs verification, you choose what to prove. The system generates a cryptographic proof that confirms the fact without revealing any underlying data.</p>
+                            </div>
+                        </div>
+                        <div class="faq-item">
+                            <button class="faq-question">
+                                <h3>How does social recovery work?</h3>
+                                <span class="faq-icon">+</span>
+                            </button>
+                            <div class="faq-answer">
+                                <p>If you lose access to your pN, your trusted network can help you recover it through a decentralized process. No single person has control—it requires consensus from your chosen guardians.</p>
+                            </div>
+                        </div>
+                        <div class="faq-item">
+                            <button class="faq-question">
+                                <h3>How do I update my information?</h3>
+                                <span class="faq-icon">+</span>
+                            </button>
+                            <div class="faq-answer">
+                                <p>You can update your pN data anytime. Changes to your local pN file are encrypted along with your metadata, which is then stored on IPFS. You maintain full control over what information is current and accurate.</p>
+                            </div>
+                        </div>
+                        <div class="faq-item">
+                            <button class="faq-question">
+                                <h3>How do I recover if I lose my device or pN file?</h3>
+                                <span class="faq-icon">+</span>
+                            </button>
+                            <div class="faq-answer">
+                                <p>Your pN file should be backed up securely. If lost, you can use social recovery through your trusted network, or create a new pN and re-establish your credentials. The protocol is designed to be resilient to device loss.</p>
+                            </div>
+                        </div>
+                        <div class="faq-item">
+                            <button class="faq-question">
+                                <h3>How do I know if a service accepts par Noir?</h3>
+                                <span class="faq-icon">+</span>
+                            </button>
+                            <div class="faq-answer">
+                                <p>Services will display the par Noir logo or mention "par Noir compatible" when they support the protocol. You can also look for the pN authentication option during login or verification processes.</p>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Why Tab -->
+                    <div class="faq-tab-content" id="why">
+                        <div class="faq-item">
+                            <button class="faq-question">
+                                <h3>Why do I need sovereign identity?</h3>
+                                <span class="faq-icon">+</span>
+                            </button>
+                            <div class="faq-answer">
+                                <p>Traditional identity systems put your data in the hands of corporations and governments. Sovereign identity gives you control, privacy, and portability across all platforms and services.</p>
+                            </div>
+                        </div>
+                        <div class="faq-item">
+                            <button class="faq-question">
+                                <h3>Why is par Noir open source?</h3>
+                                <span class="faq-icon">+</span>
+                            </button>
+                            <div class="faq-answer">
+                                <p>Open source ensures transparency, security, and community ownership. Anyone can audit the code, contribute improvements, and build on the protocol without vendor lock-in.</p>
+                            </div>
+                        </div>
+                        <div class="faq-item">
+                            <button class="faq-question">
+                                <h3>Why use zero-knowledge proofs?</h3>
+                                <span class="faq-icon">+</span>
+                            </button>
+                            <div class="faq-answer">
+                                <p>Zero-knowledge proofs enable verification without surveillance. You can prove qualifications, age, or other facts without giving away your personal information or creating data trails.</p>
+                            </div>
+                        </div>
+                        <div class="faq-item">
+                            <button class="faq-question">
+                                <h3>Why is decentralization important for identity?</h3>
+                                <span class="faq-icon">+</span>
+                            </button>
+                            <div class="faq-answer">
+                                <p>Centralized identity systems create single points of failure, surveillance, and control. Decentralization ensures your identity can't be taken away, monitored, or controlled by any single entity.</p>
+                            </div>
+                        </div>
+                        <div class="faq-item">
+                            <button class="faq-question">
+                                <h3>Why should I care about digital identity?</h3>
+                                <span class="faq-icon">+</span>
+                            </button>
+                            <div class="faq-answer">
+                                <p>Your digital identity affects everything from banking to healthcare to social media. Taking control means better privacy, security, and freedom in your digital life.</p>
+                            </div>
+                        </div>
+                        <div class="faq-item">
+                            <button class="faq-question">
+                                <h3>Why is par Noir free to use?</h3>
+                                <span class="faq-icon">+</span>
+                            </button>
+                            <div class="faq-answer">
+                                <p>par Noir is completely free and open source because true sovereignty requires no financial barriers. There are no subscription fees, no hidden costs, and no vendor lock-in. You own your identity and data completely without ongoing payments.</p>
+                            </div>
+                        </div>
+                        <div class="faq-item">
+                            <button class="faq-question">
+                                <h3>Why is par Noir necessary for Web3?</h3>
+                                <span class="faq-icon">+</span>
+                            </button>
+                            <div class="faq-answer">
+                                <p>Web3 requires true ownership and portability of digital assets, including identity. par Noir provides the missing identity layer that enables seamless interaction across decentralized applications while maintaining privacy and user control.</p>
+                            </div>
+                        </div>
+                        <div class="faq-item">
+                            <button class="faq-question">
+                                <h3>Why migrate from Web2 to par Noir?</h3>
+                                <span class="faq-icon">+</span>
+                            </button>
+                            <div class="faq-answer">
+                                <p>par Noir bridges Web2 and Web3 by allowing you to prove your existing credentials (from social media, banks, employers) without sharing the underlying data. This enables gradual migration while maintaining your current digital relationships and gaining sovereignty.</p>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Use Cases Tab -->
+                    <div class="faq-tab-content" id="use-cases">
+                        <div class="faq-intro">
+                            <p>The par Noir protocol is designed as a foundation for sovereign identity. These examples represent just the beginning—any application that requires identity verification, data sharing, or privacy-preserving authentication can be built on top of par Noir. The protocol's open-source nature and zero-knowledge proof capabilities make it infinitely extensible for developers and organizations worldwide.</p>
+                        </div>
+                        <div class="faq-item">
+                            <button class="faq-question">
+                                <h3>Age verification without ID sharing</h3>
+                                <span class="faq-icon">+</span>
+                            </button>
+                            <div class="faq-answer">
+                                <p>Prove you're over 18 to access age-restricted content or services without revealing your exact age, birthday, or any other personal information.</p>
+                            </div>
+                        </div>
+                        <div class="faq-item">
+                            <button class="faq-question">
+                                <h3>Professional credential verification</h3>
+                                <span class="faq-icon">+</span>
+                            </button>
+                            <div class="faq-answer">
+                                <p>Prove you have a degree, certification, or license without sharing transcripts, personal details, or creating permanent records with employers.</p>
+                            </div>
+                        </div>
+                        <div class="faq-item">
+                            <button class="faq-question">
+                                <h3>Healthcare data portability</h3>
+                                <span class="faq-icon">+</span>
+                            </button>
+                            <div class="faq-answer">
+                                <p>Securely share medical records, test results, or vaccination status with healthcare providers while maintaining complete control over your data.</p>
+                            </div>
+                        </div>
+                        <div class="faq-item">
+                            <button class="faq-question">
+                                <h3>Financial service access</h3>
+                                <span class="faq-icon">+</span>
+                            </button>
+                            <div class="faq-answer">
+                                <p>Prove your identity and financial standing to banks, lenders, or investment platforms without creating permanent data trails or sharing unnecessary information.</p>
+                            </div>
+                        </div>
+                        <div class="faq-item">
+                            <button class="faq-question">
+                                <h3>Social media authentication</h3>
+                                <span class="faq-icon">+</span>
+                            </button>
+                            <div class="faq-answer">
+                                <p>Verify your identity on social platforms to reduce bots and fake accounts while keeping your personal information private and secure.</p>
+                            </div>
+                        </div>
+                        <div class="faq-item">
+                            <button class="faq-question">
+                                <h3>Government services</h3>
+                                <span class="faq-icon">+</span>
+                            </button>
+                            <div class="faq-answer">
+                                <p>Access government services, vote, or prove citizenship without creating centralized databases of personal information.</p>
+                            </div>
+                        </div>
+                        <div class="faq-item">
+                            <button class="faq-question">
+                                <h3>Employment verification</h3>
+                                <span class="faq-icon">+</span>
+                            </button>
+                            <div class="faq-answer">
+                                <p>Prove your work history, skills, or employment status to potential employers without sharing sensitive personal details or creating permanent records.</p>
+                            </div>
+                        </div>
+                        <div class="faq-item">
+                            <button class="faq-question">
+                                <h3>AI agent delegation</h3>
+                                <span class="faq-icon">+</span>
+                            </button>
+                            <div class="faq-answer">
+                                <p>Securely delegate tasks to personal AI agents that can access your information and act on your behalf. Your AI can communicate with other AI agents, make appointments, handle transactions, and manage your digital life while maintaining complete privacy and control.</p>
+                            </div>
+                        </div>
+                        <div class="faq-item">
+                            <button class="faq-question">
+                                <h3>IoT device authentication</h3>
+                                <span class="faq-icon">+</span>
+                            </button>
+                            <div class="faq-answer">
+                                <p>Create a uniform identity protocol for the Internet of Things. Your smart home devices, wearables, and connected appliances can securely authenticate and communicate with each other using your pN, eliminating the need for multiple proprietary systems.</p>
+                            </div>
+                        </div>
+                        <div class="faq-item">
+                            <button class="faq-question">
+                                <h3>Automated service interactions</h3>
+                                <span class="faq-icon">+</span>
+                            </button>
+                            <div class="faq-answer">
+                                <p>Enable your devices and AI agents to automatically interact with services on your behalf. Your smart car can pay for parking, your home can order groceries, and your AI can book travel—all while proving necessary credentials without exposing your personal data.</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
 
     <!-- Final CTA Section -->
     <section class="final-cta">
