@@ -140,7 +140,11 @@ export default defineConfig({
     'process.env.REACT_APP_TWILIO_ACCOUNT_SID': JSON.stringify(process.env.REACT_APP_TWILIO_ACCOUNT_SID),
     'process.env.REACT_APP_TWILIO_AUTH_TOKEN': JSON.stringify(process.env.REACT_APP_TWILIO_AUTH_TOKEN),
     'process.env.REACT_APP_TWILIO_FROM_NUMBER': JSON.stringify(process.env.REACT_APP_TWILIO_FROM_NUMBER),
-    'process.env.REACT_APP_COINBASE_COMMERCE_API_KEY': JSON.stringify(process.env.REACT_APP_COINBASE_COMMERCE_API_KEY)
+    'process.env.REACT_APP_COINBASE_COMMERCE_API_KEY': JSON.stringify(process.env.REACT_APP_COINBASE_COMMERCE_API_KEY),
+    'process.env.REACT_APP_VERIFF_API_KEY': JSON.stringify(process.env.REACT_APP_VERIFF_API_KEY),
+    'process.env.REACT_APP_VERIFF_API_SECRET': JSON.stringify(process.env.REACT_APP_VERIFF_API_SECRET),
+    'process.env.REACT_APP_VERIFF_WEBHOOK_URL': JSON.stringify(process.env.REACT_APP_VERIFF_WEBHOOK_URL),
+    'process.env.REACT_APP_VERIFICATION_PROVIDER': JSON.stringify(process.env.REACT_APP_VERIFICATION_PROVIDER)
   },
   esbuild: {
     // Skip TypeScript checking during build
