@@ -235,8 +235,6 @@ export const PrivacyControls: React.FC<PrivacyControlsProps> = React.memo(({
           <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
             Identity Verification
           </h3>
-          {/* Debug: This should be visible */}
-          <div className="text-red-500 text-sm mb-2">DEBUG: Identity Verification section is rendering</div>
           <div className="flex items-center justify-between mb-2">
             <div className={`text-2xl font-bold ${
               verificationStatus.isVerified ? 'text-green-600' : 'text-gray-400'
