@@ -1,13 +1,20 @@
 const express = require('express');
-const cors = require('cors');
 const fetch = require('node-fetch');
-const FormData = require('form-data');
 
 const app = express();
-const PORT = process.env.PORT || 3001;
+const PORT = process.env.PORT || 3002;
 
 // Middleware
-app.use(cors());
+app.use((req, res, next) => {
+  res.header('Access-Control-Allow-Origin', '*');
+  res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+  res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
+  if (req.method === 'OPTIONS') {
+    res.sendStatus(200);
+  } else {
+    next();
+  }
+});
 app.use(express.json({ limit: '50mb' })); // Allow large file uploads
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
@@ -23,33 +30,59 @@ app.post('/api/google-drive/upload', async (req, res) => {
     // Convert base64 to buffer
     const fileBuffer = Buffer.from(fileData, 'base64');
     
-    // Create FormData for multipart upload
-    const formData = new FormData();
-    formData.append('metadata', JSON.stringify({
+    // Create file metadata first
+    const metadata = {
       name: fileName,
       parents: [folderId || 'root']
-    }));
-    formData.append('file', fileBuffer, {
-      filename: fileName,
-      contentType: 'application/octet-stream'
-    });
+    };
 
-    // Upload to Google Drive
-    const response = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart', {
+    // Step 1: Create file with metadata
+    const createResponse = await fetch('https://www.googleapis.com/drive/v3/files', {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${accessToken}`,
-        ...formData.getHeaders()
+        'Content-Type': 'application/json'
       },
-      body: formData
+      body: JSON.stringify(metadata)
     });
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(`Google Drive API error: ${response.status} ${errorText}`);
+    if (!createResponse.ok) {
+      const errorText = await createResponse.text();
+      throw new Error(`Create file failed: ${createResponse.status} ${errorText}`);
     }
 
-    const result = await response.json();
+    const createdFile = await createResponse.json();
+    const fileId = createdFile.id;
+
+    // Step 2: Upload file content
+    const uploadResponse = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}`, {
+      method: 'PATCH',
+      headers: {
+        'Authorization': `Bearer ${accessToken}`,
+        'Content-Type': 'application/octet-stream'
+      },
+      body: fileBuffer
+    });
+
+    if (!uploadResponse.ok) {
+      const errorText = await uploadResponse.text();
+      throw new Error(`Upload content failed: ${uploadResponse.status} ${errorText}`);
+    }
+
+    // Get final file info
+    const finalResponse = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?fields=id,name,webViewLink,size`, {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${accessToken}`,
+        'Content-Type': 'application/json'
+      }
+    });
+
+    if (!finalResponse.ok) {
+      throw new Error(`Get file info failed: ${finalResponse.status}`);
+    }
+
+    const result = await finalResponse.json();
     res.json(result);
 
   } catch (error) {
