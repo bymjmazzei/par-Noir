@@ -11,9 +11,9 @@ import {
   CheckCircle
 } from 'lucide-react';
 import { StorageFile, StorageProvider, StorageStats } from '../../types/storage';
-import { universalStorageService } from '../../services/universalStorageService';
 import { GoogleDriveUploadModal } from './GoogleDriveUploadModal';
 import { StorageFileManager } from './StorageFileManager';
+import { IntegrationConfigManager } from '../../utils/integrationConfig';
 
 export const StorageTab: React.FC = () => {
   const [files, setFiles] = useState<StorageFile[]>([]);
@@ -34,17 +34,41 @@ export const StorageTab: React.FC = () => {
     setError(null);
     
     try {
-      await universalStorageService.initialize();
+      // Check if Google Drive is configured
+      const hasGoogleDrive = IntegrationConfigManager.getApiKey('google-drive', 'ACCESS_TOKEN');
       
-      const [filesData, providersData, statsData] = await Promise.all([
-        universalStorageService.getFiles(),
-        universalStorageService.getProviders(),
-        universalStorageService.getStorageStats()
-      ]);
+      // Create Google Drive provider if configured
+      const googleDriveProvider: StorageProvider = {
+        id: 'google-drive',
+        name: 'Google Drive',
+        type: 'google-drive',
+        status: hasGoogleDrive ? 'active' : 'inactive',
+        isFree: true, // Google provides 15GB free
+        storageLimit: 15 * 1024 * 1024 * 1024, // 15GB in bytes
+        storageUsed: 0, // TODO: Get actual usage from Google Drive API
+        costPerGB: 0,
+        settings: {
+          autoOptimize: true,
+          compressionLevel: 'medium',
+          redundancy: 1,
+          encryption: true,
+          pinContent: true
+        }
+      };
       
-      setFiles(filesData);
-      setProviders(providersData);
-      setStats(statsData);
+      setProviders([googleDriveProvider]);
+      setFiles([]); // TODO: Load files from Google Drive
+      setStats({
+        totalFiles: 0,
+        totalSize: 0,
+        byType: {
+          image: { count: 0, size: 0 },
+          video: { count: 0, size: 0 },
+          document: { count: 0, size: 0 },
+          audio: { count: 0, size: 0 },
+          other: { count: 0, size: 0 }
+        }
+      });
     } catch (err) {
       setError(err.message || 'Failed to load storage data');
       console.error('Storage data loading error:', err);
@@ -60,7 +84,7 @@ export const StorageTab: React.FC = () => {
 
   const handleFileDelete = async (fileId: string) => {
     try {
-      await universalStorageService.deleteFile(fileId);
+      // TODO: Implement Google Drive file deletion
       setFiles(prev => prev.filter(f => f.id !== fileId));
       loadStorageData(); // Refresh stats
     } catch (err) {
@@ -292,7 +316,7 @@ export const StorageTab: React.FC = () => {
         onUploadComplete={handleUploadComplete}
       />
 
-      {/* Provider Settings Modal - TODO: Implement */}
+      {/* Provider Settings Modal */}
       {showProviderSettings && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
           <div className="bg-modal-bg rounded-lg max-w-md w-full p-6">
@@ -305,9 +329,44 @@ export const StorageTab: React.FC = () => {
                 ×
               </button>
             </div>
-            <div className="text-center py-8">
-              <Settings className="w-12 h-12 text-text-secondary mx-auto mb-4" />
-              <p className="text-text-secondary">Provider settings coming soon...</p>
+            
+            <div className="space-y-4">
+              <div className="bg-bg-light rounded-lg p-4">
+                <div className="flex items-center justify-between mb-2">
+                  <h4 className="font-medium text-text-primary">Google Drive</h4>
+                  <div className={`w-2 h-2 rounded-full ${
+                    providers[0]?.status === 'active' ? 'bg-green-400' : 'bg-gray-400'
+                  }`} />
+                </div>
+                <p className="text-sm text-text-secondary mb-3">
+                  Permanent, encrypted storage in your Google Drive
+                </p>
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-text-secondary">
+                    {providers[0]?.status === 'active' ? 'Connected' : 'Not configured'}
+                  </span>
+                  <button
+                    onClick={() => {
+                      setShowProviderSettings(false);
+                      setShowUploadModal(true);
+                    }}
+                    className="px-3 py-1 bg-primary text-white rounded-md hover:bg-primary-dark transition-colors text-sm"
+                  >
+                    {providers[0]?.status === 'active' ? 'Manage' : 'Setup'}
+                  </button>
+                </div>
+              </div>
+              
+              <div className="bg-blue-500/10 border border-blue-500/20 rounded-lg p-4">
+                <h5 className="font-medium text-blue-400 mb-2">Benefits:</h5>
+                <ul className="text-sm text-blue-300 space-y-1">
+                  <li>• 15GB free storage</li>
+                  <li>• Fast loading via Google CDN</li>
+                  <li>• Files encrypted with pN standard</li>
+                  <li>• Stored in your own Google Drive</li>
+                  <li>• Zero liability for par Noir</li>
+                </ul>
+              </div>
             </div>
           </div>
         </div>
