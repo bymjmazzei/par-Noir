@@ -1,6 +1,9 @@
 import React, { useState, useCallback, useMemo, useEffect } from 'react';
-import { Eye, EyeOff, Shield, Lock, Unlock, Settings, Users, UserCheck, Globe, Smartphone } from 'lucide-react';
+import { Eye, EyeOff, Shield, Lock, Unlock, Settings, Users, UserCheck, Globe, Smartphone, CheckCircle } from 'lucide-react';
 import { GlobalPrivacySettings } from '../types/privacy';
+import { IdentityVerificationModal } from './IdentityVerificationModal';
+import { VerifiedIdentityData } from '../types/verifiedIdentity';
+import { verifiedIdentityManager } from '../services/verifiedIdentityManager';
 
 interface PrivacyControlsProps {
   identityId?: string;
@@ -28,6 +31,18 @@ export const PrivacyControls: React.FC<PrivacyControlsProps> = React.memo(({
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [dataAccessRequests, setDataAccessRequests] = useState<any[]>([]);
   const [activeConnections, setActiveConnections] = useState<any[]>([]);
+  const [showVerificationModal, setShowVerificationModal] = useState(false);
+  const [verificationStatus, setVerificationStatus] = useState<{
+    isVerified: boolean;
+    verificationLevel: 'basic' | 'enhanced' | 'verified' | null;
+    verifiedAt: string | null;
+    dataPoints: string[];
+  }>({
+    isVerified: false,
+    verificationLevel: null,
+    verifiedAt: null,
+    dataPoints: []
+  });
 
   // Load privacy settings
   const loadPrivacySettings = useCallback(async () => {
@@ -76,9 +91,36 @@ export const PrivacyControls: React.FC<PrivacyControlsProps> = React.memo(({
     setActiveConnections(prev => prev.filter(c => c.id !== connectionId));
   }, []);
 
+  // Load verification status
+  const loadVerificationStatus = useCallback(async () => {
+    if (!identityId) return;
+    
+    try {
+      const status = await verifiedIdentityManager.getVerificationStatus(identityId);
+      setVerificationStatus(status);
+    } catch (error) {
+      console.error('Failed to load verification status:', error);
+    }
+  }, [identityId]);
+
+  // Handle verification completion
+  const handleVerificationComplete = useCallback(async (verifiedData: VerifiedIdentityData) => {
+    try {
+      // Reload verification status
+      await loadVerificationStatus();
+      setShowVerificationModal(false);
+      
+      // Show success message
+      console.log('Identity verification completed successfully:', verifiedData);
+    } catch (error) {
+      console.error('Failed to handle verification completion:', error);
+    }
+  }, [loadVerificationStatus]);
+
   // Load initial data
   useEffect(() => {
     loadPrivacySettings();
+    loadVerificationStatus();
     
     // Simulate some data access requests
     setDataAccessRequests([
@@ -108,7 +150,7 @@ export const PrivacyControls: React.FC<PrivacyControlsProps> = React.memo(({
         lastUsed: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString()
       }
     ]);
-  }, [loadPrivacySettings]);
+  }, [loadPrivacySettings, loadVerificationStatus]);
 
   // Memoized privacy score
   const privacyScore = useMemo(() => {
@@ -164,7 +206,7 @@ export const PrivacyControls: React.FC<PrivacyControlsProps> = React.memo(({
       </div>
 
       {/* Privacy Score */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
         <div className="p-6 bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700">
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
@@ -187,6 +229,38 @@ export const PrivacyControls: React.FC<PrivacyControlsProps> = React.memo(({
               style={{ width: `${privacyScore}%` }}
             ></div>
           </div>
+        </div>
+
+        <div className="p-6 bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700">
+          <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
+            Identity Verification
+          </h3>
+          <div className="flex items-center justify-between mb-2">
+            <div className={`text-2xl font-bold ${
+              verificationStatus.isVerified ? 'text-green-600' : 'text-gray-400'
+            }`}>
+              {verificationStatus.isVerified ? 'VERIFIED' : 'NOT VERIFIED'}
+            </div>
+            {verificationStatus.isVerified && (
+              <CheckCircle className="w-6 h-6 text-green-600" />
+            )}
+          </div>
+          <p className="text-sm text-gray-600 dark:text-gray-400 mb-3">
+            {verificationStatus.isVerified 
+              ? `${verificationStatus.dataPoints.length} data points verified`
+              : 'Verify your identity to unlock verified data points'
+            }
+          </p>
+          <button
+            onClick={() => setShowVerificationModal(true)}
+            className={`w-full py-2 px-4 rounded-lg text-sm font-medium transition-colors ${
+              verificationStatus.isVerified
+                ? 'bg-green-100 text-green-700 hover:bg-green-200'
+                : 'bg-blue-600 text-white hover:bg-blue-700'
+            }`}
+          >
+            {verificationStatus.isVerified ? 'VIEW VERIFICATION' : 'VERIFY'}
+          </button>
         </div>
 
         <div className="p-6 bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700">
@@ -474,6 +548,14 @@ export const PrivacyControls: React.FC<PrivacyControlsProps> = React.memo(({
           </div>
         </div>
       )}
+
+      {/* Identity Verification Modal */}
+      <IdentityVerificationModal
+        isOpen={showVerificationModal}
+        onClose={() => setShowVerificationModal(false)}
+        onVerificationComplete={handleVerificationComplete}
+        identityId={identityId}
+      />
     </div>
   );
 });
