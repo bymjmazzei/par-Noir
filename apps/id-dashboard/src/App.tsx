@@ -282,6 +282,7 @@ function App() {
   const [globalSettingsExpanded, setGlobalSettingsExpanded] = useState(false);
   const [thirdPartyExpanded, setThirdPartyExpanded] = useState(false);
   const [attestedDataPoints, setAttestedDataPoints] = useState<Set<string>>(new Set());
+  const [verifiedDataPoints, setVerifiedDataPoints] = useState<Set<string>>(new Set());
   const [showVerificationModal, setShowVerificationModal] = useState(false);
 
   
@@ -5727,14 +5728,17 @@ This invitation expires in 24 hours.`;
                                         const isGloballyEnabled = privacySettings.dataPoints[dataPointId]?.globalSetting !== false;
                                         const isLocked = false;
                                         
-                                        // Check if user has attested this data point
+                                        // Check if user has attested or verified this data point
                                         const hasAttested = attestedDataPoints.has(dataPointId);
+                                        const hasVerified = verifiedDataPoints.has(dataPointId);
                                         
                                         return (
                                           <div key={dataPointId} className="flex items-center justify-between p-3 border border-border rounded-lg">
                                             <div className="flex items-center gap-3">
                                               <div className="font-medium text-sm">
-                                                {dataPoint.name} {hasAttested && '(attested)'}
+                                                {dataPoint.name} 
+                                                {hasVerified && <span className="text-green-600 font-semibold"> (verified)</span>}
+                                                {hasAttested && !hasVerified && <span className="text-blue-600"> (attested)</span>}
                                               </div>
                                               {isGloballyEnabled && (
                                                 <span className="text-xs bg-primary/10 text-primary px-2 py-1 rounded-full">
@@ -5751,12 +5755,14 @@ This invitation expires in 24 hours.`;
                                               <button
                                                 onClick={() => handleRequestDataPoint(dataPointId)}
                                                 className={`text-xs font-medium px-3 py-1 border rounded transition-colors ${
-                                                  hasAttested
+                                                  hasVerified
+                                                    ? 'text-green-600 border-green-600 hover:bg-green-600 hover:text-white'
+                                                    : hasAttested
                                                     ? 'text-primary border-primary hover:bg-primary hover:text-white'
                                                     : 'text-green-600 border-green-600 hover:bg-green-600 hover:text-white'
                                                 }`}
                                               >
-                                                {hasAttested ? 'Edit' : '+'}
+                                                {hasVerified ? 'Verified' : hasAttested ? 'Edit' : '+'}
                                               </button>
                                               <button
                                                 onClick={() => setPrivacySettings({
@@ -6178,13 +6184,22 @@ This invitation expires in 24 hours.`;
                           <div className="flex items-center justify-between">
                             <div>
                               <h4 className="font-medium text-text-primary mb-1">Identity Verification</h4>
-                              <p className="text-sm text-text-secondary">Verify your identity to create ZKPs for your data points</p>
+                              <p className="text-sm text-text-secondary">
+                                {verifiedDataPoints.size > 0 
+                                  ? `${verifiedDataPoints.size} data points verified` 
+                                  : 'Verify your identity to create ZKPs for your data points'
+                                }
+                              </p>
                             </div>
                             <button
                               onClick={() => setShowVerificationModal(true)}
-                              className="bg-blue-600 text-white hover:bg-blue-700 px-4 py-2 rounded-lg font-medium"
+                              className={`px-4 py-2 rounded-lg font-medium ${
+                                verifiedDataPoints.size > 0
+                                  ? 'bg-green-600 text-white hover:bg-green-700'
+                                  : 'bg-blue-600 text-white hover:bg-blue-700'
+                              }`}
                             >
-                              VERIFY
+                              {verifiedDataPoints.size > 0 ? 'RE-VERIFY' : 'VERIFY'}
                             </button>
                           </div>
                         </div>
@@ -7303,10 +7318,26 @@ This invitation expires in 24 hours.`;
         isOpen={showVerificationModal}
         onClose={() => setShowVerificationModal(false)}
         onVerificationComplete={(verifiedData) => {
-          // Add verified data points to global data points
-          console.log('Verification completed:', verifiedData);
+          // Remove existing attested data points that will be replaced by verified data
+          const verifiedDataPointIds = verifiedData.dataPoints.map(dp => dp.id);
+          const updatedAttestedDataPoints = new Set(attestedDataPoints);
+          const updatedVerifiedDataPoints = new Set(verifiedDataPoints);
+          
+          // Remove any existing attested data points that match verified data points
+          verifiedDataPointIds.forEach(dataPointId => {
+            updatedAttestedDataPoints.delete(dataPointId);
+            // Add to verified data points
+            updatedVerifiedDataPoints.add(dataPointId);
+          });
+          
+          // Update both states
+          setAttestedDataPoints(updatedAttestedDataPoints);
+          setVerifiedDataPoints(updatedVerifiedDataPoints);
           setShowVerificationModal(false);
-          // TODO: Update attestedDataPoints with new verified data
+          
+          console.log('Verification completed:', verifiedData);
+          console.log('Updated attested data points:', Array.from(updatedAttestedDataPoints));
+          console.log('Updated verified data points:', Array.from(updatedVerifiedDataPoints));
         }}
         identityId={selectedIdentity?.id || 'default'}
       />
