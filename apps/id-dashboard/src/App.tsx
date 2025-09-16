@@ -43,6 +43,7 @@ import TermsOfService from './pages/TermsOfService';
 import PrivacyPolicy from './pages/PrivacyPolicy';
 import { MainDashboard } from './components/app/MainDashboard';
 import { DelegationModal } from './components/DelegationModal';
+import { IdentityVerificationModal } from './components/IdentityVerificationModal';
 
 // Lazy load heavy components
 const EnhancedPrivacyPanel = lazy(() => import('./components/EnhancedPrivacyPanel').then(module => ({ default: module.EnhancedPrivacyPanel })));
@@ -281,6 +282,7 @@ function App() {
   const [globalSettingsExpanded, setGlobalSettingsExpanded] = useState(false);
   const [thirdPartyExpanded, setThirdPartyExpanded] = useState(false);
   const [attestedDataPoints, setAttestedDataPoints] = useState<Set<string>>(new Set());
+  const [showVerificationModal, setShowVerificationModal] = useState(false);
 
   
 
@@ -6170,6 +6172,22 @@ This invitation expires in 24 hours.`;
                         </div>
                       </div>
                         </div>
+
+                        {/* Identity Verification Button */}
+                        <div className="bg-secondary rounded-lg p-4">
+                          <div className="flex items-center justify-between">
+                            <div>
+                              <h4 className="font-medium text-text-primary mb-1">Identity Verification</h4>
+                              <p className="text-sm text-text-secondary">Verify your identity to create ZKPs for your data points</p>
+                            </div>
+                            <button
+                              onClick={() => setShowVerificationModal(true)}
+                              className="bg-blue-600 text-white hover:bg-blue-700 px-4 py-2 rounded-lg font-medium"
+                            >
+                              VERIFY
+                            </button>
+                          </div>
+                        </div>
                           </div>
                   )}
 
@@ -7279,6 +7297,19 @@ This invitation expires in 24 hours.`;
           </div>
         </div>
       </footer>
+
+      {/* Identity Verification Modal */}
+      <IdentityVerificationModal
+        isOpen={showVerificationModal}
+        onClose={() => setShowVerificationModal(false)}
+        onVerificationComplete={(verifiedData) => {
+          // Add verified data points to global data points
+          console.log('Verification completed:', verifiedData);
+          setShowVerificationModal(false);
+          // TODO: Update attestedDataPoints with new verified data
+        }}
+        identityId={selectedIdentity?.id || 'default'}
+      />
 
     </div>
   );
