@@ -411,11 +411,9 @@ export class GoogleDriveService {
     }
 
     try {
-      // Step 1: Create file metadata
-      const metadata = {
-        name: `pn-encrypted-${fileId}`,
-        parents: [this.config.folderId || 'root']
-      };
+      // Use simple upload for files under 5MB, resumable for larger files
+      const fileSize = file.size;
+      const isLargeFile = fileSize > 5 * 1024 * 1024; // 5MB
 
       onProgress?.({
         fileId,
@@ -425,45 +423,89 @@ export class GoogleDriveService {
         message: 'Preparing upload...'
       });
 
-      // Step 2: Create the file with metadata first
-      const createResponse = await fetch(`${this.GOOGLE_DRIVE_API}/files`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${this.config.accessToken}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(metadata)
-      });
+      let googleFileId: string;
+      let uploadUrl: string;
 
-      if (!createResponse.ok) {
-        const errorData = await createResponse.text();
-        throw new Error(`Failed to create file: ${createResponse.status} ${errorData}`);
+      if (isLargeFile) {
+        // For large files, use resumable upload
+        const metadata = {
+          name: `pn-encrypted-${fileId}`,
+          parents: [this.config.folderId || 'root']
+        };
+
+        const initResponse = await fetch(`${this.GOOGLE_UPLOAD_API}/files?uploadType=resumable`, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${this.config.accessToken}`,
+            'Content-Type': 'application/json',
+            'X-Upload-Content-Type': file instanceof File ? file.type : 'application/octet-stream',
+            'X-Upload-Content-Length': fileSize.toString()
+          },
+          body: JSON.stringify(metadata)
+        });
+
+        if (!initResponse.ok) {
+          const errorData = await initResponse.text();
+          throw new Error(`Failed to initialize upload: ${initResponse.status} ${errorData}`);
+        }
+
+        uploadUrl = initResponse.headers.get('Location') || '';
+        googleFileId = 'pending'; // Will be determined after upload
+      } else {
+        // For small files, use simple upload
+        const metadata = {
+          name: `pn-encrypted-${fileId}`,
+          parents: [this.config.folderId || 'root']
+        };
+
+        const formData = new FormData();
+        formData.append('metadata', JSON.stringify(metadata));
+        formData.append('file', file);
+
+        const uploadResponse = await fetch(`${this.GOOGLE_UPLOAD_API}/files?uploadType=multipart`, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${this.config.accessToken}`
+          },
+          body: formData
+        });
+
+        if (!uploadResponse.ok) {
+          const errorData = await uploadResponse.text();
+          throw new Error(`Failed to upload file: ${uploadResponse.status} ${errorData}`);
+        }
+
+        const result = await uploadResponse.json();
+        googleFileId = result.id;
+        uploadUrl = '';
       }
-
-      const createdFile = await createResponse.json();
-      const googleFileId = createdFile.id;
 
       onProgress?.({
         fileId,
         fileName: file instanceof File ? file.name : 'file',
-        progress: 30,
+        progress: 50,
         status: 'uploading',
         message: 'Uploading file content...'
       });
 
-      // Step 3: Upload file content using PATCH method (avoids CORS issues)
-      const uploadResponse = await fetch(`${this.GOOGLE_DRIVE_API}/files/${googleFileId}`, {
-        method: 'PATCH',
-        headers: {
-          'Authorization': `Bearer ${this.config.accessToken}`,
-          'Content-Type': file instanceof File ? file.type : 'application/octet-stream'
-        },
-        body: file
-      });
+      // If using resumable upload, complete the upload
+      if (isLargeFile && uploadUrl) {
+        const uploadResponse = await fetch(uploadUrl, {
+          method: 'PUT',
+          headers: {
+            'Content-Type': file instanceof File ? file.type : 'application/octet-stream',
+            'Content-Length': fileSize.toString()
+          },
+          body: file
+        });
 
-      if (!uploadResponse.ok) {
-        const errorData = await uploadResponse.text();
-        throw new Error(`Failed to upload content: ${uploadResponse.status} ${errorData}`);
+        if (!uploadResponse.ok) {
+          const errorData = await uploadResponse.text();
+          throw new Error(`Failed to upload content: ${uploadResponse.status} ${errorData}`);
+        }
+
+        const result = await uploadResponse.json();
+        googleFileId = result.id;
       }
 
       onProgress?.({
@@ -474,7 +516,7 @@ export class GoogleDriveService {
         message: 'Finalizing upload...'
       });
 
-      // Step 4: Get the final file info
+      // Get the final file info
       const finalResponse = await fetch(`${this.GOOGLE_DRIVE_API}/files/${googleFileId}?fields=id,name,webViewLink,size`, {
         method: 'GET',
         headers: {
