@@ -1,4 +1,5 @@
 import { COINBASE_CONFIG } from '../config/coinbase';
+import { IntegrationConfigManager } from './integrationConfig';
 
 export interface CoinbaseCheckout {
   id: string;
@@ -74,10 +75,11 @@ export class CoinbaseProxy {
     
     try {
       // Use direct Coinbase API call
-      const COINBASE_API_KEY = process.env.REACT_APP_COINBASE_COMMERCE_API_KEY;
+      const COINBASE_API_KEY = process.env.REACT_APP_COINBASE_COMMERCE_API_KEY || 
+                               IntegrationConfigManager.getApiKey('coinbase', 'COINBASE_COMMERCE_API_KEY');
       
       if (!COINBASE_API_KEY) {
-        throw new Error('Coinbase Commerce API key not configured. Please set REACT_APP_COINBASE_COMMERCE_API_KEY environment variable.');
+        throw new Error('Coinbase Commerce API key not configured. Please set REACT_APP_COINBASE_COMMERCE_API_KEY environment variable or configure it in Integration Settings.');
       }
       const COINBASE_API_BASE = 'https://api.commerce.coinbase.com';
       
