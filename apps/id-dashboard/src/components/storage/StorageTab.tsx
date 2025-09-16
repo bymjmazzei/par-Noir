@@ -1,4 +1,4 @@
-// Dashboard Storage Tab - Uses reusable components
+// Google Drive Storage Tab - Clean implementation focused on Google Drive
 import React, { useState, useEffect } from 'react';
 import { 
   Upload, 
@@ -8,85 +8,127 @@ import {
   BarChart3, 
   Info,
   AlertCircle,
-  CheckCircle
+  CheckCircle,
+  ExternalLink,
+  Lock,
+  Globe,
+  Users,
+  Image,
+  Video,
+  FileText,
+  Music
 } from 'lucide-react';
-import { StorageFile, StorageProvider, StorageStats } from '../../types/storage';
+import { StorageFile } from '../../types/storage';
 import { GoogleDriveUploadModal } from './GoogleDriveUploadModal';
 import { StorageFileManager } from './StorageFileManager';
 import { IntegrationConfigManager } from '../../utils/integrationConfig';
+import { googleDriveService } from '../../services/googleDriveService';
 
 export const StorageTab: React.FC = () => {
   const [files, setFiles] = useState<StorageFile[]>([]);
-  const [providers, setProviders] = useState<StorageProvider[]>([]);
-  const [stats, setStats] = useState<StorageStats | null>(null);
   const [showUploadModal, setShowUploadModal] = useState(false);
-  const [showProviderSettings, setShowProviderSettings] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [isGoogleDriveConnected, setIsGoogleDriveConnected] = useState(false);
+  const [storageStats, setStorageStats] = useState({
+    totalFiles: 0,
+    totalSize: 0,
+    byType: {
+      image: 0,
+      video: 0,
+      document: 0,
+      audio: 0,
+      other: 0
+    }
+  });
 
-  // Load storage data on mount
+  // Check Google Drive connection status
   useEffect(() => {
-    loadStorageData();
+    checkGoogleDriveStatus();
   }, []);
 
-  const loadStorageData = async () => {
+  const checkGoogleDriveStatus = () => {
+    const accessToken = IntegrationConfigManager.getApiKey('google-drive', 'ACCESS_TOKEN');
+    const clientId = IntegrationConfigManager.getApiKey('google-drive', 'CLIENT_ID');
+    
+    const isConnected = !!(accessToken && clientId);
+    setIsGoogleDriveConnected(isConnected);
+    
+    if (isConnected) {
+      loadGoogleDriveFiles();
+    } else {
+      setLoading(false);
+    }
+  };
+
+  const loadGoogleDriveFiles = async () => {
     setLoading(true);
     setError(null);
     
     try {
-      // Check if Google Drive is configured
-      const hasGoogleDrive = IntegrationConfigManager.getApiKey('google-drive', 'ACCESS_TOKEN');
-      
-      // Create Google Drive provider if configured
-      const googleDriveProvider: StorageProvider = {
-        id: 'google-drive',
-        name: 'Google Drive',
-        type: 'google-drive',
-        status: hasGoogleDrive ? 'active' : 'inactive',
-        isFree: true, // Google provides 15GB free
-        storageLimit: 15 * 1024 * 1024 * 1024, // 15GB in bytes
-        storageUsed: 0, // TODO: Get actual usage from Google Drive API
-        costPerGB: 0,
-        settings: {
-          autoOptimize: true,
-          compressionLevel: 'medium',
-          redundancy: 1,
-          encryption: true,
-          pinContent: true
-        }
-      };
-      
-      setProviders([googleDriveProvider]);
-      setFiles([]); // TODO: Load files from Google Drive
-      setStats({
-        totalFiles: 0,
-        totalSize: 0,
-        byType: {
-          image: { count: 0, size: 0 },
-          video: { count: 0, size: 0 },
-          document: { count: 0, size: 0 },
-          audio: { count: 0, size: 0 },
-          other: { count: 0, size: 0 }
-        }
-      });
-    } catch (err) {
-      setError(err.message || 'Failed to load storage data');
-      console.error('Storage data loading error:', err);
+      const accessToken = IntegrationConfigManager.getApiKey('google-drive', 'ACCESS_TOKEN');
+      const clientId = IntegrationConfigManager.getApiKey('google-drive', 'CLIENT_ID');
+      const refreshToken = IntegrationConfigManager.getApiKey('google-drive', 'REFRESH_TOKEN');
+
+      if (accessToken && clientId) {
+        await googleDriveService.initialize({
+          clientId,
+          accessToken,
+          refreshToken
+        });
+
+        const driveFiles = await googleDriveService.listFiles('current-user-did');
+        setFiles(driveFiles);
+        
+        // Calculate stats
+        const stats = {
+          totalFiles: driveFiles.length,
+          totalSize: driveFiles.reduce((sum, file) => sum + file.size, 0),
+          byType: {
+            image: driveFiles.filter(f => f.type === 'image').length,
+            video: driveFiles.filter(f => f.type === 'video').length,
+            document: driveFiles.filter(f => f.type === 'document').length,
+            audio: driveFiles.filter(f => f.type === 'audio').length,
+            other: driveFiles.filter(f => f.type === 'other').length
+          }
+        };
+        setStorageStats(stats);
+      }
+    } catch (err: any) {
+      setError(err.message || 'Failed to load Google Drive files');
+      console.error('Google Drive loading error:', err);
     } finally {
       setLoading(false);
     }
   };
 
-  const handleUploadComplete = (uploadedFiles: StorageFile[]) => {
-    setFiles(prev => [...prev, ...uploadedFiles]);
-    loadStorageData(); // Refresh stats
+  const handleUploadComplete = (uploadedFile: StorageFile) => {
+    setFiles(prev => [...prev, uploadedFile]);
+    setStorageStats(prev => ({
+      totalFiles: prev.totalFiles + 1,
+      totalSize: prev.totalSize + uploadedFile.size,
+      byType: {
+        ...prev.byType,
+        [uploadedFile.type]: prev.byType[uploadedFile.type] + 1
+      }
+    }));
   };
 
   const handleFileDelete = async (fileId: string) => {
     try {
-      // TODO: Implement Google Drive file deletion
-      setFiles(prev => prev.filter(f => f.id !== fileId));
-      loadStorageData(); // Refresh stats
+      await googleDriveService.deleteFile(fileId, 'current-user-did');
+      const deletedFile = files.find(f => f.id === fileId);
+      if (deletedFile) {
+        setFiles(prev => prev.filter(f => f.id !== fileId));
+        setStorageStats(prev => ({
+          totalFiles: prev.totalFiles - 1,
+          totalSize: prev.totalSize - deletedFile.size,
+          byType: {
+            ...prev.byType,
+            [deletedFile.type]: prev.byType[deletedFile.type] - 1
+          }
+        }));
+      }
     } catch (err) {
       console.error('Failed to delete file:', err);
     }
@@ -116,14 +158,8 @@ export const StorageTab: React.FC = () => {
   };
 
   const getStorageUsagePercentage = () => {
-    if (!stats) return 0;
-    const totalLimit = providers.reduce((sum, p) => sum + p.storageLimit, 0);
-    if (totalLimit === 0) return 0;
-    return Math.min((stats.totalSize / totalLimit) * 100, 100);
-  };
-
-  const getActiveProvider = () => {
-    return providers.find(p => p.status === 'active') || providers[0];
+    const limit = 15 * 1024 * 1024 * 1024; // 15GB
+    return Math.min((storageStats.totalSize / limit) * 100, 100);
   };
 
   if (loading) {
@@ -131,7 +167,7 @@ export const StorageTab: React.FC = () => {
       <div className="flex items-center justify-center py-12">
         <div className="text-center">
           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-4"></div>
-          <p className="text-text-secondary">Loading storage...</p>
+          <p className="text-text-secondary">Loading Google Drive...</p>
         </div>
       </div>
     );
@@ -142,10 +178,10 @@ export const StorageTab: React.FC = () => {
       <div className="flex items-center justify-center py-12">
         <div className="text-center">
           <AlertCircle className="w-12 h-12 text-red-400 mx-auto mb-4" />
-          <h3 className="text-lg font-medium text-text-primary mb-2">Storage Error</h3>
+          <h3 className="text-lg font-medium text-text-primary mb-2">Google Drive Error</h3>
           <p className="text-text-secondary mb-4">{error}</p>
           <button
-            onClick={loadStorageData}
+            onClick={checkGoogleDriveStatus}
             className="px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 transition-colors"
           >
             Retry
@@ -160,17 +196,10 @@ export const StorageTab: React.FC = () => {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h3 className="text-lg font-semibold text-text-primary">Storage</h3>
-          <p className="text-text-secondary">Manage your media files and storage providers</p>
+          <h3 className="text-lg font-semibold text-text-primary">Google Drive Storage</h3>
+          <p className="text-text-secondary">Permanent, encrypted storage in your Google Drive</p>
         </div>
         <div className="flex items-center space-x-3">
-          <button
-            onClick={() => setShowProviderSettings(true)}
-            className="flex items-center space-x-2 px-4 py-2 bg-secondary text-text-primary rounded-lg hover:bg-secondary/80 transition-colors"
-          >
-            <Settings className="w-4 h-4" />
-            <span>Providers</span>
-          </button>
           <button
             onClick={() => setShowUploadModal(true)}
             className="flex items-center space-x-2 px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 transition-colors"
@@ -178,6 +207,34 @@ export const StorageTab: React.FC = () => {
             <Upload className="w-4 h-4" />
             <span>Upload</span>
           </button>
+        </div>
+      </div>
+
+      {/* Google Drive Status */}
+      <div className="bg-secondary rounded-lg p-6">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center space-x-3">
+            <HardDrive className="w-6 h-6 text-blue-500" />
+            <div>
+              <h4 className="font-semibold text-text-primary">Google Drive</h4>
+              <p className="text-sm text-text-secondary">
+                {isGoogleDriveConnected ? 'Connected and ready' : 'Not connected'}
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center space-x-2">
+            {isGoogleDriveConnected ? (
+              <>
+                <CheckCircle className="w-5 h-5 text-green-400" />
+                <span className="text-sm text-green-400">Active</span>
+              </>
+            ) : (
+              <>
+                <AlertCircle className="w-5 h-5 text-gray-400" />
+                <span className="text-sm text-gray-400">Setup Required</span>
+              </>
+            )}
+          </div>
         </div>
       </div>
 
@@ -193,7 +250,7 @@ export const StorageTab: React.FC = () => {
             <div>
               <div className="flex justify-between text-sm mb-1">
                 <span className="text-text-secondary">Used</span>
-                <span className="text-text-primary">{formatBytes(stats?.totalSize || 0)}</span>
+                <span className="text-text-primary">{formatBytes(storageStats.totalSize)}</span>
               </div>
               <div className="w-full bg-border rounded-full h-2">
                 <div 
@@ -203,111 +260,139 @@ export const StorageTab: React.FC = () => {
               </div>
             </div>
             <div className="text-sm text-text-secondary">
-              {stats?.totalFiles || 0} files across {providers.length} provider{providers.length !== 1 ? 's' : ''}
+              {storageStats.totalFiles} files • 15GB free limit
             </div>
           </div>
         </div>
 
-        {/* Active Provider */}
+        {/* File Types */}
         <div className="bg-secondary rounded-lg p-6">
           <div className="flex items-center justify-between mb-4">
-            <h4 className="font-medium text-text-primary">Active Provider</h4>
-            <CheckCircle className="w-5 h-5 text-green-400" />
-          </div>
-          <div className="space-y-2">
-            <div className="text-lg font-medium text-text-primary">
-              {getActiveProvider()?.name || 'No Provider'}
-            </div>
-            <div className="text-sm text-text-secondary">
-              {getActiveProvider()?.isFree ? 'Free Plan' : 'Paid Plan'}
-            </div>
-            {getActiveProvider() && (
-              <div className="text-sm text-text-secondary">
-                {formatBytes(getActiveProvider()!.storageUsed)} / {formatBytes(getActiveProvider()!.storageLimit)}
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* Quick Stats */}
-        <div className="bg-secondary rounded-lg p-6">
-          <div className="flex items-center justify-between mb-4">
-            <h4 className="font-medium text-text-primary">Quick Stats</h4>
+            <h4 className="font-medium text-text-primary">File Types</h4>
             <BarChart3 className="w-5 h-5 text-text-secondary" />
           </div>
           <div className="space-y-2">
             <div className="flex justify-between text-sm">
-              <span className="text-text-secondary">Images</span>
-              <span className="text-text-primary">{stats?.byType.image.count || 0}</span>
+              <span className="text-text-secondary flex items-center">
+                <Image className="w-4 h-4 mr-1" />
+                Images
+              </span>
+              <span className="text-text-primary">{storageStats.byType.image}</span>
             </div>
             <div className="flex justify-between text-sm">
-              <span className="text-text-secondary">Videos</span>
-              <span className="text-text-primary">{stats?.byType.video.count || 0}</span>
+              <span className="text-text-secondary flex items-center">
+                <Video className="w-4 h-4 mr-1" />
+                Videos
+              </span>
+              <span className="text-text-primary">{storageStats.byType.video}</span>
             </div>
             <div className="flex justify-between text-sm">
-              <span className="text-text-secondary">Documents</span>
-              <span className="text-text-primary">{stats?.byType.document.count || 0}</span>
+              <span className="text-text-secondary flex items-center">
+                <FileText className="w-4 h-4 mr-1" />
+                Documents
+              </span>
+              <span className="text-text-primary">{storageStats.byType.document}</span>
             </div>
             <div className="flex justify-between text-sm">
-              <span className="text-text-secondary">Audio</span>
-              <span className="text-text-primary">{stats?.byType.audio.count || 0}</span>
+              <span className="text-text-secondary flex items-center">
+                <Music className="w-4 h-4 mr-1" />
+                Audio
+              </span>
+              <span className="text-text-primary">{storageStats.byType.audio}</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Benefits */}
+        <div className="bg-secondary rounded-lg p-6">
+          <div className="flex items-center justify-between mb-4">
+            <h4 className="font-medium text-text-primary">Benefits</h4>
+            <CheckCircle className="w-5 h-5 text-green-400" />
+          </div>
+          <div className="space-y-2 text-sm">
+            <div className="flex items-center text-text-secondary">
+              <Lock className="w-4 h-4 mr-2 text-blue-400" />
+              pN encrypted
+            </div>
+            <div className="flex items-center text-text-secondary">
+              <Globe className="w-4 h-4 mr-2 text-green-400" />
+              Fast CDN
+            </div>
+            <div className="flex items-center text-text-secondary">
+              <Users className="w-4 h-4 mr-2 text-purple-400" />
+              User-owned
+            </div>
+            <div className="flex items-center text-text-secondary">
+              <ExternalLink className="w-4 h-4 mr-2 text-orange-400" />
+              Portable
             </div>
           </div>
         </div>
       </div>
 
-      {/* Provider Status */}
-      {providers.length > 0 && (
-        <div className="bg-secondary rounded-lg p-6">
-          <h4 className="font-medium text-text-primary mb-4">Storage Providers</h4>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            {providers.map(provider => (
-              <div key={provider.id} className="bg-modal-bg rounded-lg p-4">
-                <div className="flex items-center justify-between mb-2">
-                  <h5 className="font-medium text-text-primary">{provider.name}</h5>
-                  <div className={`w-2 h-2 rounded-full ${
-                    provider.status === 'active' ? 'bg-green-400' : 
-                    provider.status === 'error' ? 'bg-red-400' : 'bg-yellow-400'
-                  }`} />
-                </div>
-                <div className="text-sm text-text-secondary space-y-1">
-                  <div>{provider.isFree ? 'Free' : 'Paid'} Plan</div>
-                  <div>{formatBytes(provider.storageUsed)} / {formatBytes(provider.storageLimit)}</div>
-                  <div className="capitalize">{provider.status}</div>
-                </div>
-              </div>
-            ))}
+      {/* Setup Message (if not connected) */}
+      {!isGoogleDriveConnected && (
+        <div className="bg-blue-500/10 border border-blue-500/20 rounded-lg p-6">
+          <div className="text-center">
+            <HardDrive className="w-12 h-12 text-blue-400 mx-auto mb-4" />
+            <h4 className="text-lg font-semibold text-blue-400 mb-2">Setup Google Drive Storage</h4>
+            <p className="text-blue-300 mb-4">
+              Connect your Google Drive for permanent, encrypted storage. Files are encrypted with pN standard 
+              so Google can't read them, but you get fast loading via Google's CDN.
+            </p>
+            <button
+              onClick={() => setShowUploadModal(true)}
+              className="px-6 py-3 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors"
+            >
+              Setup Google Drive
+            </button>
           </div>
         </div>
       )}
 
       {/* File Manager */}
-      <div className="bg-secondary rounded-lg p-6">
-        <div className="flex items-center justify-between mb-6">
-          <h4 className="font-medium text-text-primary">Your Files</h4>
-          <div className="text-sm text-text-secondary">
-            {files.length} file{files.length !== 1 ? 's' : ''}
+      {isGoogleDriveConnected && (
+        <div className="bg-secondary rounded-lg p-6">
+          <div className="flex items-center justify-between mb-6">
+            <h4 className="font-medium text-text-primary">Your Files</h4>
+            <div className="text-sm text-text-secondary">
+              {files.length} file{files.length !== 1 ? 's' : ''}
+            </div>
           </div>
+          
+          {files.length === 0 ? (
+            <div className="text-center py-12">
+              <Upload className="w-12 h-12 text-text-secondary mx-auto mb-4" />
+              <h5 className="text-lg font-medium text-text-primary mb-2">No files yet</h5>
+              <p className="text-text-secondary mb-4">Upload your first file to get started</p>
+              <button
+                onClick={() => setShowUploadModal(true)}
+                className="px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 transition-colors"
+              >
+                Upload Files
+              </button>
+            </div>
+          ) : (
+            <StorageFileManager
+              files={files}
+              onFileSelect={handleFileInfo}
+              onFileDelete={handleFileDelete}
+              onFileShare={handleFileShare}
+              onFileDownload={handleFileDownload}
+              onFileInfo={handleFileInfo}
+              config={{
+                defaultView: 'grid',
+                showProvider: false, // Always Google Drive
+                showVisibility: true,
+                showActions: true,
+                selectable: false,
+                sortable: true,
+                filterable: true
+              }}
+            />
+          )}
         </div>
-        
-        <StorageFileManager
-          files={files}
-          onFileSelect={handleFileInfo}
-          onFileDelete={handleFileDelete}
-          onFileShare={handleFileShare}
-          onFileDownload={handleFileDownload}
-          onFileInfo={handleFileInfo}
-          config={{
-            defaultView: 'grid',
-            showProvider: true,
-            showVisibility: true,
-            showActions: true,
-            selectable: false,
-            sortable: true,
-            filterable: true
-          }}
-        />
-      </div>
+      )}
 
       {/* Upload Modal */}
       <GoogleDriveUploadModal
@@ -315,62 +400,6 @@ export const StorageTab: React.FC = () => {
         onClose={() => setShowUploadModal(false)}
         onUploadComplete={handleUploadComplete}
       />
-
-      {/* Provider Settings Modal */}
-      {showProviderSettings && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-modal-bg rounded-lg max-w-md w-full p-6">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-semibold text-text-primary">Storage Providers</h3>
-              <button
-                onClick={() => setShowProviderSettings(false)}
-                className="text-text-secondary hover:text-text-primary transition-colors"
-              >
-                ×
-              </button>
-            </div>
-            
-            <div className="space-y-4">
-              <div className="bg-bg-light rounded-lg p-4">
-                <div className="flex items-center justify-between mb-2">
-                  <h4 className="font-medium text-text-primary">Google Drive</h4>
-                  <div className={`w-2 h-2 rounded-full ${
-                    providers[0]?.status === 'active' ? 'bg-green-400' : 'bg-gray-400'
-                  }`} />
-                </div>
-                <p className="text-sm text-text-secondary mb-3">
-                  Permanent, encrypted storage in your Google Drive
-                </p>
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-text-secondary">
-                    {providers[0]?.status === 'active' ? 'Connected' : 'Not configured'}
-                  </span>
-                  <button
-                    onClick={() => {
-                      setShowProviderSettings(false);
-                      setShowUploadModal(true);
-                    }}
-                    className="px-3 py-1 bg-primary text-white rounded-md hover:bg-primary-dark transition-colors text-sm"
-                  >
-                    {providers[0]?.status === 'active' ? 'Manage' : 'Setup'}
-                  </button>
-                </div>
-              </div>
-              
-              <div className="bg-blue-500/10 border border-blue-500/20 rounded-lg p-4">
-                <h5 className="font-medium text-blue-400 mb-2">Benefits:</h5>
-                <ul className="text-sm text-blue-300 space-y-1">
-                  <li>• 15GB free storage</li>
-                  <li>• Fast loading via Google CDN</li>
-                  <li>• Files encrypted with pN standard</li>
-                  <li>• Stored in your own Google Drive</li>
-                  <li>• Zero liability for par Noir</li>
-                </ul>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 };
