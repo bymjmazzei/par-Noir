@@ -76,13 +76,20 @@ export class GoogleDriveService {
       // Load the Google API script
       const script = document.createElement('script');
       script.src = 'https://apis.google.com/js/api.js';
+      script.async = true;
+      script.defer = true;
       script.onload = () => {
+        console.log('Google API script loaded successfully');
         window.gapi.load('client:auth2', () => {
+          console.log('Google API client loaded successfully');
           this.gapiLoaded = true;
           resolve();
         });
       };
-      script.onerror = reject;
+      script.onerror = (error) => {
+        console.error('Failed to load Google API script:', error);
+        reject(new Error('Failed to load Google API script - check CSP settings'));
+      };
       document.head.appendChild(script);
     });
   }
@@ -93,25 +100,39 @@ export class GoogleDriveService {
     }
 
     try {
+      console.log('Initializing Google API with credentials...');
+      
       // Initialize with minimal config first
       await window.gapi.client.init({
         apiKey: GOOGLE_API_KEY,
         clientId: GOOGLE_CLIENT_ID,
-        scope: SCOPES
+        scope: SCOPES,
+        discoveryDocs: [DISCOVERY_DOC]
       });
+
+      console.log('Google API client initialized successfully');
 
       // Try to get auth instance
       this.authInstance = window.gapi.auth2.getAuthInstance();
       
       // If no auth instance exists, create one
       if (!this.authInstance) {
+        console.log('Creating new auth instance...');
         this.authInstance = await window.gapi.auth2.init({
           client_id: GOOGLE_CLIENT_ID,
           scope: SCOPES
         });
       }
+      
+      console.log('Google API initialization completed successfully');
     } catch (error) {
       console.error('Google API initialization error:', error);
+      console.error('Error details:', {
+        message: error instanceof Error ? error.message : 'Unknown error',
+        stack: error instanceof Error ? error.stack : undefined,
+        gapi: !!window.gapi,
+        gapiLoaded: this.gapiLoaded
+      });
       throw new Error(`Failed to initialize Google API: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   }
