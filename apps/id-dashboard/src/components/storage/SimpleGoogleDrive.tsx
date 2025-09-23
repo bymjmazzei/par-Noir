@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 
-const GOOGLE_CLIENT_ID = '43740774041-pcets3qets323k8p1e3aavbdphqpub06.apps.googleusercontent.com';
+const GOOGLE_CLIENT_ID = '43740774041-nbk1eb9csc12udkpo81kdvvjquie1ptl.apps.googleusercontent.com';
 
 export const SimpleGoogleDrive: React.FC = () => {
   const [isConnected, setIsConnected] = useState(false);
