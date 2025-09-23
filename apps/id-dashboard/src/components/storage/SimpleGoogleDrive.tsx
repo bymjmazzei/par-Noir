@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 
 const GOOGLE_CLIENT_ID = '43740774041-nbk1eb9csc12udkpo81kdvvjquie1ptl.apps.googleusercontent.com';
 
@@ -8,57 +8,57 @@ export const SimpleGoogleDrive: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  useEffect(() => {
+    // Load Google API
+    const script = document.createElement('script');
+    script.src = 'https://apis.google.com/js/api.js';
+    script.onload = () => {
+      window.gapi.load('client:auth2', () => {
+        window.gapi.client.init({
+          clientId: GOOGLE_CLIENT_ID,
+          discoveryDocs: ['https://www.googleapis.com/discovery/v1/apis/drive/v3/rest'],
+          scope: 'https://www.googleapis.com/auth/drive'
+        }).then(() => {
+          const authInstance = window.gapi.auth2.getAuthInstance();
+          const isSignedIn = authInstance.isSignedIn.get();
+          setIsConnected(isSignedIn);
+          
+          if (isSignedIn) {
+            const user = authInstance.currentUser.get();
+            setUserEmail(user.getBasicProfile().getEmail());
+          }
+        }).catch((err) => {
+          console.error('Google API init error:', err);
+          setError('Failed to initialize Google API');
+        });
+      });
+    };
+    document.head.appendChild(script);
+  }, []);
+
   const handleConnect = () => {
     setLoading(true);
     setError(null);
 
-    const authUrl = new URL('https://accounts.google.com/o/oauth2/v2/auth');
-    authUrl.searchParams.set('client_id', GOOGLE_CLIENT_ID);
-    authUrl.searchParams.set('redirect_uri', window.location.origin + '/oauth-callback.html');
-    authUrl.searchParams.set('response_type', 'token');
-    authUrl.searchParams.set('scope', 'https://www.googleapis.com/auth/drive');
-
-    const popup = window.open(authUrl.toString(), 'google-auth', 'width=500,height=600');
-
-    if (!popup) {
-      setError('Popup blocked');
+    const authInstance = window.gapi.auth2.getAuthInstance();
+    authInstance.signIn().then((user) => {
+      setIsConnected(true);
+      setUserEmail(user.getBasicProfile().getEmail());
       setLoading(false);
-      return;
-    }
-
-    const messageHandler = (event: MessageEvent) => {
-      if (event.origin !== window.location.origin) return;
-      
-      if (event.data.type === 'GOOGLE_AUTH_SUCCESS') {
-        popup.close();
-        window.removeEventListener('message', messageHandler);
-        
-        localStorage.setItem('google_drive_token', event.data.accessToken);
-        localStorage.setItem('google_drive_email', event.data.email || 'Unknown');
-        setUserEmail(event.data.email || 'Unknown');
-        setIsConnected(true);
-        setLoading(false);
-      }
-    };
-
-    window.addEventListener('message', messageHandler);
+    }).catch((err) => {
+      console.error('Sign in error:', err);
+      setError('Sign in failed');
+      setLoading(false);
+    });
   };
 
   const handleDisconnect = () => {
-    localStorage.removeItem('google_drive_token');
-    localStorage.removeItem('google_drive_email');
-    setIsConnected(false);
-    setUserEmail(null);
+    const authInstance = window.gapi.auth2.getAuthInstance();
+    authInstance.signOut().then(() => {
+      setIsConnected(false);
+      setUserEmail(null);
+    });
   };
-
-  React.useEffect(() => {
-    const token = localStorage.getItem('google_drive_token');
-    const email = localStorage.getItem('google_drive_email');
-    if (token && email) {
-      setIsConnected(true);
-      setUserEmail(email);
-    }
-  }, []);
 
   return (
     <div className="bg-white rounded-lg p-6 w-full max-w-md mx-4">
