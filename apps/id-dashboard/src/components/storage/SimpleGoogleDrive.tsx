@@ -15,7 +15,7 @@ export const SimpleGoogleDrive: React.FC = () => {
     const authUrl = new URL('https://accounts.google.com/o/oauth2/v2/auth');
     authUrl.searchParams.set('client_id', GOOGLE_CLIENT_ID);
     authUrl.searchParams.set('redirect_uri', window.location.origin + '/oauth-callback.html');
-    authUrl.searchParams.set('response_type', 'code');
+    authUrl.searchParams.set('response_type', 'token');
     authUrl.searchParams.set('scope', 'https://www.googleapis.com/auth/drive');
 
     const popup = window.open(authUrl.toString(), 'google-auth', 'width=500,height=600');
