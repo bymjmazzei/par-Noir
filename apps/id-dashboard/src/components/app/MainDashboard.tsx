@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { CheckCircle, Smartphone, RefreshCw, FileText, PartyPopper, QrCode, MessageSquare, Phone, AlertTriangle, Info, Monitor, Edit3, Settings, ChevronUp, ChevronDown, Users } from 'lucide-react';
+import { CheckCircle, Smartphone, RefreshCw, FileText, PartyPopper, QrCode, MessageSquare, Phone, AlertTriangle, Info, Monitor, Edit3, Settings, ChevronUp, ChevronDown, Users, HardDrive } from 'lucide-react';
 import { DIDInfo, RecoveryCustodian, RecoveryRequest, RecoveryKey, SyncedDevice } from '../types/dashboard';
 import { SecureStorage } from "../../utils/storage";
 import { logger } from "../../utils/logger";
 import { useCleanupManager } from "../../utils/cleanupManager";
 import { ThemeSwitcher } from '../ThemeSwitcher';
+import { GoogleDriveStorage } from '../storage/GoogleDriveStorage';
 import { DelegationModal } from '../DelegationModal';
 
 interface MainDashboardProps {
@@ -168,6 +169,7 @@ export const MainDashboard: React.FC<MainDashboardProps> = ({
                     { id: 'privacy', label: 'Privacy', icon: Settings },
                     { id: 'devices', label: 'Devices', icon: Smartphone },
                     { id: 'recovery', label: 'Recovery', icon: RefreshCw },
+                    { id: 'storage', label: 'Storage', icon: HardDrive },
                     { id: 'developer', label: 'Developer', icon: Monitor },
                     { id: 'delegation', label: 'Delegation', icon: Users }
                   ].map((tab) => {
@@ -230,6 +232,12 @@ export const MainDashboard: React.FC<MainDashboardProps> = ({
                 <div>
                   <h3 className="text-lg font-semibold mb-4 text-theme-primary">Recovery Options</h3>
                   <p className="text-theme-secondary">Recovery and backup options will be displayed here.</p>
+                </div>
+              )}
+
+              {activeTab === 'storage' && (
+                <div>
+                  <GoogleDriveStorage />
                 </div>
               )}
 

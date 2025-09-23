@@ -16,7 +16,7 @@ export const useAppState = () => {
   const [selectedDID, setSelectedDID] = useState<DIDInfo | null>(null);
 
   // Tab and settings state
-  const [activeTab, setActiveTab] = useState<'privacy' | 'devices' | 'recovery' | 'developer'>('privacy');
+  const [activeTab, setActiveTab] = useState<'privacy' | 'devices' | 'recovery' | 'storage' | 'developer'>('privacy');
   const [globalSettingsExpanded, setGlobalSettingsExpanded] = useState(false);
   const [thirdPartyExpanded, setThirdPartyExpanded] = useState(false);
   const [attestedDataPoints, setAttestedDataPoints] = useState<Set<string>>(new Set());
