@@ -44,7 +44,7 @@ import PrivacyPolicy from './pages/PrivacyPolicy';
 import { MainDashboard } from './components/app/MainDashboard';
 import { DelegationModal } from './components/DelegationModal';
 import { IdentityVerificationModal } from './components/IdentityVerificationModal';
-// Google Drive integration removed - starting fresh
+import { GoogleDriveStorage } from './components/storage/GoogleDriveStorage';
 
 // Lazy load heavy components
 const EnhancedPrivacyPanel = lazy(() => import('./components/EnhancedPrivacyPanel').then(module => ({ default: module.EnhancedPrivacyPanel })));
@@ -5643,6 +5643,17 @@ This invitation expires in 24 hours.`;
                       Recovery Tool
                     </button>
 
+                    <button
+                      onClick={() => setActiveTab('storage')}
+                      className={`py-2 px-2 sm:px-4 border-b-2 font-medium text-sm whitespace-nowrap min-w-0 flex-shrink-0 ${
+                        activeTab === 'storage'
+                          ? 'border-primary text-primary'
+                          : 'border-transparent text-text-secondary hover:text-text-primary hover:border-border'
+                      }`}
+                    >
+                      Storage
+                    </button>
+
                       <button
                         onClick={() => setActiveTab('developer')}
                       className={`py-2 px-2 sm:px-4 border-b-2 font-medium text-sm whitespace-nowrap min-w-0 flex-shrink-0 ${
@@ -6212,6 +6223,11 @@ This invitation expires in 24 hours.`;
 
 
 
+
+                  {/* Storage Tab */}
+                  {activeTab === 'storage' && (
+                    <GoogleDriveStorage />
+                  )}
 
                   {/* Developer Portal Tab */}
                   {activeTab === 'developer' && (
