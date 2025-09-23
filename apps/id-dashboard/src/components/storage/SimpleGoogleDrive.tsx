@@ -3,16 +3,16 @@ import React, { useState, useEffect } from 'react';
 const GOOGLE_CLIENT_ID = '43740774041-fo57a1gqenc9dmggkcrhjl5cvrp40gnq.apps.googleusercontent.com';
 
 export const SimpleGoogleDrive: React.FC = () => {
-  const [isConnected, setIsConnected] = useState(false);
-  const [userEmail, setUserEmail] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [isSignedIn, setIsSignedIn] = useState(false);
+  const [userEmail, setUserEmail] = useState('');
+  const [error, setError] = useState('');
 
   useEffect(() => {
     // Load Google API
     const script = document.createElement('script');
     script.src = 'https://apis.google.com/js/api.js';
     script.onload = () => {
+      // Initialize Google API
       window.gapi.load('client:auth2', () => {
         window.gapi.client.init({
           clientId: GOOGLE_CLIENT_ID,
@@ -21,7 +21,7 @@ export const SimpleGoogleDrive: React.FC = () => {
         }).then(() => {
           const authInstance = window.gapi.auth2.getAuthInstance();
           const isSignedIn = authInstance.isSignedIn.get();
-          setIsConnected(isSignedIn);
+          setIsSignedIn(isSignedIn);
           
           if (isSignedIn) {
             const user = authInstance.currentUser.get();
@@ -36,27 +36,24 @@ export const SimpleGoogleDrive: React.FC = () => {
     document.head.appendChild(script);
   }, []);
 
-  const handleConnect = () => {
-    setLoading(true);
-    setError(null);
-
+  const handleSignIn = () => {
     const authInstance = window.gapi.auth2.getAuthInstance();
     authInstance.signIn().then((user) => {
-      setIsConnected(true);
+      setIsSignedIn(true);
       setUserEmail(user.getBasicProfile().getEmail());
-      setLoading(false);
+      setError('');
     }).catch((err) => {
       console.error('Sign in error:', err);
       setError('Sign in failed');
-      setLoading(false);
     });
   };
 
-  const handleDisconnect = () => {
+  const handleSignOut = () => {
     const authInstance = window.gapi.auth2.getAuthInstance();
     authInstance.signOut().then(() => {
-      setIsConnected(false);
-      setUserEmail(null);
+      setIsSignedIn(false);
+      setUserEmail('');
+      setError('');
     });
   };
 
@@ -70,23 +67,26 @@ export const SimpleGoogleDrive: React.FC = () => {
         </div>
       )}
 
-      {isConnected ? (
-        <div className="space-y-4">
-          <div className="bg-green-50 border border-green-200 rounded-lg p-3">
-            <p className="text-green-800 text-sm">✅ Connected as: {userEmail}</p>
-          </div>
-          <button onClick={handleDisconnect} className="w-full px-4 py-2 bg-red-600 text-white rounded-lg">
-            DISCONNECT
+      {!isSignedIn ? (
+        <div>
+          <p className="text-gray-600 text-sm mb-4">Sign in to Google Drive to get started</p>
+          <button 
+            onClick={handleSignIn}
+            className="w-full px-4 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+          >
+            Sign in with Google
           </button>
         </div>
       ) : (
-        <button
-          onClick={handleConnect}
-          disabled={loading}
-          className="w-full px-4 py-3 bg-blue-600 text-white rounded-lg disabled:opacity-50"
-        >
-          {loading ? 'Connecting...' : 'CONNECT GOOGLE DRIVE'}
-        </button>
+        <div>
+          <p className="text-gray-600 text-sm mb-4">Signed in as: {userEmail}</p>
+          <button 
+            onClick={handleSignOut}
+            className="w-full px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700"
+          >
+            Sign Out
+          </button>
+        </div>
       )}
     </div>
   );
