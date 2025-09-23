@@ -44,7 +44,7 @@ import PrivacyPolicy from './pages/PrivacyPolicy';
 import { MainDashboard } from './components/app/MainDashboard';
 import { DelegationModal } from './components/DelegationModal';
 import { IdentityVerificationModal } from './components/IdentityVerificationModal';
-import { SimpleGoogleDrive } from './components/storage/SimpleGoogleDrive';
+// Google Drive integration removed - starting fresh
 
 // Lazy load heavy components
 const EnhancedPrivacyPanel = lazy(() => import('./components/EnhancedPrivacyPanel').then(module => ({ default: module.EnhancedPrivacyPanel })));
@@ -6231,7 +6231,10 @@ This invitation expires in 24 hours.`;
                   {/* Storage Tab */}
                   {activeTab === 'storage' && (
                     <div className="flex items-center justify-center min-h-96">
-                      <SimpleGoogleDrive />
+                      <div className="text-center">
+                        <h3 className="text-lg font-semibold text-gray-900 mb-2">Storage Integration</h3>
+                        <p className="text-gray-600">Google Drive integration coming soon...</p>
+                      </div>
                     </div>
                   )}
 
