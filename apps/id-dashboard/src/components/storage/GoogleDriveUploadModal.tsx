@@ -2,7 +2,7 @@
 import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { X, Upload, Image, Video, FileText, Music, HardDrive, Lock, Globe, Users, CheckCircle, AlertCircle, Settings, RefreshCw } from 'lucide-react';
 import { StorageFile, UploadOptions, UploadProgress } from '../../types/storage';
-import { googleDriveService, GoogleDriveConfig } from '../../services/googleDriveService';
+// Removed SimpleGoogleDriveService import - using direct OAuth now
 import { GoogleDriveSetupModal } from './GoogleDriveSetupModal';
 import { IntegrationConfigManager } from '../../utils/integrationConfig';
 
@@ -26,7 +26,6 @@ export const GoogleDriveUploadModal: React.FC<GoogleDriveUploadModalProps> = ({
   const [error, setError] = useState<string | null>(null);
   const [showSetupModal, setShowSetupModal] = useState(false);
   const [hasGoogleDriveConfig, setHasGoogleDriveConfig] = useState(false);
-  const [googleDriveConfig, setGoogleDriveConfig] = useState<GoogleDriveConfig | null>(null);
   
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -38,28 +37,12 @@ export const GoogleDriveUploadModal: React.FC<GoogleDriveUploadModalProps> = ({
   }, [isOpen]);
 
   const checkGoogleDriveConfig = useCallback(() => {
-    const accessToken = IntegrationConfigManager.getApiKey('google-drive', 'ACCESS_TOKEN');
-    const clientId = IntegrationConfigManager.getApiKey('google-drive', 'CLIENT_ID');
-
-    if (accessToken && clientId) {
-      const config: GoogleDriveConfig = {
-        clientId,
-        accessToken,
-        refreshToken: IntegrationConfigManager.getApiKey('google-drive', 'REFRESH_TOKEN') || undefined
-      };
-      
-      setGoogleDriveConfig(config);
-      setHasGoogleDriveConfig(true);
-      
-      // Initialize the service
-      googleDriveService.initialize(config).catch(err => {
-        console.error('Failed to initialize Google Drive:', err);
-        setError('Failed to connect to your Google Drive. Please check your configuration.');
-        setHasGoogleDriveConfig(false);
-      });
-    } else {
-      setHasGoogleDriveConfig(false);
-    }
+    // Check localStorage for Google Drive token (from direct OAuth)
+    const token = localStorage.getItem('google_drive_token');
+    const email = localStorage.getItem('google_drive_email');
+    
+    const isConnected = !!(token && email);
+    setHasGoogleDriveConfig(isConnected);
   }, []);
 
   const handleDrag = useCallback((e: React.DragEvent) => {
@@ -99,7 +82,7 @@ export const GoogleDriveUploadModal: React.FC<GoogleDriveUploadModalProps> = ({
       return;
     }
 
-    if (!hasGoogleDriveConfig || !googleDriveConfig) {
+    if (!hasGoogleDriveConfig) {
       setError('Please set up your Google Drive storage first.');
       setShowSetupModal(true);
       return;
@@ -121,20 +104,17 @@ export const GoogleDriveUploadModal: React.FC<GoogleDriveUploadModalProps> = ({
       };
 
       try {
-        const uploadedFile = await googleDriveService.uploadFile(
-          file, 
-          'current-user-did',
-          options,
-          (progress) => {
-            setUploadProgress(prev => {
-              const existing = prev.find(p => p.fileId === progress.fileId);
-              if (existing) {
-                return prev.map(p => p.fileId === progress.fileId ? progress : p);
-              }
-              return [...prev, progress];
-            });
-          }
-        );
+        // TODO: Implement direct Google Drive API upload
+        // For now, simulate upload
+        const uploadedFile: StorageFile = {
+          id: `mock-${Date.now()}`,
+          name: file.name,
+          size: file.size,
+          mimeType: file.type,
+          url: `https://mock-drive.com/${file.name}`,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        };
         
         onUploadComplete(uploadedFile);
       } catch (err: any) {
@@ -159,8 +139,7 @@ export const GoogleDriveUploadModal: React.FC<GoogleDriveUploadModalProps> = ({
     }
   };
 
-  const handleSetupComplete = useCallback((config: GoogleDriveConfig) => {
-    setGoogleDriveConfig(config);
+  const handleSetupComplete = useCallback(() => {
     setHasGoogleDriveConfig(true);
     setShowSetupModal(false);
     setError(null);
@@ -381,7 +360,7 @@ export const GoogleDriveUploadModal: React.FC<GoogleDriveUploadModalProps> = ({
       <GoogleDriveSetupModal
         isOpen={showSetupModal}
         onClose={() => setShowSetupModal(false)}
-        onSetupComplete={handleSetupComplete}
+        onSuccess={handleSetupComplete}
       />
     </>
   );

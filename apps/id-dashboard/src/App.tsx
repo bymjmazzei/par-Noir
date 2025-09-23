@@ -7306,6 +7306,7 @@ This invitation expires in 24 hours.`;
 
       </main>
 
+
       {/* Footer */}
       <footer className="mt-auto py-4 px-4 sm:px-6 lg:px-8">
         <div className="max-w-6xl mx-auto">

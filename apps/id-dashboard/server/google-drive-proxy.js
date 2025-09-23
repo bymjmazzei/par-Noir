@@ -1,189 +1,301 @@
 const express = require('express');
-const fetch = require('node-fetch');
+const cors = require('cors');
+const { google } = require('googleapis');
+const multer = require('multer');
+const path = require('path');
 
 const app = express();
 const PORT = process.env.PORT || 3002;
 
+// Google OAuth configuration
+const GOOGLE_CLIENT_ID = '43740774041-pcets3qets323k8p1e3aavbdphqpub06.apps.googleusercontent.com';
+const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET || 'your-client-secret-here';
+const GOOGLE_REDIRECT_URI = process.env.GOOGLE_REDIRECT_URI || 'https://pn.parnoir.com/auth/google/callback';
+
+// Configure multer for file uploads
+const upload = multer({ 
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 100 * 1024 * 1024 } // 100MB limit
+});
+
 // Middleware
-app.use((req, res, next) => {
-  res.header('Access-Control-Allow-Origin', '*');
-  res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-  res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
-  if (req.method === 'OPTIONS') {
-    res.sendStatus(200);
-  } else {
-    next();
+app.use(cors({
+  origin: ['https://pn.parnoir.com', 'https://par-noir-dashboard.web.app'],
+  credentials: true
+}));
+app.use(express.json());
+
+// Store user tokens (in production, use a proper database)
+const userTokens = new Map();
+
+// OAuth2 client
+const oauth2Client = new google.auth.OAuth2(
+  GOOGLE_CLIENT_ID,
+  GOOGLE_CLIENT_SECRET,
+  GOOGLE_REDIRECT_URI
+);
+
+// Routes
+
+// 1. Get OAuth URL
+app.get('/api/google-drive/auth-url', (req, res) => {
+  try {
+    const authUrl = oauth2Client.generateAuthUrl({
+      access_type: 'offline',
+      scope: ['https://www.googleapis.com/auth/drive'],
+      prompt: 'consent'
+    });
+    
+    res.json({ authUrl });
+  } catch (error) {
+    console.error('Error generating auth URL:', error);
+    res.status(500).json({ error: 'Failed to generate auth URL' });
   }
 });
-app.use(express.json({ limit: '50mb' })); // Allow large file uploads
-app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
-// Google Drive API proxy endpoints
-app.post('/api/google-drive/upload', async (req, res) => {
+// 2. Handle OAuth callback
+app.get('/auth/google/callback', async (req, res) => {
   try {
-    const { accessToken, fileData, fileName, folderId } = req.body;
+    const { code } = req.query;
     
-    if (!accessToken || !fileData || !fileName) {
-      return res.status(400).json({ error: 'Missing required parameters' });
+    if (!code) {
+      return res.status(400).json({ error: 'No authorization code provided' });
     }
 
-    // Convert base64 to buffer
-    const fileBuffer = Buffer.from(fileData, 'base64');
+    // Exchange code for tokens
+    const { tokens } = await oauth2Client.getToken(code);
+    oauth2Client.setCredentials(tokens);
+
+    // Get user info
+    const drive = google.drive({ version: 'v3', auth: oauth2Client });
+    const userInfo = await drive.about.get({ fields: 'user' });
     
-    // Create file metadata first
-    const metadata = {
+    const userId = userInfo.data.user.emailAddress;
+    userTokens.set(userId, tokens);
+
+    // Redirect back to frontend with success
+    res.redirect(`${process.env.FRONTEND_URL || 'https://pn.parnoir.com'}?google-auth=success&user=${encodeURIComponent(userId)}`);
+    
+  } catch (error) {
+    console.error('OAuth callback error:', error);
+    res.redirect(`${process.env.FRONTEND_URL || 'https://pn.parnoir.com'}?google-auth=error`);
+  }
+});
+
+// 3. Check authentication status
+app.get('/api/google-drive/status/:userId', (req, res) => {
+  try {
+    const { userId } = req.params;
+    const tokens = userTokens.get(userId);
+    
+    if (!tokens) {
+      return res.json({ authenticated: false });
+    }
+
+    res.json({ 
+      authenticated: true,
+      user: userId,
+      hasRefreshToken: !!tokens.refresh_token
+    });
+  } catch (error) {
+    console.error('Status check error:', error);
+    res.status(500).json({ error: 'Failed to check status' });
+  }
+});
+
+// 4. Refresh access token
+app.post('/api/google-drive/refresh/:userId', async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const tokens = userTokens.get(userId);
+    
+    if (!tokens || !tokens.refresh_token) {
+      return res.status(401).json({ error: 'No refresh token available' });
+    }
+
+    oauth2Client.setCredentials(tokens);
+    const { credentials } = await oauth2Client.refreshAccessToken();
+    
+    // Update stored tokens
+    userTokens.set(userId, credentials);
+    
+    res.json({ 
+      success: true,
+      accessToken: credentials.access_token
+    });
+  } catch (error) {
+    console.error('Token refresh error:', error);
+    res.status(500).json({ error: 'Failed to refresh token' });
+  }
+});
+
+// 5. List files
+app.get('/api/google-drive/files/:userId', async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const tokens = userTokens.get(userId);
+    
+    if (!tokens) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    oauth2Client.setCredentials(tokens);
+    const drive = google.drive({ version: 'v3', auth: oauth2Client });
+
+    // Get or create pN folder
+    const folderQuery = "name='par-noir-media' and mimeType='application/vnd.google-apps.folder' and trashed=false";
+    const folderResponse = await drive.files.list({
+      q: folderQuery,
+      fields: 'files(id,name)'
+    });
+
+    let folderId = 'root';
+    if (folderResponse.data.files.length > 0) {
+      folderId = folderResponse.data.files[0].id;
+    } else {
+      // Create folder
+      const folderMetadata = {
+        name: 'par-noir-media',
+        mimeType: 'application/vnd.google-apps.folder'
+      };
+      const folder = await drive.files.create({
+        resource: folderMetadata,
+        fields: 'id'
+      });
+      folderId = folder.data.id;
+    }
+
+    // List files in folder
+    const filesResponse = await drive.files.list({
+      q: `'${folderId}' in parents and trashed=false`,
+      fields: 'files(id,name,size,createdTime,webViewLink)'
+    });
+
+    const files = filesResponse.data.files.map(file => ({
+      id: file.id,
+      name: file.name,
+      size: parseInt(file.size) || 0,
+      createdAt: new Date(file.createdTime).toISOString(),
+      url: file.webViewLink,
+      type: 'google-drive'
+    }));
+
+    res.json({ files });
+  } catch (error) {
+    console.error('List files error:', error);
+    res.status(500).json({ error: 'Failed to list files' });
+  }
+});
+
+// 6. Upload file
+app.post('/api/google-drive/upload/:userId', upload.single('file'), async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const { visibility = 'private' } = req.body;
+    const file = req.file;
+    
+    if (!file) {
+      return res.status(400).json({ error: 'No file provided' });
+    }
+
+    const tokens = userTokens.get(userId);
+    if (!tokens) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    oauth2Client.setCredentials(tokens);
+    const drive = google.drive({ version: 'v3', auth: oauth2Client });
+
+    // Get or create pN folder
+    const folderQuery = "name='par-noir-media' and mimeType='application/vnd.google-apps.folder' and trashed=false";
+    const folderResponse = await drive.files.list({
+      q: folderQuery,
+      fields: 'files(id,name)'
+    });
+
+    let folderId = 'root';
+    if (folderResponse.data.files.length > 0) {
+      folderId = folderResponse.data.files[0].id;
+    } else {
+      // Create folder
+      const folderMetadata = {
+        name: 'par-noir-media',
+        mimeType: 'application/vnd.google-apps.folder'
+      };
+      const folder = await drive.files.create({
+        resource: folderMetadata,
+        fields: 'id'
+      });
+      folderId = folder.data.id;
+    }
+
+    // Generate unique file ID
+    const fileId = `pn-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    const fileName = `pn-encrypted-${fileId}`;
+
+    // Upload file
+    const fileMetadata = {
       name: fileName,
-      parents: [folderId || 'root']
+      parents: [folderId]
     };
 
-    // Step 1: Create file with metadata
-    const createResponse = await fetch('https://www.googleapis.com/drive/v3/files', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${accessToken}`,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify(metadata)
+    const media = {
+      mimeType: file.mimetype,
+      body: file.buffer
+    };
+
+    const uploadedFile = await drive.files.create({
+      resource: fileMetadata,
+      media: media,
+      fields: 'id,name,size,webViewLink'
     });
 
-    if (!createResponse.ok) {
-      const errorText = await createResponse.text();
-      throw new Error(`Create file failed: ${createResponse.status} ${errorText}`);
-    }
-
-    const createdFile = await createResponse.json();
-    const fileId = createdFile.id;
-
-    // Step 2: Upload file content
-    const uploadResponse = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}`, {
-      method: 'PATCH',
-      headers: {
-        'Authorization': `Bearer ${accessToken}`,
-        'Content-Type': 'application/octet-stream'
-      },
-      body: fileBuffer
+    res.json({
+      success: true,
+      fileId: uploadedFile.data.id,
+      fileName: uploadedFile.data.name,
+      size: parseInt(uploadedFile.data.size) || 0,
+      url: uploadedFile.data.webViewLink,
+      cid: fileId // Our internal ID
     });
-
-    if (!uploadResponse.ok) {
-      const errorText = await uploadResponse.text();
-      throw new Error(`Upload content failed: ${uploadResponse.status} ${errorText}`);
-    }
-
-    // Get final file info
-    const finalResponse = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?fields=id,name,webViewLink,size`, {
-      method: 'GET',
-      headers: {
-        'Authorization': `Bearer ${accessToken}`,
-        'Content-Type': 'application/json'
-      }
-    });
-
-    if (!finalResponse.ok) {
-      throw new Error(`Get file info failed: ${finalResponse.status}`);
-    }
-
-    const result = await finalResponse.json();
-    res.json(result);
 
   } catch (error) {
     console.error('Upload error:', error);
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: 'Failed to upload file' });
   }
 });
 
-app.get('/api/google-drive/files', async (req, res) => {
+// 7. Delete file
+app.delete('/api/google-drive/files/:userId/:fileId', async (req, res) => {
   try {
-    const { accessToken, folderId } = req.query;
+    const { userId, fileId } = req.params;
+    const tokens = userTokens.get(userId);
     
-    if (!accessToken) {
-      return res.status(400).json({ error: 'Missing access token' });
+    if (!tokens) {
+      return res.status(401).json({ error: 'Not authenticated' });
     }
 
-    const query = folderId ? `'${folderId}' in parents` : '';
-    const url = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(query)}&fields=files(id,name,size,mimeType,createdTime,modifiedTime,webViewLink,thumbnailLink)`;
+    oauth2Client.setCredentials(tokens);
+    const drive = google.drive({ version: 'v3', auth: oauth2Client });
 
-    const response = await fetch(url, {
-      headers: {
-        'Authorization': `Bearer ${accessToken}`,
-        'Content-Type': 'application/json'
-      }
-    });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(`Google Drive API error: ${response.status} ${errorText}`);
-    }
-
-    const result = await response.json();
-    res.json(result);
-
-  } catch (error) {
-    console.error('List files error:', error);
-    res.status(500).json({ error: error.message });
-  }
-});
-
-app.delete('/api/google-drive/files/:fileId', async (req, res) => {
-  try {
-    const { fileId } = req.params;
-    const { accessToken } = req.query;
+    await drive.files.delete({ fileId });
     
-    if (!accessToken) {
-      return res.status(400).json({ error: 'Missing access token' });
-    }
-
-    const response = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}`, {
-      method: 'DELETE',
-      headers: {
-        'Authorization': `Bearer ${accessToken}`,
-        'Content-Type': 'application/json'
-      }
-    });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(`Google Drive API error: ${response.status} ${errorText}`);
-    }
-
     res.json({ success: true });
-
   } catch (error) {
-    console.error('Delete file error:', error);
-    res.status(500).json({ error: error.message });
+    console.error('Delete error:', error);
+    res.status(500).json({ error: 'Failed to delete file' });
   }
 });
 
-app.post('/api/google-drive/folders', async (req, res) => {
+// 8. Sign out
+app.post('/api/google-drive/signout/:userId', (req, res) => {
   try {
-    const { accessToken, folderName } = req.body;
-    
-    if (!accessToken || !folderName) {
-      return res.status(400).json({ error: 'Missing required parameters' });
-    }
-
-    const response = await fetch('https://www.googleapis.com/drive/v3/files', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${accessToken}`,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        name: folderName,
-        mimeType: 'application/vnd.google-apps.folder'
-      })
-    });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(`Google Drive API error: ${response.status} ${errorText}`);
-    }
-
-    const result = await response.json();
-    res.json(result);
-
+    const { userId } = req.params;
+    userTokens.delete(userId);
+    res.json({ success: true });
   } catch (error) {
-    console.error('Create folder error:', error);
-    res.status(500).json({ error: error.message });
+    console.error('Sign out error:', error);
+    res.status(500).json({ error: 'Failed to sign out' });
   }
 });
 
@@ -192,6 +304,10 @@ app.get('/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
+// Start server
 app.listen(PORT, () => {
-  console.log(`Google Drive proxy server running on port ${PORT}`);
+  console.log(`Google Drive Proxy Server running on port ${PORT}`);
+  console.log(`OAuth redirect URI: ${GOOGLE_REDIRECT_URI}`);
 });
+
+module.exports = app;

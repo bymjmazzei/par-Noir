@@ -22,7 +22,7 @@ import { StorageFile } from '../../types/storage';
 import { GoogleDriveUploadModal } from './GoogleDriveUploadModal';
 import { StorageFileManager } from './StorageFileManager';
 import { IntegrationConfigManager } from '../../utils/integrationConfig';
-import { googleDriveService } from '../../services/googleDriveService';
+// Removed old googleDriveService import - using direct OAuth now
 
 export const StorageTab: React.FC = () => {
   const [files, setFiles] = useState<StorageFile[]>([]);
@@ -48,33 +48,17 @@ export const StorageTab: React.FC = () => {
   }, []);
 
   const checkGoogleDriveStatus = async () => {
-    const accessToken = IntegrationConfigManager.getApiKey('google-drive', 'ACCESS_TOKEN');
-    const clientId = IntegrationConfigManager.getApiKey('google-drive', 'CLIENT_ID');
+    // Check localStorage for Google Drive token (from direct OAuth)
+    const token = localStorage.getItem('google_drive_token');
+    const email = localStorage.getItem('google_drive_email');
     
-    const isConnected = !!(accessToken && clientId);
+    const isConnected = !!(token && email);
     setIsGoogleDriveConnected(isConnected);
     
     if (isConnected) {
-      try {
-        // Initialize Google Drive service with existing config
-        await googleDriveService.initialize({
-          clientId,
-          accessToken,
-          refreshToken: IntegrationConfigManager.getApiKey('google-drive', 'REFRESH_TOKEN')
-        });
-        
-        // Check if still authenticated
-        if (googleDriveService.isAuthenticated()) {
-          loadGoogleDriveFiles();
-        } else {
-          setIsGoogleDriveConnected(false);
-          setLoading(false);
-        }
-      } catch (error) {
-        console.error('Google Drive initialization error:', error);
-        setIsGoogleDriveConnected(false);
-        setLoading(false);
-      }
+      // For now, just show connected status
+      // TODO: Implement file listing with direct Google Drive API calls
+      setLoading(false);
     } else {
       setLoading(false);
     }
@@ -85,22 +69,20 @@ export const StorageTab: React.FC = () => {
     setError(null);
     
     try {
-      const driveFiles = await googleDriveService.listFiles('current-user-did');
-      setFiles(driveFiles);
-      
-      // Calculate stats
-      const stats = {
-        totalFiles: driveFiles.length,
-        totalSize: driveFiles.reduce((sum, file) => sum + file.size, 0),
+      // TODO: Implement direct Google Drive API calls
+      // For now, show empty state
+      setFiles([]);
+      setStorageStats({
+        totalFiles: 0,
+        totalSize: 0,
         byType: {
-          image: driveFiles.filter(f => f.type === 'image').length,
-          video: driveFiles.filter(f => f.type === 'video').length,
-          document: driveFiles.filter(f => f.type === 'document').length,
-          audio: driveFiles.filter(f => f.type === 'audio').length,
-          other: driveFiles.filter(f => f.type === 'other').length
+          image: 0,
+          video: 0,
+          document: 0,
+          audio: 0,
+          other: 0
         }
-      };
-      setStorageStats(stats);
+      });
     } catch (err: any) {
       setError(err.message || 'Failed to load Google Drive files');
       console.error('Google Drive loading error:', err);
@@ -123,7 +105,7 @@ export const StorageTab: React.FC = () => {
 
   const handleFileDelete = async (fileId: string) => {
     try {
-      await googleDriveService.deleteFile(fileId, 'current-user-did');
+      // TODO: Implement direct Google Drive API delete call
       const deletedFile = files.find(f => f.id === fileId);
       if (deletedFile) {
         setFiles(prev => prev.filter(f => f.id !== fileId));
