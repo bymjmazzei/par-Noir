@@ -1,216 +1,297 @@
-// Google Drive Storage Component
-// Provides a clean interface for Google Drive file management
+import React, { useState, useEffect } from 'react';
+import { HardDrive, Upload, Download, Trash2, File, Folder, RefreshCw, AlertCircle, Play, Settings } from 'lucide-react';
+import { googleDriveDemoService } from '../../services/googleDriveDemoService';
 
-import React, { useState, useEffect, useCallback } from 'react';
-import { 
-  Upload, 
-  Download, 
-  Trash2, 
-  Folder, 
-  File, 
-  Image, 
-  Video, 
-  Music, 
-  FileText,
-  RefreshCw,
-  Search,
-  Filter,
-  Grid,
-  List,
-  MoreVertical,
-  Eye,
-  EyeOff,
-  Users,
-  HardDrive,
-  AlertCircle,
-  CheckCircle,
-  X
-} from 'lucide-react';
-import { 
-  googleDriveService, 
-  GoogleDriveFile, 
-  GoogleDriveAuthState, 
-  UploadProgress,
-  defaultGoogleDriveConfig 
-} from '../../services/googleDriveService';
-
-interface GoogleDriveStorageProps {
-  onClose?: () => void;
+interface GoogleDriveFile {
+  id: string;
+  name: string;
+  modifiedTime: string;
+  size?: string;
+  mimeType: string;
 }
 
-type ViewMode = 'grid' | 'list';
-type SortField = 'name' | 'modifiedTime' | 'size';
-type SortDirection = 'asc' | 'desc';
-
-export const GoogleDriveStorage: React.FC<GoogleDriveStorageProps> = ({ onClose }) => {
-  const [authState, setAuthState] = useState<GoogleDriveAuthState>({ isSignedIn: false });
+export const GoogleDriveStorage: React.FC = () => {
+  const [isConnected, setIsConnected] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
   const [files, setFiles] = useState<GoogleDriveFile[]>([]);
-  const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [viewMode, setViewMode] = useState<ViewMode>('grid');
-  const [sortField, setSortField] = useState<SortField>('modifiedTime');
-  const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
-  const [uploadProgress, setUploadProgress] = useState<Map<string, UploadProgress>>(new Map());
-  const [showUploadModal, setShowUploadModal] = useState(false);
-  const [selectedFiles, setSelectedFiles] = useState<Set<string>>(new Set());
+  const [userEmail, setUserEmail] = useState<string>('');
+  const [isDemoMode, setIsDemoMode] = useState(true); // Default to demo mode
+  const [showDemoControls, setShowDemoControls] = useState(false);
 
-  // Initialize Google Drive service
   useEffect(() => {
-    const initializeService = async () => {
-      try {
-        await googleDriveService.initialize(defaultGoogleDriveConfig);
-        
-        // Listen for auth state changes
-        const unsubscribe = googleDriveService.onAuthStateChange((state) => {
-          setAuthState(state);
-          if (state.isSignedIn) {
-            loadFiles();
-          } else {
-            setFiles([]);
-          }
-        });
-
-        // Get initial auth state
-        setAuthState(googleDriveService.getAuthState());
-
-        return unsubscribe;
-      } catch (error) {
-        console.error('Failed to initialize Google Drive service:', error);
-        setError(`Failed to initialize Google Drive: ${error.message}`);
-      }
-    };
-
-    initializeService();
-  }, []);
-
-  // Load files from Google Drive
-  const loadFiles = useCallback(async () => {
-    if (!authState.isSignedIn) return;
-
-    setLoading(true);
-    setError(null);
-
-    try {
-      const driveFiles = await googleDriveService.listFiles();
-      setFiles(driveFiles);
-    } catch (error) {
-      console.error('Failed to load files:', error);
-      setError(`Failed to load files: ${error.message}`);
-    } finally {
-      setLoading(false);
-    }
-  }, [authState.isSignedIn]);
-
-  // Handle sign in
-  const handleSignIn = async () => {
-    try {
-      setError(null);
-      await googleDriveService.signIn();
-    } catch (error) {
-      console.error('Sign in failed:', error);
-      setError(`Sign in failed: ${error.message}`);
-    }
-  };
-
-  // Handle sign out
-  const handleSignOut = async () => {
-    try {
-      setError(null);
-      await googleDriveService.signOut();
-      setFiles([]);
-      setSelectedFiles(new Set());
-    } catch (error) {
-      console.error('Sign out failed:', error);
-      setError(`Sign out failed: ${error.message}`);
-    }
-  };
-
-  // Handle file upload
-  const handleFileUpload = async (files: FileList) => {
-    if (!authState.isSignedIn) return;
-
-    setError(null);
-
-    for (const file of Array.from(files)) {
-      try {
-        await googleDriveService.uploadFile(file, (progress) => {
-          setUploadProgress(prev => new Map(prev.set(progress.fileId, progress)));
-        });
-      } catch (error) {
-        console.error('Upload failed:', error);
-        setError(`Upload failed for ${file.name}: ${error.message}`);
-      }
-    }
-
-    // Refresh file list after upload
-    await loadFiles();
-  };
-
-  // Handle file download
-  const handleFileDownload = async (file: GoogleDriveFile) => {
-    try {
-      setError(null);
-      const blob = await googleDriveService.downloadFile(file.id);
-      
-      // Create download link
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = file.name;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      window.URL.revokeObjectURL(url);
-    } catch (error) {
-      console.error('Download failed:', error);
-      setError(`Download failed: ${error.message}`);
-    }
-  };
-
-  // Handle file deletion
-  const handleFileDelete = async (fileId: string) => {
-    try {
-      setError(null);
-      await googleDriveService.deleteFile(fileId);
-      setFiles(prev => prev.filter(f => f.id !== fileId));
-      setSelectedFiles(prev => {
-        const newSet = new Set(prev);
-        newSet.delete(fileId);
-        return newSet;
+    if (isDemoMode) {
+      // Setup demo service listeners
+      const unsubscribe = googleDriveDemoService.onAuthStateChange((authState) => {
+        setIsConnected(authState.isSignedIn);
+        setUserEmail(authState.user?.email || '');
+        if (authState.isSignedIn) {
+          loadFiles();
+        } else {
+          setFiles([]);
+        }
       });
-    } catch (error) {
-      console.error('Delete failed:', error);
-      setError(`Delete failed: ${error.message}`);
+      
+      return unsubscribe;
+    } else {
+      // Check if already connected (real mode)
+      const token = localStorage.getItem('google_drive_token');
+      const email = localStorage.getItem('google_drive_email');
+      if (token && email) {
+        setIsConnected(true);
+        setUserEmail(email);
+        loadFiles();
+      }
+    }
+  }, [isDemoMode]);
+
+  const handleConnect = async () => {
+    try {
+      setIsLoading(true);
+      setError(null);
+      
+      if (isDemoMode) {
+        // Use demo service
+        await googleDriveDemoService.signIn();
+      } else {
+        // Use real Google Drive API
+        const clientId = '43740774041-fo57a1gqenc9dmggkcrhjl5cvrp40gnq.apps.googleusercontent.com';
+        const redirectUri = window.location.origin;
+        const scope = 'https://www.googleapis.com/auth/drive.file';
+        
+        const authUrl = `https://accounts.google.com/oauth/authorize?` +
+          `client_id=${clientId}&` +
+          `redirect_uri=${encodeURIComponent(redirectUri)}&` +
+          `scope=${encodeURIComponent(scope)}&` +
+          `response_type=token&` +
+          `access_type=offline`;
+        
+        // Open popup window
+        const popup = window.open(
+          authUrl,
+          'google-auth',
+          'width=500,height=600,scrollbars=yes,resizable=yes'
+        );
+        
+        if (!popup) {
+          throw new Error('Popup blocked. Please allow popups for this site.');
+        }
+        
+        // Listen for the popup to close or receive the token
+        const checkClosed = setInterval(() => {
+          if (popup.closed) {
+            clearInterval(checkClosed);
+            setIsLoading(false);
+            // Check if we have a token in localStorage
+            const token = localStorage.getItem('google_drive_token');
+            const email = localStorage.getItem('google_drive_email');
+            if (token && email) {
+              setIsConnected(true);
+              setUserEmail(email);
+              loadFiles();
+            }
+          }
+        }, 1000);
+      }
+    } catch (err) {
+      setError('Failed to connect to Google Drive');
+      console.error('Error connecting:', err);
+      setIsLoading(false);
     }
   };
 
-  // Get file icon based on MIME type
+  const loadFiles = async () => {
+    try {
+      setIsLoading(true);
+      
+      if (isDemoMode) {
+        const demoFiles = await googleDriveDemoService.listFiles();
+        setFiles(demoFiles);
+      } else {
+        const token = localStorage.getItem('google_drive_token');
+        if (!token) {
+          throw new Error('No access token found');
+        }
+        
+        const response = await fetch(
+          'https://www.googleapis.com/drive/v3/files?fields=files(id,name,modifiedTime,size,mimeType)',
+          {
+            headers: {
+              'Authorization': `Bearer ${token}`,
+              'Content-Type': 'application/json'
+            }
+          }
+        );
+        
+        if (!response.ok) {
+          throw new Error('Failed to fetch files');
+        }
+        
+        const data = await response.json();
+        setFiles(data.files || []);
+      }
+    } catch (err) {
+      setError('Failed to load files');
+      console.error('Error loading files:', err);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleDisconnect = async () => {
+    try {
+      if (isDemoMode) {
+        await googleDriveDemoService.signOut();
+      } else {
+        localStorage.removeItem('google_drive_token');
+        localStorage.removeItem('google_drive_email');
+        setIsConnected(false);
+        setUserEmail('');
+        setFiles([]);
+      }
+    } catch (err) {
+      console.error('Error disconnecting:', err);
+    }
+  };
+
+  const handleUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    try {
+      setIsLoading(true);
+      
+      if (isDemoMode) {
+        await googleDriveDemoService.uploadFile(file, (progress) => {
+          // Handle upload progress in demo mode
+          console.log(`Upload progress: ${progress.progress}%`);
+        });
+        await loadFiles();
+      } else {
+        const token = localStorage.getItem('google_drive_token');
+        if (!token) {
+          throw new Error('No access token found');
+        }
+        
+        const formData = new FormData();
+        formData.append('metadata', JSON.stringify({
+          name: file.name,
+          parents: []
+        }));
+        formData.append('file', file);
+        
+        const response = await fetch(
+          'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart',
+          {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${token}`
+            },
+            body: formData
+          }
+        );
+        
+        if (!response.ok) {
+          throw new Error('Failed to upload file');
+        }
+        
+        await loadFiles();
+      }
+    } catch (err) {
+      setError('Failed to upload file');
+      console.error('Error uploading:', err);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleDownload = async (fileId: string, fileName: string) => {
+    try {
+      if (isDemoMode) {
+        const blob = await googleDriveDemoService.downloadFile(fileId);
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = fileName;
+        document.body.appendChild(a);
+        a.click();
+        window.URL.revokeObjectURL(url);
+        document.body.removeChild(a);
+      } else {
+        const token = localStorage.getItem('google_drive_token');
+        if (!token) {
+          throw new Error('No access token found');
+        }
+        
+        const response = await fetch(
+          `https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`,
+          {
+            headers: {
+              'Authorization': `Bearer ${token}`
+            }
+          }
+        );
+        
+        if (!response.ok) {
+          throw new Error('Failed to download file');
+        }
+        
+        const blob = await response.blob();
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = fileName;
+        document.body.appendChild(a);
+        a.click();
+        window.URL.revokeObjectURL(url);
+        document.body.removeChild(a);
+      }
+    } catch (err) {
+      setError('Failed to download file');
+      console.error('Error downloading:', err);
+    }
+  };
+
+  const handleDelete = async (fileId: string) => {
+    try {
+      if (isDemoMode) {
+        await googleDriveDemoService.deleteFile(fileId);
+        await loadFiles();
+      } else {
+        const token = localStorage.getItem('google_drive_token');
+        if (!token) {
+          throw new Error('No access token found');
+        }
+        
+        const response = await fetch(
+          `https://www.googleapis.com/drive/v3/files/${fileId}`,
+          {
+            method: 'DELETE',
+            headers: {
+              'Authorization': `Bearer ${token}`
+            }
+          }
+        );
+        
+        if (!response.ok) {
+          throw new Error('Failed to delete file');
+        }
+        
+        await loadFiles();
+      }
+    } catch (err) {
+      setError('Failed to delete file');
+      console.error('Error deleting:', err);
+    }
+  };
+
   const getFileIcon = (file: GoogleDriveFile) => {
     if (file.mimeType === 'application/vnd.google-apps.folder') {
-      return <Folder className="w-5 h-5" />;
+      return <Folder className="h-5 w-5" />;
     }
-    
-    if (file.mimeType.startsWith('image/')) {
-      return <Image className="w-5 h-5" />;
-    }
-    
-    if (file.mimeType.startsWith('video/')) {
-      return <Video className="w-5 h-5" />;
-    }
-    
-    if (file.mimeType.startsWith('audio/')) {
-      return <Music className="w-5 h-5" />;
-    }
-    
-    if (file.mimeType.includes('document') || file.mimeType.includes('text')) {
-      return <FileText className="w-5 h-5" />;
-    }
-    
-    return <File className="w-5 h-5" />;
+    return <File className="h-5 w-5" />;
   };
 
-  // Format file size
   const formatFileSize = (bytes: string) => {
     if (!bytes) return 'Unknown size';
     const size = parseInt(bytes);
@@ -221,369 +302,200 @@ export const GoogleDriveStorage: React.FC<GoogleDriveStorageProps> = ({ onClose 
     return parseFloat((size / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
   };
 
-  // Format date
   const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleDateString();
   };
 
-  // Filter and sort files
-  const filteredAndSortedFiles = React.useMemo(() => {
-    let filtered = files;
-
-    // Apply search filter
-    if (searchQuery) {
-      filtered = filtered.filter(file => 
-        file.name.toLowerCase().includes(searchQuery.toLowerCase())
-      );
-    }
-
-    // Apply sorting
-    filtered.sort((a, b) => {
-      let aValue: any, bValue: any;
-      
-      switch (sortField) {
-        case 'name':
-          aValue = a.name.toLowerCase();
-          bValue = b.name.toLowerCase();
-          break;
-        case 'modifiedTime':
-          aValue = new Date(a.modifiedTime).getTime();
-          bValue = new Date(b.modifiedTime).getTime();
-          break;
-        case 'size':
-          aValue = parseInt(a.size || '0');
-          bValue = parseInt(b.size || '0');
-          break;
-        default:
-          return 0;
-      }
-
-      if (aValue < bValue) return sortDirection === 'asc' ? -1 : 1;
-      if (aValue > bValue) return sortDirection === 'asc' ? 1 : -1;
-      return 0;
-    });
-
-    return filtered;
-  }, [files, searchQuery, sortField, sortDirection]);
-
-  // Render authentication section
-  const renderAuthSection = () => (
-    <div className="text-center py-12">
-      <HardDrive className="w-16 h-16 text-primary mx-auto mb-4" />
-      <h3 className="text-xl font-semibold text-text-primary mb-2">
-        Connect to Google Drive
-      </h3>
-      <p className="text-text-secondary mb-6 max-w-md mx-auto">
-        Sign in to Google Drive to access your files and upload new content securely.
-      </p>
-      <button
-        onClick={handleSignIn}
-        className="px-6 py-3 bg-primary text-white rounded-lg hover:bg-primary/90 transition-colors"
-      >
-        Sign in to Google Drive
-      </button>
-    </div>
-  );
-
-  // Render file grid view
-  const renderGridView = () => (
-    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4">
-      {filteredAndSortedFiles.map(file => (
-        <div
-          key={file.id}
-          className={`bg-secondary rounded-lg p-4 cursor-pointer transition-all hover:bg-secondary/80 ${
-            selectedFiles.has(file.id) ? 'ring-2 ring-primary' : ''
-          }`}
-          onClick={() => {
-            const newSet = new Set(selectedFiles);
-            if (newSet.has(file.id)) {
-              newSet.delete(file.id);
-            } else {
-              newSet.add(file.id);
-            }
-            setSelectedFiles(newSet);
-          }}
-        >
-          <div className="flex flex-col items-center text-center">
-            <div className="w-12 h-12 bg-primary/10 rounded-lg flex items-center justify-center mb-3">
-              {getFileIcon(file)}
-            </div>
-            <h3 className="text-sm font-medium text-text-primary truncate w-full mb-1">
-              {file.name}
-            </h3>
-            <p className="text-xs text-text-secondary mb-2">
-              {formatFileSize(file.size || '0')}
-            </p>
-            <p className="text-xs text-text-secondary">
-              {formatDate(file.modifiedTime)}
-            </p>
-          </div>
-        </div>
-      ))}
-    </div>
-  );
-
-  // Render file list view
-  const renderListView = () => (
-    <div className="space-y-2">
-      {filteredAndSortedFiles.map(file => (
-        <div
-          key={file.id}
-          className={`bg-secondary rounded-lg p-4 cursor-pointer transition-all hover:bg-secondary/80 ${
-            selectedFiles.has(file.id) ? 'ring-2 ring-primary' : ''
-          }`}
-          onClick={() => {
-            const newSet = new Set(selectedFiles);
-            if (newSet.has(file.id)) {
-              newSet.delete(file.id);
-            } else {
-              newSet.add(file.id);
-            }
-            setSelectedFiles(newSet);
-          }}
-        >
-          <div className="flex items-center space-x-4">
-            <div className="w-10 h-10 bg-primary/10 rounded-lg flex items-center justify-center">
-              {getFileIcon(file)}
-            </div>
-            <div className="flex-1 min-w-0">
-              <h3 className="text-text-primary font-medium truncate">
-                {file.name}
-              </h3>
-              <div className="flex items-center space-x-4 text-sm text-text-secondary">
-                <span>{formatFileSize(file.size || '0')}</span>
-                <span>{formatDate(file.modifiedTime)}</span>
-              </div>
-            </div>
-            <div className="flex items-center space-x-2">
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  handleFileDownload(file);
-                }}
-                className="p-1 text-text-secondary hover:text-text-primary transition-colors"
-                title="Download"
-              >
-                <Download className="w-4 h-4" />
-              </button>
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  handleFileDelete(file.id);
-                }}
-                className="p-1 text-text-secondary hover:text-red-400 transition-colors"
-                title="Delete"
-              >
-                <Trash2 className="w-4 h-4" />
-              </button>
-            </div>
-          </div>
-        </div>
-      ))}
-    </div>
-  );
-
-  if (!authState.isSignedIn) {
-    return (
-      <div className="p-6">
-        {renderAuthSection()}
-        {error && (
-          <div className="mt-4 p-3 bg-red-500/10 border border-red-500/20 rounded-lg">
-            <div className="flex items-center text-red-400 text-sm">
-              <AlertCircle className="w-4 h-4 mr-2" />
-              {error}
-            </div>
-          </div>
-        )}
-      </div>
-    );
-  }
-
   return (
-    <div className="p-6 space-y-6">
-      {/* Header */}
+    <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div className="flex items-center space-x-3">
-          <HardDrive className="w-6 h-6 text-primary" />
+          <HardDrive className="h-8 w-8 text-primary" />
           <div>
-            <h2 className="text-xl font-semibold text-text-primary">Google Drive</h2>
-            <p className="text-sm text-text-secondary">
-              Signed in as {authState.user?.email}
-            </p>
+            <h2 className="text-2xl font-bold text-text-primary">Google Drive Storage</h2>
+            <p className="text-text-secondary">Access and manage your Google Drive files</p>
           </div>
         </div>
+        
         <div className="flex items-center space-x-2">
+          {isDemoMode && (
+            <div className="flex items-center space-x-2 px-3 py-1 bg-blue-500/10 border border-blue-500/20 rounded-full">
+              <Play className="h-4 w-4 text-blue-400" />
+              <span className="text-blue-400 text-sm font-medium">DEMO MODE</span>
+            </div>
+          )}
           <button
-            onClick={loadFiles}
-            disabled={loading}
+            onClick={() => setShowDemoControls(!showDemoControls)}
             className="p-2 text-text-secondary hover:text-text-primary transition-colors"
-            title="Refresh"
+            title="Demo Settings"
           >
-            <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+            <Settings className="h-4 w-4" />
           </button>
-          <button
-            onClick={handleSignOut}
-            className="px-4 py-2 text-text-secondary hover:text-text-primary transition-colors"
-          >
-            Sign Out
-          </button>
-          {onClose && (
-            <button
-              onClick={onClose}
-              className="p-2 text-text-secondary hover:text-text-primary transition-colors"
-            >
-              <X className="w-4 h-4" />
-            </button>
+        </div>
+      </div>
+
+      {showDemoControls && (
+        <div className="bg-secondary/50 border border-border rounded-lg p-4 space-y-3">
+          <h3 className="text-sm font-medium text-text-primary">Demo Mode Controls</h3>
+          <div className="flex items-center space-x-4">
+            <label className="flex items-center space-x-2">
+              <input
+                type="checkbox"
+                checked={isDemoMode}
+                onChange={(e) => {
+                  setIsDemoMode(e.target.checked);
+                  setShowDemoControls(false);
+                }}
+                className="rounded border-border text-primary focus:ring-primary"
+              />
+              <span className="text-sm text-text-secondary">Enable Demo Mode</span>
+            </label>
+            {isDemoMode && (
+              <button
+                onClick={() => {
+                  googleDriveDemoService.resetDemoData();
+                  setFiles([]);
+                  setIsConnected(false);
+                  setUserEmail('');
+                }}
+                className="px-3 py-1 bg-primary/10 text-primary text-sm rounded-lg hover:bg-primary/20 transition-colors"
+              >
+                Reset Demo Data
+              </button>
+            )}
+          </div>
+          {isDemoMode && (
+            <p className="text-xs text-text-secondary">
+              Demo mode uses simulated data and interactions for demonstration purposes.
+            </p>
           )}
         </div>
-      </div>
-
-      {/* Controls */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between space-y-3 sm:space-y-0">
-        {/* Search */}
-        <div className="relative">
-          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-text-secondary w-4 h-4" />
-          <input
-            type="text"
-            placeholder="Search files..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="pl-10 pr-4 py-2 bg-secondary border border-border rounded-lg text-text-primary focus:outline-none focus:ring-2 focus:ring-primary"
-          />
-        </div>
-
-        {/* Sort and View Controls */}
-        <div className="flex items-center space-x-3">
-          <select
-            value={`${sortField}-${sortDirection}`}
-            onChange={(e) => {
-              const [field, direction] = e.target.value.split('-');
-              setSortField(field as SortField);
-              setSortDirection(direction as SortDirection);
-            }}
-            className="px-3 py-2 bg-secondary border border-border rounded-lg text-text-primary focus:outline-none focus:ring-2 focus:ring-primary"
-          >
-            <option value="modifiedTime-desc">Newest First</option>
-            <option value="modifiedTime-asc">Oldest First</option>
-            <option value="name-asc">Name A-Z</option>
-            <option value="name-desc">Name Z-A</option>
-            <option value="size-desc">Largest First</option>
-            <option value="size-asc">Smallest First</option>
-          </select>
-
-          <div className="flex items-center bg-secondary border border-border rounded-lg">
-            <button
-              onClick={() => setViewMode('grid')}
-              className={`p-2 transition-colors ${
-                viewMode === 'grid' 
-                  ? 'text-primary bg-primary/10' 
-                  : 'text-text-secondary hover:text-text-primary'
-              }`}
-            >
-              <Grid className="w-4 h-4" />
-            </button>
-            <button
-              onClick={() => setViewMode('list')}
-              className={`p-2 transition-colors ${
-                viewMode === 'list' 
-                  ? 'text-primary bg-primary/10' 
-                  : 'text-text-secondary hover:text-text-primary'
-              }`}
-            >
-              <List className="w-4 h-4" />
-            </button>
-          </div>
-        </div>
-      </div>
-
-      {/* Upload Area */}
-      <div
-        className="border-2 border-dashed border-border rounded-lg p-8 text-center hover:border-primary/50 transition-colors cursor-pointer"
-        onClick={() => {
-          const input = document.createElement('input');
-          input.type = 'file';
-          input.multiple = true;
-          input.onchange = (e) => {
-            const files = (e.target as HTMLInputElement).files;
-            if (files) {
-              handleFileUpload(files);
-            }
-          };
-          input.click();
-        }}
-      >
-        <Upload className="w-12 h-12 text-text-secondary mx-auto mb-4" />
-        <p className="text-text-primary mb-2">
-          Drag & drop files here or click to browse
-        </p>
-        <p className="text-sm text-text-secondary">
-          Upload files to your Google Drive
-        </p>
-      </div>
-
-      {/* Upload Progress */}
-      {uploadProgress.size > 0 && (
-        <div className="space-y-3">
-          <h3 className="text-lg font-medium text-text-primary">Upload Progress</h3>
-          {Array.from(uploadProgress.values()).map(progress => (
-            <div key={progress.fileId} className="bg-secondary rounded-lg p-3">
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-text-primary font-medium">{progress.fileName}</span>
-                <span className="text-text-secondary text-sm">{progress.progress}%</span>
-              </div>
-              <div className="w-full bg-border rounded-full h-2">
-                <div 
-                  className="bg-primary h-2 rounded-full transition-all duration-300"
-                  style={{ width: `${progress.progress}%` }}
-                />
-              </div>
-              <div className="flex items-center justify-between mt-2">
-                <span className="text-text-secondary text-sm">
-                  {progress.status === 'completed' && <CheckCircle className="w-4 h-4 text-green-400 inline mr-1" />}
-                  {progress.status === 'error' && <AlertCircle className="w-4 h-4 text-red-400 inline mr-1" />}
-                  {progress.status}
-                </span>
-                {progress.error && (
-                  <span className="text-red-400 text-xs">{progress.error}</span>
-                )}
-              </div>
-            </div>
-          ))}
-        </div>
       )}
 
-      {/* Error Display */}
       {error && (
-        <div className="p-3 bg-red-500/10 border border-red-500/20 rounded-lg">
-          <div className="flex items-center text-red-400 text-sm">
-            <AlertCircle className="w-4 h-4 mr-2" />
-            {error}
+        <div className="bg-red-500/10 border border-red-500/20 rounded-lg p-4">
+          <div className="flex items-center space-x-2">
+            <AlertCircle className="h-4 w-4 text-red-400" />
+            <span className="text-red-400 text-sm">{error}</span>
           </div>
         </div>
       )}
 
-      {/* Files Display */}
-      {loading ? (
-        <div className="text-center py-12">
-          <RefreshCw className="w-8 h-8 text-text-secondary mx-auto mb-4 animate-spin" />
-          <p className="text-text-secondary">Loading files...</p>
-        </div>
-      ) : filteredAndSortedFiles.length === 0 ? (
-        <div className="text-center py-12">
-          <File className="w-12 h-12 text-text-secondary mx-auto mb-4" />
-          <h3 className="text-lg font-medium text-text-primary mb-2">No files found</h3>
-          <p className="text-text-secondary">
-            {searchQuery ? 'Try adjusting your search' : 'Upload some files to get started'}
-          </p>
+      {!isConnected ? (
+        <div className="text-center space-y-6 py-12">
+          <div className="mx-auto w-24 h-24 bg-primary/10 rounded-full flex items-center justify-center">
+            <HardDrive className="h-12 w-12 text-primary" />
+          </div>
+          <div>
+            <h3 className="text-xl font-semibold text-text-primary mb-2">Connect to Google Drive</h3>
+            <p className="text-text-secondary mb-6">
+              Sign in to Google Drive to access your files and upload new content securely.
+            </p>
+            <button
+              onClick={handleConnect}
+              disabled={isLoading}
+              className="bg-primary hover:bg-primary/90 text-white px-6 py-3 rounded-lg font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {isLoading ? 'Connecting...' : (isDemoMode ? 'Start Demo Connection' : 'Connect to Google Drive')}
+            </button>
+          </div>
         </div>
       ) : (
-        <>
-          <div className="text-sm text-text-secondary">
-            {filteredAndSortedFiles.length} file{filteredAndSortedFiles.length !== 1 ? 's' : ''}
-            {selectedFiles.size > 0 && ` (${selectedFiles.size} selected)`}
+        <div className="space-y-6">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center space-x-3">
+              <div className="h-3 w-3 bg-green-500 rounded-full"></div>
+              <span className="text-text-primary font-medium">
+                {isDemoMode ? 'Demo Connected to Google Drive' : 'Connected to Google Drive'}
+              </span>
+              <span className="text-text-secondary text-sm">({userEmail})</span>
+            </div>
+            <div className="flex items-center space-x-2">
+              {isDemoMode && (
+                <div className="text-xs text-text-secondary bg-blue-500/10 px-2 py-1 rounded">
+                  Demo Data: {googleDriveDemoService.getDemoStats().totalFiles} files
+                </div>
+              )}
+              <button
+                onClick={loadFiles}
+                disabled={isLoading}
+                className="p-2 text-text-secondary hover:text-text-primary transition-colors"
+                title="Refresh"
+              >
+                <RefreshCw className={`h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} />
+              </button>
+              <button
+                onClick={handleDisconnect}
+                className="text-text-secondary hover:text-text-primary transition-colors"
+              >
+                Disconnect
+              </button>
+            </div>
           </div>
-          {viewMode === 'grid' ? renderGridView() : renderListView()}
-        </>
+
+          <div className="flex items-center space-x-4">
+            <label className="bg-primary hover:bg-primary/90 text-white px-4 py-2 rounded-lg font-medium cursor-pointer transition-colors">
+              <Upload className="h-4 w-4 inline mr-2" />
+              Upload File
+              <input
+                type="file"
+                onChange={handleUpload}
+                className="hidden"
+                disabled={isLoading}
+              />
+            </label>
+          </div>
+
+          <div className="space-y-3">
+            <h3 className="text-lg font-semibold text-text-primary">Your Files</h3>
+            {isLoading ? (
+              <div className="text-center py-8">
+                <RefreshCw className="h-8 w-8 text-text-secondary mx-auto mb-4 animate-spin" />
+                <p className="text-text-secondary">Loading files...</p>
+              </div>
+            ) : files.length === 0 ? (
+              <div className="text-center py-8 text-text-secondary">
+                <Folder className="h-12 w-12 mx-auto mb-3 opacity-50" />
+                <p>No files found</p>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {files.map((file) => (
+                  <div
+                    key={file.id}
+                    className="flex items-center justify-between p-3 bg-secondary/50 rounded-lg"
+                  >
+                    <div className="flex items-center space-x-3">
+                      {getFileIcon(file)}
+                      <div>
+                        <p className="text-text-primary font-medium">{file.name}</p>
+                        <p className="text-text-secondary text-sm">
+                          {formatFileSize(file.size || '0')} • {formatDate(file.modifiedTime)}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <button
+                        onClick={() => handleDownload(file.id, file.name)}
+                        className="p-2 text-text-secondary hover:text-text-primary transition-colors"
+                        title="Download"
+                      >
+                        <Download className="h-4 w-4" />
+                      </button>
+                      <button
+                        onClick={() => handleDelete(file.id)}
+                        className="p-2 text-text-secondary hover:text-red-400 transition-colors"
+                        title="Delete"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
       )}
     </div>
   );

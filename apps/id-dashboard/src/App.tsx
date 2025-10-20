@@ -45,6 +45,7 @@ import { MainDashboard } from './components/app/MainDashboard';
 import { DelegationModal } from './components/DelegationModal';
 import { IdentityVerificationModal } from './components/IdentityVerificationModal';
 import { GoogleDriveStorage } from './components/storage/GoogleDriveStorage';
+import { GoogleDriveDemo } from './components/storage/GoogleDriveDemo';
 
 // Lazy load heavy components
 const EnhancedPrivacyPanel = lazy(() => import('./components/EnhancedPrivacyPanel').then(module => ({ default: module.EnhancedPrivacyPanel })));
@@ -279,7 +280,8 @@ function App() {
       }
     };
   }, []);
-  const [activeTab, setActiveTab] = useState<'privacy' | 'devices' | 'recovery' | 'developer' | 'delegation'>('privacy');
+  const [activeTab, setActiveTab] = useState<'privacy' | 'devices' | 'recovery' | 'developer' | 'delegation' | 'storage'>('privacy');
+  const [isDemoMode, setIsDemoMode] = useState(false);
   const [globalSettingsExpanded, setGlobalSettingsExpanded] = useState(false);
   const [thirdPartyExpanded, setThirdPartyExpanded] = useState(false);
   const [attestedDataPoints, setAttestedDataPoints] = useState<Set<string>>(new Set());
@@ -6226,7 +6228,39 @@ This invitation expires in 24 hours.`;
 
                   {/* Storage Tab */}
                   {activeTab === 'storage' && (
-                    <GoogleDriveStorage />
+                    <div>
+                      {isDemoMode ? (
+                        <div>
+                          <div className="flex items-center justify-between mb-4">
+                            <h3 className="text-lg font-semibold text-text-primary">Google Drive Integration</h3>
+                            <div className="flex items-center space-x-2">
+                              <button
+                                onClick={() => setIsDemoMode(false)}
+                                className="px-3 py-1 bg-primary text-white text-sm rounded-lg hover:bg-primary/90 transition-colors"
+                              >
+                                Exit Demo
+                              </button>
+                            </div>
+                          </div>
+                          <GoogleDriveDemo />
+                        </div>
+                      ) : (
+                        <div>
+                          <div className="flex items-center justify-between mb-4">
+                            <h3 className="text-lg font-semibold text-text-primary">Google Drive Storage</h3>
+                            <div className="flex items-center space-x-2">
+                              <button
+                                onClick={() => setIsDemoMode(true)}
+                                className="px-3 py-1 bg-blue-500 text-white text-sm rounded-lg hover:bg-blue-600 transition-colors"
+                              >
+                                Demo Mode
+                              </button>
+                            </div>
+                          </div>
+                          <GoogleDriveStorage />
+                        </div>
+                      )}
+                    </div>
                   )}
 
                   {/* Developer Portal Tab */}
