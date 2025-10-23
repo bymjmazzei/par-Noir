@@ -477,8 +477,6 @@ function App() {
 
   
 
-  // Destructure PWA state from appState
-  const { pwaState, pwaHandlers, isPWALocked, setIsPWALocked } = appState;
   
   // Enhanced export with authentication and transfer options
   const handleExportData = async () => {
