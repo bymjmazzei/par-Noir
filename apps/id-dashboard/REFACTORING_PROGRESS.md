@@ -2,9 +2,9 @@
 
 ## 📊 Current Status
 
-**App.tsx Line Count:** 6,951 lines (reduced by 437 lines total)  
+**App.tsx Line Count:** 6,813 lines (reduced by 575 lines total)  
 **Target Line Count:** <1,000 lines  
-**Progress:** 25% Complete (5 of 13 modals extracted) - **PHASE 2 STARTED!**
+**Progress:** 30% Complete (6 of 13 modals extracted) - **PHASE 2 CONTINUING!**
 
 ## 📋 Modal Extraction Checklist
 
@@ -22,7 +22,7 @@
 | Modal | Status | Lines | Date | Notes |
 |-------|--------|-------|------|-------|
 | Recovery Modal | ✅ Complete | 4912-5113 | Oct 23, 2024 | Successfully extracted - 193 lines removed |
-| Add Custodian Modal | ⏳ Pending | 5116-5261 | | |
+| Add Custodian Modal | ✅ Complete | 5116-5261 | Oct 23, 2024 | Successfully extracted - 138 lines removed |
 | Recovery Key Generation Modal | ⏳ Pending | 5264-5332 | | |
 | Recovery Key Input Modal | ⏳ Pending | 5335-6338 | | |
 | Recovery Completion Modal | ⏳ Pending | 6794-6867 | | |
