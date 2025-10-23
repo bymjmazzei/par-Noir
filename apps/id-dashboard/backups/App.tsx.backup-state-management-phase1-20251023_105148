@@ -60,14 +60,6 @@ import { CustodianAcceptanceModal } from './components/modals/CustodianAcceptanc
 import { CustodianApprovalModal } from './components/modals/CustodianApprovalModal';
 import { CustodianInvitationAcceptanceModal } from './components/modals/CustodianInvitationAcceptanceModal';
 
-// Custom hooks for state management
-import { useAppState } from './hooks/useAppState';
-import { useIdentityState } from './hooks/useIdentityState';
-import { usePrivacyState } from './hooks/usePrivacyState';
-import { useExportState } from './hooks/useExportState';
-import { useCustodianState } from './hooks/useCustodianState';
-import { useMigrationState } from './hooks/useMigrationState';
-
 // Lazy load heavy components
 const EnhancedPrivacyPanel = lazy(() => import('./components/EnhancedPrivacyPanel').then(module => ({ default: module.EnhancedPrivacyPanel })));
 const ToolSettingsModal = lazy(() => import('./components/ToolSettingsModal').then(module => ({ default: module.ToolSettingsModal })));
@@ -234,61 +226,103 @@ function App() {
     }
   };
 
-  // Use custom hooks for state management
-  const appState = useAppState();
-  const identityState = useIdentityState();
-  const privacyState = usePrivacyState();
-  const exportState = useExportState();
-  const custodianState = useCustodianState();
-  const migrationState = useMigrationState();
-
-  // Destructure the most commonly used state for easier access
-  const {
-    storage,
-    dids,
-    setDids,
-    loading,
-    setLoading,
-    error,
-    setError,
-    success,
-    setSuccess: setSuccessWithTimeout,
-    showSuccessMessage,
-    showErrorMessage,
-    activeTab,
-    setActiveTab
-  } = appState;
+  const [storage] = useState(() => new SecureStorage());
+  const [dids, setDids] = useState<DIDInfo[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
+  const successTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   
 
   
 
   
-  // Destructure additional state from hooks
-  const {
-    showCreateForm,
-    setShowCreateForm,
-    showImportForm,
-    setShowImportForm,
-    selectedDID,
-    setSelectedDID,
-    isDemoMode,
-    setIsDemoMode,
-    globalSettingsExpanded,
-    setGlobalSettingsExpanded,
-    thirdPartyExpanded,
-    setThirdPartyExpanded,
-    attestedDataPoints,
-    setAttestedDataPoints,
-    verifiedDataPoints,
-    setVerifiedDataPoints,
-    showVerificationModal,
-    setShowVerificationModal
-  } = appState;
+  // Function to handle success messages with proper timeout management
+  const showSuccessMessage = (message: string, duration: number = 3000) => {
+    // Clear any existing timeout
+    if (successTimeoutRef.current) {
+      clearTimeout(successTimeoutRef.current);
+      successTimeoutRef.current = null;
+    }
+    
+    // Set the success message
+    setSuccess(message);
+    
+    // Set new timeout with a unique identifier
+    const timeoutId = setTimeout(() => {
+      // Only clear if this is still our active timeout
+      if (successTimeoutRef.current === timeoutId) {
+        setSuccess(null);
+        successTimeoutRef.current = null;
+      }
+    }, duration);
+    
+    successTimeoutRef.current = timeoutId;
+  };
+  
+  // Override setSuccess to use our timeout management
+  const setSuccessWithTimeout = (message: string | null) => {
+    if (message === null) {
+      // If clearing, also clear the timeout
+      if (successTimeoutRef.current) {
+        clearTimeout(successTimeoutRef.current);
+        successTimeoutRef.current = null;
+      }
+      setSuccess(null);
+    } else {
+      // If setting a message, use our timeout management
+      showSuccessMessage(message);
+    }
+  };
+  
+  // Function to handle error messages with proper timeout management
+  const showErrorMessage = (message: string, duration: number = 9000) => {
+    setError(message);
+    setTimeout(() => setError(null), duration);
+  };
+  
+  const [showCreateForm, setShowCreateForm] = useState(false);
+  const [showImportForm, setShowImportForm] = useState(false);
+  const [selectedDID, setSelectedDID] = useState<DIDInfo | null>(null);
+  
+  // Cleanup timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (successTimeoutRef.current) {
+        clearTimeout(successTimeoutRef.current);
+      }
+    };
+  }, []);
+  const [activeTab, setActiveTab] = useState<'privacy' | 'devices' | 'recovery' | 'developer' | 'delegation' | 'storage'>('privacy');
+  const [isDemoMode, setIsDemoMode] = useState(false);
+  const [globalSettingsExpanded, setGlobalSettingsExpanded] = useState(false);
+  const [thirdPartyExpanded, setThirdPartyExpanded] = useState(false);
+  const [attestedDataPoints, setAttestedDataPoints] = useState<Set<string>>(new Set());
+  const [verifiedDataPoints, setVerifiedDataPoints] = useState<Set<string>>(new Set());
+  const [showVerificationModal, setShowVerificationModal] = useState(false);
 
   
 
-  // Destructure PWA state from appState
-  const { pwaState, pwaHandlers, isPWALocked, setIsPWALocked } = appState;
+  // PWA functionality
+  const [pwaState, pwaHandlers] = usePWA();
+  
+  // PWA Lock Screen state
+  const [isPWALocked, setIsPWALocked] = useState(false);
+  
+  // Debug PWA lock state
+  useEffect(() => {
+    if (process.env.NODE_ENV === 'development') {
+      logDebug('PWA Lock State:', isPWALocked);
+    }
+  }, [isPWALocked]);
+
+
+
+  
+  // Log PWA state for debugging (only in development)
+  if (process.env.NODE_ENV === 'development') {
+    logDebug('PWA State:', pwaState);
+  }
   
   // Enhanced export with authentication and transfer options
   const handleExportData = async () => {
@@ -528,37 +562,25 @@ function App() {
 
 
   
-  // Destructure identity state from custom hook
-  const {
-    authenticatedUser,
-    setAuthenticatedUser,
-    showRecoveryModal,
-    setShowRecoveryModal,
-    showAddCustodianModal,
-    setShowAddCustodianModal,
-    showDataPointInputModal,
-    setShowDataPointInputModal,
-    currentDataPoint,
-    setCurrentDataPoint,
-    currentDataPointExistingData,
-    setCurrentDataPointExistingData,
-    showRecoveryKeyModal,
-    setShowRecoveryKeyModal,
-    showRecoveryKeyInputModal,
-    setShowRecoveryKeyInputModal,
-    custodianQRCode,
-    setCustodianQRCode,
-    custodianContactInfo,
-    setCustodianContactInfo,
-    recoveryThreshold,
-    setRecoveryThreshold,
-    custodians,
-    setCustodians,
-    recoveryRequests,
-    setRecoveryRequests,
-    recoveryKeys,
-    setRecoveryKeys
-  } = identityState;
+  const [showRecoveryModal, setShowRecoveryModal] = useState(false);
+  const [showAddCustodianModal, setShowAddCustodianModal] = useState(false);
+  const [showDataPointInputModal, setShowDataPointInputModal] = useState(false);
+  const [currentDataPoint, setCurrentDataPoint] = useState<any>(null);
+  const [currentDataPointExistingData, setCurrentDataPointExistingData] = useState<any>(null);
+  const [showRecoveryKeyModal, setShowRecoveryKeyModal] = useState(false);
+  const [custodianQRCode, setCustodianQRCode] = useState<string>('');
+  const [custodianContactInfo, setCustodianContactInfo] = useState({
+    name: '',
+    contactType: 'email' as 'email' | 'phone',
+    contactValue: '',
+    type: 'person' as 'person' | 'service' | 'self',
+    passcode: ''
+  });
+  const [showRecoveryKeyInputModal, setShowRecoveryKeyInputModal] = useState(false);
+  const [recoveryThreshold, setRecoveryThreshold] = useState(2);
+  const [custodians, setCustodians] = useState<RecoveryCustodian[]>([]);
+  const [recoveryRequests, setRecoveryRequests] = useState<RecoveryRequest[]>([]);
+  const [recoveryKeys, setRecoveryKeys] = useState<RecoveryKey[]>([]);
   
   // Add missing state variables for identity management
   // const [identities, setIdentities] = useState<DIDInfo[]>([]);
@@ -567,160 +589,172 @@ function App() {
   // Add missing identity manager
   // const [identityManager] = useState(() => new SecureStorage());
   
-  // Destructure privacy state from custom hook
-  const {
-    showEnhancedPrivacyPanel,
-    setShowEnhancedPrivacyPanel,
-    privacySettings,
-    setPrivacySettings,
-    showSessionManager,
-    setShowSessionManager,
-    showToolSettingsModal,
-    setShowToolSettingsModal,
-    selectedToolId,
-    setSelectedToolId,
-    showIntegrationSettings,
-    setShowIntegrationSettings
-  } = privacyState;
+  // Enhanced Privacy Settings
+  const [showEnhancedPrivacyPanel, setShowEnhancedPrivacyPanel] = useState(false);
+  const [privacySettings, setPrivacySettings] = useState<GlobalPrivacySettings>({
+    allowAnalytics: false,
+    allowMarketing: false,
+    allowThirdPartySharing: false,
+    dataPoints: {},
+    toolPermissions: {}
+  });
   
 
 
   
-  // Destructure migration state from custom hook
-  const {
-    showMigrationModal,
-    setShowMigrationModal,
-    pendingMigrations,
-    setPendingMigrations,
-    migrationChecked,
-    setMigrationChecked,
-    showIntegrationDebugger,
-    setShowIntegrationDebugger,
-    custodianships,
-    setCustodianships,
-    recoveryKeyInput,
-    setRecoveryKeyInput,
-    activeRecoveryMethod,
-    setActiveRecoveryMethod,
-    recoveryKeyContactInfo,
-    setRecoveryKeyContactInfo,
-    licenseKey,
-    setLicenseKey,
-    licenseInfo,
-    setLicenseInfo,
-    licenseProof,
-    setLicenseProof,
-    currentDevice,
-    setCurrentDevice
-  } = migrationState;
+  // Session Manager
+  const [showSessionManager, setShowSessionManager] = useState(false);
+  
 
-  // Destructure additional migration state
-  const {
-    showRecoveryCompleteModal,
-    setShowRecoveryCompleteModal,
-    recoveredDID,
-    setRecoveredDID,
-    showCustodianApprovalModal,
-    setShowCustodianApprovalModal,
-    selectedRecoveryRequest,
-    setSelectedRecoveryRequest,
-    selectedCustodianship,
-    setSelectedCustodianship,
-    showCustodianInvitationModal,
-    setShowCustodianInvitationModal,
-    pendingCustodianInvitation,
-    setPendingCustodianInvitation
-  } = migrationState;
 
-  // Destructure custodian state
-  const {
-    showDeviceInfoModal,
-    setShowDeviceInfoModal,
-    showSendInvitationModal,
-    setShowSendInvitationModal,
-    selectedCustodianForInvitation,
-    setSelectedCustodianForInvitation
-  } = custodianState;
+  // Migration states
+  const [showMigrationModal, setShowMigrationModal] = useState(false);
+  const [pendingMigrations, setPendingMigrations] = useState<WebIdentityData[]>([]);
+  const [migrationChecked, setMigrationChecked] = useState(false);
+  
 
-  // Destructure form state from custodian hook
-  const {
-    createForm,
-    setCreateForm,
-    showCreatePasscode,
-    setShowCreatePasscode,
-    showCreateConfirmPasscode,
-    setShowCreateConfirmPasscode,
-    showCreateNickname,
-    setShowCreateNickname,
-    showCreateEmail,
-    setShowCreateEmail,
-    showCreatePhone,
-    setShowCreatePhone,
-    showUnlockPasscode,
-    setShowUnlockPasscode,
-    showUnlockNickname,
-    setShowUnlockNickname,
-    showUnlockEmail,
-    setShowUnlockEmail,
-    showUnlockPhone,
-    setShowUnlockPhone,
-    unlockForm,
-    setUnlockForm,
-    selectedStoredIdentity,
-    setSelectedStoredIdentity,
-    showIdentitySelector,
-    setShowIdentitySelector,
-    showOnboardingWizard,
-    setShowOnboardingWizard,
-    isNewUser,
-    setIsNewUser,
-    showProfilePictureEditor,
-    setShowProfilePictureEditor,
-    showNicknameEditor,
-    setShowNicknameEditor,
-    editingNickname,
-    setEditingNickname,
-    showRecoveryInfo,
-    setShowRecoveryInfo,
-    showCustodianInfo,
-    setShowCustodianInfo
-  } = custodianState;
+  
+  // Tool Settings Modal
+  const [showToolSettingsModal, setShowToolSettingsModal] = useState(false);
+  const [selectedToolId, setSelectedToolId] = useState<string>('');
+  
+  // Integration Settings Manager
+  const [showIntegrationSettings, setShowIntegrationSettings] = useState(false);
+  const [showIntegrationDebugger, setShowIntegrationDebugger] = useState(false);
+  const [custodianships, setCustodianships] = useState<Array<{
+    id: string;
+    identityId: string;
+    identityName: string;
+    identityUsername: string;
+    status: 'active' | 'pending';
+    canApprove: boolean;
+  }>>([]);
+  const [recoveryKeyInput, setRecoveryKeyInput] = useState('');
+  const [activeRecoveryMethod, setActiveRecoveryMethod] = useState<'key' | 'factor'>('factor');
+  const [recoveryKeyContactInfo, setRecoveryKeyContactInfo] = useState({
+    contactType: 'email' as 'email' | 'phone',
+    contactValue: '',
+    claimantName: ''
+  });
 
-  // Destructure export state from export hook
-  const {
-    showExportModal,
-    setShowExportModal,
-    showExportAuthModal,
-    setShowExportAuthModal,
-    showExportOptionsModal,
-    setShowExportOptionsModal,
-    exportAuthData,
-    setExportAuthData,
-    showExportPasscode,
-    setShowExportPasscode,
-    showExportPnName,
-    setShowExportPnName,
-    showTransferReceiver,
-    setShowTransferReceiver,
-    showTermsOfService,
-    setShowTermsOfService,
-    showPrivacyPolicy,
-    setShowPrivacyPolicy,
-    showTransferSetupModal,
-    setShowTransferSetupModal,
-    transferUrl,
-    setTransferUrl,
-    showDelegationModal,
-    setShowDelegationModal,
-    activeDelegations,
-    setActiveDelegations,
-    transferId,
-    setTransferId,
-    transferPasscode,
-    setTransferPasscode,
-    transferCreated,
-    setTransferCreated
-  } = exportState;
+
+
+  // License management state variables
+  const [licenseKey, setLicenseKey] = useState<string>('');
+  const [licenseInfo, setLicenseInfo] = useState<any>(null);
+  const [licenseProof, setLicenseProof] = useState<any>(null);
+
+
+
+  const [currentDevice, setCurrentDevice] = useState<SyncedDevice | null>(null);
+
+  // Recovery completion state
+  const [showRecoveryCompleteModal, setShowRecoveryCompleteModal] = useState(false);
+  const [recoveredDID, setRecoveredDID] = useState<DIDInfo | null>(null);
+
+  // Custodian approval modal state
+  const [showCustodianApprovalModal, setShowCustodianApprovalModal] = useState(false);
+  const [selectedRecoveryRequest, setSelectedRecoveryRequest] = useState<RecoveryRequest | null>(null);
+  const [selectedCustodianship, setSelectedCustodianship] = useState<{
+    id: string;
+    identityId: string;
+    identityName: string;
+    identityUsername: string;
+    status: 'active' | 'pending';
+    canApprove: boolean;
+  } | null>(null);
+
+  // Custodian invitation acceptance state
+  const [showCustodianInvitationModal, setShowCustodianInvitationModal] = useState(false);
+  const [showDeviceInfoModal, setShowDeviceInfoModal] = useState(false);
+  const [pendingCustodianInvitation, setPendingCustodianInvitation] = useState<{
+    invitationId: string;
+    custodianName: string;
+    custodianType: 'self-recovery' | 'person' | 'service';
+    contactType: 'email' | 'phone';
+    contactValue: string;
+    identityName: string;
+    identityUsername: string;
+  } | null>(null);
+  
+  // New state for sending invitations
+  const [showSendInvitationModal, setShowSendInvitationModal] = useState(false);
+  const [selectedCustodianForInvitation, setSelectedCustodianForInvitation] = useState<RecoveryCustodian | null>(null);
+
+  // Form states
+  const [createForm, setCreateForm] = useState({
+    pnName: '',
+    confirmPNName: '',
+    passcode: '',
+    confirmPasscode: '',
+    email: '',
+    phone: '',
+    recoveryEmail: '',
+    confirmRecoveryEmail: '',
+    recoveryPhone: '',
+    confirmRecoveryPhone: '',
+    recoveryContactType: 'email' as 'email' | 'phone'
+  });
+  
+  const [createStep, setCreateStep] = useState(1);
+  
+  // Show/hide state for create form fields
+  const [showPNName, setShowPNName] = useState(false);
+  const [showPasscode, setShowPasscode] = useState(false);
+  const [showConfirmPNName, setShowConfirmPNName] = useState(false);
+  const [showConfirmPasscode, setShowConfirmPasscode] = useState(false);
+  
+  // Show/hide state for main unlock form fields
+  const [showMainPNName, setShowMainPNName] = useState(false);
+  const [showMainPasscode, setShowMainPasscode] = useState(false);
+
+  const [importForm, setImportForm] = useState({
+    pnName: '',
+    passcode: '',
+    backupFile: null as File | null
+  });
+
+  const [recoveryKeyForm, setRecoveryKeyForm] = useState({
+    purpose: 'personal' as RecoveryKey['purpose'],
+    description: ''
+  });
+
+  // Main screen form state
+  const [mainForm, setMainForm] = useState({
+    pnName: '',
+    passcode: '',
+    uploadFile: null as File | null
+  });
+  
+  // PWA-specific state for uploaded IDs
+  // Removed uploadedIds state as it's now handled by the enhanced identity selector
+  
+  // Identity selector state
+  const [selectedStoredIdentity, setSelectedStoredIdentity] = useState<SimpleIdentity | null>(null);
+  
+  // Onboarding wizard state
+  const [showOnboardingWizard, setShowOnboardingWizard] = useState(false);
+  const [isNewUser, setIsNewUser] = useState(false);
+
+  // Export modal state
+  const [showExportModal, setShowExportModal] = useState(false);
+  const [showExportAuthModal, setShowExportAuthModal] = useState(false);
+  const [showExportOptionsModal, setShowExportOptionsModal] = useState(false);
+  const [exportAuthData, setExportAuthData] = useState({ pnName: '', passcode: '' });
+  const [showExportPasscode, setShowExportPasscode] = useState(false);
+  const [showExportPnName, setShowExportPnName] = useState(false);
+  
+  // Transfer state
+  const [showTransferReceiver, setShowTransferReceiver] = useState(false);
+  const [showTermsOfService, setShowTermsOfService] = useState(false);
+  const [showPrivacyPolicy, setShowPrivacyPolicy] = useState(false);
+  const [showTransferSetupModal, setShowTransferSetupModal] = useState(false);
+  const [transferUrl, setTransferUrl] = useState('');
+  const [showDelegationModal, setShowDelegationModal] = useState(false);
+  const [activeDelegations, setActiveDelegations] = useState([]);
+  const [transferId, setTransferId] = useState('');
+  const [transferPasscode, setTransferPasscode] = useState('');
+  const [transferCreated, setTransferCreated] = useState(false);
 
   // Handle delegation removal
   const handleRemoveDelegation = (delegationId: string) => {
@@ -735,21 +769,31 @@ function App() {
     );
   };
 
-  // Destructure remaining custodian state
-  const {
-    showCustodianAcceptanceModal,
-    setShowCustodianAcceptanceModal,
-    pendingCustodianInvitationData,
-    setPendingCustodianInvitationData,
-    custodianAcceptanceData,
-    setCustodianAcceptanceData,
-    showBiometricModal,
-    setShowBiometricModal,
-    biometricAvailable,
-    setBiometricAvailable,
-    biometricEnabled,
-    setBiometricEnabled
-  } = custodianState;
+  
+  // Profile picture editing state
+  const [showProfilePictureEditor, setShowProfilePictureEditor] = useState(false);
+  
+  // Nickname editing state
+  const [showNicknameEditor, setShowNicknameEditor] = useState(false);
+  const [editingNickname, setEditingNickname] = useState('');
+  
+  // Recovery info section state
+  const [showRecoveryInfo, setShowRecoveryInfo] = useState(false);
+  
+  // Custodian info section state
+  const [showCustodianInfo, setShowCustodianInfo] = useState(false);
+  
+  // Custodian invitation acceptance state
+  const [showCustodianAcceptanceModal, setShowCustodianAcceptanceModal] = useState(false);
+  const [pendingCustodianInvitationData, setPendingCustodianInvitationData] = useState<any>(null);
+  const [custodianAcceptanceData, setCustodianAcceptanceData] = useState({
+    contactValue: '',
+    passcode: ''
+  });
+  
+  // Biometric authentication state
+  const [showBiometricSetup, setShowBiometricSetup] = useState(false);
+  // const [biometricAvailable, setBiometricAvailable] = useState(false);
   
   // selectedId state removed as it's now handled by enhanced identity selector
 
