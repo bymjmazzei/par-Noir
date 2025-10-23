@@ -60,6 +60,13 @@ export function useCustodianState() {
     phone: ''
   });
 
+  // Main form state for identity unlock
+  const [mainForm, setMainForm] = useState({
+    pnName: '',
+    passcode: '',
+    uploadFile: null as File | null
+  });
+
   // Identity selector state
   const [selectedStoredIdentity, setSelectedStoredIdentity] = useState<any>(null);
   const [showIdentitySelector, setShowIdentitySelector] = useState(false);
@@ -130,6 +137,8 @@ export function useCustodianState() {
     setShowUnlockPhone,
     unlockForm,
     setUnlockForm,
+    mainForm,
+    setMainForm,
 
     // Identity selector
     selectedStoredIdentity,

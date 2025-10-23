@@ -401,6 +401,8 @@ function App() {
     setShowUnlockPhone,
     unlockForm,
     setUnlockForm,
+    mainForm,
+    setMainForm,
     selectedStoredIdentity,
     setSelectedStoredIdentity,
     showIdentitySelector,
