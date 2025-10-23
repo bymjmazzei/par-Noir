@@ -47,7 +47,6 @@ import { IdentityVerificationModal } from './components/IdentityVerificationModa
 import { GoogleDriveStorage } from './components/storage/GoogleDriveStorage';
 import { GoogleDriveDemo } from './components/storage/GoogleDriveDemo';
 import { ExportAuthModal } from './components/modals/ExportAuthModal';
-import { ExportOptionsModal } from './components/modals/ExportOptionsModal';
 
 // Lazy load heavy components
 const EnhancedPrivacyPanel = lazy(() => import('./components/EnhancedPrivacyPanel').then(module => ({ default: module.EnhancedPrivacyPanel })));
@@ -7035,16 +7034,62 @@ This invitation expires in 24 hours.`;
         />
 
         {/* Export Options Modal */}
-        <ExportOptionsModal
-          isOpen={showExportOptionsModal}
-          onClose={() => setShowExportOptionsModal(false)}
-          exportAuthData={exportAuthData}
-          setExportAuthData={setExportAuthData}
-          setShowExportPnName={setShowExportPnName}
-          setShowExportPasscode={setShowExportPasscode}
-          onDownloadExport={handleDownloadExport}
-          onTransfer={handleTransfer}
-        />
+        {showExportOptionsModal && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+            <div className="bg-modal-bg rounded-lg p-6 max-w-md w-full text-text-primary">
+              <div className="flex justify-between items-center mb-6">
+                <h2 className="text-xl font-semibold">Export Options</h2>
+                                  <button
+                    onClick={() => {
+                      setShowExportOptionsModal(false);
+                      setExportAuthData({ pnName: '', passcode: '' });
+                      setShowExportPnName(false);
+                      setShowExportPasscode(false);
+                    }}
+                    className="modal-close-button"
+                  >
+                    ×
+                  </button>
+              </div>
+              
+              <div className="space-y-4">
+                <div className="text-sm text-text-secondary mb-4">
+                  Choose how you want to export your pN file:
+                </div>
+                
+                <button
+                  onClick={handleDownloadExport}
+                  className="w-full p-4 border border-border rounded-lg hover:bg-secondary transition-colors text-left"
+                >
+                  <div className="flex items-center space-x-3">
+                    <div className="w-10 h-10 bg-primary/10 rounded-lg flex items-center justify-center">
+                      <FileText className="w-6 h-6 text-primary" />
+                    </div>
+                    <div>
+                      <div className="font-medium">Download</div>
+                      <div className="text-sm text-text-secondary">Save pN file to your device</div>
+                    </div>
+                  </div>
+                </button>
+                
+                <button
+                                      onClick={handleTransfer}
+                  className="w-full p-4 border border-border rounded-lg hover:bg-secondary transition-colors text-left"
+                >
+                  <div className="flex items-center space-x-3">
+                    <div className="w-10 h-10 bg-primary/10 rounded-lg flex items-center justify-center">
+                      <Smartphone className="w-6 h-6 text-primary" />
+                    </div>
+                    <div>
+                      <div className="font-medium">Transfer to Device</div>
+                      <div className="text-sm text-text-secondary">Generate URL for another device to unlock pN identity</div>
+                    </div>
+                  </div>
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
 
 
