@@ -50,6 +50,10 @@ export function useCustodianState() {
   const [showUnlockNickname, setShowUnlockNickname] = useState(false);
   const [showUnlockEmail, setShowUnlockEmail] = useState(false);
   const [showUnlockPhone, setShowUnlockPhone] = useState(false);
+  
+  // Show/hide state for main form fields
+  const [showMainPNName, setShowMainPNName] = useState(false);
+  const [showMainPasscode, setShowMainPasscode] = useState(false);
 
   // Main screen form state
   const [unlockForm, setUnlockForm] = useState({
@@ -135,6 +139,12 @@ export function useCustodianState() {
     setShowUnlockEmail,
     showUnlockPhone,
     setShowUnlockPhone,
+    
+    // Main form visibility
+    showMainPNName,
+    setShowMainPNName,
+    showMainPasscode,
+    setShowMainPasscode,
     unlockForm,
     setUnlockForm,
     mainForm,

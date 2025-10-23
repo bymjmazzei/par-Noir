@@ -399,6 +399,12 @@ function App() {
     setShowUnlockEmail,
     showUnlockPhone,
     setShowUnlockPhone,
+    
+    // Main form visibility
+    showMainPNName,
+    setShowMainPNName,
+    showMainPasscode,
+    setShowMainPasscode,
     unlockForm,
     setUnlockForm,
     mainForm,
