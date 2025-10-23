@@ -234,7 +234,7 @@ function App() {
     }
   };
 
-  // Use custom hooks for state management
+  // Use custom hooks for state management - MUST be declared before any functions that use these variables
   const appState = useAppState();
   const identityState = useIdentityState();
   const privacyState = usePrivacyState();
@@ -256,15 +256,7 @@ function App() {
     showSuccessMessage,
     showErrorMessage,
     activeTab,
-    setActiveTab
-  } = appState;
-  
-
-  
-
-  
-  // Destructure additional state from hooks
-  const {
+    setActiveTab,
     showCreateForm,
     setShowCreateForm,
     showImportForm,
@@ -282,8 +274,206 @@ function App() {
     verifiedDataPoints,
     setVerifiedDataPoints,
     showVerificationModal,
-    setShowVerificationModal
+    setShowVerificationModal,
+    pwaState,
+    pwaHandlers,
+    isPWALocked,
+    setIsPWALocked
   } = appState;
+
+  // Destructure identity state from custom hook
+  const {
+    authenticatedUser,
+    setAuthenticatedUser,
+    showRecoveryModal,
+    setShowRecoveryModal,
+    showAddCustodianModal,
+    setShowAddCustodianModal,
+    showDataPointInputModal,
+    setShowDataPointInputModal,
+    currentDataPoint,
+    setCurrentDataPoint,
+    currentDataPointExistingData,
+    setCurrentDataPointExistingData,
+    showRecoveryKeyModal,
+    setShowRecoveryKeyModal,
+    showRecoveryKeyInputModal,
+    setShowRecoveryKeyInputModal,
+    custodianQRCode,
+    setCustodianQRCode,
+    custodianContactInfo,
+    setCustodianContactInfo,
+    recoveryThreshold,
+    setRecoveryThreshold,
+    custodians,
+    setCustodians,
+    recoveryRequests,
+    setRecoveryRequests,
+    recoveryKeys,
+    setRecoveryKeys
+  } = identityState;
+
+  // Destructure privacy state from custom hook
+  const {
+    showEnhancedPrivacyPanel,
+    setShowEnhancedPrivacyPanel,
+    privacySettings,
+    setPrivacySettings,
+    showSessionManager,
+    setShowSessionManager,
+    showToolSettingsModal,
+    setShowToolSettingsModal,
+    selectedToolId,
+    setSelectedToolId,
+    showIntegrationSettings,
+    setShowIntegrationSettings
+  } = privacyState;
+
+  // Destructure migration state from custom hook
+  const {
+    showMigrationModal,
+    setShowMigrationModal,
+    pendingMigrations,
+    setPendingMigrations,
+    migrationChecked,
+    setMigrationChecked,
+    showIntegrationDebugger,
+    setShowIntegrationDebugger,
+    custodianships,
+    setCustodianships,
+    recoveryKeyInput,
+    setRecoveryKeyInput,
+    activeRecoveryMethod,
+    setActiveRecoveryMethod,
+    recoveryKeyContactInfo,
+    setRecoveryKeyContactInfo,
+    licenseKey,
+    setLicenseKey,
+    licenseInfo,
+    setLicenseInfo,
+    licenseProof,
+    setLicenseProof,
+    currentDevice,
+    setCurrentDevice,
+    showRecoveryCompleteModal,
+    setShowRecoveryCompleteModal,
+    recoveredDID,
+    setRecoveredDID,
+    showCustodianApprovalModal,
+    setShowCustodianApprovalModal,
+    selectedRecoveryRequest,
+    setSelectedRecoveryRequest,
+    selectedCustodianship,
+    setSelectedCustodianship,
+    showCustodianInvitationModal,
+    setShowCustodianInvitationModal,
+    pendingCustodianInvitation,
+    setPendingCustodianInvitation
+  } = migrationState;
+
+  // Destructure custodian state from custom hook
+  const {
+    showDeviceInfoModal,
+    setShowDeviceInfoModal,
+    showSendInvitationModal,
+    setShowSendInvitationModal,
+    selectedCustodianForInvitation,
+    setSelectedCustodianForInvitation,
+    createForm,
+    setCreateForm,
+    showCreatePasscode,
+    setShowCreatePasscode,
+    showCreateConfirmPasscode,
+    setShowCreateConfirmPasscode,
+    showCreateNickname,
+    setShowCreateNickname,
+    showCreateEmail,
+    setShowCreateEmail,
+    showCreatePhone,
+    setShowCreatePhone,
+    showUnlockPasscode,
+    setShowUnlockPasscode,
+    showUnlockNickname,
+    setShowUnlockNickname,
+    showUnlockEmail,
+    setShowUnlockEmail,
+    showUnlockPhone,
+    setShowUnlockPhone,
+    unlockForm,
+    setUnlockForm,
+    selectedStoredIdentity,
+    setSelectedStoredIdentity,
+    showIdentitySelector,
+    setShowIdentitySelector,
+    showOnboardingWizard,
+    setShowOnboardingWizard,
+    isNewUser,
+    setIsNewUser,
+    showProfilePictureEditor,
+    setShowProfilePictureEditor,
+    showNicknameEditor,
+    setShowNicknameEditor,
+    editingNickname,
+    setEditingNickname,
+    showRecoveryInfo,
+    setShowRecoveryInfo,
+    showCustodianInfo,
+    setShowCustodianInfo,
+    showCustodianAcceptanceModal,
+    setShowCustodianAcceptanceModal,
+    pendingCustodianInvitationData,
+    setPendingCustodianInvitationData,
+    custodianAcceptanceData,
+    setCustodianAcceptanceData,
+    showBiometricModal,
+    setShowBiometricModal,
+    biometricAvailable,
+    setBiometricAvailable,
+    biometricEnabled,
+    setBiometricEnabled
+  } = custodianState;
+
+  // Destructure export state from custom hook
+  const {
+    showExportModal,
+    setShowExportModal,
+    showExportAuthModal,
+    setShowExportAuthModal,
+    showExportOptionsModal,
+    setShowExportOptionsModal,
+    exportAuthData,
+    setExportAuthData,
+    showExportPasscode,
+    setShowExportPasscode,
+    showExportPnName,
+    setShowExportPnName,
+    showTransferReceiver,
+    setShowTransferReceiver,
+    showTermsOfService,
+    setShowTermsOfService,
+    showPrivacyPolicy,
+    setShowPrivacyPolicy,
+    showTransferSetupModal,
+    setShowTransferSetupModal,
+    transferUrl,
+    setTransferUrl,
+    showDelegationModal,
+    setShowDelegationModal,
+    activeDelegations,
+    setActiveDelegations,
+    transferId,
+    setTransferId,
+    transferPasscode,
+    setTransferPasscode,
+    transferCreated,
+    setTransferCreated
+  } = exportState;
+
+  
+
+  
+
+  
 
   
 
@@ -527,199 +717,7 @@ function App() {
 
 
   
-  // Destructure identity state from custom hook
-  const {
-    authenticatedUser,
-    setAuthenticatedUser,
-    showRecoveryModal,
-    setShowRecoveryModal,
-    showAddCustodianModal,
-    setShowAddCustodianModal,
-    showDataPointInputModal,
-    setShowDataPointInputModal,
-    currentDataPoint,
-    setCurrentDataPoint,
-    currentDataPointExistingData,
-    setCurrentDataPointExistingData,
-    showRecoveryKeyModal,
-    setShowRecoveryKeyModal,
-    showRecoveryKeyInputModal,
-    setShowRecoveryKeyInputModal,
-    custodianQRCode,
-    setCustodianQRCode,
-    custodianContactInfo,
-    setCustodianContactInfo,
-    recoveryThreshold,
-    setRecoveryThreshold,
-    custodians,
-    setCustodians,
-    recoveryRequests,
-    setRecoveryRequests,
-    recoveryKeys,
-    setRecoveryKeys
-  } = identityState;
-  
-  // Add missing state variables for identity management
-  // const [identities, setIdentities] = useState<DIDInfo[]>([]);
-  // const [newIdentityName, setNewIdentityName] = useState('');
-  
-  // Add missing identity manager
-  // const [identityManager] = useState(() => new SecureStorage());
-  
-  // Destructure privacy state from custom hook
-  const {
-    showEnhancedPrivacyPanel,
-    setShowEnhancedPrivacyPanel,
-    privacySettings,
-    setPrivacySettings,
-    showSessionManager,
-    setShowSessionManager,
-    showToolSettingsModal,
-    setShowToolSettingsModal,
-    selectedToolId,
-    setSelectedToolId,
-    showIntegrationSettings,
-    setShowIntegrationSettings
-  } = privacyState;
-  
 
-
-  
-  // Destructure migration state from custom hook
-  const {
-    showMigrationModal,
-    setShowMigrationModal,
-    pendingMigrations,
-    setPendingMigrations,
-    migrationChecked,
-    setMigrationChecked,
-    showIntegrationDebugger,
-    setShowIntegrationDebugger,
-    custodianships,
-    setCustodianships,
-    recoveryKeyInput,
-    setRecoveryKeyInput,
-    activeRecoveryMethod,
-    setActiveRecoveryMethod,
-    recoveryKeyContactInfo,
-    setRecoveryKeyContactInfo,
-    licenseKey,
-    setLicenseKey,
-    licenseInfo,
-    setLicenseInfo,
-    licenseProof,
-    setLicenseProof,
-    currentDevice,
-    setCurrentDevice
-  } = migrationState;
-
-  // Destructure additional migration state
-  const {
-    showRecoveryCompleteModal,
-    setShowRecoveryCompleteModal,
-    recoveredDID,
-    setRecoveredDID,
-    showCustodianApprovalModal,
-    setShowCustodianApprovalModal,
-    selectedRecoveryRequest,
-    setSelectedRecoveryRequest,
-    selectedCustodianship,
-    setSelectedCustodianship,
-    showCustodianInvitationModal,
-    setShowCustodianInvitationModal,
-    pendingCustodianInvitation,
-    setPendingCustodianInvitation
-  } = migrationState;
-
-  // Destructure custodian state
-  const {
-    showDeviceInfoModal,
-    setShowDeviceInfoModal,
-    showSendInvitationModal,
-    setShowSendInvitationModal,
-    selectedCustodianForInvitation,
-    setSelectedCustodianForInvitation
-  } = custodianState;
-
-  // Destructure form state from custodian hook
-  const {
-    createForm,
-    setCreateForm,
-    showCreatePasscode,
-    setShowCreatePasscode,
-    showCreateConfirmPasscode,
-    setShowCreateConfirmPasscode,
-    showCreateNickname,
-    setShowCreateNickname,
-    showCreateEmail,
-    setShowCreateEmail,
-    showCreatePhone,
-    setShowCreatePhone,
-    showUnlockPasscode,
-    setShowUnlockPasscode,
-    showUnlockNickname,
-    setShowUnlockNickname,
-    showUnlockEmail,
-    setShowUnlockEmail,
-    showUnlockPhone,
-    setShowUnlockPhone,
-    unlockForm,
-    setUnlockForm,
-    selectedStoredIdentity,
-    setSelectedStoredIdentity,
-    showIdentitySelector,
-    setShowIdentitySelector,
-    showOnboardingWizard,
-    setShowOnboardingWizard,
-    isNewUser,
-    setIsNewUser,
-    showProfilePictureEditor,
-    setShowProfilePictureEditor,
-    showNicknameEditor,
-    setShowNicknameEditor,
-    editingNickname,
-    setEditingNickname,
-    showRecoveryInfo,
-    setShowRecoveryInfo,
-    showCustodianInfo,
-    setShowCustodianInfo
-  } = custodianState;
-
-  // Destructure export state from export hook
-  const {
-    showExportModal,
-    setShowExportModal,
-    showExportAuthModal,
-    setShowExportAuthModal,
-    showExportOptionsModal,
-    setShowExportOptionsModal,
-    exportAuthData,
-    setExportAuthData,
-    showExportPasscode,
-    setShowExportPasscode,
-    showExportPnName,
-    setShowExportPnName,
-    showTransferReceiver,
-    setShowTransferReceiver,
-    showTermsOfService,
-    setShowTermsOfService,
-    showPrivacyPolicy,
-    setShowPrivacyPolicy,
-    showTransferSetupModal,
-    setShowTransferSetupModal,
-    transferUrl,
-    setTransferUrl,
-    showDelegationModal,
-    setShowDelegationModal,
-    activeDelegations,
-    setActiveDelegations,
-    transferId,
-    setTransferId,
-    transferPasscode,
-    setTransferPasscode,
-    transferCreated,
-    setTransferCreated
-  } = exportState;
 
   // Handle delegation removal
   const handleRemoveDelegation = (delegationId: string) => {
@@ -734,21 +732,6 @@ function App() {
     );
   };
 
-  // Destructure remaining custodian state
-  const {
-    showCustodianAcceptanceModal,
-    setShowCustodianAcceptanceModal,
-    pendingCustodianInvitationData,
-    setPendingCustodianInvitationData,
-    custodianAcceptanceData,
-    setCustodianAcceptanceData,
-    showBiometricModal,
-    setShowBiometricModal,
-    biometricAvailable,
-    setBiometricAvailable,
-    biometricEnabled,
-    setBiometricEnabled
-  } = custodianState;
   
   // selectedId state removed as it's now handled by enhanced identity selector
 
@@ -5806,9 +5789,9 @@ This invitation expires in 24 hours.`;
         <CustodianInvitationAcceptanceModal
           isOpen={showCustodianInvitationModal}
           onClose={() => {
-            setShowCustodianInvitationModal(false);
-            setPendingCustodianInvitation(null);
-          }}
+                    setShowCustodianInvitationModal(false);
+                    setPendingCustodianInvitation(null);
+                  }}
           pendingCustodianInvitation={pendingCustodianInvitation}
           onAcceptCustodianship={handleCustodianInvitationAcceptance}
         />
@@ -5848,8 +5831,8 @@ This invitation expires in 24 hours.`;
           onApproveRecovery={handleApproveRecovery}
           onSuccess={(message) => {
             setSuccess(message);
-            setTimeout(() => setSuccess(null), 5000);
-          }}
+                      setTimeout(() => setSuccess(null), 5000);
+                    }}
         />
 
         {/* Recovery Completion Modal */}
@@ -6018,10 +6001,10 @@ This invitation expires in 24 hours.`;
           transferUrl={transferUrl}
           onTransferSetup={handleTransferSetup}
           onCopyUrl={() => {
-            navigator.clipboard.writeText(transferUrl);
-            setSuccess('URL copied to clipboard!');
-            setTimeout(() => setSuccess(null), 3000);
-          }}
+                        navigator.clipboard.writeText(transferUrl);
+                        setSuccess('URL copied to clipboard!');
+                        setTimeout(() => setSuccess(null), 3000);
+                      }}
           success={success}
         />
 
