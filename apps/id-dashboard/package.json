@@ -44,7 +44,8 @@
     "react-dom": "^18.2.0",
     "react-router-dom": "^6.8.1",
     "tailwind-merge": "^2.0.0",
-    "twilio": "^5.8.2"
+    "twilio": "^5.8.2",
+    "xlsx": "^0.18.5"
   },
   "devDependencies": {
     "@playwright/test": "^1.54.2",

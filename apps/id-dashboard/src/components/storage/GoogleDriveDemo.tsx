@@ -41,17 +41,25 @@ export const GoogleDriveDemo: React.FC = () => {
           
           <div className="flex items-center space-x-4">
             {/* View Mode Toggle */}
-            <div className="flex items-center space-x-2 bg-background rounded-lg p-1">
+            <div className="flex items-center space-x-2 bg-gray-800 border border-gray-600 rounded-lg p-1">
               <button
                 onClick={() => setViewMode('desktop')}
-                className={`p-2 rounded ${viewMode === 'desktop' ? 'bg-primary text-white' : 'text-text-secondary hover:text-text-primary'}`}
+                className={`p-2 rounded transition-colors ${
+                  viewMode === 'desktop' 
+                    ? 'bg-blue-600 text-white' 
+                    : 'text-gray-300 hover:text-white hover:bg-gray-700'
+                }`}
                 title="Desktop View"
               >
                 <Monitor className="h-4 w-4" />
               </button>
               <button
                 onClick={() => setViewMode('mobile')}
-                className={`p-2 rounded ${viewMode === 'mobile' ? 'bg-primary text-white' : 'text-text-secondary hover:text-text-primary'}`}
+                className={`p-2 rounded transition-colors ${
+                  viewMode === 'mobile' 
+                    ? 'bg-blue-600 text-white' 
+                    : 'text-gray-300 hover:text-white hover:bg-gray-700'
+                }`}
                 title="Mobile View"
               >
                 <Smartphone className="h-4 w-4" />
@@ -80,7 +88,7 @@ export const GoogleDriveDemo: React.FC = () => {
               
               <button
                 onClick={handleResetDemo}
-                className="flex items-center space-x-2 px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg font-medium transition-colors"
+                className="flex items-center space-x-2 px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg font-medium transition-colors"
               >
                 <RotateCcw className="h-4 w-4" />
                 <span>Reset Demo</span>
@@ -104,15 +112,17 @@ export const GoogleDriveDemo: React.FC = () => {
       {/* Main Content */}
       <div className={`max-w-7xl mx-auto p-6 ${viewMode === 'mobile' ? 'max-w-sm' : ''}`}>
         {/* Demo Instructions */}
-        <div className="mb-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
-          <h2 className="text-lg font-semibold text-blue-900 mb-2">Demo Instructions</h2>
-          <ol className="list-decimal list-inside space-y-1 text-blue-800 text-sm">
+        <div className="mb-6 p-4 bg-blue-900/20 border border-blue-500/30 rounded-lg">
+          <h2 className="text-lg font-semibold text-blue-300 mb-2">Demo Instructions</h2>
+          <ol className="list-decimal list-inside space-y-1 text-blue-200 text-sm">
             <li>Click "Start Demo Connection" to simulate Google Drive authentication</li>
-            <li>Browse the demo files (Identity documents, certificates, etc.)</li>
-            <li>Upload a new file to see the upload progress simulation</li>
-            <li>Download files to see the demo download functionality</li>
-            <li>Delete files to demonstrate file management</li>
-            <li>Use the demo controls to reset the demo state</li>
+            <li>Browse demo files showcasing decentralized identity-based encryption</li>
+            <li>Upload any file type to see AES-256-GCM encryption in action</li>
+            <li>Download files to see client-side decryption process</li>
+            <li>Notice how files are encrypted in Google Drive - only user can access</li>
+            <li>See our custom preview system for encrypted content</li>
+            <li>Experience secure file management with decentralized identity protocol</li>
+            <li>Use demo controls to reset and explore security features</li>
           </ol>
         </div>
 
@@ -123,49 +133,163 @@ export const GoogleDriveDemo: React.FC = () => {
 
         {/* Demo Features Showcase */}
         <div className="mt-8 grid grid-cols-1 md:grid-cols-3 gap-6">
-          <div className="bg-secondary/50 border border-border rounded-lg p-4">
-            <h3 className="font-semibold text-text-primary mb-2">🔐 Secure Authentication</h3>
-            <p className="text-text-secondary text-sm">
-              Demonstrates OAuth 2.0 flow with Google Drive API, including token management and user profile access.
+          <div className="bg-gray-800 border border-gray-600 rounded-lg p-4">
+            <h3 className="font-semibold text-white mb-2">🔐 Decentralized Identity Encryption</h3>
+            <p className="text-gray-300 text-sm">
+              All user files are encrypted with AES-256-GCM using decentralized identity protocol. Only the user with their DID can decrypt their content.
             </p>
           </div>
           
-          <div className="bg-secondary/50 border border-border rounded-lg p-4">
-            <h3 className="font-semibold text-text-primary mb-2">📁 File Management</h3>
-            <p className="text-text-secondary text-sm">
-              Complete CRUD operations: create, read, update, and delete files with real-time progress indicators.
+          <div className="bg-gray-800 border border-gray-600 rounded-lg p-4">
+            <h3 className="font-semibold text-white mb-2">🛡️ Zero-Knowledge Architecture</h3>
+            <p className="text-gray-300 text-sm">
+              File decryption happens on the user's device using their decentralized identity (DID). No server, including Google Drive, can access user content.
             </p>
           </div>
           
-          <div className="bg-secondary/50 border border-border rounded-lg p-4">
-            <h3 className="font-semibold text-text-primary mb-2">⚡ Real-time Updates</h3>
-            <p className="text-text-secondary text-sm">
-              Live file synchronization with progress tracking, error handling, and responsive UI updates.
+          <div className="bg-gray-800 border border-gray-600 rounded-lg p-4">
+            <h3 className="font-semibold text-white mb-2">📱 Custom Preview System</h3>
+            <p className="text-gray-300 text-sm">
+              Since files are AES-256-GCM encrypted, we provide our own preview functionality. Google Drive only sees encrypted content.
             </p>
           </div>
         </div>
 
+        {/* Security Features */}
+        <div className="mt-8 bg-gradient-to-r from-blue-900/20 to-purple-900/20 border border-blue-500/30 rounded-lg p-6">
+          <h3 className="font-semibold text-blue-300 mb-4">🔐 Security Features</h3>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="space-y-3">
+              <h4 className="font-medium text-white">Encryption & Privacy:</h4>
+              <div className="space-y-2 text-sm text-gray-300">
+                <div className="flex items-start space-x-2">
+                  <span className="text-blue-400">🔐</span>
+                  <span>AES-256-GCM encryption for all user files</span>
+                </div>
+                <div className="flex items-start space-x-2">
+                  <span className="text-blue-400">🛡️</span>
+                  <span>Decentralized identity (DID) based encryption</span>
+                </div>
+                <div className="flex items-start space-x-2">
+                  <span className="text-blue-400">🔒</span>
+                  <span>Zero-knowledge: no server can access content</span>
+                </div>
+                <div className="flex items-start space-x-2">
+                  <span className="text-blue-400">🔑</span>
+                  <span>Only user with their DID can decrypt files</span>
+                </div>
+              </div>
+            </div>
+            <div className="space-y-3">
+              <h4 className="font-medium text-white">Google Drive Integration:</h4>
+              <div className="space-y-2 text-sm text-gray-300">
+                <div className="flex items-start space-x-2">
+                  <span className="text-green-400">✅</span>
+                  <span>OAuth 2.0 authentication</span>
+                </div>
+                <div className="flex items-start space-x-2">
+                  <span className="text-green-400">✅</span>
+                  <span>Follows all API guidelines</span>
+                </div>
+                <div className="flex items-start space-x-2">
+                  <span className="text-green-400">✅</span>
+                  <span>Secure token handling</span>
+                </div>
+                <div className="flex items-start space-x-2">
+                  <span className="text-green-400">✅</span>
+                  <span>Enhances Google Drive with decentralized identity security</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* File Operations Demo */}
+        <div className="mt-8 bg-gradient-to-r from-blue-900/20 to-purple-900/20 border border-blue-500/30 rounded-lg p-6">
+          <h3 className="font-semibold text-blue-300 mb-4">📁 File Operations Demo</h3>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="space-y-3">
+              <h4 className="font-medium text-white">How Encrypted Files Work:</h4>
+              <div className="space-y-2 text-sm text-gray-300">
+                <div className="flex items-start space-x-2">
+                  <span className="text-blue-400">1.</span>
+                  <span>Files encrypted with AES-256-GCM before upload to Google Drive</span>
+                </div>
+                <div className="flex items-start space-x-2">
+                  <span className="text-blue-400">2.</span>
+                  <span>Google Drive stores encrypted content only - can't read files</span>
+                </div>
+                <div className="flex items-start space-x-2">
+                  <span className="text-blue-400">3.</span>
+                  <span>Download and decrypt on user's device using their DID</span>
+                </div>
+                <div className="flex items-start space-x-2">
+                  <span className="text-blue-400">4.</span>
+                  <span>Custom preview system for encrypted content</span>
+                </div>
+              </div>
+            </div>
+            <div className="space-y-3">
+              <h4 className="font-medium text-white">Security Benefits:</h4>
+              <div className="bg-gray-900 border border-gray-600 rounded p-3 text-xs font-mono text-gray-300">
+                <div className="text-green-400">// AES-256-GCM encrypted file in Google Drive</div>
+                <div className="text-blue-400">File:</div> <span>"encrypted_content.bin"</span>
+                <div className="mt-2 text-green-400">// User's DID decrypts locally</div>
+                <div className="text-blue-400">Decrypt:</div> <span>user_DID → readable_content</span>
+                <div className="mt-2 text-green-400">// Preview without server access</div>
+                <div className="text-blue-400">Preview:</div> <span>client_side_only</span>
+                <div className="mt-2 text-green-400">// Zero-knowledge architecture</div>
+                <div className="text-blue-400">Security:</div> <span>decentralized_identity</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
         {/* Technical Details */}
-        <div className="mt-8 bg-gray-50 border border-gray-200 rounded-lg p-4">
-          <h3 className="font-semibold text-gray-900 mb-2">Technical Implementation</h3>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm text-gray-700">
+        <div className="mt-8 bg-gray-800 border border-gray-600 rounded-lg p-4">
+          <h3 className="font-semibold text-white mb-2">Technical Implementation</h3>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm text-gray-300">
             <div>
-              <h4 className="font-medium mb-1">APIs Used:</h4>
+              <h4 className="font-medium mb-1 text-white">Google Drive API Integration:</h4>
               <ul className="list-disc list-inside space-y-1">
-                <li>Google Drive API v3</li>
-                <li>Google OAuth 2.0</li>
-                <li>File Upload/Download</li>
-                <li>Metadata Management</li>
+                <li>OAuth 2.0 authentication</li>
+                <li>Secure token handling</li>
+                <li>Follows all API guidelines</li>
+                <li>Standard file operations</li>
               </ul>
             </div>
             <div>
-              <h4 className="font-medium mb-1">Key Features:</h4>
+              <h4 className="font-medium mb-1 text-white">Encryption & Security:</h4>
               <ul className="list-disc list-inside space-y-1">
-                <li>Secure token-based authentication</li>
-                <li>Real-time file operations</li>
-                <li>Progress tracking for uploads</li>
-                <li>Error handling and recovery</li>
+                <li>AES-256-GCM encryption</li>
+                <li>Decentralized identity (DID) based</li>
+                <li>Zero-knowledge architecture</li>
+                <li>Custom preview system</li>
               </ul>
+            </div>
+          </div>
+          
+          <div className="mt-4 pt-4 border-t border-gray-600">
+            <h4 className="font-medium mb-2 text-white">API Compliance & Security:</h4>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm text-gray-300">
+              <div>
+                <h5 className="font-medium mb-1 text-green-400">Google Drive API Compliance:</h5>
+                <ul className="list-disc list-inside space-y-1">
+                  <li>Follows OAuth 2.0 standards</li>
+                  <li>Implements proper error handling</li>
+                  <li>Respects rate limits</li>
+                  <li>Uses official SDKs</li>
+                </ul>
+              </div>
+              <div>
+                <h5 className="font-medium mb-1 text-blue-400">Enhanced Security Features:</h5>
+                <ul className="list-disc list-inside space-y-1">
+                  <li>AES-256-GCM encryption</li>
+                  <li>Decentralized identity protocol</li>
+                  <li>Zero-knowledge architecture</li>
+                  <li>DID-based key management</li>
+                </ul>
+              </div>
             </div>
           </div>
         </div>

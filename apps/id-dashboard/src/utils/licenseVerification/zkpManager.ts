@@ -100,13 +100,8 @@ export class ZKPManager {
 
       return zkProof.proof.schnorrProof.response;
     } catch (error) {
-      // Fallback to secure hash if ZK proof fails
-      const proofData = JSON.stringify(data);
-      const encoder = new TextEncoder();
-      const dataBuffer = encoder.encode(proofData);
-      const hashBuffer = await cryptoWorkerManager.hash('SHA-512', dataBuffer);
-      const hashArray = Array.from(new Uint8Array(hashBuffer));
-      return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+      // ZK proof generation failed - throw error instead of silent fallback
+      throw new Error(`ZKP generation failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   }
 
