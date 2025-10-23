@@ -71,6 +71,12 @@ export function useCustodianState() {
     uploadFile: null as File | null
   });
 
+  // Recovery key form state
+  const [recoveryKeyForm, setRecoveryKeyForm] = useState({
+    purpose: 'personal' as 'personal' | 'business' | 'emergency',
+    description: ''
+  });
+
   // Identity selector state
   const [selectedStoredIdentity, setSelectedStoredIdentity] = useState<any>(null);
   const [showIdentitySelector, setShowIdentitySelector] = useState(false);
@@ -149,6 +155,8 @@ export function useCustodianState() {
     setUnlockForm,
     mainForm,
     setMainForm,
+    recoveryKeyForm,
+    setRecoveryKeyForm,
 
     // Identity selector
     selectedStoredIdentity,

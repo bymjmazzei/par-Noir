@@ -409,6 +409,8 @@ function App() {
     setUnlockForm,
     mainForm,
     setMainForm,
+    recoveryKeyForm,
+    setRecoveryKeyForm,
     selectedStoredIdentity,
     setSelectedStoredIdentity,
     showIdentitySelector,
