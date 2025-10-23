@@ -487,7 +487,6 @@ function App() {
       setTimeout(() => setError(null), 9000);
     }
   };
-  const [authenticatedUser, setAuthenticatedUser] = useState<any>(null);
   
   // Load attested data points from metadata
   useEffect(() => {
