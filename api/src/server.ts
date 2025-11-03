@@ -150,6 +150,126 @@ class ProductionServer {
       return res.json({ did, createdAt: new Date().toISOString() });
     });
 
+    // Aggregator metadata index endpoints
+    // GET /api/aggregator/metadata-index - Query public metadata
+    this.app.get('/api/aggregator/metadata-index', (req, res) => {
+      try {
+        const { AggregatorMetadataService } = require('./server/modules/aggregatorMetadataService');
+        const service = AggregatorMetadataService.getInstance();
+
+        // Parse query parameters
+        const tags = req.query.tags ? (req.query.tags as string).split(',').map(t => t.trim()) : undefined;
+        const fileType = req.query.fileType as string | undefined;
+        const authorDid = req.query.authorDid as string | undefined;
+
+        const response = service.getIndexResponse({
+          tags,
+          fileType,
+          authorDid
+        });
+
+        res.json(response);
+      } catch (error: any) {
+        console.error('Error fetching aggregator metadata:', error);
+        res.status(500).json({ 
+          error: 'Failed to fetch metadata index',
+          message: error.message 
+        });
+      }
+    });
+
+    // POST /api/aggregator/metadata-index - Submit public metadata
+    this.app.post('/api/aggregator/metadata-index', (req, res) => {
+      try {
+        const { AggregatorMetadataService } = require('./server/modules/aggregatorMetadataService');
+        const service = AggregatorMetadataService.getInstance();
+
+        const { file, submittedAt, pnIdentifier } = req.body;
+
+        // Handle both formats: { file: { metadata: {...} } } and { metadata: {...} }
+        const metadata = file?.metadata || req.body.metadata;
+        
+        // Validate metadata structure
+        if (!metadata || !metadata.fileId) {
+          return res.status(400).json({ 
+            error: 'Missing required fields',
+            required: ['metadata.fileId']
+          });
+        }
+
+        // Validate metadata (support both legacy and semantic web format)
+        const title = metadata.name || metadata.title;
+        const authorDid = metadata.creator?.identifier?.value || metadata.creator?.["@id"] || metadata.author?.did;
+        
+        if (!metadata.backend || !metadata.backendFileId || !title || !authorDid) {
+          return res.status(400).json({ 
+            error: 'Invalid metadata structure',
+            required: ['metadata.backend', 'metadata.backendFileId', 'metadata.name (or title)', 'metadata.creator.identifier.value (or author.did)']
+          });
+        }
+
+        // Submit metadata to central index
+        service.submitMetadata(metadata, pnIdentifier);
+
+        return res.json({
+          success: true,
+          fileId: metadata.fileId,
+          submittedAt: submittedAt || new Date().toISOString()
+        });
+      } catch (error: any) {
+        console.error('Error submitting aggregator metadata:', error);
+        return res.status(500).json({ 
+          error: 'Failed to submit metadata',
+          message: error.message 
+        });
+      }
+    });
+
+    // DELETE /api/aggregator/metadata-index/:fileId - Remove public metadata
+    this.app.delete('/api/aggregator/metadata-index/:fileId', (req, res) => {
+      try {
+        const { AggregatorMetadataService } = require('./server/modules/aggregatorMetadataService');
+        const service = AggregatorMetadataService.getInstance();
+
+        const { fileId } = req.params;
+
+        if (!fileId) {
+          return res.status(400).json({ error: 'Missing fileId parameter' });
+        }
+
+        const removed = service.removeMetadata(fileId);
+
+        if (removed) {
+          return res.json({ success: true, fileId });
+        } else {
+          return res.status(404).json({ error: 'File not found in index' });
+        }
+      } catch (error: any) {
+        console.error('Error removing aggregator metadata:', error);
+        return res.status(500).json({ 
+          error: 'Failed to remove metadata',
+          message: error.message 
+        });
+      }
+    });
+
+    // GET /api/aggregator/metadata-index/stats - Get index statistics
+    this.app.get('/api/aggregator/metadata-index/stats', (req, res) => {
+      try {
+        const { AggregatorMetadataService } = require('./server/modules/aggregatorMetadataService');
+        const service = AggregatorMetadataService.getInstance();
+
+        const stats = service.getStats();
+        res.json(stats);
+      } catch (error: any) {
+        console.error('Error fetching aggregator stats:', error);
+        res.status(500).json({ 
+          error: 'Failed to fetch stats',
+          message: error.message 
+        });
+      }
+    });
+
     this.app.get('/api/did/:did', (req, res) => {
       // Resolve DID document
       const { did } = req.params;

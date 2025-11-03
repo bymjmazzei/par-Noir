@@ -1,0 +1,204 @@
+/**
+ * Aggregator Metadata Service
+ * Maintains centralized index of all public file metadata from all pNs
+ */
+
+/**
+ * Public Metadata with Semantic Web Standards (JSON-LD)
+ * Compatible with schema.org and linked data principles
+ */
+export interface PublicMetadata {
+  // JSON-LD Semantic Web Structure
+  "@context"?: string | string[]; // Schema.org + par Noir contexts
+  "@type"?: string; // Schema.org type (CreativeWork, ImageObject, etc.)
+  "@id"?: string; // Unique URI for this resource
+  
+  // Core identifiers
+  fileId: string;
+  backend: string;
+  backendFileId: string;
+  
+  // Schema.org CreativeWork properties
+  name?: string; // Schema.org:name (preferred over 'title')
+  title?: string; // Legacy support
+  description?: string;
+  keywords?: string[]; // Schema.org:keywords
+  uploadDate: string; // Schema.org:datePublished
+  fileType: string;
+  
+  // Author/Creator (schema.org:creator)
+  creator?: {
+    "@type": "Person";
+    "@id": string; // DID URI
+    identifier?: {
+      "@type": "PropertyValue";
+      name: "DID";
+      value: string;
+    };
+  };
+  author?: {
+    did: string; // Legacy support
+  };
+  
+  // Media properties
+  thumbnail?: string | {
+    "@type": "ImageObject";
+    "@id": string;
+  };
+  
+  // par Noir specific
+  publicToken?: string;
+  isPublic: boolean;
+  
+  // Linked Data
+  sameAs?: string[];
+  about?: string[];
+}
+
+export interface CentralIndexEntry {
+  fileId: string;
+  metadata: PublicMetadata;
+  submittedAt: string;
+  pnIdentifier?: string;
+}
+
+export interface CentralIndexResponse {
+  files: CentralIndexEntry[];
+  updatedAt: string;
+  totalFiles: number;
+}
+
+export class AggregatorMetadataService {
+  private static instance: AggregatorMetadataService;
+  private metadataIndex: Map<string, CentralIndexEntry> = new Map();
+  private lastUpdated: Date = new Date();
+
+  private constructor() {
+    // Private constructor for singleton
+  }
+
+  static getInstance(): AggregatorMetadataService {
+    if (!AggregatorMetadataService.instance) {
+      AggregatorMetadataService.instance = new AggregatorMetadataService();
+    }
+    return AggregatorMetadataService.instance;
+  }
+
+  /**
+   * Submit public metadata to central index
+   * Validates structure before adding
+   */
+  submitMetadata(metadata: PublicMetadata, pnIdentifier?: string): void {
+    // Validate required fields (support both legacy and semantic web format)
+    const metadataTitle = metadata.name || metadata.title;
+    const authorDid = metadata.creator?.identifier?.value || metadata.creator?.["@id"] || metadata.author?.did;
+    
+    if (!metadata.fileId || !metadata.backend || !metadata.backendFileId || !metadataTitle || !authorDid) {
+      throw new Error('Invalid metadata: missing required fields (fileId, backend, backendFileId, name/title, creator/author.did)');
+    }
+
+    // Ensure isPublic is true
+    const validatedMetadata: PublicMetadata = {
+      ...metadata,
+      isPublic: true // Always true when submitted to public index
+    };
+
+    const entry: CentralIndexEntry = {
+      fileId: validatedMetadata.fileId,
+      metadata: validatedMetadata,
+      submittedAt: new Date().toISOString(),
+      pnIdentifier
+    };
+
+    this.metadataIndex.set(validatedMetadata.fileId, entry);
+    this.lastUpdated = new Date();
+
+    const displayTitle = validatedMetadata.name || validatedMetadata.title || 'Untitled';
+    const authorDisplay = authorDid.substring(0, 12) + '...';
+    console.log(`✅ Added public metadata for file: ${validatedMetadata.fileId} (${displayTitle}) by ${authorDisplay}`);
+  }
+
+  /**
+   * Remove metadata from central index
+   */
+  removeMetadata(fileId: string): boolean {
+    const removed = this.metadataIndex.delete(fileId);
+    if (removed) {
+      this.lastUpdated = new Date();
+      console.log(`🗑️ Removed metadata for file: ${fileId}`);
+    }
+    return removed;
+  }
+
+  /**
+   * Get all public metadata with optional filters
+   */
+  getPublicMetadata(filters?: {
+    tags?: string[];
+    fileType?: string;
+    authorDid?: string;
+  }): CentralIndexEntry[] {
+    let entries = Array.from(this.metadataIndex.values())
+      .filter(entry => entry.metadata.isPublic);
+
+    // Apply filters
+    if (filters) {
+      if (filters.tags && filters.tags.length > 0) {
+        entries = entries.filter(entry => {
+          const keywords = entry.metadata.keywords || [];
+          return keywords.some((tag: string) => filters.tags!.includes(tag));
+        });
+      }
+
+      if (filters.fileType) {
+        entries = entries.filter(entry => entry.metadata.fileType === filters.fileType);
+      }
+
+      if (filters.authorDid) {
+        entries = entries.filter(entry => {
+          const entryAuthorDid = entry.metadata.creator?.identifier?.value || 
+                                entry.metadata.creator?.["@id"] || 
+                                entry.metadata.author?.did;
+          return entryAuthorDid === filters.authorDid;
+        });
+      }
+    }
+
+    return entries;
+  }
+
+  /**
+   * Get metadata for specific file
+   */
+  getFileMetadata(fileId: string): CentralIndexEntry | null {
+    return this.metadataIndex.get(fileId) || null;
+  }
+
+  /**
+   * Get index stats
+   */
+  getStats(): { totalFiles: number; lastUpdated: string } {
+    return {
+      totalFiles: this.metadataIndex.size,
+      lastUpdated: this.lastUpdated.toISOString()
+    };
+  }
+
+  /**
+   * Get full index response
+   */
+  getIndexResponse(filters?: {
+    tags?: string[];
+    fileType?: string;
+    authorDid?: string;
+  }): CentralIndexResponse {
+    const files = this.getPublicMetadata(filters);
+
+    return {
+      files,
+      updatedAt: this.lastUpdated.toISOString(),
+      totalFiles: files.length
+    };
+  }
+}
+
