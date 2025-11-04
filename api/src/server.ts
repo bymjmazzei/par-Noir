@@ -326,13 +326,19 @@ class ProductionServer {
         const clientSecret = process.env.GOOGLE_DRIVE_CLIENT_SECRET;
         
         console.log('[Google OAuth Token Exchange] Client ID:', clientId);
-        console.log('[Google OAuth Token Exchange] Has client secret:', !!clientSecret);
+        console.log('[Google OAuth Token Exchange] Client secret length:', clientSecret?.length || 0);
+        console.log('[Google OAuth Token Exchange] Client secret first 4 chars:', clientSecret ? clientSecret.substring(0, 4) + '...' : 'MISSING');
         
-        if (!clientSecret) {
-          console.error('⚠️ GOOGLE_DRIVE_CLIENT_SECRET not configured');
+        if (!clientSecret || clientSecret.trim() === '') {
+          console.error('⚠️ GOOGLE_DRIVE_CLIENT_SECRET not configured or empty');
           return res.status(500).json({
             error: 'OAuth configuration error',
-            message: 'Google OAuth client secret not configured on server'
+            message: 'Google OAuth client secret not configured on server. Please set GOOGLE_DRIVE_CLIENT_SECRET environment variable in Railway.',
+            details: {
+              hasClientSecret: !!clientSecret,
+              clientSecretLength: clientSecret?.length || 0,
+              clientId: clientId
+            }
           });
         }
 
@@ -356,7 +362,8 @@ class ProductionServer {
 
         const responseText = await tokenResponse.text();
         console.log('[Google OAuth Token Exchange] Google response status:', tokenResponse.status);
-        console.log('[Google OAuth Token Exchange] Google response:', responseText);
+        console.log('[Google OAuth Token Exchange] Google response length:', responseText.length);
+        console.log('[Google OAuth Token Exchange] Google response (first 500 chars):', responseText.substring(0, 500));
 
         if (!tokenResponse.ok) {
           let errorData;
@@ -368,13 +375,22 @@ class ProductionServer {
           
           console.error('[Google OAuth Token Exchange] Token exchange failed:', {
             status: tokenResponse.status,
-            error: errorData
+            error: errorData,
+            redirectUri: redirectUri,
+            clientId: clientId,
+            codeLength: code?.length || 0
           });
           
-          return res.status(tokenResponse.status).json({
+          // Return 500 instead of passing through Google's status code to avoid confusion
+          return res.status(500).json({
             error: 'Token exchange failed',
-            message: errorData.error_description || errorData.error || responseText,
-            details: errorData
+            message: errorData.error_description || errorData.error || 'Failed to exchange authorization code with Google',
+            details: {
+              googleError: errorData,
+              httpStatus: tokenResponse.status,
+              redirectUri: redirectUri,
+              clientId: clientId
+            }
           });
         }
 
