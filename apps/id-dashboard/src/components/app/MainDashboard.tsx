@@ -5,7 +5,7 @@ import { SecureStorage } from "../../utils/storage";
 import { logger } from "../../utils/logger";
 import { useCleanupManager } from "../../utils/cleanupManager";
 import { ThemeSwitcher } from '../ThemeSwitcher';
-import { GoogleDriveStorage } from '../storage/GoogleDriveStorage';
+import { FileStorageAggregator } from '../storage/FileStorageAggregator';
 import { DelegationModal } from '../DelegationModal';
 
 interface MainDashboardProps {
@@ -15,6 +15,7 @@ interface MainDashboardProps {
   onDIDCreate: (did: DIDInfo) => void;
   onDIDUpdate: (did: DIDInfo) => void;
   onDIDDelete: (didId: string) => void;
+  authenticatedUser?: any;
 }
 
 export const MainDashboard: React.FC<MainDashboardProps> = ({
@@ -23,9 +24,10 @@ export const MainDashboard: React.FC<MainDashboardProps> = ({
   onDIDSelect,
   onDIDCreate,
   onDIDUpdate,
-  onDIDDelete
+  onDIDDelete,
+  authenticatedUser
 }) => {
-  const [activeTab, setActiveTab] = useState<'privacy' | 'devices' | 'recovery' | 'developer' | 'delegation'>('privacy');
+  const [activeTab, setActiveTab] = useState<'privacy' | 'devices' | 'recovery' | 'developer' | 'delegation' | 'storage'>('privacy');
   const [globalSettingsExpanded, setGlobalSettingsExpanded] = useState(false);
   const [thirdPartyExpanded, setThirdPartyExpanded] = useState(false);
   const [attestedDataPoints, setAttestedDataPoints] = useState<Set<string>>(new Set());
@@ -79,7 +81,7 @@ export const MainDashboard: React.FC<MainDashboardProps> = ({
     cleanupManager.addTimer(timeoutId);
   }, [cleanupManager]);
 
-  const handleTabChange = useCallback((tab: 'privacy' | 'devices' | 'recovery' | 'developer') => {
+  const handleTabChange = useCallback((tab: 'privacy' | 'devices' | 'recovery' | 'developer' | 'delegation' | 'storage') => {
     setActiveTab(tab);
   }, []);
 
@@ -177,7 +179,7 @@ export const MainDashboard: React.FC<MainDashboardProps> = ({
                     return (
                       <button
                         key={tab.id}
-                        onClick={() => handleTabChange(tab.id as any)}
+                        onClick={() => handleTabChange(tab.id as 'privacy' | 'devices' | 'recovery' | 'developer' | 'delegation' | 'storage')}
                         className={`py-4 px-1 border-b-2 font-medium text-sm transition-colors ${
                           activeTab === tab.id
                             ? 'border-primary text-primary'
@@ -237,7 +239,7 @@ export const MainDashboard: React.FC<MainDashboardProps> = ({
 
               {activeTab === 'storage' && (
                 <div>
-                  <GoogleDriveStorage />
+                  <FileStorageAggregator authenticatedUser={authenticatedUser} />
                 </div>
               )}
 
