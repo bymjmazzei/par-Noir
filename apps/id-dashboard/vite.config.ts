@@ -32,8 +32,6 @@ export default defineConfig({
     // Workers are handled separately and should not be minified
     rollupOptions: {
       output: {
-        // Don't minify worker chunks
-        workerChunkFileNames: 'assets/js/[name]-[hash].js',
         manualChunks: (id) => {
           // Exclude workers from chunking
           if (id.includes('workers/') || id.includes('.worker.')) {
