@@ -309,6 +309,12 @@ class ProductionServer {
       try {
         const { code, redirectUri } = req.body;
         
+        console.log('[Google OAuth Token Exchange] Request received:', {
+          hasCode: !!code,
+          redirectUri,
+          origin: req.headers.origin
+        });
+        
         if (!code || !redirectUri) {
           return res.status(400).json({
             error: 'Missing required fields',
@@ -319,6 +325,9 @@ class ProductionServer {
         const clientId = process.env.GOOGLE_DRIVE_CLIENT_ID || '43740774041-fo57a1gqenc9dmggkcrhjl5cvrp40gnq.apps.googleusercontent.com';
         const clientSecret = process.env.GOOGLE_DRIVE_CLIENT_SECRET;
         
+        console.log('[Google OAuth Token Exchange] Client ID:', clientId);
+        console.log('[Google OAuth Token Exchange] Has client secret:', !!clientSecret);
+        
         if (!clientSecret) {
           console.error('⚠️ GOOGLE_DRIVE_CLIENT_SECRET not configured');
           return res.status(500).json({
@@ -327,26 +336,45 @@ class ProductionServer {
           });
         }
 
+        const tokenRequestBody = new URLSearchParams({
+          code,
+          client_id: clientId,
+          client_secret: clientSecret,
+          redirect_uri: redirectUri,
+          grant_type: 'authorization_code',
+        });
+
+        console.log('[Google OAuth Token Exchange] Requesting token from Google...');
+        
         const tokenResponse = await fetch('https://oauth2.googleapis.com/token', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/x-www-form-urlencoded',
           },
-          body: new URLSearchParams({
-            code,
-            client_id: clientId,
-            client_secret: clientSecret,
-            redirect_uri: redirectUri,
-            grant_type: 'authorization_code',
-          }),
+          body: tokenRequestBody,
         });
 
+        const responseText = await tokenResponse.text();
+        console.log('[Google OAuth Token Exchange] Google response status:', tokenResponse.status);
+        console.log('[Google OAuth Token Exchange] Google response:', responseText);
+
         if (!tokenResponse.ok) {
-          const errorText = await tokenResponse.text();
-          console.error('Google token exchange failed:', errorText);
+          let errorData;
+          try {
+            errorData = JSON.parse(responseText);
+          } catch {
+            errorData = { error: responseText };
+          }
+          
+          console.error('[Google OAuth Token Exchange] Token exchange failed:', {
+            status: tokenResponse.status,
+            error: errorData
+          });
+          
           return res.status(tokenResponse.status).json({
             error: 'Token exchange failed',
-            message: errorText
+            message: errorData.error_description || errorData.error || responseText,
+            details: errorData
           });
         }
 

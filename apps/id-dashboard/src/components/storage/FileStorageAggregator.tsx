@@ -812,6 +812,10 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
       const redirectUri = `${window.location.origin}/oauth-callback.html`;
       const scope = 'https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/userinfo.email';
       
+      // Debug: Log the exact redirect URI being used
+      console.log('[Google OAuth] Redirect URI:', redirectUri);
+      console.log('[Google OAuth] Client ID:', clientId);
+      
       // Use authorization code flow to get refresh tokens
       const authUrl = `https://accounts.google.com/o/oauth2/v2/auth?` +
         `client_id=${encodeURIComponent(clientId)}&` +
@@ -821,6 +825,8 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
         `&include_granted_scopes=true` +
         `&prompt=consent` +
         `&access_type=offline`; // Required for refresh token
+      
+      console.log('[Google OAuth] Full auth URL:', authUrl);
 
       const popup = window.open(
         authUrl,
