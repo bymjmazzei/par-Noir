@@ -14,7 +14,14 @@ import { Server as SocketIOServer } from 'socket.io';
 // Environment configuration
 const PORT = process.env.PORT || 3001;
 const NODE_ENV = process.env.NODE_ENV || 'development';
-const ALLOWED_ORIGINS = process.env.ALLOWED_ORIGINS?.split(',') || ['https://parnoir.com'];
+const ALLOWED_ORIGINS = process.env.ALLOWED_ORIGINS?.split(',') || [
+  'https://parnoir.com',
+  'https://pn.parnoir.com',
+  'https://pn-parnoir.web.app',
+  'https://browse.parnoir.com',
+  'http://localhost:3000',
+  'http://localhost:3001'
+];
 
 // Rate limiting configuration
 const limiter = rateLimit({

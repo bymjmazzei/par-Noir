@@ -44,7 +44,7 @@ import PrivacyPolicy from './pages/PrivacyPolicy';
 import { MainDashboard } from './components/app/MainDashboard';
 import { DelegationModal } from './components/DelegationModal';
 import { IdentityVerificationModal } from './components/IdentityVerificationModal';
-import { GoogleDriveStorage } from './components/storage/GoogleDriveStorage';
+import { FileStorageAggregator } from './components/storage/FileStorageAggregator';
 import { GoogleDriveDemo } from './components/storage/GoogleDriveDemo';
 import { ExportAuthModal } from './components/modals/ExportAuthModal';
 import { ExportOptionsModal } from './components/modals/ExportOptionsModal';
@@ -5866,11 +5866,6 @@ This invitation expires in 24 hours.`;
 
 
 
-        {/* Migration Modal */}
-        <Suspense fallback={<LoadingSpinner />}>
-          />
-        </Suspense>
-
         {/* Profile Picture Editor Modal */}
         <Suspense fallback={<LoadingSpinner />}>
           <ProfilePictureEditor
@@ -5880,7 +5875,6 @@ This invitation expires in 24 hours.`;
             onCancel={() => setShowProfilePictureEditor(false)}
           />
         </Suspense>
-
 
         {/* Device Info Modal */}
         <DeviceInfoModal

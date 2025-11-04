@@ -29,9 +29,33 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
   const [pendingUploadFile, setPendingUploadFile] = useState<File | null>(null);
   const [pendingDownloadFile, setPendingDownloadFile] = useState<AggregatedFile | null>(null);
   
-  const aggregatorService = getFileAggregatorService();
-  const encryptionService = getEncryptionService();
-  const metadataIndexService = getMetadataIndexService();
+  // Initialize services - use useMemo to avoid re-initializing on every render
+  const aggregatorService = React.useMemo(() => {
+    try {
+      return getFileAggregatorService();
+    } catch (e) {
+      console.error('Failed to initialize aggregator service:', e);
+      return null;
+    }
+  }, []);
+  
+  const encryptionService = React.useMemo(() => {
+    try {
+      return getEncryptionService();
+    } catch (e) {
+      console.error('Failed to initialize encryption service:', e);
+      return null;
+    }
+  }, []);
+  
+  const metadataIndexService = React.useMemo(() => {
+    try {
+      return getMetadataIndexService();
+    } catch (e) {
+      console.error('Failed to initialize metadata service:', e);
+      return null;
+    }
+  }, []);
   
   const [fileMetadataMap, setFileMetadataMap] = useState<Map<string, PublicMetadata>>(new Map());
 
@@ -49,6 +73,10 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
           return; // No passcode yet, wait for unlock
         }
 
+        if (!aggregatorService) {
+          return;
+        }
+        
         const { SecureMetadataStorage } = await import('../../utils/secureMetadataStorage');
         const { SecureMetadataCrypto } = await import('../../utils/secureMetadata');
         const googleDriveBackend = aggregatorService.getBackend('google_drive');
@@ -364,6 +392,13 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
       
       // Ensure backends are initialized (gracefully fail if Google Drive not connected)
       // Don't block unlock if Google Drive initialization fails
+      if (!aggregatorService) {
+        console.warn('⚠️ [loadFiles] Aggregator service not available');
+        setIsLoading(false);
+        setFiles([]);
+        return;
+      }
+      
       try {
         await aggregatorService.ensureInitialized();
       } catch (initError) {
@@ -465,6 +500,10 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
 
   const loadFileMetadata = async (filesToLoad: AggregatedFile[]) => {
     try {
+      if (!metadataIndexService) {
+        return;
+      }
+      
       await metadataIndexService.initialize();
       const metadataMap = new Map<string, PublicMetadata>();
       for (const file of filesToLoad) {
@@ -481,6 +520,11 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
 
   const handleTogglePublic = async (file: AggregatedFile) => {
     try {
+      if (!metadataIndexService) {
+        setError('Metadata service not available');
+        return;
+      }
+      
       await metadataIndexService.initialize();
       
       const existingMetadata = fileMetadataMap.get(file.id);
@@ -574,6 +618,9 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
         let shareToken: ShareToken | undefined = undefined;
         try {
           // Download the encrypted file to get the EncryptedFilePackage
+          if (!aggregatorService) {
+            throw new Error('Aggregator service not available');
+          }
           const backend = aggregatorService.getBackend(file.backend);
           if (backend && backend.isConnected()) {
             const encryptedBlob = await backend.downloadFile(file.backendFileId);
@@ -604,11 +651,14 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
 
             // Generate share token
             console.log('🔑 [Phase 3] Starting token generation...', { fileId: file.id, hasSession: !!session, hasPasscode: !!passcodeForToken });
+            if (!encryptionService) {
+              throw new Error('Encryption service not available');
+            }
             shareToken = await encryptionService.generateShareToken(
-              file.id,
               encryptedPackage,
-              session,
-              passcodeForToken
+              session.pnName!,
+              session.publicKey!,
+              passcodeForToken!
             );
 
             // Store token in metadata
@@ -989,6 +1039,11 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
       };
 
       // Encrypt file
+      if (!encryptionService) {
+        setError('Encryption service not available');
+        return;
+      }
+      
       const { encryptedBlob, packageData } = await encryptionService.encryptFileForUpload(
         file,
         session,
@@ -1154,6 +1209,11 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
       });
 
       // Decrypt file
+      if (!encryptionService) {
+        setError('Encryption service not available');
+        return;
+      }
+      
       const { decryptedBlob, metadata } = await encryptionService.decryptFileFromDownload(
         encryptedBlob,
         session,
