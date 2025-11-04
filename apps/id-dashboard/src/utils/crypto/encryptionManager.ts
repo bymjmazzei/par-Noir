@@ -14,10 +14,19 @@ export class EncryptionManager {
         publicKey: string
     ): Promise<EncryptedData> {
         try {
-            // Combine all three factors to create the encryption key material
-            const combinedKey = `${pnName}:${passcode}:${publicKey}`;
+            // Derive encryption key from 3 factors using hash (same as volumeIdGenerator)
+            // This matches the desktop app's approach - hash the credentials, don't expose them
+            const combined = `${pnName}:${passcode}:${publicKey}`;
+            const encoder = new TextEncoder();
+            const combinedData = encoder.encode(combined);
+            
+            // Hash the combined credentials to get stable key material (doesn't expose secrets)
+            const hashBuffer = await crypto.subtle.digest('SHA-256', combinedData);
+            const hashArray = Array.from(new Uint8Array(hashBuffer));
+            const hashedKeyMaterial = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+            
             const salt = await this.generateSalt();
-            const key = await this.deriveKey(combinedKey, salt);
+            const key = await this.deriveKey(hashedKeyMaterial, salt);
             const iv = await this.generateIV();
             const encryptedBuffer = await cryptoWorkerManager.encrypt({ name: 'AES-GCM', iv }, key, data.buffer);
             return {
@@ -42,9 +51,18 @@ export class EncryptionManager {
         publicKey: string
     ): Promise<Uint8Array> {
         try {
-            // Combine all three factors to create the decryption key material
-            const combinedKey = `${pnName}:${passcode}:${publicKey}`;
-            const key = await this.deriveKey(combinedKey, salt);
+            // Derive decryption key from 3 factors using hash (matches encryption)
+            // Hash the credentials to get the same key material (doesn't expose secrets)
+            const combined = `${pnName}:${passcode}:${publicKey}`;
+            const encoder = new TextEncoder();
+            const combinedData = encoder.encode(combined);
+            
+            // Hash the combined credentials (same process as encryption)
+            const hashBuffer = await crypto.subtle.digest('SHA-256', combinedData);
+            const hashArray = Array.from(new Uint8Array(hashBuffer));
+            const hashedKeyMaterial = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+            
+            const key = await this.deriveKey(hashedKeyMaterial, salt);
             const ivBuffer = this.base64ToArrayBuffer(iv);
             const dataBuffer = this.base64ToArrayBuffer(encryptedData);
             const decryptedBuffer = await cryptoWorkerManager.decrypt({ name: 'AES-GCM', iv: ivBuffer }, key, dataBuffer);
