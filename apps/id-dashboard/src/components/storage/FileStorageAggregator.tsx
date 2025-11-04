@@ -771,7 +771,8 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
       // OAuth flow - authorization code flow for refresh tokens
       const clientId = import.meta.env.VITE_GOOGLE_DRIVE_CLIENT_ID || 
         '43740774041-fo57a1gqenc9dmggkcrhjl5cvrp40gnq.apps.googleusercontent.com';
-      const redirectUri = `${window.location.origin}/oauth-callback.html`;
+      // Use window.location.origin as redirect URI (must match Google Cloud Console settings)
+      const redirectUri = window.location.origin;
       const scope = 'https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/userinfo.email';
       
       // Use authorization code flow to get refresh tokens
@@ -1268,6 +1269,44 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
 
   return (
     <div className="space-y-6">
+      {/* Secure Folder / Desktop App Section */}
+      <div className="bg-neutral-900/60 border border-neutral-700 rounded-xl p-6">
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center space-x-3">
+            <Lock className="h-5 w-5 text-blue-400" />
+            <div>
+              <h3 className="text-lg font-semibold text-white">Secure Folder</h3>
+              <p className="text-text-secondary text-sm">
+                Access your encrypted files with the desktop app
+              </p>
+            </div>
+          </div>
+        </div>
+        
+        <div className="bg-neutral-800/50 rounded-lg p-4 mb-4">
+          <p className="text-text-secondary text-sm mb-3">
+            The par Noir Desktop App provides secure, local access to your encrypted files stored in Google Drive. 
+            Files are automatically synced and encrypted with your pN credentials.
+          </p>
+          <div className="space-y-2 text-xs text-text-secondary">
+            <p>• Secure local file access</p>
+            <p>• Automatic encryption/decryption</p>
+            <p>• Works offline with cached files</p>
+            <p>• Native desktop integration</p>
+          </div>
+        </div>
+
+        <a
+          href="https://github.com/bymjmazzei/par-Noir/releases"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex items-center space-x-2 px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors"
+        >
+          <Download className="h-4 w-4" />
+          <span>Download Desktop App</span>
+        </a>
+      </div>
+
       {/* Connection Status */}
       <div className="bg-neutral-900/60 border border-neutral-700 rounded-xl p-6">
         <div className="flex items-center justify-between mb-4">
@@ -1343,44 +1382,6 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
             </div>
           )}
         </div>
-      </div>
-
-      {/* Secure Folder / Desktop App Section */}
-      <div className="bg-neutral-900/60 border border-neutral-700 rounded-xl p-6">
-        <div className="flex items-center justify-between mb-4">
-          <div className="flex items-center space-x-3">
-            <Lock className="h-5 w-5 text-blue-400" />
-            <div>
-              <h3 className="text-lg font-semibold text-white">Secure Folder</h3>
-              <p className="text-text-secondary text-sm">
-                Access your encrypted files with the desktop app
-              </p>
-            </div>
-          </div>
-        </div>
-        
-        <div className="bg-neutral-800/50 rounded-lg p-4 mb-4">
-          <p className="text-text-secondary text-sm mb-3">
-            The par Noir Desktop App provides secure, local access to your encrypted files stored in Google Drive. 
-            Files are automatically synced and encrypted with your pN credentials.
-          </p>
-          <div className="space-y-2 text-xs text-text-secondary">
-            <p>• Secure local file access</p>
-            <p>• Automatic encryption/decryption</p>
-            <p>• Works offline with cached files</p>
-            <p>• Native desktop integration</p>
-          </div>
-        </div>
-
-        <a
-          href="https://github.com/bymjmazzei/par-Noir/releases"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="inline-flex items-center space-x-2 px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors"
-        >
-          <Download className="h-4 w-4" />
-          <span>Download Desktop App</span>
-        </a>
       </div>
 
       {/* Error Display */}
