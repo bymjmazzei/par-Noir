@@ -46,6 +46,21 @@ export class FileAggregatorService {
       return [];
     }
   }
+
+  async downloadFromBackend(backendId: string, fileId: string): Promise<Blob> {
+    await this.ensureInitialized();
+    
+    const backend = this.getBackend(backendId);
+    if (!backend) {
+      throw new Error(`Backend ${backendId} not found`);
+    }
+
+    if (!backend.isConnected()) {
+      throw new Error(`Backend ${backendId} is not connected`);
+    }
+
+    return await backend.downloadFile(fileId);
+  }
 }
 
 let fileAggregatorServiceInstance: FileAggregatorService | null = null;
