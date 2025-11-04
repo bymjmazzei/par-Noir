@@ -68,12 +68,17 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
           if (decrypted.storageCredentials?.googleDrive) {
             const creds = decrypted.storageCredentials.googleDrive;
             const token = creds.accessToken;
+            const refreshToken = creds.refreshToken || null; // Load refresh token for automatic renewal
             const email = creds.email || null;
 
-            // Connect using token from metadata
+            // Connect using token from metadata (including refresh token for auto-renewal)
             if (token && !connectedBackends.has('google_drive')) {
               try {
-                await googleDriveBackend.connect({ token, email: email || undefined });
+                await googleDriveBackend.connect({ 
+                  token, 
+                  email: email || undefined,
+                  refreshToken: refreshToken || undefined 
+                });
                 setConnectedBackends(prev => new Set([...prev, 'google_drive']));
                 if (email) {
                   setUserEmails(prev => {
@@ -139,7 +144,11 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
                 const creds = decrypted.storageCredentials.googleDrive;
                 token = creds.accessToken;
                 email = creds.email || null;
-                console.log('✅ [init] Loaded Google Drive token from encrypted metadata');
+                // Also load refresh token to localStorage for quick access
+                if (creds.refreshToken) {
+                  localStorage.setItem('google_drive_refresh_token', creds.refreshToken);
+                }
+                console.log('✅ [init] Loaded Google Drive token and refresh token from encrypted metadata');
               }
             }
           }
@@ -1199,27 +1208,6 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
 
   return (
     <div className="space-y-6">
-      {/* Desktop App Download Section */}
-      <div className="bg-neutral-900/60 border border-neutral-700 rounded-xl p-6">
-        <div className="flex items-center justify-between mb-4">
-          <div>
-            <h3 className="text-lg font-semibold text-white mb-2">Desktop App</h3>
-            <p className="text-text-secondary text-sm">
-              The desktop app is only available on macOS. Download the installer to get started with encrypted volume storage.
-            </p>
-          </div>
-        </div>
-        <button
-          onClick={() => {
-            // TODO: Replace with actual desktop app download URL when available
-            window.open('https://github.com/your-repo/releases', '_blank');
-          }}
-          className="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors"
-        >
-          DOWNLOAD DESKTOP APP
-        </button>
-      </div>
-
       {/* Connection Status */}
       <div className="bg-neutral-900/60 border border-neutral-700 rounded-xl p-6">
         <div className="flex items-center justify-between mb-4">

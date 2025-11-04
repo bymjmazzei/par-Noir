@@ -44,7 +44,7 @@ import PrivacyPolicy from './pages/PrivacyPolicy';
 import { MainDashboard } from './components/app/MainDashboard';
 import { DelegationModal } from './components/DelegationModal';
 import { IdentityVerificationModal } from './components/IdentityVerificationModal';
-import { FileStorageAggregator } from './components/storage/FileStorageAggregator';
+import { GoogleDriveStorage } from './components/storage/GoogleDriveStorage';
 import { GoogleDriveDemo } from './components/storage/GoogleDriveDemo';
 import { ExportAuthModal } from './components/modals/ExportAuthModal';
 import { ExportOptionsModal } from './components/modals/ExportOptionsModal';
@@ -5868,11 +5868,6 @@ This invitation expires in 24 hours.`;
 
         {/* Migration Modal */}
         <Suspense fallback={<LoadingSpinner />}>
-          <MigrationModal
-            isOpen={showMigrationModal}
-            onClose={() => setShowMigrationModal(false)}
-            pendingIdentities={pendingMigrations}
-            onMigrationComplete={handleMigrationComplete}
           />
         </Suspense>
 
@@ -5886,18 +5881,6 @@ This invitation expires in 24 hours.`;
           />
         </Suspense>
 
-        {/* Biometric Setup Modal */}
-        {authenticatedUser && (
-          <Suspense fallback={<LoadingSpinner />}>
-            <BiometricSetup
-              isOpen={showBiometricSetup}
-              onClose={() => setShowBiometricSetup(false)}
-              onSuccess={handleBiometricSetupSuccess}
-              identityId={authenticatedUser.id}
-              pnName={authenticatedUser.pnName}
-            />
-          </Suspense>
-        )}
 
         {/* Device Info Modal */}
         <DeviceInfoModal
