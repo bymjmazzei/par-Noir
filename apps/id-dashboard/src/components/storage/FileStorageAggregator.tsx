@@ -637,24 +637,28 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
               throw new Error('Passcode required to generate share token');
             }
 
-            // Create session object for token generation
+            // Create session object for token generation using stable pN identity
+            // Use authenticatedUser.id if available, otherwise fall back to resolvedAuth
             const session: AuthSession = {
-              id: resolvedAuth.publicKey,
-              pnName: resolvedAuth.pnName,
+              id: authenticatedUser?.id || resolvedAuth.publicKey,
               publicKey: resolvedAuth.publicKey,
-              nickname: undefined
+              accessToken: authenticatedUser?.accessToken,
+              nickname: authenticatedUser?.nickname
             };
 
-            // Generate share token
-            console.log('🔑 [Phase 3] Starting token generation...', { fileId: file.id, hasSession: !!session, hasPasscode: !!passcodeForToken });
+            // Generate share token using stable pN identity (no passcode needed)
+            console.log('🔑 [Phase 3] Starting token generation...', { 
+              fileId: file.id, 
+              hasSession: !!session, 
+              hasId: !!session.id,
+              hasPublicKey: !!session.publicKey
+            });
             if (!encryptionService) {
               throw new Error('Encryption service not available');
             }
             shareToken = await encryptionService.generateShareToken(
               encryptedPackage,
-              session.pnName!,
-              session.publicKey!,
-              passcodeForToken!
+              session
             );
 
             // Store token in metadata
