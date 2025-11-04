@@ -1383,11 +1383,13 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
       const fileToUpload = pendingUploadFile;
       setPendingUploadFile(null);
       setTimeout(() => handleUpload(fakeEvent), 100);
-    } else if (pendingDownloadFile) {
-      // Retry download with passcode
-      const fileToDownload = pendingDownloadFile;
+    // Downloads should never need the passcode modal - passcode comes from session
+    // If we get here with pendingDownloadFile, it means passcode wasn't found
+    // which shouldn't happen if user is properly unlocked
+    if (pendingDownloadFile) {
+      console.error('❌ [PasscodeModal] Download file pending but passcode should come from session');
       setPendingDownloadFile(null);
-      setTimeout(() => handleDownload(fileToDownload), 100);
+      setError('Passcode not found in session. Please unlock your pN again.');
     }
   };
 
@@ -1655,13 +1657,13 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
         </div>
       )}
 
-      {/* Passcode Modal */}
-      {showPasscodeModal && (
+      {/* Passcode Modal - Only for uploads, downloads use session passcode automatically */}
+      {showPasscodeModal && pendingUploadFile && (
         <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50">
           <div className="bg-background border border-border rounded-lg p-6 max-w-md w-full mx-4">
             <h3 className="text-lg font-semibold text-text-primary mb-4">Enter Passcode</h3>
             <p className="text-text-secondary text-sm mb-4">
-              {pendingUploadFile ? 'Enter your passcode to encrypt and upload this file.' : 'Enter your passcode to decrypt and download this file.'}
+              Enter your passcode to encrypt and upload this file.
             </p>
             <input
               type="password"
