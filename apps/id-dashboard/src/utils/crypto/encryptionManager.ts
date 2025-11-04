@@ -30,7 +30,14 @@ export class EncryptionManager {
             const salt = await this.generateSalt();
             const key = await this.deriveKey(hashedKeyMaterial, salt);
             const iv = await this.generateIV();
-            const encryptedBuffer = await cryptoWorkerManager.encrypt({ name: 'AES-GCM', iv }, key, data.buffer);
+            
+            // Use direct crypto.subtle for file encryption (worker can't handle large files)
+            const encryptedBuffer = await crypto.subtle.encrypt(
+                { name: 'AES-GCM', iv },
+                key,
+                data.buffer
+            );
+            
             return {
                 encrypted: this.arrayBufferToBase64(encryptedBuffer),
                 iv: this.arrayBufferToBase64(iv),
@@ -79,7 +86,14 @@ export class EncryptionManager {
             const key = await this.deriveKey(hashedKeyMaterial, salt);
             const ivBuffer = this.base64ToArrayBuffer(iv);
             const dataBuffer = this.base64ToArrayBuffer(encryptedData);
-            const decryptedBuffer = await cryptoWorkerManager.decrypt({ name: 'AES-GCM', iv: ivBuffer }, key, dataBuffer);
+            
+            // Use direct crypto.subtle for file decryption (worker can't handle large files)
+            const decryptedBuffer = await crypto.subtle.decrypt(
+                { name: 'AES-GCM', iv: ivBuffer },
+                key,
+                dataBuffer
+            );
+            
             return new Uint8Array(decryptedBuffer);
         } catch (error: any) {
             console.error('❌ [EncryptionManager] Decryption failed:', {
@@ -192,22 +206,40 @@ export class EncryptionManager {
 
     /**
      * Derive encryption key from combined key material (for instance methods)
+     * Uses direct crypto.subtle to avoid worker serialization issues
      */
     private async deriveKey(keyMaterial: string, salt: string): Promise<CryptoKey> {
         try {
             const encoder = new TextEncoder();
             const keyMaterialBuffer = encoder.encode(keyMaterial);
             const saltBuffer = this.base64ToArrayBuffer(salt);
-            const importedKey = await cryptoWorkerManager.importKey('raw', keyMaterialBuffer, 'PBKDF2', false, ['deriveBits', 'deriveKey']);
-            const derivedKey = await cryptoWorkerManager.deriveKey({
-                name: 'PBKDF2',
-                salt: saltBuffer,
-                iterations: 1000000, // Military-grade: 1M iterations
-                hash: 'SHA-512', // Military-grade: SHA-512
-            }, importedKey, { name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']);
+            
+            // Use direct crypto.subtle for key derivation (worker can't serialize CryptoKey)
+            const importedKey = await crypto.subtle.importKey(
+                'raw',
+                keyMaterialBuffer,
+                'PBKDF2',
+                false,
+                ['deriveBits', 'deriveKey']
+            );
+            
+            const derivedKey = await crypto.subtle.deriveKey(
+                {
+                    name: 'PBKDF2',
+                    salt: saltBuffer,
+                    iterations: 1000000, // Military-grade: 1M iterations
+                    hash: 'SHA-512', // Military-grade: SHA-512
+                },
+                importedKey,
+                { name: 'AES-GCM', length: 256 },
+                false,
+                ['encrypt', 'decrypt']
+            );
+            
             return derivedKey;
-        } catch (error) {
-            throw new Error('Failed to derive encryption key');
+        } catch (error: any) {
+            console.error('❌ [EncryptionManager] Key derivation failed:', error);
+            throw new Error(`Failed to derive encryption key: ${error?.message || error}`);
         }
     }
 
@@ -262,17 +294,19 @@ export class EncryptionManager {
 
     /**
      * Generate salt for encryption (instance method)
+     * Uses direct crypto.getRandomValues for better performance
      */
     private async generateSalt(): Promise<string> {
-        const salt = await cryptoWorkerManager.generateRandom(new Uint8Array(16));
-        return this.arrayBufferToBase64(salt);
+        const salt = crypto.getRandomValues(new Uint8Array(16));
+        return this.arrayBufferToBase64(salt.buffer);
     }
 
     /**
      * Generate IV for encryption (instance method)
+     * Uses direct crypto.getRandomValues for better performance
      */
     private async generateIV(): Promise<Uint8Array> {
-        return await cryptoWorkerManager.generateRandom(new Uint8Array(12));
+        return crypto.getRandomValues(new Uint8Array(12));
     }
 
     /**
