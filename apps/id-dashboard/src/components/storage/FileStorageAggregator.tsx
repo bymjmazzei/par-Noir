@@ -1090,8 +1090,11 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
       console.log('🔐 [Upload] Starting encryption...', {
         hasAccessToken: !!session.accessToken,
         accessTokenPreview: session.accessToken?.substring(0, 20) + '...',
+        accessTokenLength: session.accessToken?.length,
+        accessTokenFull: session.accessToken, // Log full token for debugging (remove after fix)
         hasPublicKey: !!session.publicKey,
         publicKeyPreview: session.publicKey?.substring(0, 20) + '...',
+        publicKeyFull: session.publicKey, // Log full publicKey for debugging (remove after fix)
         fileName: file.name,
         fileSize: file.size,
         fileType: file.type
@@ -1124,25 +1127,29 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
         throw new Error(`${backendId} is not connected`);
       }
 
-      // Get or create pN-specific folder using volume ID generator (matches desktop app)
-      // IMPORTANT: pnName is SECRET - never log or display
+      // Get or create pN-specific folder using stable identifier
+      // Since passcode is a secret and not stored, we use accessToken:publicKey hash for stable volume ID
+      // The accessToken is derived from unlock secrets, so this provides a stable, unique identifier per pN
       let pnIdentifier: string;
       try {
-        const { VolumeIdGenerator } = await import('../../utils/crypto/volumeIdGenerator');
-        if (pnName && publicKey && passcodeToUse) {
-          // Generate stable volume ID from credentials (matching desktop app format: pn-{12-char-hex})
-          pnIdentifier = await VolumeIdGenerator.generateVolumeId({
-            pnName, // SECRET - not logged
-            passcode: passcodeToUse, // SECRET - not logged
-            publicKey
-          });
+        if (authenticatedUser?.accessToken && publicKey) {
+          // Generate stable volume ID from accessToken:publicKey (stable within session)
+          // Format: pn-{12-char-hex-hash} to match desktop app naming convention
+          const combined = `${authenticatedUser.accessToken}:${publicKey}`;
+          const encoder = new TextEncoder();
+          const data = encoder.encode(combined);
+          const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+          const hashArray = Array.from(new Uint8Array(hashBuffer));
+          const hexHash = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+          const shortHash = hexHash.substring(0, 12);
+          pnIdentifier = `pn-${shortHash}`;
         } else {
-          // Fallback to publicKey-based identifier if credentials incomplete
+          // Fallback to publicKey-based identifier if accessToken unavailable
           pnIdentifier = publicKey ? `pn-${publicKey.substring(0, 12).replace(/[^a-f0-9]/g, '')}` : 'default';
         }
       } catch (err) {
-        // Fallback if volume ID generation fails
-        console.warn('Volume ID generation failed, using fallback');
+        // Fallback if hash generation fails
+        console.warn('Volume ID generation failed, using fallback:', err);
         pnIdentifier = publicKey ? `pn-${publicKey.substring(0, 12).replace(/[^a-f0-9]/g, '')}` : 'default';
       }
       
@@ -1281,12 +1288,18 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
       console.log('🔐 [Download] Starting decryption...', {
         hasAccessToken: !!session.accessToken,
         accessTokenPreview: session.accessToken?.substring(0, 20) + '...',
+        accessTokenLength: session.accessToken?.length,
+        accessTokenFull: session.accessToken, // Log full token for debugging (remove after fix)
         hasPublicKey: !!session.publicKey,
         publicKeyPreview: session.publicKey?.substring(0, 20) + '...',
+        publicKeyFull: session.publicKey, // Log full publicKey for debugging (remove after fix)
         encryptedPackageKeys: Object.keys(encryptedPackage),
         hasEncrypted: !!encryptedPackage.encrypted,
+        encryptedLength: encryptedPackage.encrypted?.length,
         hasIv: !!encryptedPackage.iv,
-        hasSalt: !!encryptedPackage.salt
+        ivLength: encryptedPackage.iv?.length,
+        hasSalt: !!encryptedPackage.salt,
+        saltLength: encryptedPackage.salt?.length
       });
       
       let decryptedBlob: Blob;
