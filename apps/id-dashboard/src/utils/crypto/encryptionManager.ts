@@ -1,6 +1,7 @@
-import { cryptoWorkerManager } from './cryptoWorkerManager';
 // Encryption and Decryption Operations
 import { EncryptedData, DecryptionParameters } from '../types/crypto';
+// Note: We use direct crypto.subtle instead of cryptoWorkerManager for file operations
+// to avoid serialization issues and timeouts with large files
 
 export class EncryptionManager {
     /**

@@ -488,6 +488,8 @@ function App() {
   
 
   
+
+  
   // Enhanced export with authentication and transfer options
   const handleExportData = async () => {
     setShowExportAuthModal(true);
@@ -795,18 +797,18 @@ function App() {
             const did = JSON.parse(storedDID);
             setAuthenticatedUser(user);
             setSelectedDID(did);
-            setSuccess('Transfer completed successfully! You are now logged in with the transferred pN.');
+            setSuccessWithTimeout('Transfer completed successfully! You are now logged in with the transferred pN.');
           } catch (error) {
-            setSuccess('Transfer completed successfully! Your pN identity is now available.');
+            setSuccessWithTimeout('Transfer completed successfully! Your pN identity is now available.');
           }
         } else {
-          setSuccess('Transfer completed successfully! Your pN identity is now available.');
+          setSuccessWithTimeout('Transfer completed successfully! Your pN identity is now available.');
         }
       } else {
-        setSuccess('Transfer completed successfully! Your pN identity is now available.');
+        setSuccessWithTimeout('Transfer completed successfully! Your pN identity is now available.');
       }
       
-      setTimeout(() => setSuccess(null), 5000);
+      setTimeout(() => setSuccessWithTimeout(null), 5000);
       
       // Clean up the URL
       const newUrl = window.location.pathname;
@@ -908,8 +910,8 @@ function App() {
   // Handle migration completion
   const handleMigrationComplete = (result: MigrationResult) => {
     if (result.success && result.migratedCount > 0) {
-      setSuccess(`Successfully migrated ${result.migratedCount} identity(ies) to PWA storage!`);
-      setTimeout(() => setSuccess(null), 5000);
+      setSuccessWithTimeout(`Successfully migrated ${result.migratedCount} identity(ies) to PWA storage!`);
+      setTimeout(() => setSuccessWithTimeout(null), 5000);
       
       // Refresh the app to load migrated identities
       setTimeout(() => {
@@ -1119,7 +1121,7 @@ function App() {
       });
       setCreateStep(1);
       setShowCreateForm(false);
-      setTimeout(() => setSuccess(null), 5000);
+      setTimeout(() => setSuccessWithTimeout(null), 5000);
       
       // Track successful identity creation
       analytics.trackEvent('identity', 'created', 'success');
@@ -1211,8 +1213,8 @@ function App() {
         backupFile: null
       });
       setShowImportForm(false);
-      setSuccess('pN imported and authenticated successfully!');
-      setTimeout(() => setSuccess(null), 5000);
+      setSuccessWithTimeout('pN imported and authenticated successfully!');
+      setTimeout(() => setSuccessWithTimeout(null), 5000);
     } catch (error: any) {
       setError(error.message || 'Failed to import DID');
       setTimeout(() => setError(null), 9000);
@@ -1330,7 +1332,7 @@ function App() {
       setShowMainPNName(false);
       setShowMainPasscode(false);
       setError(null);
-      setSuccess(null);
+      setSuccessWithTimeout(null);
       setLoading(false);
       
         // Clear the last unlock time to force lock on next open
@@ -1356,7 +1358,7 @@ function App() {
       setShowMainPNName(false);
       setShowMainPasscode(false);
       setError(null);
-      setSuccess(null);
+      setSuccessWithTimeout(null);
       setLoading(false);
       
       // Clear the last unlock time even if logout fails
@@ -1390,8 +1392,8 @@ function App() {
         setMainForm(prev => ({ ...prev, pnName: '' }));
       }
       
-      setSuccess(`Identity "${identity.nickname}" deleted successfully`);
-      setTimeout(() => setSuccess(null), 3000);
+      setSuccessWithTimeout(`Identity "${identity.nickname}" deleted successfully`);
+      setTimeout(() => setSuccessWithTimeout(null), 3000);
     } catch (error) {
       setError('Failed to delete identity');
       setTimeout(() => setError(null), 3000);
@@ -1846,8 +1848,8 @@ function App() {
         setAuthenticatedUser(authSession);
         setSelectedDID(identity);
         
-        setSuccess('Successfully unlocked with biometrics!');
-        setTimeout(() => setSuccess(null), 3000);
+        setSuccessWithTimeout('Successfully unlocked with biometrics!');
+        setTimeout(() => setSuccessWithTimeout(null), 3000);
       } else if (result.fallbackToPasscode) {
         // Fall back to passcode authentication
         setSelectedDID(identity);
@@ -1867,8 +1869,8 @@ function App() {
   };
 
   const handleBiometricSetupSuccess = () => {
-    setSuccess('Biometric authentication set up successfully!');
-    setTimeout(() => setSuccess(null), 3000);
+    setSuccessWithTimeout('Biometric authentication set up successfully!');
+    setTimeout(() => setSuccessWithTimeout(null), 3000);
   };
 
 
@@ -2289,8 +2291,8 @@ function App() {
 
       setRecoveryRequests(prev => [...prev, recoveryRequest]);
       setShowRecoveryModal(false);
-      setSuccess('Recovery request initiated! Notifying custodians...');
-      setTimeout(() => setSuccess(null), 5000);
+      setSuccessWithTimeout('Recovery request initiated! Notifying custodians...');
+      setTimeout(() => setSuccessWithTimeout(null), 5000);
     } catch (error: any) {
       setError(error.message || 'Failed to initiate recovery');
       setTimeout(() => setError(null), 9000);
@@ -2426,8 +2428,8 @@ This invitation expires in 24 hours.`;
         // Don't fail the entire operation if cloud sync fails
       }
 
-      setSuccess('Custodian added as pending! Use the "Send Invitation" button to generate and send the QR code. Changes will sync across platforms.');
-      setTimeout(() => setSuccess(null), 5000);
+      setSuccessWithTimeout('Custodian added as pending! Use the "Send Invitation" button to generate and send the QR code. Changes will sync across platforms.');
+      setTimeout(() => setSuccessWithTimeout(null), 5000);
     } catch (error: any) {
       setError(error.message || 'Failed to add custodian');
       setTimeout(() => setError(null), 9000);
@@ -2494,8 +2496,8 @@ This invitation expires in 24 hours.`;
       setPendingCustodianInvitationData(null);
       setCustodianAcceptanceData({ contactValue: '', passcode: '' });
 
-      setSuccess('Custodianship accepted successfully! You can now approve recovery requests for this identity.');
-      setTimeout(() => setSuccess(null), 5000);
+      setSuccessWithTimeout('Custodianship accepted successfully! You can now approve recovery requests for this identity.');
+      setTimeout(() => setSuccessWithTimeout(null), 5000);
 
     } catch (error: any) {
       setError(error.message || 'Failed to accept custodianship');
@@ -2517,8 +2519,8 @@ This invitation expires in 24 hours.`;
           : custodian
       ));
       
-      setSuccess('Custodian validated successfully! They can now approve recovery requests.');
-      setTimeout(() => setSuccess(null), 5000);
+      setSuccessWithTimeout('Custodian validated successfully! They can now approve recovery requests.');
+      setTimeout(() => setSuccessWithTimeout(null), 5000);
     } catch (error: any) {
       setError(error.message || 'Failed to validate custodian');
       setTimeout(() => setError(null), 9000);
@@ -2662,8 +2664,8 @@ This invitation expires in 24 hours.`;
       // Show success message if threshold not met yet
       const currentRequest = recoveryRequests.find(req => req.id === requestId);
       if (currentRequest && currentRequest.signatures.length + 1 < recoveryThreshold) {
-        setSuccess('ZK proof-based recovery approved! Waiting for more custodians to provide ZK proofs...');
-        setTimeout(() => setSuccess(null), 5000);
+        setSuccessWithTimeout('ZK proof-based recovery approved! Waiting for more custodians to provide ZK proofs...');
+        setTimeout(() => setSuccessWithTimeout(null), 5000);
       }
 
     } catch (error: any) {
@@ -2698,8 +2700,8 @@ This invitation expires in 24 hours.`;
       return updatedRequests;
     });
     
-    setSuccess('Recovery denied.');
-    setTimeout(() => setSuccess(null), 5000);
+    setSuccessWithTimeout('Recovery denied.');
+    setTimeout(() => setSuccessWithTimeout(null), 5000);
   };
 
   const handleGenerateRecoveryKey = async (purpose: RecoveryKey['purpose'], description?: string) => {
@@ -2747,8 +2749,8 @@ This invitation expires in 24 hours.`;
         // Don't fail the entire operation if cloud sync fails
       }
 
-      setSuccess('Recovery key generated successfully! Download and store it securely. Changes will sync across platforms.');
-      setTimeout(() => setSuccess(null), 5000);
+      setSuccessWithTimeout('Recovery key generated successfully! Download and store it securely. Changes will sync across platforms.');
+      setTimeout(() => setSuccessWithTimeout(null), 5000);
     } catch (error: any) {
       setError(error.message || 'Failed to generate recovery key');
       setTimeout(() => setError(null), 9000);
@@ -2800,8 +2802,8 @@ This invitation expires in 24 hours.`;
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
 
-    setSuccess('Recovery key downloaded successfully!');
-    setTimeout(() => setSuccess(null), 5000);
+    setSuccessWithTimeout('Recovery key downloaded successfully!');
+    setTimeout(() => setSuccessWithTimeout(null), 5000);
   };
 
   const handleInitiateRecoveryWithKey = async (recoveryKey: string, contactInfo: {
@@ -2852,8 +2854,8 @@ This invitation expires in 24 hours.`;
         contactValue: '',
         claimantName: ''
       });
-      setSuccess(`Recovery initiated by ${contactInfo.claimantName}! Notifying custodians...`);
-      setTimeout(() => setSuccess(null), 5000);
+      setSuccessWithTimeout(`Recovery initiated by ${contactInfo.claimantName}! Notifying custodians...`);
+      setTimeout(() => setSuccessWithTimeout(null), 5000);
     } catch (error: any) {
       setError(error.message || 'Failed to initiate recovery with key');
       setTimeout(() => setError(null), 9000);
@@ -2888,8 +2890,8 @@ This invitation expires in 24 hours.`;
       });
     }
 
-    setSuccess('Custodian removed successfully. Changes will sync across platforms.');
-    setTimeout(() => setSuccess(null), 5000);
+    setSuccessWithTimeout('Custodian removed successfully. Changes will sync across platforms.');
+    setTimeout(() => setSuccessWithTimeout(null), 5000);
   };
 
   // Tool Settings Handlers
@@ -2931,8 +2933,8 @@ This invitation expires in 24 hours.`;
       // Don't fail the entire operation if cloud sync fails
     });
 
-    setSuccess('Tool status updated successfully. Changes will sync across platforms.');
-    setTimeout(() => setSuccess(null), 5000);
+    setSuccessWithTimeout('Tool status updated successfully. Changes will sync across platforms.');
+    setTimeout(() => setSuccessWithTimeout(null), 5000);
   };
 
   const handleRequestDataPoint = async (dataPointId: string) => {
@@ -3009,8 +3011,8 @@ This invitation expires in 24 hours.`;
         setAttestedDataPoints(attestedIds);
       }
       
-      setSuccess(`Successfully attested ${currentDataPoint?.name}!`);
-      setTimeout(() => setSuccess(null), 5000);
+      setSuccessWithTimeout(`Successfully attested ${currentDataPoint?.name}!`);
+      setTimeout(() => setSuccessWithTimeout(null), 5000);
       setShowDataPointInputModal(false);
       setCurrentDataPoint(null);
       setCurrentDataPointExistingData(null);
@@ -3079,8 +3081,8 @@ This invitation expires in 24 hours.`;
         logDebug('Found pending metadata sync items:', Object.keys(pendingSync).length);
         const syncResult = await SecureMetadataStorage.syncPendingToCloud();
         if (syncResult.synced > 0) {
-          setSuccess(`Synced ${syncResult.synced} offline changes to cloud`);
-          setTimeout(() => setSuccess(null), 3000);
+          setSuccessWithTimeout(`Synced ${syncResult.synced} offline changes to cloud`);
+          setTimeout(() => setSuccessWithTimeout(null), 3000);
         }
       }
       
@@ -3533,20 +3535,20 @@ This invitation expires in 24 hours.`;
               // Don't fail the entire operation if cloud sync fails
             }
 
-            setSuccess('Identity recovered successfully with automatic license transfer! This device is now your primary device.');
+            setSuccessWithTimeout('Identity recovered successfully with automatic license transfer! This device is now your primary device.');
           } else {
-            setSuccess('Identity recovered successfully! This device is now your primary device.');
+            setSuccessWithTimeout('Identity recovered successfully! This device is now your primary device.');
           }
         } else {
-          setSuccess('Identity recovered successfully! This device is now your primary device.');
+          setSuccessWithTimeout('Identity recovered successfully! This device is now your primary device.');
         }
       } catch (licenseError: any) {
         // Log license transfer error but don't fail the recovery
         logError('License transfer failed during recovery:', licenseError);
-        setSuccess('Identity recovered successfully! License transfer will be completed separately.');
+        setSuccessWithTimeout('Identity recovered successfully! License transfer will be completed separately.');
       }
 
-      setTimeout(() => setSuccess(null), 5000);
+      setTimeout(() => setSuccessWithTimeout(null), 5000);
     } catch (error: any) {
       setError(error.message || 'Failed to complete recovery');
     } finally {
@@ -3604,8 +3606,8 @@ This invitation expires in 24 hours.`;
 
       // Update custodian status on the identity owner's side (in real app, this would be a server call)
       // For now, we'll simulate this by updating the local state
-      setSuccess(`Custodianship accepted! You are now a custodian for ${invitationData.identityName}`);
-      setTimeout(() => setSuccess(null), 5000);
+      setSuccessWithTimeout(`Custodianship accepted! You are now a custodian for ${invitationData.identityName}`);
+      setTimeout(() => setSuccessWithTimeout(null), 5000);
 
       // Close the invitation modal
       setShowCustodianInvitationModal(false);
@@ -3662,8 +3664,8 @@ This invitation expires in 24 hours.`;
           : custodian
       ));
       
-      setSuccess('Custodianship accepted successfully! You can now approve recovery requests for this identity.');
-      setTimeout(() => setSuccess(null), 5000);
+      setSuccessWithTimeout('Custodianship accepted successfully! You can now approve recovery requests for this identity.');
+      setTimeout(() => setSuccessWithTimeout(null), 5000);
     } catch (error: any) {
       setError(error.message || 'Failed to accept custodian invitation');
       setTimeout(() => setError(null), 9000);
@@ -4029,10 +4031,10 @@ This invitation expires in 24 hours.`;
         }]);
         setNewIdentityName('');
         setShowCreateForm(false);
-        setSuccess(`Identity "${sanitizedName}" created successfully!`);
+        setSuccessWithTimeout(`Identity "${sanitizedName}" created successfully!`);
         
         // Clear success message after 3 seconds
-        setTimeout(() => setSuccess(null), 3000);
+        setTimeout(() => setSuccessWithTimeout(null), 3000);
       }
     } catch (error) {
       setError('Failed to create identity. Please try again.');
@@ -4125,7 +4127,7 @@ This invitation expires in 24 hours.`;
           <p className="text-green-700 text-sm">{success}</p>
           <button 
             onClick={() => {
-              setSuccess(null);
+              setSuccessWithTimeout(null);
               if (successTimeoutRef.current) {
                 clearTimeout(successTimeoutRef.current);
                 successTimeoutRef.current = null;
@@ -4163,8 +4165,8 @@ This invitation expires in 24 hours.`;
                     onClick={async () => {
                       const result = await SecureMetadataStorage.syncPendingToCloud();
                       if (result.synced > 0) {
-                        setSuccess(`Synced ${result.synced} changes to cloud`);
-                        setTimeout(() => setSuccess(null), 3000);
+                        setSuccessWithTimeout(`Synced ${result.synced} changes to cloud`);
+                        setTimeout(() => setSuccessWithTimeout(null), 3000);
                       }
                     }}
                     className="px-2 py-1 bg-yellow-600 text-white text-xs rounded hover:bg-yellow-700"
@@ -5826,8 +5828,8 @@ This invitation expires in 24 hours.`;
           recoveryThreshold={recoveryThreshold}
           onApproveRecovery={handleApproveRecovery}
           onSuccess={(message) => {
-            setSuccess(message);
-                      setTimeout(() => setSuccess(null), 5000);
+            setSuccessWithTimeout(message);
+                      setTimeout(() => setSuccessWithTimeout(null), 5000);
                     }}
         />
 
@@ -5975,8 +5977,8 @@ This invitation expires in 24 hours.`;
           onTransferSetup={handleTransferSetup}
           onCopyUrl={() => {
                         navigator.clipboard.writeText(transferUrl);
-                        setSuccess('URL copied to clipboard!');
-                        setTimeout(() => setSuccess(null), 3000);
+                        setSuccessWithTimeout('URL copied to clipboard!');
+                        setTimeout(() => setSuccessWithTimeout(null), 3000);
                       }}
           success={success}
         />
@@ -6020,8 +6022,8 @@ This invitation expires in 24 hours.`;
           onClose={() => setShowDelegationModal(false)}
           onDelegationCreated={(delegation) => {
             // Delegation created successfully
-            setSuccess('Delegation created successfully!');
-            setTimeout(() => setSuccess(null), 3000);
+            setSuccessWithTimeout('Delegation created successfully!');
+            setTimeout(() => setSuccessWithTimeout(null), 3000);
           }}
         />
 
