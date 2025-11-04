@@ -1236,6 +1236,16 @@ function App() {
         publicKey: session.publicKey || ''
       });
 
+      // Store passcode in sessionStorage for file decryption (only during this session)
+      // This is needed because files are encrypted and need to be decrypted on download
+      if (session.passcode) {
+        try {
+          sessionStorage.setItem('pn_session_passcode', session.passcode);
+        } catch (e) {
+          console.warn('Could not store passcode in sessionStorage:', e);
+        }
+      }
+
       // Set the authenticated user
       setAuthenticatedUser({
         id: session.id,

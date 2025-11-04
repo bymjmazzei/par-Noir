@@ -58,7 +58,10 @@ export const UnifiedAuth: React.FC<UnifiedAuthProps> = ({
               // Update last accessed time
               await storage.updateNickname(identity.id, identity.nickname);
               
-              onAuthSuccess?.(session);
+              // Include passcode in session so it's available for file decryption
+              const sessionWithPasscode = { ...session, passcode };
+              
+              onAuthSuccess?.(sessionWithPasscode);
               return;
             }
           }
