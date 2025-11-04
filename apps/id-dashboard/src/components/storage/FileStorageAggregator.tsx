@@ -1335,9 +1335,16 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
         throw new Error('Passcode required to decrypt file. Please unlock your pN first.');
       }
       
+      // Parse the encrypted package from the blob
+      const encryptedPackageText = await encryptedBlob.text();
+      const encryptedPackage = JSON.parse(encryptedPackageText);
+      
+      // Decrypt using 3-factor key derivation (pnName + passcode + publicKey)
+      // All three factors come from the authenticated session - no user input needed
       const { decryptedBlob, metadata } = await encryptionService.decryptFileFromDownload(
-        encryptedBlob,
-        session,
+        encryptedPackage,
+        session.pnName,
+        session.publicKey,
         passcodeToUse
       );
 

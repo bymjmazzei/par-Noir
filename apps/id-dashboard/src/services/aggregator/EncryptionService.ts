@@ -58,7 +58,8 @@ export class EncryptionService {
     publicKey: string,
     passcode: string
   ): Promise<{ decryptedBlob: Blob; metadata: any }> {
-    // Decrypt using 3-factor key derivation
+    // Decrypt using 3-factor key derivation (pnName + passcode + publicKey)
+    // All three factors are required and come from the authenticated session
     const encryptionManager = new EncryptionManager();
     const decrypted = await encryptionManager.decrypt(
       encryptedPackage.encrypted,

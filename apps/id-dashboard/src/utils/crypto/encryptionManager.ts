@@ -4,7 +4,58 @@ import { EncryptedData, DecryptionParameters } from '../types/crypto';
 
 export class EncryptionManager {
     /**
-     * Encrypt data with passcode
+     * Encrypt data with 3-factor key derivation (pnName + passcode + publicKey)
+     * This is the multi-factor encryption method used for file encryption
+     */
+    async encrypt(
+        data: Uint8Array,
+        pnName: string,
+        passcode: string,
+        publicKey: string
+    ): Promise<EncryptedData> {
+        try {
+            // Combine all three factors to create the encryption key material
+            const combinedKey = `${pnName}:${passcode}:${publicKey}`;
+            const salt = await this.generateSalt();
+            const key = await this.deriveKey(combinedKey, salt);
+            const iv = await this.generateIV();
+            const encryptedBuffer = await cryptoWorkerManager.encrypt({ name: 'AES-GCM', iv }, key, data.buffer);
+            return {
+                encrypted: this.arrayBufferToBase64(encryptedBuffer),
+                iv: this.arrayBufferToBase64(iv),
+                salt
+            };
+        } catch (error) {
+            throw new Error('Failed to encrypt data');
+        }
+    }
+
+    /**
+     * Decrypt data with 3-factor key derivation (pnName + passcode + publicKey)
+     */
+    async decrypt(
+        encryptedData: string,
+        iv: string,
+        salt: string,
+        pnName: string,
+        passcode: string,
+        publicKey: string
+    ): Promise<Uint8Array> {
+        try {
+            // Combine all three factors to create the decryption key material
+            const combinedKey = `${pnName}:${passcode}:${publicKey}`;
+            const key = await this.deriveKey(combinedKey, salt);
+            const ivBuffer = this.base64ToArrayBuffer(iv);
+            const dataBuffer = this.base64ToArrayBuffer(encryptedData);
+            const decryptedBuffer = await cryptoWorkerManager.decrypt({ name: 'AES-GCM', iv: ivBuffer }, key, dataBuffer);
+            return new Uint8Array(decryptedBuffer);
+        } catch (error) {
+            throw new Error('Failed to decrypt data');
+        }
+    }
+
+    /**
+     * Encrypt data with passcode (legacy single-factor method)
      */
     static async encrypt(data: string, passcode: string): Promise<EncryptedData> {
         try {
@@ -97,7 +148,56 @@ export class EncryptionManager {
     }
 
     /**
-     * Derive encryption key from passcode
+     * Derive encryption key from combined key material (for instance methods)
+     */
+    private async deriveKey(keyMaterial: string, salt: string): Promise<CryptoKey> {
+        try {
+            const encoder = new TextEncoder();
+            const keyMaterialBuffer = encoder.encode(keyMaterial);
+            const saltBuffer = this.base64ToArrayBuffer(salt);
+            const importedKey = await cryptoWorkerManager.importKey('raw', keyMaterialBuffer, 'PBKDF2', false, ['deriveBits', 'deriveKey']);
+            const derivedKey = await cryptoWorkerManager.deriveKey({
+                name: 'PBKDF2',
+                salt: saltBuffer,
+                iterations: 1000000, // Military-grade: 1M iterations
+                hash: 'SHA-512', // Military-grade: SHA-512
+            }, importedKey, { name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']);
+            return derivedKey;
+        } catch (error) {
+            throw new Error('Failed to derive encryption key');
+        }
+    }
+
+    /**
+     * Convert ArrayBuffer to Base64 (instance method)
+     */
+    private arrayBufferToBase64(buffer: ArrayBuffer): string {
+        const bytes = new Uint8Array(buffer);
+        let binary = '';
+        for (let i = 0; i < bytes.byteLength; i++) {
+            binary += String.fromCharCode(bytes[i]);
+        }
+        return btoa(binary);
+    }
+
+    /**
+     * Convert Base64 to ArrayBuffer (instance method)
+     */
+    private base64ToArrayBuffer(base64: string): ArrayBuffer {
+        try {
+            const binary = atob(base64);
+            const bytes = new Uint8Array(binary.length);
+            for (let i = 0; i < binary.length; i++) {
+                bytes[i] = binary.charCodeAt(i);
+            }
+            return bytes.buffer;
+        } catch (error) {
+            throw new Error('Failed to convert base64 to ArrayBuffer');
+        }
+    }
+
+    /**
+     * Derive encryption key from passcode (static method for legacy)
      */
     private static async deriveKey(passcode: string, salt: string): Promise<CryptoKey> {
         try {
@@ -118,7 +218,22 @@ export class EncryptionManager {
     }
 
     /**
-     * Generate salt for encryption
+     * Generate salt for encryption (instance method)
+     */
+    private async generateSalt(): Promise<string> {
+        const salt = await cryptoWorkerManager.generateRandom(new Uint8Array(16));
+        return this.arrayBufferToBase64(salt);
+    }
+
+    /**
+     * Generate IV for encryption (instance method)
+     */
+    private async generateIV(): Promise<Uint8Array> {
+        return await cryptoWorkerManager.generateRandom(new Uint8Array(12));
+    }
+
+    /**
+     * Generate salt for encryption (static method for legacy)
      */
     private static async generateSalt(): Promise<string> {
         const salt = await cryptoWorkerManager.generateRandom(new Uint8Array(16));
@@ -126,7 +241,7 @@ export class EncryptionManager {
     }
 
     /**
-     * Generate IV for encryption
+     * Generate IV for encryption (static method for legacy)
      */
     private static async generateIV(): Promise<Uint8Array> {
         return await cryptoWorkerManager.generateRandom(new Uint8Array(12));
