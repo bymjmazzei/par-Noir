@@ -18,6 +18,7 @@ const ALLOWED_ORIGINS = process.env.ALLOWED_ORIGINS?.split(',') || [
   'https://parnoir.com',
   'https://pn.parnoir.com',
   'https://pn-parnoir.web.app',
+  'https://par-noir-dashboard.web.app',
   'https://browse.parnoir.com',
   'http://localhost:3000',
   'http://localhost:3001'

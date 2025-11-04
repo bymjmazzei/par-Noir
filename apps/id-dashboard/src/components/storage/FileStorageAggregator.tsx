@@ -740,27 +740,64 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
   };
 
   // Helper function to exchange authorization code for tokens
+  // Uses Google OAuth endpoint directly (client-side exchange)
   const exchangeCodeForTokens = async (code: string, redirectUri: string): Promise<{ accessToken: string; refreshToken: string; expiresIn: number }> => {
-    const apiEndpoint = import.meta.env.VITE_API_ENDPOINT || 'https://api.parnoir.com';
-    const response = await fetch(`${apiEndpoint}/api/auth/google-oauth/token`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ code, redirectUri }),
-    });
+    const clientId = import.meta.env.VITE_GOOGLE_DRIVE_CLIENT_ID || 
+      '43740774041-fo57a1gqenc9dmggkcrhjl5cvrp40gnq.apps.googleusercontent.com';
+    const clientSecret = import.meta.env.VITE_GOOGLE_DRIVE_CLIENT_SECRET;
+    
+    // If we have client secret, use it (should be in backend, but allowing frontend for now)
+    // Otherwise, try the API endpoint as fallback
+    if (clientSecret) {
+      // Direct exchange with Google (not recommended for production, but works)
+      const response = await fetch('https://oauth2.googleapis.com/token', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body: new URLSearchParams({
+          code: code,
+          client_id: clientId,
+          client_secret: clientSecret,
+          redirect_uri: redirectUri,
+          grant_type: 'authorization_code',
+        }),
+      });
 
-    if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.message || 'Failed to exchange authorization code');
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Google token exchange failed: ${errorText}`);
+      }
+
+      const data = await response.json();
+      return {
+        accessToken: data.access_token,
+        refreshToken: data.refresh_token,
+        expiresIn: data.expires_in || 3600,
+      };
+    } else {
+      // Fallback to API endpoint
+      const apiEndpoint = import.meta.env.VITE_API_ENDPOINT || 'https://api.parnoir.com';
+      const response = await fetch(`${apiEndpoint}/api/auth/google-oauth/token`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ code, redirectUri }),
+      });
+
+      if (!response.ok) {
+        const error = await response.json().catch(() => ({ message: 'Failed to exchange authorization code' }));
+        throw new Error(error.message || 'Failed to exchange authorization code');
+      }
+
+      const data = await response.json();
+      return {
+        accessToken: data.access_token,
+        refreshToken: data.refresh_token,
+        expiresIn: data.expires_in || 3600,
+      };
     }
-
-    const data = await response.json();
-    return {
-      accessToken: data.access_token,
-      refreshToken: data.refresh_token,
-      expiresIn: data.expires_in || 3600,
-    };
   };
 
   const handleConnectGoogleDrive = async () => {
@@ -797,25 +834,37 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
 
       // Wait for OAuth callback with authorization code
       const tokenData = await new Promise<{ accessToken: string; refreshToken: string; expiresIn: number }>((resolve, reject) => {
-        const checkClosed = setInterval(() => {
-          try {
-            if (popup.closed) {
-              clearInterval(checkClosed);
-              window.removeEventListener('message', messageHandler);
-              reject(new Error('OAuth popup was closed'));
-            }
-          } catch (e) {
-            // COOP policy - ignore
-          }
-        }, 1000);
+        // Don't check popup.closed - COOP blocks it. Just wait for message
+        // const checkClosed = setInterval(() => {
+        //   try {
+        //     if (popup.closed) {
+        //       clearInterval(checkClosed);
+        //       window.removeEventListener('message', messageHandler);
+        //       reject(new Error('OAuth popup was closed'));
+        //     }
+        //   } catch (e) {
+        //     // COOP policy - ignore
+        //   }
+        // }, 1000);
+        
+        // Set timeout instead of checking popup.closed
+        const timeout = setTimeout(() => {
+          window.removeEventListener('message', messageHandler);
+          reject(new Error('OAuth timeout - please try again'));
+        }, 300000); // 5 minute timeout
 
         const messageHandler = (event: MessageEvent) => {
           if (event.origin !== window.location.origin) return;
 
           if (event.data.type === 'GOOGLE_OAUTH_CODE') {
-            clearInterval(checkClosed);
+            clearTimeout(timeout);
             window.removeEventListener('message', messageHandler);
-            popup.close();
+            // Don't try to close popup - COOP blocks it, let it close itself
+            try {
+              popup.close();
+            } catch (e) {
+              // Ignore COOP errors
+            }
 
             if (event.data.error) {
               reject(new Error(event.data.error));
