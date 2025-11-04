@@ -660,18 +660,17 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
               // Cache it for future use
               shareTokenCache.current.set(file.backendFileId, shareToken);
               console.log('💾 [Phase 3] Share token cached for future use');
+              
+              // Store token in metadata
+              publicMetadata.publicToken = JSON.stringify(shareToken);
+              console.log('✅ [Phase 3] Share token generated and stored in metadata:', file.id, {
+                tokenHasShareKey: !!shareToken.shareKey,
+                tokenHasShareEncrypted: !!shareToken.shareEncrypted,
+                tokenLength: JSON.stringify(shareToken).length
+              });
+            } else {
+              throw new Error('Backend not connected');
             }
-
-            // Store token in metadata
-            publicMetadata.publicToken = JSON.stringify(shareToken);
-            console.log('✅ [Phase 3] Share token generated and stored in metadata:', file.id, {
-              tokenHasShareKey: !!shareToken.shareKey,
-              tokenHasShareEncrypted: !!shareToken.shareEncrypted,
-              tokenLength: JSON.stringify(shareToken).length
-            });
-          } else {
-            throw new Error('Backend not connected');
-          }
           } catch (tokenError) {
             console.error('❌ [Phase 3] Failed to generate share token:', tokenError);
             const errorMessage = tokenError instanceof Error ? tokenError.message : 'Unknown error';
@@ -681,13 +680,6 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
           console.log('✅ [Phase 3] Using cached share token');
           // Store token in metadata
           publicMetadata.publicToken = JSON.stringify(shareToken);
-        }
-        } catch (tokenError) {
-          console.error('❌ [Phase 3] Failed to generate share token:', tokenError);
-          const errorMessage = tokenError instanceof Error ? tokenError.message : 'Unknown error';
-          console.error('❌ [Phase 3] Token generation error details:', errorMessage);
-          // Continue without token - file will be public but not decryptable by aggregators yet
-          setError(`File marked as public, but share token generation failed: ${errorMessage}. Aggregators may not be able to decrypt it.`);
         }
 
         // Index the file - pass pN identifier so metadata folder is created inside pN folder
