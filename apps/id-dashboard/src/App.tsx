@@ -76,7 +76,6 @@ const IntegrationDebugger = lazy(() => import('./components/IntegrationDebugger'
 const SessionManager = lazy(() => import('./components/SessionManager').then(module => ({ default: module.SessionManager })));
 const MigrationModal = lazy(() => import('./components/MigrationModal').then(module => ({ default: module.MigrationModal })));
 const ProfilePictureEditor = lazy(() => import('./components/ProfilePictureEditor').then(module => ({ default: module.ProfilePictureEditor })));
-const BiometricSetup = lazy(() => import('./components/BiometricSetup').then(module => ({ default: module.BiometricSetup })));
 const PWALockScreen = lazy(() => import('./components/PWALockScreen').then(module => ({ default: module.default })));
 
 // Loading component for lazy-loaded components
@@ -1856,10 +1855,6 @@ function App() {
     }
   };
 
-  const handleBiometricSetupSuccess = () => {
-    setSuccess('Biometric authentication set up successfully!');
-    setTimeout(() => setSuccess(null), 3000);
-  };
 
 
 
@@ -5908,18 +5903,6 @@ This invitation expires in 24 hours.`;
           />
         </Suspense>
 
-        {/* Biometric Setup Modal */}
-        {authenticatedUser && (
-          <Suspense fallback={<LoadingSpinner />}>
-            <BiometricSetup
-              isOpen={showBiometricSetup}
-              onClose={() => setShowBiometricSetup(false)}
-              onSuccess={handleBiometricSetupSuccess}
-              identityId={authenticatedUser.id}
-              pnName={authenticatedUser.pnName}
-            />
-          </Suspense>
-        )}
 
         {/* Device Info Modal */}
         <DeviceInfoModal
