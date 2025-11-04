@@ -14,7 +14,9 @@ import { Server as SocketIOServer } from 'socket.io';
 // Environment configuration
 const PORT = process.env.PORT || 3001;
 const NODE_ENV = process.env.NODE_ENV || 'development';
-const ALLOWED_ORIGINS = process.env.ALLOWED_ORIGINS?.split(',') || [
+
+// Always include these origins, even if ALLOWED_ORIGINS env var is set
+const DEFAULT_ORIGINS = [
   'https://parnoir.com',
   'https://pn.parnoir.com',
   'https://pn-parnoir.web.app',
@@ -23,6 +25,9 @@ const ALLOWED_ORIGINS = process.env.ALLOWED_ORIGINS?.split(',') || [
   'http://localhost:3000',
   'http://localhost:3001'
 ];
+
+const ENV_ORIGINS = process.env.ALLOWED_ORIGINS?.split(',').map(o => o.trim()).filter(Boolean) || [];
+const ALLOWED_ORIGINS = [...new Set([...DEFAULT_ORIGINS, ...ENV_ORIGINS])]; // Merge and deduplicate
 
 // Rate limiting configuration
 const limiter = rateLimit({
@@ -81,8 +86,12 @@ class ProductionServer {
           return callback(null, true);
         }
         if (ALLOWED_ORIGINS.includes(origin)) {
+          if (NODE_ENV === 'development') {
+            console.log(`[CORS] Allowing origin: ${origin}`);
+          }
           callback(null, true);
         } else {
+          console.error(`[CORS] Blocked origin: ${origin}. Allowed origins:`, ALLOWED_ORIGINS);
           callback(new Error('Not allowed by CORS'));
         }
       },
@@ -91,6 +100,7 @@ class ProductionServer {
       allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept'],
       exposedHeaders: ['Content-Type'],
       maxAge: 86400, // 24 hours
+      preflightContinue: false, // Handle preflight immediately
     }));
 
     // Compression
@@ -133,8 +143,13 @@ class ProductionServer {
       });
     });
 
-    // Authentication endpoints with rate limiting
-    this.app.use('/api/auth', authLimiter);
+    // Authentication endpoints with rate limiting (skip OPTIONS for CORS preflight)
+    this.app.use('/api/auth', (req, res, next) => {
+      if (req.method === 'OPTIONS') {
+        return next(); // Skip rate limiting for OPTIONS requests
+      }
+      authLimiter(req, res, next);
+    });
     this.app.post('/api/auth/challenge', (req, res) => {
       // Generate authentication challenge
       const challenge = this.generateChallenge();
