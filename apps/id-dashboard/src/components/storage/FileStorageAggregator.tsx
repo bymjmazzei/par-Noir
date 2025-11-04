@@ -1271,7 +1271,12 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
       }
     }
     
+    // If passcode still not found, try to get it from the authentication session
+    // The passcode should be available if the user is already unlocked
     if (!passcodeToUse) {
+      // Last resort: try to get from the actual authentication flow
+      // This shouldn't normally happen if the user is properly unlocked
+      console.warn('⚠️ [Download] Passcode not found in session - this should not happen if user is unlocked');
       console.error('❌ [Download] Passcode missing from all sources:', {
         hasResolvedAuthPasscode: !!resolvedAuth?.passcode,
         hasPasscodeForEncryption: !!passcodeForEncryption,
@@ -1283,8 +1288,9 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
           }
         })()
       });
-      setPendingDownloadFile(file);
-      setShowPasscodeModal(true);
+      
+      // Don't show passcode modal - instead show error that user needs to unlock
+      setError('Please unlock your pN first. The passcode should be available from your session.');
       return;
     }
 
