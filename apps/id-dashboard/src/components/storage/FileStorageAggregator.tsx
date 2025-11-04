@@ -15,6 +15,9 @@ interface FileStorageAggregatorProps {
 }
 
 export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ authenticatedUser }) => {
+  // Cache for share tokens (fileId -> shareToken) - generated during upload for quick access
+  const shareTokenCache = React.useRef<Map<string, ShareToken>>(new Map());
+  
   // Use global constructors directly - terser will preserve them via reserved list
   
   const [isLoading, setIsLoading] = useState(false);
@@ -624,30 +627,37 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
             const encryptedPackage: EncryptedFilePackage = JSON.parse(encryptedPackageJson);
 
             // Get passcode for token generation
-            // No passcode needed - we use stable pN identity (id + publicKey) for token generation
+            let passcodeForToken: string | undefined = resolvedAuth?.passcode;
+            if (!passcodeForToken) {
+              try {
+                passcodeForToken = sessionStorage.getItem('pn_session_passcode') || undefined;
+              } catch (e) {
+                console.warn('Could not access sessionStorage for passcode');
+              }
+            }
 
-            // Create session object for token generation using stable pN identity
-            // Use authenticatedUser.id if available, otherwise fall back to resolvedAuth
+            if (!passcodeForToken) {
+              throw new Error('Passcode required to generate share token');
+            }
+
+            // Create session object for token generation
             const session: AuthSession = {
-              id: authenticatedUser?.id || resolvedAuth.publicKey,
+              id: resolvedAuth.publicKey,
+              pnName: resolvedAuth.pnName,
               publicKey: resolvedAuth.publicKey,
-              accessToken: authenticatedUser?.accessToken,
-              nickname: authenticatedUser?.nickname
+              nickname: undefined
             };
 
-            // Generate share token using stable pN identity (no passcode needed)
-            console.log('🔑 [Phase 3] Starting token generation...', { 
-              fileId: file.id, 
-              hasSession: !!session, 
-              hasId: !!session.id,
-              hasPublicKey: !!session.publicKey
-            });
+            // Generate share token
+            console.log('🔑 [Phase 3] Starting token generation...', { fileId: file.id, hasSession: !!session, hasPasscode: !!passcodeForToken });
             if (!encryptionService) {
               throw new Error('Encryption service not available');
             }
             shareToken = await encryptionService.generateShareToken(
               encryptedPackage,
-              session
+              session.pnName!,
+              session.publicKey!,
+              passcodeForToken!
             );
 
             // Store token in metadata
@@ -1092,6 +1102,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
       
       let encryptedBlob: Blob;
       let packageData: EncryptedFilePackage;
+      let shareToken: ShareToken | undefined = undefined; // Generate during upload
       try {
         const result = await encryptionService.encryptFileForUpload(
           file,
@@ -1100,6 +1111,20 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
         encryptedBlob = result.encryptedBlob;
         packageData = result.packageData;
         console.log('✅ [Upload] Encryption successful');
+        
+        // Generate share token now (during upload) so it's ready for public sharing
+        // This avoids having to regenerate it later and prevents "Maximum call stack" errors
+        console.log('🔑 [Upload] Generating share token for future public sharing...');
+        try {
+          shareToken = await encryptionService.generateShareToken(
+            packageData,
+            session
+          );
+          console.log('✅ [Upload] Share token generated successfully');
+        } catch (tokenError) {
+          console.warn('⚠️ [Upload] Share token generation failed (file can still be uploaded, but can\'t be made public yet):', tokenError);
+          // Don't fail the upload if token generation fails - user can try making it public later
+        }
       } catch (encryptError: any) {
         console.error('❌ [Upload] Encryption failed:', {
           error: encryptError?.message || encryptError,
@@ -1156,6 +1181,12 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
           folderId,
           { fileName: encryptedFileName, pnIdentifier } // Pass pN identifier for folder management
         );
+
+        // Store share token in cache if generated (keyed by backend file ID for easy lookup)
+        if (shareToken && uploadedFile.id) {
+          shareTokenCache.current.set(uploadedFile.id, shareToken);
+          console.log('💾 [Upload] Share token cached for file:', uploadedFile.id.substring(0, 12) + '...');
+        }
 
       // Refresh file list - IMPORTANT: Force reload with the same pN identifier used for upload
       console.log(`🔄 [Upload] Reloading files for pN ${pnIdentifier?.substring(0, 8)}...`);
