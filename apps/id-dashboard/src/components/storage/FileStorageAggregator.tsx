@@ -617,11 +617,18 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
         let shareToken: ShareToken | undefined = undefined;
         
         // Try to get share token from cache first (generated during upload)
-        shareToken = shareTokenCache.current.get(file.backendFileId);
+        // Try multiple possible cache keys since file ID might be stored differently
+        shareToken = shareTokenCache.current.get(file.backendFileId) || 
+                     shareTokenCache.current.get(file.id) ||
+                     shareTokenCache.current.get((file as any).backendFile?.id);
         
         if (!shareToken) {
           // If not in cache, generate it now (for files uploaded before this change)
-          console.log('🔑 [Phase 3] Share token not in cache, generating now...');
+          console.log('🔑 [Phase 3] Share token not in cache, generating now...', {
+            backendFileId: file.backendFileId,
+            fileId: file.id,
+            cacheSize: shareTokenCache.current.size
+          });
           try {
             // Download the encrypted file to get the EncryptedFilePackage
             if (!aggregatorService) {
@@ -683,16 +690,20 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
         }
 
         // Index the file - pass pN identifier so metadata folder is created inside pN folder
-        // Get pN identifier for metadata folder location
+        // Get pN identifier for metadata folder location (same as folder naming)
         let metadataPnIdentifier: string | undefined = undefined;
         try {
-          const { VolumeIdGenerator } = await import('../../utils/crypto/volumeIdGenerator');
-          if (resolvedAuth?.pnName && resolvedAuth?.publicKey && resolvedAuth?.passcode) {
-            metadataPnIdentifier = await VolumeIdGenerator.generateVolumeId({
-              pnName: resolvedAuth.pnName, // SECRET
-              passcode: resolvedAuth.passcode, // SECRET
-              publicKey: resolvedAuth.publicKey
-            });
+          // Use the same stable identifier generation as folder naming (id + publicKey hash)
+          if (authenticatedUser?.id && resolvedAuth?.publicKey) {
+            const combined = `${authenticatedUser.id}:${resolvedAuth.publicKey}`;
+            const encoder = new TextEncoder();
+            const data = encoder.encode(combined);
+            const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+            const hashArray = Array.from(new Uint8Array(hashBuffer));
+            const hexHash = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+            const shortHash = hexHash.substring(0, 12);
+            metadataPnIdentifier = `pn-${shortHash}`;
+            console.log('📁 [Phase 3] Generated pN identifier for metadata folder:', metadataPnIdentifier);
           }
         } catch (err) {
           console.warn('Failed to generate pN identifier for metadata folder:', err);
@@ -1120,6 +1131,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
         
         // Generate share token now (during upload) so it's ready for public sharing
         // This avoids having to regenerate it later and prevents "Maximum call stack" errors
+        // IMPORTANT: Generate token BEFORE upload so we can cache it with the file ID
         console.log('🔑 [Upload] Generating share token for future public sharing...');
         try {
           shareToken = await encryptionService.generateShareToken(
@@ -1127,9 +1139,14 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
             session
           );
           console.log('✅ [Upload] Share token generated successfully');
-        } catch (tokenError) {
-          console.warn('⚠️ [Upload] Share token generation failed (file can still be uploaded, but can\'t be made public yet):', tokenError);
+        } catch (tokenError: any) {
+          console.error('❌ [Upload] Share token generation failed:', {
+            error: tokenError?.message || tokenError,
+            errorName: tokenError?.name,
+            stack: tokenError?.stack
+          });
           // Don't fail the upload if token generation fails - user can try making it public later
+          shareToken = undefined;
         }
       } catch (encryptError: any) {
         console.error('❌ [Upload] Encryption failed:', {
@@ -1189,9 +1206,15 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
         );
 
         // Store share token in cache if generated (keyed by backend file ID for easy lookup)
-        if (shareToken && uploadedFile.id) {
-          shareTokenCache.current.set(uploadedFile.id, shareToken);
-          console.log('💾 [Upload] Share token cached for file:', uploadedFile.id.substring(0, 12) + '...');
+        // Use uploadedFile.id as the cache key - this should match file.backendFileId when we look it up
+        const cacheKey = uploadedFile.id || uploadedFile.backendFileId;
+        if (shareToken && cacheKey) {
+          shareTokenCache.current.set(cacheKey, shareToken);
+          console.log('💾 [Upload] Share token cached for file:', cacheKey.substring(0, 12) + '...');
+        } else if (!shareToken) {
+          console.warn('⚠️ [Upload] No share token to cache - file was uploaded but token generation failed');
+        } else {
+          console.warn('⚠️ [Upload] No file ID available for caching share token');
         }
 
       // Refresh file list - IMPORTANT: Force reload with the same pN identifier used for upload
