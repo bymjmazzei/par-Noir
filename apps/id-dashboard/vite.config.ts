@@ -6,7 +6,7 @@ import { resolve } from 'path'
 export default defineConfig({
   plugins: [react()],
   worker: {
-    format: 'es'
+    format: 'es',
   },
   publicDir: 'public',
   resolve: {
@@ -29,9 +29,16 @@ export default defineConfig({
     sourcemap: false,
     minify: 'terser',
     chunkSizeWarningLimit: 1000,
+    // Workers are handled separately and should not be minified
     rollupOptions: {
       output: {
+        // Don't minify worker chunks
+        workerChunkFileNames: 'assets/js/[name]-[hash].js',
         manualChunks: (id) => {
+          // Exclude workers from chunking
+          if (id.includes('workers/') || id.includes('.worker.')) {
+            return null;
+          }
           // Vendor chunks
           if (id.includes('node_modules')) {
             if (id.includes('react') || id.includes('react-dom')) {
@@ -110,6 +117,8 @@ export default defineConfig({
       },
       mangle: {
         safari10: true,
+        // Don't mangle worker files - they use self/global which can break
+        reserved: ['self', 'global', 'Worker', 'importScripts'],
       },
     },
   },
