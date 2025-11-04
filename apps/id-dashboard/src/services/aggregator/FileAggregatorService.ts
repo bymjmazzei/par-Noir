@@ -61,6 +61,27 @@ export class FileAggregatorService {
 
     return await backend.downloadFile(fileId);
   }
+
+  async uploadToBackend(
+    backendId: string,
+    file: File,
+    folderId?: string,
+    options?: { fileName?: string; pnIdentifier?: string }
+  ): Promise<any> {
+    await this.ensureInitialized();
+    
+    const backend = this.getBackend(backendId);
+    if (!backend) {
+      throw new Error(`Backend ${backendId} not found`);
+    }
+
+    if (!backend.isConnected()) {
+      throw new Error(`Backend ${backendId} is not connected`);
+    }
+
+    // Pass options as metadata to match GoogleDriveBackend.uploadFile signature
+    return await backend.uploadFile(file, folderId, options);
+  }
 }
 
 let fileAggregatorServiceInstance: FileAggregatorService | null = null;
