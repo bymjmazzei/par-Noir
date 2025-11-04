@@ -624,18 +624,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
             const encryptedPackage: EncryptedFilePackage = JSON.parse(encryptedPackageJson);
 
             // Get passcode for token generation
-            let passcodeForToken: string | undefined = resolvedAuth?.passcode;
-            if (!passcodeForToken) {
-              try {
-                passcodeForToken = sessionStorage.getItem('pn_session_passcode') || undefined;
-              } catch (e) {
-                console.warn('Could not access sessionStorage for passcode');
-              }
-            }
-
-            if (!passcodeForToken) {
-              throw new Error('Passcode required to generate share token');
-            }
+            // No passcode needed - we use stable pN identity (id + publicKey) for token generation
 
             // Create session object for token generation using stable pN identity
             // Use authenticatedUser.id if available, otherwise fall back to resolvedAuth
