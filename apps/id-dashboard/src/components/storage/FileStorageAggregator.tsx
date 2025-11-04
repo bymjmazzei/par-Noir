@@ -1228,19 +1228,61 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
       return;
     }
 
-    // Get passcode
+    // Get passcode - try all sources
     if (!passcodeToUse) {
-      passcodeToUse = passcodeForEncryption || null;
-    }
-    if (!passcodeToUse) {
-      try {
-        passcodeToUse = sessionStorage.getItem('pn_session_passcode');
-      } catch (e) {
-        // sessionStorage might not be available
+      // Try 1: resolvedAuth state (set during unlock)
+      if (resolvedAuth?.passcode) {
+        passcodeToUse = resolvedAuth.passcode;
+        console.log('✅ [Download] Using passcode from resolvedAuth');
       }
     }
     if (!passcodeToUse) {
-      console.log('📥 [Download] Passcode missing, showing modal');
+      // Try 2: passcodeForEncryption state
+      passcodeToUse = passcodeForEncryption || null;
+      if (passcodeToUse) {
+        console.log('✅ [Download] Using passcode from passcodeForEncryption state');
+      }
+    }
+    if (!passcodeToUse) {
+      // Try 3: sessionStorage (should be set during unlock)
+      try {
+        passcodeToUse = sessionStorage.getItem('pn_session_passcode');
+        if (passcodeToUse) {
+          console.log('✅ [Download] Using passcode from sessionStorage');
+        }
+      } catch (e) {
+        console.warn('⚠️ [Download] sessionStorage not available:', e);
+      }
+    }
+    
+    // If still no passcode, check if we can get it from storage
+    if (!passcodeToUse) {
+      try {
+        const { SecureStorage } = await import('../../utils/storage');
+        const storage = new SecureStorage();
+        await storage.init();
+        const session = await storage.getCurrentSession();
+        if (session && (session as any).passcode) {
+          passcodeToUse = (session as any).passcode;
+          console.log('✅ [Download] Using passcode from SecureStorage session');
+        }
+      } catch (err) {
+        console.warn('⚠️ [Download] Could not get passcode from SecureStorage:', err);
+      }
+    }
+    
+    if (!passcodeToUse) {
+      console.error('❌ [Download] Passcode missing from all sources:', {
+        hasResolvedAuthPasscode: !!resolvedAuth?.passcode,
+        hasPasscodeForEncryption: !!passcodeForEncryption,
+        hasSessionStorage: (() => {
+          try {
+            return !!sessionStorage.getItem('pn_session_passcode');
+          } catch {
+            return false;
+          }
+        })()
+      });
       setPendingDownloadFile(file);
       setShowPasscodeModal(true);
       return;
