@@ -1293,7 +1293,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
       setError(null);
       console.log('📥 [Download] Proceeding with download', { hasPnName: !!pnName, hasPublicKey: !!publicKey, hasPasscode: !!passcodeToUse });
 
-      // Download encrypted file
+      // Download encrypted file from backend
       const encryptedBlob = await aggregatorService.downloadFromBackend(
         file.backend,
         file.backendFileId
@@ -1312,19 +1312,27 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
       console.log('📥 [Download] Attempting decryption...', { 
         sessionId: session.id?.substring(0, 20) + '...',
         pnName: session.pnName?.substring(0, 10) + '...',
-        hasPasscode: !!passcodeToUse
+        hasPasscode: !!passcodeToUse,
+        passcodeSource: resolvedAuth?.passcode ? 'resolvedAuth' : 
+                        passcodeForEncryption ? 'passcodeForEncryption' :
+                        'sessionStorage'
       });
 
-      // Decrypt file
+      // Decrypt file - REQUIRES passcode because files are stored encrypted
+      // The file stored in Google Drive is encrypted, so we need to decrypt it before giving it to the user
       if (!encryptionService) {
         setError('Encryption service not available');
         return;
       }
       
+      if (!passcodeToUse) {
+        throw new Error('Passcode required to decrypt file. Please unlock your pN first.');
+      }
+      
       const { decryptedBlob, metadata } = await encryptionService.decryptFileFromDownload(
         encryptedBlob,
         session,
-        passcodeToUse!
+        passcodeToUse
       );
 
       console.log('✅ [Download] Decryption successful, downloading file...', { originalName: metadata.originalName });
