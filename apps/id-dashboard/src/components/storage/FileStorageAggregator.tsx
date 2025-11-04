@@ -615,50 +615,52 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
 
         // Phase 3: Generate share token for public file access
         let shareToken: ShareToken | undefined = undefined;
-        try {
-          // Download the encrypted file to get the EncryptedFilePackage
-          if (!aggregatorService) {
-            throw new Error('Aggregator service not available');
-          }
-          const backend = aggregatorService.getBackend(file.backend);
-          if (backend && backend.isConnected()) {
-            const encryptedBlob = await backend.downloadFile(file.backendFileId);
-            const encryptedPackageJson = await encryptedBlob.text();
-            const encryptedPackage: EncryptedFilePackage = JSON.parse(encryptedPackageJson);
+        
+        // Try to get share token from cache first (generated during upload)
+        shareToken = shareTokenCache.current.get(file.backendFileId);
+        
+        if (!shareToken) {
+          // If not in cache, generate it now (for files uploaded before this change)
+          console.log('🔑 [Phase 3] Share token not in cache, generating now...');
+          try {
+            // Download the encrypted file to get the EncryptedFilePackage
+            if (!aggregatorService) {
+              throw new Error('Aggregator service not available');
+            }
+            const backend = aggregatorService.getBackend(file.backend);
+            if (backend && backend.isConnected()) {
+              const encryptedBlob = await backend.downloadFile(file.backendFileId);
+              const encryptedPackageJson = await encryptedBlob.text();
+              const encryptedPackage: EncryptedFilePackage = JSON.parse(encryptedPackageJson);
 
-            // Get passcode for token generation
-            let passcodeForToken: string | undefined = resolvedAuth?.passcode;
-            if (!passcodeForToken) {
-              try {
-                passcodeForToken = sessionStorage.getItem('pn_session_passcode') || undefined;
-              } catch (e) {
-                console.warn('Could not access sessionStorage for passcode');
+              // Create session object for token generation using stable pN identity
+              // Use authenticatedUser.id if available (stable), otherwise fall back
+              const session: AuthSession = {
+                id: authenticatedUser?.id || resolvedAuth.publicKey,
+                publicKey: resolvedAuth.publicKey,
+                accessToken: authenticatedUser?.accessToken,
+                nickname: authenticatedUser?.nickname
+              };
+
+              // Generate share token using stable pN identity (no passcode needed)
+              console.log('🔑 [Phase 3] Starting token generation...', { 
+                fileId: file.id, 
+                hasSession: !!session,
+                hasId: !!session.id,
+                hasPublicKey: !!session.publicKey
+              });
+              if (!encryptionService) {
+                throw new Error('Encryption service not available');
               }
+              shareToken = await encryptionService.generateShareToken(
+                encryptedPackage,
+                session
+              );
+              
+              // Cache it for future use
+              shareTokenCache.current.set(file.backendFileId, shareToken);
+              console.log('💾 [Phase 3] Share token cached for future use');
             }
-
-            if (!passcodeForToken) {
-              throw new Error('Passcode required to generate share token');
-            }
-
-            // Create session object for token generation
-            const session: AuthSession = {
-              id: resolvedAuth.publicKey,
-              pnName: resolvedAuth.pnName,
-              publicKey: resolvedAuth.publicKey,
-              nickname: undefined
-            };
-
-            // Generate share token
-            console.log('🔑 [Phase 3] Starting token generation...', { fileId: file.id, hasSession: !!session, hasPasscode: !!passcodeForToken });
-            if (!encryptionService) {
-              throw new Error('Encryption service not available');
-            }
-            shareToken = await encryptionService.generateShareToken(
-              encryptedPackage,
-              session.pnName!,
-              session.publicKey!,
-              passcodeForToken!
-            );
 
             // Store token in metadata
             publicMetadata.publicToken = JSON.stringify(shareToken);
@@ -667,7 +669,19 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
               tokenHasShareEncrypted: !!shareToken.shareEncrypted,
               tokenLength: JSON.stringify(shareToken).length
             });
+          } else {
+            throw new Error('Backend not connected');
           }
+          } catch (tokenError) {
+            console.error('❌ [Phase 3] Failed to generate share token:', tokenError);
+            const errorMessage = tokenError instanceof Error ? tokenError.message : 'Unknown error';
+            throw new Error(`Failed to generate share token: ${errorMessage}`);
+          }
+        } else {
+          console.log('✅ [Phase 3] Using cached share token');
+          // Store token in metadata
+          publicMetadata.publicToken = JSON.stringify(shareToken);
+        }
         } catch (tokenError) {
           console.error('❌ [Phase 3] Failed to generate share token:', tokenError);
           const errorMessage = tokenError instanceof Error ? tokenError.message : 'Unknown error';
