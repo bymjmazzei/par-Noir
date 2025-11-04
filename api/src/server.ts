@@ -143,6 +143,22 @@ class ProductionServer {
       });
     });
 
+    // Debug endpoint to check OAuth configuration (without exposing secrets)
+    this.app.get('/api/debug/oauth-config', (req, res) => {
+      const clientId = process.env.GOOGLE_DRIVE_CLIENT_ID || '43740774041-fo57a1gqenc9dmggkcrhjl5cvrp40gnq.apps.googleusercontent.com';
+      const hasClientSecret = !!process.env.GOOGLE_DRIVE_CLIENT_SECRET;
+      const clientSecretLength = process.env.GOOGLE_DRIVE_CLIENT_SECRET?.length || 0;
+      
+      res.json({
+        hasClientId: !!clientId,
+        clientId: clientId,
+        hasClientSecret: hasClientSecret,
+        clientSecretLength: clientSecretLength,
+        clientSecretFirstChars: process.env.GOOGLE_DRIVE_CLIENT_SECRET ? process.env.GOOGLE_DRIVE_CLIENT_SECRET.substring(0, 4) + '...' : 'MISSING',
+        environment: NODE_ENV
+      });
+    });
+
     // Authentication endpoints with rate limiting (skip OPTIONS for CORS preflight)
     this.app.use('/api/auth', (req, res, next) => {
       if (req.method === 'OPTIONS') {
@@ -394,12 +410,22 @@ class ProductionServer {
           });
         }
 
-        const tokenData = await tokenResponse.json() as {
+        // Parse the response text we already read
+        let tokenData: {
           access_token: string;
           refresh_token?: string;
           expires_in?: number;
           token_type?: string;
         };
+        try {
+          tokenData = JSON.parse(responseText);
+        } catch (parseError) {
+          console.error('[Google OAuth Token Exchange] Failed to parse token response:', parseError);
+          return res.status(500).json({
+            error: 'Invalid response from Google',
+            message: 'Failed to parse token response from Google OAuth API'
+          });
+        }
 
         return res.json({
           access_token: tokenData.access_token,
