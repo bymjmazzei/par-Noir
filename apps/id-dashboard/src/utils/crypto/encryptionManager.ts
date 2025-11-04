@@ -4,25 +4,24 @@ import { EncryptedData, DecryptionParameters } from '../types/crypto';
 
 export class EncryptionManager {
     /**
-     * Encrypt data using authenticated session token (accessToken + publicKey)
-     * The accessToken is derived from unlock secrets (pnName + passcode) but doesn't expose them
-     * pnName is also a secret (one of the two unlock factors), so we don't use it directly
-     * This matches the desktop app's approach - files encrypted with authenticated session token
+     * Encrypt data using stable pN identity (id + publicKey)
+     * The id (DID) is stable and unique per pN, so encryption key is consistent across sessions
+     * This ensures files encrypted in one session can be decrypted in another session
      */
     async encrypt(
         data: Uint8Array,
-        accessToken: string,
+        pnId: string,
         publicKey: string
     ): Promise<EncryptedData> {
         try {
-            // Derive encryption key from authenticated session token (accessToken) + publicKey
-            // The accessToken represents the authenticated user credentials (created during unlock from pnName + passcode)
-            // pnName and passcode are secrets, so we only use the accessToken (which incorporates them) + publicKey
-            const combined = `${accessToken}:${publicKey}`;
+            // Derive encryption key from stable pN identity (id + publicKey)
+            // The id (DID) is stable and doesn't change between sessions, ensuring consistent encryption
+            // This is the same approach as volumeIdGenerator - use stable identifiers
+            const combined = `${pnId}:${publicKey}`;
             const encoder = new TextEncoder();
             const combinedData = encoder.encode(combined);
             
-            // Hash the combined credentials to get stable key material (doesn't expose secrets)
+            // Hash the combined identity to get stable key material (consistent across sessions)
             const hashBuffer = await crypto.subtle.digest('SHA-256', combinedData);
             const hashArray = Array.from(new Uint8Array(hashBuffer));
             const hashedKeyMaterial = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
@@ -47,8 +46,8 @@ export class EncryptionManager {
             console.error('❌ [EncryptionManager] Encryption failed:', {
                 error: error?.message || error,
                 errorName: error?.name,
-                hasAccessToken: !!accessToken,
-                accessTokenLength: accessToken?.length,
+                hasPnId: !!pnId,
+                pnIdLength: pnId?.length,
                 hasPublicKey: !!publicKey,
                 publicKeyLength: publicKey?.length,
                 dataLength: data?.length,
@@ -59,26 +58,25 @@ export class EncryptionManager {
     }
 
     /**
-     * Decrypt data using authenticated session token (accessToken + publicKey)
-     * The accessToken is derived from unlock secrets (pnName + passcode) but doesn't expose them
-     * pnName is also a secret (one of the two unlock factors), so we don't use it directly
+     * Decrypt data using stable pN identity (id + publicKey)
+     * The id (DID) is stable and unique per pN, so decryption key matches encryption key across sessions
      */
     async decrypt(
         encryptedData: string,
         iv: string,
         salt: string,
-        accessToken: string,
+        pnId: string,
         publicKey: string
     ): Promise<Uint8Array> {
         try {
-            // Derive decryption key from authenticated session token (accessToken) + publicKey
-            // The accessToken represents the authenticated user credentials (created during unlock from pnName + passcode)
-            // pnName and passcode are secrets, so we only use the accessToken (which incorporates them) + publicKey
-            const combined = `${accessToken}:${publicKey}`;
+            // Derive decryption key from stable pN identity (id + publicKey)
+            // The id (DID) is stable and doesn't change between sessions, ensuring consistent decryption
+            // This matches the encryption process exactly
+            const combined = `${pnId}:${publicKey}`;
             const encoder = new TextEncoder();
             const combinedData = encoder.encode(combined);
             
-            // Hash the combined credentials (same process as encryption)
+            // Hash the combined identity (same process as encryption)
             const hashBuffer = await crypto.subtle.digest('SHA-256', combinedData);
             const hashArray = Array.from(new Uint8Array(hashBuffer));
             const hashedKeyMaterial = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
@@ -99,8 +97,8 @@ export class EncryptionManager {
             console.error('❌ [EncryptionManager] Decryption failed:', {
                 error: error?.message || error,
                 errorName: error?.name,
-                hasAccessToken: !!accessToken,
-                accessTokenLength: accessToken?.length,
+                hasPnId: !!pnId,
+                pnIdLength: pnId?.length,
                 hasPublicKey: !!publicKey,
                 publicKeyLength: publicKey?.length,
                 saltLength: salt?.length,

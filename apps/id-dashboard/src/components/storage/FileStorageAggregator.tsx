@@ -1054,11 +1054,11 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
       return;
     }
 
-    // Get accessToken from authenticated session (required for encryption)
-    // The passcode is never stored - we use the accessToken from the authenticated session
-    if (!authenticatedUser?.accessToken) {
-      console.error('❌ [Upload] accessToken missing from authenticated session');
-      setError('Please unlock your pN first. The accessToken is required to encrypt files.');
+    // Verify we have the stable pN identity (id + publicKey) required for encryption
+    // The id (DID) is stable and doesn't change between sessions
+    if (!authenticatedUser?.id || !publicKey) {
+      console.error('❌ [Upload] Missing stable identity (id or publicKey)');
+      setError('Please unlock your pN first. The pN identity is required to encrypt files.');
       return;
     }
 
@@ -1070,31 +1070,28 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
     try {
       setIsLoading(true);
       setError(null);
-      console.log('📤 [Upload] Proceeding with upload', { hasPnName: !!pnName, hasPublicKey: !!publicKey, hasAccessToken: !!authenticatedUser?.accessToken });
+      console.log('📤 [Upload] Proceeding with upload', { hasPnName: !!pnName, hasPublicKey: !!publicKey, hasId: !!authenticatedUser?.id });
 
-      // Create session object for encryption using authenticated values
-      // Note: pnName is a secret (unlock factor), so we don't include it in the session
+      // Create session object for encryption using stable pN identity
+      // We use id (DID) + publicKey for encryption, which are stable across sessions
       const session: AuthSession = {
         id: authenticatedUser.id,
         publicKey: publicKey!,
-        accessToken: authenticatedUser.accessToken,
+        accessToken: authenticatedUser.accessToken, // Keep for other uses, but not for encryption
         nickname: authenticatedUser?.nickname
       };
 
-      // Encrypt file using authenticated session token (no passcode needed)
+      // Encrypt file using stable pN identity (no passcode needed)
       if (!encryptionService) {
         setError('Encryption service not available');
         return;
       }
       
       console.log('🔐 [Upload] Starting encryption...', {
-        hasAccessToken: !!session.accessToken,
-        accessTokenPreview: session.accessToken?.substring(0, 20) + '...',
-        accessTokenLength: session.accessToken?.length,
-        accessTokenFull: session.accessToken, // Log full token for debugging (remove after fix)
+        hasId: !!session.id,
+        idPreview: session.id?.substring(0, 20) + '...',
         hasPublicKey: !!session.publicKey,
         publicKeyPreview: session.publicKey?.substring(0, 20) + '...',
-        publicKeyFull: session.publicKey, // Log full publicKey for debugging (remove after fix)
         fileName: file.name,
         fileSize: file.size,
         fileType: file.type
@@ -1128,14 +1125,14 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
       }
 
       // Get or create pN-specific folder using stable identifier
-      // Since passcode is a secret and not stored, we use accessToken:publicKey hash for stable volume ID
-      // The accessToken is derived from unlock secrets, so this provides a stable, unique identifier per pN
+      // We use id:publicKey hash for stable volume ID (both are stable across sessions)
       let pnIdentifier: string;
       try {
-        if (authenticatedUser?.accessToken && publicKey) {
-          // Generate stable volume ID from accessToken:publicKey (stable within session)
+        if (authenticatedUser?.id && publicKey) {
+          // Generate stable volume ID from id:publicKey (stable across sessions)
           // Format: pn-{12-char-hex-hash} to match desktop app naming convention
-          const combined = `${authenticatedUser.accessToken}:${publicKey}`;
+          // The id (DID) is stable, so folder name is consistent across sessions
+          const combined = `${authenticatedUser.id}:${publicKey}`;
           const encoder = new TextEncoder();
           const data = encoder.encode(combined);
           const hashBuffer = await crypto.subtle.digest('SHA-256', data);
@@ -1144,7 +1141,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
           const shortHash = hexHash.substring(0, 12);
           pnIdentifier = `pn-${shortHash}`;
         } else {
-          // Fallback to publicKey-based identifier if accessToken unavailable
+          // Fallback to publicKey-based identifier if id unavailable
           pnIdentifier = publicKey ? `pn-${publicKey.substring(0, 12).replace(/[^a-f0-9]/g, '')}` : 'default';
         }
       } catch (err) {
@@ -1237,18 +1234,18 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
       return;
     }
 
-    // Get accessToken from authenticated session (required for decryption)
-    // The passcode is never stored - we use the accessToken from the authenticated session
-    if (!authenticatedUser?.accessToken) {
-      console.error('❌ [Download] accessToken missing from authenticated session');
-      setError('Please unlock your pN first. The accessToken is required to decrypt files.');
+    // Verify we have the stable pN identity (id + publicKey) required for decryption
+    // The id (DID) is stable and doesn't change between sessions
+    if (!authenticatedUser?.id || !publicKey) {
+      console.error('❌ [Download] Missing stable identity (id or publicKey)');
+      setError('Please unlock your pN first. The pN identity is required to decrypt files.');
       return;
     }
 
     try {
       setIsLoading(true);
       setError(null);
-      console.log('📥 [Download] Proceeding with download', { hasPnName: !!pnName, hasPublicKey: !!publicKey, hasAccessToken: !!authenticatedUser?.accessToken });
+      console.log('📥 [Download] Proceeding with download', { hasPnName: !!pnName, hasPublicKey: !!publicKey, hasId: !!authenticatedUser?.id });
 
       // Download encrypted file from backend
       const encryptedBlob = await aggregatorService.downloadFromBackend(
@@ -1258,23 +1255,23 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
 
       console.log('📥 [Download] Encrypted file downloaded, size:', encryptedBlob.size);
 
-      // Create session object for decryption using authenticated values
-      // Note: pnName is a secret (unlock factor), so we don't include it in the session
+      // Create session object for decryption using stable pN identity
+      // We use id (DID) + publicKey for decryption, which are stable across sessions
       const session: AuthSession = {
         id: authenticatedUser!.id,
         publicKey: publicKey!,
-        accessToken: authenticatedUser!.accessToken,
+        accessToken: authenticatedUser!.accessToken, // Keep for other uses, but not for decryption
         nickname: authenticatedUser?.nickname
       };
 
-      console.log('📥 [Download] Attempting decryption with authenticated session token...', { 
+      console.log('📥 [Download] Attempting decryption with stable pN identity...', { 
         sessionId: session.id?.substring(0, 20) + '...',
-        hasAccessToken: !!session.accessToken,
+        hasId: !!session.id,
         hasPublicKey: !!session.publicKey
       });
 
-      // Decrypt file using authenticated session token (accessToken + publicKey)
-      // The accessToken is derived from unlock secrets (pnName + passcode) but doesn't expose them
+      // Decrypt file using stable pN identity (id + publicKey)
+      // The id (DID) is stable and doesn't change between sessions, ensuring consistent decryption
       if (!encryptionService) {
         setError('Encryption service not available');
         return;
@@ -1286,13 +1283,10 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
       
       // Decrypt using authenticated session token - no user input needed
       console.log('🔐 [Download] Starting decryption...', {
-        hasAccessToken: !!session.accessToken,
-        accessTokenPreview: session.accessToken?.substring(0, 20) + '...',
-        accessTokenLength: session.accessToken?.length,
-        accessTokenFull: session.accessToken, // Log full token for debugging (remove after fix)
+        hasId: !!session.id,
+        idPreview: session.id?.substring(0, 20) + '...',
         hasPublicKey: !!session.publicKey,
         publicKeyPreview: session.publicKey?.substring(0, 20) + '...',
-        publicKeyFull: session.publicKey, // Log full publicKey for debugging (remove after fix)
         encryptedPackageKeys: Object.keys(encryptedPackage),
         hasEncrypted: !!encryptedPackage.encrypted,
         encryptedLength: encryptedPackage.encrypted?.length,

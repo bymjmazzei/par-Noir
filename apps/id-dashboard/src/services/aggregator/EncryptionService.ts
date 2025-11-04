@@ -10,16 +10,16 @@ import { cryptoWorkerManager } from '../../utils/crypto/cryptoWorkerManager';
 export class EncryptionService {
   /**
    * Encrypt file for upload
-   * Uses accessToken from authenticated session (pnName and passcode are secrets, never stored)
+   * Uses stable pN identity (id + publicKey) for consistent encryption across sessions
    */
   async encryptFileForUpload(
     file: File,
     session: AuthSession
   ): Promise<{ encryptedBlob: Blob; packageData: EncryptedFilePackage }> {
     console.log('🔐 [EncryptionService] encryptFileForUpload called', {
-      hasAccessToken: !!session.accessToken,
-      accessTokenType: typeof session.accessToken,
-      accessTokenLength: session.accessToken?.length,
+      hasId: !!session.id,
+      idType: typeof session.id,
+      idLength: session.id?.length,
       hasPublicKey: !!session.publicKey,
       publicKeyType: typeof session.publicKey,
       publicKeyLength: session.publicKey?.length,
@@ -27,9 +27,9 @@ export class EncryptionService {
       fileSize: file.size
     });
     
-    if (!session.accessToken || !session.publicKey) {
+    if (!session.id || !session.publicKey) {
       const missing = [];
-      if (!session.accessToken) missing.push('accessToken');
+      if (!session.id) missing.push('id');
       if (!session.publicKey) missing.push('publicKey');
       console.error('❌ [EncryptionService] Missing session data:', missing);
       throw new Error(`Missing required session data: ${missing.join(', ')} are required`);
@@ -39,12 +39,12 @@ export class EncryptionService {
       const fileArrayBuffer = await file.arrayBuffer();
       const fileData = new Uint8Array(fileArrayBuffer);
 
-      // Encrypt using authenticated session token (accessToken + publicKey)
-      // accessToken is derived from unlock secrets (pnName + passcode) but doesn't expose them
+      // Encrypt using stable pN identity (id + publicKey)
+      // The id (DID) is stable and doesn't change between sessions, ensuring consistent encryption
       const encryptionManager = new EncryptionManager();
       const encrypted = await encryptionManager.encrypt(
         fileData,
-        session.accessToken,
+        session.id,
         session.publicKey
       );
 
@@ -83,24 +83,24 @@ export class EncryptionService {
 
   /**
    * Decrypt file from download
-   * Uses accessToken from authenticated session (pnName and passcode are secrets, never stored)
+   * Uses stable pN identity (id + publicKey) for consistent decryption across sessions
    */
   async decryptFileFromDownload(
     encryptedPackage: EncryptedFilePackage,
     session: AuthSession
   ): Promise<{ decryptedBlob: Blob; metadata: any }> {
-    if (!session.accessToken || !session.publicKey) {
-      throw new Error('Missing required session data: accessToken and publicKey are required');
+    if (!session.id || !session.publicKey) {
+      throw new Error('Missing required session data: id and publicKey are required');
     }
 
-    // Decrypt using authenticated session token (accessToken + publicKey)
-    // accessToken is derived from unlock secrets (pnName + passcode) but doesn't expose them
+    // Decrypt using stable pN identity (id + publicKey)
+    // The id (DID) is stable and doesn't change between sessions, ensuring consistent decryption
     const encryptionManager = new EncryptionManager();
     const decrypted = await encryptionManager.decrypt(
       encryptedPackage.encrypted,
       encryptedPackage.iv,
       encryptedPackage.salt,
-      session.accessToken,
+      session.id,
       session.publicKey
     );
 
@@ -114,23 +114,23 @@ export class EncryptionService {
 
   /**
    * Generate share token for public file
-   * Uses accessToken from authenticated session (pnName and passcode are secrets, never stored)
+   * Uses stable pN identity (id + publicKey) for consistent decryption
    */
   async generateShareToken(
     encryptedPackage: EncryptedFilePackage,
     session: AuthSession
   ): Promise<ShareToken> {
-    if (!session.accessToken || !session.publicKey) {
-      throw new Error('Missing required session data: accessToken and publicKey are required');
+    if (!session.id || !session.publicKey) {
+      throw new Error('Missing required session data: id and publicKey are required');
     }
 
-    // First decrypt the original file using authenticated session token
+    // First decrypt the original file using stable pN identity
     const encryptionManager = new EncryptionManager();
     const decrypted = await encryptionManager.decrypt(
       encryptedPackage.encrypted,
       encryptedPackage.iv,
       encryptedPackage.salt,
-      session.accessToken,
+      session.id,
       session.publicKey
     );
 
