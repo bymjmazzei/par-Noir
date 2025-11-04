@@ -23,11 +23,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
   const [connectedBackends, setConnectedBackends] = useState<Set<string>>(new Set());
   const [userEmails, setUserEmails] = useState<Map<string, string>>(new Map());
   const [storageQuotas, setStorageQuotas] = useState<Map<string, any>>(new Map());
-  const [resolvedAuth, setResolvedAuth] = useState<{ pnName: string; publicKey: string; passcode?: string } | null>(null);
-  const [showPasscodeModal, setShowPasscodeModal] = useState(false);
-  const [passcodeForEncryption, setPasscodeForEncryption] = useState<string>('');
-  const [pendingUploadFile, setPendingUploadFile] = useState<File | null>(null);
-  const [pendingDownloadFile, setPendingDownloadFile] = useState<AggregatedFile | null>(null);
+  const [resolvedAuth, setResolvedAuth] = useState<{ pnName: string; publicKey: string } | null>(null);
   
   // Initialize services - use useMemo to avoid re-initializing on every render
   const aggregatorService = React.useMemo(() => {
@@ -1058,52 +1054,34 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
       return;
     }
 
-    // Get passcode if not already set
-    if (!passcodeToUse) {
-      passcodeToUse = passcodeForEncryption || null;
-    }
-    
-    if (!passcodeToUse) {
-      try {
-        passcodeToUse = sessionStorage.getItem('pn_session_passcode');
-      } catch (e) {
-        // sessionStorage might not be available
-      }
-    }
-    if (!passcodeToUse) {
-      try {
-        passcodeToUse = sessionStorage.getItem('pn_session_passcode') || undefined;
-      } catch (e) {
-        // sessionStorage might not be available
-      }
-    }
-
-    if (!passcodeToUse) {
-      console.log('📤 [Upload] Passcode missing, showing modal');
-      setPendingUploadFile(file);
-      setShowPasscodeModal(true);
+    // Get accessToken from authenticated session (required for encryption)
+    // The passcode is never stored - we use the accessToken from the authenticated session
+    if (!authenticatedUser?.accessToken) {
+      console.error('❌ [Upload] accessToken missing from authenticated session');
+      setError('Please unlock your pN first. The accessToken is required to encrypt files.');
       return;
     }
 
-    // Update resolvedAuth state for future use (even though we're using local vars now)
+    // Update resolvedAuth state for future use
     if (!resolvedAuth || resolvedAuth.pnName !== pnName || resolvedAuth.publicKey !== publicKey) {
-      setResolvedAuth({ pnName: pnName!, publicKey: publicKey!, passcode: passcodeToUse || undefined });
+      setResolvedAuth({ pnName: pnName!, publicKey: publicKey! });
     }
 
     try {
       setIsLoading(true);
       setError(null);
-      console.log('📤 [Upload] Proceeding with upload', { hasPnName: !!pnName, hasPublicKey: !!publicKey, hasPasscode: !!passcodeToUse });
+      console.log('📤 [Upload] Proceeding with upload', { hasPnName: !!pnName, hasPublicKey: !!publicKey, hasAccessToken: !!authenticatedUser?.accessToken });
 
-      // Create session object for encryption using resolved values
+      // Create session object for encryption using authenticated values
+      // Note: pnName is a secret (unlock factor), so we don't include it in the session
       const session: AuthSession = {
-        id: authenticatedUser?.id || publicKey!,
-        pnName: pnName!,
+        id: authenticatedUser.id,
         publicKey: publicKey!,
+        accessToken: authenticatedUser.accessToken,
         nickname: authenticatedUser?.nickname
       };
 
-      // Encrypt file
+      // Encrypt file using authenticated session token (no passcode needed)
       if (!encryptionService) {
         setError('Encryption service not available');
         return;
@@ -1111,8 +1089,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
       
       const { encryptedBlob, packageData } = await encryptionService.encryptFileForUpload(
         file,
-        session,
-        passcodeToUse!
+        session
       );
 
       // Get Google Drive backend (default for now)
@@ -1228,76 +1205,18 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
       return;
     }
 
-    // Get passcode - try all sources
-    if (!passcodeToUse) {
-      // Try 1: resolvedAuth state (set during unlock)
-      if (resolvedAuth?.passcode) {
-        passcodeToUse = resolvedAuth.passcode;
-        console.log('✅ [Download] Using passcode from resolvedAuth');
-      }
-    }
-    if (!passcodeToUse) {
-      // Try 2: passcodeForEncryption state
-      passcodeToUse = passcodeForEncryption || null;
-      if (passcodeToUse) {
-        console.log('✅ [Download] Using passcode from passcodeForEncryption state');
-      }
-    }
-    if (!passcodeToUse) {
-      // Try 3: sessionStorage (should be set during unlock)
-      try {
-        passcodeToUse = sessionStorage.getItem('pn_session_passcode');
-        if (passcodeToUse) {
-          console.log('✅ [Download] Using passcode from sessionStorage');
-        }
-      } catch (e) {
-        console.warn('⚠️ [Download] sessionStorage not available:', e);
-      }
-    }
-    
-    // If still no passcode, check if we can get it from storage
-    if (!passcodeToUse) {
-      try {
-        const { SecureStorage } = await import('../../utils/storage');
-        const storage = new SecureStorage();
-        await storage.init();
-        const session = await storage.getCurrentSession();
-        if (session && (session as any).passcode) {
-          passcodeToUse = (session as any).passcode;
-          console.log('✅ [Download] Using passcode from SecureStorage session');
-        }
-      } catch (err) {
-        console.warn('⚠️ [Download] Could not get passcode from SecureStorage:', err);
-      }
-    }
-    
-    // If passcode still not found, try to get it from the authentication session
-    // The passcode should be available if the user is already unlocked
-    if (!passcodeToUse) {
-      // Last resort: try to get from the actual authentication flow
-      // This shouldn't normally happen if the user is properly unlocked
-      console.warn('⚠️ [Download] Passcode not found in session - this should not happen if user is unlocked');
-      console.error('❌ [Download] Passcode missing from all sources:', {
-        hasResolvedAuthPasscode: !!resolvedAuth?.passcode,
-        hasPasscodeForEncryption: !!passcodeForEncryption,
-        hasSessionStorage: (() => {
-          try {
-            return !!sessionStorage.getItem('pn_session_passcode');
-          } catch {
-            return false;
-          }
-        })()
-      });
-      
-      // Don't show passcode modal - instead show error that user needs to unlock
-      setError('Please unlock your pN first. The passcode should be available from your session.');
+    // Get accessToken from authenticated session (required for decryption)
+    // The passcode is never stored - we use the accessToken from the authenticated session
+    if (!authenticatedUser?.accessToken) {
+      console.error('❌ [Download] accessToken missing from authenticated session');
+      setError('Please unlock your pN first. The accessToken is required to decrypt files.');
       return;
     }
 
     try {
       setIsLoading(true);
       setError(null);
-      console.log('📥 [Download] Proceeding with download', { hasPnName: !!pnName, hasPublicKey: !!publicKey, hasPasscode: !!passcodeToUse });
+      console.log('📥 [Download] Proceeding with download', { hasPnName: !!pnName, hasPublicKey: !!publicKey, hasAccessToken: !!authenticatedUser?.accessToken });
 
       // Download encrypted file from backend
       const encryptedBlob = await aggregatorService.downloadFromBackend(
@@ -1307,45 +1226,36 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
 
       console.log('📥 [Download] Encrypted file downloaded, size:', encryptedBlob.size);
 
-      // Create session object for decryption using resolved values
+      // Create session object for decryption using authenticated values
+      // Note: pnName is a secret (unlock factor), so we don't include it in the session
       const session: AuthSession = {
-        id: authenticatedUser?.id || publicKey!,
-        pnName: pnName!,
+        id: authenticatedUser!.id,
         publicKey: publicKey!,
+        accessToken: authenticatedUser!.accessToken,
         nickname: authenticatedUser?.nickname
       };
 
-      console.log('📥 [Download] Attempting decryption...', { 
+      console.log('📥 [Download] Attempting decryption with authenticated session token...', { 
         sessionId: session.id?.substring(0, 20) + '...',
-        pnName: session.pnName?.substring(0, 10) + '...',
-        hasPasscode: !!passcodeToUse,
-        passcodeSource: resolvedAuth?.passcode ? 'resolvedAuth' : 
-                        passcodeForEncryption ? 'passcodeForEncryption' :
-                        'sessionStorage'
+        hasAccessToken: !!session.accessToken,
+        hasPublicKey: !!session.publicKey
       });
 
-      // Decrypt file - REQUIRES passcode because files are stored encrypted
-      // The file stored in Google Drive is encrypted, so we need to decrypt it before giving it to the user
+      // Decrypt file using authenticated session token (accessToken + publicKey)
+      // The accessToken is derived from unlock secrets (pnName + passcode) but doesn't expose them
       if (!encryptionService) {
         setError('Encryption service not available');
         return;
-      }
-      
-      if (!passcodeToUse) {
-        throw new Error('Passcode required to decrypt file. Please unlock your pN first.');
       }
       
       // Parse the encrypted package from the blob
       const encryptedPackageText = await encryptedBlob.text();
       const encryptedPackage = JSON.parse(encryptedPackageText);
       
-      // Decrypt using 3-factor key derivation (pnName + passcode + publicKey)
-      // All three factors come from the authenticated session - no user input needed
+      // Decrypt using authenticated session token - no user input needed
       const { decryptedBlob, metadata } = await encryptionService.decryptFileFromDownload(
         encryptedPackage,
-        session.pnName,
-        session.publicKey,
-        passcodeToUse
+        session
       );
 
       console.log('✅ [Download] Decryption successful, downloading file...', { originalName: metadata.originalName });
@@ -1370,28 +1280,6 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
     }
   };
 
-  const handlePasscodeSubmit = async () => {
-    if (!passcodeForEncryption) return;
-
-    setShowPasscodeModal(false);
-
-    if (pendingUploadFile) {
-      // Retry upload with passcode
-      const fakeEvent = {
-        target: { files: [pendingUploadFile] }
-      } as any;
-      const fileToUpload = pendingUploadFile;
-      setPendingUploadFile(null);
-      setTimeout(() => handleUpload(fakeEvent), 100);
-    // Downloads should never need the passcode modal - passcode comes from session
-    // If we get here with pendingDownloadFile, it means passcode wasn't found
-    // which shouldn't happen if user is properly unlocked
-    if (pendingDownloadFile) {
-      console.error('❌ [PasscodeModal] Download file pending but passcode should come from session');
-      setPendingDownloadFile(null);
-      setError('Passcode not found in session. Please unlock your pN again.');
-    }
-  };
 
   const totalFiles = files.length;
   const hasConnectedBackends = connectedBackends.size > 0;
@@ -1657,49 +1545,6 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
         </div>
       )}
 
-      {/* Passcode Modal - Only for uploads, downloads use session passcode automatically */}
-      {showPasscodeModal && pendingUploadFile && (
-        <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50">
-          <div className="bg-background border border-border rounded-lg p-6 max-w-md w-full mx-4">
-            <h3 className="text-lg font-semibold text-text-primary mb-4">Enter Passcode</h3>
-            <p className="text-text-secondary text-sm mb-4">
-              Enter your passcode to encrypt and upload this file.
-            </p>
-            <input
-              type="password"
-              value={passcodeForEncryption}
-              onChange={(e) => setPasscodeForEncryption(e.target.value)}
-              placeholder="Enter passcode"
-              className="w-full px-4 py-2 bg-neutral-800 border border-neutral-700 rounded-lg text-white mb-4 focus:outline-none focus:ring-2 focus:ring-blue-500"
-              onKeyPress={(e) => {
-                if (e.key === 'Enter' && passcodeForEncryption) {
-                  handlePasscodeSubmit();
-                }
-              }}
-              autoFocus
-            />
-            <div className="flex items-center justify-end space-x-3">
-              <button
-                onClick={() => {
-                  setShowPasscodeModal(false);
-                  setPasscodeForEncryption('');
-                  setPendingUploadFile(null);
-                }}
-                className="px-4 py-2 text-text-secondary hover:text-text-primary transition-colors"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handlePasscodeSubmit}
-                disabled={!passcodeForEncryption}
-                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50"
-              >
-                {pendingUploadFile ? 'Encrypt & Upload' : 'Decrypt & Download'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 };

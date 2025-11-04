@@ -4,19 +4,21 @@ import { EncryptedData, DecryptionParameters } from '../types/crypto';
 
 export class EncryptionManager {
     /**
-     * Encrypt data with 3-factor key derivation (pnName + passcode + publicKey)
-     * This is the multi-factor encryption method used for file encryption
+     * Encrypt data using authenticated session token (accessToken + publicKey)
+     * The accessToken is derived from unlock secrets (pnName + passcode) but doesn't expose them
+     * pnName is also a secret (one of the two unlock factors), so we don't use it directly
+     * This matches the desktop app's approach - files encrypted with authenticated session token
      */
     async encrypt(
         data: Uint8Array,
-        pnName: string,
-        passcode: string,
+        accessToken: string,
         publicKey: string
     ): Promise<EncryptedData> {
         try {
-            // Derive encryption key from 3 factors using hash (same as volumeIdGenerator)
-            // This matches the desktop app's approach - hash the credentials, don't expose them
-            const combined = `${pnName}:${passcode}:${publicKey}`;
+            // Derive encryption key from authenticated session token (accessToken) + publicKey
+            // The accessToken represents the authenticated user credentials (created during unlock from pnName + passcode)
+            // pnName and passcode are secrets, so we only use the accessToken (which incorporates them) + publicKey
+            const combined = `${accessToken}:${publicKey}`;
             const encoder = new TextEncoder();
             const combinedData = encoder.encode(combined);
             
@@ -40,20 +42,22 @@ export class EncryptionManager {
     }
 
     /**
-     * Decrypt data with 3-factor key derivation (pnName + passcode + publicKey)
+     * Decrypt data using authenticated session token (accessToken + publicKey)
+     * The accessToken is derived from unlock secrets (pnName + passcode) but doesn't expose them
+     * pnName is also a secret (one of the two unlock factors), so we don't use it directly
      */
     async decrypt(
         encryptedData: string,
         iv: string,
         salt: string,
-        pnName: string,
-        passcode: string,
+        accessToken: string,
         publicKey: string
     ): Promise<Uint8Array> {
         try {
-            // Derive decryption key from 3 factors using hash (matches encryption)
-            // Hash the credentials to get the same key material (doesn't expose secrets)
-            const combined = `${pnName}:${passcode}:${publicKey}`;
+            // Derive decryption key from authenticated session token (accessToken) + publicKey
+            // The accessToken represents the authenticated user credentials (created during unlock from pnName + passcode)
+            // pnName and passcode are secrets, so we only use the accessToken (which incorporates them) + publicKey
+            const combined = `${accessToken}:${publicKey}`;
             const encoder = new TextEncoder();
             const combinedData = encoder.encode(combined);
             
