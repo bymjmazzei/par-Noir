@@ -787,8 +787,17 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
       });
 
       if (!response.ok) {
-        const error = await response.json().catch(() => ({ message: 'Failed to exchange authorization code' }));
-        throw new Error(error.message || 'Failed to exchange authorization code');
+        let errorMessage = 'Failed to exchange authorization code';
+        try {
+          const error = await response.json();
+          errorMessage = error.message || error.error || JSON.stringify(error);
+          console.error('[Google OAuth] API Error:', error);
+        } catch (e) {
+          const errorText = await response.text().catch(() => 'Unknown error');
+          errorMessage = errorText || 'Failed to exchange authorization code';
+          console.error('[Google OAuth] API Error (text):', errorText);
+        }
+        throw new Error(errorMessage);
       }
 
       const data = await response.json();
