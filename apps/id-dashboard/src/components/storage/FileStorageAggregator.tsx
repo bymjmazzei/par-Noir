@@ -771,8 +771,8 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
       // OAuth flow - authorization code flow for refresh tokens
       const clientId = import.meta.env.VITE_GOOGLE_DRIVE_CLIENT_ID || 
         '43740774041-fo57a1gqenc9dmggkcrhjl5cvrp40gnq.apps.googleusercontent.com';
-      // Use window.location.origin as redirect URI (must match Google Cloud Console settings)
-      const redirectUri = window.location.origin;
+      // Use oauth-callback.html as redirect URI (must match Google Cloud Console settings)
+      const redirectUri = `${window.location.origin}/oauth-callback.html`;
       const scope = 'https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/userinfo.email';
       
       // Use authorization code flow to get refresh tokens
