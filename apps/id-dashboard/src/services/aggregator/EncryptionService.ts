@@ -16,40 +16,69 @@ export class EncryptionService {
     file: File,
     session: AuthSession
   ): Promise<{ encryptedBlob: Blob; packageData: EncryptedFilePackage }> {
+    console.log('🔐 [EncryptionService] encryptFileForUpload called', {
+      hasAccessToken: !!session.accessToken,
+      accessTokenType: typeof session.accessToken,
+      accessTokenLength: session.accessToken?.length,
+      hasPublicKey: !!session.publicKey,
+      publicKeyType: typeof session.publicKey,
+      publicKeyLength: session.publicKey?.length,
+      fileName: file.name,
+      fileSize: file.size
+    });
+    
     if (!session.accessToken || !session.publicKey) {
-      throw new Error('Missing required session data: accessToken and publicKey are required');
+      const missing = [];
+      if (!session.accessToken) missing.push('accessToken');
+      if (!session.publicKey) missing.push('publicKey');
+      console.error('❌ [EncryptionService] Missing session data:', missing);
+      throw new Error(`Missing required session data: ${missing.join(', ')} are required`);
     }
 
-    const fileArrayBuffer = await file.arrayBuffer();
-    const fileData = new Uint8Array(fileArrayBuffer);
+    try {
+      const fileArrayBuffer = await file.arrayBuffer();
+      const fileData = new Uint8Array(fileArrayBuffer);
 
-    // Encrypt using authenticated session token (accessToken + publicKey)
-    // accessToken is derived from unlock secrets (pnName + passcode) but doesn't expose them
-    const encryptionManager = new EncryptionManager();
-    const encrypted = await encryptionManager.encrypt(
-      fileData,
-      session.accessToken,
-      session.publicKey
-    );
+      // Encrypt using authenticated session token (accessToken + publicKey)
+      // accessToken is derived from unlock secrets (pnName + passcode) but doesn't expose them
+      const encryptionManager = new EncryptionManager();
+      const encrypted = await encryptionManager.encrypt(
+        fileData,
+        session.accessToken,
+        session.publicKey
+      );
 
-    // Create encrypted file package
-    const packageData: EncryptedFilePackage = {
-      encrypted: encrypted.encrypted,
-      iv: encrypted.iv,
-      salt: encrypted.salt,
-      metadata: {
-        originalName: file.name,
-        originalSize: file.size,
-        originalMimeType: file.type,
-      },
-    };
+      // Create encrypted file package
+      const packageData: EncryptedFilePackage = {
+        encrypted: encrypted.encrypted,
+        iv: encrypted.iv,
+        salt: encrypted.salt,
+        metadata: {
+          originalName: file.name,
+          originalSize: file.size,
+          originalMimeType: file.type,
+        },
+      };
 
-    // Convert to Blob for upload
-    const encryptedBlob = new Blob([JSON.stringify(packageData)], {
-      type: 'application/json',
-    });
+      // Convert to Blob for upload
+      const encryptedBlob = new Blob([JSON.stringify(packageData)], {
+        type: 'application/json',
+      });
 
-    return { encryptedBlob, packageData };
+      console.log('✅ [EncryptionService] File encrypted successfully', {
+        encryptedSize: encryptedBlob.size,
+        originalSize: file.size
+      });
+
+      return { encryptedBlob, packageData };
+    } catch (error: any) {
+      console.error('❌ [EncryptionService] Encryption error:', {
+        error: error?.message || error,
+        errorName: error?.name,
+        stack: error?.stack
+      });
+      throw error;
+    }
   }
 
   /**

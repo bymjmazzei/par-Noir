@@ -36,8 +36,18 @@ export class EncryptionManager {
                 iv: this.arrayBufferToBase64(iv),
                 salt
             };
-        } catch (error) {
-            throw new Error('Failed to encrypt data');
+        } catch (error: any) {
+            console.error('❌ [EncryptionManager] Encryption failed:', {
+                error: error?.message || error,
+                errorName: error?.name,
+                hasAccessToken: !!accessToken,
+                accessTokenLength: accessToken?.length,
+                hasPublicKey: !!publicKey,
+                publicKeyLength: publicKey?.length,
+                dataLength: data?.length,
+                stack: error?.stack
+            });
+            throw new Error(`Failed to encrypt data: ${error?.message || error}`);
         }
     }
 

@@ -1087,10 +1087,35 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
         return;
       }
       
-      const { encryptedBlob, packageData } = await encryptionService.encryptFileForUpload(
-        file,
-        session
-      );
+      console.log('🔐 [Upload] Starting encryption...', {
+        hasAccessToken: !!session.accessToken,
+        accessTokenPreview: session.accessToken?.substring(0, 20) + '...',
+        hasPublicKey: !!session.publicKey,
+        publicKeyPreview: session.publicKey?.substring(0, 20) + '...',
+        fileName: file.name,
+        fileSize: file.size,
+        fileType: file.type
+      });
+      
+      let encryptedBlob: Blob;
+      let packageData: EncryptedFilePackage;
+      try {
+        const result = await encryptionService.encryptFileForUpload(
+          file,
+          session
+        );
+        encryptedBlob = result.encryptedBlob;
+        packageData = result.packageData;
+        console.log('✅ [Upload] Encryption successful');
+      } catch (encryptError: any) {
+        console.error('❌ [Upload] Encryption failed:', {
+          error: encryptError?.message || encryptError,
+          errorName: encryptError?.name,
+          stack: encryptError?.stack
+        });
+        setError(`Failed to encrypt file: ${encryptError?.message || 'Unknown error'}. Please make sure you are unlocked.`);
+        return;
+      }
 
       // Get Google Drive backend (default for now)
       const backendId = 'google_drive';
