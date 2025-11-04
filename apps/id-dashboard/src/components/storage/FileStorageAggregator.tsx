@@ -1253,10 +1253,35 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
       const encryptedPackage = JSON.parse(encryptedPackageText);
       
       // Decrypt using authenticated session token - no user input needed
-      const { decryptedBlob, metadata } = await encryptionService.decryptFileFromDownload(
-        encryptedPackage,
-        session
-      );
+      console.log('🔐 [Download] Starting decryption...', {
+        hasAccessToken: !!session.accessToken,
+        accessTokenPreview: session.accessToken?.substring(0, 20) + '...',
+        hasPublicKey: !!session.publicKey,
+        publicKeyPreview: session.publicKey?.substring(0, 20) + '...',
+        encryptedPackageKeys: Object.keys(encryptedPackage),
+        hasEncrypted: !!encryptedPackage.encrypted,
+        hasIv: !!encryptedPackage.iv,
+        hasSalt: !!encryptedPackage.salt
+      });
+      
+      let decryptedBlob: Blob;
+      let metadata: any;
+      try {
+        const result = await encryptionService.decryptFileFromDownload(
+          encryptedPackage,
+          session
+        );
+        decryptedBlob = result.decryptedBlob;
+        metadata = result.metadata;
+      } catch (decryptError: any) {
+        console.error('❌ [Download] Decryption failed:', {
+          error: decryptError?.message || decryptError,
+          errorName: decryptError?.name,
+          stack: decryptError?.stack
+        });
+        setError(`Failed to decrypt file: ${decryptError?.message || 'Unknown error'}. This file may have been encrypted with a different method.`);
+        return;
+      }
 
       console.log('✅ [Download] Decryption successful, downloading file...', { originalName: metadata.originalName });
 

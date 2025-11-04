@@ -71,8 +71,19 @@ export class EncryptionManager {
             const dataBuffer = this.base64ToArrayBuffer(encryptedData);
             const decryptedBuffer = await cryptoWorkerManager.decrypt({ name: 'AES-GCM', iv: ivBuffer }, key, dataBuffer);
             return new Uint8Array(decryptedBuffer);
-        } catch (error) {
-            throw new Error('Failed to decrypt data');
+        } catch (error: any) {
+            console.error('❌ [EncryptionManager] Decryption failed:', {
+                error: error?.message || error,
+                errorName: error?.name,
+                hasAccessToken: !!accessToken,
+                accessTokenLength: accessToken?.length,
+                hasPublicKey: !!publicKey,
+                publicKeyLength: publicKey?.length,
+                saltLength: salt?.length,
+                ivLength: iv?.length,
+                encryptedDataLength: encryptedData?.length
+            });
+            throw new Error(`Failed to decrypt data: ${error?.message || error}`);
         }
     }
 
