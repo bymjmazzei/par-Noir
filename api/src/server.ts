@@ -269,6 +269,73 @@ class ProductionServer {
         });
       }
     });
+    // POST /api/auth/google-oauth/token - Exchange authorization code for tokens
+    this.app.post('/api/auth/google-oauth/token', async (req, res) => {
+      try {
+        const { code, redirectUri } = req.body;
+        
+        if (!code || !redirectUri) {
+          return res.status(400).json({
+            error: 'Missing required fields',
+            required: ['code', 'redirectUri']
+          });
+        }
+
+        const clientId = process.env.GOOGLE_DRIVE_CLIENT_ID || '43740774041-fo57a1gqenc9dmggkcrhjl5cvrp40gnq.apps.googleusercontent.com';
+        const clientSecret = process.env.GOOGLE_DRIVE_CLIENT_SECRET;
+        
+        if (!clientSecret) {
+          console.error('⚠️ GOOGLE_DRIVE_CLIENT_SECRET not configured');
+          return res.status(500).json({
+            error: 'OAuth configuration error',
+            message: 'Google OAuth client secret not configured on server'
+          });
+        }
+
+        const tokenResponse = await fetch('https://oauth2.googleapis.com/token', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/x-www-form-urlencoded',
+          },
+          body: new URLSearchParams({
+            code,
+            client_id: clientId,
+            client_secret: clientSecret,
+            redirect_uri: redirectUri,
+            grant_type: 'authorization_code',
+          }),
+        });
+
+        if (!tokenResponse.ok) {
+          const errorText = await tokenResponse.text();
+          console.error('Google token exchange failed:', errorText);
+          return res.status(tokenResponse.status).json({
+            error: 'Token exchange failed',
+            message: errorText
+          });
+        }
+
+        const tokenData = await tokenResponse.json() as {
+          access_token: string;
+          refresh_token?: string;
+          expires_in?: number;
+          token_type?: string;
+        };
+
+        return res.json({
+          access_token: tokenData.access_token,
+          refresh_token: tokenData.refresh_token,
+          expires_in: tokenData.expires_in,
+          token_type: tokenData.token_type || 'Bearer',
+        });
+      } catch (error: any) {
+        console.error('Error exchanging Google OAuth code:', error);
+        return res.status(500).json({
+          error: 'Failed to exchange authorization code',
+          message: error.message
+        });
+      }
+    });
 
     this.app.get('/api/did/:did', (req, res) => {
       // Resolve DID document

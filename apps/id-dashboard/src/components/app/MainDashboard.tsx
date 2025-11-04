@@ -5,7 +5,7 @@ import { SecureStorage } from "../../utils/storage";
 import { logger } from "../../utils/logger";
 import { useCleanupManager } from "../../utils/cleanupManager";
 import { ThemeSwitcher } from '../ThemeSwitcher';
-import { GoogleDriveStorage } from '../storage/GoogleDriveStorage';
+import { FileStorageAggregator } from '../storage/FileStorageAggregator';
 import { DelegationModal } from '../DelegationModal';
 
 interface MainDashboardProps {
@@ -237,7 +237,7 @@ export const MainDashboard: React.FC<MainDashboardProps> = ({
 
               {activeTab === 'storage' && (
                 <div>
-                  <GoogleDriveStorage />
+                  <FileStorageAggregator authenticatedUser={selectedDID} />
                 </div>
               )}
 

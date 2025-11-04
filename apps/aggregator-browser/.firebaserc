@@ -1,0 +1,15 @@
+{
+  "projects": {
+    "default": "par-noir-dashboard"
+  },
+  "targets": {
+    "par-noir-dashboard": {
+      "hosting": {
+        "browse": [
+          "browse-parnoir"
+        ]
+      }
+    }
+  },
+  "etags": {}
+}

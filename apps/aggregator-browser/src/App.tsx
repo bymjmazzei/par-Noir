@@ -1,0 +1,427 @@
+/**
+ * Aggregator Browser
+ * Licensed aggregator application for discovering and viewing public encrypted content
+ * Deployed at browse.parnoir.com
+ */
+
+import React, { useState, useEffect } from 'react';
+import { Search, Filter, File, Globe, Tag, Calendar, User, Download, RefreshCw, Lock, Image as ImageIcon, X } from 'lucide-react';
+import { getMetadataIndexService } from './services/metadata/MetadataIndexService';
+import { PublicMetadata, MetadataFilters, IndexedFile } from './types/aggregator';
+import { decryptWithToken, ShareToken } from './utils/tokenDecryption';
+
+// Shared types - importing from id-dashboard
+// In production, these would come from a shared package
+
+function App() {
+  const [indexedFiles, setIndexedFiles] = useState<IndexedFile[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [filters, setFilters] = useState<MetadataFilters>({});
+  const [viewingFile, setViewingFile] = useState<{ file: IndexedFile; blob: Blob; url: string } | null>(null);
+  
+  const metadataIndexService = getMetadataIndexService();
+
+  useEffect(() => {
+    discoverFiles();
+  }, []);
+
+  // Auto-refresh metadata when Google Drive token becomes available
+  useEffect(() => {
+    const checkToken = () => {
+      const token = localStorage.getItem('google_drive_token');
+      if (token) {
+        console.log('✅ Google Drive token found - will scan pN folders');
+        discoverFiles();
+      }
+    };
+
+    // Check immediately
+    checkToken();
+
+    // Also listen for storage events (in case token is set in another tab/window)
+    window.addEventListener('storage', (e) => {
+      if (e.key === 'google_drive_token' && e.newValue) {
+        console.log('✅ Google Drive token updated - refreshing metadata');
+        discoverFiles();
+      }
+    });
+
+    return () => {
+      window.removeEventListener('storage', checkToken);
+    };
+  }, []);
+
+  const discoverFiles = async (searchFilters?: MetadataFilters) => {
+    try {
+      setIsLoading(true);
+      setError(null);
+      
+      // No Google Drive connection needed - just query central aggregator API
+      await metadataIndexService.initialize();
+      
+      // Apply search query to filters if provided
+      const finalFilters: MetadataFilters = {
+        ...filters,
+        ...searchFilters,
+        ...(searchQuery ? { tags: searchQuery.split(',').map(t => t.trim()).filter(Boolean) } : {})
+      };
+      
+      // Discover public files from all users
+      const discoveredFiles = await metadataIndexService.discoverFiles(finalFilters);
+      
+      setIndexedFiles(discoveredFiles);
+      console.log(`✅ Discovered ${discoveredFiles.length} public files`);
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Failed to discover files';
+      setError(errorMessage);
+      console.error('Failed to discover files:', err);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleSearch = () => {
+    discoverFiles();
+  };
+
+  const handleFilterChange = (key: keyof MetadataFilters, value: any) => {
+    const newFilters = {
+      ...filters,
+      [key]: value || undefined
+    };
+    setFilters(newFilters);
+    discoverFiles(newFilters);
+  };
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-neutral-900 via-neutral-800 to-neutral-900">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        {/* Header */}
+        <div className="mb-8">
+          <h1 className="text-3xl font-bold text-white mb-2">par Noir Content Browser</h1>
+          <p className="text-text-secondary">
+            Discover public encrypted content from the par Noir network
+          </p>
+        </div>
+
+        {/* Search and Filters */}
+        <div className="bg-neutral-900/60 border border-neutral-700 rounded-xl p-6 mb-6">
+          <div className="space-y-4">
+            <div className="flex items-center space-x-2">
+              <div className="flex-1 relative">
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-text-secondary" />
+                <input
+                  type="text"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  placeholder="Search by tags (comma-separated)..."
+                  className="w-full pl-10 pr-4 py-2 bg-neutral-800 border border-neutral-700 rounded-lg text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  onKeyPress={(e) => {
+                    if (e.key === 'Enter') {
+                      handleSearch();
+                    }
+                  }}
+                />
+              </div>
+              <button
+                onClick={handleSearch}
+                className="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors"
+              >
+                Search
+              </button>
+              <button
+                onClick={() => {
+                  setSearchQuery('');
+                  setFilters({});
+                  discoverFiles({});
+                }}
+                className="px-4 py-2 bg-neutral-700 text-white text-sm font-medium rounded-lg hover:bg-neutral-600 transition-colors"
+              >
+                Reset
+              </button>
+            </div>
+
+            <div className="flex items-center space-x-4 text-sm">
+              <div className="flex items-center space-x-2">
+                <Filter className="h-4 w-4 text-text-secondary" />
+                <span className="text-text-secondary">Filters:</span>
+              </div>
+              <select
+                value={filters.fileType || ''}
+                onChange={(e) => handleFilterChange('fileType', e.target.value || undefined)}
+                className="px-3 py-1.5 bg-neutral-800 border border-neutral-700 rounded-lg text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="">All Types</option>
+                <option value="image">Images</option>
+                <option value="video">Videos</option>
+                <option value="audio">Audio</option>
+                <option value="document">Documents</option>
+                <option value="file">Other</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        {/* Error Display */}
+        {error && (
+          <div className="bg-red-500/10 border border-red-500/20 rounded-lg p-4 mb-6">
+            <p className="text-red-400 text-sm">{error}</p>
+          </div>
+        )}
+
+        {/* Stats */}
+        <div className="bg-neutral-900/60 border border-neutral-700 rounded-xl p-4 mb-6">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-text-secondary text-sm">Public Files Discovered</p>
+              <p className="text-white text-2xl font-bold">{indexedFiles.length}</p>
+            </div>
+            <button
+              onClick={() => discoverFiles()}
+              disabled={isLoading}
+              className="px-4 py-2 bg-neutral-700 text-white text-sm font-medium rounded-lg hover:bg-neutral-600 transition-colors disabled:opacity-50 flex items-center space-x-2"
+            >
+              <RefreshCw className={`h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} />
+              <span>Refresh</span>
+            </button>
+          </div>
+        </div>
+
+        {/* Files Grid */}
+        {error && !isLoading && (
+          <div className="bg-yellow-500/10 border border-yellow-500/20 rounded-lg p-4 mb-4">
+            <p className="text-yellow-400 text-sm">{error}</p>
+            <p className="text-yellow-400/80 text-xs mt-2">
+              Note: Connect Google Drive at <a href="https://pn.parnoir.com" target="_blank" rel="noopener noreferrer" className="underline">pn.parnoir.com</a> first to scan for public files
+            </p>
+          </div>
+        )}
+        
+        {isLoading ? (
+          <div className="text-center py-12">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-400 mx-auto mb-4"></div>
+            <p className="text-text-secondary">Scanning Google Drive for public files...</p>
+          </div>
+        ) : indexedFiles.length === 0 ? (
+          <div className="text-center py-12">
+            <Globe className="h-12 w-12 text-text-secondary mx-auto mb-4" />
+            <p className="text-text-secondary">No public files found</p>
+            <p className="text-text-secondary text-sm mt-2">
+              {typeof window !== 'undefined' && localStorage.getItem('google_drive_token') 
+                ? 'No files have been marked as public yet. Mark files as public in the dashboard to see them here.'
+                : 'Connect Google Drive in the dashboard to scan for public files'}
+            </p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {indexedFiles.map((indexedFile) => {
+              const file = indexedFile.metadata;
+              // Detect if file is an image from fileType or filename
+              const isImage = file.fileType === 'image' || 
+                             (file.name || file.title || '').match(/\.(jpg|jpeg|png|gif|webp|svg|bmp|ico)$/i);
+              const fileName = file.name || file.title || 'Untitled';
+              
+              return (
+                <div
+                  key={file.fileId}
+                  className="bg-neutral-900/60 border border-neutral-700 rounded-xl overflow-hidden hover:bg-neutral-800 transition-colors"
+                >
+                  {/* Image Preview Section */}
+                  {isImage && (
+                    <div className="w-full h-48 bg-neutral-800 flex items-center justify-center relative overflow-hidden">
+                      {indexedFile.thumbnail ? (
+                        <img 
+                          src={indexedFile.thumbnail} 
+                          alt={fileName}
+                          className="w-full h-full object-cover"
+                          onError={(e) => {
+                            // Fallback to icon if thumbnail fails to load
+                            e.currentTarget.style.display = 'none';
+                          }}
+                        />
+                      ) : (
+                        <div className="flex flex-col items-center justify-center text-neutral-500">
+                          <ImageIcon className="h-12 w-12 mb-2" />
+                          <span className="text-xs">Encrypted Image</span>
+                          <span className="text-xs text-neutral-600 mt-1">Decryption required</span>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                  
+                  <div className="p-4">
+                    <div className="flex items-start space-x-3 mb-3">
+                      {!isImage && (
+                        <div className="flex-shrink-0 w-12 h-12 bg-blue-500/20 rounded-lg flex items-center justify-center">
+                          <File className="h-6 w-6 text-blue-400" />
+                        </div>
+                      )}
+                      <div className="flex-1 min-w-0">
+                        <h3 className="text-white font-medium truncate">{fileName}</h3>
+                        <p className="text-text-secondary text-xs mt-1">
+                          {file.fileType === 'image' ? 'Image' : file.fileType || 'File'} • {new Date(file.uploadDate).toLocaleDateString()}
+                        </p>
+                      </div>
+                    </div>
+
+                  {file.description && (
+                    <p className="text-text-secondary text-sm mb-3 line-clamp-2">{file.description}</p>
+                  )}
+
+                  <div className="flex items-center space-x-2 text-xs text-text-secondary mb-3">
+                    <User className="h-3 w-3" />
+                    <span className="truncate">
+                      {file.creator?.identifier?.value || file.creator?.["@id"] || file.author?.did || 'Unknown'}
+                    </span>
+                  </div>
+
+                  {(file.keywords || file.tags) && (file.keywords || file.tags || []).length > 0 && (
+                    <div className="flex flex-wrap gap-2 mb-3">
+                      {(file.keywords || file.tags || []).slice(0, 3).map((tag, idx) => (
+                        <span
+                          key={idx}
+                          className="px-2 py-0.5 bg-blue-500/20 text-blue-400 text-xs rounded flex items-center space-x-1"
+                        >
+                          <Tag className="h-3 w-3" />
+                          <span>{tag}</span>
+                        </span>
+                      ))}
+                      {(file.keywords || file.tags || []).length > 3 && (
+                        <span className="px-2 py-0.5 text-text-secondary text-xs">
+                          +{(file.keywords || file.tags || []).length - 3} more
+                        </span>
+                      )}
+                    </div>
+                  )}
+
+                    <div className="flex items-center justify-between pt-3 border-t border-neutral-700">
+                      <span className="text-xs text-text-secondary">
+                        {file.backend}
+                      </span>
+                      <button
+                        onClick={async () => {
+                          try {
+                            // Extract token from metadata
+                            const tokenString = file.publicToken;
+                            if (!tokenString) {
+                              alert('This file does not have a share token yet. Please make it private and then public again in the dashboard to generate a token (Phase 3).');
+                              return;
+                            }
+
+                            let token: ShareToken;
+                            try {
+                              token = typeof tokenString === 'string' ? JSON.parse(tokenString) : tokenString;
+                            } catch (e) {
+                              alert('Invalid share token format.');
+                              return;
+                            }
+
+                            // Decrypt using token
+                            setIsLoading(true);
+                            const decryptedBlob = await decryptWithToken(token);
+                            const url = URL.createObjectURL(decryptedBlob);
+                            
+                            setViewingFile({ file: indexedFile, blob: decryptedBlob, url });
+                            setIsLoading(false);
+                          } catch (err) {
+                            setIsLoading(false);
+                            const errorMessage = err instanceof Error ? err.message : 'Failed to decrypt file';
+                            alert(`Decryption failed: ${errorMessage}`);
+                            console.error('Token decryption error:', err);
+                          }
+                        }}
+                        disabled={isLoading}
+                        className="px-3 py-1.5 bg-blue-600 text-white text-xs font-medium rounded-lg hover:bg-blue-700 transition-colors flex items-center space-x-1 disabled:opacity-50 disabled:cursor-not-allowed"
+                        title={file.publicToken ? "View decrypted file" : "Click to see token status"}
+                      >
+                        <Download className="h-3 w-3" />
+                        <span>{isLoading ? 'Decrypting...' : 'View'}</span>
+                      </button>
+                    </div>
+
+                    {/* Note about decryption */}
+                    <p className="text-xs text-text-secondary mt-2 italic">
+                      {file.publicToken ? '✅ Token available - Click View to decrypt' : '⚠️ No token - Make file private then public again in dashboard'}
+                    </p>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {/* File Viewer Modal */}
+        {viewingFile && (
+          <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
+            <div className="bg-neutral-900 rounded-xl max-w-4xl max-h-[90vh] w-full flex flex-col">
+              <div className="flex items-center justify-between p-4 border-b border-neutral-700">
+                <h3 className="text-white font-medium">{viewingFile.file.metadata.name || viewingFile.file.metadata.title || 'Decrypted File'}</h3>
+                <button
+                  onClick={() => {
+                    if (viewingFile.url) URL.revokeObjectURL(viewingFile.url);
+                    setViewingFile(null);
+                  }}
+                  className="text-text-secondary hover:text-white transition-colors"
+                >
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
+              <div className="flex-1 overflow-auto p-4">
+                {viewingFile.blob.type.startsWith('image/') ? (
+                  <img 
+                    src={viewingFile.url} 
+                    alt={viewingFile.file.metadata.name || 'Decrypted image'}
+                    className="max-w-full max-h-[70vh] mx-auto"
+                  />
+                ) : viewingFile.blob.type.startsWith('video/') ? (
+                  <video 
+                    src={viewingFile.url} 
+                    controls
+                    className="max-w-full max-h-[70vh] mx-auto"
+                  />
+                ) : viewingFile.blob.type.startsWith('audio/') ? (
+                  <audio 
+                    src={viewingFile.url} 
+                    controls
+                    className="w-full"
+                  />
+                ) : (
+                  <div className="text-center py-12">
+                    <File className="h-12 w-12 text-text-secondary mx-auto mb-4" />
+                    <p className="text-text-secondary mb-4">File type: {viewingFile.blob.type}</p>
+                    <a
+                      href={viewingFile.url}
+                      download={viewingFile.file.metadata.name || 'file'}
+                      className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors inline-flex items-center space-x-2"
+                    >
+                      <Download className="h-4 w-4" />
+                      <span>Download File</span>
+                    </a>
+                  </div>
+                )}
+              </div>
+              <div className="p-4 border-t border-neutral-700 flex items-center justify-between">
+                <span className="text-xs text-text-secondary">
+                  Decrypted via share token (Phase 3)
+                </span>
+                <a
+                  href={viewingFile.url}
+                  download={viewingFile.file.metadata.name || 'file'}
+                  className="px-4 py-2 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700 transition-colors inline-flex items-center space-x-2"
+                >
+                  <Download className="h-4 w-4" />
+                  <span>Download</span>
+                </a>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+export default App;
+

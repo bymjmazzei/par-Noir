@@ -44,7 +44,7 @@ import PrivacyPolicy from './pages/PrivacyPolicy';
 import { MainDashboard } from './components/app/MainDashboard';
 import { DelegationModal } from './components/DelegationModal';
 import { IdentityVerificationModal } from './components/IdentityVerificationModal';
-import { GoogleDriveStorage } from './components/storage/GoogleDriveStorage';
+import { FileStorageAggregator } from './components/storage/FileStorageAggregator';
 import { GoogleDriveDemo } from './components/storage/GoogleDriveDemo';
 import { ExportAuthModal } from './components/modals/ExportAuthModal';
 import { ExportOptionsModal } from './components/modals/ExportOptionsModal';
@@ -76,6 +76,7 @@ const IntegrationDebugger = lazy(() => import('./components/IntegrationDebugger'
 const SessionManager = lazy(() => import('./components/SessionManager').then(module => ({ default: module.SessionManager })));
 const MigrationModal = lazy(() => import('./components/MigrationModal').then(module => ({ default: module.MigrationModal })));
 const ProfilePictureEditor = lazy(() => import('./components/ProfilePictureEditor').then(module => ({ default: module.ProfilePictureEditor })));
+const BiometricSetup = lazy(() => import('./components/BiometricSetup').then(module => ({ default: module.BiometricSetup })));
 const PWALockScreen = lazy(() => import('./components/PWALockScreen').then(module => ({ default: module.default })));
 
 // Loading component for lazy-loaded components
@@ -1855,6 +1856,10 @@ function App() {
     }
   };
 
+  const handleBiometricSetupSuccess = () => {
+    setSuccess('Biometric authentication set up successfully!');
+    setTimeout(() => setSuccess(null), 3000);
+  };
 
 
 
@@ -5671,29 +5676,7 @@ This invitation expires in 24 hours.`;
                   {/* Storage Tab */}
                   {activeTab === 'storage' && (
                     <div>
-                      {isDemoMode ? (
-                        <div>
-                          <div className="flex items-center justify-between mb-4">
-                            <h3 className="text-lg font-semibold text-white">Google Drive Integration</h3>
-                            <div className="flex items-center space-x-2">
-                              <button
-                                onClick={() => setIsDemoMode(false)}
-                                className="px-3 py-1 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700 transition-colors"
-                              >
-                                Exit Demo
-                              </button>
-                            </div>
-                          </div>
-                          <GoogleDriveDemo />
-                        </div>
-                      ) : (
-                        <div>
-                          <div className="flex items-center justify-between mb-4">
-                            <h3 className="text-lg font-semibold text-white">Google Drive Storage</h3>
-                          </div>
-                          <GoogleDriveStorage />
-                        </div>
-                      )}
+                      <FileStorageAggregator authenticatedUser={authenticatedUser} />
                     </div>
                   )}
 
@@ -5903,6 +5886,18 @@ This invitation expires in 24 hours.`;
           />
         </Suspense>
 
+        {/* Biometric Setup Modal */}
+        {authenticatedUser && (
+          <Suspense fallback={<LoadingSpinner />}>
+            <BiometricSetup
+              isOpen={showBiometricSetup}
+              onClose={() => setShowBiometricSetup(false)}
+              onSuccess={handleBiometricSetupSuccess}
+              identityId={authenticatedUser.id}
+              pnName={authenticatedUser.pnName}
+            />
+          </Suspense>
+        )}
 
         {/* Device Info Modal */}
         <DeviceInfoModal
