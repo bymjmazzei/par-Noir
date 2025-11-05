@@ -266,8 +266,13 @@ export class GoogleDriveMetadataService {
         );
 
         if (!createResponse.ok) {
-          throw new Error('Failed to create metadata file');
+          const errorText = await createResponse.text();
+          console.error('Failed to create metadata file. Status:', createResponse.status, 'StatusText:', createResponse.statusText);
+          console.error('Error response:', errorText);
+          throw new Error(`Failed to create metadata file: ${createResponse.status} ${createResponse.statusText}. ${errorText}`);
         }
+        
+        console.log('✅ Metadata file created successfully');
       }
     } catch (error) {
       console.error('Error creating companion metadata file:', error);
