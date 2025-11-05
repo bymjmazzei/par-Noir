@@ -759,9 +759,12 @@ export class GoogleDriveBackend extends AbstractStorageBackend {
         let thumbnail: string | undefined = undefined;
         const mimeType = uploadedFile.mimeType || file.type || 'application/octet-stream';
         if (mimeType.startsWith('image/')) {
-          // For images, create a placeholder thumbnail data URL
-          // In the future, we could generate actual thumbnails from the decrypted image
-          thumbnail = this.generateImagePlaceholderThumbnail(originalFileName, mimeType);
+          // Generate actual thumbnail from the image file
+          try {
+            thumbnail = await this.generateImageThumbnail(file);
+          } catch (thumbError) {
+            console.warn('Failed to generate thumbnail, skipping:', thumbError);
+          }
         }
 
         const companionMetadata = {
@@ -827,25 +830,70 @@ export class GoogleDriveBackend extends AbstractStorageBackend {
   }
 
   /**
-   * Generate a placeholder thumbnail for image files
-   * This creates a simple SVG placeholder that can be replaced with actual thumbnails later
+   * Generate a thumbnail from an image file
+   * Creates a resized version of the image as a base64 data URL
    */
-  private generateImagePlaceholderThumbnail(fileName: string, mimeType: string): string {
-    const svg = `
-      <svg width="200" height="150" xmlns="http://www.w3.org/2000/svg">
-        <rect width="200" height="150" fill="#1f2937"/>
-        <rect x="10" y="10" width="180" height="130" fill="#374151" stroke="#4b5563" stroke-width="2" rx="4"/>
-        <text x="100" y="70" text-anchor="middle" font-family="Arial, sans-serif" font-size="12" fill="#9ca3af">
-          ${fileName.length > 20 ? fileName.substring(0, 17) + '...' : fileName}
-        </text>
-        <text x="100" y="90" text-anchor="middle" font-family="Arial, sans-serif" font-size="10" fill="#6b7280">
-          Image Preview
-        </text>
-        <circle cx="100" cy="115" r="12" fill="#4b5563"/>
-        <text x="100" y="120" text-anchor="middle" font-family="Arial, sans-serif" font-size="14" fill="#9ca3af">🖼️</text>
-      </svg>
-    `.trim();
-    return `data:image/svg+xml;base64,${btoa(svg)}`;
+  private async generateImageThumbnail(file: File): Promise<string> {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const img = new Image();
+        img.onload = () => {
+          // Create canvas for thumbnail
+          const canvas = document.createElement('canvas');
+          const maxWidth = 300;
+          const maxHeight = 300;
+          
+          // Calculate dimensions to maintain aspect ratio
+          let width = img.width;
+          let height = img.height;
+          
+          if (width > height) {
+            if (width > maxWidth) {
+              height = (height * maxWidth) / width;
+              width = maxWidth;
+            }
+          } else {
+            if (height > maxHeight) {
+              width = (width * maxHeight) / height;
+              height = maxHeight;
+            }
+          }
+          
+          canvas.width = width;
+          canvas.height = height;
+          
+          // Draw resized image
+          const ctx = canvas.getContext('2d');
+          if (!ctx) {
+            reject(new Error('Could not get canvas context'));
+            return;
+          }
+          
+          ctx.drawImage(img, 0, 0, width, height);
+          
+          // Convert to data URL
+          const thumbnailDataUrl = canvas.toDataURL('image/jpeg', 0.8);
+          resolve(thumbnailDataUrl);
+        };
+        
+        img.onerror = () => {
+          reject(new Error('Failed to load image'));
+        };
+        
+        if (e.target?.result) {
+          img.src = e.target.result as string;
+        } else {
+          reject(new Error('Failed to read file'));
+        }
+      };
+      
+      reader.onerror = () => {
+        reject(new Error('Failed to read file'));
+      };
+      
+      reader.readAsDataURL(file);
+    });
   }
 
   async downloadFile(fileId: string): Promise<Blob> {
