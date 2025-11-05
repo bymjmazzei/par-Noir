@@ -162,9 +162,16 @@ export class GoogleDriveMetadataService {
     fileMetadata: CompanionMetadata
   ): Promise<void> {
     try {
+      console.log('Creating companion metadata file for:', fileMetadata.googleDriveFileId);
+      
       // Get or create folder structure
+      console.log('Getting/creating pN folder for:', pnIdentifier);
       const pnFolderId = await this.getOrCreatePNFolder(accessToken, pnIdentifier);
+      console.log('pN folder ID:', pnFolderId);
+      
+      console.log('Getting/creating metadata folder');
       const metadataFolderId = await this.getOrCreateMetadataFolder(accessToken, pnFolderId);
+      console.log('Metadata folder ID:', metadataFolderId);
 
       const metadataFileName = `${fileMetadata.googleDriveFileId}.metadata.json`;
       
@@ -191,21 +198,30 @@ export class GoogleDriveMetadataService {
         const fileId = searchData.files[0].id;
         
         // Get current metadata to check if we need to update
-        const getResponse = await fetch(
-          `https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`,
-          {
-            headers: {
-              'Authorization': `Bearer ${accessToken}`
+        try {
+          const getResponse = await fetch(
+            `https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`,
+            {
+              headers: {
+                'Authorization': `Bearer ${accessToken}`
+              }
+            }
+          );
+
+          if (getResponse.ok) {
+            const existingMetadataText = await getResponse.text();
+            try {
+              const existingMetadata = JSON.parse(existingMetadataText);
+              // Merge with new metadata, preserving existing publicToken if it exists
+              if (existingMetadata.publicToken) {
+                (fileMetadata as any).publicToken = existingMetadata.publicToken;
+              }
+            } catch (parseError) {
+              console.warn('Failed to parse existing metadata, continuing with new metadata');
             }
           }
-        );
-
-        if (getResponse.ok) {
-          const existingMetadata = await getResponse.json();
-          // Merge with new metadata, preserving existing publicToken if it exists
-          if (existingMetadata.publicToken) {
-            fileMetadata.publicToken = existingMetadata.publicToken;
-          }
+        } catch (getError) {
+          console.warn('Failed to get existing metadata, continuing with new metadata:', getError);
         }
 
         // Update the file

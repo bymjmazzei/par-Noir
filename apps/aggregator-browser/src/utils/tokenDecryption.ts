@@ -33,11 +33,36 @@ export interface ShareToken {
  */
 export async function decryptWithToken(token: ShareToken): Promise<Blob> {
   if (!token.shareEncrypted || !token.shareKey) {
-    throw new Error('Share token missing share key or share-encrypted content');
+    throw new Error('Share token missing share key or share-encrypted content. Token structure: ' + JSON.stringify({
+      hasShareKey: !!token.shareKey,
+      hasShareEncrypted: !!token.shareEncrypted,
+      shareKeyLength: token.shareKey?.length || 0,
+      shareEncryptedKeys: token.shareEncrypted ? Object.keys(token.shareEncrypted) : []
+    }));
+  }
+
+  // Validate shareKey
+  if (!token.shareKey || token.shareKey.trim().length === 0) {
+    throw new Error('Share key is empty or undefined');
+  }
+
+  // Validate shareEncrypted fields
+  if (!token.shareEncrypted.encrypted || token.shareEncrypted.encrypted.trim().length === 0) {
+    throw new Error('Share encrypted data is empty or undefined');
+  }
+
+  if (!token.shareEncrypted.iv || token.shareEncrypted.iv.trim().length === 0) {
+    throw new Error('Share IV is empty or undefined');
   }
 
   // Import share key
-  const shareKeyBuffer = base64ToArrayBuffer(token.shareKey);
+  let shareKeyBuffer: ArrayBuffer;
+  try {
+    shareKeyBuffer = base64ToArrayBuffer(token.shareKey);
+  } catch (error) {
+    throw new Error(`Failed to decode shareKey: ${error instanceof Error ? error.message : 'Unknown error'}`);
+  }
+
   const shareKey = await crypto.subtle.importKey(
     'raw',
     shareKeyBuffer,
@@ -47,8 +72,19 @@ export async function decryptWithToken(token: ShareToken): Promise<Blob> {
   );
 
   // Decrypt share-encrypted content
-  const shareEncryptedBuffer = base64ToArrayBuffer(token.shareEncrypted.encrypted);
-  const shareIV = base64ToArrayBuffer(token.shareEncrypted.iv);
+  let shareEncryptedBuffer: ArrayBuffer;
+  let shareIV: ArrayBuffer;
+  try {
+    shareEncryptedBuffer = base64ToArrayBuffer(token.shareEncrypted.encrypted);
+  } catch (error) {
+    throw new Error(`Failed to decode shareEncrypted.encrypted: ${error instanceof Error ? error.message : 'Unknown error'}`);
+  }
+
+  try {
+    shareIV = base64ToArrayBuffer(token.shareEncrypted.iv);
+  } catch (error) {
+    throw new Error(`Failed to decode shareEncrypted.iv: ${error instanceof Error ? error.message : 'Unknown error'}`);
+  }
   
   const decryptedBuffer = await crypto.subtle.decrypt(
     {
