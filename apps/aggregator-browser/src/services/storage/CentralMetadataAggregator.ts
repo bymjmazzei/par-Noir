@@ -22,13 +22,50 @@ export interface CentralIndexResponse {
 export class CentralMetadataAggregator {
   private static readonly API_ENDPOINT = process.env.REACT_APP_API_ENDPOINT || 'https://api.parnoir.com';
   private static readonly CENTRAL_INDEX_PATH = '/api/aggregator/metadata-index';
+  private static readonly CACHE_KEY = 'pn_central_metadata_index';
+  private static readonly CACHE_VERSION_KEY = 'pn_central_metadata_index_version';
+  private static readonly CACHE_VERSION = '1.0'; // Increment when cache format changes
+
+  /**
+   * Clear the localStorage cache
+   */
+  static clearCache(): void {
+    try {
+      localStorage.removeItem(this.CACHE_KEY);
+      localStorage.removeItem(this.CACHE_VERSION_KEY);
+      console.log('✅ [CentralMetadataAggregator] Cache cleared');
+    } catch (error) {
+      console.warn('Failed to clear cache:', error);
+    }
+  }
+
+  /**
+   * Check if cache is stale (older than 1 hour)
+   */
+  private static isCacheStale(): boolean {
+    try {
+      const cached = localStorage.getItem(this.CACHE_KEY);
+      if (!cached) return true;
+
+      const indexData: CentralIndexResponse = JSON.parse(cached);
+      if (!indexData.updatedAt) return true;
+
+      const cacheAge = Date.now() - new Date(indexData.updatedAt).getTime();
+      const oneHour = 60 * 60 * 1000;
+      return cacheAge > oneHour;
+    } catch {
+      return true;
+    }
+  }
 
   /**
    * Fetch aggregated public metadata from central service
-   * Called by aggregator browsers (no Google Drive access needed)
+   * Called by aggregator browsers - queries the central API
+   * NO CACHE - always fetches fresh data
    */
   static async fetchAggregatedIndex(
-    filters?: { tags?: string[]; fileType?: string; authorDid?: string }
+    filters?: { tags?: string[]; fileType?: string; authorDid?: string },
+    forceRefresh: boolean = false
   ): Promise<CentralIndexEntry[]> {
     try {
       // Query par Noir API backend
@@ -37,12 +74,13 @@ export class CentralMetadataAggregator {
       if (filters?.fileType) params.append('fileType', filters.fileType);
       if (filters?.authorDid) params.append('authorDid', filters.authorDid);
 
+      console.log(`🔍 [CentralMetadataAggregator] Fetching from API: ${this.API_ENDPOINT}${this.CENTRAL_INDEX_PATH}`);
+      
       const response = await fetch(
         `${this.API_ENDPOINT}${this.CENTRAL_INDEX_PATH}?${params.toString()}`,
         {
           method: 'GET',
           headers: {
-            // TODO: Add par Noir license token for licensed aggregators
             'Content-Type': 'application/json'
           }
         }
@@ -50,17 +88,18 @@ export class CentralMetadataAggregator {
 
       if (response.ok) {
         const data: CentralIndexResponse = await response.json();
+        console.log(`✅ [CentralMetadataAggregator] Received ${data.files?.length || 0} files from API`);
         return data.files || [];
-      } else if (response.status === 404) {
-        // API not implemented yet - fallback to localStorage cache
-        console.log('ℹ️ Central aggregator API not yet implemented, using localStorage cache');
-        return this.fetchFromLocalStorageCache(filters);
       } else {
-        throw new Error(`API returned ${response.status}`);
+        const errorText = await response.text().catch(() => 'Unknown error');
+        console.error(`❌ [CentralMetadataAggregator] API returned ${response.status}:`, errorText);
+        throw new Error(`API returned ${response.status}: ${errorText}`);
       }
     } catch (error) {
-      console.warn('⚠️ Central aggregator API not available, using localStorage cache:', error);
-      return this.fetchFromLocalStorageCache(filters);
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      console.error('❌ [CentralMetadataAggregator] Failed to fetch from API:', errorMessage);
+      // Return empty array - no fallback cache
+      return [];
     }
   }
 
@@ -72,13 +111,16 @@ export class CentralMetadataAggregator {
     filters?: { tags?: string[]; fileType?: string; authorDid?: string }
   ): CentralIndexEntry[] {
     try {
-      const cached = localStorage.getItem('pn_central_metadata_index');
+      const cached = localStorage.getItem(this.CACHE_KEY);
       if (!cached) {
+        console.log('ℹ️ No cached metadata found');
         return [];
       }
 
       const indexData: CentralIndexResponse = JSON.parse(cached);
       let files = indexData.files || [];
+      
+      console.log(`ℹ️ Using cached metadata: ${files.length} files`);
 
       // Apply filters
       if (filters) {

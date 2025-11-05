@@ -44,38 +44,58 @@ export class MetadataIndexService {
    * Used by aggregators to find content
    * 
    * ARCHITECTURE:
-   * - Queries central aggregator service (api.parnoir.com)
-   * - No Google Drive access needed - aggregators just query the API
+   * - Queries central aggregator API (api.parnoir.com)
+   * - NO CACHE - always fetches fresh data from API
    */
-  async discoverFiles(filters?: MetadataFilters): Promise<IndexedFile[]> {
+  async discoverFiles(filters?: MetadataFilters, forceRefresh: boolean = false): Promise<IndexedFile[]> {
     try {
       await this.ensureInitialized();
 
-      // Query central aggregator service
+      // Query central aggregator API
       const { CentralMetadataAggregator } = await import('../storage/CentralMetadataAggregator');
       
       const aggregatedEntries = await CentralMetadataAggregator.fetchAggregatedIndex({
         tags: filters?.tags,
         fileType: filters?.fileType,
         authorDid: filters?.authorDid
-      });
+      }, forceRefresh);
 
       // Transform to IndexedFile format
-      const files: IndexedFile[] = aggregatedEntries
-        .filter(entry => entry.metadata.isPublic)
-        .map(entry => ({
+      // aggregatedEntries are CentralIndexEntry objects from the API
+      let files: IndexedFile[] = aggregatedEntries
+        .filter((entry: any) => entry.metadata?.isPublic !== false) // Only public files
+        .map((entry: any) => ({
           metadata: entry.metadata,
-          thumbnail: entry.metadata.thumbnail
+          thumbnail: entry.metadata?.thumbnail
         }));
 
-      // Apply date range filter if provided (not supported by API yet)
-      if (filters?.dateRange) {
+      // Apply filters
+      if (filters) {
+        if (filters.tags && filters.tags.length > 0) {
+          files = files.filter(file => {
+            const keywords = file.metadata.keywords || file.metadata.tags || [];
+            return keywords.some(tag => filters.tags!.includes(tag));
+          });
+        }
+        if (filters.fileType) {
+          files = files.filter(file => file.metadata.fileType === filters.fileType);
+        }
+        if (filters.authorDid) {
+          files = files.filter(file => {
+            const did = file.metadata.creator?.identifier?.value || 
+                       file.metadata.creator?.["@id"] || 
+                       file.metadata.author?.did;
+            return did === filters.authorDid;
+          });
+        }
+        if (filters.dateRange) {
           const from = new Date(filters.dateRange.from);
           const to = new Date(filters.dateRange.to);
-        return files.filter(file => {
+          files = files.filter(file => {
             const uploadDate = new Date(file.metadata.uploadDate);
             return uploadDate >= from && uploadDate <= to;
           });
+        }
       }
 
       return files;
@@ -91,8 +111,10 @@ export class MetadataIndexService {
   async getFileMetadata(fileId: string): Promise<PublicMetadata | null> {
     try {
       await this.ensureInitialized();
-      await this.loadIndexFromGoogleDrive();
-      return this.metadataStore.get(fileId) || null;
+      // Scan Google Drive for the file
+      const files = await this.discoverFiles();
+      const found = files.find(f => f.metadata.fileId === fileId);
+      return found ? found.metadata : null;
     } catch (error) {
       console.error('Failed to get file metadata:', error);
       return null;
@@ -109,8 +131,17 @@ export class MetadataIndexService {
     }
   }
 
-  // NOTE: Removed Google Drive scanning - aggregators now query central API
-  // No Google Drive access needed for aggregators
+  /**
+   * Helper to determine file type from MIME type
+   */
+  private getFileTypeFromMime(mimeType: string): string {
+    if (!mimeType) return 'other';
+    if (mimeType.startsWith('image/')) return 'image';
+    if (mimeType.startsWith('video/')) return 'video';
+    if (mimeType.startsWith('audio/')) return 'audio';
+    if (mimeType.includes('pdf') || mimeType.includes('document') || mimeType.includes('text')) return 'document';
+    return 'other';
+  }
 }
 
 // Singleton instance

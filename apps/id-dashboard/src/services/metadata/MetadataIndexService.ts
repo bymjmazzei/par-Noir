@@ -58,6 +58,15 @@ export class MetadataIndexService {
   }
 
   /**
+   * Helper to strip large fields (like thumbnails) from metadata before storing in localStorage
+   * Thumbnails are large base64 data URLs that can exceed localStorage quota
+   */
+  private stripLargeFields(metadata: PublicMetadata): PublicMetadata {
+    const { thumbnail, ...rest } = metadata;
+    return rest;
+  }
+
+  /**
    * Index a file with public metadata
    * Saves to Google Drive (if connected) and submits to central API
    */
@@ -68,14 +77,33 @@ export class MetadataIndexService {
   ): Promise<void> {
     await this.initialize();
 
-    // Store in memory
+    // Store in memory (with thumbnail)
     this.metadataStore.set(file.id, publicMetadata);
 
-    // Save to localStorage cache
-    const allMetadata = Array.from(this.metadataStore.values());
-    localStorage.setItem('pn_public_metadata_index', JSON.stringify(allMetadata));
+    // Save to localStorage cache (without thumbnails to avoid quota issues)
+    const allMetadata = Array.from(this.metadataStore.values())
+      .map(m => this.stripLargeFields(m));
+    
+    try {
+      localStorage.setItem('pn_public_metadata_index', JSON.stringify(allMetadata));
+    } catch (error) {
+      // If still failing, try to clear old cache and retry
+      if (error instanceof DOMException && error.name === 'QuotaExceededError') {
+        console.warn('⚠️ [MetadataIndexService] localStorage quota exceeded, clearing old cache and retrying...');
+        try {
+          localStorage.removeItem('pn_public_metadata_index');
+          localStorage.setItem('pn_public_metadata_index', JSON.stringify(allMetadata));
+        } catch (retryError) {
+          console.error('❌ [MetadataIndexService] Failed to store metadata cache after clearing:', retryError);
+          // Continue - metadata is still in memory and will be submitted to API
+        }
+      } else {
+        throw error;
+      }
+    }
 
     // Submit to central aggregator API
+    // The aggregator browser queries this API to discover public files
     try {
       await this.centralAggregator.submitPublicMetadata({
         fileId: file.id,
@@ -90,10 +118,11 @@ export class MetadataIndexService {
         uploadDate: publicMetadata.uploadDate || new Date().toISOString(),
         publicToken: publicMetadata.publicToken
       });
-      console.log('✅ [MetadataIndexService] Metadata submitted to central aggregator');
+      console.log('✅ [MetadataIndexService] Metadata submitted to central aggregator API');
     } catch (error) {
-      console.warn('⚠️ [MetadataIndexService] Failed to submit to central aggregator:', error);
-      // Continue - metadata is still cached locally
+      // Error is already logged in CentralMetadataAggregator
+      // Continue - metadata is still cached locally and in Google Drive
+      console.warn('⚠️ [MetadataIndexService] Metadata submission to central API failed, but file is still indexed in Google Drive');
     }
   }
 
@@ -106,9 +135,20 @@ export class MetadataIndexService {
     // Remove from memory
     this.metadataStore.delete(fileId);
 
-    // Update localStorage cache
-    const allMetadata = Array.from(this.metadataStore.values());
-    localStorage.setItem('pn_public_metadata_index', JSON.stringify(allMetadata));
+    // Update localStorage cache (without thumbnails)
+    const allMetadata = Array.from(this.metadataStore.values())
+      .map(m => this.stripLargeFields(m));
+    
+    try {
+      localStorage.setItem('pn_public_metadata_index', JSON.stringify(allMetadata));
+    } catch (error) {
+      if (error instanceof DOMException && error.name === 'QuotaExceededError') {
+        console.warn('⚠️ [MetadataIndexService] localStorage quota exceeded, clearing cache...');
+        localStorage.removeItem('pn_public_metadata_index');
+      } else {
+        console.error('❌ [MetadataIndexService] Failed to update metadata cache:', error);
+      }
+    }
 
     // Remove from central aggregator API
     try {

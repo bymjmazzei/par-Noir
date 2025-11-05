@@ -122,6 +122,18 @@ class ProductionServer {
     });
   }
 
+  /**
+   * Helper to get file type from MIME type
+   */
+  private getFileTypeFromMime(mimeType?: string): string {
+    if (!mimeType) return 'other';
+    if (mimeType.startsWith('image/')) return 'image';
+    if (mimeType.startsWith('video/')) return 'video';
+    if (mimeType.startsWith('audio/')) return 'audio';
+    if (mimeType.includes('pdf') || mimeType.includes('document') || mimeType.includes('text')) return 'document';
+    return 'other';
+  }
+
   private setupRoutes(): void {
     // Health check endpoint
     this.app.get('/health', (req, res) => {
@@ -203,9 +215,9 @@ class ProductionServer {
 
     // Aggregator metadata index endpoints
     // GET /api/aggregator/metadata-index - Query public metadata
-    this.app.get('/api/aggregator/metadata-index', (req, res) => {
+    this.app.get('/api/aggregator/metadata-index', async (req, res) => {
       try {
-        const { AggregatorMetadataService } = require('./server/modules/aggregatorMetadataService');
+        const { AggregatorMetadataService } = await import('./server/modules/aggregatorMetadataService');
         const service = AggregatorMetadataService.getInstance();
 
         // Parse query parameters
@@ -219,9 +231,10 @@ class ProductionServer {
           authorDid
         });
 
+        console.log(`📤 [GET /api/aggregator/metadata-index] Returning ${response.files.length} files`);
         res.json(response);
       } catch (error: any) {
-        console.error('Error fetching aggregator metadata:', error);
+        console.error('❌ [GET /api/aggregator/metadata-index] Error:', error);
         res.status(500).json({ 
           error: 'Failed to fetch metadata index',
           message: error.message 
@@ -230,9 +243,12 @@ class ProductionServer {
     });
 
     // POST /api/aggregator/metadata-index - Submit public metadata
-    this.app.post('/api/aggregator/metadata-index', (req, res) => {
+    this.app.post('/api/aggregator/metadata-index', async (req, res) => {
+      let requestId = Math.random().toString(36).substring(7);
       try {
-        const { AggregatorMetadataService } = require('./server/modules/aggregatorMetadataService');
+        console.log(`📥 [${requestId}] [POST /api/aggregator/metadata-index] Received request`);
+        
+        const { AggregatorMetadataService } = await import('./server/modules/aggregatorMetadataService');
         const service = AggregatorMetadataService.getInstance();
 
         const { file, submittedAt, pnIdentifier } = req.body;
@@ -240,11 +256,27 @@ class ProductionServer {
         // Handle both formats: { file: { metadata: {...} } } and { metadata: {...} }
         const metadata = file?.metadata || req.body.metadata;
         
+        // Log incoming request for debugging
+        console.log(`📥 [${requestId}] Request body keys:`, Object.keys(req.body));
+        console.log(`📥 [${requestId}] Metadata keys:`, metadata ? Object.keys(metadata) : 'No metadata');
+        console.log(`📥 [${requestId}] File type:`, metadata?.fileType || metadata?.mimeType || 'unknown');
+        
         // Validate metadata structure
-        if (!metadata || !metadata.fileId) {
+        if (!metadata) {
+          console.error(`❌ [${requestId}] No metadata object received`);
           return res.status(400).json({ 
-            error: 'Missing required fields',
-            required: ['metadata.fileId']
+            error: 'Missing metadata object',
+            requestId
+          });
+        }
+
+        if (!metadata.fileId) {
+          console.error(`❌ [${requestId}] Missing fileId`);
+          console.error(`❌ [${requestId}] Metadata received:`, JSON.stringify(metadata, null, 2));
+          return res.status(400).json({ 
+            error: 'Missing required field: fileId',
+            requestId,
+            receivedKeys: Object.keys(metadata)
           });
         }
 
@@ -252,26 +284,48 @@ class ProductionServer {
         const title = metadata.name || metadata.title;
         const authorDid = metadata.creator?.identifier?.value || metadata.creator?.["@id"] || metadata.author?.did;
         
-        if (!metadata.backend || !metadata.backendFileId || !title || !authorDid) {
+        // More lenient validation - allow missing fields with defaults
+        const validatedMetadata = {
+          ...metadata,
+          backend: metadata.backend || 'google_drive',
+          backendFileId: metadata.backendFileId || metadata.fileId,
+          name: title || metadata.fileId || 'Untitled',
+          uploadDate: metadata.uploadDate || new Date().toISOString(),
+          isPublic: metadata.isPublic !== false, // Default to true if not specified
+          fileType: metadata.fileType || this.getFileTypeFromMime(metadata.mimeType) || 'other'
+        };
+
+        // Only require fileId - other fields can be optional
+        if (!validatedMetadata.fileId) {
+          console.error(`❌ [${requestId}] Missing fileId after validation`);
           return res.status(400).json({ 
-            error: 'Invalid metadata structure',
-            required: ['metadata.backend', 'metadata.backendFileId', 'metadata.name (or title)', 'metadata.creator.identifier.value (or author.did)']
+            error: 'Missing required field: fileId after validation',
+            requestId
           });
         }
 
-        // Submit metadata to central index
-        service.submitMetadata(metadata, pnIdentifier);
+        console.log(`📝 [${requestId}] Submitting metadata for file: ${validatedMetadata.fileId}`);
 
+        // Submit metadata to central index
+        service.submitMetadata(validatedMetadata, pnIdentifier);
+
+        console.log(`✅ [${requestId}] Successfully submitted metadata for: ${validatedMetadata.fileId}`);
         return res.json({
           success: true,
-          fileId: metadata.fileId,
-          submittedAt: submittedAt || new Date().toISOString()
+          fileId: validatedMetadata.fileId,
+          submittedAt: submittedAt || new Date().toISOString(),
+          requestId
         });
       } catch (error: any) {
-        console.error('Error submitting aggregator metadata:', error);
+        console.error(`❌ [${requestId}] [POST /api/aggregator/metadata-index] Error:`, error);
+        console.error(`❌ [${requestId}] Error message:`, error?.message);
+        console.error(`❌ [${requestId}] Error stack:`, error?.stack);
+        console.error(`❌ [${requestId}] Request body:`, JSON.stringify(req.body, null, 2));
         return res.status(500).json({ 
           error: 'Failed to submit metadata',
-          message: error.message 
+          message: error?.message || 'Unknown error',
+          requestId,
+          stack: NODE_ENV === 'development' ? error?.stack : undefined
         });
       }
     });

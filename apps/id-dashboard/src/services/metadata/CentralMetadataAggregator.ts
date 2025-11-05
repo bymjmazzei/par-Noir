@@ -17,7 +17,7 @@ export interface PublicMetadataSubmission {
   creator?: any;
   isPublic: boolean;
   uploadDate: string;
-  publicToken?: string;
+  publicToken?: string | any; // Can be string or ShareToken object
 }
 
 export class CentralMetadataAggregator {
@@ -26,23 +26,43 @@ export class CentralMetadataAggregator {
    */
   async submitPublicMetadata(metadata: PublicMetadataSubmission): Promise<void> {
     try {
+      // Ensure publicToken is stringified if it's an object
+      const payload = {
+        ...metadata,
+        publicToken: metadata.publicToken 
+          ? (typeof metadata.publicToken === 'string' 
+              ? metadata.publicToken 
+              : JSON.stringify(metadata.publicToken))
+          : undefined
+      };
+
       const response = await fetch(`${CENTRAL_API_URL}${CENTRAL_INDEX_PATH}`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ metadata }),
+        body: JSON.stringify({ metadata: payload }),
       });
 
       if (!response.ok) {
-        const errorText = await response.text();
+        let errorText = '';
+        try {
+          errorText = await response.text();
+        } catch (e) {
+          errorText = `Failed to read error response: ${e}`;
+        }
+        
+        console.error(`❌ [CentralMetadataAggregator] API error ${response.status}:`, errorText);
+        console.error('❌ [CentralMetadataAggregator] Payload sent:', JSON.stringify(payload, null, 2));
         throw new Error(`API returned ${response.status}: ${errorText}`);
       }
 
       console.log('✅ [CentralMetadataAggregator] Metadata submitted successfully');
     } catch (error) {
-      console.warn('⚠️ Central aggregator API not available, using Google Drive fallback:', error);
-      throw error;
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      console.warn('⚠️ [CentralMetadataAggregator] Failed to submit to central aggregator API:', errorMessage);
+      // Don't throw - allow the process to continue with Google Drive fallback
+      // The metadata is still stored in Google Drive and can be discovered that way
     }
   }
 

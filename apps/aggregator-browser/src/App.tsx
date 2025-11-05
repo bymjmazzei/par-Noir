@@ -24,12 +24,78 @@ function App() {
   const [generatingThumbnails, setGeneratingThumbnails] = useState<Set<string>>(new Set()); // Track which thumbnails are being generated
   const [videoPlaying, setVideoPlaying] = useState<Map<string, boolean>>(new Map()); // Track which videos are playing
   const [videoBlobs, setVideoBlobs] = useState<Map<string, string>>(new Map()); // Store video URLs for playback
+  const [viewMode, setViewMode] = useState<'grid' | 'feed'>('grid'); // Grid or TikTok-style feed
+  const [visibleFileId, setVisibleFileId] = useState<string | null>(null); // Currently visible file in feed mode
+  const videoRefs = React.useRef<Map<string, HTMLVideoElement>>(new Map()); // Store video element refs
   
   const metadataIndexService = getMetadataIndexService();
 
   useEffect(() => {
     discoverFiles();
   }, []);
+
+  // Intersection Observer for auto-playing videos in feed mode
+  useEffect(() => {
+    if (viewMode !== 'feed') return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          const fileId = entry.target.getAttribute('data-file-id');
+          if (!fileId) return;
+
+          const videoElement = videoRefs.current.get(fileId);
+          const indexedFile = indexedFiles.find(f => f.metadata.fileId === fileId);
+          if (!indexedFile) return;
+
+          const file = indexedFile.metadata;
+          const isVideo = file.fileType === 'video' || 
+                         (file.name || file.title || '').match(/\.(mp4|mov|avi|webm|mkv|flv|wmv)$/i);
+
+          if (entry.isIntersecting && entry.intersectionRatio > 0.5) {
+            // Item is in view - play video if it's a video
+            setVisibleFileId(fileId);
+            
+            if (isVideo && videoElement && videoBlobs.has(fileId)) {
+              videoElement.play().catch(err => {
+                console.warn('Failed to auto-play video:', err);
+              });
+              setVideoPlaying(prev => {
+                const newMap = new Map(prev);
+                newMap.set(fileId, true);
+                return newMap;
+              });
+            }
+          } else {
+            // Item is out of view - pause video
+            if (visibleFileId === fileId) {
+              setVisibleFileId(null);
+            }
+            if (videoElement) {
+              videoElement.pause();
+              setVideoPlaying(prev => {
+                const newMap = new Map(prev);
+                newMap.set(fileId, false);
+                return newMap;
+              });
+            }
+          }
+        });
+      },
+      {
+        threshold: [0, 0.5, 1], // Trigger at 0%, 50%, and 100% visibility
+        rootMargin: '0px' // Use viewport as root
+      }
+    );
+
+    // Observe all file items in feed mode
+    const fileElements = document.querySelectorAll('[data-file-id]');
+    fileElements.forEach((el) => observer.observe(el));
+
+    return () => {
+      observer.disconnect();
+    };
+  }, [viewMode, indexedFiles, videoBlobs, visibleFileId]);
 
   // Auto-refresh metadata when Google Drive token becomes available
   useEffect(() => {
@@ -57,7 +123,7 @@ function App() {
     };
   }, []);
 
-  const discoverFiles = async (searchFilters?: MetadataFilters) => {
+  const discoverFiles = async (searchFilters?: MetadataFilters, forceRefresh: boolean = false) => {
     try {
       setIsLoading(true);
       setError(null);
@@ -72,14 +138,45 @@ function App() {
         ...(searchQuery ? { tags: searchQuery.split(',').map(t => t.trim()).filter(Boolean) } : {})
       };
       
-      // Discover public files from all users
-      const discoveredFiles = await metadataIndexService.discoverFiles(finalFilters);
+      // Discover public files from all users (with optional force refresh)
+      const discoveredFiles = await metadataIndexService.discoverFiles(finalFilters, forceRefresh);
       
       setIndexedFiles(discoveredFiles);
       console.log(`✅ Discovered ${discoveredFiles.length} public files`);
       
       // Generate thumbnails for image files
       generateThumbnailsForImages(discoveredFiles);
+      
+      // Pre-load video blobs for feed mode (if in feed mode)
+      const currentViewMode = viewMode || 'grid';
+      if (currentViewMode === 'feed') {
+        for (const indexedFile of discoveredFiles) {
+          const file = indexedFile.metadata;
+          const isVideo = file.fileType === 'video' || 
+                         (file.name || file.title || '').match(/\.(mp4|mov|avi|webm|mkv|flv|wmv)$/i);
+          if (isVideo && file.publicToken && !videoBlobs.has(file.fileId)) {
+            (async () => {
+              try {
+                let token: ShareToken;
+                try {
+                  token = typeof file.publicToken === 'string' ? JSON.parse(file.publicToken) : file.publicToken;
+                } catch (e) {
+                  return;
+                }
+                const decryptedBlob = await decryptWithToken(token);
+                const videoUrl = URL.createObjectURL(decryptedBlob);
+                setVideoBlobs(prev => {
+                  const newMap = new Map(prev);
+                  newMap.set(file.fileId, videoUrl);
+                  return newMap;
+                });
+              } catch (err) {
+                console.warn('Failed to pre-load video for feed:', err);
+              }
+            })();
+          }
+        }
+      }
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Failed to discover files';
       setError(errorMessage);
@@ -88,6 +185,7 @@ function App() {
       setIsLoading(false);
     }
   };
+
 
   const handleSearch = () => {
     discoverFiles();
@@ -276,18 +374,21 @@ function App() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-neutral-900 via-neutral-800 to-neutral-900">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <div className={`min-h-screen bg-gradient-to-br from-neutral-900 via-neutral-800 to-neutral-900 ${viewMode === 'feed' ? 'h-screen overflow-hidden' : ''}`}>
+      <div className={`${viewMode === 'feed' ? 'h-full flex flex-col' : 'max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8'}`}>
         {/* Header */}
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold text-white mb-2">par Noir Content Browser</h1>
-          <p className="text-text-secondary">
-            Discover public encrypted content from the par Noir network
-          </p>
-        </div>
+        {viewMode !== 'feed' && (
+          <div className="mb-8">
+            <h1 className="text-3xl font-bold text-white mb-2">par Noir Content Browser</h1>
+            <p className="text-text-secondary">
+              Discover public encrypted content from the par Noir network
+            </p>
+          </div>
+        )}
 
         {/* Search and Filters */}
-        <div className="bg-neutral-900/60 border border-neutral-700 rounded-xl p-6 mb-6">
+        {viewMode !== 'feed' && (
+          <div className="bg-neutral-900/60 border border-neutral-700 rounded-xl p-6 mb-6">
           <div className="space-y-4">
             <div className="flex items-center space-x-2">
               <div className="flex-1 relative">
@@ -343,6 +444,7 @@ function App() {
             </div>
           </div>
         </div>
+        )}
 
         {/* Error Display */}
         {error && (
@@ -351,21 +453,50 @@ function App() {
           </div>
         )}
 
-        {/* Stats */}
-        <div className="bg-neutral-900/60 border border-neutral-700 rounded-xl p-4 mb-6">
+        {/* Stats and View Mode Toggle */}
+        <div className={`bg-neutral-900/60 border border-neutral-700 rounded-xl p-4 ${viewMode === 'feed' ? 'mb-2' : 'mb-6'}`}>
           <div className="flex items-center justify-between">
-            <div>
-              <p className="text-text-secondary text-sm">Public Files Discovered</p>
-              <p className="text-white text-2xl font-bold">{indexedFiles.length}</p>
+            {viewMode !== 'feed' && (
+              <div>
+                <p className="text-text-secondary text-sm">Public Files Discovered</p>
+                <p className="text-white text-2xl font-bold">{indexedFiles.length}</p>
+              </div>
+            )}
+            <div className={`flex items-center space-x-4 ${viewMode === 'feed' ? 'w-full justify-center' : ''}`}>
+              {/* View Mode Toggle */}
+              <div className="flex items-center space-x-2 bg-neutral-800 rounded-lg p-1">
+                <button
+                  onClick={() => setViewMode('grid')}
+                  className={`px-3 py-1.5 text-sm font-medium rounded transition-colors ${
+                    viewMode === 'grid' 
+                      ? 'bg-blue-600 text-white' 
+                      : 'text-text-secondary hover:text-white'
+                  }`}
+                >
+                  Grid
+                </button>
+                <button
+                  onClick={() => setViewMode('feed')}
+                  className={`px-3 py-1.5 text-sm font-medium rounded transition-colors ${
+                    viewMode === 'feed' 
+                      ? 'bg-blue-600 text-white' 
+                      : 'text-text-secondary hover:text-white'
+                  }`}
+                >
+                  Feed
+                </button>
+              </div>
+              {viewMode !== 'feed' && (
+                <button
+                  onClick={() => discoverFiles(undefined, true)}
+                  disabled={isLoading}
+                  className="px-4 py-2 bg-neutral-700 text-white text-sm font-medium rounded-lg hover:bg-neutral-600 transition-colors disabled:opacity-50 flex items-center space-x-2"
+                >
+                  <RefreshCw className={`h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} />
+                  <span>Refresh</span>
+                </button>
+              )}
             </div>
-            <button
-              onClick={() => discoverFiles()}
-              disabled={isLoading}
-              className="px-4 py-2 bg-neutral-700 text-white text-sm font-medium rounded-lg hover:bg-neutral-600 transition-colors disabled:opacity-50 flex items-center space-x-2"
-            >
-              <RefreshCw className={`h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} />
-              <span>Refresh</span>
-            </button>
           </div>
         </div>
 
@@ -394,7 +525,132 @@ function App() {
                 : 'Connect Google Drive in the dashboard to scan for public files'}
             </p>
           </div>
+        ) : viewMode === 'feed' ? (
+          // TikTok-style feed view - takes full viewport
+          <div className="flex-1 overflow-y-scroll snap-y snap-mandatory h-full">
+            {indexedFiles.map((indexedFile) => {
+              const file = indexedFile.metadata;
+              const isVideo = file.fileType === 'video' || 
+                             (file.name || file.title || '').match(/\.(mp4|mov|avi|webm|mkv|flv|wmv)$/i);
+              const isImage = file.fileType === 'image' || 
+                             (file.name || file.title || '').match(/\.(jpg|jpeg|png|gif|webp|svg|bmp|ico)$/i);
+              const fileName = file.name || file.title || 'Untitled';
+
+              return (
+                <div
+                  key={file.fileId}
+                  data-file-id={file.fileId}
+                  className="h-screen w-full snap-start flex items-center justify-center bg-black relative"
+                >
+                  {/* Full-screen video */}
+                  {isVideo && videoBlobs.get(file.fileId) && (
+                    <video
+                      ref={(el) => {
+                        if (el) videoRefs.current.set(file.fileId, el);
+                      }}
+                      src={videoBlobs.get(file.fileId)!}
+                      className="w-full h-full object-contain"
+                      controls
+                      muted
+                      loop
+                      playsInline
+                    />
+                  )}
+                  
+                  {/* Full-screen image */}
+                  {isImage && thumbnails.get(file.fileId) && (
+                    <img
+                      src={thumbnails.get(file.fileId)!}
+                      alt={fileName}
+                      className="max-w-full max-h-full object-contain"
+                    />
+                  )}
+
+                  {/* Loading state for images/videos */}
+                  {((isImage || isVideo) && !thumbnails.get(file.fileId) && !videoBlobs.get(file.fileId)) && (
+                    <div className="flex flex-col items-center justify-center text-neutral-500">
+                      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-400 mb-2"></div>
+                      <span className="text-xs">Loading...</span>
+                    </div>
+                  )}
+
+                  {/* Non-image/video file */}
+                  {!isImage && !isVideo && (
+                    <div className="flex flex-col items-center justify-center text-neutral-500">
+                      <File className="h-24 w-24 mb-4" />
+                      <h3 className="text-white text-xl font-medium mb-2">{fileName}</h3>
+                      <p className="text-text-secondary text-sm">{file.fileType || 'File'}</p>
+                    </div>
+                  )}
+                  
+                  {/* File info overlay */}
+                  <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 via-black/60 to-transparent p-6">
+                    <h3 className="text-white text-xl font-bold mb-2">{fileName}</h3>
+                    {file.description && (
+                      <p className="text-white/90 text-sm mb-2 line-clamp-2">{file.description}</p>
+                    )}
+                    <div className="flex items-center space-x-4 text-xs text-white/80">
+                      <div className="flex items-center space-x-1">
+                        <User className="h-3 w-3" />
+                        <span className="truncate">
+                          {file.creator?.identifier?.value || file.creator?.["@id"] || file.author?.did || 'Unknown'}
+                        </span>
+                      </div>
+                      <span>•</span>
+                      <span>{new Date(file.uploadDate).toLocaleDateString()}</span>
+                      {(file.keywords || file.tags) && (file.keywords || file.tags || []).length > 0 && (
+                        <>
+                          <span>•</span>
+                          <div className="flex flex-wrap gap-1">
+                            {(file.keywords || file.tags || []).slice(0, 3).map((tag, idx) => (
+                              <span
+                                key={idx}
+                                className="px-2 py-0.5 bg-white/20 text-white text-xs rounded"
+                              >
+                                {tag}
+                              </span>
+                            ))}
+                          </div>
+                        </>
+                      )}
+                    </div>
+                    <button
+                      onClick={async () => {
+                        try {
+                          const tokenString = file.publicToken;
+                          if (!tokenString) {
+                            alert('This file does not have a share token yet.');
+                            return;
+                          }
+                          let token: ShareToken;
+                          try {
+                            token = typeof tokenString === 'string' ? JSON.parse(tokenString) : tokenString;
+                          } catch (e) {
+                            alert('Invalid share token format.');
+                            return;
+                          }
+                          setIsLoading(true);
+                          const decryptedBlob = await decryptWithToken(token);
+                          const url = URL.createObjectURL(decryptedBlob);
+                          setViewingFile({ file: indexedFile, blob: decryptedBlob, url });
+                          setIsLoading(false);
+                        } catch (err) {
+                          setIsLoading(false);
+                          const errorMessage = err instanceof Error ? err.message : 'Failed to decrypt file';
+                          alert(`Failed to view file: ${errorMessage}`);
+                        }
+                      }}
+                      className="mt-4 px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors"
+                    >
+                      View Full
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
         ) : (
+          // Grid view
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {indexedFiles.map((indexedFile) => {
               const file = indexedFile.metadata;

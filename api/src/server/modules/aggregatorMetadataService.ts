@@ -89,18 +89,20 @@ export class AggregatorMetadataService {
    * Validates structure before adding
    */
   submitMetadata(metadata: PublicMetadata, pnIdentifier?: string): void {
-    // Validate required fields (support both legacy and semantic web format)
-    const metadataTitle = metadata.name || metadata.title;
-    const authorDid = metadata.creator?.identifier?.value || metadata.creator?.["@id"] || metadata.author?.did;
-    
-    if (!metadata.fileId || !metadata.backend || !metadata.backendFileId || !metadataTitle || !authorDid) {
-      throw new Error('Invalid metadata: missing required fields (fileId, backend, backendFileId, name/title, creator/author.did)');
+    // Only require fileId - other fields can have defaults
+    if (!metadata.fileId) {
+      throw new Error('Invalid metadata: missing required field: fileId');
     }
 
     // Ensure isPublic is true
     const validatedMetadata: PublicMetadata = {
       ...metadata,
-      isPublic: true // Always true when submitted to public index
+      isPublic: true, // Always true when submitted to public index
+      backend: metadata.backend || 'google_drive',
+      backendFileId: metadata.backendFileId || metadata.fileId,
+      name: metadata.name || metadata.title || metadata.fileId,
+      uploadDate: metadata.uploadDate || new Date().toISOString(),
+      fileType: metadata.fileType || 'other'
     };
 
     const entry: CentralIndexEntry = {
@@ -114,7 +116,8 @@ export class AggregatorMetadataService {
     this.lastUpdated = new Date();
 
     const displayTitle = validatedMetadata.name || validatedMetadata.title || 'Untitled';
-    const authorDisplay = authorDid.substring(0, 12) + '...';
+    const authorDid = validatedMetadata.creator?.identifier?.value || validatedMetadata.creator?.["@id"] || validatedMetadata.author?.did;
+    const authorDisplay = authorDid ? authorDid.substring(0, 12) + '...' : 'Unknown';
     console.log(`✅ Added public metadata for file: ${validatedMetadata.fileId} (${displayTitle}) by ${authorDisplay}`);
   }
 
