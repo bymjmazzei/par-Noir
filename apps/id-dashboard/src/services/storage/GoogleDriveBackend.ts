@@ -718,7 +718,7 @@ export class GoogleDriveBackend extends AbstractStorageBackend {
 
     const uploadedFile = await uploadResponse.json();
 
-    return {
+    const result = {
       id: uploadedFile.id,
       name: uploadedFile.name,
       size: parseInt(uploadedFile.size || '0', 10),
@@ -728,6 +728,77 @@ export class GoogleDriveBackend extends AbstractStorageBackend {
       originalName: fileName.endsWith('.encrypted') ? fileName.replace('.encrypted', '') : fileName,
       backend: this.id
     };
+
+    // Create companion metadata file after successful upload
+    if (metadata?.pnIdentifier && this.token) {
+      try {
+        console.log('📝 [uploadFile] Creating companion metadata file...');
+        const { GoogleDriveMetadataService } = await import('./GoogleDriveMetadataService');
+        
+        // Get owner DID from metadata if available
+        const authenticatedUserStr = localStorage.getItem('authenticated_user');
+        let ownerDid = null;
+        if (authenticatedUserStr) {
+          try {
+            const authenticatedUser = JSON.parse(authenticatedUserStr);
+            ownerDid = authenticatedUser.id || authenticatedUser.did || null;
+          } catch (e) {
+            console.warn('Could not parse authenticated user for metadata');
+          }
+        }
+
+        // Extract original filename from encrypted filename
+        const originalFileName = fileName.endsWith('.encrypted') 
+          ? fileName.replace('.encrypted', '') 
+          : fileName;
+
+        const companionMetadata = {
+          fileId: metadata.fileId || uploadedFile.id,
+          googleDriveFileId: uploadedFile.id,
+          fileName: fileName,
+          originalName: originalFileName,
+          mimeType: uploadedFile.mimeType || file.type || 'application/octet-stream',
+          size: parseInt(uploadedFile.size || file.size.toString() || '0', 10),
+          visibility: metadata.visibility || 'private',
+          uploadedAt: new Date().toISOString(),
+          owner: {
+            did: ownerDid || undefined,
+            identifier: metadata.pnIdentifier
+          },
+          tags: [],
+          description: undefined,
+          metadata: {}
+        };
+
+        await GoogleDriveMetadataService.createCompanionMetadataFile(
+          this.token,
+          metadata.pnIdentifier,
+          companionMetadata
+        );
+        console.log('✅ [uploadFile] Companion metadata file created successfully');
+
+        // If file is public, update public index
+        if (companionMetadata.visibility === 'public') {
+          try {
+            await GoogleDriveMetadataService.updatePublicFileIndex(
+              this.token,
+              metadata.pnIdentifier,
+              companionMetadata
+            );
+            console.log('✅ [uploadFile] Public file index updated successfully');
+          } catch (indexError) {
+            console.error('❌ [uploadFile] Failed to update public file index:', indexError);
+          }
+        }
+      } catch (metadataError) {
+        console.error('❌ [uploadFile] Failed to create companion metadata file:', metadataError);
+        // Don't fail the upload if metadata creation fails - file was uploaded successfully
+      }
+    } else {
+      console.warn('⚠️ [uploadFile] Skipping metadata creation - missing pnIdentifier or token');
+    }
+
+    return result;
   }
 
   async downloadFile(fileId: string): Promise<Blob> {
