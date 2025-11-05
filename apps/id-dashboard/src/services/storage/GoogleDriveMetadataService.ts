@@ -50,6 +50,94 @@ export class GoogleDriveMetadataService {
   private static readonly METADATA_FOLDER_NAME = '_metadata';
   private static readonly PUBLIC_INDEX_FILE_NAME = 'public-file-index.json';
   private static readonly PN_FOLDER_PREFIX = 'par Noir - pn-';
+  
+  /**
+   * Get service account email for sharing folders
+   * This allows the API server to scan Google Drive for public files
+   */
+  private static getServiceAccountEmail(): string | null {
+    // Try to get from environment variable (set at build time)
+    const serviceAccountKey = import.meta.env.VITE_GOOGLE_SERVICE_ACCOUNT_KEY;
+    if (serviceAccountKey) {
+      try {
+        const key = typeof serviceAccountKey === 'string' ? JSON.parse(serviceAccountKey) : serviceAccountKey;
+        return key.client_email || null;
+      } catch {
+        // If parsing fails, try direct email env var
+        return import.meta.env.VITE_GOOGLE_SERVICE_ACCOUNT_EMAIL || null;
+      }
+    }
+    // Fallback to direct email env var
+    return import.meta.env.VITE_GOOGLE_SERVICE_ACCOUNT_EMAIL || null;
+  }
+
+  /**
+   * Share folder with service account (for API server scanning)
+   */
+  private static async shareFolderWithServiceAccount(
+    accessToken: string,
+    folderId: string
+  ): Promise<void> {
+    const serviceAccountEmail = this.getServiceAccountEmail();
+    
+    if (!serviceAccountEmail) {
+      // Service account not configured - this is okay, just skip sharing
+      console.log('ℹ️ Service account email not configured - skipping folder sharing');
+      return;
+    }
+
+    try {
+      // Check if permission already exists
+      const permissionsResponse = await fetch(
+        `https://www.googleapis.com/drive/v3/files/${folderId}/permissions?fields=permissions(emailAddress)`,
+        {
+          headers: {
+            'Authorization': `Bearer ${accessToken}`
+          }
+        }
+      );
+
+      if (permissionsResponse.ok) {
+        const permissionsData = await permissionsResponse.json();
+        const hasPermission = permissionsData.permissions?.some(
+          (p: any) => p.emailAddress === serviceAccountEmail
+        );
+        
+        if (hasPermission) {
+          console.log('✅ Folder already shared with service account');
+          return;
+        }
+      }
+
+      // Share folder with service account
+      const shareResponse = await fetch(
+        `https://www.googleapis.com/drive/v3/files/${folderId}/permissions`,
+        {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${accessToken}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            role: 'reader',
+            type: 'user',
+            emailAddress: serviceAccountEmail
+          })
+        }
+      );
+
+      if (shareResponse.ok) {
+        console.log(`✅ Shared folder with service account: ${serviceAccountEmail}`);
+      } else {
+        const errorText = await shareResponse.text();
+        console.warn(`⚠️ Failed to share folder with service account: ${shareResponse.status} - ${errorText}`);
+        // Don't throw - this is not critical, just log a warning
+      }
+    } catch (error) {
+      console.warn('⚠️ Error sharing folder with service account:', error);
+      // Don't throw - this is not critical for the main operation
+    }
+  }
 
   /**
    * Get or create the pN folder structure
@@ -384,6 +472,8 @@ export class GoogleDriveMetadataService {
           publicToken: fileMetadata.publicToken // Include share token for public files
         };
 
+        const isNewPublicFile = fileIndex < 0;
+        
         if (fileIndex >= 0) {
           // Update existing entry, preserve publicToken if new one not provided
           if (!indexEntry.publicToken && index.files[fileIndex].publicToken) {
@@ -393,6 +483,11 @@ export class GoogleDriveMetadataService {
         } else {
           // Only add to index if public
           index.files.push(indexEntry);
+        }
+
+        // Share folder with service account when file becomes public (first time only)
+        if (isNewPublicFile) {
+          await this.shareFolderWithServiceAccount(accessToken, pnFolderId);
         }
       } else {
         // Remove from index if not public (should not be in index, but clean up just in case)

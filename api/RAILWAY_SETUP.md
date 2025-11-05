@@ -48,19 +48,18 @@ The Google Drive sync service allows the API to automatically scan Google Drive 
 5. Select **"JSON"** format
 6. Click **"Create"** - the JSON file will download automatically
 
-### 2.4 Share Google Drive Folders
+### 2.4 Configure Service Account Email in Dashboard
 
-**Important**: You need to share your Google Drive folders with the service account email.
+**Automatic**: The dashboard automatically shares folders with the service account when files are made public. You just need to configure the service account email.
 
 1. Find the service account email (format: `parnoir-aggregator-sync@your-project.iam.gserviceaccount.com`)
-2. For each `par Noir - pn-*` folder in Google Drive:
-   - Right-click the folder
-   - Click **"Share"**
-   - Add the service account email
-   - Give it **"Viewer"** permissions
-   - Click **"Send"**
+   - It's in the JSON key file you downloaded: `"client_email": "parnoir-aggregator-sync@your-project.iam.gserviceaccount.com"`
+   
+2. Add environment variable to your dashboard build/deployment:
+   - **Name**: `VITE_GOOGLE_SERVICE_ACCOUNT_EMAIL`
+   - **Value**: The service account email (e.g., `parnoir-aggregator-sync@your-project.iam.gserviceaccount.com`)
 
-**Note**: The service account needs access to the folders to scan for `public-file-index.json` files.
+**Note**: If this is not configured, folders won't be automatically shared, but the API sync service will still work if you manually share folders. The dashboard will log a warning but continue normally.
 
 ### 2.5 Add Service Account Key to Railway
 
@@ -73,16 +72,27 @@ The Google Drive sync service allows the API to automatically scan Google Drive 
 
 ## Step 3: Environment Variables
 
+### Railway API Server Environment Variables
+
 Add these environment variables to your Railway project:
 
-### Required
+**Required:**
 - `DATABASE_URL` - Automatically provided by Railway PostgreSQL service
 
-### Optional (for Google Drive sync)
-- `GOOGLE_SERVICE_ACCOUNT_KEY` - JSON key from Google Cloud Console (see Step 2)
+**Optional (for Google Drive sync):**
+- `GOOGLE_SERVICE_ACCOUNT_KEY` - JSON key from Google Cloud Console (see Step 2.5)
 
-### Already Configured
+**Already Configured:**
 - `GOOGLE_DRIVE_API_KEY` - Your existing Google Drive API key (for public file access)
+
+### Dashboard Environment Variables (Firebase)
+
+Add this environment variable to your dashboard build/deployment (Firebase Hosting):
+
+**Optional (for automatic folder sharing):**
+- `VITE_GOOGLE_SERVICE_ACCOUNT_EMAIL` - Service account email from Step 2.4
+
+**Note**: If this is not set, folders won't be automatically shared with the service account, but you can manually share them. The dashboard will log a warning but continue normally.
 
 ## Step 4: Verify Setup
 
