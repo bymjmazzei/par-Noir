@@ -109,9 +109,9 @@ class ProductionServer {
     // Rate limiting
     this.app.use(limiter);
 
-    // Body parsing
-    this.app.use(express.json({ limit: '10mb' }));
-    this.app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+    // Body parsing - increased limit for large video metadata with encrypted tokens
+    this.app.use(express.json({ limit: '50mb' }));
+    this.app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
     // Request logging
     this.app.use((req, res, next) => {
