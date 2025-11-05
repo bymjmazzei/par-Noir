@@ -374,6 +374,33 @@ class ProductionServer {
         });
       }
     });
+
+    // POST /api/aggregator/metadata-index/sync - Manually trigger Google Drive sync
+    this.app.post('/api/aggregator/metadata-index/sync', async (req, res) => {
+      try {
+        const { GoogleDriveSyncService } = await import('./server/modules/googleDriveSyncService');
+        const syncService = GoogleDriveSyncService.getInstance();
+
+        console.log('🔄 Manual sync triggered via API');
+        
+        // Trigger sync (non-blocking)
+        syncService.syncFromGoogleDrive().catch(error => {
+          console.error('❌ Manual sync failed:', error);
+        });
+
+        res.json({
+          success: true,
+          message: 'Sync started',
+          note: 'Sync runs in background. Check logs for progress.'
+        });
+      } catch (error: any) {
+        console.error('Error triggering sync:', error);
+        res.status(500).json({ 
+          error: 'Failed to trigger sync',
+          message: error.message 
+        });
+      }
+    });
     // POST /api/auth/google-oauth/token - Exchange authorization code for tokens
     this.app.post('/api/auth/google-oauth/token', async (req, res) => {
       try {
