@@ -239,6 +239,19 @@ export class GoogleDriveSyncService {
         console.log('ℹ️ No public files found to sync');
       }
 
+      // Step 6: Remove orphaned files from database (files that no longer exist in Google Drive)
+      // This handles deletions - if a folder/file was deleted from Google Drive, remove it from the database
+      try {
+        const currentFileIds = new Set(allMetadata.map(entry => entry.metadata.fileId));
+        const removedCount = await metadataService.removeOrphanedFiles(currentFileIds);
+        if (removedCount > 0) {
+          console.log(`🗑️ Removed ${removedCount} orphaned file(s) from database (deleted from Google Drive)`);
+        }
+      } catch (cleanupError) {
+        console.warn('⚠️ Failed to cleanup orphaned files:', cleanupError);
+        // Don't fail the sync if cleanup fails
+      }
+
     } catch (error) {
       console.error('❌ Google Drive sync failed:', error);
     } finally {

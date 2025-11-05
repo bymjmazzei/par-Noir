@@ -225,6 +225,41 @@ export class AggregatorMetadataServiceDB {
   }
 
   /**
+   * Remove orphaned files from database (files that no longer exist in Google Drive)
+   * Returns the number of files removed
+   */
+  async removeOrphanedFiles(validFileIds: Set<string>): Promise<number> {
+    const db = getDatabasePool();
+
+    try {
+      // Get all file IDs from database
+      const result = await db.query(
+        'SELECT file_id FROM aggregator_metadata WHERE metadata->>\'backend\' = $1',
+        ['google_drive']
+      );
+
+      const dbFileIds = result.rows.map(row => row.file_id);
+      const orphanedFileIds = dbFileIds.filter(fileId => !validFileIds.has(fileId));
+
+      if (orphanedFileIds.length === 0) {
+        return 0;
+      }
+
+      // Delete orphaned files
+      await db.query(
+        `DELETE FROM aggregator_metadata WHERE file_id = ANY($1::text[])`,
+        [orphanedFileIds]
+      );
+
+      console.log(`🗑️ Removed ${orphanedFileIds.length} orphaned file(s): ${orphanedFileIds.slice(0, 5).join(', ')}${orphanedFileIds.length > 5 ? '...' : ''}`);
+      return orphanedFileIds.length;
+    } catch (error) {
+      console.error('❌ Failed to remove orphaned files:', error);
+      throw error;
+    }
+  }
+
+  /**
    * Bulk insert/update metadata (for sync operations)
    */
   async bulkUpsertMetadata(entries: { metadata: PublicMetadata; pnIdentifier?: string }[]): Promise<void> {
