@@ -59,16 +59,9 @@ export async function decryptWithToken(token: ShareToken): Promise<Blob> {
     shareEncryptedBuffer
   );
 
-  // Decode from base64 (since original content was base64 before encryption)
-  const decoder = new TextDecoder();
-  const decryptedContent = decoder.decode(decryptedBuffer);
-
-  // Convert base64 content back to Blob
-  const binaryString = atob(decryptedContent);
-  const bytes = new Uint8Array(binaryString.length);
-  for (let i = 0; i < binaryString.length; i++) {
-    bytes[i] = binaryString.charCodeAt(i);
-  }
+  // Decrypted content is already raw bytes (Uint8Array from encryption)
+  // No need for base64 decoding - just use the decrypted buffer directly
+  const bytes = new Uint8Array(decryptedBuffer);
 
   // Determine MIME type from filename
   let mimeType = 'application/octet-stream';
@@ -92,11 +85,28 @@ export async function decryptWithToken(token: ShareToken): Promise<Blob> {
  * Helper: Convert Base64 to ArrayBuffer
  */
 function base64ToArrayBuffer(base64: string): ArrayBuffer {
-  const binary = atob(base64);
-  const bytes = new Uint8Array(binary.length);
-  for (let i = 0; i < binary.length; i++) {
-    bytes[i] = binary.charCodeAt(i);
+  try {
+    // Validate base64 string
+    if (!base64 || typeof base64 !== 'string') {
+      throw new Error('Invalid base64 input: must be a non-empty string');
+    }
+    
+    // Remove any whitespace
+    const cleanBase64 = base64.trim().replace(/\s/g, '');
+    
+    // Validate base64 format
+    if (!/^[A-Za-z0-9+/=]*$/.test(cleanBase64)) {
+      throw new Error('Invalid base64 format: contains invalid characters');
+    }
+    
+    const binary = atob(cleanBase64);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) {
+      bytes[i] = binary.charCodeAt(i);
+    }
+    return bytes.buffer;
+  } catch (error) {
+    throw new Error(`Failed to decode base64: ${error instanceof Error ? error.message : 'Unknown error'}. Input length: ${base64?.length || 0}`);
   }
-  return bytes.buffer;
 }
 

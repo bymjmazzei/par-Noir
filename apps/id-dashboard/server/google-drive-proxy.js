@@ -276,19 +276,31 @@ app.post('/api/google-drive/upload/:userId', upload.single('file'), async (req, 
       metadata: {}
     };
 
-    await GoogleDriveMetadataService.createCompanionMetadataFile(
-      drive,
-      pnIdentifier,
-      companionMetadata
-    );
-
-    // If file is public, add to public index
-    if (visibility === 'public') {
-      await GoogleDriveMetadataService.updatePublicFileIndex(
+    try {
+      await GoogleDriveMetadataService.createCompanionMetadataFile(
         drive,
         pnIdentifier,
         companionMetadata
       );
+      console.log('✅ Companion metadata file created successfully');
+    } catch (metadataError) {
+      console.error('❌ Failed to create companion metadata file:', metadataError);
+      // Don't fail the upload if metadata creation fails, but log the error
+    }
+
+    // If file is public, add to public index
+    if (visibility === 'public') {
+      try {
+        await GoogleDriveMetadataService.updatePublicFileIndex(
+          drive,
+          pnIdentifier,
+          companionMetadata
+        );
+        console.log('✅ Public file index updated successfully');
+      } catch (indexError) {
+        console.error('❌ Failed to update public file index:', indexError);
+        // Don't fail the upload if index update fails, but log the error
+      }
     }
 
     res.json({
@@ -446,19 +458,31 @@ app.patch('/api/google-drive/files/:userId/:fileId/visibility', async (req, res)
         metadata: {}
       };
 
-      await GoogleDriveMetadataService.createCompanionMetadataFile(
+      try {
+        await GoogleDriveMetadataService.createCompanionMetadataFile(
+          drive,
+          pnIdentifier,
+          companionMetadata
+        );
+        console.log('✅ Companion metadata file created successfully (visibility update)');
+      } catch (metadataError) {
+        console.error('❌ Failed to create companion metadata file (visibility update):', metadataError);
+        // Continue - don't fail the visibility update if metadata creation fails
+      }
+    }
+
+    // Update public index
+    try {
+      await GoogleDriveMetadataService.updatePublicFileIndex(
         drive,
         pnIdentifier,
         companionMetadata
       );
+      console.log('✅ Public file index updated successfully (visibility update)');
+    } catch (indexError) {
+      console.error('❌ Failed to update public file index (visibility update):', indexError);
+      // Continue - don't fail the visibility update if index update fails
     }
-
-    // Update public index
-    await GoogleDriveMetadataService.updatePublicFileIndex(
-      drive,
-      pnIdentifier,
-      companionMetadata
-    );
 
     res.json({
       success: true,
