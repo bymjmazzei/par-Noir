@@ -20,6 +20,8 @@ function App() {
   const [searchQuery, setSearchQuery] = useState('');
   const [filters, setFilters] = useState<MetadataFilters>({});
   const [viewingFile, setViewingFile] = useState<{ file: IndexedFile; blob: Blob; url: string } | null>(null);
+  const [thumbnails, setThumbnails] = useState<Map<string, string>>(new Map()); // fileId -> thumbnail URL
+  const [generatingThumbnails, setGeneratingThumbnails] = useState<Set<string>>(new Set()); // Track which thumbnails are being generated
   
   const metadataIndexService = getMetadataIndexService();
 
@@ -73,6 +75,9 @@ function App() {
       
       setIndexedFiles(discoveredFiles);
       console.log(`✅ Discovered ${discoveredFiles.length} public files`);
+      
+      // Generate thumbnails for image files
+      generateThumbnailsForImages(discoveredFiles);
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Failed to discover files';
       setError(errorMessage);
@@ -93,6 +98,109 @@ function App() {
     };
     setFilters(newFilters);
     discoverFiles(newFilters);
+  };
+
+  // Generate thumbnails for image files by decrypting and resizing
+  const generateThumbnailsForImages = async (files: IndexedFile[]) => {
+    for (const indexedFile of files) {
+      const file = indexedFile.metadata;
+      const isImage = file.fileType === 'image' || 
+                     (file.name || file.title || '').match(/\.(jpg|jpeg|png|gif|webp|svg|bmp|ico)$/i);
+      
+      // Skip if not an image, no publicToken, or already has thumbnail/generating
+      if (!isImage || !file.publicToken || thumbnails.has(file.fileId) || generatingThumbnails.has(file.fileId)) {
+        continue;
+      }
+
+      generatingThumbnails.add(file.fileId);
+      setGeneratingThumbnails(new Set(generatingThumbnails));
+
+      try {
+        // Parse token
+        let token: ShareToken;
+        try {
+          token = typeof file.publicToken === 'string' ? JSON.parse(file.publicToken) : file.publicToken;
+        } catch (e) {
+          console.warn(`Failed to parse token for ${file.fileId}:`, e);
+          generatingThumbnails.delete(file.fileId);
+          setGeneratingThumbnails(new Set(generatingThumbnails));
+          continue;
+        }
+
+        // Decrypt file
+        const decryptedBlob = await decryptWithToken(token);
+        
+        // Create thumbnail from decrypted blob
+        const thumbnailUrl = await createThumbnailFromBlob(decryptedBlob, 300, 300);
+        
+        // Store thumbnail URL
+        setThumbnails(prev => {
+          const newMap = new Map(prev);
+          newMap.set(file.fileId, thumbnailUrl);
+          return newMap;
+        });
+      } catch (err) {
+        console.warn(`Failed to generate thumbnail for ${file.fileId}:`, err);
+      } finally {
+        generatingThumbnails.delete(file.fileId);
+        setGeneratingThumbnails(new Set(generatingThumbnails));
+      }
+    }
+  };
+
+  // Create a thumbnail from a blob (resize image to max dimensions)
+  const createThumbnailFromBlob = (blob: Blob, maxWidth: number, maxHeight: number): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      const url = URL.createObjectURL(blob);
+      
+      img.onload = () => {
+        // Calculate dimensions to maintain aspect ratio
+        let width = img.width;
+        let height = img.height;
+        
+        if (width > height) {
+          if (width > maxWidth) {
+            height = (height * maxWidth) / width;
+            width = maxWidth;
+          }
+        } else {
+          if (height > maxHeight) {
+            width = (width * maxHeight) / height;
+            height = maxHeight;
+          }
+        }
+        
+        // Create canvas and draw resized image
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        
+        const ctx = canvas.getContext('2d');
+        if (!ctx) {
+          URL.revokeObjectURL(url);
+          reject(new Error('Could not get canvas context'));
+          return;
+        }
+        
+        ctx.drawImage(img, 0, 0, width, height);
+        
+        // Convert to data URL
+        const thumbnailDataUrl = canvas.toDataURL('image/jpeg', 0.8);
+        
+        // Clean up
+        URL.revokeObjectURL(url);
+        
+        resolve(thumbnailDataUrl);
+      };
+      
+      img.onerror = () => {
+        URL.revokeObjectURL(url);
+        reject(new Error('Failed to load image'));
+      };
+      
+      img.src = url;
+    });
   };
 
   return (
@@ -231,9 +339,9 @@ function App() {
                   {/* Image Preview Section */}
                   {isImage && (
                     <div className="w-full h-48 bg-neutral-800 flex items-center justify-center relative overflow-hidden">
-                      {indexedFile.thumbnail ? (
+                      {thumbnails.get(file.fileId) ? (
                         <img 
-                          src={indexedFile.thumbnail} 
+                          src={thumbnails.get(file.fileId)!} 
                           alt={fileName}
                           className="w-full h-full object-cover"
                           onError={(e) => {
@@ -241,6 +349,11 @@ function App() {
                             e.currentTarget.style.display = 'none';
                           }}
                         />
+                      ) : generatingThumbnails.has(file.fileId) ? (
+                        <div className="flex flex-col items-center justify-center text-neutral-500">
+                          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-400 mb-2"></div>
+                          <span className="text-xs">Generating thumbnail...</span>
+                        </div>
                       ) : (
                         <div className="flex flex-col items-center justify-center text-neutral-500">
                           <ImageIcon className="h-12 w-12 mb-2" />
