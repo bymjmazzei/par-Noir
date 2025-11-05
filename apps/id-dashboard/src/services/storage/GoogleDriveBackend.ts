@@ -755,12 +755,21 @@ export class GoogleDriveBackend extends AbstractStorageBackend {
           ? fileName.replace('.encrypted', '') 
           : fileName;
 
+        // Generate thumbnail for image files
+        let thumbnail: string | undefined = undefined;
+        const mimeType = uploadedFile.mimeType || file.type || 'application/octet-stream';
+        if (mimeType.startsWith('image/')) {
+          // For images, create a placeholder thumbnail data URL
+          // In the future, we could generate actual thumbnails from the decrypted image
+          thumbnail = this.generateImagePlaceholderThumbnail(originalFileName, mimeType);
+        }
+
         const companionMetadata = {
           fileId: metadata.fileId || uploadedFile.id,
           googleDriveFileId: uploadedFile.id,
           fileName: fileName,
           originalName: originalFileName,
-          mimeType: uploadedFile.mimeType || file.type || 'application/octet-stream',
+          mimeType: mimeType,
           size: parseInt(uploadedFile.size || file.size.toString() || '0', 10),
           visibility: metadata.visibility || 'private',
           uploadedAt: new Date().toISOString(),
@@ -771,7 +780,8 @@ export class GoogleDriveBackend extends AbstractStorageBackend {
           tags: [],
           description: undefined,
           metadata: {},
-          publicToken: metadata.publicToken || undefined // Include share token if provided
+          publicToken: metadata.publicToken || undefined, // Include share token if provided
+          thumbnail: thumbnail // Include thumbnail for images
         };
 
         await GoogleDriveMetadataService.createCompanionMetadataFile(
@@ -814,6 +824,28 @@ export class GoogleDriveBackend extends AbstractStorageBackend {
     }
 
     return result;
+  }
+
+  /**
+   * Generate a placeholder thumbnail for image files
+   * This creates a simple SVG placeholder that can be replaced with actual thumbnails later
+   */
+  private generateImagePlaceholderThumbnail(fileName: string, mimeType: string): string {
+    const svg = `
+      <svg width="200" height="150" xmlns="http://www.w3.org/2000/svg">
+        <rect width="200" height="150" fill="#1f2937"/>
+        <rect x="10" y="10" width="180" height="130" fill="#374151" stroke="#4b5563" stroke-width="2" rx="4"/>
+        <text x="100" y="70" text-anchor="middle" font-family="Arial, sans-serif" font-size="12" fill="#9ca3af">
+          ${fileName.length > 20 ? fileName.substring(0, 17) + '...' : fileName}
+        </text>
+        <text x="100" y="90" text-anchor="middle" font-family="Arial, sans-serif" font-size="10" fill="#6b7280">
+          Image Preview
+        </text>
+        <circle cx="100" cy="115" r="12" fill="#4b5563"/>
+        <text x="100" y="120" text-anchor="middle" font-family="Arial, sans-serif" font-size="14" fill="#9ca3af">🖼️</text>
+      </svg>
+    `.trim();
+    return `data:image/svg+xml;base64,${btoa(svg)}`;
   }
 
   async downloadFile(fileId: string): Promise<Blob> {

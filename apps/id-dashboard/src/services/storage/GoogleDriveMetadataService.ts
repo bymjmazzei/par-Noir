@@ -20,6 +20,7 @@ export interface CompanionMetadata {
   description?: string;
   metadata?: any;
   publicToken?: any; // Share token for public files (ShareToken object)
+  thumbnail?: string; // Base64 data URL or URL for thumbnail/preview
 }
 
 export interface PublicFileIndex {
@@ -40,6 +41,7 @@ export interface PublicFileIndex {
     tags?: string[];
     description?: string;
     publicToken?: any;
+    thumbnail?: string; // Base64 data URL or URL for thumbnail/preview
   }>;
   updatedAt: string;
 }
@@ -375,8 +377,9 @@ export class GoogleDriveMetadataService {
         visibility: fileMetadata.visibility,
         uploadedAt: fileMetadata.uploadedAt,
         owner: fileMetadata.owner,
-        tags: fileMetadata.tags,
-        description: fileMetadata.description
+        tags: fileMetadata.tags || [],
+        description: fileMetadata.description,
+        thumbnail: fileMetadata.thumbnail // Include thumbnail if available
       };
 
       if (fileMetadata.visibility === 'public') {
