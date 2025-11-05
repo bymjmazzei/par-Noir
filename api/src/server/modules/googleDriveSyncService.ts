@@ -245,15 +245,16 @@ export class GoogleDriveSyncService {
       // This ensures deleted folders/files are removed from the database
       try {
         const currentFileIds = new Set(allMetadata.map(entry => entry.metadata.fileId));
+        console.log(`🔍 Checking for orphaned files. Found ${currentFileIds.size} valid file(s) in Google Drive`);
         const removedCount = await metadataService.removeOrphanedFiles(currentFileIds);
         if (removedCount > 0) {
           console.log(`🗑️ Removed ${removedCount} orphaned file(s) from database (deleted from Google Drive)`);
         } else {
-          console.log('✅ No orphaned files to clean up');
+          console.log('✅ No orphaned files to clean up - database is in sync with Google Drive');
         }
       } catch (cleanupError) {
-        console.warn('⚠️ Failed to cleanup orphaned files:', cleanupError);
-        // Don't fail the sync if cleanup fails
+        console.error('❌ Failed to cleanup orphaned files:', cleanupError);
+        // Don't fail the sync if cleanup fails, but log it as an error
       }
 
     } catch (error) {
