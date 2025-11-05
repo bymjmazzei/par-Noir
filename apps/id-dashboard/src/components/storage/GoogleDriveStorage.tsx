@@ -189,37 +189,59 @@ export const GoogleDriveStorage: React.FC = () => {
         });
         await loadFiles();
       } else {
-      const token = localStorage.getItem('google_drive_token');
-      if (!token) {
-        throw new Error('No access token found');
-      }
-      
-      const formData = new FormData();
-      formData.append('metadata', JSON.stringify({
-        name: file.name,
-        parents: []
-      }));
-      formData.append('file', file);
-      
-      const response = await fetch(
-        'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart',
-        {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${token}`
-          },
-          body: formData
+        const token = localStorage.getItem('google_drive_token');
+        const email = localStorage.getItem('google_drive_email');
+        if (!token || !email) {
+          throw new Error('No access token or email found');
         }
-      );
-      
-      if (!response.ok) {
-        throw new Error('Failed to upload file');
+
+        // Get pnIdentifier from authenticated user or use email as fallback
+        // In production, this should come from the authenticated pN identity
+        const authenticatedUserStr = localStorage.getItem('authenticated_user');
+        let pnIdentifier = email.split('@')[0]; // Fallback to email prefix
+        let ownerDid = null;
+        
+        if (authenticatedUserStr) {
+          try {
+            const authenticatedUser = JSON.parse(authenticatedUserStr);
+            pnIdentifier = authenticatedUser.id || authenticatedUser.pnName || pnIdentifier;
+            ownerDid = authenticatedUser.id || authenticatedUser.did || null;
+          } catch (e) {
+            console.warn('Could not parse authenticated user, using fallback');
+          }
+        }
+        
+        // Use proxy server endpoint that creates metadata files
+        const formData = new FormData();
+        formData.append('file', file);
+        formData.append('visibility', 'private'); // Default to private
+        formData.append('pnIdentifier', pnIdentifier);
+        if (ownerDid) {
+          formData.append('ownerDid', ownerDid);
+        }
+        
+        // Get proxy server URL - adjust this based on your server setup
+        const proxyUrl = process.env.REACT_APP_API_URL || 'http://localhost:3002';
+        const response = await fetch(
+          `${proxyUrl}/api/google-drive/upload/${encodeURIComponent(email)}`,
+          {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${token}`
+            },
+            body: formData
+          }
+        );
+        
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => ({}));
+          throw new Error(errorData.error || 'Failed to upload file');
+        }
+        
+        await loadFiles();
       }
-      
-      await loadFiles();
-      }
-    } catch (err) {
-      setError('Failed to upload file');
+    } catch (err: any) {
+      setError(err.message || 'Failed to upload file');
       console.error('Error uploading:', err);
     } finally {
       setIsLoading(false);

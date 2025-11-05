@@ -136,7 +136,8 @@ export class EncryptionService {
 
     // Generate a new symmetric key for sharing
     const shareKeyArray = crypto.getRandomValues(new Uint8Array(32));
-    const shareKeyBase64 = btoa(String.fromCharCode(...shareKeyArray));
+    // Convert Uint8Array to base64 safely without spreading large arrays
+    const shareKeyBase64 = btoa(Array.from(shareKeyArray).map(b => String.fromCharCode(b)).join(''));
 
     // Re-encrypt with share key
     const shareIv = crypto.getRandomValues(new Uint8Array(12));
@@ -154,11 +155,10 @@ export class EncryptionService {
       decrypted
     );
 
-    // Convert to base64
-    const shareEncryptedBase64 = btoa(
-      String.fromCharCode(...new Uint8Array(shareEncrypted))
-    );
-    const shareIvBase64 = btoa(String.fromCharCode(...shareIv));
+    // Convert to base64 safely without spreading large arrays
+    const shareEncryptedUint8 = new Uint8Array(shareEncrypted);
+    const shareEncryptedBase64 = btoa(Array.from(shareEncryptedUint8).map(b => String.fromCharCode(b)).join(''));
+    const shareIvBase64 = btoa(Array.from(shareIv).map(b => String.fromCharCode(b)).join(''));
 
     return {
       shareKey: shareKeyBase64,
