@@ -770,7 +770,8 @@ export class GoogleDriveBackend extends AbstractStorageBackend {
           },
           tags: [],
           description: undefined,
-          metadata: {}
+          metadata: {},
+          publicToken: metadata.publicToken || undefined // Include share token if provided
         };
 
         await GoogleDriveMetadataService.createCompanionMetadataFile(

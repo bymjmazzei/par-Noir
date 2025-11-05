@@ -19,6 +19,7 @@ export interface CompanionMetadata {
   tags?: string[];
   description?: string;
   metadata?: any;
+  publicToken?: any; // Share token for public files (ShareToken object)
 }
 
 export interface PublicFileIndex {

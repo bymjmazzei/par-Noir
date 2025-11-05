@@ -160,13 +160,29 @@ export class EncryptionService {
     const shareEncryptedBase64 = btoa(Array.from(shareEncryptedUint8).map(b => String.fromCharCode(b)).join(''));
     const shareIvBase64 = btoa(Array.from(shareIv).map(b => String.fromCharCode(b)).join(''));
 
+    // Generate a salt for the share token (for consistency with aggregator browser expectations)
+    const saltArray = crypto.getRandomValues(new Uint8Array(16));
+    const saltBase64 = btoa(Array.from(saltArray).map(b => String.fromCharCode(b)).join(''));
+
     return {
+      fileId: encryptedPackage.metadata?.originalName || '',
+      contentKey: {
+        encrypted: '',
+        wrappedWith: '',
+        iv: ''
+      },
+      expiresAt: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString(), // 1 year expiry
+      permissions: ['read'],
+      metadata: {
+        title: encryptedPackage.metadata?.originalName,
+        description: encryptedPackage.metadata?.description
+      },
       shareKey: shareKeyBase64,
-      shareEncrypted: JSON.stringify({
+      shareEncrypted: {
         encrypted: shareEncryptedBase64,
         iv: shareIvBase64,
-        metadata: encryptedPackage.metadata,
-      }),
+        salt: saltBase64
+      }
     };
   }
 }
