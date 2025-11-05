@@ -112,7 +112,7 @@ export class GoogleDriveSyncService {
         throw new Error(`Failed to search for pN folders: ${foldersResponse.status}`);
       }
 
-      const foldersData = await foldersResponse.json();
+      const foldersData = await foldersResponse.json() as { files?: Array<{ id: string; name: string }> };
       const pnFolders = foldersData.files || [];
       
       console.log(`🔍 Found ${pnFolders.length} pN folder(s) to scan`);
@@ -145,7 +145,7 @@ export class GoogleDriveSyncService {
           );
 
           if (metadataFolderResponse.ok) {
-            const metadataFolderData = await metadataFolderResponse.json();
+            const metadataFolderData = await metadataFolderResponse.json() as { files?: Array<{ id: string; name: string }> };
             const metadataFolders = metadataFolderData.files || [];
 
             if (metadataFolders.length > 0) {
@@ -165,7 +165,7 @@ export class GoogleDriveSyncService {
               );
 
               if (indexFileResponse.ok) {
-                const indexFileData = await indexFileResponse.json();
+                const indexFileData = await indexFileResponse.json() as { files?: Array<{ id: string; name: string }> };
                 const indexFiles = indexFileData.files || [];
 
                 if (indexFiles.length > 0) {
