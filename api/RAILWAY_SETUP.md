@@ -16,6 +16,8 @@ This guide explains how to set up PostgreSQL on Railway for the aggregator metad
 
 **No additional configuration needed!** Railway handles everything automatically.
 
+**Note**: You don't need a separate API key for the Railway API server. The service account (configured in Step 2) provides all the authentication needed to scan Google Drive.
+
 ## Step 2: Set Up Google Service Account (Optional but Recommended)
 
 The Google Drive sync service allows the API to automatically scan Google Drive for public files without requiring user authentication.
@@ -81,9 +83,7 @@ Add these environment variables to your Railway project:
 
 **Optional (for Google Drive sync):**
 - `GOOGLE_SERVICE_ACCOUNT_KEY` - JSON key from Google Cloud Console (see Step 2.5)
-
-**Already Configured:**
-- `GOOGLE_DRIVE_API_KEY` - Your existing Google Drive API key (for public file access)
+  - This provides all authentication needed - no API key required for the API server
 
 ### Dashboard Environment Variables (Firebase)
 
