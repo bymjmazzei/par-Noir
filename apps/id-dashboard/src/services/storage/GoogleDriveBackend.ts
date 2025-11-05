@@ -735,6 +735,7 @@ export class GoogleDriveBackend extends AbstractStorageBackend {
         console.log('📝 [uploadFile] Creating companion metadata file...');
         console.log('📝 [uploadFile] pnIdentifier:', metadata.pnIdentifier);
         console.log('📝 [uploadFile] Uploaded file ID:', uploadedFile.id);
+        console.log('📝 [uploadFile] File name:', fileName);
         const { GoogleDriveMetadataService } = await import('./GoogleDriveMetadataService');
         
         // Get owner DID from metadata if available

@@ -55,7 +55,11 @@ export class GoogleDriveMetadataService {
     accessToken: string,
     pnIdentifier: string
   ): Promise<string> {
-    const folderName = `${this.PN_FOLDER_PREFIX}${pnIdentifier}`;
+    // Strip 'pn-' prefix if it exists (pnIdentifier might already include it)
+    const cleanIdentifier = pnIdentifier.startsWith('pn-') 
+      ? pnIdentifier.substring(3) 
+      : pnIdentifier;
+    const folderName = `${this.PN_FOLDER_PREFIX}${cleanIdentifier}`;
     
     // Search for existing folder
     const searchResponse = await fetch(
