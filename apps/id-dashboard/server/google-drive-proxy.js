@@ -4,6 +4,9 @@ const { google } = require('googleapis');
 const multer = require('multer');
 const path = require('path');
 
+// Import metadata service
+const { GoogleDriveMetadataService } = require('./GoogleDriveMetadataService');
+
 const app = express();
 const PORT = process.env.PORT || 3002;
 
@@ -191,11 +194,15 @@ app.get('/api/google-drive/files/:userId', async (req, res) => {
 app.post('/api/google-drive/upload/:userId', upload.single('file'), async (req, res) => {
   try {
     const { userId } = req.params;
-    const { visibility = 'private' } = req.body;
+    const { visibility = 'private', pnIdentifier, ownerDid, tags, description } = req.body;
     const file = req.file;
     
     if (!file) {
       return res.status(400).json({ error: 'No file provided' });
+    }
+
+    if (!pnIdentifier) {
+      return res.status(400).json({ error: 'pnIdentifier is required' });
     }
 
     const tokens = userTokens.get(userId);
@@ -234,7 +241,7 @@ app.post('/api/google-drive/upload/:userId', upload.single('file'), async (req, 
     const fileName = `pn-encrypted-${fileId}`;
 
     // Upload file
-    const fileMetadata = {
+    const fileMetadata_resource = {
       name: fileName,
       parents: [folderId]
     };
@@ -245,10 +252,44 @@ app.post('/api/google-drive/upload/:userId', upload.single('file'), async (req, 
     };
 
     const uploadedFile = await drive.files.create({
-      resource: fileMetadata,
+      resource: fileMetadata_resource,
       media: media,
       fields: 'id,name,size,webViewLink'
     });
+
+    // Create companion metadata file
+    const companionMetadata = {
+      fileId: fileId,
+      googleDriveFileId: uploadedFile.data.id,
+      fileName: fileName,
+      originalName: file.originalname,
+      mimeType: file.mimetype,
+      size: parseInt(uploadedFile.data.size) || file.size,
+      visibility: visibility,
+      uploadedAt: new Date().toISOString(),
+      owner: {
+        did: ownerDid,
+        identifier: pnIdentifier
+      },
+      tags: tags ? (typeof tags === 'string' ? JSON.parse(tags) : tags) : [],
+      description: description || undefined,
+      metadata: {}
+    };
+
+    await GoogleDriveMetadataService.createCompanionMetadataFile(
+      drive,
+      pnIdentifier,
+      companionMetadata
+    );
+
+    // If file is public, add to public index
+    if (visibility === 'public') {
+      await GoogleDriveMetadataService.updatePublicFileIndex(
+        drive,
+        pnIdentifier,
+        companionMetadata
+      );
+    }
 
     res.json({
       success: true,
@@ -256,21 +297,31 @@ app.post('/api/google-drive/upload/:userId', upload.single('file'), async (req, 
       fileName: uploadedFile.data.name,
       size: parseInt(uploadedFile.data.size) || 0,
       url: uploadedFile.data.webViewLink,
-      cid: fileId // Our internal ID
+      cid: fileId, // Our internal ID
+      visibility: visibility
     });
 
   } catch (error) {
     console.error('Upload error:', error);
-    res.status(500).json({ error: 'Failed to upload file' });
+    res.status(500).json({ error: 'Failed to upload file: ' + error.message });
   }
 });
 
-// 7. Delete file
-app.delete('/api/google-drive/files/:userId/:fileId', async (req, res) => {
+// 7. Update file visibility
+app.patch('/api/google-drive/files/:userId/:fileId/visibility', async (req, res) => {
   try {
     const { userId, fileId } = req.params;
+    const { visibility, pnIdentifier } = req.body;
+
+    if (!visibility || !['private', 'public', 'friends'].includes(visibility)) {
+      return res.status(400).json({ error: 'Invalid visibility value. Must be private, public, or friends' });
+    }
+
+    if (!pnIdentifier) {
+      return res.status(400).json({ error: 'pnIdentifier is required' });
+    }
+
     const tokens = userTokens.get(userId);
-    
     if (!tokens) {
       return res.status(401).json({ error: 'Not authenticated' });
     }
@@ -278,12 +329,183 @@ app.delete('/api/google-drive/files/:userId/:fileId', async (req, res) => {
     oauth2Client.setCredentials(tokens);
     const drive = google.drive({ version: 'v3', auth: oauth2Client });
 
+    // Get file metadata
+    const file = await drive.files.get({
+      fileId: fileId,
+      fields: 'id,name,size,mimeType,createdTime,webViewLink'
+    });
+
+    // Get or create pN folder and metadata folder
+    const pnFolderName = `par Noir - pn-${pnIdentifier}`;
+    const pnFolderQuery = `name='${pnFolderName}' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
+    const pnFolderResponse = await drive.files.list({
+      q: pnFolderQuery,
+      fields: 'files(id,name)'
+    });
+
+    let pnFolderId;
+    if (pnFolderResponse.data.files.length > 0) {
+      pnFolderId = pnFolderResponse.data.files[0].id;
+    } else {
+      // Create pN folder
+      const folderMetadata = {
+        name: pnFolderName,
+        mimeType: 'application/vnd.google-apps.folder'
+      };
+      const folder = await drive.files.create({
+        resource: folderMetadata,
+        fields: 'id'
+      });
+      pnFolderId = folder.data.id;
+    }
+
+    // Get or create _metadata folder
+    const metadataFolderQuery = `name='_metadata' and '${pnFolderId}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`;
+    const metadataFolderResponse = await drive.files.list({
+      q: metadataFolderQuery,
+      fields: 'files(id,name)'
+    });
+
+    let metadataFolderId;
+    if (metadataFolderResponse.data.files.length > 0) {
+      metadataFolderId = metadataFolderResponse.data.files[0].id;
+    } else {
+      // Create _metadata folder
+      const folderMetadata = {
+        name: '_metadata',
+        mimeType: 'application/vnd.google-apps.folder',
+        parents: [pnFolderId]
+      };
+      const folder = await drive.files.create({
+        resource: folderMetadata,
+        fields: 'id'
+      });
+      metadataFolderId = folder.data.id;
+    }
+    
+    // Find companion metadata file
+    const metadataFileName = `${fileId}.metadata.json`;
+    const metadataFileQuery = `name='${metadataFileName}' and '${metadataFolderId}' in parents and trashed=false`;
+    const metadataFileResponse = await drive.files.list({
+      q: metadataFileQuery,
+      fields: 'files(id)'
+    });
+
+    let companionMetadata;
+    if (metadataFileResponse.data.files.length > 0) {
+      // Download existing metadata
+      const metadataDownload = await drive.files.get(
+        { fileId: metadataFileResponse.data.files[0].id, alt: 'media' },
+        { responseType: 'stream' }
+      );
+
+      companionMetadata = await new Promise((resolve, reject) => {
+        let data = '';
+        metadataDownload.data.on('data', (chunk) => {
+          data += chunk.toString();
+        });
+        metadataDownload.data.on('end', () => {
+          try {
+            resolve(JSON.parse(data));
+          } catch (error) {
+            reject(error);
+          }
+        });
+        metadataDownload.data.on('error', reject);
+      });
+
+      // Update visibility
+      companionMetadata.visibility = visibility;
+
+      // Update metadata file
+      const metadataContent = JSON.stringify(companionMetadata, null, 2);
+      const metadataBlob = Buffer.from(metadataContent, 'utf-8');
+
+      await drive.files.update({
+        fileId: metadataFileResponse.data.files[0].id,
+        media: {
+          mimeType: 'application/json',
+          body: metadataBlob
+        }
+      });
+    } else {
+      // Create new metadata if it doesn't exist
+      companionMetadata = {
+        fileId: fileId,
+        googleDriveFileId: fileId,
+        fileName: file.data.name,
+        originalName: file.data.name,
+        mimeType: file.data.mimeType,
+        size: parseInt(file.data.size) || 0,
+        visibility: visibility,
+        uploadedAt: file.data.createdTime || new Date().toISOString(),
+        owner: {
+          identifier: pnIdentifier
+        },
+        tags: [],
+        metadata: {}
+      };
+
+      await GoogleDriveMetadataService.createCompanionMetadataFile(
+        drive,
+        pnIdentifier,
+        companionMetadata
+      );
+    }
+
+    // Update public index
+    await GoogleDriveMetadataService.updatePublicFileIndex(
+      drive,
+      pnIdentifier,
+      companionMetadata
+    );
+
+    res.json({
+      success: true,
+      visibility: visibility,
+      fileId: fileId
+    });
+  } catch (error) {
+    console.error('Update visibility error:', error);
+    res.status(500).json({ error: 'Failed to update file visibility: ' + error.message });
+  }
+});
+
+// 8. Delete file
+app.delete('/api/google-drive/files/:userId/:fileId', async (req, res) => {
+  try {
+    const { userId, fileId } = req.params;
+    const { pnIdentifier } = req.query; // Get pnIdentifier from query string
+    
+    const tokens = userTokens.get(userId);
+    if (!tokens) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    oauth2Client.setCredentials(tokens);
+    const drive = google.drive({ version: 'v3', auth: oauth2Client });
+
+    // Delete the file
     await drive.files.delete({ fileId });
+
+    // Delete companion metadata file if pnIdentifier is provided
+    if (pnIdentifier) {
+      try {
+        await GoogleDriveMetadataService.deleteCompanionMetadataFile(
+          drive,
+          pnIdentifier,
+          fileId
+        );
+      } catch (metadataError) {
+        console.warn('Failed to delete companion metadata:', metadataError);
+        // Continue even if metadata deletion fails
+      }
+    }
     
     res.json({ success: true });
   } catch (error) {
     console.error('Delete error:', error);
-    res.status(500).json({ error: 'Failed to delete file' });
+    res.status(500).json({ error: 'Failed to delete file: ' + error.message });
   }
 });
 
