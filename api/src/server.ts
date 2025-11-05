@@ -217,15 +217,15 @@ class ProductionServer {
     // GET /api/aggregator/metadata-index - Query public metadata
     this.app.get('/api/aggregator/metadata-index', async (req, res) => {
       try {
-        const { AggregatorMetadataService } = await import('./server/modules/aggregatorMetadataService');
-        const service = AggregatorMetadataService.getInstance();
+        const { AggregatorMetadataServiceDB } = await import('./server/modules/aggregatorMetadataServiceDB');
+        const service = AggregatorMetadataServiceDB.getInstance();
 
         // Parse query parameters
         const tags = req.query.tags ? (req.query.tags as string).split(',').map(t => t.trim()) : undefined;
         const fileType = req.query.fileType as string | undefined;
         const authorDid = req.query.authorDid as string | undefined;
 
-        const response = service.getIndexResponse({
+        const response = await service.getIndexResponse({
           tags,
           fileType,
           authorDid
@@ -248,8 +248,8 @@ class ProductionServer {
       try {
         console.log(`📥 [${requestId}] [POST /api/aggregator/metadata-index] Received request`);
         
-        const { AggregatorMetadataService } = await import('./server/modules/aggregatorMetadataService');
-        const service = AggregatorMetadataService.getInstance();
+        const { AggregatorMetadataServiceDB } = await import('./server/modules/aggregatorMetadataServiceDB');
+        const service = AggregatorMetadataServiceDB.getInstance();
 
         const { file, submittedAt, pnIdentifier } = req.body;
 
@@ -307,7 +307,7 @@ class ProductionServer {
         console.log(`📝 [${requestId}] Submitting metadata for file: ${validatedMetadata.fileId}`);
 
         // Submit metadata to central index
-        service.submitMetadata(validatedMetadata, pnIdentifier);
+        await service.submitMetadata(validatedMetadata, pnIdentifier);
 
         console.log(`✅ [${requestId}] Successfully submitted metadata for: ${validatedMetadata.fileId}`);
         return res.json({
@@ -331,10 +331,10 @@ class ProductionServer {
     });
 
     // DELETE /api/aggregator/metadata-index/:fileId - Remove public metadata
-    this.app.delete('/api/aggregator/metadata-index/:fileId', (req, res) => {
+    this.app.delete('/api/aggregator/metadata-index/:fileId', async (req, res) => {
       try {
-        const { AggregatorMetadataService } = require('./server/modules/aggregatorMetadataService');
-        const service = AggregatorMetadataService.getInstance();
+        const { AggregatorMetadataServiceDB } = await import('./server/modules/aggregatorMetadataServiceDB');
+        const service = AggregatorMetadataServiceDB.getInstance();
 
         const { fileId } = req.params;
 
@@ -342,7 +342,7 @@ class ProductionServer {
           return res.status(400).json({ error: 'Missing fileId parameter' });
         }
 
-        const removed = service.removeMetadata(fileId);
+        const removed = await service.removeMetadata(fileId);
 
         if (removed) {
           return res.json({ success: true, fileId });
@@ -359,12 +359,12 @@ class ProductionServer {
     });
 
     // GET /api/aggregator/metadata-index/stats - Get index statistics
-    this.app.get('/api/aggregator/metadata-index/stats', (req, res) => {
+    this.app.get('/api/aggregator/metadata-index/stats', async (req, res) => {
       try {
-        const { AggregatorMetadataService } = require('./server/modules/aggregatorMetadataService');
-        const service = AggregatorMetadataService.getInstance();
+        const { AggregatorMetadataServiceDB } = await import('./server/modules/aggregatorMetadataServiceDB');
+        const service = AggregatorMetadataServiceDB.getInstance();
 
-        const stats = service.getStats();
+        const stats = await service.getStats();
         res.json(stats);
       } catch (error: any) {
         console.error('Error fetching aggregator stats:', error);
@@ -585,6 +585,35 @@ class ProductionServer {
   }
 
   public async start(): Promise<void> {
+    // Initialize database connection and schema
+    try {
+      const { initializeDatabase } = await import('./server/utils/database');
+      await initializeDatabase();
+    } catch (error) {
+      console.error('⚠️ Failed to initialize database:', error);
+      // Continue anyway - database might not be configured yet
+      if (process.env.DATABASE_URL) {
+        throw error; // If DATABASE_URL is set, database is required
+      }
+    }
+
+    // Start Google Drive sync service (if configured)
+    try {
+      const { GoogleDriveSyncService } = await import('./server/modules/googleDriveSyncService');
+      const syncService = GoogleDriveSyncService.getInstance();
+      
+      // Start periodic sync (every 10 minutes)
+      // Only if service account is configured
+      if (process.env.GOOGLE_SERVICE_ACCOUNT_KEY) {
+        syncService.startPeriodicSync(10);
+      } else {
+        console.log('ℹ️ Google Drive sync disabled - GOOGLE_SERVICE_ACCOUNT_KEY not set');
+      }
+    } catch (error) {
+      console.warn('⚠️ Failed to start Google Drive sync service:', error);
+      // Continue anyway - sync is optional
+    }
+
     return new Promise((resolve, reject) => {
       this.server.listen(PORT, () => {
         console.log(`🚀 Identity Protocol API Server running on port ${PORT}`);
@@ -601,6 +630,23 @@ class ProductionServer {
   }
 
   public async stop(): Promise<void> {
+    // Stop Google Drive sync
+    try {
+      const { GoogleDriveSyncService } = await import('./server/modules/googleDriveSyncService');
+      const syncService = GoogleDriveSyncService.getInstance();
+      syncService.stopPeriodicSync();
+    } catch (error) {
+      console.warn('Failed to stop sync service:', error);
+    }
+
+    // Close database connections
+    try {
+      const { closeDatabasePool } = await import('./server/utils/database');
+      await closeDatabasePool();
+    } catch (error) {
+      console.warn('Failed to close database pool:', error);
+    }
+
     return new Promise((resolve) => {
       this.server.close(() => {
         console.log('Server stopped');
