@@ -733,6 +733,8 @@ export class GoogleDriveBackend extends AbstractStorageBackend {
     if (metadata?.pnIdentifier && this.token) {
       try {
         console.log('📝 [uploadFile] Creating companion metadata file...');
+        console.log('📝 [uploadFile] pnIdentifier:', metadata.pnIdentifier);
+        console.log('📝 [uploadFile] Uploaded file ID:', uploadedFile.id);
         const { GoogleDriveMetadataService } = await import('./GoogleDriveMetadataService');
         
         // Get owner DID from metadata if available
@@ -792,10 +794,21 @@ export class GoogleDriveBackend extends AbstractStorageBackend {
         }
       } catch (metadataError) {
         console.error('❌ [uploadFile] Failed to create companion metadata file:', metadataError);
+        if (metadataError instanceof Error) {
+          console.error('❌ [uploadFile] Error message:', metadataError.message);
+          console.error('❌ [uploadFile] Error stack:', metadataError.stack);
+        }
         // Don't fail the upload if metadata creation fails - file was uploaded successfully
+        // But log it clearly so user knows
+        console.warn('⚠️ [uploadFile] Upload completed but metadata creation failed - file may not be indexed');
       }
     } else {
-      console.warn('⚠️ [uploadFile] Skipping metadata creation - missing pnIdentifier or token');
+      if (!metadata?.pnIdentifier) {
+        console.warn('⚠️ [uploadFile] Skipping metadata creation - missing pnIdentifier in metadata:', metadata);
+      }
+      if (!this.token) {
+        console.warn('⚠️ [uploadFile] Skipping metadata creation - no access token available');
+      }
     }
 
     return result;
