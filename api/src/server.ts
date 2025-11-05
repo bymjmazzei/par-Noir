@@ -52,6 +52,10 @@ class ProductionServer {
 
   constructor() {
     this.app = express();
+    
+    // Trust proxy for Railway/deployment platforms (needed for rate limiting)
+    this.app.set('trust proxy', 1);
+    
     this.server = createServer(this.app);
     this.io = new SocketIOServer(this.server, {
       cors: {

@@ -117,10 +117,8 @@ export class GoogleDriveSyncService {
       
       console.log(`🔍 Found ${pnFolders.length} pN folder(s) to scan`);
 
-      if (pnFolders.length === 0) {
-        console.log('ℹ️ No pN folders found');
-        return;
-      }
+      // If no folders found, we still need to run cleanup to remove orphaned files
+      // (in case folders were deleted from Google Drive)
 
       // Step 2: For each pN folder, look for _metadata folder and public-file-index.json
       const allMetadata: { metadata: PublicMetadata; pnIdentifier?: string }[] = [];
@@ -236,16 +234,20 @@ export class GoogleDriveSyncService {
         await metadataService.bulkUpsertMetadata(allMetadata);
         console.log(`✅ Synced ${allMetadata.length} public file(s) from ${pnFolders.length} pN folder(s)`);
       } else {
-        console.log('ℹ️ No public files found to sync');
+        if (pnFolders.length === 0) {
+          console.log('ℹ️ No pN folders found in Google Drive');
+        } else {
+          console.log('ℹ️ No public files found in pN folders');
+        }
       }
 
       // Step 6: Remove orphaned files from database (files that no longer exist in Google Drive)
       // This handles deletions - if a folder/file was deleted from Google Drive, remove it from the database
-      // IMPORTANT: Run cleanup even if no files were found (allMetadata is empty)
+      // IMPORTANT: Run cleanup even if no files/folders were found (allMetadata is empty)
       // This ensures deleted folders/files are removed from the database
       try {
         const currentFileIds = new Set(allMetadata.map(entry => entry.metadata.fileId));
-        console.log(`🔍 Checking for orphaned files. Found ${currentFileIds.size} valid file(s) in Google Drive`);
+        console.log(`🔍 Checking for orphaned files. Found ${currentFileIds.size} valid file(s) in Google Drive, ${pnFolders.length} pN folder(s) scanned`);
         const removedCount = await metadataService.removeOrphanedFiles(currentFileIds);
         if (removedCount > 0) {
           console.log(`🗑️ Removed ${removedCount} orphaned file(s) from database (deleted from Google Drive)`);
