@@ -220,8 +220,9 @@ export const GoogleDriveStorage: React.FC = () => {
           formData.append('ownerDid', ownerDid);
         }
         
-        // Get proxy server URL - adjust this based on your server setup
-        const proxyUrl = process.env.REACT_APP_API_URL || 'http://localhost:3002';
+        // Get proxy server URL - use production URL for deployed app
+        const isProduction = window.location.hostname !== 'localhost' && !window.location.hostname.startsWith('127.0.0.1');
+        const proxyUrl = process.env.REACT_APP_API_URL || (isProduction ? 'https://pn.parnoir.com' : 'http://localhost:3002');
         const response = await fetch(
           `${proxyUrl}/api/google-drive/upload/${encodeURIComponent(email)}`,
           {
