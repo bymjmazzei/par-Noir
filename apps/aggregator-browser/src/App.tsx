@@ -22,6 +22,8 @@ function App() {
   const [viewingFile, setViewingFile] = useState<{ file: IndexedFile; blob: Blob; url: string } | null>(null);
   const [thumbnails, setThumbnails] = useState<Map<string, string>>(new Map()); // fileId -> thumbnail URL
   const [generatingThumbnails, setGeneratingThumbnails] = useState<Set<string>>(new Set()); // Track which thumbnails are being generated
+  const [videoPlaying, setVideoPlaying] = useState<Map<string, boolean>>(new Map()); // Track which videos are playing
+  const [videoBlobs, setVideoBlobs] = useState<Map<string, string>>(new Map()); // Store video URLs for playback
   
   const metadataIndexService = getMetadataIndexService();
 
@@ -100,15 +102,17 @@ function App() {
     discoverFiles(newFilters);
   };
 
-  // Generate thumbnails for image files by decrypting and resizing
+  // Generate thumbnails for image and video files by decrypting and resizing/extracting frames
   const generateThumbnailsForImages = async (files: IndexedFile[]) => {
     for (const indexedFile of files) {
       const file = indexedFile.metadata;
       const isImage = file.fileType === 'image' || 
                      (file.name || file.title || '').match(/\.(jpg|jpeg|png|gif|webp|svg|bmp|ico)$/i);
+      const isVideo = file.fileType === 'video' || 
+                     (file.name || file.title || '').match(/\.(mp4|mov|avi|webm|mkv|flv|wmv)$/i);
       
-      // Skip if not an image, no publicToken, or already has thumbnail/generating
-      if (!isImage || !file.publicToken || thumbnails.has(file.fileId) || generatingThumbnails.has(file.fileId)) {
+      // Skip if not an image/video, no publicToken, or already has thumbnail/generating
+      if ((!isImage && !isVideo) || !file.publicToken || thumbnails.has(file.fileId) || generatingThumbnails.has(file.fileId)) {
         continue;
       }
 
@@ -131,7 +135,14 @@ function App() {
         const decryptedBlob = await decryptWithToken(token);
         
         // Create thumbnail from decrypted blob
-        const thumbnailUrl = await createThumbnailFromBlob(decryptedBlob, 300, 300);
+        let thumbnailUrl: string;
+        if (isVideo) {
+          // For videos, extract a frame as thumbnail
+          thumbnailUrl = await createVideoThumbnailFromBlob(decryptedBlob, 300, 300);
+        } else {
+          // For images, resize
+          thumbnailUrl = await createThumbnailFromBlob(decryptedBlob, 300, 300);
+        }
         
         // Store thumbnail URL
         setThumbnails(prev => {
@@ -200,6 +211,67 @@ function App() {
       };
       
       img.src = url;
+    });
+  };
+
+  // Create a thumbnail from a video blob (extract a frame)
+  const createVideoThumbnailFromBlob = (blob: Blob, maxWidth: number, maxHeight: number): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const video = document.createElement('video');
+      const url = URL.createObjectURL(blob);
+      
+      video.onloadedmetadata = () => {
+        // Seek to 1 second (or 10% of duration, whichever is smaller) to get a good frame
+        video.currentTime = Math.min(1, video.duration * 0.1);
+      };
+      
+      video.onseeked = () => {
+        // Calculate dimensions to maintain aspect ratio
+        let width = video.videoWidth;
+        let height = video.videoHeight;
+        
+        if (width > height) {
+          if (width > maxWidth) {
+            height = (height * maxWidth) / width;
+            width = maxWidth;
+          }
+        } else {
+          if (height > maxHeight) {
+            width = (width * maxHeight) / height;
+            height = maxHeight;
+          }
+        }
+        
+        // Create canvas and draw video frame
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        
+        const ctx = canvas.getContext('2d');
+        if (!ctx) {
+          URL.revokeObjectURL(url);
+          reject(new Error('Could not get canvas context'));
+          return;
+        }
+        
+        ctx.drawImage(video, 0, 0, width, height);
+        
+        // Convert to data URL
+        const thumbnailDataUrl = canvas.toDataURL('image/jpeg', 0.8);
+        
+        // Clean up
+        URL.revokeObjectURL(url);
+        
+        resolve(thumbnailDataUrl);
+      };
+      
+      video.onerror = () => {
+        URL.revokeObjectURL(url);
+        reject(new Error('Failed to load video'));
+      };
+      
+      video.preload = 'metadata';
+      video.src = url;
     });
   };
 
@@ -326,9 +398,11 @@ function App() {
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {indexedFiles.map((indexedFile) => {
               const file = indexedFile.metadata;
-              // Detect if file is an image from fileType or filename
+              // Detect if file is an image or video from fileType or filename
               const isImage = file.fileType === 'image' || 
                              (file.name || file.title || '').match(/\.(jpg|jpeg|png|gif|webp|svg|bmp|ico)$/i);
+              const isVideo = file.fileType === 'video' || 
+                             (file.name || file.title || '').match(/\.(mp4|mov|avi|webm|mkv|flv|wmv)$/i);
               const fileName = file.name || file.title || 'Untitled';
               
               return (
@@ -336,19 +410,81 @@ function App() {
                   key={file.fileId}
                   className="bg-neutral-900/60 border border-neutral-700 rounded-xl overflow-hidden hover:bg-neutral-800 transition-colors"
                 >
-                  {/* Image Preview Section */}
-                  {isImage && (
-                    <div className="w-full h-48 bg-neutral-800 flex items-center justify-center relative overflow-hidden">
-                      {thumbnails.get(file.fileId) ? (
-                        <img 
-                          src={thumbnails.get(file.fileId)!} 
-                          alt={fileName}
+                  {/* Image/Video Preview Section */}
+                  {(isImage || isVideo) && (
+                    <div 
+                      className="w-full h-48 bg-neutral-800 flex items-center justify-center relative overflow-hidden group"
+                      onMouseEnter={async () => {
+                        // For videos, start loading the video blob on hover for smooth playback
+                        if (isVideo && file.publicToken && !videoBlobs.has(file.fileId)) {
+                          try {
+                            let token: ShareToken;
+                            try {
+                              token = typeof file.publicToken === 'string' ? JSON.parse(file.publicToken) : file.publicToken;
+                            } catch (e) {
+                              return;
+                            }
+                            const decryptedBlob = await decryptWithToken(token);
+                            const videoUrl = URL.createObjectURL(decryptedBlob);
+                            setVideoBlobs(prev => {
+                              const newMap = new Map(prev);
+                              newMap.set(file.fileId, videoUrl);
+                              return newMap;
+                            });
+                          } catch (err) {
+                            console.warn('Failed to load video for preview:', err);
+                          }
+                        }
+                      }}
+                    >
+                      {isVideo && videoBlobs.get(file.fileId) && videoPlaying.get(file.fileId) ? (
+                        <video 
+                          src={videoBlobs.get(file.fileId)!}
                           className="w-full h-full object-cover"
-                          onError={(e) => {
-                            // Fallback to icon if thumbnail fails to load
-                            e.currentTarget.style.display = 'none';
+                          controls
+                          autoPlay
+                          muted
+                          loop
+                          onMouseLeave={() => {
+                            setVideoPlaying(prev => {
+                              const newMap = new Map(prev);
+                              newMap.set(file.fileId, false);
+                              return newMap;
+                            });
                           }}
                         />
+                      ) : thumbnails.get(file.fileId) ? (
+                        <div 
+                          className="relative w-full h-full cursor-pointer"
+                          onClick={() => {
+                            if (isVideo) {
+                              setVideoPlaying(prev => {
+                                const newMap = new Map(prev);
+                                newMap.set(file.fileId, true);
+                                return newMap;
+                              });
+                            }
+                          }}
+                        >
+                          <img 
+                            src={thumbnails.get(file.fileId)!} 
+                            alt={fileName}
+                            className="w-full h-full object-cover"
+                            onError={(e) => {
+                              // Fallback to icon if thumbnail fails to load
+                              e.currentTarget.style.display = 'none';
+                            }}
+                          />
+                          {isVideo && (
+                            <div className="absolute inset-0 flex items-center justify-center bg-black/30 opacity-0 group-hover:opacity-100 transition-opacity">
+                              <div className="bg-black/50 rounded-full p-4">
+                                <svg className="w-12 h-12 text-white" fill="currentColor" viewBox="0 0 24 24">
+                                  <path d="M8 5v14l11-7z"/>
+                                </svg>
+                              </div>
+                            </div>
+                          )}
+                        </div>
                       ) : generatingThumbnails.has(file.fileId) ? (
                         <div className="flex flex-col items-center justify-center text-neutral-500">
                           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-400 mb-2"></div>
@@ -357,7 +493,7 @@ function App() {
                       ) : (
                         <div className="flex flex-col items-center justify-center text-neutral-500">
                           <ImageIcon className="h-12 w-12 mb-2" />
-                          <span className="text-xs">Encrypted Image</span>
+                          <span className="text-xs">Encrypted {isVideo ? 'Video' : 'Image'}</span>
                           <span className="text-xs text-neutral-600 mt-1">Decryption required</span>
                         </div>
                       )}
@@ -366,7 +502,7 @@ function App() {
                   
                   <div className="p-4">
                     <div className="flex items-start space-x-3 mb-3">
-                      {!isImage && (
+                      {!isImage && !isVideo && (
                         <div className="flex-shrink-0 w-12 h-12 bg-blue-500/20 rounded-lg flex items-center justify-center">
                           <File className="h-6 w-6 text-blue-400" />
                         </div>
@@ -374,7 +510,7 @@ function App() {
                       <div className="flex-1 min-w-0">
                         <h3 className="text-white font-medium truncate">{fileName}</h3>
                         <p className="text-text-secondary text-xs mt-1">
-                          {file.fileType === 'image' ? 'Image' : file.fileType || 'File'} • {new Date(file.uploadDate).toLocaleDateString()}
+                          {isVideo ? 'Video' : file.fileType === 'image' ? 'Image' : file.fileType || 'File'} • {new Date(file.uploadDate).toLocaleDateString()}
                         </p>
                       </div>
                     </div>
