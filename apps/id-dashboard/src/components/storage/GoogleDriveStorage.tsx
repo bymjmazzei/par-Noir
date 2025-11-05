@@ -211,33 +211,68 @@ export const GoogleDriveStorage: React.FC = () => {
           }
         }
         
-        // Use proxy server endpoint that creates metadata files
-        const formData = new FormData();
-        formData.append('file', file);
-        formData.append('visibility', 'private'); // Default to private
-        formData.append('pnIdentifier', pnIdentifier);
-        if (ownerDid) {
-          formData.append('ownerDid', ownerDid);
-        }
+        // Upload file directly to Google Drive using API
+        const fileId = `pn-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+        const fileName = `pn-encrypted-${fileId}`;
         
-        // Get proxy server URL - use production URL for deployed app
-        const isProduction = window.location.hostname !== 'localhost' && !window.location.hostname.startsWith('127.0.0.1');
-        const proxyUrl = process.env.REACT_APP_API_URL || (isProduction ? 'https://pn.parnoir.com' : 'http://localhost:3002');
-        const response = await fetch(
-          `${proxyUrl}/api/google-drive/upload/${encodeURIComponent(email)}`,
-          {
-            method: 'POST',
-            headers: {
-              'Authorization': `Bearer ${token}`
-            },
-            body: formData
-          }
-        );
-        
-        if (!response.ok) {
-          const errorData = await response.json().catch(() => ({}));
-          throw new Error(errorData.error || 'Failed to upload file');
+        const metadata = {
+          name: fileName,
+          parents: [] // Upload to root, or specify folder ID if needed
+        };
+
+        const uploadFormData = new FormData();
+        uploadFormData.append('metadata', new Blob([JSON.stringify(metadata)], { type: 'application/json' }));
+        uploadFormData.append('file', file);
+
+        const uploadResponse = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${token}`
+          },
+          body: uploadFormData
+        });
+
+        if (!uploadResponse.ok) {
+          throw new Error(`Upload failed: ${uploadResponse.statusText}`);
         }
+
+        const uploadedFile = await uploadResponse.json();
+        const visibility = 'private'; // Default to private
+
+        // Create companion metadata file using client-side service
+        const { GoogleDriveMetadataService } = await import('../../services/storage/GoogleDriveMetadataService');
+        
+        const companionMetadata = {
+          fileId: fileId,
+          googleDriveFileId: uploadedFile.id,
+          fileName: fileName,
+          originalName: file.name,
+          mimeType: file.type || 'application/octet-stream',
+          size: parseInt(uploadedFile.size) || file.size,
+          visibility: visibility,
+          uploadedAt: new Date().toISOString(),
+          owner: {
+            did: ownerDid || undefined,
+            identifier: pnIdentifier
+          },
+          tags: [],
+          description: undefined,
+          metadata: {}
+        };
+
+        try {
+          await GoogleDriveMetadataService.createCompanionMetadataFile(
+            token,
+            pnIdentifier,
+            companionMetadata
+          );
+          console.log('✅ Companion metadata file created successfully');
+        } catch (metadataError) {
+          console.error('❌ Failed to create companion metadata file:', metadataError);
+          // Don't fail the upload if metadata creation fails, but log the error
+        }
+
+        // If file is public, add to public index (will be handled when visibility is changed)
         
         await loadFiles();
       }
