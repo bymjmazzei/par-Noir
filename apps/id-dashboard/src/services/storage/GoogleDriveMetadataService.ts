@@ -367,34 +367,37 @@ export class GoogleDriveMetadataService {
         f => f.googleDriveFileId === fileMetadata.googleDriveFileId
       );
 
-      const indexEntry: any = {
-        fileId: fileMetadata.fileId,
-        googleDriveFileId: fileMetadata.googleDriveFileId,
-        fileName: fileMetadata.fileName,
-        originalName: fileMetadata.originalName,
-        mimeType: fileMetadata.mimeType,
-        size: fileMetadata.size,
-        visibility: fileMetadata.visibility,
-        uploadedAt: fileMetadata.uploadedAt,
-        owner: fileMetadata.owner,
-        tags: fileMetadata.tags || [],
-        description: fileMetadata.description,
-        thumbnail: fileMetadata.thumbnail // Include thumbnail if available
-      };
-
       if (fileMetadata.visibility === 'public') {
+        const indexEntry: any = {
+          fileId: fileMetadata.fileId,
+          googleDriveFileId: fileMetadata.googleDriveFileId,
+          fileName: fileMetadata.fileName,
+          originalName: fileMetadata.originalName,
+          mimeType: fileMetadata.mimeType,
+          size: fileMetadata.size,
+          visibility: fileMetadata.visibility,
+          uploadedAt: fileMetadata.uploadedAt,
+          owner: fileMetadata.owner,
+          tags: fileMetadata.tags || [],
+          description: fileMetadata.description,
+          thumbnail: fileMetadata.thumbnail, // Include thumbnail if available
+          publicToken: fileMetadata.publicToken // Include share token for public files
+        };
+
         if (fileIndex >= 0) {
-          // Update existing entry, preserve publicToken if it exists
-          if (index.files[fileIndex].publicToken) {
+          // Update existing entry, preserve publicToken if new one not provided
+          if (!indexEntry.publicToken && index.files[fileIndex].publicToken) {
             indexEntry.publicToken = index.files[fileIndex].publicToken;
           }
           index.files[fileIndex] = indexEntry;
         } else {
+          // Only add to index if public
           index.files.push(indexEntry);
         }
       } else {
-        // Remove from index if not public
+        // Remove from index if not public (should not be in index, but clean up just in case)
         if (fileIndex >= 0) {
+          console.log(`Removing file ${fileMetadata.googleDriveFileId} from public index (visibility: ${fileMetadata.visibility})`);
           index.files.splice(fileIndex, 1);
         }
       }

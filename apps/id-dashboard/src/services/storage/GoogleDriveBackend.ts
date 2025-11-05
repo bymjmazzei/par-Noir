@@ -794,18 +794,21 @@ export class GoogleDriveBackend extends AbstractStorageBackend {
         );
         console.log('✅ [uploadFile] Companion metadata file created successfully');
 
-        // If file is public, update public index
-        if (companionMetadata.visibility === 'public') {
-          try {
-            await GoogleDriveMetadataService.updatePublicFileIndex(
-              this.token,
-              metadata.pnIdentifier,
-              companionMetadata
-            );
+        // Always call updatePublicFileIndex - it will add if public, remove if not
+        // This ensures the index stays in sync with file visibility
+        try {
+          await GoogleDriveMetadataService.updatePublicFileIndex(
+            this.token,
+            metadata.pnIdentifier,
+            companionMetadata
+          );
+          if (companionMetadata.visibility === 'public') {
             console.log('✅ [uploadFile] Public file index updated successfully');
-          } catch (indexError) {
-            console.error('❌ [uploadFile] Failed to update public file index:', indexError);
+          } else {
+            console.log('✅ [uploadFile] File removed from public index (not public)');
           }
+        } catch (indexError) {
+          console.error('❌ [uploadFile] Failed to update public file index:', indexError);
         }
       } catch (metadataError) {
         console.error('❌ [uploadFile] Failed to create companion metadata file:', metadataError);
