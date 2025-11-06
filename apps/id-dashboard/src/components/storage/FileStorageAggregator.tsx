@@ -1768,262 +1768,55 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
         return;
       }
 
-      // Download encrypted file from backend
-      console.log('📥 [Preview] Downloading file from backend...', {
-        fileId: file.id,
-        backend: file.backend,
-        backendFileId: file.backendFileId
-      });
-      
-      const encryptedBlob = await aggregatorService?.downloadFromBackend(
-        file.backend,
-        file.backendFileId
-      );
-
-      if (!encryptedBlob) {
-        console.error('❌ [Preview] Failed to download file from backend');
-        setLoadingPreviews(prev => {
-          const next = new Set(prev);
-          next.delete(file.id);
-          return next;
-        });
-        return;
-      }
-
-      if (!encryptionService) {
-        console.error('❌ [Preview] Encryption service not available');
-        setLoadingPreviews(prev => {
-          const next = new Set(prev);
-          next.delete(file.id);
-          return next;
-        });
-        return;
-      }
-
-      console.log('✅ [Preview] File downloaded, size:', encryptedBlob.size, 'type:', encryptedBlob.type);
-
-      // Check if file has publicToken - try multiple sources (SAME as aggregator browser)
-      // 1. Check fileMetadataMap
-      // 2. Check shareTokenCache  
-      // 3. Reload from owner index if needed
+      // SIMPLIFIED: Use token-based decryption ONLY (same as aggregator browser)
+      // Get token from metadata map or cache
       let token: any = null;
-      let metadata = fileMetadataMap.get(file.id);
-      
-      console.log('🔍 [Preview] Looking for share token...', {
-        fileId: file.id,
-        backendFileId: file.backendFileId,
-        hasMetadata: !!metadata,
-        hasTokenInMetadata: !!metadata?.publicToken,
-        cacheSize: shareTokenCache.current.size,
-        hasTokenInCache: shareTokenCache.current.has(file.backendFileId)
-      });
+      const metadata = fileMetadataMap.get(file.id);
       
       // Try 1: Get token from metadata map
       if (metadata?.publicToken) {
-        console.log('✅ [Preview] Found publicToken in metadata map, using token-based decryption (same as aggregator browser)...');
-        if (typeof metadata.publicToken === 'string') {
-          try {
-            token = JSON.parse(metadata.publicToken);
-            console.log('✅ [Preview] Parsed token from metadata map:', { hasShareKey: !!token.shareKey, hasShareEncrypted: !!token.shareEncrypted });
-          } catch (e) {
-            console.warn('⚠️ [Preview] Failed to parse publicToken from metadata map:', e);
-          }
-        } else {
-          token = metadata.publicToken;
-          console.log('✅ [Preview] Using token object from metadata map:', { hasShareKey: !!token.shareKey, hasShareEncrypted: !!token.shareEncrypted });
-        }
+        token = typeof metadata.publicToken === 'string' 
+          ? JSON.parse(metadata.publicToken) 
+          : metadata.publicToken;
       }
       
-      // Try 2: Get token from shareTokenCache
+      // Try 2: Get token from cache
       if (!token) {
-        const cachedToken = shareTokenCache.current.get(file.backendFileId);
-        if (cachedToken) {
-          console.log('✅ [Preview] Found publicToken in shareTokenCache, using token-based decryption (same as aggregator browser)...');
-          token = cachedToken;
-          console.log('✅ [Preview] Using cached token:', { hasShareKey: !!token.shareKey, hasShareEncrypted: !!token.shareEncrypted });
-        } else {
-          console.log('⚠️ [Preview] No token in cache for file:', file.backendFileId);
-        }
+        token = shareTokenCache.current.get(file.backendFileId);
       }
       
-      // Try 3: Reload metadata from owner index (if we have the backend and token)
-      const backend = aggregatorService?.getBackend('google_drive');
-      if (!token && backend && backend.isConnected()) {
-        console.log('🔄 [Preview] Token not found, attempting to reload from owner index...');
-        try {
-          const { GoogleDriveMetadataService } = await import('../../services/storage/GoogleDriveMetadataService');
-          const driveToken = (backend as any).token || localStorage.getItem('google_drive_token');
-          
-          // Generate pN identifier (same logic as loadFiles)
-          let pnIdentifier: string | null = null;
-          if (authenticatedUserData?.id && publicKey) {
-            const combined = `${authenticatedUserData.id}:${publicKey}`;
-            const encoder = new TextEncoder();
-            const data = encoder.encode(combined);
-            const hashBuffer = await crypto.subtle.digest('SHA-256', data);
-            const hashArray = Array.from(new Uint8Array(hashBuffer));
-            const hexHash = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
-            const shortHash = hexHash.substring(0, 12);
-            pnIdentifier = `pn-${shortHash}`;
-          }
-          
-          if (driveToken && pnIdentifier) {
-            const pnFolderId = await GoogleDriveMetadataService.getOrCreatePNFolder(driveToken, pnIdentifier);
-            const metadataFolderId = await GoogleDriveMetadataService.getOrCreateMetadataFolder(driveToken, pnFolderId);
-            const ownerIndex = await GoogleDriveMetadataService.getOwnerFileIndex(driveToken, metadataFolderId, pnIdentifier);
-            
-            if (ownerIndex?.files) {
-              const fileEntry = ownerIndex.files.find((entry: any) => entry.googleDriveFileId === file.backendFileId);
-              if (fileEntry?.publicToken) {
-                console.log('✅ [Preview] Found publicToken in owner index, using token-based decryption...');
-                if (typeof fileEntry.publicToken === 'string') {
-                  try {
-                    token = JSON.parse(fileEntry.publicToken);
-                  } catch (e) {
-                    console.warn('⚠️ [Preview] Failed to parse publicToken from owner index:', e);
-                  }
-                } else {
-                  token = fileEntry.publicToken;
-                }
-                
-                // Cache it for next time
-                if (token) {
-                  shareTokenCache.current.set(file.backendFileId, token);
-                }
-                
-                // Update metadata map
-                if (!metadata) {
-                  metadata = {
-                    fileId: file.id,
-                    backend: file.backend,
-                    backendFileId: file.backendFileId,
-                    name: fileEntry.originalName || fileEntry.fileName,
-                    description: fileEntry.description,
-                    keywords: fileEntry.tags || [],
-                    uploadDate: fileEntry.uploadedAt,
-                    fileType: fileEntry.mimeType?.split('/')[0] || 'other',
-                    isPublic: fileEntry.visibility === 'public',
-                    publicToken: fileEntry.publicToken,
-                    '@context': ['https://schema.org/'],
-                    '@type': 'CreativeWork',
-                    '@id': `https://parnoir.com/resource/${file.id}`
-                  } as PublicMetadata;
-                  setFileMetadataMap(prev => {
-                    const next = new Map(prev);
-                    next.set(file.id, metadata!);
-                    return next;
-                  });
-                }
-              }
-            }
-          }
-        } catch (reloadError) {
-          console.warn('⚠️ [Preview] Failed to reload from owner index:', reloadError);
-        }
+      // If no token, file can't be decrypted (shouldn't happen if owner index is loaded correctly)
+      if (!token) {
+        console.warn('⚠️ [Preview] No share token found for file:', file.id);
+        setLoadingPreviews(prev => {
+          const next = new Set(prev);
+          next.delete(file.id);
+          return next;
+        });
+        return;
       }
       
-      // If we have a token, use token-based decryption
-      if (token) {
-        console.log('✅ [Preview] Using token-based decryption (same as aggregator browser)...');
-        try {
-          
-          // Use same token decryption logic as aggregator browser
-          if (!token.shareEncrypted || !token.shareKey) {
-            throw new Error('Share token missing share key or share-encrypted content');
-          }
-          
-          // Import share key
-          const shareKeyBuffer = base64ToArrayBuffer(token.shareKey);
-          const shareKey = await crypto.subtle.importKey(
-            'raw',
-            shareKeyBuffer,
-            { name: 'AES-GCM', length: 256 },
-            false,
-            ['encrypt', 'decrypt']
-          );
-          
-          // Decrypt share-encrypted content
-          const shareEncryptedBuffer = base64ToArrayBuffer(token.shareEncrypted.encrypted);
-          const shareIV = base64ToArrayBuffer(token.shareEncrypted.iv);
-          
-          const decryptedBuffer = await crypto.subtle.decrypt(
-            { name: 'AES-GCM', iv: shareIV },
-            shareKey,
-            shareEncryptedBuffer
-          );
-          
-          const bytes = new Uint8Array(decryptedBuffer);
-          const mimeType = file.mimeType || 'application/octet-stream';
-          const decryptedBlob = new Blob([bytes], { type: mimeType });
-          
-          console.log('✅ [Preview] Token-based decryption successful!');
-          const previewUrl = URL.createObjectURL(decryptedBlob);
-          setFilePreviewUrls(prev => {
-            const next = new Map(prev);
-            next.set(file.id, previewUrl);
-            return next;
-          });
-          console.log('✅ [Preview] Preview URL created for file:', file.id);
-          return; // Success - exit early
-        } catch (tokenError) {
-          console.warn('⚠️ [Preview] Token-based decryption failed, falling back to credential-based:', tokenError);
-          // Fall through to credential-based decryption
-        }
-      }
-
-      // Fallback to credential-based decryption (owner's DID + publicKey)
-      console.log('🔓 [Preview] Using credential-based decryption (owner credentials)...');
-      
-      // Parse encrypted package
-      const encryptedPackageText = await encryptedBlob.text();
-      console.log('📦 [Preview] Encrypted package text length:', encryptedPackageText.length);
-      
-      let encryptedPackage: any;
+      // Use token-based decryption (SAME as aggregator browser)
       try {
-        encryptedPackage = JSON.parse(encryptedPackageText);
-        console.log('✅ [Preview] Parsed encrypted package, keys:', Object.keys(encryptedPackage));
-      } catch (parseError) {
-        console.error('❌ [Preview] Failed to parse encrypted package:', parseError);
-        throw new Error('Failed to parse encrypted file package');
+        const { decryptWithToken } = await import('../../utils/tokenDecryption');
+        const decryptedBlob = await decryptWithToken(token);
+        
+        const previewUrl = URL.createObjectURL(decryptedBlob);
+        setFilePreviewUrls(prev => {
+          const next = new Map(prev);
+          next.set(file.id, previewUrl);
+          return next;
+        });
+        
+        console.log('✅ [Preview] Token-based decryption successful (same as aggregator browser)');
+      } catch (tokenError) {
+        console.error('❌ [Preview] Token-based decryption failed:', tokenError);
+        setLoadingPreviews(prev => {
+          const next = new Set(prev);
+          next.delete(file.id);
+          return next;
+        });
       }
-
-      // Create session for decryption
-      const session: AuthSession = {
-        id: authenticatedUserData.id,
-        publicKey: publicKey,
-        accessToken: authenticatedUserData.accessToken,
-        nickname: authenticatedUserData?.nickname
-      };
-
-      // Decrypt file using owner credentials
-      console.log('🔓 [Preview] Attempting credential-based decryption...', {
-        fileId: file.id,
-        backendFileId: file.backendFileId,
-        hasSessionId: !!session.id,
-        hasPublicKey: !!session.publicKey,
-        sessionIdPrefix: session.id?.substring(0, 20),
-        publicKeyPrefix: session.publicKey?.substring(0, 20),
-        encryptedPackageKeys: Object.keys(encryptedPackage)
-      });
-      
-      const result = await encryptionService.decryptFileFromDownload(encryptedPackage, session);
-      const decryptedBlob = result.decryptedBlob;
-
-      console.log('✅ [Preview] Decryption successful, creating preview URL...', {
-        fileId: file.id,
-        blobSize: decryptedBlob.size,
-        blobType: decryptedBlob.type
-      });
-
-      // Create blob URL for direct display (no thumbnail generation - just use the actual file)
-      const previewUrl = URL.createObjectURL(decryptedBlob);
-      setFilePreviewUrls(prev => {
-        const next = new Map(prev);
-        next.set(file.id, previewUrl);
-        return next;
-      });
-      
-      console.log('✅ [Preview] Preview URL created for file:', file.id);
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : String(err);
       const errorDetails = {
@@ -2051,19 +1844,6 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
     }
   };
 
-  // Helper: Convert Base64 to ArrayBuffer (same as aggregator browser)
-  const base64ToArrayBuffer = (base64: string): ArrayBuffer => {
-    const cleanBase64 = base64.trim().replace(/\s/g, '');
-    if (!/^[A-Za-z0-9+/=]*$/.test(cleanBase64)) {
-      throw new Error('Invalid base64 format');
-    }
-    const binary = atob(cleanBase64);
-    const bytes = new Uint8Array(binary.length);
-    for (let i = 0; i < binary.length; i++) {
-      bytes[i] = binary.charCodeAt(i);
-    }
-    return bytes.buffer;
-  };
 
   // Auto-load previews for image/video files when files are loaded (since user owns them)
   useEffect(() => {
@@ -2927,9 +2707,7 @@ const FileViewer: React.FC<{ file: AggregatedFile; previewUrl: string | null; on
 
         // Get aggregator service
         const { getFileAggregatorService } = await import('../../services/aggregator/FileAggregatorService');
-        const { getEncryptionService } = await import('../../services/aggregator/EncryptionService');
         const aggregatorService = getFileAggregatorService();
-        const encryptionService = getEncryptionService();
 
         // Resolve auth credentials - try multiple sources (same as download/thumbnail)
         let publicKey: string | null = null;
@@ -2969,24 +2747,47 @@ const FileViewer: React.FC<{ file: AggregatedFile; previewUrl: string | null; on
           throw new Error('Please unlock your pN first. These are your files, but we need your credentials to decrypt them.');
         }
         
-        // Download encrypted file
-        const encryptedBlob = await aggregatorService.downloadFromBackend(
-          file.backend,
-          file.backendFileId
-        );
+        // SIMPLIFIED: Use token-based decryption (same as aggregator browser)
+        // Get token from owner index
+        const { GoogleDriveMetadataService } = await import('../../services/storage/GoogleDriveMetadataService');
+        const backend = aggregatorService.getBackend('google_drive');
+        const driveToken = (backend as any)?.token || localStorage.getItem('google_drive_token');
+        
+        if (!driveToken) {
+          throw new Error('No Google Drive token available');
+        }
 
-        // Parse and decrypt
-        const encryptedPackageText = await encryptedBlob.text();
-        const encryptedPackage = JSON.parse(encryptedPackageText);
+        // Get pN identifier
+        const { VolumeIdGenerator } = await import('../../utils/crypto/volumeIdGenerator');
+        const passcode = sessionStorage.getItem('pn_session_passcode');
+        if (!passcode) {
+          throw new Error('Please unlock your pN first');
+        }
 
-        const session = {
-          id: authenticatedUser.id,
-          publicKey: publicKey,
-          accessToken: authenticatedUser.accessToken,
-        };
+        const pnIdentifier = await VolumeIdGenerator.generateVolumeId({
+          pnName: authenticatedUser.pnName || authenticatedUser.username || authenticatedUser.name,
+          passcode,
+          publicKey
+        });
 
-        const result = await encryptionService.decryptFileFromDownload(encryptedPackage, session);
-        const url = URL.createObjectURL(result.decryptedBlob);
+        // Load owner index to get token
+        const pnFolderId = await GoogleDriveMetadataService.getOrCreatePNFolder(driveToken, pnIdentifier);
+        const metadataFolderId = await GoogleDriveMetadataService.getOrCreateMetadataFolder(driveToken, pnFolderId);
+        const ownerIndex = await GoogleDriveMetadataService.getOwnerFileIndex(driveToken, metadataFolderId, pnIdentifier);
+        
+        const fileEntry = ownerIndex?.files?.find((entry: any) => entry.googleDriveFileId === file.backendFileId);
+        if (!fileEntry?.publicToken) {
+          throw new Error('File token not found in owner index');
+        }
+
+        // Parse token and decrypt (SAME as aggregator browser)
+        const shareToken = typeof fileEntry.publicToken === 'string'
+          ? JSON.parse(fileEntry.publicToken)
+          : fileEntry.publicToken;
+
+        const { decryptWithToken } = await import('../../utils/tokenDecryption');
+        const decryptedBlob = await decryptWithToken(shareToken);
+        const url = URL.createObjectURL(decryptedBlob);
         setDecryptedUrl(url);
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to load file');
