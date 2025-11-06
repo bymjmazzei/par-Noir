@@ -2690,10 +2690,10 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
           }}
         >
           <div 
-            className="bg-neutral-800 rounded-lg p-6 max-w-md w-full text-text-primary border border-neutral-700 shadow-2xl"
+            className="bg-neutral-800 rounded-lg p-6 max-w-md w-full text-text-primary border border-neutral-700 shadow-2xl max-h-[85vh] flex flex-col"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="flex justify-between items-center mb-4">
+            <div className="flex justify-between items-center mb-4 flex-shrink-0">
               <h3 className="text-lg font-semibold">Edit Metadata</h3>
               <button
                 onClick={() => {
@@ -2718,7 +2718,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
               </button>
             </div>
             
-            <div className="space-y-4">
+            <div className="space-y-4 overflow-y-auto pr-2 -mr-2 flex-1">
               <div>
                 <label className="block text-sm font-medium text-text-secondary mb-1">
                   Name / Title
@@ -2890,7 +2890,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
                 </div>
               </div>
 
-              <div className="flex justify-end space-x-2 pt-2">
+              <div className="flex justify-end space-x-2 pt-4 flex-shrink-0 border-t border-neutral-700 mt-4">
                 <button
                   onClick={() => {
                     setEditingFile(null);
