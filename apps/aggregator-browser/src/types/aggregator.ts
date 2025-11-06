@@ -128,14 +128,31 @@ export interface ShareToken {
 // ============================================================================
 
 /**
+ * Engagement Metrics (semantic web compatible)
+ */
+export interface EngagementMetrics {
+  views: number;
+  likes: number;
+  comments: number;
+  shares: number;
+  lastUpdated: string;
+  engagementHistory?: Array<{
+    type: 'like' | 'comment' | 'share' | 'view';
+    did?: string; // Optional: who engaged (for analytics, privacy-preserving)
+    timestamp: string;
+  }>;
+}
+
+/**
  * Public Metadata with Semantic Web Standards (JSON-LD)
  * Aligned with schema.org CreativeWork and Dublin Core for semantic web compatibility
+ * Enhanced with relationships and engagement metrics
  */
 export interface PublicMetadata {
   // JSON-LD Semantic Web Structure
-  "@context"?: string | string[]; // Schema.org + par Noir contexts
-  "@type"?: string; // e.g., "CreativeWork", "ImageObject", "VideoObject"
-  "@id"?: string; // Unique URI for this resource
+  "@context"?: string | string[]; // Schema.org + par Noir contexts (always array in new metadata)
+  "@type"?: string | string[]; // e.g., "CreativeWork", "ImageObject", "VideoObject" (can be multiple types)
+  "@id"?: string; // Unique URI for this resource (always required in new metadata)
   
   // Core identifiers
   fileId: string; // Unique identifier
@@ -144,10 +161,10 @@ export interface PublicMetadata {
   
   // Schema.org CreativeWork properties
   name?: string; // File title (schema.org:name) - preferred
-  title?: string; // Legacy support
+  title?: string; // Legacy support (deprecated, use name)
   description?: string; // Schema.org:description
   keywords?: string[]; // Schema.org:keywords (from tags) - preferred
-  tags?: string[]; // Legacy support
+  tags?: string[]; // Legacy support (deprecated, use keywords)
   uploadDate: string; // Schema.org:datePublished (ISO 8601)
   fileType: string; // MIME type category (e.g., "image", "video")
   
@@ -174,12 +191,20 @@ export interface PublicMetadata {
     "@id": string; // Thumbnail URI
   };
   
+  // Content Relationships (schema.org + ActivityPub compatible)
+  inReplyTo?: string; // URI of parent post/resource (schema.org:inReplyTo / as:inReplyTo)
+  repostOf?: string; // URI of original post/resource (as:repostOf)
+  isPartOf?: string; // URI of curated feed/collection (schema.org:isPartOf)
+  
+  // Engagement Metrics (par Noir specific, semantic web compatible)
+  engagement?: EngagementMetrics;
+  
   // par Noir specific
   publicToken?: string; // Share token for access (JSON stringified ShareToken)
   isPublic: boolean; // Visibility flag
   
-  // Linked Data (future: relationships to other resources)
-  sameAs?: string[]; // URIs of same resource in other systems
+  // Linked Data (relationships to other resources)
+  sameAs?: string[]; // URIs of same resource in other systems (schema.org:sameAs)
   about?: string[]; // Subjects/topics (semantic relationships)
 }
 

@@ -3,6 +3,22 @@
  * Creates companion metadata files and public indexing using Google Drive API directly
  */
 
+/**
+ * Engagement Metrics (tracked in companion metadata)
+ */
+export interface EngagementMetrics {
+  views: number;
+  likes: number;
+  comments: number;
+  shares: number;
+  lastUpdated: string;
+  engagementHistory?: Array<{
+    type: 'like' | 'comment' | 'share' | 'view';
+    did?: string; // Optional: who engaged (for analytics, privacy-preserving)
+    timestamp: string;
+  }>;
+}
+
 export interface CompanionMetadata {
   fileId: string;
   googleDriveFileId: string;
@@ -21,6 +37,14 @@ export interface CompanionMetadata {
   metadata?: any;
   publicToken?: any; // Share token for public files (ShareToken object)
   thumbnail?: string; // Base64 data URL or URL for thumbnail/preview
+  
+  // Content Relationships
+  inReplyTo?: string; // File ID of parent post/resource
+  repostOf?: string; // File ID of original post/resource
+  isPartOf?: string; // Curated feed identifier (creator DID)
+  
+  // Engagement Metrics
+  engagement?: EngagementMetrics;
 }
 
 export interface PublicFileIndex {
@@ -49,7 +73,125 @@ export interface PublicFileIndex {
 export class GoogleDriveMetadataService {
   private static readonly METADATA_FOLDER_NAME = '_metadata';
   private static readonly PUBLIC_INDEX_FILE_NAME = 'public-file-index.json';
+  private static readonly OWNER_INDEX_FILE_NAME = 'owner-file-index.json';
   private static readonly PN_FOLDER_PREFIX = 'par Noir - pn-';
+  
+  /**
+   * Standard semantic web contexts
+   */
+  private static readonly SEMANTIC_CONTEXTS = [
+    'https://schema.org/',
+    'https://parnoir.com/ns/v1#'
+  ];
+  
+  /**
+   * Generate resource URI for a file
+   */
+  private static generateResourceUri(fileId: string): string {
+    return `https://parnoir.com/resource/${fileId}`;
+  }
+  
+  /**
+   * Ensure @context is always an array
+   */
+  private static ensureContextArray(context?: string | string[]): string[] {
+    if (!context) {
+      return this.SEMANTIC_CONTEXTS;
+    }
+    if (Array.isArray(context)) {
+      return context;
+    }
+    return [context, ...this.SEMANTIC_CONTEXTS.filter(c => c !== context)];
+  }
+  
+  /**
+   * Convert CompanionMetadata to PublicMetadata (semantic web format)
+   */
+  private static companionToPublicMetadata(
+    companion: CompanionMetadata,
+    creatorDid?: string
+  ): any {
+    // Determine schema.org type from mime type
+    const mimeCategory = companion.mimeType?.split('/')[0] || 'file';
+    const schemaType = 
+      mimeCategory === 'image' ? 'ImageObject' :
+      mimeCategory === 'video' ? 'VideoObject' :
+      mimeCategory === 'audio' ? 'AudioObject' :
+      'CreativeWork';
+    
+    // Generate resource URI
+    const resourceUri = this.generateResourceUri(companion.fileId);
+    const didUri = creatorDid || companion.owner.did || `did:key:${companion.owner.identifier}`;
+    
+    // Build public metadata with semantic web structure
+    const publicMetadata: any = {
+      '@context': this.SEMANTIC_CONTEXTS,
+      '@type': schemaType,
+      '@id': resourceUri,
+      
+      // Core identifiers
+      fileId: companion.fileId,
+      backend: 'google_drive',
+      backendFileId: companion.googleDriveFileId,
+      
+      // Schema.org CreativeWork properties
+      name: companion.originalName || companion.fileName,
+      description: companion.description || '',
+      keywords: companion.tags || [],
+      uploadDate: companion.uploadedAt,
+      fileType: mimeCategory,
+      
+      // Creator (schema.org:creator)
+      creator: {
+        '@type': 'Person',
+        '@id': didUri,
+        identifier: {
+          '@type': 'PropertyValue',
+          name: 'DID',
+          value: didUri
+        }
+      },
+      
+      // Legacy author support (for backward compatibility)
+      author: {
+        did: didUri
+      },
+      
+      // Media properties
+      thumbnail: companion.thumbnail ? {
+        '@type': 'ImageObject',
+        '@id': `${resourceUri}/thumbnail`
+      } : undefined,
+      
+      // Content relationships
+      inReplyTo: companion.inReplyTo ? this.generateResourceUri(companion.inReplyTo) : undefined,
+      repostOf: companion.repostOf ? this.generateResourceUri(companion.repostOf) : undefined,
+      isPartOf: companion.isPartOf ? `https://parnoir.com/curated/${companion.isPartOf}` : undefined,
+      
+      // Engagement metrics (always include, initialize if not present)
+      engagement: {
+        views: companion.engagement?.views || 0,
+        likes: companion.engagement?.likes || 0,
+        comments: companion.engagement?.comments || 0,
+        shares: companion.engagement?.shares || 0,
+        lastUpdated: companion.engagement?.lastUpdated || companion.uploadedAt,
+        engagementHistory: companion.engagement?.engagementHistory || []
+      },
+      
+      // par Noir specific
+      publicToken: companion.publicToken,
+      isPublic: companion.visibility === 'public'
+    };
+    
+    // Remove undefined fields
+    Object.keys(publicMetadata).forEach(key => {
+      if (publicMetadata[key] === undefined) {
+        delete publicMetadata[key];
+      }
+    });
+    
+    return publicMetadata;
+  }
   
   /**
    * Get service account email for sharing folders
@@ -306,10 +448,24 @@ export class GoogleDriveMetadataService {
           if (getResponse.ok) {
             const existingMetadataText = await getResponse.text();
             try {
-              const existingMetadata = JSON.parse(existingMetadataText);
-              // Merge with new metadata, preserving existing publicToken if it exists
+              const existingMetadata = JSON.parse(existingMetadataText) as CompanionMetadata;
+              // Merge with new metadata, preserving existing fields
               if (existingMetadata.publicToken) {
                 (fileMetadata as any).publicToken = existingMetadata.publicToken;
+              }
+              // Preserve engagement metrics if they exist
+              if (existingMetadata.engagement) {
+                fileMetadata.engagement = existingMetadata.engagement;
+              }
+              // Preserve relationships if they exist
+              if (existingMetadata.inReplyTo) {
+                fileMetadata.inReplyTo = existingMetadata.inReplyTo;
+              }
+              if (existingMetadata.repostOf) {
+                fileMetadata.repostOf = existingMetadata.repostOf;
+              }
+              if (existingMetadata.isPartOf) {
+                fileMetadata.isPartOf = existingMetadata.isPartOf;
               }
             } catch (parseError) {
               console.warn('Failed to parse existing metadata, continuing with new metadata');
@@ -429,6 +585,213 @@ export class GoogleDriveMetadataService {
   }
 
   /**
+   * Get owner file index (contains all files owned by the user)
+   */
+  static async getOwnerFileIndex(
+    accessToken: string,
+    metadataFolderId: string,
+    pnIdentifier: string
+  ): Promise<PublicFileIndex | null> {
+    const searchResponse = await fetch(
+      `https://www.googleapis.com/drive/v3/files?q=name='${this.OWNER_INDEX_FILE_NAME}' and '${metadataFolderId}' in parents and trashed=false&fields=files(id)`,
+      {
+        headers: {
+          'Authorization': `Bearer ${accessToken}`
+        }
+      }
+    );
+
+    if (!searchResponse.ok) {
+      return null;
+    }
+
+    const searchData = await searchResponse.json();
+    
+    if (!searchData.files || searchData.files.length === 0) {
+      return null;
+    }
+
+    // Download existing index
+    const fileId = searchData.files[0].id;
+    const getResponse = await fetch(
+      `https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`,
+      {
+        headers: {
+          'Authorization': `Bearer ${accessToken}`
+        }
+      }
+    );
+
+    if (!getResponse.ok) {
+      return null;
+    }
+
+    try {
+      return await getResponse.json();
+    } catch {
+      return {
+        identifier: pnIdentifier,
+        files: [],
+        updatedAt: new Date().toISOString()
+      };
+    }
+  }
+
+  /**
+   * Update owner file index (includes ALL files, regardless of visibility)
+   */
+  static async updateOwnerFileIndex(
+    accessToken: string,
+    pnIdentifier: string,
+    fileMetadata: CompanionMetadata
+  ): Promise<void> {
+    try {
+      const pnFolderId = await this.getOrCreatePNFolder(accessToken, pnIdentifier);
+      const metadataFolderId = await this.getOrCreateMetadataFolder(accessToken, pnFolderId);
+
+      let index = await this.getOwnerFileIndex(accessToken, metadataFolderId, pnIdentifier);
+      
+      if (!index) {
+        index = {
+          identifier: pnIdentifier,
+          files: [],
+          updatedAt: new Date().toISOString()
+        };
+      }
+
+      // Convert companion metadata to index entry format (includes thumbnails)
+      const indexEntry: any = {
+        fileId: fileMetadata.fileId,
+        googleDriveFileId: fileMetadata.googleDriveFileId,
+        fileName: fileMetadata.fileName,
+        originalName: fileMetadata.originalName,
+        mimeType: fileMetadata.mimeType,
+        size: fileMetadata.size,
+        visibility: fileMetadata.visibility,
+        uploadedAt: fileMetadata.uploadedAt,
+        owner: fileMetadata.owner,
+        tags: fileMetadata.tags || [],
+        description: fileMetadata.description,
+        thumbnail: fileMetadata.thumbnail, // Include thumbnail for owner access
+        publicToken: fileMetadata.publicToken,
+        engagement: fileMetadata.engagement,
+        inReplyTo: fileMetadata.inReplyTo,
+        repostOf: fileMetadata.repostOf,
+        isPartOf: fileMetadata.isPartOf
+      };
+
+      // Update or add file entry (all files go in owner index)
+      const fileIndex = index.files.findIndex(
+        f => f.googleDriveFileId === fileMetadata.googleDriveFileId
+      );
+
+      if (fileIndex >= 0) {
+        // Update existing entry
+        const existingEntry = index.files[fileIndex] as any;
+        
+        // Preserve publicToken if new one not provided
+        if (!indexEntry.publicToken && existingEntry.publicToken) {
+          indexEntry.publicToken = existingEntry.publicToken;
+        }
+        
+        // Merge engagement metrics
+        if (existingEntry.engagement) {
+          indexEntry.engagement = {
+            views: indexEntry.engagement?.views ?? existingEntry.engagement.views ?? 0,
+            likes: indexEntry.engagement?.likes ?? existingEntry.engagement.likes ?? 0,
+            comments: indexEntry.engagement?.comments ?? existingEntry.engagement.comments ?? 0,
+            shares: indexEntry.engagement?.shares ?? existingEntry.engagement.shares ?? 0,
+            lastUpdated: indexEntry.engagement?.lastUpdated || existingEntry.engagement.lastUpdated || fileMetadata.uploadedAt,
+            engagementHistory: [
+              ...(existingEntry.engagement.engagementHistory || []),
+              ...(indexEntry.engagement?.engagementHistory || [])
+            ]
+          };
+        }
+        
+        index.files[fileIndex] = indexEntry;
+      } else {
+        // Add new file to owner index
+        index.files.push(indexEntry);
+      }
+
+      index.updatedAt = new Date().toISOString();
+
+      // Save owner index file
+      const indexContent = JSON.stringify(index, null, 2);
+      const indexBlob = new Blob([indexContent], { type: 'application/json' });
+
+      // Check if index file exists
+      const searchResponse = await fetch(
+        `https://www.googleapis.com/drive/v3/files?q=name='${this.OWNER_INDEX_FILE_NAME}' and '${metadataFolderId}' in parents and trashed=false&fields=files(id)`,
+        {
+          headers: {
+            'Authorization': `Bearer ${accessToken}`
+          }
+        }
+      );
+
+      if (!searchResponse.ok) {
+        throw new Error('Failed to search for owner index file');
+      }
+
+      const searchData = await searchResponse.json();
+      const formData = new FormData();
+      
+      if (searchData.files && searchData.files.length > 0) {
+        // Update existing index
+        const fileId = searchData.files[0].id;
+        formData.append('metadata', new Blob([JSON.stringify({
+          name: this.OWNER_INDEX_FILE_NAME
+        })], { type: 'application/json' }));
+        formData.append('file', indexBlob);
+
+        const updateResponse = await fetch(
+          `https://www.googleapis.com/drive/v3/files/${fileId}?uploadType=multipart`,
+          {
+            method: 'PATCH',
+            headers: {
+              'Authorization': `Bearer ${accessToken}`
+            },
+            body: formData
+          }
+        );
+
+        if (!updateResponse.ok) {
+          throw new Error('Failed to update owner index file');
+        }
+      } else {
+        // Create new owner index file
+        formData.append('metadata', new Blob([JSON.stringify({
+          name: this.OWNER_INDEX_FILE_NAME,
+          parents: [metadataFolderId]
+        })], { type: 'application/json' }));
+        formData.append('file', indexBlob);
+
+        const createResponse = await fetch(
+          `https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart`,
+          {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${accessToken}`
+            },
+            body: formData
+          }
+        );
+
+        if (!createResponse.ok) {
+          throw new Error('Failed to create owner index file');
+        }
+      }
+
+      console.log(`✅ Updated owner file index for ${pnIdentifier}`);
+    } catch (error) {
+      console.error('Error updating owner file index:', error);
+      throw error;
+    }
+  }
+
+  /**
    * Update public file index
    */
   static async updatePublicFileIndex(
@@ -456,7 +819,16 @@ export class GoogleDriveMetadataService {
       );
 
       if (fileMetadata.visibility === 'public') {
+        // Convert companion metadata to public metadata (semantic web format)
+        const publicMetadata = this.companionToPublicMetadata(
+          fileMetadata,
+          fileMetadata.owner.did
+        );
+        
+        // Create index entry with full semantic metadata
         const indexEntry: any = {
+          ...publicMetadata,
+          // Keep legacy fields for compatibility with existing index structure
           fileId: fileMetadata.fileId,
           googleDriveFileId: fileMetadata.googleDriveFileId,
           fileName: fileMetadata.fileName,
@@ -468,17 +840,39 @@ export class GoogleDriveMetadataService {
           owner: fileMetadata.owner,
           tags: fileMetadata.tags || [],
           description: fileMetadata.description,
-          thumbnail: fileMetadata.thumbnail, // Include thumbnail if available
-          publicToken: fileMetadata.publicToken // Include share token for public files
+          thumbnail: fileMetadata.thumbnail,
+          publicToken: fileMetadata.publicToken
         };
 
         const isNewPublicFile = fileIndex < 0;
         
         if (fileIndex >= 0) {
-          // Update existing entry, preserve publicToken if new one not provided
-          if (!indexEntry.publicToken && index.files[fileIndex].publicToken) {
-            indexEntry.publicToken = index.files[fileIndex].publicToken;
+          // Update existing entry, preserve fields if new ones not provided
+          const existingEntry = index.files[fileIndex] as any;
+          
+          // Preserve publicToken if new one not provided
+          if (!indexEntry.publicToken && existingEntry.publicToken) {
+            indexEntry.publicToken = existingEntry.publicToken;
           }
+          
+          // Merge engagement metrics (preserve existing engagement data)
+          if (existingEntry.engagement) {
+            // Merge: use existing engagement values, but allow new ones to override if provided
+            indexEntry.engagement = {
+              views: indexEntry.engagement?.views ?? existingEntry.engagement.views ?? 0,
+              likes: indexEntry.engagement?.likes ?? existingEntry.engagement.likes ?? 0,
+              comments: indexEntry.engagement?.comments ?? existingEntry.engagement.comments ?? 0,
+              shares: indexEntry.engagement?.shares ?? existingEntry.engagement.shares ?? 0,
+              lastUpdated: indexEntry.engagement?.lastUpdated || existingEntry.engagement.lastUpdated || fileMetadata.uploadedAt,
+              // Preserve engagement history (append new events if any)
+              engagementHistory: [
+                ...(existingEntry.engagement.engagementHistory || []),
+                ...(indexEntry.engagement?.engagementHistory || [])
+              ]
+            };
+          }
+          // If no existing engagement, use the new one (already set from companionToPublicMetadata)
+          
           index.files[fileIndex] = indexEntry;
         } else {
           // Only add to index if public

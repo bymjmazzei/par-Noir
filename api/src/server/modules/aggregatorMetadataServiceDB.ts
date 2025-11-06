@@ -5,7 +5,7 @@
  */
 
 import { getDatabasePool } from '../utils/database';
-import { PublicMetadata, CentralIndexEntry, CentralIndexResponse } from './aggregatorMetadataService';
+import { PublicMetadata, CentralIndexEntry, CentralIndexResponse, EngagementMetrics } from './aggregatorMetadataService';
 
 export class AggregatorMetadataServiceDB {
   private static instance: AggregatorMetadataServiceDB;
@@ -33,7 +33,7 @@ export class AggregatorMetadataServiceDB {
 
     const db = getDatabasePool();
 
-    // Ensure isPublic is true
+    // Ensure isPublic is true and enhance metadata structure
     const validatedMetadata: PublicMetadata = {
       ...metadata,
       isPublic: true, // Always true when submitted to public index
@@ -41,7 +41,23 @@ export class AggregatorMetadataServiceDB {
       backendFileId: metadata.backendFileId || metadata.fileId,
       name: metadata.name || metadata.title || metadata.fileId,
       uploadDate: metadata.uploadDate || new Date().toISOString(),
-      fileType: metadata.fileType || 'other'
+      fileType: metadata.fileType || 'other',
+      // Ensure @context is always an array
+      "@context": Array.isArray(metadata["@context"]) 
+        ? metadata["@context"] 
+        : metadata["@context"] 
+          ? [metadata["@context"]] 
+          : ['https://schema.org/', 'https://parnoir.com/ns/v1#'],
+      // Ensure @id is set if not provided
+      "@id": metadata["@id"] || `https://parnoir.com/resource/${metadata.fileId}`,
+      // Initialize engagement metrics if not provided
+      engagement: metadata.engagement || {
+        views: 0,
+        likes: 0,
+        comments: 0,
+        shares: 0,
+        lastUpdated: metadata.uploadDate || new Date().toISOString()
+      }
     };
 
     try {
@@ -255,6 +271,174 @@ export class AggregatorMetadataServiceDB {
       return orphanedFileIds.length;
     } catch (error) {
       console.error('❌ Failed to remove orphaned files:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Update engagement metrics for a file
+   */
+  async updateEngagement(
+    fileId: string,
+    engagementType: 'like' | 'view' | 'share' | 'comment',
+    userDid?: string
+  ): Promise<PublicMetadata | null> {
+    const db = getDatabasePool();
+
+    try {
+      // Get current metadata
+      const current = await this.getFileMetadata(fileId);
+      if (!current) {
+        return null;
+      }
+
+      const metadata = current.metadata;
+      const engagement = metadata.engagement || {
+        views: 0,
+        likes: 0,
+        comments: 0,
+        shares: 0,
+        lastUpdated: metadata.uploadDate || new Date().toISOString(),
+        engagementHistory: []
+      };
+
+      // Update engagement count
+      switch (engagementType) {
+        case 'like':
+          engagement.likes = (engagement.likes || 0) + 1;
+          break;
+        case 'view':
+          engagement.views = (engagement.views || 0) + 1;
+          break;
+        case 'share':
+          engagement.shares = (engagement.shares || 0) + 1;
+          break;
+        case 'comment':
+          engagement.comments = (engagement.comments || 0) + 1;
+          break;
+      }
+
+      // Add to engagement history
+      if (!engagement.engagementHistory) {
+        engagement.engagementHistory = [];
+      }
+      engagement.engagementHistory.push({
+        type: engagementType,
+        did: userDid,
+        timestamp: new Date().toISOString()
+      });
+
+      engagement.lastUpdated = new Date().toISOString();
+
+      // Update metadata
+      const updatedMetadata: PublicMetadata = {
+        ...metadata,
+        engagement
+      };
+
+      // Save to database
+      await db.query(
+        `UPDATE aggregator_metadata 
+         SET metadata = $1, updated_at = NOW()
+         WHERE file_id = $2`,
+        [JSON.stringify(updatedMetadata), fileId]
+      );
+
+      console.log(`✅ Updated ${engagementType} for file: ${fileId}`);
+      return updatedMetadata;
+    } catch (error) {
+      console.error(`❌ Failed to update engagement for file ${fileId}:`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * Update metadata fields (title, description, tags, etc.)
+   */
+  async updateMetadata(
+    fileId: string,
+    updates: {
+      name?: string;
+      description?: string;
+      keywords?: string[];
+      tags?: string[];
+    }
+  ): Promise<PublicMetadata | null> {
+    const db = getDatabasePool();
+
+    try {
+      // Get current metadata
+      const current = await this.getFileMetadata(fileId);
+      if (!current) {
+        return null;
+      }
+
+      const metadata = current.metadata;
+
+      // Apply updates
+      const updatedMetadata: PublicMetadata = {
+        ...metadata,
+        ...(updates.name && { name: updates.name }),
+        ...(updates.description !== undefined && { description: updates.description }),
+        ...(updates.keywords && { keywords: updates.keywords }),
+        // Keep legacy tags for backward compatibility
+        ...(updates.tags && { tags: updates.tags, keywords: updates.tags })
+      };
+
+      // Ensure keywords and tags are in sync
+      if (updatedMetadata.keywords && !updatedMetadata.tags) {
+        updatedMetadata.tags = updatedMetadata.keywords;
+      }
+      if (updatedMetadata.tags && !updatedMetadata.keywords) {
+        updatedMetadata.keywords = updatedMetadata.tags;
+      }
+
+      // Save to database
+      await db.query(
+        `UPDATE aggregator_metadata 
+         SET metadata = $1, updated_at = NOW()
+         WHERE file_id = $2`,
+        [JSON.stringify(updatedMetadata), fileId]
+      );
+
+      console.log(`✅ Updated metadata for file: ${fileId}`);
+      return updatedMetadata;
+    } catch (error) {
+      console.error(`❌ Failed to update metadata for file ${fileId}:`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get curated feed for a specific DID (all files where isPartOf matches the DID)
+   */
+  async getCuratedFeed(did: string): Promise<CentralIndexEntry[]> {
+    const db = getDatabasePool();
+
+    try {
+      // Query for files where isPartOf matches the DID or creator matches the DID
+      const result = await db.query(
+        `SELECT file_id, metadata, submitted_at, pn_identifier
+         FROM aggregator_metadata
+         WHERE metadata->>'isPublic' = 'true'
+         AND (
+           metadata->>'isPartOf' = $1 OR
+           metadata->'creator'->>'@id' = $1 OR
+           metadata->'creator'->'identifier'->>'value' = $1 OR
+           metadata->'author'->>'did' = $1
+         )
+         ORDER BY updated_at DESC`,
+        [did]
+      );
+
+      return result.rows.map(row => ({
+        fileId: row.file_id,
+        metadata: row.metadata as PublicMetadata,
+        submittedAt: row.submitted_at.toISOString(),
+        pnIdentifier: row.pn_identifier
+      }));
+    } catch (error) {
+      console.error(`❌ Failed to get curated feed for DID ${did}:`, error);
       throw error;
     }
   }

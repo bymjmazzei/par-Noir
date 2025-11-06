@@ -755,37 +755,44 @@ export class GoogleDriveBackend extends AbstractStorageBackend {
           ? fileName.replace('.encrypted', '') 
           : fileName;
 
-        // Generate thumbnail for image files
-        let thumbnail: string | undefined = undefined;
+        // No thumbnail generation - we'll display the actual file at smaller sizes
+        // (same approach as browse.parnoir.com)
         const mimeType = uploadedFile.mimeType || file.type || 'application/octet-stream';
-        if (mimeType.startsWith('image/')) {
-          // Generate actual thumbnail from the image file
-          try {
-            thumbnail = await this.generateImageThumbnail(file);
-          } catch (thumbError) {
-            console.warn('Failed to generate thumbnail, skipping:', thumbError);
-          }
-        }
 
-        const companionMetadata = {
-          fileId: metadata.fileId || uploadedFile.id,
-          googleDriveFileId: uploadedFile.id,
-          fileName: fileName,
-          originalName: originalFileName,
-          mimeType: mimeType,
-          size: parseInt(uploadedFile.size || file.size.toString() || '0', 10),
-          visibility: metadata.visibility || 'private',
-          uploadedAt: new Date().toISOString(),
-          owner: {
-            did: ownerDid || undefined,
-            identifier: metadata.pnIdentifier
-          },
-          tags: [],
-          description: undefined,
-          metadata: {},
-          publicToken: metadata.publicToken || undefined, // Include share token if provided
-          thumbnail: thumbnail // Include thumbnail for images
-        };
+             const companionMetadata = {
+               fileId: metadata.fileId || uploadedFile.id,
+               googleDriveFileId: uploadedFile.id,
+               fileName: fileName,
+               originalName: originalFileName,
+               mimeType: mimeType,
+               size: parseInt(uploadedFile.size || file.size.toString() || '0', 10),
+               visibility: metadata.visibility || 'private',
+               uploadedAt: new Date().toISOString(),
+               owner: {
+                 did: ownerDid || undefined,
+                 identifier: metadata.pnIdentifier
+               },
+               tags: metadata.tags || [],
+               description: metadata.description || undefined,
+               metadata: metadata.metadata || {},
+               publicToken: metadata.publicToken || undefined, // Share token generated on upload - available for owner viewing and public sharing
+               // No thumbnail - we display the actual file at smaller sizes
+               
+               // Content relationships
+               inReplyTo: metadata.inReplyTo || undefined,
+               repostOf: metadata.repostOf || undefined,
+               isPartOf: metadata.isPartOf || ownerDid || undefined, // Default to creator's curated feed
+               
+               // Initialize engagement metrics
+               engagement: {
+                 views: 0,
+                 likes: 0,
+                 comments: 0,
+                 shares: 0,
+                 lastUpdated: new Date().toISOString(),
+                 engagementHistory: []
+               }
+             };
 
         await GoogleDriveMetadataService.createCompanionMetadataFile(
           this.token,
@@ -793,6 +800,18 @@ export class GoogleDriveBackend extends AbstractStorageBackend {
           companionMetadata
         );
         console.log('✅ [uploadFile] Companion metadata file created successfully');
+
+        // Always update owner index (contains ALL files for the owner)
+        try {
+          await GoogleDriveMetadataService.updateOwnerFileIndex(
+            this.token,
+            metadata.pnIdentifier,
+            companionMetadata
+          );
+          console.log('✅ [uploadFile] Owner file index updated successfully');
+        } catch (ownerIndexError) {
+          console.warn('⚠️ [uploadFile] Failed to update owner index (non-critical):', ownerIndexError);
+        }
 
         // Always call updatePublicFileIndex - it will add if public, remove if not
         // This ensures the index stays in sync with file visibility

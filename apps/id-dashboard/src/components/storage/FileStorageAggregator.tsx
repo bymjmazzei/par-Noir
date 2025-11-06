@@ -3,7 +3,7 @@
  * Dashboard aggregator that collects files from all connected storage backends
  */
 import React, { useState, useEffect } from 'react';
-import { HardDrive, Upload, Download, Trash2, File, RefreshCw, AlertCircle, Lock, Globe, EyeOff } from 'lucide-react';
+import { HardDrive, Upload, Download, Trash2, File, RefreshCw, AlertCircle, Lock, Globe, EyeOff, Info, X, Edit, Eye, Grid, List } from 'lucide-react';
 import { getFileAggregatorService } from '../../services/aggregator/FileAggregatorService';
 import { getEncryptionService } from '../../services/aggregator/EncryptionService';
 import { getMetadataIndexService } from '../../services/metadata/MetadataIndexService';
@@ -28,7 +28,19 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
   const [storageQuotas, setStorageQuotas] = useState<Map<string, any>>(new Map());
   const [resolvedAuth, setResolvedAuth] = useState<{ pnName: string; publicKey: string } | null>(null);
   
-  // Initialize services - use useMemo to avoid re-initializing on every render
+  const [showDesktopAppInfo, setShowDesktopAppInfo] = useState(false);
+  const [editingFile, setEditingFile] = useState<AggregatedFile | null>(null);
+  const [editForm, setEditForm] = useState<{ name: string; description: string; tags: string }>({ name: '', description: '', tags: '' });
+  const [viewMode, setViewMode] = useState<'list' | 'grid'>('list');
+  const [viewingFile, setViewingFile] = useState<AggregatedFile | null>(null);
+  const [filePreviewUrls, setFilePreviewUrls] = useState<Map<string, string>>(new Map()); // fileId -> decrypted blob URL
+  const [loadingPreviews, setLoadingPreviews] = useState<Set<string>>(new Set());
+  // Version check - this will help verify new code is loading
+  React.useEffect(() => {
+    console.log('🚀 [FileStorageAggregator] Component loaded - Version: 2024-12-05-v2');
+  }, []);
+
+  // Initialize services - useMemo to avoid re-initializing on every render
   const aggregatorService = React.useMemo(() => {
     try {
       return getFileAggregatorService();
@@ -473,10 +485,103 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
         console.warn('⚠️ [loadFiles] Failed to generate pN identifier:', err);
       }
       
-      // Aggregate files - backend will use pnIdentifier if available, or search for folders if not
+      // PRIMARY: Load files from owner-file-index.json (contains ALL files - private, public, friends)
+      // This is the source of truth for the owner's files
+      const backend = aggregatorService?.getBackend('google_drive');
+      if (backend && backend.isConnected() && currentPnIdentifier) {
+        try {
+          const { GoogleDriveMetadataService } = await import('../../services/storage/GoogleDriveMetadataService');
+          const token = (backend as any).token || localStorage.getItem('google_drive_token');
+          
+          if (token) {
+            console.log('📋 [loadFiles] Loading files from owner index...');
+            const pnFolderId = await GoogleDriveMetadataService.getOrCreatePNFolder(token, currentPnIdentifier);
+            const metadataFolderId = await GoogleDriveMetadataService.getOrCreateMetadataFolder(token, pnFolderId);
+            const ownerIndex = await GoogleDriveMetadataService.getOwnerFileIndex(token, metadataFolderId, currentPnIdentifier);
+            
+            if (ownerIndex && ownerIndex.files && ownerIndex.files.length > 0) {
+              console.log(`✅ [loadFiles] Found ${ownerIndex.files.length} file(s) in owner index`);
+              
+              // Convert owner index entries to AggregatedFile format
+              const aggregatedFiles: AggregatedFile[] = ownerIndex.files.map((entry: any) => ({
+                id: entry.fileId,
+                backend: 'google_drive',
+                backendFileId: entry.googleDriveFileId,
+                name: entry.fileName,
+                originalName: entry.originalName || entry.fileName,
+                mimeType: entry.mimeType,
+                size: entry.size?.toString() || '0',
+                encrypted: true, // All files in owner index are encrypted
+                visibility: entry.visibility || 'private'
+              }));
+              
+              setFiles(aggregatedFiles);
+              
+              // Load metadata (convert owner index entries to PublicMetadata format)
+              const metadataMap = new Map<string, PublicMetadata>();
+              ownerIndex.files.forEach((entry: any) => {
+                const fileId = entry.fileId;
+                const publicMetadata: PublicMetadata = {
+                  fileId: fileId,
+                  backend: 'google_drive',
+                  backendFileId: entry.googleDriveFileId,
+                  name: entry.originalName || entry.fileName,
+                  description: entry.description,
+                  keywords: entry.tags || [],
+                  uploadDate: entry.uploadedAt,
+                  fileType: entry.mimeType?.split('/')[0] || 'other',
+                  isPublic: entry.visibility === 'public',
+                  creator: entry.owner?.did ? {
+                    '@type': 'Person',
+                    '@id': entry.owner.did,
+                    identifier: {
+                      '@type': 'PropertyValue',
+                      name: 'DID',
+                      value: entry.owner.did
+                    }
+                  } : undefined,
+                  thumbnail: entry.thumbnail,
+                  publicToken: entry.publicToken, // Share token for owner viewing
+                  engagement: entry.engagement,
+                  inReplyTo: entry.inReplyTo,
+                  repostOf: entry.repostOf,
+                  isPartOf: entry.isPartOf,
+                  '@context': ['https://schema.org/'],
+                  '@type': 'CreativeWork',
+                  '@id': `https://parnoir.com/resource/${fileId}`
+                };
+                metadataMap.set(fileId, publicMetadata);
+                
+                // Cache share token if available
+                if (entry.publicToken) {
+                  try {
+                    const token = typeof entry.publicToken === 'string'
+                      ? JSON.parse(entry.publicToken)
+                      : entry.publicToken;
+                    shareTokenCache.current.set(entry.googleDriveFileId, token);
+                    console.log('💾 [loadFiles] Cached share token from owner index for file:', fileId);
+                  } catch (e) {
+                    console.warn('⚠️ [loadFiles] Failed to cache token from owner index:', e);
+                  }
+                }
+              });
+              
+              setFileMetadataMap(metadataMap);
+              setIsLoading(false);
+              return; // Successfully loaded from owner index
+            } else {
+              console.log('📋 [loadFiles] Owner index is empty or doesn\'t exist, falling back to scanning Google Drive');
+            }
+          }
+        } catch (ownerIndexError) {
+          console.warn('⚠️ [loadFiles] Failed to load from owner index, falling back to scanning:', ownerIndexError);
+        }
+      }
+      
+      // FALLBACK: Scan Google Drive if owner index doesn't exist or is empty (backwards compatibility)
       try {
         const aggregatedFiles = await aggregatorService.aggregateFiles(currentPnIdentifier || undefined);
-        console.log(`📁 [loadFiles] Found ${aggregatedFiles.length} file(s)`);
+        console.log(`📁 [loadFiles] Found ${aggregatedFiles.length} file(s) from Google Drive scan`);
         setFiles(aggregatedFiles);
         
         // Load metadata for all files (non-blocking)
@@ -499,6 +604,108 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
 
   const loadFileMetadata = async (filesToLoad: AggregatedFile[]) => {
     try {
+      console.log('📋 [Metadata] Loading file metadata...', { fileCount: filesToLoad.length });
+      // Load metadata from owner index for all files (since user owns them)
+      const backend = aggregatorService?.getBackend('google_drive');
+      if (backend && backend.isConnected() && resolvedAuth?.pnName) {
+        try {
+          const { GoogleDriveMetadataService } = await import('../../services/storage/GoogleDriveMetadataService');
+          const token = (backend as any).token || localStorage.getItem('google_drive_token');
+          
+          if (token) {
+            console.log('✅ [Metadata] Google Drive connected, loading owner index...');
+            // Generate stable pN identifier
+            let pnIdentifier: string;
+            if (authenticatedUser?.id && resolvedAuth?.publicKey) {
+              const combined = `${authenticatedUser.id}:${resolvedAuth.publicKey}`;
+              const encoder = new TextEncoder();
+              const data = encoder.encode(combined);
+              const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+              const hashArray = Array.from(new Uint8Array(hashBuffer));
+              const hexHash = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+              const shortHash = hexHash.substring(0, 12);
+              pnIdentifier = `pn-${shortHash}`;
+            } else {
+              pnIdentifier = resolvedAuth.pnName;
+            }
+
+            // Get pN folder and metadata folder
+            const pnFolderId = await GoogleDriveMetadataService.getOrCreatePNFolder(token, pnIdentifier);
+            const metadataFolderId = await GoogleDriveMetadataService.getOrCreateMetadataFolder(token, pnFolderId);
+            
+            // Load owner index (contains all files with thumbnails)
+            const ownerIndex = await GoogleDriveMetadataService.getOwnerFileIndex(token, metadataFolderId, pnIdentifier);
+            
+            if (ownerIndex && ownerIndex.files) {
+              const metadataMap = new Map<string, PublicMetadata>();
+              
+              // Create a map of backendFileId to metadata
+              const indexMap = new Map<string, any>();
+              ownerIndex.files.forEach(entry => {
+                indexMap.set(entry.googleDriveFileId, entry);
+              });
+
+              // Match files with owner index entries
+              for (const file of filesToLoad) {
+                const indexEntry = indexMap.get(file.backendFileId);
+                if (indexEntry) {
+                  // Convert to PublicMetadata format
+                  const publicMetadata: PublicMetadata = {
+                    fileId: indexEntry.fileId || file.id,
+                    backend: file.backend,
+                    backendFileId: indexEntry.googleDriveFileId,
+                    name: indexEntry.originalName || indexEntry.fileName,
+                    description: indexEntry.description,
+                    keywords: indexEntry.tags || [],
+                    uploadDate: indexEntry.uploadedAt,
+                    fileType: indexEntry.mimeType?.split('/')[0] || 'other',
+                    isPublic: indexEntry.visibility === 'public',
+                    creator: indexEntry.owner?.did ? {
+                      '@type': 'Person',
+                      '@id': indexEntry.owner.did,
+                      identifier: {
+                        '@type': 'PropertyValue',
+                        name: 'DID',
+                        value: indexEntry.owner.did
+                      }
+                    } : undefined,
+                    thumbnail: indexEntry.thumbnail,
+                    publicToken: indexEntry.publicToken, // Share token stored on upload - available for owner viewing
+                    engagement: indexEntry.engagement,
+                    inReplyTo: indexEntry.inReplyTo,
+                    repostOf: indexEntry.repostOf,
+                    isPartOf: indexEntry.isPartOf,
+                    '@context': ['https://schema.org/'],
+                    '@type': 'CreativeWork',
+                    '@id': `https://parnoir.com/resource/${indexEntry.fileId || file.id}`
+                  };
+                  metadataMap.set(file.id, publicMetadata);
+                  
+                  // If token exists, cache it for quick access
+                  if (indexEntry.publicToken) {
+                    try {
+                      const token = typeof indexEntry.publicToken === 'string'
+                        ? JSON.parse(indexEntry.publicToken)
+                        : indexEntry.publicToken;
+                      shareTokenCache.current.set(file.backendFileId, token);
+                      console.log('💾 [Metadata] Cached share token from owner index for file:', file.id);
+                    } catch (e) {
+                      console.warn('⚠️ [Metadata] Failed to cache token from owner index:', e);
+                    }
+                  }
+                }
+              }
+              
+              setFileMetadataMap(metadataMap);
+              return; // Successfully loaded from owner index
+            }
+          }
+        } catch (ownerIndexError) {
+          console.warn('Failed to load from owner index, falling back to metadata service:', ownerIndexError);
+        }
+      }
+
+      // Fallback to metadata index service if owner index not available
       if (!metadataIndexService) {
         return;
       }
@@ -572,16 +779,16 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
           mimeCategory === 'audio' ? 'AudioObject' :
           'CreativeWork';
         
-        // Generate URI for this resource
-        const resourceUri = `https://parnoir.com/file/${file.id}`;
+        // Generate resource URI (consistent with metadata service)
+        const resourceUri = `https://parnoir.com/resource/${file.id}`;
         const didUri = resolvedAuth.publicKey.startsWith('did:') 
           ? resolvedAuth.publicKey 
           : `did:key:${resolvedAuth.publicKey}`;
         
         const publicMetadata: PublicMetadata = {
           "@context": [
-            "https://schema.org",
-            "https://parnoir.com/contexts/metadata/v1"
+            "https://schema.org/",
+            "https://parnoir.com/ns/v1#"
           ],
           "@type": schemaType,
           "@id": resourceUri,
@@ -607,6 +814,20 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
               name: "DID",
               value: resolvedAuth.publicKey
             }
+          },
+          
+          // Legacy author support (for backward compatibility)
+          author: {
+            did: didUri
+          },
+          
+          // Initialize engagement metrics
+          engagement: {
+            views: 0,
+            likes: 0,
+            comments: 0,
+            shares: 0,
+            lastUpdated: file.modifiedTime || new Date().toISOString()
           },
           
           // par Noir specific
@@ -1202,7 +1423,11 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
           backendId,
           new FileConstructor([encryptedBlob], encryptedFileName, { type: 'application/json' }),
           folderId,
-          { fileName: encryptedFileName, pnIdentifier } // Pass pN identifier for folder management
+          { 
+            fileName: encryptedFileName, 
+            pnIdentifier,
+            publicToken: shareToken // Pass share token so it's stored in metadata on upload
+          }
         );
 
         // Store share token in cache if generated (keyed by backend file ID for easy lookup)
@@ -1233,6 +1458,489 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
       }
     }
   };
+
+  const handleEditMetadata = (file: AggregatedFile) => {
+    const metadata = fileMetadataMap.get(file.id);
+    setEditForm({
+      name: metadata?.name || file.encrypted ? file.originalName || file.name.replace('.encrypted', '') : file.name,
+      description: metadata?.description || '',
+      tags: (metadata?.keywords || metadata?.tags || []).join(', ')
+    });
+    setEditingFile(file);
+  };
+
+  const handleSaveMetadata = async () => {
+    if (!editingFile) return;
+
+    try {
+      setIsLoading(true);
+      setError(null);
+
+      // Parse tags from comma-separated string
+      const tags = editForm.tags
+        .split(',')
+        .map(t => t.trim())
+        .filter(t => t.length > 0);
+
+      // Update via API endpoint
+      const apiEndpoint = import.meta.env.VITE_API_ENDPOINT || 'https://api.parnoir.com';
+      const response = await fetch(`${apiEndpoint}/api/aggregator/metadata-index/${editingFile.id}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          name: editForm.name,
+          description: editForm.description,
+          keywords: tags,
+          tags: tags
+        }),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Failed to update metadata: ${errorText}`);
+      }
+
+      const updatedMetadata = await response.json();
+
+      // Also update Google Drive metadata file if we have access
+      const backend = aggregatorService?.getBackend(editingFile.backend);
+      if (backend && backend.isConnected() && resolvedAuth?.pnName) {
+        try {
+          const { GoogleDriveMetadataService } = await import('../../services/storage/GoogleDriveMetadataService');
+          const token = (backend as any).token || localStorage.getItem('google_drive_token');
+          
+          if (token) {
+            // Generate stable pN identifier
+            let pnIdentifier: string;
+            if (authenticatedUser?.id && resolvedAuth?.publicKey) {
+              const combined = `${authenticatedUser.id}:${resolvedAuth.publicKey}`;
+              const encoder = new TextEncoder();
+              const data = encoder.encode(combined);
+              const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+              const hashArray = Array.from(new Uint8Array(hashBuffer));
+              const hexHash = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+              const shortHash = hexHash.substring(0, 12);
+              pnIdentifier = `pn-${shortHash}`;
+            } else {
+              pnIdentifier = resolvedAuth.pnName;
+            }
+
+            // Get current metadata from fileMetadataMap or construct from file
+            let currentMetadata = fileMetadataMap.get(editingFile.id);
+            
+            // If no metadata exists, create a basic structure
+            if (!currentMetadata) {
+              currentMetadata = {
+                fileId: editingFile.id,
+                backend: editingFile.backend,
+                backendFileId: editingFile.backendFileId,
+                name: editForm.name,
+                description: editForm.description,
+                keywords: tags,
+                tags: tags,
+                uploadDate: new Date().toISOString(),
+                fileType: editingFile.mimeType?.split('/')[0] || 'other',
+                isPublic: false,
+                creator: {
+                  '@type': 'Person',
+                  '@id': resolvedAuth.publicKey.startsWith('did:') ? resolvedAuth.publicKey : `did:key:${resolvedAuth.publicKey}`,
+                  identifier: {
+                    '@type': 'PropertyValue',
+                    name: 'DID',
+                    value: resolvedAuth.publicKey.startsWith('did:') ? resolvedAuth.publicKey : `did:key:${resolvedAuth.publicKey}`
+                  }
+                }
+              } as PublicMetadata;
+            }
+
+            // Update companion metadata file
+            const companionMetadata = {
+              fileId: editingFile.id,
+              googleDriveFileId: editingFile.backendFileId,
+              fileName: editingFile.name,
+              originalName: editForm.name,
+              mimeType: editingFile.mimeType || 'application/octet-stream',
+              size: parseInt(editingFile.size?.toString() || '0', 10),
+              visibility: currentMetadata.isPublic ? 'public' : 'private',
+              uploadedAt: currentMetadata.uploadDate || new Date().toISOString(),
+              owner: {
+                did: resolvedAuth.publicKey.startsWith('did:') ? resolvedAuth.publicKey : `did:key:${resolvedAuth.publicKey}`,
+                identifier: pnIdentifier
+              },
+              tags: tags,
+              description: editForm.description,
+              metadata: {},
+              publicToken: currentMetadata.publicToken,
+              thumbnail: currentMetadata.thumbnail,
+              inReplyTo: currentMetadata.inReplyTo,
+              repostOf: currentMetadata.repostOf,
+              isPartOf: currentMetadata.isPartOf,
+              engagement: currentMetadata.engagement || {
+                views: 0,
+                likes: 0,
+                comments: 0,
+                shares: 0,
+                lastUpdated: currentMetadata.uploadDate || new Date().toISOString()
+              }
+            };
+
+            // Always update companion metadata (even for private files)
+              await GoogleDriveMetadataService.createCompanionMetadataFile(
+                token,
+                pnIdentifier,
+                companionMetadata
+              );
+
+              // Always update owner index (contains ALL files)
+              await GoogleDriveMetadataService.updateOwnerFileIndex(
+                token,
+                pnIdentifier,
+                companionMetadata
+              );
+
+              // Update public index if public
+              if (currentMetadata.isPublic) {
+                await GoogleDriveMetadataService.updatePublicFileIndex(
+                  token,
+                  pnIdentifier,
+                  companionMetadata
+                );
+              }
+          }
+        } catch (driveError) {
+          console.warn('Failed to update Google Drive metadata (non-critical):', driveError);
+          // Don't fail the whole operation if Google Drive update fails
+        }
+      }
+
+      // Update local state
+      if (updatedMetadata.metadata) {
+        setFileMetadataMap(prev => {
+          const next = new Map(prev);
+          next.set(editingFile.id, updatedMetadata.metadata);
+          return next;
+        });
+      }
+
+      setEditingFile(null);
+      setEditForm({ name: '', description: '', tags: '' });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to update metadata');
+      console.error('Error updating metadata:', err);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleViewFile = async (file: AggregatedFile) => {
+    setViewingFile(file);
+  };
+
+  const loadFilePreview = async (file: AggregatedFile) => {
+    // Skip if already loading or loaded
+    if (loadingPreviews.has(file.id) || filePreviewUrls.has(file.id)) {
+      return;
+    }
+
+    // Only load previews for images and videos
+    const mimeType = file.mimeType || '';
+    if (!mimeType.startsWith('image/') && !mimeType.startsWith('video/')) {
+      return;
+    }
+
+    setLoadingPreviews(prev => new Set(prev).add(file.id));
+
+    try {
+      // Resolve auth credentials - try multiple sources (same as download)
+      let publicKey: string | null = null;
+      let authenticatedUserData: any = authenticatedUser || null;
+
+      // Try 1: Use resolvedAuth state
+      if (resolvedAuth?.publicKey) {
+        publicKey = resolvedAuth.publicKey;
+      }
+      
+      // Try 2: Extract from authenticatedUser prop
+      if (!publicKey && authenticatedUser) {
+        authenticatedUserData = authenticatedUser;
+        publicKey = authenticatedUser.publicKey || 
+          (authenticatedUser.id && authenticatedUser.id.startsWith('did:key:') ? authenticatedUser.id : authenticatedUser.id) || null;
+      }
+
+      // Try 3: Get from localStorage
+      if (!publicKey || !authenticatedUserData) {
+        const authenticatedUserStr = localStorage.getItem('authenticated_user');
+        if (authenticatedUserStr) {
+          try {
+            authenticatedUserData = JSON.parse(authenticatedUserStr);
+            if (!publicKey) {
+              publicKey = authenticatedUserData.publicKey || 
+                (authenticatedUserData.id && authenticatedUserData.id.startsWith('did:key:') ? authenticatedUserData.id : authenticatedUserData.id) || null;
+            }
+          } catch (e) {
+            console.warn('Failed to parse authenticated_user:', e);
+          }
+        }
+      }
+
+      // Try 4: Load from storage
+      if (!publicKey || !authenticatedUserData) {
+        try {
+          const { SecureStorage } = await import('../../utils/storage');
+          const storage = new SecureStorage();
+          await storage.init();
+          const session = await storage.getCurrentSession();
+          
+          if (session) {
+            authenticatedUserData = authenticatedUserData || session;
+            if (!publicKey) {
+              publicKey = (session as any).publicKey || 
+                (session.id && session.id.startsWith('did:key:') ? session.id : session.id) || null;
+            }
+          }
+        } catch (err) {
+          console.warn('Failed to load auth from storage:', err);
+        }
+      }
+
+      // Final check
+      if (!authenticatedUserData?.id || !publicKey) {
+        console.warn('Could not resolve auth for file preview');
+        setLoadingPreviews(prev => {
+          const next = new Set(prev);
+          next.delete(file.id);
+          return next;
+        });
+        return;
+      }
+
+      // Download encrypted file from backend
+      console.log('📥 [Preview] Downloading file from backend...', {
+        fileId: file.id,
+        backend: file.backend,
+        backendFileId: file.backendFileId
+      });
+      
+      const encryptedBlob = await aggregatorService?.downloadFromBackend(
+        file.backend,
+        file.backendFileId
+      );
+
+      if (!encryptedBlob) {
+        console.error('❌ [Preview] Failed to download file from backend');
+        setLoadingPreviews(prev => {
+          const next = new Set(prev);
+          next.delete(file.id);
+          return next;
+        });
+        return;
+      }
+
+      if (!encryptionService) {
+        console.error('❌ [Preview] Encryption service not available');
+        setLoadingPreviews(prev => {
+          const next = new Set(prev);
+          next.delete(file.id);
+          return next;
+        });
+        return;
+      }
+
+      console.log('✅ [Preview] File downloaded, size:', encryptedBlob.size, 'type:', encryptedBlob.type);
+
+      // Check if file has publicToken - use that for decryption (same as aggregator browser)
+      const metadata = fileMetadataMap.get(file.id);
+      if (metadata?.publicToken) {
+        console.log('✅ [Preview] File has publicToken, using token-based decryption (same as aggregator browser)...');
+        try {
+          let token: any;
+          if (typeof metadata.publicToken === 'string') {
+            token = JSON.parse(metadata.publicToken);
+          } else {
+            token = metadata.publicToken;
+          }
+          
+          // Use same token decryption logic as aggregator browser
+          if (!token.shareEncrypted || !token.shareKey) {
+            throw new Error('Share token missing share key or share-encrypted content');
+          }
+          
+          // Import share key
+          const shareKeyBuffer = base64ToArrayBuffer(token.shareKey);
+          const shareKey = await crypto.subtle.importKey(
+            'raw',
+            shareKeyBuffer,
+            { name: 'AES-GCM', length: 256 },
+            false,
+            ['encrypt', 'decrypt']
+          );
+          
+          // Decrypt share-encrypted content
+          const shareEncryptedBuffer = base64ToArrayBuffer(token.shareEncrypted.encrypted);
+          const shareIV = base64ToArrayBuffer(token.shareEncrypted.iv);
+          
+          const decryptedBuffer = await crypto.subtle.decrypt(
+            { name: 'AES-GCM', iv: shareIV },
+            shareKey,
+            shareEncryptedBuffer
+          );
+          
+          const bytes = new Uint8Array(decryptedBuffer);
+          const mimeType = file.mimeType || 'application/octet-stream';
+          const decryptedBlob = new Blob([bytes], { type: mimeType });
+          
+          console.log('✅ [Preview] Token-based decryption successful!');
+          const previewUrl = URL.createObjectURL(decryptedBlob);
+          setFilePreviewUrls(prev => {
+            const next = new Map(prev);
+            next.set(file.id, previewUrl);
+            return next;
+          });
+          console.log('✅ [Preview] Preview URL created for file:', file.id);
+          return; // Success - exit early
+        } catch (tokenError) {
+          console.warn('⚠️ [Preview] Token-based decryption failed, falling back to credential-based:', tokenError);
+          // Fall through to credential-based decryption
+        }
+      }
+
+      // Fallback to credential-based decryption (owner's DID + publicKey)
+      console.log('🔓 [Preview] Using credential-based decryption (owner credentials)...');
+      
+      // Parse encrypted package
+      const encryptedPackageText = await encryptedBlob.text();
+      console.log('📦 [Preview] Encrypted package text length:', encryptedPackageText.length);
+      
+      let encryptedPackage: any;
+      try {
+        encryptedPackage = JSON.parse(encryptedPackageText);
+        console.log('✅ [Preview] Parsed encrypted package, keys:', Object.keys(encryptedPackage));
+      } catch (parseError) {
+        console.error('❌ [Preview] Failed to parse encrypted package:', parseError);
+        throw new Error('Failed to parse encrypted file package');
+      }
+
+      // Create session for decryption
+      const session: AuthSession = {
+        id: authenticatedUserData.id,
+        publicKey: publicKey,
+        accessToken: authenticatedUserData.accessToken,
+        nickname: authenticatedUserData?.nickname
+      };
+
+      // Decrypt file using owner credentials
+      console.log('🔓 [Preview] Attempting credential-based decryption...', {
+        fileId: file.id,
+        backendFileId: file.backendFileId,
+        hasSessionId: !!session.id,
+        hasPublicKey: !!session.publicKey,
+        sessionIdPrefix: session.id?.substring(0, 20),
+        publicKeyPrefix: session.publicKey?.substring(0, 20),
+        encryptedPackageKeys: Object.keys(encryptedPackage)
+      });
+      
+      const result = await encryptionService.decryptFileFromDownload(encryptedPackage, session);
+      const decryptedBlob = result.decryptedBlob;
+
+      console.log('✅ [Preview] Decryption successful, creating preview URL...', {
+        fileId: file.id,
+        blobSize: decryptedBlob.size,
+        blobType: decryptedBlob.type
+      });
+
+      // Create blob URL for direct display (no thumbnail generation - just use the actual file)
+      const previewUrl = URL.createObjectURL(decryptedBlob);
+      setFilePreviewUrls(prev => {
+        const next = new Map(prev);
+        next.set(file.id, previewUrl);
+        return next;
+      });
+      
+      console.log('✅ [Preview] Preview URL created for file:', file.id);
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : String(err);
+      const errorDetails = {
+        error: err,
+        errorMessage: errorMessage,
+        fileId: file.id,
+        backendFileId: file.backendFileId,
+        fileName: file.name
+      };
+      console.error('❌ [Preview] Failed to load file preview:', errorDetails);
+      
+      // Log stack trace if available
+      if (err instanceof Error && err.stack) {
+        console.error('❌ [Preview] Error stack:', err.stack);
+      }
+      
+      // Don't set error state (it's not defined in this scope)
+      // The UI will show the lock icon for files that fail to load
+    } finally {
+      setLoadingPreviews(prev => {
+        const next = new Set(prev);
+        next.delete(file.id);
+        return next;
+      });
+    }
+  };
+
+  // Helper: Convert Base64 to ArrayBuffer (same as aggregator browser)
+  const base64ToArrayBuffer = (base64: string): ArrayBuffer => {
+    const cleanBase64 = base64.trim().replace(/\s/g, '');
+    if (!/^[A-Za-z0-9+/=]*$/.test(cleanBase64)) {
+      throw new Error('Invalid base64 format');
+    }
+    const binary = atob(cleanBase64);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) {
+      bytes[i] = binary.charCodeAt(i);
+    }
+    return bytes.buffer;
+  };
+
+  // Auto-load previews for image/video files when files are loaded (since user owns them)
+  useEffect(() => {
+    if (files.length > 0 && resolvedAuth?.publicKey && authenticatedUser?.id) {
+      console.log('🔄 [Auto-Preview] Checking files for auto-preview...', {
+        fileCount: files.length,
+        hasPublicKey: !!resolvedAuth?.publicKey,
+        hasUserId: !!authenticatedUser?.id,
+        publicKeyPrefix: resolvedAuth?.publicKey?.substring(0, 20),
+        userId: authenticatedUser?.id
+      });
+      // Load previews for all image/video files automatically
+      files.forEach(file => {
+        const mimeType = file.mimeType || '';
+        if ((mimeType.startsWith('image/') || mimeType.startsWith('video/')) && !filePreviewUrls.has(file.id) && !loadingPreviews.has(file.id)) {
+          console.log('🔄 [Auto-Preview] Loading preview for file:', file.id, file.name);
+          loadFilePreview(file).catch(err => {
+            // Silently fail for auto-preview - don't show error modal
+            console.warn('⚠️ [Auto-Preview] Failed to load preview (non-critical):', err);
+          });
+        }
+      });
+    } else {
+      console.log('⚠️ [Auto-Preview] Skipping auto-preview - missing credentials:', {
+        fileCount: files.length,
+        hasPublicKey: !!resolvedAuth?.publicKey,
+        hasUserId: !!authenticatedUser?.id
+      });
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [files.length, resolvedAuth?.publicKey, authenticatedUser?.id]);
+
+  // Cleanup blob URLs when component unmounts
+  useEffect(() => {
+    return () => {
+      // Cleanup all blob URLs
+      filePreviewUrls.forEach(url => {
+        URL.revokeObjectURL(url);
+      });
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const handleDownload = async (file: AggregatedFile) => {
     console.log('📥 [Download] Starting download...', { fileName: file.name, fileId: file.backendFileId });
@@ -1364,7 +2072,18 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
           errorName: decryptError?.name,
           stack: decryptError?.stack
         });
-        setError(`Failed to decrypt file: ${decryptError?.message || 'Unknown error'}. This file may have been encrypted with a different method.`);
+        const errorMsg = decryptError?.message || 'Unknown error';
+        console.error('❌ [Download] Decryption failed:', {
+          error: errorMsg,
+          errorDetails: decryptError,
+          fileId: file.id,
+          backendFileId: file.backendFileId,
+          fileName: file.name,
+          hasSessionId: !!session?.id,
+          hasPublicKey: !!session?.publicKey,
+          stack: decryptError instanceof Error ? decryptError.stack : undefined
+        });
+        setError(`Failed to decrypt file: ${errorMsg}. This file may have been encrypted with a different method or credentials.`);
         return;
       }
 
@@ -1398,40 +2117,72 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
     <div className="space-y-6">
       {/* Secure Folder / Desktop App Section */}
       <div className="bg-neutral-900/60 border border-neutral-700 rounded-xl p-6">
-        <div className="flex items-center justify-between mb-4">
-          <div className="flex items-center space-x-3">
-            <Lock className="h-5 w-5 text-blue-400" />
-            <div>
-              <h3 className="text-lg font-semibold text-white">Secure Folder</h3>
-              <p className="text-text-secondary text-sm">
-                Access your encrypted files with the desktop app
-              </p>
+        <div className="flex items-center justify-between">
+          <div className="flex-1">
+            <div className="flex items-center space-x-3 mb-4">
+              <Lock className="h-5 w-5 text-blue-400" />
+              <div>
+                <h3 className="text-lg font-semibold text-white">Secure Folder</h3>
+                <p className="text-text-secondary text-sm">
+                  Access your encrypted files with the desktop app
+                </p>
+              </div>
             </div>
+            
+            <button
+              onClick={() => setShowDesktopAppInfo(true)}
+              className="flex items-center space-x-2 text-text-secondary hover:text-text-primary transition-colors"
+            >
+              <Info className="h-4 w-4" />
+              <span className="text-sm">About the Desktop App</span>
+            </button>
           </div>
-        </div>
-        
-        <div className="bg-neutral-800/50 rounded-lg p-4 mb-4">
-          <p className="text-text-secondary text-sm mb-3">
-            The par Noir Desktop App provides secure, local access to your encrypted files stored in Google Drive. 
-            Files are automatically synced and encrypted with your pN credentials.
-          </p>
-          <div className="space-y-2 text-xs text-text-secondary">
-            <p>• Secure local file access</p>
-            <p>• Automatic encryption/decryption</p>
-            <p>• Works offline with cached files</p>
-            <p>• Native desktop integration</p>
-          </div>
+
+          <a
+            href="https://github.com/bymjmazzei/par-Noir/releases"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center space-x-2 px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors ml-4"
+          >
+            <Download className="h-4 w-4" />
+            <span>Download Desktop App</span>
+          </a>
         </div>
 
-        <a
-          href="https://github.com/bymjmazzei/par-Noir/releases"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="inline-flex items-center space-x-2 px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors"
-        >
-          <Download className="h-4 w-4" />
-          <span>Download Desktop App</span>
-        </a>
+        {/* Desktop App Info Modal Overlay */}
+        {showDesktopAppInfo && (
+          <div 
+            className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4"
+            onClick={() => setShowDesktopAppInfo(false)}
+          >
+            <div 
+              className="bg-neutral-800 rounded-lg p-6 max-w-md w-full text-text-primary border border-neutral-700 shadow-2xl"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex justify-between items-center mb-4">
+                <h3 className="text-lg font-semibold">About the Desktop App</h3>
+                <button
+                  onClick={() => setShowDesktopAppInfo(false)}
+                  className="text-text-secondary hover:text-text-primary transition-colors"
+                >
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
+              
+              <p className="text-text-secondary text-sm mb-4">
+                The par Noir Desktop App provides secure, local access to your encrypted files stored in Google Drive. 
+                Files are automatically synced and encrypted with your pN credentials.
+              </p>
+              
+              <div className="space-y-2 text-xs text-text-secondary">
+                <p>• Secure local file access</p>
+                <p>• Automatic encryption/decryption</p>
+                <p>• Works offline with cached files</p>
+                <p>• Native desktop integration</p>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Connection Status */}
@@ -1582,9 +2333,35 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
       {/* File List */}
       {hasConnectedBackends && (
         <div className="bg-neutral-900/60 border border-neutral-700 rounded-xl p-6">
-          <h3 className="text-lg font-semibold text-white mb-4">
-            Your Files ({totalFiles})
-          </h3>
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-lg font-semibold text-white">
+              Your Files ({totalFiles})
+            </h3>
+            <div className="flex items-center space-x-2">
+              <button
+                onClick={() => setViewMode('list')}
+                className={`p-2 rounded transition-colors ${
+                  viewMode === 'list'
+                    ? 'bg-blue-600 text-white'
+                    : 'text-text-secondary hover:text-text-primary'
+                }`}
+                title="List View"
+              >
+                <List className="h-4 w-4" />
+              </button>
+              <button
+                onClick={() => setViewMode('grid')}
+                className={`p-2 rounded transition-colors ${
+                  viewMode === 'grid'
+                    ? 'bg-blue-600 text-white'
+                    : 'text-text-secondary hover:text-text-primary'
+                }`}
+                title="Grid View"
+              >
+                <Grid className="h-4 w-4" />
+              </button>
+            </div>
+          </div>
 
           {isLoading && files.length === 0 ? (
             <div className="text-center py-12">
@@ -1596,66 +2373,542 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
               <File className="h-12 w-12 text-text-secondary mx-auto mb-4" />
               <p className="text-text-secondary">No files found</p>
             </div>
-          ) : (
-            <div className="space-y-2">
-              {files.map((file) => (
-                <div
-                  key={`${file.backend}-${file.backendFileId}`}
-                  className="flex items-center justify-between p-3 bg-neutral-800/50 rounded-lg hover:bg-neutral-800 transition-colors"
-                >
-                  <div className="flex items-center space-x-3 flex-1 min-w-0">
-                    <Lock className="h-4 w-4 text-blue-400 flex-shrink-0" />
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center space-x-2">
-                        <p className="text-white text-sm truncate">
-                          {file.encrypted ? file.originalName : file.name}
-                        </p>
-                        {fileMetadataMap.get(file.id)?.isPublic && (
-                          <Globe className="h-3 w-3 text-green-400 flex-shrink-0" title="Public" />
-                        )}
-                      </div>
-                      <p className="text-text-secondary text-xs">
-                        {file.backend} • {(parseInt(file.size?.toString() || '0') / 1024).toFixed(2)} KB
-                      </p>
-                    </div>
-                  </div>
-                  <div className="flex items-center space-x-2">
-                    <button
-                      onClick={() => handleTogglePublic(file)}
-                      disabled={isLoading}
-                      className="px-2 py-1.5 text-xs font-medium rounded-lg transition-colors disabled:opacity-50"
-                      title={fileMetadataMap.get(file.id)?.isPublic ? 'Make Private' : 'Make Public'}
-                      style={{
-                        backgroundColor: fileMetadataMap.get(file.id)?.isPublic 
-                          ? 'rgba(34, 197, 94, 0.2)' 
-                          : 'rgba(107, 114, 128, 0.2)',
-                        color: fileMetadataMap.get(file.id)?.isPublic 
-                          ? 'rgb(74, 222, 128)' 
-                          : 'rgb(156, 163, 175)'
+          ) : viewMode === 'grid' ? (
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
+              {files.map((file) => {
+                const metadata = fileMetadataMap.get(file.id);
+                const previewUrl = filePreviewUrls.get(file.id);
+                const isLoadingPreview = loadingPreviews.has(file.id);
+                const mimeType = file.mimeType || '';
+                const isImage = mimeType.startsWith('image/');
+                const isVideo = mimeType.startsWith('video/');
+                
+                return (
+                  <div
+                    key={`${file.backend}-${file.backendFileId}`}
+                    className="bg-neutral-800/50 rounded-lg overflow-hidden hover:bg-neutral-800 transition-colors group"
+                  >
+                    {/* Preview - displays actual file at smaller size */}
+                    <div 
+                      className="relative aspect-square bg-neutral-700/50 cursor-pointer overflow-hidden"
+                      onClick={() => handleViewFile(file)}
+                      onMouseEnter={() => {
+                        if ((isImage || isVideo) && !previewUrl && !isLoadingPreview) {
+                          loadFilePreview(file);
+                        }
                       }}
                     >
-                      {fileMetadataMap.get(file.id)?.isPublic ? (
-                        <Globe className="h-4 w-4" />
+                      {previewUrl && isImage ? (
+                        <img
+                          src={previewUrl}
+                          alt={file.encrypted ? file.originalName : file.name}
+                          className="w-full h-full object-cover"
+                        />
+                      ) : previewUrl && isVideo ? (
+                        <video
+                          src={previewUrl}
+                          className="w-full h-full object-cover"
+                          muted
+                          loop
+                        />
+                      ) : isLoadingPreview ? (
+                        <div className="w-full h-full flex items-center justify-center">
+                          <RefreshCw className="h-6 w-6 text-text-secondary animate-spin" />
+                        </div>
                       ) : (
-                        <EyeOff className="h-4 w-4" />
+                        <div className="w-full h-full flex items-center justify-center">
+                          <Lock className="h-8 w-8 text-blue-400" />
+                        </div>
                       )}
-                    </button>
-                    <button
-                      onClick={() => handleDownload(file)}
-                      disabled={isLoading}
-                      className="px-3 py-1.5 bg-blue-600 text-white text-xs font-medium rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50"
-                    >
-                      <Download className="h-4 w-4" />
-                    </button>
+                      {metadata?.isPublic && (
+                        <div className="absolute top-2 right-2 bg-green-500/80 rounded-full p-1">
+                          <Globe className="h-3 w-3 text-white" />
+                        </div>
+                      )}
+                      {(isImage || isVideo) && (
+                        <div className="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-colors flex items-center justify-center opacity-0 group-hover:opacity-100">
+                          <Eye className="h-6 w-6 text-white" />
+                        </div>
+                      )}
+                    </div>
+                    
+                    {/* File Info */}
+                    <div className="p-3">
+                      <p className="text-white text-xs truncate mb-1" title={file.encrypted ? file.originalName : file.name}>
+                        {file.encrypted ? file.originalName : file.name}
+                      </p>
+                      <p className="text-text-secondary text-xs">
+                        {(parseInt(file.size?.toString() || '0') / 1024).toFixed(1)} KB
+                      </p>
+                      
+                      {/* Actions */}
+                      <div className="flex items-center justify-between mt-2 pt-2 border-t border-neutral-700">
+                        <button
+                          onClick={() => handleViewFile(file)}
+                          disabled={isLoading}
+                          className="p-1.5 text-text-secondary hover:text-text-primary transition-colors"
+                          title="View"
+                        >
+                          <Eye className="h-3.5 w-3.5" />
+                        </button>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleEditMetadata(file);
+                          }}
+                          disabled={isLoading}
+                          className="p-1.5 text-text-secondary hover:text-text-primary transition-colors"
+                          title="Edit"
+                        >
+                          <Edit className="h-3.5 w-3.5" />
+                        </button>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleTogglePublic(file);
+                          }}
+                          disabled={isLoading}
+                          className="p-1.5 transition-colors"
+                          title={metadata?.isPublic ? 'Make Private' : 'Make Public'}
+                          style={{
+                            color: metadata?.isPublic ? 'rgb(74, 222, 128)' : 'rgb(156, 163, 175)'
+                          }}
+                        >
+                          {metadata?.isPublic ? (
+                            <Globe className="h-3.5 w-3.5" />
+                          ) : (
+                            <EyeOff className="h-3.5 w-3.5" />
+                          )}
+                        </button>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleDownload(file);
+                          }}
+                          disabled={isLoading}
+                          className="p-1.5 text-blue-400 hover:text-blue-300 transition-colors"
+                          title="Download"
+                        >
+                          <Download className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                    </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {files.map((file) => {
+                const metadata = fileMetadataMap.get(file.id);
+                const previewUrl = filePreviewUrls.get(file.id);
+                const isLoadingPreview = loadingPreviews.has(file.id);
+                const mimeType = file.mimeType || '';
+                const isImage = mimeType.startsWith('image/');
+                const isVideo = mimeType.startsWith('video/');
+                
+                return (
+                  <div
+                    key={`${file.backend}-${file.backendFileId}`}
+                    className="flex items-center justify-between p-3 bg-neutral-800/50 rounded-lg hover:bg-neutral-800 transition-colors"
+                  >
+                    <div className="flex items-center space-x-3 flex-1 min-w-0">
+                      {/* Preview or icon - displays actual file at smaller size */}
+                      {previewUrl && isImage ? (
+                        <div className="w-12 h-12 flex-shrink-0 rounded overflow-hidden bg-neutral-700">
+                          <img
+                            src={previewUrl}
+                            alt={file.encrypted ? file.originalName : file.name}
+                            className="w-full h-full object-cover"
+                          />
+                        </div>
+                      ) : previewUrl && isVideo ? (
+                        <div className="w-12 h-12 flex-shrink-0 rounded overflow-hidden bg-neutral-700">
+                          <video
+                            src={previewUrl}
+                            className="w-full h-full object-cover"
+                            muted
+                          />
+                        </div>
+                      ) : (isImage || isVideo) ? (
+                        <div 
+                          className="w-12 h-12 flex-shrink-0 rounded bg-neutral-700 flex items-center justify-center cursor-pointer"
+                          onClick={() => loadFilePreview(file)}
+                          onMouseEnter={() => {
+                            if (!previewUrl && !isLoadingPreview) {
+                              loadFilePreview(file);
+                            }
+                          }}
+                        >
+                          {isLoadingPreview ? (
+                            <RefreshCw className="h-5 w-5 text-text-secondary animate-spin" />
+                          ) : (
+                            <Lock className="h-5 w-5 text-blue-400" />
+                          )}
+                        </div>
+                      ) : (
+                        <Lock className="h-4 w-4 text-blue-400 flex-shrink-0" />
+                      )}
+                      
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center space-x-2">
+                          <p className="text-white text-sm truncate">
+                            {file.encrypted ? file.originalName : file.name}
+                          </p>
+                          {metadata?.isPublic && (
+                            <Globe className="h-3 w-3 text-green-400 flex-shrink-0" title="Public" />
+                          )}
+                        </div>
+                        <p className="text-text-secondary text-xs">
+                          {file.backend} • {(parseInt(file.size?.toString() || '0') / 1024).toFixed(2)} KB
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <button
+                        onClick={() => handleViewFile(file)}
+                        disabled={isLoading}
+                        className="px-2 py-1.5 text-xs font-medium rounded-lg transition-colors disabled:opacity-50 bg-neutral-700/50 hover:bg-neutral-700 text-text-secondary hover:text-text-primary"
+                        title="View"
+                      >
+                        <Eye className="h-4 w-4" />
+                      </button>
+                      <button
+                        onClick={() => handleEditMetadata(file)}
+                        disabled={isLoading}
+                        className="px-2 py-1.5 text-xs font-medium rounded-lg transition-colors disabled:opacity-50 bg-neutral-700/50 hover:bg-neutral-700 text-text-secondary hover:text-text-primary"
+                        title="Edit Metadata"
+                      >
+                        <Edit className="h-4 w-4" />
+                      </button>
+                      <button
+                        onClick={() => handleTogglePublic(file)}
+                        disabled={isLoading}
+                        className="px-2 py-1.5 text-xs font-medium rounded-lg transition-colors disabled:opacity-50"
+                        title={metadata?.isPublic ? 'Make Private' : 'Make Public'}
+                        style={{
+                          backgroundColor: metadata?.isPublic 
+                            ? 'rgba(34, 197, 94, 0.2)' 
+                            : 'rgba(107, 114, 128, 0.2)',
+                          color: metadata?.isPublic 
+                            ? 'rgb(74, 222, 128)' 
+                            : 'rgb(156, 163, 175)'
+                        }}
+                      >
+                        {metadata?.isPublic ? (
+                          <Globe className="h-4 w-4" />
+                        ) : (
+                          <EyeOff className="h-4 w-4" />
+                        )}
+                      </button>
+                      <button
+                        onClick={() => handleDownload(file)}
+                        disabled={isLoading}
+                        className="px-3 py-1.5 bg-blue-600 text-white text-xs font-medium rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50"
+                      >
+                        <Download className="h-4 w-4" />
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           )}
+        </div>
+      )}
+
+      {/* Edit Metadata Modal */}
+      {editingFile && (
+        <div 
+          className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4"
+          onClick={() => {
+            setEditingFile(null);
+            setEditForm({ name: '', description: '', tags: '' });
+          }}
+        >
+          <div 
+            className="bg-neutral-800 rounded-lg p-6 max-w-md w-full text-text-primary border border-neutral-700 shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-lg font-semibold">Edit Metadata</h3>
+              <button
+                onClick={() => {
+                  setEditingFile(null);
+                  setEditForm({ name: '', description: '', tags: '' });
+                }}
+                className="text-text-secondary hover:text-text-primary transition-colors"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-text-secondary mb-1">
+                  Name / Title
+                </label>
+                <input
+                  type="text"
+                  value={editForm.name}
+                  onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
+                  className="w-full px-3 py-2 bg-neutral-700 border border-neutral-600 rounded-lg text-text-primary focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="File name"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-text-secondary mb-1">
+                  Description
+                </label>
+                <textarea
+                  value={editForm.description}
+                  onChange={(e) => setEditForm({ ...editForm, description: e.target.value })}
+                  className="w-full px-3 py-2 bg-neutral-700 border border-neutral-600 rounded-lg text-text-primary focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+                  placeholder="File description"
+                  rows={3}
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-text-secondary mb-1">
+                  Tags (comma-separated)
+                </label>
+                <input
+                  type="text"
+                  value={editForm.tags}
+                  onChange={(e) => setEditForm({ ...editForm, tags: e.target.value })}
+                  className="w-full px-3 py-2 bg-neutral-700 border border-neutral-600 rounded-lg text-text-primary focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="tag1, tag2, tag3"
+                />
+              </div>
+
+              <div className="flex justify-end space-x-2 pt-2">
+                <button
+                  onClick={() => {
+                    setEditingFile(null);
+                    setEditForm({ name: '', description: '', tags: '' });
+                  }}
+                  className="px-4 py-2 text-sm font-medium text-text-secondary hover:text-text-primary transition-colors"
+                  disabled={isLoading}
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleSaveMetadata}
+                  disabled={isLoading}
+                  className="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50"
+                >
+                  {isLoading ? 'Saving...' : 'Save Changes'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* File Viewer Modal */}
+      {viewingFile && (
+        <div 
+          className="fixed inset-0 bg-black bg-opacity-90 flex items-center justify-center z-50 p-4"
+          onClick={() => setViewingFile(null)}
+        >
+          <div 
+            className="relative max-w-7xl max-h-[90vh] w-full h-full flex items-center justify-center"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button
+              onClick={() => setViewingFile(null)}
+              className="absolute top-4 right-4 z-10 p-2 bg-neutral-800/80 rounded-lg text-white hover:bg-neutral-700 transition-colors"
+            >
+              <X className="h-6 w-6" />
+            </button>
+            
+            <FileViewer 
+              file={viewingFile} 
+              previewUrl={filePreviewUrls.get(viewingFile.id) || null}
+              onClose={() => setViewingFile(null)} 
+            />
+          </div>
         </div>
       )}
 
     </div>
   );
 };
+
+// File Viewer Component
+const FileViewer: React.FC<{ file: AggregatedFile; previewUrl: string | null; onClose: () => void }> = ({ file, previewUrl, onClose }) => {
+  const [decryptedUrl, setDecryptedUrl] = useState<string | null>(previewUrl);
+  const [loading, setLoading] = useState(!previewUrl);
+  const [error, setError] = useState<string | null>(null);
+  const mimeType = file.mimeType || '';
+  const isImage = mimeType.startsWith('image/');
+  const isVideo = mimeType.startsWith('video/');
+  const isAudio = mimeType.startsWith('audio/');
+
+  useEffect(() => {
+    // If preview URL already exists, use it (no need to decrypt again)
+    if (previewUrl) {
+      setDecryptedUrl(previewUrl);
+      setLoading(false);
+      return;
+    }
+
+    const loadFile = async () => {
+      try {
+        setLoading(true);
+        setError(null);
+
+        // Get aggregator service
+        const { getFileAggregatorService } = await import('../../services/aggregator/FileAggregatorService');
+        const { getEncryptionService } = await import('../../services/aggregator/EncryptionService');
+        const aggregatorService = getFileAggregatorService();
+        const encryptionService = getEncryptionService();
+
+        // Resolve auth credentials - try multiple sources (same as download/thumbnail)
+        let publicKey: string | null = null;
+
+        // Try 1: Get from localStorage (authenticated_user)
+        const authenticatedUserStr = localStorage.getItem('authenticated_user');
+        let authenticatedUser: any = null;
+        if (authenticatedUserStr) {
+          try {
+            authenticatedUser = JSON.parse(authenticatedUserStr);
+            publicKey = authenticatedUser.publicKey || 
+              (authenticatedUser.id && authenticatedUser.id.startsWith('did:key:') ? authenticatedUser.id : authenticatedUser.id) || null;
+          } catch (e) {
+            console.warn('Failed to parse authenticated_user:', e);
+          }
+        }
+
+        // Try 2: Load from storage if not found
+        if (!publicKey || !authenticatedUser) {
+          try {
+            const { SecureStorage } = await import('../../utils/storage');
+            const storage = new SecureStorage();
+            await storage.init();
+            const session = await storage.getCurrentSession();
+            
+            if (session) {
+              authenticatedUser = authenticatedUser || session;
+              publicKey = publicKey || (session as any).publicKey || 
+                (session.id && session.id.startsWith('did:key:') ? session.id : session.id) || null;
+            }
+          } catch (err) {
+            console.warn('Failed to load auth from storage:', err);
+          }
+        }
+
+        if (!authenticatedUser?.id || !publicKey) {
+          throw new Error('Please unlock your pN first. These are your files, but we need your credentials to decrypt them.');
+        }
+        
+        // Download encrypted file
+        const encryptedBlob = await aggregatorService.downloadFromBackend(
+          file.backend,
+          file.backendFileId
+        );
+
+        // Parse and decrypt
+        const encryptedPackageText = await encryptedBlob.text();
+        const encryptedPackage = JSON.parse(encryptedPackageText);
+
+        const session = {
+          id: authenticatedUser.id,
+          publicKey: publicKey,
+          accessToken: authenticatedUser.accessToken,
+        };
+
+        const result = await encryptionService.decryptFileFromDownload(encryptedPackage, session);
+        const url = URL.createObjectURL(result.decryptedBlob);
+        setDecryptedUrl(url);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Failed to load file');
+        console.error('Error loading file:', err);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadFile();
+
+    // Cleanup - only revoke if we created the URL (not the preview URL)
+    return () => {
+      if (decryptedUrl && decryptedUrl !== previewUrl) {
+        URL.revokeObjectURL(decryptedUrl);
+      }
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [file.id, previewUrl]);
+
+  if (loading) {
+    return (
+      <div className="text-center">
+        <RefreshCw className="h-12 w-12 text-white animate-spin mx-auto mb-4" />
+        <p className="text-white">Loading file...</p>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="text-center">
+        <AlertCircle className="h-12 w-12 text-red-400 mx-auto mb-4" />
+        <p className="text-red-400">{error}</p>
+        <button
+          onClick={onClose}
+          className="mt-4 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+        >
+          Close
+        </button>
+      </div>
+    );
+  }
+
+  if (!decryptedUrl) {
+    return null;
+  }
+
+  return (
+    <div className="w-full h-full flex items-center justify-center">
+      {isImage && (
+        <img
+          src={decryptedUrl}
+          alt={file.encrypted ? file.originalName : file.name}
+          className="max-w-full max-h-full object-contain"
+        />
+      )}
+      {isVideo && (
+        <video
+          src={decryptedUrl}
+          controls
+          autoPlay
+          className="max-w-full max-h-full"
+        />
+      )}
+      {isAudio && (
+        <div className="bg-neutral-800 rounded-lg p-8">
+          <audio src={decryptedUrl} controls className="w-full" />
+          <p className="text-white mt-4 text-center">{file.encrypted ? file.originalName : file.name}</p>
+        </div>
+      )}
+      {!isImage && !isVideo && !isAudio && (
+        <div className="bg-neutral-800 rounded-lg p-8 max-w-2xl">
+          <p className="text-white text-center mb-4">{file.encrypted ? file.originalName : file.name}</p>
+          <p className="text-text-secondary text-center">
+            Preview not available for this file type. Please download to view.
+          </p>
+          <button
+            onClick={onClose}
+            className="mt-6 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 mx-auto block"
+          >
+            Close
+          </button>
+        </div>
+      )}
+    </div>
+  );
+};
+
 

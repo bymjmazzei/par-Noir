@@ -4,14 +4,31 @@
  */
 
 /**
+ * Engagement Metrics (semantic web compatible)
+ */
+export interface EngagementMetrics {
+  views: number;
+  likes: number;
+  comments: number;
+  shares: number;
+  lastUpdated: string;
+  engagementHistory?: Array<{
+    type: 'like' | 'comment' | 'share' | 'view';
+    did?: string; // Optional: who engaged (for analytics, privacy-preserving)
+    timestamp: string;
+  }>;
+}
+
+/**
  * Public Metadata with Semantic Web Standards (JSON-LD)
+ * Enhanced with relationships and engagement metrics
  * Compatible with schema.org and linked data principles
  */
 export interface PublicMetadata {
   // JSON-LD Semantic Web Structure
-  "@context"?: string | string[]; // Schema.org + par Noir contexts
-  "@type"?: string; // Schema.org type (CreativeWork, ImageObject, etc.)
-  "@id"?: string; // Unique URI for this resource
+  "@context"?: string | string[]; // Schema.org + par Noir contexts (always array in new metadata)
+  "@type"?: string | string[]; // Schema.org type (CreativeWork, ImageObject, etc.) - can be multiple types
+  "@id"?: string; // Unique URI for this resource (always required in new metadata)
   
   // Core identifiers
   fileId: string;
@@ -20,9 +37,10 @@ export interface PublicMetadata {
   
   // Schema.org CreativeWork properties
   name?: string; // Schema.org:name (preferred over 'title')
-  title?: string; // Legacy support
+  title?: string; // Legacy support (deprecated, use name)
   description?: string;
-  keywords?: string[]; // Schema.org:keywords
+  keywords?: string[]; // Schema.org:keywords (preferred)
+  tags?: string[]; // Legacy support (deprecated, use keywords)
   uploadDate: string; // Schema.org:datePublished
   fileType: string;
   
@@ -45,6 +63,14 @@ export interface PublicMetadata {
     "@type": "ImageObject";
     "@id": string;
   };
+  
+  // Content Relationships (schema.org + ActivityPub compatible)
+  inReplyTo?: string; // URI of parent post/resource (schema.org:inReplyTo / as:inReplyTo)
+  repostOf?: string; // URI of original post/resource (as:repostOf)
+  isPartOf?: string; // URI of curated feed/collection (schema.org:isPartOf)
+  
+  // Engagement Metrics (par Noir specific, semantic web compatible)
+  engagement?: EngagementMetrics;
   
   // par Noir specific
   publicToken?: string;

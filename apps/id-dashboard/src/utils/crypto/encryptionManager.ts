@@ -95,18 +95,29 @@ export class EncryptionManager {
             
             return new Uint8Array(decryptedBuffer);
         } catch (error: any) {
-            console.error('❌ [EncryptionManager] Decryption failed:', {
+            const errorDetails = {
                 error: error?.message || error,
                 errorName: error?.name,
+                errorCode: error?.code,
                 hasPnId: !!pnId,
                 pnIdLength: pnId?.length,
+                pnIdPrefix: pnId?.substring(0, 20) || 'N/A',
                 hasPublicKey: !!publicKey,
                 publicKeyLength: publicKey?.length,
+                publicKeyPrefix: publicKey?.substring(0, 20) || 'N/A',
                 saltLength: salt?.length,
                 ivLength: iv?.length,
-                encryptedDataLength: encryptedData?.length
-            });
-            throw new Error(`Failed to decrypt data: ${error?.message || error}`);
+                encryptedDataLength: encryptedData?.length,
+                stack: error?.stack
+            };
+            console.error('❌ [EncryptionManager] Decryption failed:', errorDetails);
+            
+            // More specific error message
+            let errorMessage = `Failed to decrypt data: ${error?.message || error}`;
+            if (error?.name === 'OperationError') {
+                errorMessage += '. This usually means the encryption key is incorrect. The file may have been encrypted with different credentials (different DID or public key).';
+            }
+            throw new Error(errorMessage);
         }
     }
 

@@ -379,6 +379,110 @@ class ProductionServer {
       }
     });
 
+    // PUT /api/aggregator/metadata-index/:fileId - Update metadata
+    this.app.put('/api/aggregator/metadata-index/:fileId', async (req, res) => {
+      try {
+        const { AggregatorMetadataServiceDB } = await import('./server/modules/aggregatorMetadataServiceDB');
+        const service = AggregatorMetadataServiceDB.getInstance();
+
+        const { fileId } = req.params;
+        const { name, description, keywords, tags } = req.body;
+
+        if (!fileId) {
+          return res.status(400).json({ error: 'Missing fileId parameter' });
+        }
+
+        const updated = await service.updateMetadata(fileId, {
+          name,
+          description,
+          keywords: keywords || tags,
+          tags: tags || keywords
+        });
+
+        if (!updated) {
+          return res.status(404).json({ error: 'File not found in index' });
+        }
+
+        return res.json({ success: true, metadata: updated });
+      } catch (error: any) {
+        console.error('Error updating metadata:', error);
+        return res.status(500).json({ 
+          error: 'Failed to update metadata',
+          message: error.message 
+        });
+      }
+    });
+
+    // POST /api/aggregator/engagement/:fileId/:type - Update engagement metrics
+    this.app.post('/api/aggregator/engagement/:fileId/:type', async (req, res) => {
+      try {
+        const { AggregatorMetadataServiceDB } = await import('./server/modules/aggregatorMetadataServiceDB');
+        const service = AggregatorMetadataServiceDB.getInstance();
+
+        const { fileId, type } = req.params;
+        const { userDid } = req.body;
+
+        if (!fileId) {
+          return res.status(400).json({ error: 'Missing fileId parameter' });
+        }
+
+        if (!['like', 'view', 'share', 'comment'].includes(type)) {
+          return res.status(400).json({ error: 'Invalid engagement type. Must be: like, view, share, or comment' });
+        }
+
+        const updated = await service.updateEngagement(
+          fileId,
+          type as 'like' | 'view' | 'share' | 'comment',
+          userDid
+        );
+
+        if (!updated) {
+          return res.status(404).json({ error: 'File not found in index' });
+        }
+
+        return res.json({ 
+          success: true, 
+          engagement: updated.engagement,
+          metadata: updated
+        });
+      } catch (error: any) {
+        console.error('Error updating engagement:', error);
+        return res.status(500).json({ 
+          error: 'Failed to update engagement',
+          message: error.message 
+        });
+      }
+    });
+
+    // GET /api/aggregator/curated/:did - Get curated feed for a DID
+    this.app.get('/api/aggregator/curated/:did', async (req, res) => {
+      try {
+        const { AggregatorMetadataServiceDB } = await import('./server/modules/aggregatorMetadataServiceDB');
+        const service = AggregatorMetadataServiceDB.getInstance();
+
+        const { did } = req.params;
+
+        if (!did) {
+          return res.status(400).json({ error: 'Missing DID parameter' });
+        }
+
+        const entries = await service.getCuratedFeed(did);
+
+        return res.json({
+          did,
+          files: entries,
+          totalFiles: entries.length,
+          updatedAt: new Date().toISOString()
+        });
+      } catch (error: any) {
+        console.error('Error getting curated feed:', error);
+        return res.status(500).json({ 
+          error: 'Failed to get curated feed',
+          message: error.message 
+        });
+      }
+    });
+
     // POST /api/aggregator/metadata-index/sync - Manually trigger Google Drive sync
     this.app.post('/api/aggregator/metadata-index/sync', async (req, res) => {
       try {

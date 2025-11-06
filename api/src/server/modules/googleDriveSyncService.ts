@@ -187,26 +187,74 @@ export class GoogleDriveSyncService {
                       // public-file-index.json structure: { identifier: string, files: [...], updatedAt: string }
                       if (indexData && Array.isArray(indexData.files)) {
                         // Filter for public files only and transform to PublicMetadata format
+                        // New metadata structure includes @context, @type, @id, engagement, relationships
                         const publicFiles = indexData.files
                           .filter((file: any) => file.visibility === 'public')
-                          .map((file: any) => ({
-                            metadata: {
-                              fileId: file.fileId,
-                              backend: 'google_drive',
-                              backendFileId: file.googleDriveFileId || file.fileId,
-                              name: file.originalName || file.fileName,
-                              title: file.originalName || file.fileName,
-                              description: file.description,
-                              keywords: file.tags || [],
-                              uploadDate: file.uploadedAt,
-                              fileType: this.getFileTypeFromMime(file.mimeType),
-                              creator: file.owner,
-                              isPublic: true,
-                              publicToken: file.publicToken,
-                              thumbnail: file.thumbnail
-                            } as PublicMetadata,
-                            pnIdentifier: pnIdentifier || indexData.identifier
-                          }));
+                          .map((file: any) => {
+                            // If file already has semantic web structure (@context, @type, @id), use it
+                            // Otherwise, construct it from legacy fields
+                            const hasSemanticStructure = file['@context'] && file['@type'] && file['@id'];
+                            
+                            if (hasSemanticStructure) {
+                              // Use existing semantic metadata structure
+                              return {
+                                metadata: file as PublicMetadata,
+                                pnIdentifier: pnIdentifier || indexData.identifier
+                              };
+                            } else {
+                              // Legacy format - construct semantic metadata
+                              const creatorDid = file.owner?.did || file.owner?.identifier;
+                              const resourceUri = `https://parnoir.com/resource/${file.fileId}`;
+                              const schemaType = this.getFileTypeFromMime(file.mimeType) === 'image' ? 'ImageObject' :
+                                                this.getFileTypeFromMime(file.mimeType) === 'video' ? 'VideoObject' :
+                                                this.getFileTypeFromMime(file.mimeType) === 'audio' ? 'AudioObject' :
+                                                'CreativeWork';
+                              
+                              return {
+                                metadata: {
+                                  '@context': ['https://schema.org/', 'https://parnoir.com/ns/v1#'],
+                                  '@type': schemaType,
+                                  '@id': resourceUri,
+                                  fileId: file.fileId,
+                                  backend: 'google_drive',
+                                  backendFileId: file.googleDriveFileId || file.fileId,
+                                  name: file.originalName || file.fileName,
+                                  title: file.originalName || file.fileName, // Legacy support
+                                  description: file.description,
+                                  keywords: file.tags || [],
+                                  tags: file.tags || [], // Legacy support
+                                  uploadDate: file.uploadedAt,
+                                  fileType: this.getFileTypeFromMime(file.mimeType),
+                                  creator: file.owner?.did ? {
+                                    '@type': 'Person',
+                                    '@id': file.owner.did,
+                                    identifier: {
+                                      '@type': 'PropertyValue',
+                                      name: 'DID',
+                                      value: file.owner.did
+                                    }
+                                  } : undefined,
+                                  author: file.owner ? { did: creatorDid } : undefined, // Legacy support
+                                  isPublic: true,
+                                  publicToken: file.publicToken,
+                                  thumbnail: file.thumbnail,
+                                  // Include engagement metrics if present
+                                  engagement: file.engagement || {
+                                    views: 0,
+                                    likes: 0,
+                                    comments: 0,
+                                    shares: 0,
+                                    lastUpdated: file.uploadedAt
+                                  },
+                                  // Include relationships if present
+                                  inReplyTo: file.inReplyTo,
+                                  repostOf: file.repostOf,
+                                  isPartOf: file.isPartOf
+                                } as PublicMetadata,
+                                pnIdentifier: pnIdentifier || indexData.identifier
+                              };
+                            }
+                          });
 
                         allMetadata.push(...publicFiles);
                         console.log(`✅ Loaded ${publicFiles.length} public file(s) from pN ${pnFolder.name}`);
