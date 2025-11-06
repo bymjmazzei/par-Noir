@@ -759,6 +759,53 @@ export class GoogleDriveBackend extends AbstractStorageBackend {
         // (same approach as browse.parnoir.com)
         const mimeType = uploadedFile.mimeType || file.type || 'application/octet-stream';
 
+        // Extract technical metadata from media files (static/auto-extracted fields)
+        let extractedMetadata: any = {};
+        try {
+          const { extractMediaMetadata, formatDuration } = await import('../../utils/mediaMetadataExtractor');
+          const mediaMetadata = await extractMediaMetadata(file);
+          
+          if (mediaMetadata.width || mediaMetadata.height) {
+            extractedMetadata.schema = {
+              width: mediaMetadata.width,
+              height: mediaMetadata.height,
+              encodingFormat: mimeType,
+              fileSize: parseInt(uploadedFile.size || file.size.toString() || '0', 10),
+              ...(mediaMetadata.duration && { duration: formatDuration(mediaMetadata.duration) }),
+              ...(mediaMetadata.frameRate && { frameRate: mediaMetadata.frameRate }),
+              ...(mediaMetadata.videoQuality && { videoQuality: mediaMetadata.videoQuality }),
+              ...(mediaMetadata.audioSampleRate && { audioSampleRate: mediaMetadata.audioSampleRate })
+            };
+          } else if (mediaMetadata.duration) {
+            // Audio or video with duration only
+            extractedMetadata.schema = {
+              duration: formatDuration(mediaMetadata.duration),
+              encodingFormat: mimeType,
+              fileSize: parseInt(uploadedFile.size || file.size.toString() || '0', 10),
+              ...(mediaMetadata.frameRate && { frameRate: mediaMetadata.frameRate }),
+              ...(mediaMetadata.videoQuality && { videoQuality: mediaMetadata.videoQuality }),
+              ...(mediaMetadata.videoWidth && { width: mediaMetadata.videoWidth }),
+              ...(mediaMetadata.videoHeight && { height: mediaMetadata.videoHeight }),
+              ...(mediaMetadata.audioSampleRate && { audioSampleRate: mediaMetadata.audioSampleRate })
+            };
+          } else {
+            // Non-media file or extraction failed - just store basic metadata
+            extractedMetadata.schema = {
+              encodingFormat: mimeType,
+              fileSize: parseInt(uploadedFile.size || file.size.toString() || '0', 10)
+            };
+          }
+          
+          console.log('✅ [uploadFile] Extracted media metadata:', extractedMetadata);
+        } catch (error) {
+          console.warn('⚠️ [uploadFile] Failed to extract media metadata:', error);
+          // Continue with basic metadata
+          extractedMetadata.schema = {
+            encodingFormat: mimeType,
+            fileSize: parseInt(uploadedFile.size || file.size.toString() || '0', 10)
+          };
+        }
+
              const companionMetadata = {
                fileId: metadata.fileId || uploadedFile.id,
                googleDriveFileId: uploadedFile.id,
@@ -777,6 +824,18 @@ export class GoogleDriveBackend extends AbstractStorageBackend {
                metadata: metadata.metadata || {},
                publicToken: metadata.publicToken || undefined, // Share token generated on upload - available for owner viewing and public sharing
                // No thumbnail - we display the actual file at smaller sizes
+               
+               // Auto-extracted technical metadata (static, not editable)
+               schema: {
+                 ...extractedMetadata.schema,
+                 // User-editable schema fields (can be overridden)
+                 ...(metadata.genre && { genre: Array.isArray(metadata.genre) ? metadata.genre : [metadata.genre] }),
+                 ...(metadata.category && { category: metadata.category }),
+                 ...(metadata.locationCreated && { locationCreated: metadata.locationCreated }),
+                 ...(metadata.license && { license: metadata.license }),
+                 ...(metadata.inLanguage && { inLanguage: metadata.inLanguage }),
+                 ...(metadata.accessibilityFeature && { accessibilityFeature: Array.isArray(metadata.accessibilityFeature) ? metadata.accessibilityFeature : [metadata.accessibilityFeature] })
+               },
                
                // Content relationships
                inReplyTo: metadata.inReplyTo || undefined,

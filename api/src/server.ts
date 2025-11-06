@@ -386,7 +386,17 @@ class ProductionServer {
         const service = AggregatorMetadataServiceDB.getInstance();
 
         const { fileId } = req.params;
-        const { name, description, keywords, tags } = req.body;
+        const { 
+          name, 
+          description, 
+          keywords, 
+          tags,
+          genre,
+          category,
+          locationCreated,
+          license,
+          inLanguage
+        } = req.body;
 
         if (!fileId) {
           return res.status(400).json({ error: 'Missing fileId parameter' });
@@ -396,7 +406,12 @@ class ProductionServer {
           name,
           description,
           keywords: keywords || tags,
-          tags: tags || keywords
+          tags: tags || keywords,
+          genre,
+          category,
+          locationCreated,
+          license,
+          inLanguage
         });
 
         if (!updated) {

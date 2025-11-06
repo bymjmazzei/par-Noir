@@ -30,7 +30,31 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
   
   const [showDesktopAppInfo, setShowDesktopAppInfo] = useState(false);
   const [editingFile, setEditingFile] = useState<AggregatedFile | null>(null);
-  const [editForm, setEditForm] = useState<{ name: string; description: string; tags: string }>({ name: '', description: '', tags: '' });
+  const [editForm, setEditForm] = useState<{ 
+    name: string; 
+    description: string; 
+    tags: string;
+    genre: string;
+    category: string;
+    locationName: string;
+    locationAddress: string;
+    locationLat: string;
+    locationLng: string;
+    license: string;
+    language: string;
+  }>({ 
+    name: '', 
+    description: '', 
+    tags: '',
+    genre: '',
+    category: '',
+    locationName: '',
+    locationAddress: '',
+    locationLat: '',
+    locationLng: '',
+    license: '',
+    language: ''
+  });
   const [viewMode, setViewMode] = useState<'list' | 'grid'>('list');
   const [viewingFile, setViewingFile] = useState<AggregatedFile | null>(null);
   const [filePreviewUrls, setFilePreviewUrls] = useState<Map<string, string>>(new Map()); // fileId -> decrypted blob URL
@@ -1513,10 +1537,42 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
 
   const handleEditMetadata = (file: AggregatedFile) => {
     const metadata = fileMetadataMap.get(file.id);
+    
+    // Extract location data if present
+    const location = (metadata as any)?.locationCreated || (metadata as any)?.schema?.locationCreated;
+    const locationName = location?.name || '';
+    const locationAddress = location?.address ? 
+      `${location.address.addressLocality || ''}${location.address.addressRegion ? ', ' + location.address.addressRegion : ''}${location.address.addressCountry ? ', ' + location.address.addressCountry : ''}`.trim() : '';
+    const locationLat = location?.geo?.latitude?.toString() || '';
+    const locationLng = location?.geo?.longitude?.toString() || '';
+    
+    // Extract genre (can be array or string)
+    const genre = (metadata as any)?.genre || (metadata as any)?.schema?.genre || [];
+    const genreString = Array.isArray(genre) ? genre.join(', ') : (typeof genre === 'string' ? genre : '');
+    
+    // Extract category
+    const category = (metadata as any)?.category || (metadata as any)?.schema?.category || '';
+    
+    // Extract license (can be object with name or string)
+    const license = (metadata as any)?.license || (metadata as any)?.schema?.license || '';
+    const licenseString = typeof license === 'object' && license?.name ? license.name : (typeof license === 'string' ? license : '');
+    
+    // Extract language (can be array or string)
+    const language = (metadata as any)?.inLanguage || (metadata as any)?.schema?.inLanguage || '';
+    const languageString = Array.isArray(language) ? language.join(', ') : (typeof language === 'string' ? language : '');
+    
     setEditForm({
       name: metadata?.name || file.encrypted ? file.originalName || file.name.replace('.encrypted', '') : file.name,
       description: metadata?.description || '',
-      tags: (metadata?.keywords || metadata?.tags || []).join(', ')
+      tags: (metadata?.keywords || metadata?.tags || []).join(', '),
+      genre: genreString,
+      category: category,
+      locationName: locationName,
+      locationAddress: locationAddress,
+      locationLat: locationLat,
+      locationLng: locationLng,
+      license: licenseString,
+      language: languageString
     });
     setEditingFile(file);
   };
@@ -1534,6 +1590,42 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
         .map(t => t.trim())
         .filter(t => t.length > 0);
 
+      // Parse genre from comma-separated string
+      const genre = editForm.genre
+        .split(',')
+        .map(g => g.trim())
+        .filter(g => g.length > 0);
+
+      // Build location object if provided
+      let locationCreated = undefined;
+      if (editForm.locationName || editForm.locationAddress || editForm.locationLat || editForm.locationLng) {
+        locationCreated = {
+          '@type': 'Place',
+          ...(editForm.locationName && { name: editForm.locationName }),
+          ...(editForm.locationAddress && {
+            address: {
+              '@type': 'PostalAddress',
+              addressLocality: editForm.locationAddress.split(',')[0]?.trim() || '',
+              addressRegion: editForm.locationAddress.split(',')[1]?.trim() || '',
+              addressCountry: editForm.locationAddress.split(',')[2]?.trim() || ''
+            }
+          }),
+          ...((editForm.locationLat || editForm.locationLng) && {
+            geo: {
+              '@type': 'GeoCoordinates',
+              ...(editForm.locationLat && { latitude: parseFloat(editForm.locationLat) }),
+              ...(editForm.locationLng && { longitude: parseFloat(editForm.locationLng) })
+            }
+          })
+        };
+      }
+
+      // Parse language from comma-separated string or single value
+      const language = editForm.language
+        .split(',')
+        .map(l => l.trim())
+        .filter(l => l.length > 0);
+
       // Update via API endpoint
       const apiEndpoint = import.meta.env.VITE_API_ENDPOINT || 'https://api.parnoir.com';
       const response = await fetch(`${apiEndpoint}/api/aggregator/metadata-index/${editingFile.id}`, {
@@ -1545,7 +1637,12 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
           name: editForm.name,
           description: editForm.description,
           keywords: tags,
-          tags: tags
+          tags: tags,
+          genre: genre.length > 0 ? genre : undefined,
+          category: editForm.category || undefined,
+          locationCreated: locationCreated,
+          license: editForm.license || undefined,
+          inLanguage: language.length > 0 ? (language.length === 1 ? language[0] : language) : undefined
         }),
       });
 
@@ -1607,6 +1704,44 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
               } as PublicMetadata;
             }
 
+            // Parse genre and language for companion metadata
+            const genre = editForm.genre
+              .split(',')
+              .map(g => g.trim())
+              .filter(g => g.length > 0);
+
+            const language = editForm.language
+              .split(',')
+              .map(l => l.trim())
+              .filter(l => l.length > 0);
+
+            // Build location object for companion metadata
+            let locationCreated = undefined;
+            if (editForm.locationName || editForm.locationAddress || editForm.locationLat || editForm.locationLng) {
+              locationCreated = {
+                '@type': 'Place',
+                ...(editForm.locationName && { name: editForm.locationName }),
+                ...(editForm.locationAddress && {
+                  address: {
+                    '@type': 'PostalAddress',
+                    addressLocality: editForm.locationAddress.split(',')[0]?.trim() || '',
+                    addressRegion: editForm.locationAddress.split(',')[1]?.trim() || '',
+                    addressCountry: editForm.locationAddress.split(',')[2]?.trim() || ''
+                  }
+                }),
+                ...((editForm.locationLat || editForm.locationLng) && {
+                  geo: {
+                    '@type': 'GeoCoordinates',
+                    ...(editForm.locationLat && { latitude: parseFloat(editForm.locationLat) }),
+                    ...(editForm.locationLng && { longitude: parseFloat(editForm.locationLng) })
+                  }
+                })
+              };
+            }
+
+            // Preserve existing schema metadata (static/auto-extracted fields)
+            const existingSchema = (currentMetadata as any)?.schema || {};
+            
             // Update companion metadata file
             const companionMetadata = {
               fileId: editingFile.id,
@@ -1629,6 +1764,14 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
               inReplyTo: currentMetadata.inReplyTo,
               repostOf: currentMetadata.repostOf,
               isPartOf: currentMetadata.isPartOf,
+              schema: {
+                ...existingSchema, // Preserve auto-extracted technical metadata (width, height, duration, etc.)
+                ...(genre.length > 0 && { genre }),
+                ...(editForm.category && { category: editForm.category }),
+                ...(locationCreated && { locationCreated }),
+                ...(editForm.license && { license: editForm.license }),
+                ...(language.length > 0 && { inLanguage: language.length === 1 ? language[0] : language })
+              },
               engagement: currentMetadata.engagement || {
                 views: 0,
                 likes: 0,
@@ -1677,7 +1820,19 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
       }
 
       setEditingFile(null);
-      setEditForm({ name: '', description: '', tags: '' });
+      setEditForm({ 
+        name: '', 
+        description: '', 
+        tags: '',
+        genre: '',
+        category: '',
+        locationName: '',
+        locationAddress: '',
+        locationLat: '',
+        locationLng: '',
+        license: '',
+        language: ''
+      });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to update metadata');
       console.error('Error updating metadata:', err);
@@ -2519,7 +2674,19 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
           className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4"
           onClick={() => {
             setEditingFile(null);
-            setEditForm({ name: '', description: '', tags: '' });
+            setEditForm({ 
+        name: '', 
+        description: '', 
+        tags: '',
+        genre: '',
+        category: '',
+        locationName: '',
+        locationAddress: '',
+        locationLat: '',
+        locationLng: '',
+        license: '',
+        language: ''
+      });
           }}
         >
           <div 
@@ -2531,7 +2698,19 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
               <button
                 onClick={() => {
                   setEditingFile(null);
-                  setEditForm({ name: '', description: '', tags: '' });
+                  setEditForm({ 
+        name: '', 
+        description: '', 
+        tags: '',
+        genre: '',
+        category: '',
+        locationName: '',
+        locationAddress: '',
+        locationLat: '',
+        locationLng: '',
+        license: '',
+        language: ''
+      });
                 }}
                 className="text-text-secondary hover:text-text-primary transition-colors"
               >
@@ -2579,11 +2758,155 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
                 />
               </div>
 
+              <div className="border-t border-neutral-700 pt-4 mt-4">
+                <h4 className="text-sm font-semibold text-text-primary mb-3">Content Classification</h4>
+                
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium text-text-secondary mb-1">
+                      Genre (comma-separated)
+                    </label>
+                    <input
+                      type="text"
+                      value={editForm.genre}
+                      onChange={(e) => setEditForm({ ...editForm, genre: e.target.value })}
+                      className="w-full px-3 py-2 bg-neutral-700 border border-neutral-600 rounded-lg text-text-primary focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      placeholder="photography, art, documentation"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-text-secondary mb-1">
+                      Category
+                    </label>
+                    <input
+                      type="text"
+                      value={editForm.category}
+                      onChange={(e) => setEditForm({ ...editForm, category: e.target.value })}
+                      className="w-full px-3 py-2 bg-neutral-700 border border-neutral-600 rounded-lg text-text-primary focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      placeholder="Main category"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div className="border-t border-neutral-700 pt-4 mt-4">
+                <h4 className="text-sm font-semibold text-text-primary mb-3">Location</h4>
+                
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium text-text-secondary mb-1">
+                      Place Name
+                    </label>
+                    <input
+                      type="text"
+                      value={editForm.locationName}
+                      onChange={(e) => setEditForm({ ...editForm, locationName: e.target.value })}
+                      className="w-full px-3 py-2 bg-neutral-700 border border-neutral-600 rounded-lg text-text-primary focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      placeholder="e.g., Central Park, New York"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-text-secondary mb-1">
+                      Address (City, State, Country)
+                    </label>
+                    <input
+                      type="text"
+                      value={editForm.locationAddress}
+                      onChange={(e) => setEditForm({ ...editForm, locationAddress: e.target.value })}
+                      className="w-full px-3 py-2 bg-neutral-700 border border-neutral-600 rounded-lg text-text-primary focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      placeholder="New York, NY, USA"
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-text-secondary mb-1">
+                        Latitude
+                      </label>
+                      <input
+                        type="number"
+                        step="any"
+                        value={editForm.locationLat}
+                        onChange={(e) => setEditForm({ ...editForm, locationLat: e.target.value })}
+                        className="w-full px-3 py-2 bg-neutral-700 border border-neutral-600 rounded-lg text-text-primary focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        placeholder="40.785091"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-text-secondary mb-1">
+                        Longitude
+                      </label>
+                      <input
+                        type="number"
+                        step="any"
+                        value={editForm.locationLng}
+                        onChange={(e) => setEditForm({ ...editForm, locationLng: e.target.value })}
+                        className="w-full px-3 py-2 bg-neutral-700 border border-neutral-600 rounded-lg text-text-primary focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        placeholder="-73.968285"
+                      />
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="border-t border-neutral-700 pt-4 mt-4">
+                <h4 className="text-sm font-semibold text-text-primary mb-3">Rights & Licensing</h4>
+                
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium text-text-secondary mb-1">
+                      License
+                    </label>
+                    <input
+                      type="text"
+                      value={editForm.license}
+                      onChange={(e) => setEditForm({ ...editForm, license: e.target.value })}
+                      className="w-full px-3 py-2 bg-neutral-700 border border-neutral-600 rounded-lg text-text-primary focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      placeholder="e.g., CC BY 4.0, All Rights Reserved"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div className="border-t border-neutral-700 pt-4 mt-4">
+                <h4 className="text-sm font-semibold text-text-primary mb-3">Language</h4>
+                
+                <div>
+                  <label className="block text-sm font-medium text-text-secondary mb-1">
+                    Language (ISO 639-1 code, comma-separated)
+                  </label>
+                  <input
+                    type="text"
+                    value={editForm.language}
+                    onChange={(e) => setEditForm({ ...editForm, language: e.target.value })}
+                    className="w-full px-3 py-2 bg-neutral-700 border border-neutral-600 rounded-lg text-text-primary focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    placeholder="en, es, fr"
+                  />
+                  <p className="text-xs text-text-secondary mt-1">
+                    Use ISO 639-1 language codes (e.g., en, es, fr, de)
+                  </p>
+                </div>
+              </div>
+
               <div className="flex justify-end space-x-2 pt-2">
                 <button
                   onClick={() => {
                     setEditingFile(null);
-                    setEditForm({ name: '', description: '', tags: '' });
+                    setEditForm({ 
+        name: '', 
+        description: '', 
+        tags: '',
+        genre: '',
+        category: '',
+        locationName: '',
+        locationAddress: '',
+        locationLat: '',
+        locationLng: '',
+        license: '',
+        language: ''
+      });
                   }}
                   className="px-4 py-2 text-sm font-medium text-text-secondary hover:text-text-primary transition-colors"
                   disabled={isLoading}

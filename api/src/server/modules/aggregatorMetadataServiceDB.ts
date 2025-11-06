@@ -362,6 +362,11 @@ export class AggregatorMetadataServiceDB {
       description?: string;
       keywords?: string[];
       tags?: string[];
+      genre?: string[];
+      category?: string;
+      locationCreated?: any;
+      license?: string;
+      inLanguage?: string | string[];
     }
   ): Promise<PublicMetadata | null> {
     const db = getDatabasePool();
@@ -375,6 +380,9 @@ export class AggregatorMetadataServiceDB {
 
       const metadata = current.metadata;
 
+      // Preserve existing schema metadata (static/auto-extracted fields)
+      const existingSchema = (metadata as any).schema || {};
+
       // Apply updates
       const updatedMetadata: PublicMetadata = {
         ...metadata,
@@ -382,7 +390,22 @@ export class AggregatorMetadataServiceDB {
         ...(updates.description !== undefined && { description: updates.description }),
         ...(updates.keywords && { keywords: updates.keywords }),
         // Keep legacy tags for backward compatibility
-        ...(updates.tags && { tags: updates.tags, keywords: updates.tags })
+        ...(updates.tags && { tags: updates.tags, keywords: updates.tags }),
+        // Update schema.org fields (merge with existing schema)
+        schema: {
+          ...existingSchema,
+          ...(updates.genre && { genre: updates.genre }),
+          ...(updates.category && { category: updates.category }),
+          ...(updates.locationCreated && { locationCreated: updates.locationCreated }),
+          ...(updates.license && { license: updates.license }),
+          ...(updates.inLanguage && { inLanguage: updates.inLanguage })
+        },
+        // Also update top-level fields for backward compatibility and easier access
+        ...(updates.genre && { genre: updates.genre }),
+        ...(updates.category && { category: updates.category }),
+        ...(updates.locationCreated && { locationCreated: updates.locationCreated }),
+        ...(updates.license && { license: updates.license }),
+        ...(updates.inLanguage && { inLanguage: updates.inLanguage })
       };
 
       // Ensure keywords and tags are in sync
