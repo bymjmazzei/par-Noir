@@ -19,7 +19,12 @@ export interface EngagementMetrics {
   }>;
 }
 
+/**
+ * Comprehensive Semantic Web Metadata
+ * Supports schema.org, Dublin Core, PROV-O, FOAF, ActivityPub, and more
+ */
 export interface CompanionMetadata {
+  // Core file information
   fileId: string;
   googleDriveFileId: string;
   fileName: string;
@@ -32,18 +37,237 @@ export interface CompanionMetadata {
     did?: string;
     identifier: string;
   };
+  
+  // Basic metadata (user-editable)
   tags?: string[];
   description?: string;
   metadata?: any;
+  
+  // Share token and thumbnail
   publicToken?: any; // Share token for public files (ShareToken object)
   thumbnail?: string; // Base64 data URL or URL for thumbnail/preview
   
-  // Content Relationships
+  // ============================================================================
+  // DUBLIN CORE METADATA (dc:)
+  // ============================================================================
+  dc?: {
+    title?: string;
+    creator?: string; // DID URI
+    subject?: string[]; // Topics/subjects
+    description?: string;
+    publisher?: string; // DID URI
+    contributor?: string[]; // DID URIs
+    date?: string; // ISO 8601
+    type?: string; // DCMI Type Vocabulary
+    format?: string; // MIME type
+    identifier?: string; // URI
+    source?: string; // URI of source
+    language?: string; // ISO 639-1 or RFC 5646
+    relation?: string[]; // URIs of related resources
+    coverage?: string; // Spatial/temporal coverage
+    rights?: string; // License URI or text
+    rightsHolder?: string; // DID URI
+  };
+  
+  // ============================================================================
+  // SCHEMA.ORG EXTENDED PROPERTIES
+  // ============================================================================
+  schema?: {
+    // Temporal metadata
+    dateCreated?: string; // ISO 8601
+    dateModified?: string; // ISO 8601
+    datePublished?: string; // ISO 8601
+    copyrightYear?: number;
+    expires?: string; // ISO 8601
+    
+    // Content classification
+    genre?: string[]; // e.g., "photography", "art", "documentation"
+    category?: string; // Main category
+    about?: Array<{
+      '@type': string; // e.g., "Thing", "Place", "Event"
+      name: string;
+      identifier?: string;
+    }>;
+    
+    // Location/Place
+    locationCreated?: {
+      '@type': 'Place';
+      name?: string;
+      address?: {
+        '@type': 'PostalAddress';
+        addressLocality?: string;
+        addressRegion?: string;
+        addressCountry?: string;
+      };
+      geo?: {
+        '@type': 'GeoCoordinates';
+        latitude?: number;
+        longitude?: number;
+      };
+    };
+    
+    // Technical metadata
+    encodingFormat?: string; // MIME type
+    fileSize?: number; // bytes
+    contentSize?: string; // Human-readable
+    
+    // Media-specific (ImageObject, VideoObject, AudioObject)
+    width?: number; // pixels
+    height?: number; // pixels
+    duration?: string; // ISO 8601 duration (e.g., "PT1M30S")
+    bitrate?: number; // bits per second
+    frameRate?: number; // frames per second
+    audioSampleRate?: number; // Hz
+    videoQuality?: string; // e.g., "1080p", "4K"
+    
+    // Rights and licensing
+    license?: string | {
+      '@type': 'CreativeWork';
+      '@id': string; // License URI
+      name: string;
+    };
+    copyrightHolder?: {
+      '@type': 'Person' | 'Organization';
+      '@id': string; // DID URI
+      name?: string;
+    };
+    copyrightNotice?: string;
+    usageInfo?: string; // Usage rights text
+    
+    // Accessibility
+    accessibilityFeature?: string[]; // e.g., "captions", "audioDescription", "textAlternative"
+    accessibilityHazard?: string[]; // e.g., "noFlashing", "noMotionSimulation"
+    accessibilitySummary?: string;
+    
+    // Language
+    inLanguage?: string | string[]; // ISO 639-1 or RFC 5646
+    
+    // Publishing
+    publisher?: {
+      '@type': 'Person' | 'Organization';
+      '@id': string; // DID URI
+      name?: string;
+    };
+    publishingPrinciples?: string; // URI
+    
+    // Creative work properties
+    alternativeHeadline?: string;
+    headline?: string;
+    abstract?: string;
+    text?: string; // Full text content (for documents)
+    citation?: string | Array<{
+      '@type': 'CreativeWork';
+      '@id': string;
+      name?: string;
+    }>;
+    
+    // Collections and series
+    isPartOf?: string | Array<{
+      '@type': 'CreativeWorkSeries' | 'Collection';
+      '@id': string;
+      name?: string;
+    }>;
+    hasPart?: string[]; // URIs of parts
+    
+    // Ratings and reviews
+    aggregateRating?: {
+      '@type': 'AggregateRating';
+      ratingValue: number;
+      ratingCount: number;
+      bestRating?: number;
+      worstRating?: number;
+    };
+    
+    // Comments and discussions
+    commentCount?: number;
+    
+    // Keywords and topics
+    keywords?: string[];
+    subjectOf?: string; // URI of work about this resource
+  };
+  
+  // ============================================================================
+  // PROV-O (PROVENANCE)
+  // ============================================================================
+  prov?: {
+    wasGeneratedBy?: {
+      '@type': 'Activity';
+      '@id': string; // Activity URI
+      startedAtTime?: string; // ISO 8601
+      endedAtTime?: string; // ISO 8601
+      used?: string[]; // Resource URIs used in creation
+    };
+    wasAttributedTo?: string[]; // DID URIs of attributors
+    wasDerivedFrom?: string[]; // URIs of source resources
+    wasInfluencedBy?: string[]; // URIs of influencing resources
+    hadPrimarySource?: string; // URI of primary source
+    qualifiedDerivation?: Array<{
+      '@type': 'Derivation';
+      entity: string; // URI
+      hadActivity?: string; // Activity URI
+    }>;
+  };
+  
+  // ============================================================================
+  // FOAF (FRIEND OF A FRIEND) - Social Graph
+  // ============================================================================
+  foaf?: {
+    maker?: string[]; // DID URIs of creators
+    primaryTopic?: string; // URI of primary topic
+    topic?: string[]; // URIs of topics
+    depicts?: string[]; // URIs of things depicted
+    thumbnail?: string; // Thumbnail URI
+    homepage?: string; // Homepage URI
+  };
+  
+  // ============================================================================
+  // ACTIVITYPUB COMPATIBILITY
+  // ============================================================================
+  activitypub?: {
+    '@context'?: string | string[];
+    type?: string; // Activity type (Create, Update, Delete, etc.)
+    actor?: string; // DID URI of actor
+    object?: any; // Activity object (can be nested)
+    target?: string; // Target URI
+    to?: string[]; // Audience URIs
+    cc?: string[]; // CC audience URIs
+    published?: string; // ISO 8601
+    updated?: string; // ISO 8601
+    attachment?: Array<{
+      type: string;
+      mediaType: string;
+      url: string;
+      name?: string;
+    }>;
+    tag?: Array<{
+      type: string;
+      name: string;
+      href?: string;
+    }>;
+    inReplyTo?: string; // URI
+    content?: string; // HTML or plain text content
+    summary?: string;
+    sensitive?: boolean;
+    replies?: {
+      type: string;
+      first?: {
+        type: string;
+        partOf: string;
+        items: any[];
+      };
+    };
+  };
+  
+  // ============================================================================
+  // CONTENT RELATIONSHIPS (Simplified - maps to above)
+  // ============================================================================
   inReplyTo?: string; // File ID of parent post/resource
   repostOf?: string; // File ID of original post/resource
   isPartOf?: string; // Curated feed identifier (creator DID)
   
-  // Engagement Metrics
+  // ============================================================================
+  // ENGAGEMENT METRICS
+  // ============================================================================
   engagement?: EngagementMetrics;
 }
 
@@ -77,10 +301,14 @@ export class GoogleDriveMetadataService {
   private static readonly PN_FOLDER_PREFIX = 'par Noir - pn-';
   
   /**
-   * Standard semantic web contexts
+   * Standard semantic web contexts (comprehensive)
    */
   private static readonly SEMANTIC_CONTEXTS = [
     'https://schema.org/',
+    'http://purl.org/dc/terms/',
+    'http://www.w3.org/ns/prov#',
+    'http://xmlns.com/foaf/0.1/',
+    'https://www.w3.org/ns/activitystreams#',
     'https://parnoir.com/ns/v1#'
   ];
   
@@ -123,22 +351,27 @@ export class GoogleDriveMetadataService {
     const resourceUri = this.generateResourceUri(companion.fileId);
     const didUri = creatorDid || companion.owner.did || `did:key:${companion.owner.identifier}`;
     
-    // Build public metadata with semantic web structure
+    // Build comprehensive public metadata with full semantic web structure
     const publicMetadata: any = {
       '@context': this.SEMANTIC_CONTEXTS,
       '@type': schemaType,
       '@id': resourceUri,
       
-      // Core identifiers
+      // ============================================================================
+      // CORE IDENTIFIERS
+      // ============================================================================
       fileId: companion.fileId,
       backend: 'google_drive',
       backendFileId: companion.googleDriveFileId,
       
-      // Schema.org CreativeWork properties
+      // ============================================================================
+      // SCHEMA.ORG CREATIVEWORK PROPERTIES
+      // ============================================================================
       name: companion.originalName || companion.fileName,
       description: companion.description || '',
       keywords: companion.tags || [],
       uploadDate: companion.uploadedAt,
+      datePublished: companion.uploadedAt,
       fileType: mimeCategory,
       
       // Creator (schema.org:creator)
@@ -157,18 +390,165 @@ export class GoogleDriveMetadataService {
         did: didUri
       },
       
-      // Media properties
+      // ============================================================================
+      // DUBLIN CORE METADATA (dc:)
+      // ============================================================================
+      ...(companion.dc && {
+        'dc:title': companion.dc.title || companion.originalName || companion.fileName,
+        'dc:creator': companion.dc.creator || didUri,
+        'dc:subject': companion.dc.subject || companion.tags || [],
+        'dc:description': companion.dc.description || companion.description || '',
+        'dc:publisher': companion.dc.publisher || didUri,
+        'dc:contributor': companion.dc.contributor || [],
+        'dc:date': companion.dc.date || companion.uploadedAt,
+        'dc:type': companion.dc.type || schemaType,
+        'dc:format': companion.dc.format || companion.mimeType,
+        'dc:identifier': companion.dc.identifier || resourceUri,
+        'dc:source': companion.dc.source,
+        'dc:language': companion.dc.language,
+        'dc:relation': companion.dc.relation || [],
+        'dc:coverage': companion.dc.coverage,
+        'dc:rights': companion.dc.rights,
+        'dc:rightsHolder': companion.dc.rightsHolder || didUri
+      }),
+      
+      // ============================================================================
+      // SCHEMA.ORG EXTENDED PROPERTIES
+      // ============================================================================
+      ...(companion.schema && {
+        // Temporal metadata
+        dateCreated: companion.schema.dateCreated || companion.uploadedAt,
+        dateModified: companion.schema.dateModified || companion.uploadedAt,
+        datePublished: companion.schema.datePublished || companion.uploadedAt,
+        copyrightYear: companion.schema.copyrightYear,
+        expires: companion.schema.expires,
+        
+        // Content classification
+        genre: companion.schema.genre || [],
+        category: companion.schema.category,
+        about: companion.schema.about || [],
+        
+        // Location
+        locationCreated: companion.schema.locationCreated,
+        
+        // Technical metadata
+        encodingFormat: companion.schema.encodingFormat || companion.mimeType,
+        fileSize: companion.schema.fileSize || companion.size,
+        contentSize: companion.schema.contentSize,
+        
+        // Media-specific
+        width: companion.schema.width,
+        height: companion.schema.height,
+        duration: companion.schema.duration,
+        bitrate: companion.schema.bitrate,
+        frameRate: companion.schema.frameRate,
+        audioSampleRate: companion.schema.audioSampleRate,
+        videoQuality: companion.schema.videoQuality,
+        
+        // Rights and licensing
+        license: companion.schema.license,
+        copyrightHolder: companion.schema.copyrightHolder,
+        copyrightNotice: companion.schema.copyrightNotice,
+        usageInfo: companion.schema.usageInfo,
+        
+        // Accessibility
+        accessibilityFeature: companion.schema.accessibilityFeature || [],
+        accessibilityHazard: companion.schema.accessibilityHazard || [],
+        accessibilitySummary: companion.schema.accessibilitySummary,
+        
+        // Language
+        inLanguage: companion.schema.inLanguage,
+        
+        // Publishing
+        publisher: companion.schema.publisher,
+        publishingPrinciples: companion.schema.publishingPrinciples,
+        
+        // Creative work properties
+        alternativeHeadline: companion.schema.alternativeHeadline,
+        headline: companion.schema.headline,
+        abstract: companion.schema.abstract,
+        text: companion.schema.text,
+        citation: companion.schema.citation,
+        
+        // Collections
+        isPartOf: companion.schema.isPartOf || (companion.isPartOf ? `https://parnoir.com/curated/${companion.isPartOf}` : undefined),
+        hasPart: companion.schema.hasPart || [],
+        
+        // Ratings
+        aggregateRating: companion.schema.aggregateRating,
+        
+        // Comments
+        commentCount: companion.schema.commentCount || companion.engagement?.comments || 0,
+        
+        // Keywords (merge with tags)
+        keywords: [...(companion.schema.keywords || []), ...(companion.tags || [])],
+        subjectOf: companion.schema.subjectOf
+      }),
+      
+      // ============================================================================
+      // PROV-O (PROVENANCE)
+      // ============================================================================
+      ...(companion.prov && {
+        'prov:wasGeneratedBy': companion.prov.wasGeneratedBy,
+        'prov:wasAttributedTo': companion.prov.wasAttributedTo || [didUri],
+        'prov:wasDerivedFrom': companion.prov.wasDerivedFrom || [],
+        'prov:wasInfluencedBy': companion.prov.wasInfluencedBy || [],
+        'prov:hadPrimarySource': companion.prov.hadPrimarySource,
+        'prov:qualifiedDerivation': companion.prov.qualifiedDerivation || []
+      }),
+      
+      // ============================================================================
+      // FOAF (FRIEND OF A FRIEND)
+      // ============================================================================
+      ...(companion.foaf && {
+        'foaf:maker': companion.foaf.maker || [didUri],
+        'foaf:primaryTopic': companion.foaf.primaryTopic,
+        'foaf:topic': companion.foaf.topic || [],
+        'foaf:depicts': companion.foaf.depicts || [],
+        'foaf:thumbnail': companion.foaf.thumbnail || (companion.thumbnail ? `${resourceUri}/thumbnail` : undefined),
+        'foaf:homepage': companion.foaf.homepage
+      }),
+      
+      // ============================================================================
+      // ACTIVITYPUB COMPATIBILITY
+      // ============================================================================
+      ...(companion.activitypub && {
+        'as:type': companion.activitypub.type || 'Create',
+        'as:actor': companion.activitypub.actor || didUri,
+        'as:object': companion.activitypub.object,
+        'as:target': companion.activitypub.target,
+        'as:to': companion.activitypub.to || ['https://www.w3.org/ns/activitystreams#Public'],
+        'as:cc': companion.activitypub.cc || [],
+        'as:published': companion.activitypub.published || companion.uploadedAt,
+        'as:updated': companion.activitypub.updated || companion.uploadedAt,
+        'as:attachment': companion.activitypub.attachment || [],
+        'as:tag': companion.activitypub.tag || (companion.tags?.map(tag => ({ type: 'Hashtag', name: tag })) || []),
+        'as:inReplyTo': companion.activitypub.inReplyTo || (companion.inReplyTo ? this.generateResourceUri(companion.inReplyTo) : undefined),
+        'as:content': companion.activitypub.content || companion.description || '',
+        'as:summary': companion.activitypub.summary,
+        'as:sensitive': companion.activitypub.sensitive || false,
+        'as:replies': companion.activitypub.replies
+      }),
+      
+      // ============================================================================
+      // MEDIA PROPERTIES
+      // ============================================================================
       thumbnail: companion.thumbnail ? {
         '@type': 'ImageObject',
-        '@id': `${resourceUri}/thumbnail`
+        '@id': `${resourceUri}/thumbnail`,
+        'foaf:thumbnail': `${resourceUri}/thumbnail`
       } : undefined,
       
-      // Content relationships
+      // ============================================================================
+      // CONTENT RELATIONSHIPS
+      // ============================================================================
       inReplyTo: companion.inReplyTo ? this.generateResourceUri(companion.inReplyTo) : undefined,
       repostOf: companion.repostOf ? this.generateResourceUri(companion.repostOf) : undefined,
       isPartOf: companion.isPartOf ? `https://parnoir.com/curated/${companion.isPartOf}` : undefined,
       
-      // Engagement metrics (always include, initialize if not present)
+      // ============================================================================
+      // ENGAGEMENT METRICS (always include, initialize if not present)
+      // ============================================================================
       engagement: {
         views: companion.engagement?.views || 0,
         likes: companion.engagement?.likes || 0,
@@ -178,14 +558,21 @@ export class GoogleDriveMetadataService {
         engagementHistory: companion.engagement?.engagementHistory || []
       },
       
-      // par Noir specific
+      // ============================================================================
+      // PAR NOIR SPECIFIC
+      // ============================================================================
       publicToken: companion.publicToken,
-      isPublic: companion.visibility === 'public'
+      isPublic: companion.visibility === 'public',
+      
+      // Additional semantic relationships
+      sameAs: companion.metadata?.sameAs || [],
+      about: companion.metadata?.about || []
     };
     
     // Remove undefined fields
     Object.keys(publicMetadata).forEach(key => {
-      if (publicMetadata[key] === undefined) {
+      if (publicMetadata[key] === undefined || 
+          (Array.isArray(publicMetadata[key]) && publicMetadata[key].length === 0 && !key.includes(':'))) {
         delete publicMetadata[key];
       }
     });

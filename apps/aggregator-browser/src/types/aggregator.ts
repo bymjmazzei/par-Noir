@@ -144,68 +144,149 @@ export interface EngagementMetrics {
 }
 
 /**
- * Public Metadata with Semantic Web Standards (JSON-LD)
- * Aligned with schema.org CreativeWork and Dublin Core for semantic web compatibility
- * Enhanced with relationships and engagement metrics
+ * Public Metadata with Comprehensive Semantic Web Standards (JSON-LD)
+ * Supports schema.org, Dublin Core, PROV-O, FOAF, ActivityPub, and more
+ * Full semantic web foundation for decentralized social media
  */
 export interface PublicMetadata {
   // JSON-LD Semantic Web Structure
-  "@context"?: string | string[]; // Schema.org + par Noir contexts (always array in new metadata)
-  "@type"?: string | string[]; // e.g., "CreativeWork", "ImageObject", "VideoObject" (can be multiple types)
-  "@id"?: string; // Unique URI for this resource (always required in new metadata)
+  "@context"?: string | string[]; // Comprehensive contexts: schema.org, dc:, prov:, foaf:, as:, pN
+  "@type"?: string | string[]; // e.g., "CreativeWork", "ImageObject", "VideoObject"
+  "@id"?: string; // Unique URI for this resource (required)
   
   // Core identifiers
-  fileId: string; // Unique identifier
-  backend: string; // Storage backend identifier
-  backendFileId: string; // File ID in backend storage
+  fileId: string;
+  backend: string;
+  backendFileId: string;
   
-  // Schema.org CreativeWork properties
-  name?: string; // File title (schema.org:name) - preferred
-  title?: string; // Legacy support (deprecated, use name)
-  description?: string; // Schema.org:description
-  keywords?: string[]; // Schema.org:keywords (from tags) - preferred
-  tags?: string[]; // Legacy support (deprecated, use keywords)
-  uploadDate: string; // Schema.org:datePublished (ISO 8601)
-  fileType: string; // MIME type category (e.g., "image", "video")
+  // ============================================================================
+  // SCHEMA.ORG CREATIVEWORK PROPERTIES
+  // ============================================================================
+  name?: string;
+  title?: string; // Legacy
+  description?: string;
+  keywords?: string[];
+  tags?: string[]; // Legacy
+  uploadDate: string;
+  datePublished?: string;
+  dateCreated?: string;
+  dateModified?: string;
+  fileType: string;
   
-  // Author/Creator (schema.org:creator) - preferred
+  // Creator/Author
   creator?: {
-    "@type": "Person"; // Schema.org:Person
-    "@id": string; // Author's DID (URI)
+    "@type": "Person";
+    "@id": string;
     identifier?: {
       "@type": "PropertyValue";
       name: "DID";
-      value: string; // Public DID
+      value: string;
     };
   };
-  
-  // Legacy author support (for backward compatibility)
   author?: {
     did: string;
-    username?: string; // Secret - should not be in public metadata
+    username?: string;
   };
   
-  // Media-specific properties (schema.org extensions)
+  // Extended schema.org properties
+  genre?: string[];
+  category?: string;
+  about?: any[];
+  locationCreated?: any;
+  encodingFormat?: string;
+  fileSize?: number;
+  width?: number;
+  height?: number;
+  duration?: string;
+  bitrate?: number;
+  frameRate?: number;
+  license?: string | any;
+  copyrightHolder?: any;
+  inLanguage?: string | string[];
+  publisher?: any;
+  abstract?: string;
+  headline?: string;
+  citation?: string | any[];
+  aggregateRating?: any;
+  commentCount?: number;
+  
+  // ============================================================================
+  // DUBLIN CORE (dc:)
+  // ============================================================================
+  "dc:title"?: string;
+  "dc:creator"?: string;
+  "dc:subject"?: string[];
+  "dc:description"?: string;
+  "dc:publisher"?: string;
+  "dc:date"?: string;
+  "dc:type"?: string;
+  "dc:format"?: string;
+  "dc:identifier"?: string;
+  "dc:language"?: string;
+  "dc:rights"?: string;
+  "dc:rightsHolder"?: string;
+  
+  // ============================================================================
+  // PROV-O (PROVENANCE) (prov:)
+  // ============================================================================
+  "prov:wasGeneratedBy"?: any;
+  "prov:wasAttributedTo"?: string[];
+  "prov:wasDerivedFrom"?: string[];
+  "prov:wasInfluencedBy"?: string[];
+  "prov:hadPrimarySource"?: string;
+  
+  // ============================================================================
+  // FOAF (foaf:)
+  // ============================================================================
+  "foaf:maker"?: string[];
+  "foaf:primaryTopic"?: string;
+  "foaf:topic"?: string[];
+  "foaf:depicts"?: string[];
+  "foaf:thumbnail"?: string;
+  
+  // ============================================================================
+  // ACTIVITYPUB (as:)
+  // ============================================================================
+  "as:type"?: string;
+  "as:actor"?: string;
+  "as:object"?: any;
+  "as:published"?: string;
+  "as:updated"?: string;
+  "as:content"?: string;
+  "as:inReplyTo"?: string;
+  "as:tag"?: any[];
+  
+  // ============================================================================
+  // MEDIA PROPERTIES
+  // ============================================================================
   thumbnail?: string | {
     "@type": "ImageObject";
-    "@id": string; // Thumbnail URI
+    "@id": string;
   };
   
-  // Content Relationships (schema.org + ActivityPub compatible)
-  inReplyTo?: string; // URI of parent post/resource (schema.org:inReplyTo / as:inReplyTo)
-  repostOf?: string; // URI of original post/resource (as:repostOf)
-  isPartOf?: string; // URI of curated feed/collection (schema.org:isPartOf)
+  // ============================================================================
+  // CONTENT RELATIONSHIPS
+  // ============================================================================
+  inReplyTo?: string;
+  repostOf?: string;
+  isPartOf?: string;
+  hasPart?: string[];
   
-  // Engagement Metrics (par Noir specific, semantic web compatible)
+  // ============================================================================
+  // ENGAGEMENT METRICS
+  // ============================================================================
   engagement?: EngagementMetrics;
   
-  // par Noir specific
-  publicToken?: string; // Share token for access (JSON stringified ShareToken)
-  isPublic: boolean; // Visibility flag
+  // ============================================================================
+  // PAR NOIR SPECIFIC
+  // ============================================================================
+  publicToken?: string;
+  isPublic: boolean;
+  sameAs?: string[];
+  about?: string[];
   
-  // Linked Data (relationships to other resources)
-  sameAs?: string[]; // URIs of same resource in other systems (schema.org:sameAs)
-  about?: string[]; // Subjects/topics (semantic relationships)
+  // Allow any additional semantic web properties
+  [key: string]: any;
 }
 
 export interface MetadataFilters {
