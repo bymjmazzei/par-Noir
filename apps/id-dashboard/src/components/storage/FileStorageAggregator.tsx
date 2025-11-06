@@ -2274,8 +2274,9 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
                 const previewUrl = filePreviewUrls.get(file.id);
                 const isLoadingPreview = loadingPreviews.has(file.id);
                 const mimeType = file.mimeType || '';
-                const isImage = mimeType.startsWith('image/');
-                const isVideo = mimeType.startsWith('video/');
+                const fileName = file.originalName || file.name || '';
+                const isImage = mimeType.startsWith('image/') || /\.(jpg|jpeg|png|gif|webp|svg|bmp|ico)$/i.test(fileName);
+                const isVideo = mimeType.startsWith('video/') || /\.(mp4|mov|avi|webm|mkv|flv|wmv)$/i.test(fileName);
                 
                 return (
                   <div
@@ -2398,8 +2399,9 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
                 const previewUrl = filePreviewUrls.get(file.id);
                 const isLoadingPreview = loadingPreviews.has(file.id);
                 const mimeType = file.mimeType || '';
-                const isImage = mimeType.startsWith('image/');
-                const isVideo = mimeType.startsWith('video/');
+                const fileName = file.originalName || file.name || '';
+                const isImage = mimeType.startsWith('image/') || /\.(jpg|jpeg|png|gif|webp|svg|bmp|ico)$/i.test(fileName);
+                const isVideo = mimeType.startsWith('video/') || /\.(mp4|mov|avi|webm|mkv|flv|wmv)$/i.test(fileName);
                 
                 return (
                 <div
