@@ -1705,70 +1705,8 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
     setLoadingPreviews(prev => new Set(prev).add(file.id));
 
     try {
-      // Resolve auth credentials - try multiple sources (same as download)
-      let publicKey: string | null = null;
-      let authenticatedUserData: any = authenticatedUser || null;
-
-      // Try 1: Use resolvedAuth state
-      if (resolvedAuth?.publicKey) {
-        publicKey = resolvedAuth.publicKey;
-      }
-      
-      // Try 2: Extract from authenticatedUser prop
-      if (!publicKey && authenticatedUser) {
-        authenticatedUserData = authenticatedUser;
-        publicKey = authenticatedUser.publicKey || 
-          (authenticatedUser.id && authenticatedUser.id.startsWith('did:key:') ? authenticatedUser.id : authenticatedUser.id) || null;
-      }
-
-      // Try 3: Get from localStorage
-      if (!publicKey || !authenticatedUserData) {
-        const authenticatedUserStr = localStorage.getItem('authenticated_user');
-        if (authenticatedUserStr) {
-          try {
-            authenticatedUserData = JSON.parse(authenticatedUserStr);
-            if (!publicKey) {
-              publicKey = authenticatedUserData.publicKey || 
-                (authenticatedUserData.id && authenticatedUserData.id.startsWith('did:key:') ? authenticatedUserData.id : authenticatedUserData.id) || null;
-            }
-          } catch (e) {
-            console.warn('Failed to parse authenticated_user:', e);
-          }
-        }
-      }
-
-      // Try 4: Load from storage
-      if (!publicKey || !authenticatedUserData) {
-        try {
-          const { SecureStorage } = await import('../../utils/storage');
-          const storage = new SecureStorage();
-          await storage.init();
-          const session = await storage.getCurrentSession();
-          
-          if (session) {
-            authenticatedUserData = authenticatedUserData || session;
-            if (!publicKey) {
-              publicKey = (session as any).publicKey || 
-                (session.id && session.id.startsWith('did:key:') ? session.id : session.id) || null;
-            }
-          }
-        } catch (err) {
-          console.warn('Failed to load auth from storage:', err);
-        }
-      }
-
-      // Final check
-      if (!authenticatedUserData?.id || !publicKey) {
-        console.warn('Could not resolve auth for file preview');
-        setLoadingPreviews(prev => {
-          const next = new Set(prev);
-          next.delete(file.id);
-          return next;
-        });
-        return;
-      }
-
-      // SIMPLIFIED: Use token-based decryption ONLY (same as aggregator browser)
+        // SIMPLIFIED: Use token-based decryption ONLY (same as aggregator browser)
+        // No credentials needed - token is in the owner index
       // Get token from metadata map or cache
       let token: any = null;
       const metadata = fileMetadataMap.get(file.id);
@@ -2065,14 +2003,14 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
         <div className="flex items-center justify-between">
           <div className="flex-1">
             <div className="flex items-center space-x-3 mb-4">
-              <Lock className="h-5 w-5 text-blue-400" />
-              <div>
-                <h3 className="text-lg font-semibold text-white">Secure Folder</h3>
-                <p className="text-text-secondary text-sm">
-                  Access your encrypted files with the desktop app
-                </p>
-              </div>
+            <Lock className="h-5 w-5 text-blue-400" />
+            <div>
+              <h3 className="text-lg font-semibold text-white">Secure Folder</h3>
+              <p className="text-text-secondary text-sm">
+                Access your encrypted files with the desktop app
+              </p>
             </div>
+          </div>
             
             <button
               onClick={() => setShowDesktopAppInfo(true)}
@@ -2081,8 +2019,8 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
               <Info className="h-4 w-4" />
               <span className="text-sm">About the Desktop App</span>
             </button>
-          </div>
-
+        </div>
+        
           <a
             href="https://github.com/bymjmazzei/par-Noir/releases"
             target="_blank"
@@ -2115,17 +2053,17 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
               </div>
               
               <p className="text-text-secondary text-sm mb-4">
-                The par Noir Desktop App provides secure, local access to your encrypted files stored in Google Drive. 
-                Files are automatically synced and encrypted with your pN credentials.
-              </p>
+            The par Noir Desktop App provides secure, local access to your encrypted files stored in Google Drive. 
+            Files are automatically synced and encrypted with your pN credentials.
+          </p>
               
-              <div className="space-y-2 text-xs text-text-secondary">
-                <p>• Secure local file access</p>
-                <p>• Automatic encryption/decryption</p>
-                <p>• Works offline with cached files</p>
-                <p>• Native desktop integration</p>
-              </div>
-            </div>
+          <div className="space-y-2 text-xs text-text-secondary">
+            <p>• Secure local file access</p>
+            <p>• Automatic encryption/decryption</p>
+            <p>• Works offline with cached files</p>
+            <p>• Native desktop integration</p>
+          </div>
+        </div>
           </div>
         )}
       </div>
@@ -2280,8 +2218,8 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
         <div className="bg-neutral-900/60 border border-neutral-700 rounded-xl p-6">
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-lg font-semibold text-white">
-              Your Files ({totalFiles})
-            </h3>
+            Your Files ({totalFiles})
+          </h3>
             <div className="flex items-center space-x-2">
               <button
                 onClick={() => setViewMode('list')}
@@ -2453,11 +2391,11 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
                 const isVideo = mimeType.startsWith('video/');
                 
                 return (
-                  <div
-                    key={`${file.backend}-${file.backendFileId}`}
-                    className="flex items-center justify-between p-3 bg-neutral-800/50 rounded-lg hover:bg-neutral-800 transition-colors"
-                  >
-                    <div className="flex items-center space-x-3 flex-1 min-w-0">
+                <div
+                  key={`${file.backend}-${file.backendFileId}`}
+                  className="flex items-center justify-between p-3 bg-neutral-800/50 rounded-lg hover:bg-neutral-800 transition-colors"
+                >
+                  <div className="flex items-center space-x-3 flex-1 min-w-0">
                       {/* Preview or icon - displays actual file at smaller size */}
                       {previewUrl && isImage ? (
                         <div className="w-12 h-12 flex-shrink-0 rounded overflow-hidden bg-neutral-700">
@@ -2492,24 +2430,24 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
                           )}
                         </div>
                       ) : (
-                        <Lock className="h-4 w-4 text-blue-400 flex-shrink-0" />
+                    <Lock className="h-4 w-4 text-blue-400 flex-shrink-0" />
                       )}
                       
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center space-x-2">
-                          <p className="text-white text-sm truncate">
-                            {file.encrypted ? file.originalName : file.name}
-                          </p>
-                          {metadata?.isPublic && (
-                            <Globe className="h-3 w-3 text-green-400 flex-shrink-0" title="Public" />
-                          )}
-                        </div>
-                        <p className="text-text-secondary text-xs">
-                          {file.backend} • {(parseInt(file.size?.toString() || '0') / 1024).toFixed(2)} KB
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center space-x-2">
+                        <p className="text-white text-sm truncate">
+                          {file.encrypted ? file.originalName : file.name}
                         </p>
+                          {metadata?.isPublic && (
+                          <Globe className="h-3 w-3 text-green-400 flex-shrink-0" title="Public" />
+                        )}
                       </div>
+                      <p className="text-text-secondary text-xs">
+                        {file.backend} • {(parseInt(file.size?.toString() || '0') / 1024).toFixed(2)} KB
+                      </p>
                     </div>
-                    <div className="flex items-center space-x-2">
+                  </div>
+                  <div className="flex items-center space-x-2">
                       <button
                         onClick={() => handleViewFile(file)}
                         disabled={isLoading}
@@ -2526,35 +2464,35 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
                       >
                         <Edit className="h-4 w-4" />
                       </button>
-                      <button
-                        onClick={() => handleTogglePublic(file)}
-                        disabled={isLoading}
-                        className="px-2 py-1.5 text-xs font-medium rounded-lg transition-colors disabled:opacity-50"
+                    <button
+                      onClick={() => handleTogglePublic(file)}
+                      disabled={isLoading}
+                      className="px-2 py-1.5 text-xs font-medium rounded-lg transition-colors disabled:opacity-50"
                         title={metadata?.isPublic ? 'Make Private' : 'Make Public'}
-                        style={{
+                      style={{
                           backgroundColor: metadata?.isPublic 
-                            ? 'rgba(34, 197, 94, 0.2)' 
-                            : 'rgba(107, 114, 128, 0.2)',
+                          ? 'rgba(34, 197, 94, 0.2)' 
+                          : 'rgba(107, 114, 128, 0.2)',
                           color: metadata?.isPublic 
-                            ? 'rgb(74, 222, 128)' 
-                            : 'rgb(156, 163, 175)'
-                        }}
-                      >
+                          ? 'rgb(74, 222, 128)' 
+                          : 'rgb(156, 163, 175)'
+                      }}
+                    >
                         {metadata?.isPublic ? (
-                          <Globe className="h-4 w-4" />
-                        ) : (
-                          <EyeOff className="h-4 w-4" />
-                        )}
-                      </button>
-                      <button
-                        onClick={() => handleDownload(file)}
-                        disabled={isLoading}
-                        className="px-3 py-1.5 bg-blue-600 text-white text-xs font-medium rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50"
-                      >
-                        <Download className="h-4 w-4" />
-                      </button>
-                    </div>
+                        <Globe className="h-4 w-4" />
+                      ) : (
+                        <EyeOff className="h-4 w-4" />
+                      )}
+                    </button>
+                    <button
+                      onClick={() => handleDownload(file)}
+                      disabled={isLoading}
+                      className="px-3 py-1.5 bg-blue-600 text-white text-xs font-medium rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50"
+                    >
+                      <Download className="h-4 w-4" />
+                    </button>
                   </div>
+                </div>
                 );
               })}
             </div>
@@ -2672,6 +2610,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
             <FileViewer 
               file={viewingFile} 
               previewUrl={filePreviewUrls.get(viewingFile.id) || null}
+              fileMetadata={fileMetadataMap.get(viewingFile.id)}
               onClose={() => setViewingFile(null)} 
             />
           </div>
@@ -2683,7 +2622,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
 };
 
 // File Viewer Component
-const FileViewer: React.FC<{ file: AggregatedFile; previewUrl: string | null; onClose: () => void }> = ({ file, previewUrl, onClose }) => {
+const FileViewer: React.FC<{ file: AggregatedFile; previewUrl: string | null; fileMetadata?: PublicMetadata; onClose: () => void }> = ({ file, previewUrl, fileMetadata, onClose }) => {
   const [decryptedUrl, setDecryptedUrl] = useState<string | null>(previewUrl);
   const [loading, setLoading] = useState(!previewUrl);
   const [error, setError] = useState<string | null>(null);
@@ -2700,90 +2639,21 @@ const FileViewer: React.FC<{ file: AggregatedFile; previewUrl: string | null; on
       return;
     }
 
+    // SIMPLIFIED: Use token-based decryption (same as aggregator browser)
+    // Get token from fileMetadata prop (no credentials needed)
     const loadFile = async () => {
       try {
         setLoading(true);
         setError(null);
 
-        // Get aggregator service
-        const { getFileAggregatorService } = await import('../../services/aggregator/FileAggregatorService');
-        const aggregatorService = getFileAggregatorService();
-
-        // Resolve auth credentials - try multiple sources (same as download/thumbnail)
-        let publicKey: string | null = null;
-
-        // Try 1: Get from localStorage (authenticated_user)
-        const authenticatedUserStr = localStorage.getItem('authenticated_user');
-        let authenticatedUser: any = null;
-        if (authenticatedUserStr) {
-          try {
-            authenticatedUser = JSON.parse(authenticatedUserStr);
-            publicKey = authenticatedUser.publicKey || 
-              (authenticatedUser.id && authenticatedUser.id.startsWith('did:key:') ? authenticatedUser.id : authenticatedUser.id) || null;
-          } catch (e) {
-            console.warn('Failed to parse authenticated_user:', e);
-          }
-        }
-
-        // Try 2: Load from storage if not found
-        if (!publicKey || !authenticatedUser) {
-          try {
-            const { SecureStorage } = await import('../../utils/storage');
-            const storage = new SecureStorage();
-            await storage.init();
-            const session = await storage.getCurrentSession();
-            
-            if (session) {
-              authenticatedUser = authenticatedUser || session;
-              publicKey = publicKey || (session as any).publicKey || 
-                (session.id && session.id.startsWith('did:key:') ? session.id : session.id) || null;
-            }
-          } catch (err) {
-            console.warn('Failed to load auth from storage:', err);
-          }
-        }
-
-        if (!authenticatedUser?.id || !publicKey) {
-          throw new Error('Please unlock your pN first. These are your files, but we need your credentials to decrypt them.');
-        }
-        
-        // SIMPLIFIED: Use token-based decryption (same as aggregator browser)
-        // Get token from owner index
-        const { GoogleDriveMetadataService } = await import('../../services/storage/GoogleDriveMetadataService');
-        const backend = aggregatorService.getBackend('google_drive');
-        const driveToken = (backend as any)?.token || localStorage.getItem('google_drive_token');
-        
-        if (!driveToken) {
-          throw new Error('No Google Drive token available');
-        }
-
-        // Get pN identifier
-        const { VolumeIdGenerator } = await import('../../utils/crypto/volumeIdGenerator');
-        const passcode = sessionStorage.getItem('pn_session_passcode');
-        if (!passcode) {
-          throw new Error('Please unlock your pN first');
-        }
-
-        const pnIdentifier = await VolumeIdGenerator.generateVolumeId({
-          pnName: authenticatedUser.pnName || authenticatedUser.username || authenticatedUser.name,
-          passcode,
-          publicKey
-        });
-
-        // Load owner index to get token
-        const pnFolderId = await GoogleDriveMetadataService.getOrCreatePNFolder(driveToken, pnIdentifier);
-        const metadataFolderId = await GoogleDriveMetadataService.getOrCreateMetadataFolder(driveToken, pnFolderId);
-        const ownerIndex = await GoogleDriveMetadataService.getOwnerFileIndex(driveToken, metadataFolderId, pnIdentifier);
-        
-        const fileEntry = ownerIndex?.files?.find((entry: any) => entry.googleDriveFileId === file.backendFileId);
-        if (!fileEntry?.publicToken) {
-          throw new Error('File token not found in owner index');
+        if (!fileMetadata?.publicToken) {
+          throw new Error('File token not found. Please reload the page.');
         }
 
         // Parse token and decrypt (SAME as aggregator browser)
-        const shareToken = typeof fileEntry.publicToken === 'string'
-          ? JSON.parse(fileEntry.publicToken)
-          : fileEntry.publicToken;
+        const shareToken = typeof fileMetadata.publicToken === 'string'
+          ? JSON.parse(fileMetadata.publicToken)
+          : fileMetadata.publicToken;
 
         const { decryptWithToken } = await import('../../utils/tokenDecryption');
         const decryptedBlob = await decryptWithToken(shareToken);
@@ -2806,7 +2676,7 @@ const FileViewer: React.FC<{ file: AggregatedFile; previewUrl: string | null; on
       }
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [file.id, previewUrl]);
+  }, [file.id, previewUrl, fileMetadata]);
 
   if (loading) {
     return (
