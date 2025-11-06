@@ -1696,9 +1696,12 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
       return;
     }
 
-    // Only load previews for images and videos
+    // Only load previews for images and videos - check mimeType and file extension
     const mimeType = file.mimeType || '';
-    if (!mimeType.startsWith('image/') && !mimeType.startsWith('video/')) {
+    const fileName = file.originalName || file.name || '';
+    const isImage = mimeType.startsWith('image/') || /\.(jpg|jpeg|png|gif|webp|svg|bmp|ico)$/i.test(fileName);
+    const isVideo = mimeType.startsWith('video/') || /\.(mp4|mov|avi|webm|mkv|flv|wmv)$/i.test(fileName);
+    if (!isImage && !isVideo) {
       return;
     }
 
@@ -1725,7 +1728,13 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
       
       // If no token, file can't be decrypted (shouldn't happen if owner index is loaded correctly)
       if (!token) {
-        console.warn('⚠️ [Preview] No share token found for file:', file.id);
+        console.warn('⚠️ [Preview] No share token found for file:', file.id, {
+          hasMetadata: !!metadata,
+          hasTokenInMetadata: !!metadata?.publicToken,
+          cacheSize: shareTokenCache.current.size,
+          hasTokenInCache: shareTokenCache.current.has(file.backendFileId),
+          fileMetadataMapSize: fileMetadataMap.size
+        });
         setLoadingPreviews(prev => {
           const next = new Set(prev);
           next.delete(file.id);
@@ -1733,6 +1742,13 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
         });
         return;
       }
+      
+      console.log('✅ [Preview] Token found, decrypting...', {
+        fileId: file.id,
+        fileName: file.name,
+        hasShareKey: !!token.shareKey,
+        hasShareEncrypted: !!token.shareEncrypted
+      });
       
       // Use token-based decryption (SAME as aggregator browser)
       try {
@@ -1785,18 +1801,19 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
 
   // Auto-load previews for image/video files when files are loaded (since user owns them)
   useEffect(() => {
-    if (files.length > 0 && resolvedAuth?.publicKey && authenticatedUser?.id) {
+    if (files.length > 0) {
       console.log('🔄 [Auto-Preview] Checking files for auto-preview...', {
         fileCount: files.length,
-        hasPublicKey: !!resolvedAuth?.publicKey,
-        hasUserId: !!authenticatedUser?.id,
-        publicKeyPrefix: resolvedAuth?.publicKey?.substring(0, 20),
-        userId: authenticatedUser?.id
+        metadataMapSize: fileMetadataMap.size
       });
-      // Load previews for all image/video files automatically
+      // Load previews for all image/video files automatically (token-based, no credentials needed)
       files.forEach(file => {
         const mimeType = file.mimeType || '';
-        if ((mimeType.startsWith('image/') || mimeType.startsWith('video/')) && !filePreviewUrls.has(file.id) && !loadingPreviews.has(file.id)) {
+        const fileName = file.originalName || file.name || '';
+        const isImage = mimeType.startsWith('image/') || /\.(jpg|jpeg|png|gif|webp|svg|bmp|ico)$/i.test(fileName);
+        const isVideo = mimeType.startsWith('video/') || /\.(mp4|mov|avi|webm|mkv|flv|wmv)$/i.test(fileName);
+        
+        if ((isImage || isVideo) && !filePreviewUrls.has(file.id) && !loadingPreviews.has(file.id)) {
           console.log('🔄 [Auto-Preview] Loading preview for file:', file.id, file.name);
           loadFilePreview(file).catch(err => {
             // Silently fail for auto-preview - don't show error modal
@@ -1804,15 +1821,9 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
           });
         }
       });
-    } else {
-      console.log('⚠️ [Auto-Preview] Skipping auto-preview - missing credentials:', {
-        fileCount: files.length,
-        hasPublicKey: !!resolvedAuth?.publicKey,
-        hasUserId: !!authenticatedUser?.id
-      });
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [files.length, resolvedAuth?.publicKey, authenticatedUser?.id]);
+  }, [files.length, fileMetadataMap.size]);
 
   // Cleanup blob URLs when component unmounts
   useEffect(() => {
