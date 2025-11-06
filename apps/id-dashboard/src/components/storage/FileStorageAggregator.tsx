@@ -1750,17 +1750,116 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
 
       console.log('✅ [Preview] File downloaded, size:', encryptedBlob.size, 'type:', encryptedBlob.type);
 
-      // Check if file has publicToken - use that for decryption (same as aggregator browser)
-      const metadata = fileMetadataMap.get(file.id);
+      // Check if file has publicToken - try multiple sources
+      // 1. Check fileMetadataMap
+      // 2. Check shareTokenCache
+      // 3. Reload from owner index if needed
+      let token: any = null;
+      let metadata = fileMetadataMap.get(file.id);
+      
+      // Try 1: Get token from metadata map
       if (metadata?.publicToken) {
-        console.log('✅ [Preview] File has publicToken, using token-based decryption (same as aggregator browser)...');
-        try {
-          let token: any;
-          if (typeof metadata.publicToken === 'string') {
+        console.log('✅ [Preview] Found publicToken in metadata map, using token-based decryption...');
+        if (typeof metadata.publicToken === 'string') {
+          try {
             token = JSON.parse(metadata.publicToken);
-          } else {
-            token = metadata.publicToken;
+          } catch (e) {
+            console.warn('⚠️ [Preview] Failed to parse publicToken from metadata map:', e);
           }
+        } else {
+          token = metadata.publicToken;
+        }
+      }
+      
+      // Try 2: Get token from shareTokenCache
+      if (!token) {
+        const cachedToken = shareTokenCache.current.get(file.backendFileId);
+        if (cachedToken) {
+          console.log('✅ [Preview] Found publicToken in shareTokenCache, using token-based decryption...');
+          token = cachedToken;
+        }
+      }
+      
+      // Try 3: Reload metadata from owner index (if we have the backend and token)
+      const backend = aggregatorService?.getBackend('google_drive');
+      if (!token && backend && backend.isConnected()) {
+        console.log('🔄 [Preview] Token not found, attempting to reload from owner index...');
+        try {
+          const { GoogleDriveMetadataService } = await import('../../services/storage/GoogleDriveMetadataService');
+          const driveToken = (backend as any).token || localStorage.getItem('google_drive_token');
+          
+          // Generate pN identifier (same logic as loadFiles)
+          let pnIdentifier: string | null = null;
+          if (authenticatedUserData?.id && publicKey) {
+            const combined = `${authenticatedUserData.id}:${publicKey}`;
+            const encoder = new TextEncoder();
+            const data = encoder.encode(combined);
+            const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+            const hashArray = Array.from(new Uint8Array(hashBuffer));
+            const hexHash = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+            const shortHash = hexHash.substring(0, 12);
+            pnIdentifier = `pn-${shortHash}`;
+          }
+          
+          if (driveToken && pnIdentifier) {
+            const pnFolderId = await GoogleDriveMetadataService.getOrCreatePNFolder(driveToken, pnIdentifier);
+            const metadataFolderId = await GoogleDriveMetadataService.getOrCreateMetadataFolder(driveToken, pnFolderId);
+            const ownerIndex = await GoogleDriveMetadataService.getOwnerFileIndex(driveToken, metadataFolderId, pnIdentifier);
+            
+            if (ownerIndex?.files) {
+              const fileEntry = ownerIndex.files.find((entry: any) => entry.googleDriveFileId === file.backendFileId);
+              if (fileEntry?.publicToken) {
+                console.log('✅ [Preview] Found publicToken in owner index, using token-based decryption...');
+                if (typeof fileEntry.publicToken === 'string') {
+                  try {
+                    token = JSON.parse(fileEntry.publicToken);
+                  } catch (e) {
+                    console.warn('⚠️ [Preview] Failed to parse publicToken from owner index:', e);
+                  }
+                } else {
+                  token = fileEntry.publicToken;
+                }
+                
+                // Cache it for next time
+                if (token) {
+                  shareTokenCache.current.set(file.backendFileId, token);
+                }
+                
+                // Update metadata map
+                if (!metadata) {
+                  metadata = {
+                    fileId: file.id,
+                    backend: file.backend,
+                    backendFileId: file.backendFileId,
+                    name: fileEntry.originalName || fileEntry.fileName,
+                    description: fileEntry.description,
+                    keywords: fileEntry.tags || [],
+                    uploadDate: fileEntry.uploadedAt,
+                    fileType: fileEntry.mimeType?.split('/')[0] || 'other',
+                    isPublic: fileEntry.visibility === 'public',
+                    publicToken: fileEntry.publicToken,
+                    '@context': ['https://schema.org/'],
+                    '@type': 'CreativeWork',
+                    '@id': `https://parnoir.com/resource/${file.id}`
+                  } as PublicMetadata;
+                  setFileMetadataMap(prev => {
+                    const next = new Map(prev);
+                    next.set(file.id, metadata!);
+                    return next;
+                  });
+                }
+              }
+            }
+          }
+        } catch (reloadError) {
+          console.warn('⚠️ [Preview] Failed to reload from owner index:', reloadError);
+        }
+      }
+      
+      // If we have a token, use token-based decryption
+      if (token) {
+        console.log('✅ [Preview] Using token-based decryption (same as aggregator browser)...');
+        try {
           
           // Use same token decryption logic as aggregator browser
           if (!token.shareEncrypted || !token.shareKey) {
