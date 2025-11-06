@@ -2627,9 +2627,11 @@ const FileViewer: React.FC<{ file: AggregatedFile; previewUrl: string | null; fi
   const [loading, setLoading] = useState(!previewUrl);
   const [error, setError] = useState<string | null>(null);
   const mimeType = file.mimeType || '';
-  const isImage = mimeType.startsWith('image/');
-  const isVideo = mimeType.startsWith('video/');
-  const isAudio = mimeType.startsWith('audio/');
+  const fileName = file.originalName || file.name || '';
+  // Check mimeType first, then fallback to file extension
+  const isImage = mimeType.startsWith('image/') || /\.(jpg|jpeg|png|gif|webp|svg|bmp|ico)$/i.test(fileName);
+  const isVideo = mimeType.startsWith('video/') || /\.(mp4|mov|avi|webm|mkv|flv|wmv)$/i.test(fileName);
+  const isAudio = mimeType.startsWith('audio/') || /\.(mp3|wav|ogg|m4a|aac)$/i.test(fileName);
 
   useEffect(() => {
     // If preview URL already exists, use it (no need to decrypt again)
@@ -2702,7 +2704,20 @@ const FileViewer: React.FC<{ file: AggregatedFile; previewUrl: string | null; fi
     );
   }
 
+  // Debug logging
+  console.log('🔍 [FileViewer] Render check:', {
+    hasDecryptedUrl: !!decryptedUrl,
+    mimeType,
+    fileName,
+    isImage,
+    isVideo,
+    isAudio,
+    hasFileMetadata: !!fileMetadata,
+    hasPublicToken: !!fileMetadata?.publicToken
+  });
+
   if (!decryptedUrl) {
+    // Still loading or failed - loading/error states are handled above
     return null;
   }
 
@@ -2734,6 +2749,9 @@ const FileViewer: React.FC<{ file: AggregatedFile; previewUrl: string | null; fi
           <p className="text-white text-center mb-4">{file.encrypted ? file.originalName : file.name}</p>
           <p className="text-text-secondary text-center">
             Preview not available for this file type. Please download to view.
+          </p>
+          <p className="text-text-secondary text-center text-xs mt-2">
+            Debug: mimeType={mimeType || 'none'}, fileName={fileName}
           </p>
           <button
             onClick={onClose}
