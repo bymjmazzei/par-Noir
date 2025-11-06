@@ -862,25 +862,26 @@ export class GoogleDriveMetadataService {
           console.warn('Failed to get existing metadata, continuing with new metadata:', getError);
         }
 
-        // Update the file
-        const formData = new FormData();
-        formData.append('metadata', new Blob([JSON.stringify({
-          name: metadataFileName
-        })], { type: 'application/json' }));
-        formData.append('file', metadataBlob);
-
+        // Update file content (JSON) using media upload (avoids multipart issues)
         const updateResponse = await fetch(
-          `https://www.googleapis.com/upload/drive/v3/files/${fileId}?uploadType=multipart`,
+          `https://www.googleapis.com/upload/drive/v3/files/${fileId}?uploadType=media`,
           {
             method: 'PATCH',
             headers: {
-              'Authorization': `Bearer ${accessToken}`
+              'Authorization': `Bearer ${accessToken}`,
+              'Content-Type': 'application/json; charset=UTF-8'
             },
-            body: formData
+            body: JSON.stringify(fileMetadata)
           }
         );
 
         if (!updateResponse.ok) {
+          const errorText = await updateResponse.text();
+          console.error('Failed to update companion metadata file:', {
+            status: updateResponse.status,
+            statusText: updateResponse.statusText,
+            errorText
+          });
           throw new Error('Failed to update metadata file');
         }
       } else {
@@ -1128,27 +1129,31 @@ export class GoogleDriveMetadataService {
       if (searchData.files && searchData.files.length > 0) {
         // Update existing index
         const fileId = searchData.files[0].id;
-        formData.append('metadata', new Blob([JSON.stringify({
-          name: this.OWNER_INDEX_FILE_NAME
-        })], { type: 'application/json' }));
-        formData.append('file', indexBlob);
 
         const updateResponse = await fetch(
-          `https://www.googleapis.com/drive/v3/files/${fileId}?uploadType=multipart`,
+          `https://www.googleapis.com/upload/drive/v3/files/${fileId}?uploadType=media`,
           {
             method: 'PATCH',
             headers: {
-              'Authorization': `Bearer ${accessToken}`
+              'Authorization': `Bearer ${accessToken}`,
+              'Content-Type': 'application/json; charset=UTF-8'
             },
-            body: formData
+            body: JSON.stringify(index)
           }
         );
 
         if (!updateResponse.ok) {
+          const errorText = await updateResponse.text();
+          console.error('Failed to update owner index file:', {
+            status: updateResponse.status,
+            statusText: updateResponse.statusText,
+            errorText
+          });
           throw new Error('Failed to update owner index file');
         }
       } else {
         // Create new owner index file
+        const formData = new FormData();
         formData.append('metadata', new Blob([JSON.stringify({
           name: this.OWNER_INDEX_FILE_NAME,
           parents: [metadataFolderId]
@@ -1304,24 +1309,27 @@ export class GoogleDriveMetadataService {
       if (searchData.files && searchData.files.length > 0) {
         // Update existing index
         const fileId = searchData.files[0].id;
-        formData.append('metadata', new Blob([JSON.stringify({
-          name: this.PUBLIC_INDEX_FILE_NAME
-        })], { type: 'application/json' }));
-        formData.append('file', indexBlob);
 
         const updateResponse = await fetch(
-          `https://www.googleapis.com/upload/drive/v3/files/${fileId}?uploadType=multipart`,
+          `https://www.googleapis.com/upload/drive/v3/files/${fileId}?uploadType=media`,
           {
             method: 'PATCH',
             headers: {
-              'Authorization': `Bearer ${accessToken}`
+              'Authorization': `Bearer ${accessToken}`,
+              'Content-Type': 'application/json; charset=UTF-8'
             },
-            body: formData
+            body: JSON.stringify(index)
           }
         );
 
         if (!updateResponse.ok) {
-          throw new Error('Failed to update index file');
+          const errorText = await updateResponse.text();
+          console.error('Failed to update public index file:', {
+            status: updateResponse.status,
+            statusText: updateResponse.statusText,
+            errorText
+          });
+          throw new Error('Failed to update public index file');
         }
 
         // Make index file publicly readable
@@ -1346,6 +1354,7 @@ export class GoogleDriveMetadataService {
         }
       } else {
         // Create new index
+        const formData = new FormData();
         formData.append('metadata', new Blob([JSON.stringify({
           name: this.PUBLIC_INDEX_FILE_NAME,
           parents: [metadataFolderId]
