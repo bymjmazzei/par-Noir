@@ -72,6 +72,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
   const [viewingFile, setViewingFile] = useState<AggregatedFile | null>(null);
   const [filePreviewUrls, setFilePreviewUrls] = useState<Map<string, string>>(new Map()); // fileId -> decrypted blob URL
   const [loadingPreviews, setLoadingPreviews] = useState<Set<string>>(new Set());
+  const isLoadingFilesRef = React.useRef(false);
 
   // Initialize services - useMemo to avoid re-initializing on every render
   const aggregatorService = React.useMemo(() => {
@@ -627,6 +628,11 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
   }, [aggregatorService, resolvedAuth, authenticatedUser, metadataIndexService]);
 
   const loadFiles = React.useCallback(async () => {
+    if (isLoadingFilesRef.current) {
+      console.log('⏳ [loadFiles] Load already in progress, skipping');
+      return;
+    }
+    isLoadingFilesRef.current = true;
     try {
       setIsLoading(true);
       setError(null);
@@ -912,6 +918,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
       setFiles([]); // Show empty list
     } finally {
       setIsLoading(false);
+      isLoadingFilesRef.current = false;
     }
   }, [aggregatorService, authenticatedUser, resolvedAuth, loadFileMetadata]);
 

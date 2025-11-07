@@ -631,9 +631,15 @@ export class GoogleDriveBackend extends AbstractStorageBackend {
     console.log(`📁 [listFiles] Listing files from folder ID: ${folderId.substring(0, 12)}...`);
 
     // IMPORTANT: Exclude folders and metadata items - only list actual files
-    const response = await this.makeRequest(
-      `https://www.googleapis.com/drive/v3/files?q='${folderId}' in parents and trashed=false and mimeType!='application/vnd.google-apps.folder'&fields=files(id,name,modifiedTime,size,mimeType)&pageSize=100&orderBy=modifiedTime desc`
-    );
+    let response: Response;
+    try {
+      response = await this.makeRequest(
+        `https://www.googleapis.com/drive/v3/files?q='${folderId}' in parents and trashed=false and mimeType!='application/vnd.google-apps.folder'&fields=files(id,name,modifiedTime,size,mimeType)&pageSize=100&orderBy=modifiedTime desc`
+      );
+    } catch (error) {
+      console.warn(`⚠️ [listFiles] Google Drive request failed for folder ${folderId.substring(0, 12)}...`, error);
+      return [];
+    }
 
     if (response.status === 404) {
       console.warn(`⚠️ [listFiles] Folder ${folderId.substring(0, 12)}... not found (404) - treating as empty`);
