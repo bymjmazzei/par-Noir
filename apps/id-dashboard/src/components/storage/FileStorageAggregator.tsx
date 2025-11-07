@@ -27,6 +27,7 @@ interface FileStorageAggregatorProps {
 export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ authenticatedUser }) => {
   // Cache for share tokens (fileId -> shareToken) - generated during upload for quick access
   const shareTokenCache = React.useRef<Map<string, ShareToken>>(new Map());
+  const previewRetryCounts = React.useRef<Map<string, number>>(new Map());
   const fileInputRef = React.useRef<HTMLInputElement | null>(null);
   const hasRestoredFromMetadataRef = React.useRef<string | null>(null);
   const hasInitializedLegacyRef = React.useRef<boolean>(false);
@@ -2135,21 +2136,43 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
         token = shareTokenCache.current.get(file.backendFileId);
       }
       
-      // If no token, file can't be decrypted (shouldn't happen if owner index is loaded correctly)
+      // If no token, attempt to load metadata for this file once
       if (!token) {
-        console.warn('⚠️ [Preview] No share token found for file:', file.id, {
-          hasMetadata: !!metadata,
-          hasTokenInMetadata: !!metadata?.publicToken,
-          cacheSize: shareTokenCache.current.size,
-          hasTokenInCache: shareTokenCache.current.has(file.backendFileId),
-          fileMetadataMapSize: fileMetadataMap.size
-        });
-        setLoadingPreviews(prev => {
-          const next = new Set(prev);
-          next.delete(file.id);
-          return next;
-        });
-        return;
+        const currentRetries = previewRetryCounts.current.get(file.id) || 0;
+        if (currentRetries < 1) {
+          console.log('🔁 [Preview] Share token missing, refreshing metadata once...', { fileId: file.id });
+          previewRetryCounts.current.set(file.id, currentRetries + 1);
+          try {
+            await loadFileMetadata([file]);
+          } catch (refreshError) {
+            console.warn('⚠️ [Preview] Metadata refresh failed:', refreshError);
+          }
+
+          const refreshedMetadata = fileMetadataMap.get(file.id);
+          if (refreshedMetadata?.publicToken) {
+            token = typeof refreshedMetadata.publicToken === 'string'
+              ? JSON.parse(refreshedMetadata.publicToken)
+              : refreshedMetadata.publicToken;
+          } else {
+            token = shareTokenCache.current.get(file.backendFileId) || null;
+          }
+        }
+
+        if (!token) {
+          console.warn('⚠️ [Preview] No share token found for file after refresh:', file.id, {
+            hasMetadata: !!metadata,
+            hasTokenInMetadata: !!metadata?.publicToken,
+            cacheSize: shareTokenCache.current.size,
+            hasTokenInCache: shareTokenCache.current.has(file.backendFileId),
+            fileMetadataMapSize: fileMetadataMap.size
+          });
+          setLoadingPreviews(prev => {
+            const next = new Set(prev);
+            next.delete(file.id);
+            return next;
+          });
+          return;
+        }
       }
       
       console.log('✅ [Preview] Token found, decrypting...', {
@@ -2172,6 +2195,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
         });
         
         console.log('✅ [Preview] Token-based decryption successful (same as aggregator browser)');
+        previewRetryCounts.current.delete(file.id);
       } catch (tokenError) {
         console.error('❌ [Preview] Token-based decryption failed:', tokenError);
         setLoadingPreviews(prev => {
@@ -2204,6 +2228,9 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
         next.delete(file.id);
         return next;
       });
+      if (filePreviewUrls.has(file.id)) {
+        previewRetryCounts.current.delete(file.id);
+      }
     }
   };
 
