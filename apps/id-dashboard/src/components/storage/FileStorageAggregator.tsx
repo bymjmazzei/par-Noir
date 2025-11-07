@@ -335,7 +335,6 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
 
         const metadata = await SecureMetadataStorage.getMetadata(authenticatedUser.id);
         if (!metadata) {
-          hasRestoredFromMetadataRef.current = authenticatedUser.id;
           return;
         }
 
@@ -382,6 +381,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
         hasRestoredFromMetadataRef.current = authenticatedUser.id;
       } catch (error) {
         console.debug('Could not load token from metadata:', error);
+        hasRestoredFromMetadataRef.current = null;
       }
     };
 
