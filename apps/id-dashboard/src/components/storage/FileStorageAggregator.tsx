@@ -2363,11 +2363,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
             <div className="flex items-center space-x-3">
               <GoogleDriveIcon className="h-5 w-5" />
               <span className="text-white font-semibold truncate max-w-xs">
-                {googleDriveEmail && (
-                  <span className="text-white font-semibold truncate max-w-xs">
-                    {googleDriveEmail}
-                  </span>
-                )}
+                {googleDriveEmail || 'Connected Google Drive'}
               </span>
               {connectedBackends.has('google_drive') && (
                 <button
