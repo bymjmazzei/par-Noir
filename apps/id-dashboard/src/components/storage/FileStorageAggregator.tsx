@@ -10,18 +10,7 @@ import { getMetadataIndexService } from '../../services/metadata/MetadataIndexSe
 import { AggregatedFile, AuthSession, PublicMetadata, ShareToken, EncryptedFilePackage } from '../../types/aggregator';
 import { AuthSession as CryptoAuthSession } from '../../types/crypto';
 
-const GoogleDriveIcon: React.FC<{ className?: string }> = ({ className }) => (
-  <svg
-    className={className}
-    viewBox="0 0 48 48"
-    fill="none"
-    xmlns="http://www.w3.org/2000/svg"
-  >
-    <path fill="#0F9D58" d="M16.65 29.6 10 41h28l-6.65-11.4z" />
-    <path fill="#4285F4" d="M29.35 29.6H45L31.35 6H15.7z" />
-    <path fill="#F4B400" d="M18.9 6H6l13.65 23.6h13.65z" />
-  </svg>
-);
+const GOOGLE_DRIVE_ICON_URL = 'https://upload.wikimedia.org/wikipedia/commons/thumb/1/12/Google_Drive_icon_%282020%29.svg/1200px-Google_Drive_icon_%282020%29.svg.png';
 
 interface FileStorageAggregatorProps {
   authenticatedUser?: AuthSession | CryptoAuthSession | any | null;
@@ -1276,7 +1265,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
         if (!restoredBackend) {
           throw new Error('Google Drive backend not initialized');
         }
-        await restoredBackend.connect({ token, refreshToken: tokenData.refreshToken });
+        await restoredBackend.connect({ token, refreshToken: tokenData.refreshToken, email: userInfo.email });
         const userInfo = await restoredBackend.getUserInfo();
         setConnectedBackends(prev => new Set([...prev, 'google_drive']));
         setUserEmails(prev => {
@@ -1284,13 +1273,20 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
           next.set('google_drive', userInfo.email);
           return next;
         });
+        try {
+          if (userInfo.email) {
+            localStorage.setItem('google_drive_email', userInfo.email);
+          }
+        } catch (e) {
+          // ignore storage failures
+        }
         await loadFiles();
         await loadStorageQuota();
         return;
       }
 
       // Get user info
-      await googleDriveBackend.connect({ token, refreshToken: tokenData.refreshToken });
+      await googleDriveBackend.connect({ token, refreshToken: tokenData.refreshToken, email: userInfo.email });
       const userInfo = await googleDriveBackend.getUserInfo();
 
       setConnectedBackends(prev => new Set([...prev, 'google_drive']));
@@ -1299,6 +1295,13 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
         next.set('google_drive', userInfo.email);
         return next;
       });
+      try {
+        if (userInfo.email) {
+          localStorage.setItem('google_drive_email', userInfo.email);
+        }
+      } catch (e) {
+        // ignore storage failures
+      }
 
       // Save token and refresh token to encrypted pN metadata for persistence
       if (resolvedAuth?.pnName && resolvedAuth?.passcode && authenticatedUser?.id) {
@@ -2301,7 +2304,12 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
               disabled={isLoading}
               title={connectedBackends.has('google_drive') ? 'Google Drive connected' : 'Connect Google Drive'}
             >
-              <GoogleDriveIcon className="h-6 w-6" />
+              <img
+                src={GOOGLE_DRIVE_ICON_URL}
+                alt="Google Drive"
+                className="h-6 w-6"
+                loading="lazy"
+              />
             </button>
           </div>
         </div>
@@ -2361,10 +2369,12 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
         <div className="bg-neutral-900/60 border border-neutral-700 rounded-xl p-6">
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center space-x-3">
-              <GoogleDriveIcon className="h-5 w-5" />
-              <span className="text-white font-semibold truncate max-w-xs">
-                {googleDriveEmail || 'Connected Google Drive'}
-              </span>
+              <img src={GOOGLE_DRIVE_ICON_URL} alt="Google Drive" className="h-5 w-5" />
+              {googleDriveEmail && (
+                <span className="text-white font-semibold truncate max-w-xs">
+                  {googleDriveEmail}
+                </span>
+              )}
               {connectedBackends.has('google_drive') && (
                 <button
                   onClick={() => handleDisconnect('google_drive')}
