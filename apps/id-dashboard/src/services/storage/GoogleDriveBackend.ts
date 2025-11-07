@@ -220,7 +220,13 @@ export class GoogleDriveBackend extends AbstractStorageBackend {
       });
 
       if (!response.ok) {
-        throw new Error(`Token refresh failed: ${response.status}`);
+        let errorBody = '';
+        try {
+          errorBody = await response.text();
+        } catch (e) {
+          errorBody = 'Unable to read error body';
+        }
+        throw new Error(`Token refresh failed: ${response.status} ${response.statusText} - ${errorBody}`);
       }
 
       const data = await response.json();
