@@ -31,6 +31,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
   const fileInputRef = React.useRef<HTMLInputElement | null>(null);
   const hasRestoredFromMetadataRef = React.useRef<string | null>(null);
   const hasInitializedLegacyRef = React.useRef<boolean>(false);
+  const makeShareTokenCacheKey = React.useCallback((backendId: string, backendFileId: string) => `${backendId}|${backendFileId}`, []);
   
   // Use global constructors directly - terser will preserve them via reserved list
   
@@ -197,9 +198,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
       return updated;
     });
 
-    if (!activeBackendId) {
-      setActiveBackendId(params.backendId);
-    }
+    setActiveBackendId(params.backendId);
 
     return backend;
   }, [aggregatorService, activeBackendId, persistDriveAccounts]);
@@ -242,7 +241,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
     });
 
     shareTokenCache.current.forEach((_value, key) => {
-      if (key.startsWith(`${backendId}:`)) {
+      if (key.startsWith(`${backendId}|`)) {
         shareTokenCache.current.delete(key);
       }
     });
@@ -602,7 +601,8 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
                       const token = typeof indexEntry.publicToken === 'string'
                         ? JSON.parse(indexEntry.publicToken)
                         : indexEntry.publicToken;
-                      shareTokenCache.current.set(file.backendFileId, token);
+                      const cacheKey = makeShareTokenCacheKey(file.backend || '', file.backendFileId);
+                      shareTokenCache.current.set(cacheKey, token);
                       console.log('💾 [Metadata] Cached share token from owner index for file:', file.id);
                     } catch (e) {
                       console.warn('⚠️ [Metadata] Failed to cache token from owner index:', e);
@@ -835,7 +835,9 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
                     const shareToken = typeof entry.publicToken === 'string'
                       ? JSON.parse(entry.publicToken)
                       : entry.publicToken;
-                    shareTokenCache.current.set(entry.googleDriveFileId, shareToken);
+                    const backendIdForCache = (backend as any)?.id || 'google_drive';
+                    const cacheKey = makeShareTokenCacheKey(backendIdForCache, entry.googleDriveFileId);
+                    shareTokenCache.current.set(cacheKey, shareToken);
                     console.log('💾 [loadFiles] Cached share token from owner index for file:', fileId, { hasToken: !!shareToken });
                   } catch (e) {
                     console.warn('⚠️ [loadFiles] Failed to cache token from owner index:', e, { publicToken: entry.publicToken });
@@ -900,7 +902,8 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
                       const shareToken = typeof indexEntry.publicToken === 'string'
                         ? JSON.parse(indexEntry.publicToken)
                         : indexEntry.publicToken;
-                      shareTokenCache.current.set(file.backendFileId, shareToken);
+                      const cacheKey = makeShareTokenCacheKey(file.backend || (backend as any)?.id || 'google_drive', file.backendFileId);
+                      shareTokenCache.current.set(cacheKey, shareToken);
                       console.log('💾 [loadFiles] Loaded token from owner index for scanned file:', file.id);
                     } catch (e) {
                       console.warn('⚠️ [loadFiles] Failed to parse token for scanned file:', e);
@@ -1048,9 +1051,26 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
         
         // Try to get share token from cache first (generated during upload)
         // Try multiple possible cache keys since file ID might be stored differently
-        shareToken = shareTokenCache.current.get(file.backendFileId) || 
-                     shareTokenCache.current.get(file.id) ||
-                     shareTokenCache.current.get((file as any).backendFile?.id);
+        const candidateKeys: string[] = [];
+        if (file.backend) {
+          candidateKeys.push(makeShareTokenCacheKey(file.backend, file.backendFileId));
+          candidateKeys.push(makeShareTokenCacheKey(file.backend, file.id));
+        }
+
+        for (const key of candidateKeys) {
+          const cached = shareTokenCache.current.get(key);
+          if (cached) {
+            shareToken = cached;
+            break;
+          }
+        }
+
+        if (!shareToken) {
+          // Fallback to legacy cache keys (pre multi-account)
+          shareToken = shareTokenCache.current.get(file.backendFileId) ||
+                       shareTokenCache.current.get(file.id) ||
+                       shareTokenCache.current.get((file as any).backendFile?.id);
+        }
         
         if (!shareToken) {
           // If not in cache, generate it now (for files uploaded before this change)
@@ -1095,7 +1115,8 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
               );
               
               // Cache it for future use
-              shareTokenCache.current.set(file.backendFileId, shareToken);
+              const shareTokenKey = makeShareTokenCacheKey(file.backend || activeBackendId || 'google_drive', file.backendFileId);
+              shareTokenCache.current.set(shareTokenKey, shareToken);
               console.log('💾 [Phase 3] Share token cached for future use');
               
               // Store token in metadata
@@ -1710,11 +1731,18 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
         return;
       }
 
-      // Get Google Drive backend (default for now)
-      const backendId = 'google_drive';
-      const backend = aggregatorService.getBackend(backendId);
+      if (!aggregatorService) {
+        throw new Error('Storage service not available');
+      }
+
+      const targetBackendId = activeBackendId || driveAccounts[0]?.backendId;
+      if (!targetBackendId) {
+        throw new Error('No Google Drive account connected');
+      }
+
+      const backend = aggregatorService.getBackend(targetBackendId);
       if (!backend || !backend.isConnected()) {
-        throw new Error(`${backendId} is not connected`);
+        throw new Error(`${targetBackendId} is not connected`);
       }
 
       // Get or create pN-specific folder using stable identifier
@@ -1750,8 +1778,8 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
         const encryptedFileName = `${packageData.metadata.originalName}.encrypted`;
         // Use File constructor with explicit reference to avoid minification issues
         const FileConstructor = globalThis.File || (typeof window !== 'undefined' ? window.File : File);
-        const uploadedFile = await aggregatorService.uploadToBackend(
-          backendId,
+      const uploadedFile = await aggregatorService.uploadToBackend(
+        targetBackendId,
           new FileConstructor([encryptedBlob], encryptedFileName, { type: 'application/json' }),
           folderId,
           { 
@@ -1763,10 +1791,11 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
 
         // Store share token in cache if generated (keyed by backend file ID for easy lookup)
         // Use uploadedFile.id as the cache key - this should match file.backendFileId when we look it up
-        const cacheKey = uploadedFile.id || uploadedFile.backendFileId;
-        if (shareToken && cacheKey) {
+        const cacheId = uploadedFile.id || uploadedFile.backendFileId;
+        if (shareToken && cacheId) {
+          const cacheKey = makeShareTokenCacheKey(targetBackendId, cacheId);
           shareTokenCache.current.set(cacheKey, shareToken);
-          console.log('💾 [Upload] Share token cached for file:', cacheKey.substring(0, 12) + '...');
+          console.log('💾 [Upload] Share token cached for file:', cacheKey);
         } else if (!shareToken) {
           console.warn('⚠️ [Upload] No share token to cache - file was uploaded but token generation failed');
         } else {
@@ -2131,7 +2160,8 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
       }
 
       if (!token) {
-        token = shareTokenCache.current.get(file.backendFileId);
+        const cacheKey = makeShareTokenCacheKey(file.backend || activeBackendId || 'google_drive', file.backendFileId);
+        token = shareTokenCache.current.get(cacheKey);
       }
 
       if (!token) {
@@ -2151,7 +2181,8 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
               ? JSON.parse(refreshedMetadata.publicToken)
               : refreshedMetadata.publicToken;
           } else {
-            token = shareTokenCache.current.get(file.backendFileId) || null;
+            const refreshedCacheKey = makeShareTokenCacheKey(file.backend || activeBackendId || 'google_drive', file.backendFileId);
+            token = shareTokenCache.current.get(refreshedCacheKey) || null;
           }
         }
       }
@@ -2239,7 +2270,8 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
               const parsedToken = typeof metadata.publicToken === 'string'
                 ? JSON.parse(metadata.publicToken)
                 : metadata.publicToken;
-              shareTokenCache.current.set(file.backendFileId, parsedToken);
+              const fallbackCacheKey = makeShareTokenCacheKey(file.backend || activeBackendId || 'google_drive', file.backendFileId);
+              shareTokenCache.current.set(fallbackCacheKey, parsedToken);
             } catch (cacheError) {
               console.warn('⚠️ [Preview] Unable to cache token from owner metadata:', cacheError);
             }
@@ -2515,8 +2547,12 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
   };
 
 
-  const totalFiles = files.length;
-  const hasConnectedBackends = connectedBackends.size > 0;
+  const displayedFiles = activeAccount
+    ? files.filter((file) => file.backend === activeAccount.backendId || file.backend === 'google_drive')
+    : files;
+
+  const totalFiles = displayedFiles.length;
+  const hasConnectedBackends = driveAccounts.length > 0;
 
   return (
     <div className="space-y-6">
@@ -2670,6 +2706,31 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
       {/* File List */}
       {hasConnectedBackends && (
         <div className="bg-neutral-900/60 border border-neutral-700 rounded-xl p-6">
+          {driveAccounts.length > 1 && (
+            <div className="flex flex-wrap items-center gap-2 mb-4">
+              {driveAccounts.map((account, index) => {
+                const email = account.email || userEmails.get(account.backendId) || `Drive ${index + 1}`;
+                const isActive = activeAccount ? account.backendId === activeAccount.backendId : index === 0;
+                return (
+                  <button
+                    key={account.backendId}
+                    onClick={() => {
+                      setActiveBackendId(account.backendId);
+                      loadFiles();
+                    }}
+                    className={`flex items-center gap-2 px-3 py-2 rounded-lg border transition-colors ${
+                      isActive
+                        ? 'border-blue-500 bg-blue-500/10 text-white'
+                        : 'border-neutral-700 text-text-secondary hover:text-text-primary'
+                    }`}
+                  >
+                    <img src={GOOGLE_DRIVE_ICON_URL} alt="Google Drive" className="h-4 w-4" loading="lazy" />
+                    <span className="text-sm font-medium max-w-[12rem] truncate">{email}</span>
+                  </button>
+                );
+              })}
+            </div>
+          )}
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center space-x-3">
               <img src={GOOGLE_DRIVE_ICON_URL} alt="Google Drive" className="h-5 w-5" />
@@ -2678,9 +2739,9 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
                   {googleDriveEmail}
                 </span>
               )}
-              {connectedBackends.has('google_drive') && (
+              {activeAccount && connectedBackends.has(activeAccount.backendId) && (
                 <button
-                  onClick={() => handleDisconnect('google_drive')}
+                  onClick={() => handleDisconnect(activeAccount.backendId)}
                   className="ml-3 text-red-400 hover:text-red-300 text-sm"
                 >
                   Disconnect
@@ -2748,7 +2809,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
             </div>
           ) : viewMode === 'grid' ? (
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
-              {files.map((file) => {
+              {displayedFiles.map((file) => {
                 const metadata = fileMetadataMap.get(file.id);
                 const previewUrl = filePreviewUrls.get(file.id);
                 const isLoadingPreview = loadingPreviews.has(file.id);
@@ -2865,7 +2926,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
             </div>
           ) : (
             <div className="space-y-2">
-              {files.map((file) => {
+              {displayedFiles.map((file) => {
                 const metadata = fileMetadataMap.get(file.id);
                 const previewUrl = filePreviewUrls.get(file.id);
                 const isLoadingPreview = loadingPreviews.has(file.id);
