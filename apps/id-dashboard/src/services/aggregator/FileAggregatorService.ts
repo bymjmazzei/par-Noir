@@ -15,11 +15,64 @@ export class FileAggregatorService {
       return;
     }
 
-    // Initialize Google Drive backend
-    const googleDriveBackend = new GoogleDriveBackend();
-    this.backends.set('google_drive', googleDriveBackend);
-
+    // No default backends; they will be registered as users connect accounts
     this.isInitialized = true;
+  }
+
+  registerBackend(backendId: string, backend: StorageBackend): void {
+    this.backends.set(backendId, backend);
+  }
+
+  removeBackend(backendId: string): void {
+    this.backends.delete(backendId);
+  }
+
+  listBackendEntries(): Array<{ id: string; backend: StorageBackend }> {
+    return Array.from(this.backends.entries()).map(([id, backend]) => ({ id, backend }));
+  }
+
+  async getAggregatedStorageQuota(): Promise<Map<string, any>> {
+    await this.ensureInitialized();
+    const result = new Map<string, any>();
+
+    for (const [backendId, backend] of this.backends.entries()) {
+      if (!backend.isConnected()) {
+        continue;
+      }
+
+      try {
+        const quota = await backend.getQuota?.();
+        if (quota) {
+          result.set(backendId, quota);
+        }
+      } catch (error) {
+        console.warn(`Failed to get quota for backend ${backendId}:`, error);
+      }
+    }
+
+    return result;
+  }
+
+  async getAggregatedUserInfo(): Promise<Map<string, any>> {
+    await this.ensureInitialized();
+    const result = new Map<string, any>();
+
+    for (const [backendId, backend] of this.backends.entries()) {
+      if (!backend.isConnected()) {
+        continue;
+      }
+
+      try {
+        const info = await backend.getUserInfo?.();
+        if (info) {
+          result.set(backendId, info);
+        }
+      } catch (error) {
+        console.warn(`Failed to get user info for backend ${backendId}:`, error);
+      }
+    }
+
+    return result;
   }
 
   getBackend(backendId: string): StorageBackend | null {
@@ -29,22 +82,28 @@ export class FileAggregatorService {
   async aggregateFiles(pnIdentifier?: string): Promise<any[]> {
     await this.ensureInitialized();
     
-    const googleDriveBackend = this.getBackend('google_drive');
-    if (!googleDriveBackend || !googleDriveBackend.isConnected()) {
-      return [];
+    const aggregated: any[] = [];
+
+    for (const [backendId, backend] of this.backends.entries()) {
+      if (!backend.isConnected()) {
+        continue;
+      }
+
+      try {
+        const files = await backend.listFiles(pnIdentifier);
+        files.forEach(file => {
+          aggregated.push({
+            ...file,
+            backend: backendId,
+            backendFileId: file.id,
+          });
+        });
+      } catch (error) {
+        console.error(`Failed to aggregate files from backend ${backendId}:`, error);
+      }
     }
 
-    try {
-      const files = await googleDriveBackend.listFiles(pnIdentifier);
-      return files.map(file => ({
-        ...file,
-        backend: 'google_drive',
-        backendFileId: file.id,
-      }));
-    } catch (error) {
-      console.error('Failed to aggregate files from Google Drive:', error);
-      return [];
-    }
+    return aggregated;
   }
 
   async downloadFromBackend(backendId: string, fileId: string): Promise<Blob> {

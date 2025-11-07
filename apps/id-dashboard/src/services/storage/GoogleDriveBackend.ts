@@ -16,11 +16,13 @@ export class GoogleDriveBackend extends AbstractStorageBackend {
   private userEmail: string | null = null;
   private parNoirFolderId: string | null = null;
   private pnFolderCache: Map<string, string> = new Map(); // Cache pN-specific folders
+  private keyPrefix: string;
+  private connected = false;
   
   // Load folder cache from localStorage on init
   private loadFolderCache(): void {
     try {
-      const cached = localStorage.getItem('google_drive_folder_cache');
+      const cached = localStorage.getItem(`${this.keyPrefix}_folder_cache`);
       if (cached) {
         const cacheData = JSON.parse(cached);
         let validEntries = 0;
@@ -52,14 +54,14 @@ export class GoogleDriveBackend extends AbstractStorageBackend {
       this.pnFolderCache.forEach((value, key) => {
         cacheData[key] = value;
       });
-      localStorage.setItem('google_drive_folder_cache', JSON.stringify(cacheData));
+      localStorage.setItem(`${this.keyPrefix}_folder_cache`, JSON.stringify(cacheData));
       
       // ALSO store the last used folder ID directly (doesn't require pN identifier)
       // This allows us to find the folder even if we can't generate the pN identifier
       if (this.pnFolderCache.size > 0) {
         // Get the most recently set folder ID (or any one)
         const lastFolderId = Array.from(this.pnFolderCache.values())[0];
-        localStorage.setItem('google_drive_last_folder_id', lastFolderId);
+        localStorage.setItem(`${this.keyPrefix}_last_folder_id`, lastFolderId);
         console.log(`💾 [saveFolderCache] Stored last folder ID: ${lastFolderId.substring(0, 12)}...`);
       }
     } catch (e) {
@@ -67,25 +69,27 @@ export class GoogleDriveBackend extends AbstractStorageBackend {
     }
   }
 
-  constructor(config?: Partial<StorageBackendConfig>) {
+  constructor(config?: Partial<StorageBackendConfig> & { storageKeyPrefix?: string }) {
+    const prefix = config?.storageKeyPrefix || 'google_drive';
     super({
-      id: 'google_drive',
-      name: 'Google Drive',
+      id: config?.id || prefix,
+      name: config?.name || 'Google Drive',
       type: 'google_drive',
       ...config
     });
+    this.keyPrefix = prefix;
     
     // Load stored token if available
     try {
-      this.token = localStorage.getItem('google_drive_token');
-      this.userEmail = localStorage.getItem('google_drive_email');
+      this.token = localStorage.getItem(`${this.keyPrefix}_token`);
+      this.userEmail = localStorage.getItem(`${this.keyPrefix}_email`);
       
       // Load folder cache from localStorage
       this.loadFolderCache();
       
       // ALSO load the last used folder ID (works even without pN identifier)
       try {
-        const lastFolderId = localStorage.getItem('google_drive_last_folder_id');
+        const lastFolderId = localStorage.getItem(`${this.keyPrefix}_last_folder_id`);
         if (lastFolderId) {
           this.parNoirFolderId = lastFolderId;
           console.log(`📂 [constructor] Loaded last folder ID from localStorage: ${lastFolderId.substring(0, 12)}...`);
@@ -104,12 +108,12 @@ export class GoogleDriveBackend extends AbstractStorageBackend {
     this.userEmail = credentials.email || null;
     
     try {
-      localStorage.setItem('google_drive_token', credentials.token);
+      localStorage.setItem(`${this.keyPrefix}_token`, credentials.token);
       if (credentials.email) {
-        localStorage.setItem('google_drive_email', credentials.email);
+        localStorage.setItem(`${this.keyPrefix}_email`, credentials.email);
       }
       if (this.refreshToken) {
-        localStorage.setItem('google_drive_refresh_token', this.refreshToken);
+        localStorage.setItem(`${this.keyPrefix}_refresh_token`, this.refreshToken);
       }
     } catch (e) {
       // localStorage might not be available
@@ -125,9 +129,9 @@ export class GoogleDriveBackend extends AbstractStorageBackend {
     this.parNoirFolderId = null;
     
     try {
-      localStorage.removeItem('google_drive_token');
-      localStorage.removeItem('google_drive_email');
-      localStorage.removeItem('google_drive_refresh_token');
+      localStorage.removeItem(`${this.keyPrefix}_token`);
+      localStorage.removeItem(`${this.keyPrefix}_email`);
+      localStorage.removeItem(`${this.keyPrefix}_refresh_token`);
     } catch (e) {
       // localStorage might not be available
     }
@@ -137,6 +141,35 @@ export class GoogleDriveBackend extends AbstractStorageBackend {
 
   isConnected(): boolean {
     return this.connected && !!this.token;
+  }
+
+  getAccessToken(): string | null {
+    return this.token;
+  }
+
+  getRefreshToken(): string | null {
+    if (this.refreshToken) {
+      return this.refreshToken;
+    }
+
+    try {
+      const token = localStorage.getItem(`${this.keyPrefix}_refresh_token`);
+      if (token) {
+        this.refreshToken = token;
+        return token;
+      }
+      return null;
+    } catch (error) {
+      return null;
+    }
+  }
+
+  getStorageKeyPrefix(): string {
+    return this.keyPrefix;
+  }
+
+  getEmail(): string | null {
+    return this.userEmail;
   }
 
   /**
@@ -155,7 +188,7 @@ export class GoogleDriveBackend extends AbstractStorageBackend {
           if (newToken) {
             this.token = newToken;
             // Save new token
-            localStorage.setItem('google_drive_token', newToken);
+            localStorage.setItem(`${this.keyPrefix}_token`, newToken);
             console.log('✅ [GoogleDriveBackend] Token refreshed successfully');
             return false; // Token was refreshed, retry the request
           }
@@ -173,30 +206,6 @@ export class GoogleDriveBackend extends AbstractStorageBackend {
       return true; // Indicates token error was handled
     }
     return false;
-  }
-
-  /**
-   * Get refresh token from storage (if available)
-   */
-  private getRefreshToken(): string | null {
-    // Return in-memory refresh token first
-    if (this.refreshToken) {
-      return this.refreshToken;
-    }
-    
-    try {
-      // Check localStorage as fallback
-      const token = localStorage.getItem('google_drive_refresh_token');
-      if (token) {
-        this.refreshToken = token; // Cache it
-        return token;
-      }
-      
-      // TODO: Check encrypted metadata (would need auth context)
-      return null;
-    } catch (e) {
-      return null;
-    }
   }
 
   /**
@@ -489,7 +498,7 @@ export class GoogleDriveBackend extends AbstractStorageBackend {
             this.parNoirFolderId = folderId;
             // Save to localStorage as last folder ID
             try {
-              localStorage.setItem('google_drive_last_folder_id', folderId);
+              localStorage.setItem(`${this.keyPrefix}_last_folder_id`, folderId);
             } catch (e) {
               console.warn('Failed to save last folder ID:', e);
             }
@@ -541,7 +550,7 @@ export class GoogleDriveBackend extends AbstractStorageBackend {
         this.parNoirFolderId = folderId;
         // Save to localStorage as last folder ID
         try {
-          localStorage.setItem('google_drive_last_folder_id', folderId);
+          localStorage.setItem(`${this.keyPrefix}_last_folder_id`, folderId);
         } catch (e) {
           console.warn('Failed to save last folder ID:', e);
         }

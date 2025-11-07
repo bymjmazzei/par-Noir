@@ -7,10 +7,18 @@ import { Download, File, RefreshCw, AlertCircle, Lock, Globe, EyeOff, Info, X, E
 import { getFileAggregatorService } from '../../services/aggregator/FileAggregatorService';
 import { getEncryptionService } from '../../services/aggregator/EncryptionService';
 import { getMetadataIndexService } from '../../services/metadata/MetadataIndexService';
+import { GoogleDriveBackend } from '../../services/storage/GoogleDriveBackend';
 import { AggregatedFile, AuthSession, PublicMetadata, ShareToken, EncryptedFilePackage } from '../../types/aggregator';
 import { AuthSession as CryptoAuthSession } from '../../types/crypto';
 
 const GOOGLE_DRIVE_ICON_URL = 'https://upload.wikimedia.org/wikipedia/commons/thumb/1/12/Google_Drive_icon_%282020%29.svg/1200px-Google_Drive_icon_%282020%29.svg.png';
+const DRIVE_ACCOUNTS_STORAGE_KEY = 'pn_google_drive_accounts';
+
+interface DriveAccountState {
+  backendId: string;
+  keyPrefix: string;
+  email: string | null;
+}
 
 interface FileStorageAggregatorProps {
   authenticatedUser?: AuthSession | CryptoAuthSession | any | null;
@@ -28,15 +36,10 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
   const [error, setError] = useState<string | null>(null);
   const [connectedBackends, setConnectedBackends] = useState<Set<string>>(new Set());
   const [userEmails, setUserEmails] = useState<Map<string, string>>(new Map());
+  const [driveAccounts, setDriveAccounts] = useState<DriveAccountState[]>([]);
+  const [activeBackendId, setActiveBackendId] = useState<string | null>(null);
   const [storageQuotas, setStorageQuotas] = useState<Map<string, any>>(new Map());
   const [resolvedAuth, setResolvedAuth] = useState<{ pnName: string; publicKey: string } | null>(null);
-  const [connectedDriveEmail, setConnectedDriveEmail] = useState<string | null>(() => {
-    try {
-      return localStorage.getItem('google_drive_email');
-    } catch (e) {
-      return null;
-    }
-  });
   
   const [showDesktopAppInfo, setShowDesktopAppInfo] = useState(false);
   const [editingFile, setEditingFile] = useState<AggregatedFile | null>(null);
@@ -69,10 +72,6 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
   const [viewingFile, setViewingFile] = useState<AggregatedFile | null>(null);
   const [filePreviewUrls, setFilePreviewUrls] = useState<Map<string, string>>(new Map()); // fileId -> decrypted blob URL
   const [loadingPreviews, setLoadingPreviews] = useState<Set<string>>(new Set());
-  // Version check - this will help verify new code is loading
-  React.useEffect(() => {
-    console.log('🚀 [FileStorageAggregator] Component loaded - Version: 2024-12-05-v2');
-  }, []);
 
   // Initialize services - useMemo to avoid re-initializing on every render
   const aggregatorService = React.useMemo(() => {
@@ -83,7 +82,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
       return null;
     }
   }, []);
-  
+
   const encryptionService = React.useMemo(() => {
     try {
       return getEncryptionService();
@@ -92,7 +91,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
       return null;
     }
   }, []);
-  
+
   const metadataIndexService = React.useMemo(() => {
     try {
       return getMetadataIndexService();
@@ -101,26 +100,215 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
       return null;
     }
   }, []);
-  
+
+  const resolveIdentifiersForEmail = React.useCallback((email?: string | null) => {
+    const normalizedEmail = email?.toLowerCase() || null;
+    if (normalizedEmail) {
+      const existing = driveAccounts.find((account) => account.email?.toLowerCase() === normalizedEmail);
+      if (existing) {
+        return { backendId: existing.backendId, keyPrefix: existing.keyPrefix, isNew: false };
+      }
+    }
+
+    const safeBase = (normalizedEmail || `account-${Date.now().toString(36)}`).replace(/[^a-z0-9]+/g, '-');
+    const uniqueSuffix = (typeof crypto !== 'undefined' && crypto.randomUUID)
+      ? crypto.randomUUID().split('-')[0]
+      : Math.random().toString(36).slice(2, 10);
+    const slug = `${safeBase}-${uniqueSuffix}`;
+    return {
+      backendId: `google_drive::${slug}`,
+      keyPrefix: `google_drive_${slug}`,
+      isNew: true
+    };
+  }, [driveAccounts]);
+
+  const persistDriveAccounts = React.useCallback((accounts: DriveAccountState[]) => {
+    try {
+      localStorage.setItem(DRIVE_ACCOUNTS_STORAGE_KEY, JSON.stringify(accounts));
+    } catch (storageError) {
+      console.warn('⚠️ [DriveAccounts] Unable to persist drive accounts', storageError);
+    }
+  }, []);
+
+  const upsertDriveAccount = React.useCallback(async (
+    params: {
+      backendId: string;
+      keyPrefix: string;
+      token: string;
+      refreshToken?: string | null;
+      email?: string | null;
+    }
+  ): Promise<GoogleDriveBackend | null> => {
+    if (!aggregatorService) {
+      console.warn('⚠️ [DriveAccounts] Aggregator service not ready');
+      return null;
+    }
+
+    await aggregatorService.ensureInitialized();
+
+    let backend = aggregatorService.getBackend(params.backendId) as GoogleDriveBackend | null;
+    if (!backend) {
+      backend = new GoogleDriveBackend({
+        id: params.backendId,
+        name: params.email || 'Google Drive',
+        storageKeyPrefix: params.keyPrefix
+      });
+      aggregatorService.registerBackend(params.backendId, backend);
+    }
+
+    await backend.connect({
+      token: params.token,
+      refreshToken: params.refreshToken || undefined,
+      email: params.email || undefined
+    });
+
+    const resolvedEmail = params.email || backend.getEmail() || null;
+
+    setConnectedBackends((prev) => {
+      const next = new Set(prev);
+      next.add(params.backendId);
+      return next;
+    });
+
+    setUserEmails((prev) => {
+      if (!resolvedEmail) {
+        return prev;
+      }
+      const next = new Map(prev);
+      next.set(params.backendId, resolvedEmail);
+      return next;
+    });
+
+    setDriveAccounts((prev) => {
+      const existingIndex = prev.findIndex((account) => account.backendId === params.backendId);
+      const updated: DriveAccountState[] = existingIndex >= 0 ? [...prev] : [...prev, { backendId: params.backendId, keyPrefix: params.keyPrefix, email: resolvedEmail }];
+      if (existingIndex >= 0) {
+        updated[existingIndex] = {
+          backendId: params.backendId,
+          keyPrefix: params.keyPrefix,
+          email: resolvedEmail
+        };
+      }
+      persistDriveAccounts(updated);
+      return updated;
+    });
+
+    if (!activeBackendId) {
+      setActiveBackendId(params.backendId);
+    }
+
+    return backend;
+  }, [aggregatorService, activeBackendId, persistDriveAccounts]);
+
+  const removeDriveAccount = React.useCallback((backendId: string) => {
+    let nextActiveId: string | null = null;
+
+    setDriveAccounts((prev) => {
+      const updated = prev.filter((account) => account.backendId !== backendId);
+      persistDriveAccounts(updated);
+      nextActiveId = updated.length > 0 ? updated[0].backendId : null;
+      return updated;
+    });
+
+    setConnectedBackends((prev) => {
+      const next = new Set(prev);
+      next.delete(backendId);
+      return next;
+    });
+
+    setUserEmails((prev) => {
+      if (!prev.has(backendId)) {
+        return prev;
+      }
+      const next = new Map(prev);
+      next.delete(backendId);
+      return next;
+    });
+
+    setFiles((prev) => prev.filter((file) => file.backend !== backendId));
+
+    setFilePreviewUrls((prev) => {
+      const next = new Map(prev);
+      Array.from(next.keys()).forEach((key) => {
+        if (key.startsWith(`${backendId}:`)) {
+          next.delete(key);
+        }
+      });
+      return next;
+    });
+
+    shareTokenCache.current.forEach((_value, key) => {
+      if (key.startsWith(`${backendId}:`)) {
+        shareTokenCache.current.delete(key);
+      }
+    });
+
+    if (activeBackendId === backendId) {
+      setActiveBackendId(nextActiveId);
+    }
+  }, [activeBackendId, persistDriveAccounts]);
+
+  const fetchDriveUserInfo = React.useCallback(async (accessToken: string) => {
+    try {
+      const response = await fetch('https://www.googleapis.com/drive/v3/about?fields=user', {
+        headers: {
+          Authorization: `Bearer ${accessToken}`
+        }
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        if (data?.user) {
+          return {
+            email: data.user.emailAddress as string | undefined,
+            name: data.user.displayName as string | undefined,
+          };
+        }
+      }
+    } catch (driveError) {
+      console.warn('⚠️ [fetchDriveUserInfo] drive/v3/about failed, falling back', driveError);
+    }
+
+    try {
+      const response = await fetch('https://www.googleapis.com/oauth2/v2/userinfo', {
+        headers: {
+          Authorization: `Bearer ${accessToken}`
+        }
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        return {
+          email: data?.email as string | undefined,
+          name: data?.name as string | undefined,
+        };
+      }
+    } catch (oauthError) {
+      console.warn('⚠️ [fetchDriveUserInfo] oauth2 userinfo failed', oauthError);
+    }
+
+    return { email: undefined, name: undefined };
+  }, []);
+  // Version check - this will help verify new code is loading
+  React.useEffect(() => {
+    console.log('🚀 [FileStorageAggregator] Component loaded - Version: 2024-12-05-v2');
+  }, []);
+
   const [fileMetadataMap, setFileMetadataMap] = useState<Map<string, PublicMetadata>>(new Map());
 
-  const googleDriveEmail =
-    connectedDriveEmail ||
-    userEmails.get('google_drive') ||
-    (() => {
-      try {
-        return localStorage.getItem('google_drive_email');
-      } catch (e) {
-        return null;
-      }
-    })() ||
-    (authenticatedUser as any)?.email ||
-    null;
+  const activeAccount = React.useMemo(() => {
+    if (activeBackendId) {
+      return driveAccounts.find(account => account.backendId === activeBackendId) || null;
+    }
+    return driveAccounts.length > 0 ? driveAccounts[0] : null;
+  }, [activeBackendId, driveAccounts]);
+
+  const googleDriveEmail = activeAccount?.email ||
+    (activeAccount ? userEmails.get(activeAccount.backendId) || null : null);
 
   // Load Google Drive token from encrypted metadata when user unlocks
   useEffect(() => {
     const loadTokenFromMetadata = async () => {
-      // Only run if we have authenticated user and passcode
       if (!authenticatedUser?.id || !authenticatedUser?.pnName) {
         return;
       }
@@ -128,189 +316,152 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
       try {
         const passcode = sessionStorage.getItem('pn_session_passcode');
         if (!passcode) {
-          return; // No passcode yet, wait for unlock
+          return;
         }
 
         if (!aggregatorService) {
           return;
         }
-        
+
         const { SecureMetadataStorage } = await import('../../utils/secureMetadataStorage');
         const { SecureMetadataCrypto } = await import('../../utils/secureMetadata');
-        const googleDriveBackend = aggregatorService.getBackend('google_drive');
-        
-        if (!googleDriveBackend) {
+
+        const metadata = await SecureMetadataStorage.getMetadata(authenticatedUser.id);
+        if (!metadata) {
           return;
         }
 
-        const metadata = await SecureMetadataStorage.getMetadata(authenticatedUser.id);
-        if (metadata) {
-          const decrypted = await SecureMetadataCrypto.decryptMetadata(
-            metadata,
-            authenticatedUser.pnName,
-            passcode
-          );
-          
-          if (decrypted.storageCredentials?.googleDrive) {
-            const creds = decrypted.storageCredentials.googleDrive;
-            const token = creds.accessToken;
-            const refreshToken = creds.refreshToken || null; // Load refresh token for automatic renewal
-            const email = creds.email || null;
+        const decrypted = await SecureMetadataCrypto.decryptMetadata(
+          metadata,
+          authenticatedUser.pnName,
+          passcode
+        );
 
-            // Connect using token from metadata (including refresh token for auto-renewal)
-            if (token && !connectedBackends.has('google_drive')) {
-              try {
-                await googleDriveBackend.connect({ 
-                  token, 
-                  email: email || undefined,
-                  refreshToken: refreshToken || undefined 
-                });
-                setConnectedBackends(prev => new Set([...prev, 'google_drive']));
-                if (email) {
-                  setUserEmails(prev => {
-                    const next = new Map(prev);
-                    next.set('google_drive', email);
-                    return next;
-                  });
-                  setConnectedDriveEmail(email);
-                  try {
-                    localStorage.setItem('google_drive_email', email);
-                  } catch (e) {
-                    // ignore storage errors
-                  }
-                }
-                await loadFiles();
-                await loadStorageQuota();
-                console.log('✅ [loadTokenFromMetadata] Restored Google Drive connection from encrypted metadata');
-              } catch (err) {
-                console.warn('⚠️ [loadTokenFromMetadata] Token from metadata failed, may be expired:', err);
-              }
+        const storedCreds = decrypted.storageCredentials?.googleDriveAccounts || decrypted.storageCredentials?.googleDrive;
+        const credsArray = Array.isArray(storedCreds) ? storedCreds : storedCreds ? [storedCreds] : [];
+
+        for (const creds of credsArray) {
+          const token = creds?.accessToken;
+          if (!token) {
+            continue;
+          }
+
+          const email = creds.email || null;
+          const refreshToken = creds.refreshToken || null;
+          const identifiers = resolveIdentifiersForEmail(email);
+
+          const backend = await upsertDriveAccount({
+            backendId: identifiers.backendId,
+            keyPrefix: identifiers.keyPrefix,
+            token,
+            refreshToken,
+            email
+          });
+
+          if (backend) {
+            try {
+              await loadFiles(identifiers.backendId);
+            } catch (loadErr) {
+              console.warn('⚠️ [loadTokenFromMetadata] Failed to load files for restored account', loadErr);
             }
           }
         }
+
+        if (credsArray.length > 0) {
+          await loadStorageQuota();
+        }
       } catch (error) {
-        // Silently fail - metadata might not exist yet
         console.debug('Could not load token from metadata:', error);
       }
     };
 
     loadTokenFromMetadata();
-  }, [authenticatedUser?.id, authenticatedUser?.pnName, connectedBackends, aggregatorService]);
+  }, [authenticatedUser?.id, authenticatedUser?.pnName, aggregatorService, resolveIdentifiersForEmail, upsertDriveAccount]);
 
   // Initialize and restore connections (legacy localStorage fallback)
   useEffect(() => {
     const init = async () => {
-      // Ensure backends are initialized
-      await aggregatorService.ensureInitialized();
-      
-      // Get Google Drive backend
-      const googleDriveBackend = aggregatorService.getBackend('google_drive');
-      
-      if (!googleDriveBackend) {
-        console.error('Google Drive backend not found');
+      if (!aggregatorService) {
         return;
       }
-      
-      // Try to load token from encrypted metadata first (preferred)
-      // Fallback to localStorage for backward compatibility
-      let token: string | null = null;
-      let email: string | null = null;
-      
-      // Try loading from encrypted metadata if we have credentials
-      if (authenticatedUser?.id && authenticatedUser?.pnName) {
-        try {
-          const passcode = sessionStorage.getItem('pn_session_passcode');
-          if (passcode) {
-            const { SecureMetadataStorage } = await import('../../utils/secureMetadataStorage');
-            const { SecureMetadataCrypto } = await import('../../utils/secureMetadata');
-            
-            const metadata = await SecureMetadataStorage.getMetadata(authenticatedUser.id);
-            if (metadata) {
-              const decrypted = await SecureMetadataCrypto.decryptMetadata(
-                metadata,
-                authenticatedUser.pnName,
-                passcode
-              );
-              
-              if (decrypted.storageCredentials?.googleDrive) {
-                const creds = decrypted.storageCredentials.googleDrive;
-                token = creds.accessToken;
-                email = creds.email || null;
-                // Also load refresh token to localStorage for quick access
-                if (creds.refreshToken) {
-                  localStorage.setItem('google_drive_refresh_token', creds.refreshToken);
-                }
-                console.log('✅ [init] Loaded Google Drive token and refresh token from encrypted metadata');
-              }
-            }
+
+      try {
+        await aggregatorService.ensureInitialized();
+      } catch (initError) {
+        console.warn('⚠️ [init] Unable to initialize aggregator service:', initError);
+        return;
+      }
+
+      let storedAccounts: DriveAccountState[] = [];
+      try {
+        const raw = localStorage.getItem(DRIVE_ACCOUNTS_STORAGE_KEY);
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (Array.isArray(parsed)) {
+            storedAccounts = parsed.filter((entry) => entry && entry.backendId && entry.keyPrefix);
           }
-        } catch (metadataError) {
-          console.warn('⚠️ [init] Could not load token from metadata (will try localStorage):', metadataError);
+        }
+      } catch (parseError) {
+        console.warn('⚠️ [init] Failed to parse stored drive accounts', parseError);
+      }
+
+      if (storedAccounts.length === 0) {
+        // Legacy fallback: migrate single-account tokens if present
+        const legacyToken = localStorage.getItem('google_drive_token');
+        if (legacyToken) {
+          const legacyEmail = localStorage.getItem('google_drive_email');
+          const legacyRefresh = localStorage.getItem('google_drive_refresh_token');
+          const identifiers = resolveIdentifiersForEmail(legacyEmail);
+          await upsertDriveAccount({
+            backendId: identifiers.backendId,
+            keyPrefix: identifiers.keyPrefix,
+            token: legacyToken,
+            refreshToken: legacyRefresh,
+            email: legacyEmail
+          });
+        }
+      } else {
+        for (const account of storedAccounts) {
+          const token = localStorage.getItem(`${account.keyPrefix}_token`);
+          const refresh = localStorage.getItem(`${account.keyPrefix}_refresh_token`);
+
+          if (!token) {
+            continue;
+          }
+
+          await upsertDriveAccount({
+            backendId: account.backendId,
+            keyPrefix: account.keyPrefix,
+            token,
+            refreshToken: refresh,
+            email: account.email
+          });
         }
       }
-      
-      // Fallback to localStorage
-      if (!token) {
-        token = localStorage.getItem('google_drive_token');
-        email = localStorage.getItem('google_drive_email');
-        if (token) {
-          console.log('📦 [init] Loaded Google Drive token from localStorage (legacy)');
-        }
-      }
-      
-      if (token) {
+
+      if (driveAccounts.length > 0 || storedAccounts.length > 0) {
         try {
-          await googleDriveBackend.connect({ token, email: email || undefined });
-          setConnectedBackends(prev => new Set([...prev, 'google_drive']));
-          if (email) {
-            setUserEmails(prev => {
-              const next = new Map(prev);
-              next.set('google_drive', email);
-              return next;
-            });
-            setConnectedDriveEmail(email);
-            try {
-              if (userInfo.email) {
-                localStorage.setItem('google_drive_email', userInfo.email);
-              }
-            } catch (e) {
-              // ignore storage failures
-            }
-          }
           await loadFiles();
           await loadStorageQuota();
-        } catch (err) {
-          console.error('Failed to restore Google Drive connection:', err);
-          // If token expired, clear it and show disconnect
-          if (err instanceof Error && err.message.includes('expired')) {
-            setConnectedBackends(prev => {
-              const next = new Set(prev);
-              next.delete('google_drive');
-              return next;
-            });
-            setError('Google Drive authentication expired. Please reconnect.');
-          }
+        } catch (loadError) {
+          console.warn('⚠️ [init] Failed to load files during initialization', loadError);
         }
       }
     };
-    
+
     init();
 
-    // Listen for token expiration events
-    const handleTokenExpired = () => {
-      console.warn('Google Drive token expired - disconnecting');
-      setConnectedBackends(prev => {
-        const next = new Set(prev);
-        next.delete('google_drive');
-        return next;
-      });
-      setUserEmails(prev => {
-        const next = new Map(prev);
-        next.delete('google_drive');
-        return next;
-      });
+    const handleTokenExpired = (event: Event) => {
+      const detailBackendId = (event as CustomEvent)?.detail?.backendId as string | undefined;
+      const targetBackendId = detailBackendId || activeBackendId;
+
+      if (!targetBackendId) {
+        return;
+      }
+
+      console.warn('Google Drive token expired - disconnecting', { backendId: targetBackendId });
+      removeDriveAccount(targetBackendId);
       setError('Google Drive authentication expired. Please reconnect.');
-      setFiles([]);
     };
 
     window.addEventListener('google-drive-token-expired', handleTokenExpired);
@@ -318,7 +469,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
     return () => {
       window.removeEventListener('google-drive-token-expired', handleTokenExpired);
     };
-  }, []);
+  }, [activeBackendId, aggregatorService, loadFiles, loadStorageQuota, removeDriveAccount, resolveIdentifiersForEmail, upsertDriveAccount]);
 
   // Resolve auth credentials
   useEffect(() => {
