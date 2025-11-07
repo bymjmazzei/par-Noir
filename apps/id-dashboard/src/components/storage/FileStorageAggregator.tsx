@@ -1541,7 +1541,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
           updatedStorageCredentials.googleDriveAccounts = filteredAccounts;
 
           await SecureMetadataStorage.updateMetadataField(
-            resolvedAuth.pnName,
+            authenticatedUser.id,
             resolvedAuth.pnName,
             resolvedAuth.passcode,
             'storageCredentials',
