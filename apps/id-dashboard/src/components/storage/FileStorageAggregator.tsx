@@ -1446,14 +1446,6 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
           next.set('google_drive', userInfo.email);
           return next;
         });
-        setConnectedDriveEmail(userInfo.email);
-        try {
-          if (userInfo.email) {
-            localStorage.setItem('google_drive_email', userInfo.email);
-          }
-        } catch (e) {
-          // ignore storage failures
-        }
         await loadFiles();
         await loadStorageQuota();
         return;
@@ -1469,14 +1461,6 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
         next.set('google_drive', userInfo.email);
         return next;
       });
-      setConnectedDriveEmail(userInfo.email);
-      try {
-        if (userInfo.email) {
-          localStorage.setItem('google_drive_email', userInfo.email);
-        }
-      } catch (e) {
-        // ignore storage failures
-      }
 
       // Save token and refresh token to encrypted pN metadata for persistence
       if (resolvedAuth?.pnName && resolvedAuth?.passcode && authenticatedUser?.id) {
@@ -2389,39 +2373,6 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
 
   const totalFiles = files.length;
   const hasConnectedBackends = connectedBackends.size > 0;
-
-  // Ensure we always display the latest Google Drive email once backend is connected
-  useEffect(() => {
-    const syncGoogleDriveEmail = async () => {
-      if (!aggregatorService || !connectedBackends.has('google_drive')) {
-        return;
-      }
-
-      try {
-        const backend = aggregatorService.getBackend('google_drive');
-        if (backend && backend.isConnected && backend.isConnected()) {
-          const info = await backend.getUserInfo?.();
-          if (info?.email && info.email !== connectedDriveEmail) {
-            setConnectedDriveEmail(info.email);
-            setUserEmails(prev => {
-              const next = new Map(prev);
-              next.set('google_drive', info.email);
-              return next;
-            });
-            try {
-              localStorage.setItem('google_drive_email', info.email);
-            } catch (storageError) {
-              console.warn('Unable to persist Google Drive email to localStorage:', storageError);
-            }
-          }
-        }
-      } catch (emailError) {
-        console.warn('Failed to refresh Google Drive email:', emailError);
-      }
-    };
-
-    syncGoogleDriveEmail();
-  }, [aggregatorService, connectedBackends, connectedDriveEmail]);
 
   return (
     <div className="space-y-6">
