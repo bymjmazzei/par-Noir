@@ -108,7 +108,17 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
   
   const [fileMetadataMap, setFileMetadataMap] = useState<Map<string, PublicMetadata>>(new Map());
 
-  const googleDriveEmail = userEmails.get('google_drive') || (authenticatedUser as any)?.email || '';
+  const googleDriveEmail =
+    userEmails.get('google_drive') ||
+    (() => {
+      try {
+        return localStorage.getItem('google_drive_email');
+      } catch (e) {
+        return null;
+      }
+    })() ||
+    (authenticatedUser as any)?.email ||
+    '';
 
   // Load Google Drive token from encrypted metadata when user unlocks
   useEffect(() => {
