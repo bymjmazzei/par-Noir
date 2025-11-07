@@ -510,6 +510,30 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
         console.warn('⚠️ [loadFiles] Failed to generate pN identifier:', err);
       }
       
+      // Fallback: derive identifier from stable DID + public key (no passcode required)
+      if (!currentPnIdentifier) {
+        try {
+          const idSource = authenticatedUser?.id || resolvedAuth?.publicKey;
+          const publicKey = resolvedAuth?.publicKey || authenticatedUser?.publicKey || (authenticatedUser?.id && authenticatedUser?.id.startsWith('did:key:') ? authenticatedUser.id : undefined);
+          if (idSource && publicKey) {
+            const combined = `${idSource}:${publicKey}`;
+            const encoder = new TextEncoder();
+            const data = encoder.encode(combined);
+            const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+            const hashArray = Array.from(new Uint8Array(hashBuffer));
+            const hexHash = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+            currentPnIdentifier = `pn-${hexHash.substring(0, 12)}`;
+            console.log(`✅ [loadFiles] Using fallback pN identifier: ${currentPnIdentifier}`);
+          }
+        } catch (fallbackError) {
+          console.warn('⚠️ [loadFiles] Fallback identifier generation failed:', fallbackError);
+        }
+      }
+      
+      if (!currentPnIdentifier) {
+        console.warn('⚠️ [loadFiles] Unable to determine pN identifier - owner index cannot be loaded until credentials are available');
+      }
+      
       // PRIMARY: Load files from owner-file-index.json (contains ALL files - private, public, friends)
       // This is the source of truth for the owner's files - same logic as aggregator browser uses for public files
       const backend = aggregatorService?.getBackend('google_drive');
