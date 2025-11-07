@@ -323,6 +323,12 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
         const { SecureMetadataStorage } = await import('../../utils/secureMetadataStorage');
         const { SecureMetadataCrypto } = await import('../../utils/secureMetadata');
 
+        try {
+          await SecureMetadataStorage.syncMetadataFromCloud(authenticatedUser.id);
+        } catch (cloudSyncError) {
+          console.warn('⚠️ [loadTokenFromMetadata] Unable to sync metadata from cloud (non-blocking):', cloudSyncError);
+        }
+
         const metadata = await SecureMetadataStorage.getMetadata(authenticatedUser.id);
         if (!metadata) {
           return;
