@@ -3,7 +3,7 @@
  * Dashboard aggregator that collects files from all connected storage backends
  */
 import React, { useState, useEffect, useRef } from 'react';
-import { HardDrive, Download, File, RefreshCw, AlertCircle, Lock, Globe, EyeOff, Info, X, Edit, Eye, Grid, List, Plus } from 'lucide-react';
+import { HardDrive, Download, File, RefreshCw, AlertCircle, Lock, Globe, EyeOff, Info, X, Edit, Eye, Grid, List, Plus, Cloud } from 'lucide-react';
 import { getFileAggregatorService } from '../../services/aggregator/FileAggregatorService';
 import { getEncryptionService } from '../../services/aggregator/EncryptionService';
 import { getMetadataIndexService } from '../../services/metadata/MetadataIndexService';
@@ -94,6 +94,17 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
   }, []);
   
   const [fileMetadataMap, setFileMetadataMap] = useState<Map<string, PublicMetadata>>(new Map());
+
+  const googleDriveAccountLabel =
+    userEmails.get('google_drive') ||
+    resolvedAuth?.pnName ||
+    authenticatedUser?.pnName ||
+    (authenticatedUser as any)?.username ||
+    (authenticatedUser as any)?.email ||
+    (authenticatedUser as any)?.name ||
+    resolvedAuth?.publicKey ||
+    authenticatedUser?.id ||
+    '';
 
   // Load Google Drive token from encrypted metadata when user unlocks
   useEffect(() => {
@@ -2259,28 +2270,24 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
         )}
       </div>
 
-      {/* Connection Status */}
+      {/* Secure Cloud Providers */}
       <div className="bg-neutral-900/60 border border-neutral-700 rounded-xl p-6">
-        <div className="flex items-center justify-between mb-4">
-          <h3 className="text-lg font-semibold text-white">Storage Backends</h3>
-          <button
-            onClick={loadFiles}
-            disabled={isLoading}
-            className="text-text-secondary hover:text-text-primary transition-colors"
-          >
-            <RefreshCw className={`h-5 w-5 ${isLoading ? 'animate-spin' : ''}`} />
-          </button>
+        <div className="flex items-center space-x-3 mb-3">
+          <Cloud className="h-5 w-5 text-blue-400" />
+          <div>
+            <h3 className="text-lg font-semibold text-white">Secure Cloud</h3>
+            <p className="text-text-secondary text-sm">Add or manage encrypted cloud storage connections.</p>
+          </div>
         </div>
 
-        {/* Google Drive */}
         <div className="space-y-4">
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between rounded-lg border border-neutral-700 px-4 py-3">
             <div className="flex items-center space-x-3">
               <HardDrive className="h-5 w-5 text-blue-400" />
               <div>
                 <span className="text-white font-medium">Google Drive</span>
                 {connectedBackends.has('google_drive') && userEmails.has('google_drive') && (
-                  <p className="text-text-secondary text-sm">
+                  <p className="text-text-secondary text-xs">
                     Connected as {userEmails.get('google_drive')}
                   </p>
                 )}
@@ -2303,36 +2310,6 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
               </button>
             )}
           </div>
-
-          {/* Storage Quota */}
-          {connectedBackends.has('google_drive') && storageQuotas.has('google_drive') && (
-            <div className="mt-4 pl-8">
-              {(() => {
-                const quota = storageQuotas.get('google_drive');
-                const usedGB = (quota.usageInDrive / (1024 * 1024 * 1024)).toFixed(2);
-                const totalGB = (quota.limit / (1024 * 1024 * 1024)).toFixed(0);
-                const percentUsed = ((quota.usageInDrive / quota.limit) * 100).toFixed(1);
-                const percentAvailable = (100 - parseFloat(percentUsed)).toFixed(1);
-                return (
-                  <div className="text-sm">
-                    <div className="flex justify-between mb-1">
-                      <span className="text-text-secondary">Drive: {usedGB} GB</span>
-                      <span className="text-text-secondary">{percentAvailable}% available</span>
-                    </div>
-                    <div className="w-full bg-neutral-800 rounded-full h-2">
-                      <div
-                        className="bg-blue-600 h-2 rounded-full"
-                        style={{ width: `${percentUsed}%` }}
-                      />
-                    </div>
-                    <p className="text-text-secondary mt-1">
-                      {usedGB} GB of {totalGB} GB used
-                    </p>
-                  </div>
-                );
-              })()}
-            </div>
-          )}
         </div>
       </div>
 
@@ -2389,10 +2366,32 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
       {hasConnectedBackends && (
         <div className="bg-neutral-900/60 border border-neutral-700 rounded-xl p-6">
           <div className="flex items-center justify-between mb-4">
-            <h3 className="text-lg font-semibold text-white">
-            Your Files ({totalFiles})
-          </h3>
+            <div className="flex items-center space-x-3">
+              <HardDrive className="h-5 w-5 text-blue-400" />
+              <div className="flex flex-col">
+                <span className="text-white font-semibold">Google Drive</span>
+                {googleDriveAccountLabel && (
+                  <span className="text-text-secondary text-sm truncate max-w-xs">{googleDriveAccountLabel}</span>
+                )}
+              </div>
+              {connectedBackends.has('google_drive') && (
+                <button
+                  onClick={() => handleDisconnect('google_drive')}
+                  className="ml-3 text-red-400 hover:text-red-300 text-sm"
+                >
+                  Disconnect
+                </button>
+              )}
+            </div>
             <div className="flex items-center space-x-2">
+              <button
+                onClick={loadFiles}
+                disabled={isLoading}
+                className="p-2 rounded text-text-secondary hover:text-text-primary transition-colors disabled:opacity-50"
+                title="Refresh Files"
+              >
+                <RefreshCw className={`h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} />
+              </button>
               <input
                 ref={fileInputRef}
                 type="file"
