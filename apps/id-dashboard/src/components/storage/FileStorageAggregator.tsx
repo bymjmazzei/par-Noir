@@ -30,6 +30,13 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
   const [userEmails, setUserEmails] = useState<Map<string, string>>(new Map());
   const [storageQuotas, setStorageQuotas] = useState<Map<string, any>>(new Map());
   const [resolvedAuth, setResolvedAuth] = useState<{ pnName: string; publicKey: string } | null>(null);
+  const [connectedDriveEmail, setConnectedDriveEmail] = useState<string | null>(() => {
+    try {
+      return localStorage.getItem('google_drive_email');
+    } catch (e) {
+      return null;
+    }
+  });
   
   const [showDesktopAppInfo, setShowDesktopAppInfo] = useState(false);
   const [editingFile, setEditingFile] = useState<AggregatedFile | null>(null);
@@ -98,6 +105,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
   const [fileMetadataMap, setFileMetadataMap] = useState<Map<string, PublicMetadata>>(new Map());
 
   const googleDriveEmail =
+    connectedDriveEmail ||
     userEmails.get('google_drive') ||
     (() => {
       try {
@@ -107,7 +115,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
       }
     })() ||
     (authenticatedUser as any)?.email ||
-    undefined;
+    null;
 
   // Load Google Drive token from encrypted metadata when user unlocks
   useEffect(() => {
@@ -164,6 +172,12 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
                     next.set('google_drive', email);
                     return next;
                   });
+                  setConnectedDriveEmail(email);
+                  try {
+                    localStorage.setItem('google_drive_email', email);
+                  } catch (e) {
+                    // ignore storage errors
+                  }
                 }
                 await loadFiles();
                 await loadStorageQuota();
@@ -254,6 +268,14 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
               next.set('google_drive', email);
               return next;
             });
+            setConnectedDriveEmail(email);
+            try {
+              if (userInfo.email) {
+                localStorage.setItem('google_drive_email', userInfo.email);
+              }
+            } catch (e) {
+              // ignore storage failures
+            }
           }
           await loadFiles();
           await loadStorageQuota();
@@ -1273,6 +1295,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
           next.set('google_drive', userInfo.email);
           return next;
         });
+        setConnectedDriveEmail(userInfo.email);
         try {
           if (userInfo.email) {
             localStorage.setItem('google_drive_email', userInfo.email);
@@ -1295,6 +1318,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
         next.set('google_drive', userInfo.email);
         return next;
       });
+      setConnectedDriveEmail(userInfo.email);
       try {
         if (userInfo.email) {
           localStorage.setItem('google_drive_email', userInfo.email);
