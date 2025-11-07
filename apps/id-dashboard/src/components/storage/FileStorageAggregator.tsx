@@ -329,7 +329,16 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
           console.warn('⚠️ [loadTokenFromMetadata] Unable to sync metadata from cloud (non-blocking):', cloudSyncError);
         }
 
-        const metadata = await SecureMetadataStorage.getMetadata(authenticatedUser.id);
+        let metadata = await SecureMetadataStorage.getMetadata(authenticatedUser.id);
+
+        if (!metadata) {
+          try {
+            metadata = await SecureMetadataStorage.getMetadataFromCloud(authenticatedUser.id);
+          } catch (fallbackError) {
+            console.warn('⚠️ [loadTokenFromMetadata] Fallback cloud fetch failed (non-blocking):', fallbackError);
+          }
+        }
+
         if (!metadata) {
           return;
         }
