@@ -28,7 +28,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
   // Cache for share tokens (fileId -> shareToken) - generated during upload for quick access
   const shareTokenCache = React.useRef<Map<string, ShareToken>>(new Map());
   const previewRetryCounts = React.useRef<Map<string, number>>(new Map());
-  const fileInputRef = React.useRef<HTMLInputElement | null>(null);
+  const fileInputRefs = React.useRef<Map<string, HTMLInputElement | null>>(new Map());
   const hasRestoredFromMetadataRef = React.useRef<string | null>(null);
   const hasInitializedLegacyRef = React.useRef<boolean>(false);
   const makeShareTokenCacheKey = React.useCallback((backendId: string, backendFileId: string) => `${backendId}|${backendFileId}`, []);
@@ -298,16 +298,6 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
   }, []);
 
   const [fileMetadataMap, setFileMetadataMap] = useState<Map<string, PublicMetadata>>(new Map());
-
-  const activeAccount = React.useMemo(() => {
-    if (activeBackendId) {
-      return driveAccounts.find(account => account.backendId === activeBackendId) || null;
-    }
-    return driveAccounts.length > 0 ? driveAccounts[0] : null;
-  }, [activeBackendId, driveAccounts]);
-
-  const googleDriveEmail = activeAccount?.email ||
-    (activeAccount ? userEmails.get(activeAccount.backendId) || null : null);
 
   // Load Google Drive token from encrypted metadata when user unlocks
   useEffect(() => {
@@ -1597,6 +1587,9 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
 
     console.log('📤 [Upload] Starting upload...', { fileName: file.name, fileSize: file.size });
 
+    const targetBackendIdAttr = event.target.dataset.backendId;
+    const overrideBackendId = targetBackendIdAttr && typeof targetBackendIdAttr === 'string' ? targetBackendIdAttr : null;
+
     // Resolve auth credentials - try multiple sources
     let pnName: string | null = null;
     let publicKey: string | null = null;
@@ -1735,7 +1728,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
         throw new Error('Storage service not available');
       }
 
-      const targetBackendId = activeBackendId || driveAccounts[0]?.backendId;
+      const targetBackendId = overrideBackendId || activeBackendId || driveAccounts[0]?.backendId;
       if (!targetBackendId) {
         throw new Error('No Google Drive account connected');
       }
@@ -2547,12 +2540,20 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
   };
 
 
-  const displayedFiles = activeAccount
-    ? files.filter((file) => file.backend === activeAccount.backendId || file.backend === 'google_drive')
-    : files;
-
-  const totalFiles = displayedFiles.length;
+  const totalFiles = files.length;
   const hasConnectedBackends = driveAccounts.length > 0;
+
+  const filesByBackend = React.useMemo(() => {
+    const map = new Map<string, AggregatedFile[]>();
+    files.forEach((file) => {
+      const key = file.backend || 'google_drive';
+      if (!map.has(key)) {
+        map.set(key, []);
+      }
+      map.get(key)!.push(file);
+    });
+    return map;
+  }, [files]);
 
   return (
     <div className="space-y-6">
@@ -2705,344 +2706,348 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
 
       {/* File List */}
       {hasConnectedBackends && (
-        <div className="bg-neutral-900/60 border border-neutral-700 rounded-xl p-6">
-          {driveAccounts.length > 1 && (
-            <div className="flex flex-wrap items-center gap-2 mb-4">
-              {driveAccounts.map((account, index) => {
-                const email = account.email || userEmails.get(account.backendId) || `Drive ${index + 1}`;
-                const isActive = activeAccount ? account.backendId === activeAccount.backendId : index === 0;
-                return (
-                  <button
-                    key={account.backendId}
-                    onClick={() => {
-                      setActiveBackendId(account.backendId);
-                      loadFiles();
-                    }}
-                    className={`flex items-center gap-2 px-3 py-2 rounded-lg border transition-colors ${
-                      isActive
-                        ? 'border-blue-500 bg-blue-500/10 text-white'
-                        : 'border-neutral-700 text-text-secondary hover:text-text-primary'
-                    }`}
-                  >
-                    <img src={GOOGLE_DRIVE_ICON_URL} alt="Google Drive" className="h-4 w-4" loading="lazy" />
-                    <span className="text-sm font-medium max-w-[12rem] truncate">{email}</span>
-                  </button>
-                );
-              })}
-            </div>
-          )}
-          <div className="flex items-center justify-between mb-4">
-            <div className="flex items-center space-x-3">
-              <img src={GOOGLE_DRIVE_ICON_URL} alt="Google Drive" className="h-5 w-5" />
-              {googleDriveEmail && (
-                <span className="text-white font-semibold truncate max-w-xs">
-                  {googleDriveEmail}
-                </span>
-              )}
-              {activeAccount && connectedBackends.has(activeAccount.backendId) && (
-                <button
-                  onClick={() => handleDisconnect(activeAccount.backendId)}
-                  className="ml-3 text-red-400 hover:text-red-300 text-sm"
-                >
-                  Disconnect
-                </button>
-              )}
-            </div>
-            <div className="flex items-center space-x-2">
-              <button
-                onClick={loadFiles}
-                disabled={isLoading}
-                className="p-2 rounded text-text-secondary hover:text-text-primary transition-colors disabled:opacity-50"
-                title="Refresh Files"
-              >
-                <RefreshCw className={`h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} />
-              </button>
-            <input
-                ref={fileInputRef}
-              type="file"
-              onChange={handleUpload}
-              className="hidden"
-              disabled={isLoading}
-            />
-              <button
-                onClick={() => fileInputRef.current?.click()}
-                disabled={isLoading}
-                className="p-2 rounded bg-blue-600 text-white hover:bg-blue-500 transition-colors disabled:opacity-50"
-                title="Upload File"
-              >
-                <Plus className="h-4 w-4" />
-              </button>
-              <button
-                onClick={() => setViewMode('list')}
-                className={`p-2 rounded transition-colors ${
-                  viewMode === 'list'
-                    ? 'bg-blue-600 text-white'
-                    : 'text-text-secondary hover:text-text-primary'
-                }`}
-                title="List View"
-              >
-                <List className="h-4 w-4" />
-              </button>
-              <button
-                onClick={() => setViewMode('grid')}
-                className={`p-2 rounded transition-colors ${
-                  viewMode === 'grid'
-                    ? 'bg-blue-600 text-white'
-                    : 'text-text-secondary hover:text-text-primary'
-                }`}
-                title="Grid View"
-              >
-                <Grid className="h-4 w-4" />
-              </button>
-        </div>
-          </div>
+        <div className="space-y-6">
+          {driveAccounts.map((account, index) => {
+            const backendId = account.backendId;
+            const email = account.email || userEmails.get(backendId) || `Drive ${index + 1}`;
+            const accountFiles = filesByBackend.get(backendId) || [];
+            const quota = storageQuotas.get(backendId);
+            const percentUsed = quota && quota.totalBytes
+              ? Math.min(100, Math.round((quota.usedBytes / quota.totalBytes) * 100))
+              : null;
 
-          {isLoading && files.length === 0 ? (
-            <div className="text-center py-12">
-              <RefreshCw className="h-8 w-8 text-text-secondary animate-spin mx-auto mb-4" />
-              <p className="text-text-secondary">Loading files...</p>
-            </div>
-          ) : files.length === 0 ? (
-            <div className="text-center py-12">
-              <File className="h-12 w-12 text-text-secondary mx-auto mb-4" />
-              <p className="text-text-secondary">No files found</p>
-            </div>
-          ) : viewMode === 'grid' ? (
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
-              {displayedFiles.map((file) => {
-                const metadata = fileMetadataMap.get(file.id);
-                const previewUrl = filePreviewUrls.get(file.id);
-                const isLoadingPreview = loadingPreviews.has(file.id);
-                const mimeType = file.mimeType || '';
-                const fileName = file.originalName || file.name || '';
-                const isImage = mimeType.startsWith('image/') || /\.(jpg|jpeg|png|gif|webp|svg|bmp|ico)$/i.test(fileName);
-                const isVideo = mimeType.startsWith('video/') || /\.(mp4|mov|avi|webm|mkv|flv|wmv)$/i.test(fileName);
-                
-                return (
-                  <div
-                    key={`${file.backend}-${file.backendFileId}`}
-                    className="bg-neutral-800/50 rounded-lg overflow-hidden hover:bg-neutral-800 transition-colors group cursor-pointer"
-                    onClick={() => handleViewFile(file)}
-                  >
-                    {/* Preview - displays actual file at smaller size */}
-                    <div 
-                      className="relative aspect-square bg-neutral-700/50 overflow-hidden"
-                      onMouseEnter={() => {
-                        if ((isImage || isVideo) && !previewUrl && !isLoadingPreview) {
-                          loadFilePreview(file);
-                        }
-                      }}
-                    >
-                      {previewUrl && isImage ? (
-                        <img
-                          src={previewUrl}
-                          alt={file.encrypted ? file.originalName : file.name}
-                          className="w-full h-full object-cover"
-                        />
-                      ) : previewUrl && isVideo ? (
-                        <video
-                          src={previewUrl}
-                          className="w-full h-full object-cover"
-                          muted
-                          loop
-                        />
-                      ) : isLoadingPreview ? (
-                        <div className="w-full h-full flex items-center justify-center">
-                          <RefreshCw className="h-6 w-6 text-text-secondary animate-spin" />
-                        </div>
-                      ) : (
-                        <div className="w-full h-full flex items-center justify-center">
-                          <Lock className="h-8 w-8 text-blue-400" />
-                        </div>
-                      )}
-                      {metadata?.isPublic && (
-                        <div className="absolute top-2 right-2 bg-green-500/80 rounded-full p-1">
-                          <Globe className="h-3 w-3 text-white" />
-                        </div>
-                      )}
-                      {(isImage || isVideo) && (
-                        <div className="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-colors flex items-center justify-center opacity-0 group-hover:opacity-100">
-                          <Eye className="h-6 w-6 text-white" />
-                        </div>
-                      )}
-                    </div>
-                    
-                    {/* File Info */}
-                    <div className="p-3">
-                      <p className="text-white text-xs truncate mb-1" title={file.encrypted ? file.originalName : file.name}>
-                        {file.encrypted ? file.originalName : file.name}
-                      </p>
-                      <p className="text-text-secondary text-xs">
-                        {(parseInt(file.size?.toString() || '0') / 1024).toFixed(1)} KB
-                      </p>
-                      
-                      {/* Actions */}
-                      <div className="flex items-center justify-between mt-2 pt-2 border-t border-neutral-700">
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleEditMetadata(file);
-                          }}
-                          disabled={isLoading}
-                          className="p-1.5 text-text-secondary hover:text-text-primary transition-colors"
-                          title="Edit"
-                        >
-                          <Edit className="h-3.5 w-3.5" />
-                        </button>
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleTogglePublic(file);
-                          }}
-                          disabled={isLoading}
-                          className="p-1.5 transition-colors"
-                          title={metadata?.isPublic ? 'Make Private' : 'Make Public'}
-                          style={{
-                            color: metadata?.isPublic ? 'rgb(74, 222, 128)' : 'rgb(156, 163, 175)'
-                          }}
-                        >
-                          {metadata?.isPublic ? (
-                            <Globe className="h-3.5 w-3.5" />
-                          ) : (
-                            <EyeOff className="h-3.5 w-3.5" />
-                          )}
-                        </button>
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleDownload(file);
-                          }}
-                          disabled={isLoading}
-                          className="p-1.5 text-blue-400 hover:text-blue-300 transition-colors"
-                          title="Download"
-                        >
-                          <Download className="h-3.5 w-3.5" />
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          ) : (
-            <div className="space-y-2">
-              {displayedFiles.map((file) => {
-                const metadata = fileMetadataMap.get(file.id);
-                const previewUrl = filePreviewUrls.get(file.id);
-                const isLoadingPreview = loadingPreviews.has(file.id);
-                const mimeType = file.mimeType || '';
-                const fileName = file.originalName || file.name || '';
-                const isImage = mimeType.startsWith('image/') || /\.(jpg|jpeg|png|gif|webp|svg|bmp|ico)$/i.test(fileName);
-                const isVideo = mimeType.startsWith('video/') || /\.(mp4|mov|avi|webm|mkv|flv|wmv)$/i.test(fileName);
-                
-                return (
-                <div
-                  key={`${file.backend}-${file.backendFileId}`}
-                  className="flex items-center justify-between p-3 bg-neutral-800/50 rounded-lg hover:bg-neutral-800 transition-colors cursor-pointer"
-                  onClick={() => handleViewFile(file)}
-                >
-                  <div className="flex items-center space-x-3 flex-1 min-w-0">
-                      {/* Preview or icon - displays actual file at smaller size */}
-                      {previewUrl && isImage ? (
-                        <div className="w-12 h-12 flex-shrink-0 rounded overflow-hidden bg-neutral-700">
-                          <img
-                            src={previewUrl}
-                            alt={file.encrypted ? file.originalName : file.name}
-                            className="w-full h-full object-cover"
-                          />
-                        </div>
-                      ) : previewUrl && isVideo ? (
-                        <div className="w-12 h-12 flex-shrink-0 rounded overflow-hidden bg-neutral-700">
-                          <video
-                            src={previewUrl}
-                            className="w-full h-full object-cover"
-                            muted
-                          />
-                        </div>
-                      ) : (isImage || isVideo) ? (
-                        <div 
-                          className="w-12 h-12 flex-shrink-0 rounded bg-neutral-700 flex items-center justify-center cursor-pointer"
-                          onMouseEnter={() => {
-                            if (!previewUrl && !isLoadingPreview) {
-                              loadFilePreview(file);
-                            }
-                          }}
-                        >
-                          {isLoadingPreview ? (
-                            <RefreshCw className="h-5 w-5 text-text-secondary animate-spin" />
-                          ) : (
-                            <Lock className="h-5 w-5 text-blue-400" />
-                          )}
-                        </div>
-                      ) : (
-                    <Lock className="h-4 w-4 text-blue-400 flex-shrink-0" />
-                      )}
-                      
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center space-x-2">
-                        <p className="text-white text-sm truncate">
-                          {file.encrypted ? file.originalName : file.name}
-                        </p>
-                          {metadata?.isPublic && (
-                          <Globe className="h-3 w-3 text-green-400 flex-shrink-0" title="Public" />
-                        )}
-                      </div>
-                      <p className="text-text-secondary text-xs">
-                        {file.backend} • {(parseInt(file.size?.toString() || '0') / 1024).toFixed(2)} KB
-                      </p>
-                    </div>
+            return (
+              <div key={backendId} className="bg-neutral-900/60 border border-neutral-700 rounded-xl p-6">
+                <div className="flex items-start justify-between mb-4">
+                  <div className="flex items-center space-x-3">
+                    <img src={GOOGLE_DRIVE_ICON_URL} alt="Google Drive" className="h-5 w-5" />
+                    <span className="text-white font-semibold truncate max-w-xs">
+                      {email}
+                    </span>
+                    {connectedBackends.has(backendId) && (
+                      <button
+                        onClick={() => handleDisconnect(backendId)}
+                        className="text-red-400 hover:text-red-300 text-sm"
+                      >
+                        Disconnect
+                      </button>
+                    )}
                   </div>
                   <div className="flex items-center space-x-2">
                     <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleEditMetadata(file);
-                        }}
-                        disabled={isLoading}
-                        className="px-2 py-1.5 text-xs font-medium rounded-lg transition-colors disabled:opacity-50 bg-neutral-700/50 hover:bg-neutral-700 text-text-secondary hover:text-text-primary"
-                        title="Edit Metadata"
-                      >
-                        <Edit className="h-4 w-4" />
-                      </button>
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleTogglePublic(file);
+                      onClick={() => {
+                        setActiveBackendId(backendId);
+                        loadFiles();
                       }}
                       disabled={isLoading}
-                      className="px-2 py-1.5 text-xs font-medium rounded-lg transition-colors disabled:opacity-50"
-                        title={metadata?.isPublic ? 'Make Private' : 'Make Public'}
-                      style={{
-                          backgroundColor: metadata?.isPublic 
-                          ? 'rgba(34, 197, 94, 0.2)' 
-                          : 'rgba(107, 114, 128, 0.2)',
-                          color: metadata?.isPublic 
-                          ? 'rgb(74, 222, 128)' 
-                          : 'rgb(156, 163, 175)'
-                      }}
+                      className="p-2 rounded text-text-secondary hover:text-text-primary transition-colors disabled:opacity-50"
+                      title="Refresh Files"
                     >
-                        {metadata?.isPublic ? (
-                        <Globe className="h-4 w-4" />
-                      ) : (
-                        <EyeOff className="h-4 w-4" />
-                      )}
+                      <RefreshCw className={`h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} />
+                    </button>
+                    <input
+                      type="file"
+                      data-backend-id={backendId}
+                      className="hidden"
+                      disabled={isLoading}
+                      onChange={handleUpload}
+                      ref={(el) => {
+                        if (el) {
+                          fileInputRefs.current.set(backendId, el);
+                        } else {
+                          fileInputRefs.current.delete(backendId);
+                        }
+                      }}
+                    />
+                    <button
+                      onClick={() => {
+                        setActiveBackendId(backendId);
+                        const input = fileInputRefs.current.get(backendId);
+                        input?.click();
+                      }}
+                      disabled={isLoading}
+                      className="p-2 rounded bg-blue-600 text-white hover:bg-blue-500 transition-colors disabled:opacity-50"
+                      title="Upload File"
+                    >
+                      <Plus className="h-4 w-4" />
                     </button>
                     <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleDownload(file);
-                      }}
-                      disabled={isLoading}
-                      className="px-3 py-1.5 bg-blue-600 text-white text-xs font-medium rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50"
+                      onClick={() => setViewMode('list')}
+                      className={`p-2 rounded transition-colors ${
+                        viewMode === 'list'
+                          ? 'bg-blue-600 text-white'
+                          : 'text-text-secondary hover:text-text-primary'
+                      }`}
+                      title="List View"
                     >
-                      <Download className="h-4 w-4" />
+                      <List className="h-4 w-4" />
+                    </button>
+                    <button
+                      onClick={() => setViewMode('grid')}
+                      className={`p-2 rounded transition-colors ${
+                        viewMode === 'grid'
+                          ? 'bg-blue-600 text-white'
+                          : 'text-text-secondary hover:text-text-primary'
+                      }`}
+                      title="Grid View"
+                    >
+                      <Grid className="h-4 w-4" />
                     </button>
                   </div>
                 </div>
-                );
-              })}
-            </div>
-          )}
+
+                {quota && (
+                  <div className="flex items-center justify-between text-xs text-text-secondary bg-neutral-800/60 rounded-lg px-3 py-2 mb-4">
+                    <span>Used {(quota.usedBytes / (1024 * 1024)).toFixed(1)} MB of {(quota.totalBytes / (1024 * 1024)).toFixed(1)} MB</span>
+                    <span>{percentUsed ?? 0}% full</span>
+                  </div>
+                )}
+
+                {isLoading && files.length === 0 ? (
+                  <div className="text-center py-12">
+                    <RefreshCw className="h-8 w-8 text-text-secondary animate-spin mx-auto mb-4" />
+                    <p className="text-text-secondary">Loading files...</p>
+                  </div>
+                ) : accountFiles.length === 0 ? (
+                  <div className="text-center py-12">
+                    <File className="h-12 w-12 text-text-secondary mx-auto mb-4" />
+                    <p className="text-text-secondary">No files found for this account</p>
+                  </div>
+                ) : viewMode === 'grid' ? (
+                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
+                    {accountFiles.map((file) => {
+                      const metadata = fileMetadataMap.get(file.id);
+                      const previewUrl = filePreviewUrls.get(file.id);
+                      const isLoadingPreview = loadingPreviews.has(file.id);
+                      const mimeType = file.mimeType || '';
+                      const fileName = file.originalName || file.name || '';
+                      const isImage = mimeType.startsWith('image/') || /\.(jpg|jpeg|png|gif|webp|svg|bmp|ico)$/i.test(fileName);
+                      const isVideo = mimeType.startsWith('video/') || /\.(mp4|mov|avi|webm|mkv|flv|wmv)$/i.test(fileName);
+
+                      return (
+                        <div
+                          key={`${file.backend}-${file.backendFileId}`}
+                          className="bg-neutral-800/50 rounded-lg overflow-hidden hover:bg-neutral-800 transition-colors group cursor-pointer"
+                          onClick={() => handleViewFile(file)}
+                        >
+                          <div
+                            className="relative aspect-square bg-neutral-700/50 overflow-hidden"
+                            onMouseEnter={() => {
+                              if ((isImage || isVideo) && !previewUrl && !isLoadingPreview) {
+                                loadFilePreview(file);
+                              }
+                            }}
+                          >
+                            {previewUrl && isImage ? (
+                              <img
+                                src={previewUrl}
+                                alt={file.encrypted ? file.originalName : file.name}
+                                className="w-full h-full object-cover"
+                              />
+                            ) : previewUrl && isVideo ? (
+                              <video
+                                src={previewUrl}
+                                className="w-full h-full object-cover"
+                                muted
+                                loop
+                              />
+                            ) : isLoadingPreview ? (
+                              <div className="w-full h-full flex items-center justify-center">
+                                <RefreshCw className="h-6 w-6 text-text-secondary animate-spin" />
+                              </div>
+                            ) : (
+                              <div className="w-full h-full flex items-center justify-center">
+                                <Lock className="h-8 w-8 text-blue-400" />
+                              </div>
+                            )}
+                            {metadata?.isPublic && (
+                              <div className="absolute top-2 right-2 bg-green-500/80 rounded-full p-1">
+                                <Globe className="h-3 w-3 text-white" />
+                              </div>
+                            )}
+                            {(isImage || isVideo) && (
+                              <div className="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-colors flex items-center justify-center opacity-0 group-hover:opacity-100">
+                                <Eye className="h-6 w-6 text-white" />
+                              </div>
+                            )}
+                          </div>
+
+                          <div className="p-3">
+                            <p className="text-white text-xs truncate mb-1" title={file.encrypted ? file.originalName : file.name}>
+                              {file.encrypted ? file.originalName : file.name}
+                            </p>
+                            <p className="text-text-secondary text-xs">
+                              {(parseInt(file.size?.toString() || '0') / 1024).toFixed(1)} KB
+                            </p>
+
+                            <div className="flex items-center justify-between mt-2 pt-2 border-t border-neutral-700">
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleEditMetadata(file);
+                                }}
+                                disabled={isLoading}
+                                className="p-1.5 text-text-secondary hover:text-text-primary transition-colors"
+                                title="Edit"
+                              >
+                                <Edit className="h-3.5 w-3.5" />
+                              </button>
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleTogglePublic(file);
+                                }}
+                                disabled={isLoading}
+                                className="p-1.5 transition-colors"
+                                title={metadata?.isPublic ? 'Make Private' : 'Make Public'}
+                                style={{
+                                  color: metadata?.isPublic ? 'rgb(74, 222, 128)' : 'rgb(156, 163, 175)'
+                                }}
+                              >
+                                {metadata?.isPublic ? (
+                                  <Globe className="h-3.5 w-3.5" />
+                                ) : (
+                                  <EyeOff className="h-3.5 w-3.5" />
+                                )}
+                              </button>
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleDownload(file);
+                                }}
+                                disabled={isLoading}
+                                className="p-1.5 text-blue-400 hover:text-blue-300 transition-colors"
+                                title="Download"
+                              >
+                                <Download className="h-3.5 w-3.5" />
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {accountFiles.map((file) => {
+                      const metadata = fileMetadataMap.get(file.id);
+                      const previewUrl = filePreviewUrls.get(file.id);
+                      const isLoadingPreview = loadingPreviews.has(file.id);
+                      const mimeType = file.mimeType || '';
+                      const fileName = file.originalName || file.name || '';
+                      const isImage = mimeType.startsWith('image/') || /\.(jpg|jpeg|png|gif|webp|svg|bmp|ico)$/i.test(fileName);
+                      const isVideo = mimeType.startsWith('video/') || /\.(mp4|mov|avi|webm|mkv|flv|wmv)$/i.test(fileName);
+
+                      return (
+                        <div
+                          key={`${file.backend}-${file.backendFileId}`}
+                          className="flex items-center justify-between p-3 bg-neutral-800/50 rounded-lg hover:bg-neutral-800 transition-colors cursor-pointer"
+                          onClick={() => handleViewFile(file)}
+                        >
+                          <div className="flex items-center space-x-3 flex-1 min-w-0">
+                            {previewUrl && isImage ? (
+                              <div className="w-12 h-12 flex-shrink-0 rounded overflow-hidden bg-neutral-700">
+                                <img
+                                  src={previewUrl}
+                                  alt={file.encrypted ? file.originalName : file.name}
+                                  className="w-full h-full object-cover"
+                                />
+                              </div>
+                            ) : previewUrl && isVideo ? (
+                              <div className="w-12 h-12 flex-shrink-0 rounded overflow-hidden bg-neutral-700">
+                                <video
+                                  src={previewUrl}
+                                  className="w-full h-full object-cover"
+                                  muted
+                                />
+                              </div>
+                            ) : isImage || isVideo ? (
+                              <div
+                                className="w-12 h-12 flex-shrink-0 rounded bg-neutral-700 flex items-center justify-center cursor-pointer"
+                                onMouseEnter={() => {
+                                  if (!previewUrl && !isLoadingPreview) {
+                                    loadFilePreview(file);
+                                  }
+                                }}
+                              >
+                                {isLoadingPreview ? (
+                                  <RefreshCw className="h-5 w-5 text-text-secondary animate-spin" />
+                                ) : (
+                                  <Lock className="h-5 w-5 text-blue-400" />
+                                )}
+                              </div>
+                            ) : (
+                              <Lock className="h-4 w-4 text-blue-400 flex-shrink-0" />
+                            )}
+
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center space-x-2">
+                                <p className="text-white text-sm truncate">
+                                  {file.encrypted ? file.originalName : file.name}
+                                </p>
+                                {metadata?.isPublic && (
+                                  <Globe className="h-3 w-3 text-green-400 flex-shrink-0" title="Public" />
+                                )}
+                              </div>
+                              <p className="text-text-secondary text-xs">
+                                {file.backend} • {(parseInt(file.size?.toString() || '0') / 1024).toFixed(2)} KB
+                              </p>
+                            </div>
+                          </div>
+                          <div className="flex items-center space-x-2">
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleEditMetadata(file);
+                              }}
+                              disabled={isLoading}
+                              className="px-2 py-1.5 text-xs font-medium rounded-lg transition-colors disabled:opacity-50 bg-neutral-700/50 hover:bg-neutral-700 text-text-secondary hover:text-text-primary"
+                              title="Edit Metadata"
+                            >
+                              <Edit className="h-4 w-4" />
+                            </button>
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleTogglePublic(file);
+                              }}
+                              disabled={isLoading}
+                              className="px-2 py-1.5 text-xs font-medium rounded-lg transition-colors disabled:opacity-50"
+                              title={metadata?.isPublic ? 'Make Private' : 'Make Public'}
+                              style={{
+                                backgroundColor: metadata?.isPublic
+                                  ? 'rgba(34, 197, 94, 0.2)'
+                                  : 'rgba(107, 114, 128, 0.2)',
+                                color: metadata?.isPublic
+                                  ? 'rgb(74, 222, 128)'
+                                  : 'rgb(156, 163, 175)',
+                              }}
+                            >
+                              {metadata?.isPublic ? (
+                                <Globe className="h-4 w-4" />
+                              ) : (
+                                <EyeOff className="h-4 w-4" />
+                              )}
+                            </button>
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleDownload(file);
+                              }}
+                              disabled={isLoading}
+                              className="px-3 py-1.5 bg-blue-600 text-white text-xs font-medium rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50"
+                            >
+                              <Download className="h-4 w-4" />
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            );
+          })}
         </div>
       )}
 
