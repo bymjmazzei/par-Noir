@@ -28,6 +28,8 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
   // Cache for share tokens (fileId -> shareToken) - generated during upload for quick access
   const shareTokenCache = React.useRef<Map<string, ShareToken>>(new Map());
   const fileInputRef = React.useRef<HTMLInputElement | null>(null);
+  const hasRestoredFromMetadataRef = React.useRef<string | null>(null);
+  const hasInitializedLegacyRef = React.useRef<boolean>(false);
   
   // Use global constructors directly - terser will preserve them via reserved list
   
@@ -314,36 +316,41 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
         return;
       }
 
-        try {
-          const passcode = sessionStorage.getItem('pn_session_passcode');
+      if (!aggregatorService) {
+        return;
+      }
+
+      if (hasRestoredFromMetadataRef.current === authenticatedUser.id) {
+        return;
+      }
+
+      try {
+        const passcode = sessionStorage.getItem('pn_session_passcode');
         if (!passcode) {
           return;
         }
 
-        if (!aggregatorService) {
-          return;
-        }
+        const { SecureMetadataStorage } = await import('../../utils/secureMetadataStorage');
+        const { SecureMetadataCrypto } = await import('../../utils/secureMetadata');
 
-            const { SecureMetadataStorage } = await import('../../utils/secureMetadataStorage');
-            const { SecureMetadataCrypto } = await import('../../utils/secureMetadata');
-            
-            const metadata = await SecureMetadataStorage.getMetadata(authenticatedUser.id);
+        const metadata = await SecureMetadataStorage.getMetadata(authenticatedUser.id);
         if (!metadata) {
+          hasRestoredFromMetadataRef.current = authenticatedUser.id;
           return;
         }
 
-              const decrypted = await SecureMetadataCrypto.decryptMetadata(
-                metadata,
-                authenticatedUser.pnName,
-                passcode
-              );
-              
+        const decrypted = await SecureMetadataCrypto.decryptMetadata(
+          metadata,
+          authenticatedUser.pnName,
+          passcode
+        );
+
         const storedCreds = decrypted.storageCredentials?.googleDriveAccounts || decrypted.storageCredentials?.googleDrive;
         const credsArray = Array.isArray(storedCreds) ? storedCreds : storedCreds ? [storedCreds] : [];
 
         for (const creds of credsArray) {
           const token = creds?.accessToken;
-      if (!token) {
+          if (!token) {
             continue;
           }
 
@@ -361,7 +368,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
 
           if (backend) {
             try {
-              await loadFiles(identifiers.backendId);
+              await loadFiles();
             } catch (loadErr) {
               console.warn('⚠️ [loadTokenFromMetadata] Failed to load files for restored account', loadErr);
             }
@@ -371,13 +378,16 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
         if (credsArray.length > 0) {
           await loadStorageQuota();
         }
+
+        hasRestoredFromMetadataRef.current = authenticatedUser.id;
       } catch (error) {
         console.debug('Could not load token from metadata:', error);
       }
     };
 
     loadTokenFromMetadata();
-  }, [authenticatedUser?.id, authenticatedUser?.pnName, aggregatorService, resolveIdentifiersForEmail, upsertDriveAccount]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [authenticatedUser?.id, authenticatedUser?.pnName, aggregatorService]);
 
   // Resolve auth credentials
   useEffect(() => {
@@ -1152,6 +1162,14 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
   };
 
   const loadStorageQuota = React.useCallback(async () => {
+    if (!aggregatorService) {
+      return;
+    }
+
+    if (isLoadingFilesRef.current) {
+      // If files are currently loading, defer quota load to avoid extra pressure
+      return;
+    }
     try {
       // Ensure backends are initialized (gracefully fail if Google Drive not connected)
       await aggregatorService.ensureInitialized();
@@ -1176,11 +1194,13 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
 
   // Initialize and restore connections (legacy localStorage fallback)
   useEffect(() => {
-    const init = async () => {
-      if (!aggregatorService) {
-        return;
-      }
+    if (!aggregatorService || hasInitializedLegacyRef.current) {
+      return;
+    }
 
+    hasInitializedLegacyRef.current = true;
+
+    const init = async () => {
       try {
         await aggregatorService.ensureInitialized();
       } catch (initError) {
@@ -1202,7 +1222,6 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
       }
 
       if (storedAccounts.length === 0) {
-        // Legacy fallback: migrate single-account tokens if present
         const legacyToken = localStorage.getItem('google_drive_token');
         if (legacyToken) {
           const legacyEmail = localStorage.getItem('google_drive_email');
@@ -1235,18 +1254,19 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
         }
       }
 
-      if (driveAccounts.length > 0 || storedAccounts.length > 0) {
-        try {
-          await loadFiles();
-          await loadStorageQuota();
-        } catch (loadError) {
-          console.warn('⚠️ [init] Failed to load files during initialization', loadError);
-        }
+      try {
+        await loadFiles();
+        await loadStorageQuota();
+      } catch (loadError) {
+        console.warn('⚠️ [init] Failed to load files during initialization', loadError);
       }
     };
 
     init();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [aggregatorService]);
 
+  useEffect(() => {
     const handleTokenExpired = (event: Event) => {
       const detailBackendId = (event as CustomEvent)?.detail?.backendId as string | undefined;
       const targetBackendId = detailBackendId || activeBackendId;
@@ -1265,7 +1285,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
     return () => {
       window.removeEventListener('google-drive-token-expired', handleTokenExpired);
     };
-  }, [activeBackendId, aggregatorService, driveAccounts.length, loadFiles, loadStorageQuota, removeDriveAccount, resolveIdentifiersForEmail, upsertDriveAccount]);
+  }, [activeBackendId, removeDriveAccount]);
 
   // Helper function to exchange authorization code for tokens
   // Uses Google OAuth endpoint directly (client-side exchange)
