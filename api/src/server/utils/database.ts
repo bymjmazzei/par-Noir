@@ -79,6 +79,22 @@ export async function initializeDatabase(): Promise<void> {
       ON aggregator_metadata(updated_at DESC)
     `);
 
+    // Create storage_credentials table for encrypted storage metadata
+    await db.query(`
+      CREATE TABLE IF NOT EXISTS storage_credentials (
+        identity_id VARCHAR(255) PRIMARY KEY,
+        encrypted_metadata JSONB NOT NULL,
+        cid VARCHAR(255),
+        updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+      )
+    `);
+
+    await db.query(`
+      CREATE INDEX IF NOT EXISTS idx_storage_credentials_updated_at
+      ON storage_credentials(updated_at DESC)
+    `);
+
     console.log('✅ Database schema initialized');
   } catch (error) {
     console.error('❌ Failed to initialize database schema:', error);

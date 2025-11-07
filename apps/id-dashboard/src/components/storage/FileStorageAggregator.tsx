@@ -32,6 +32,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
   const hasRestoredFromMetadataRef = React.useRef<string | null>(null);
   const hasInitializedLegacyRef = React.useRef<boolean>(false);
   const makeShareTokenCacheKey = React.useCallback((backendId: string, backendFileId: string) => `${backendId}|${backendFileId}`, []);
+  const apiEndpoint = React.useMemo(() => import.meta.env.VITE_API_ENDPOINT || 'https://api.parnoir.com', []);
   
   // Use global constructors directly - terser will preserve them via reserved list
   
@@ -134,6 +135,68 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
       console.warn('⚠️ [DriveAccounts] Unable to persist drive accounts', storageError);
     }
   }, []);
+
+  const persistStorageCredentialsToAPI = React.useCallback(
+    async (identityId: string, encryptedMetadata: any, cid?: string | null) => {
+      if (!identityId || !encryptedMetadata) {
+        return;
+      }
+
+      try {
+        const response = await fetch(`${apiEndpoint}/api/storage/credentials/${encodeURIComponent(identityId)}`, {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            encryptedMetadata,
+            cid: cid ?? null,
+          }),
+        });
+
+        if (!response.ok) {
+          const errorText = await response.text().catch(() => 'Unknown error');
+          console.warn('⚠️ [StorageCredentials] Failed to persist credentials to API:', errorText);
+        } else {
+          console.log('✅ [StorageCredentials] Credentials persisted to API');
+        }
+      } catch (error) {
+        console.warn('⚠️ [StorageCredentials] API persistence failed (non-blocking):', error);
+      }
+    },
+    [apiEndpoint]
+  );
+
+  const hydrateStorageCredentialsFromAPI = React.useCallback(
+    async (identityId: string) => {
+      if (!identityId) {
+        return;
+      }
+
+      try {
+        const response = await fetch(`${apiEndpoint}/api/storage/credentials/${encodeURIComponent(identityId)}`);
+        if (response.status === 404) {
+          return;
+        }
+
+        if (!response.ok) {
+          const errorText = await response.text().catch(() => 'Unknown error');
+          console.warn('⚠️ [StorageCredentials] Failed to fetch credentials from API:', errorText);
+          return;
+        }
+
+        const result = await response.json();
+        if (result?.encryptedMetadata) {
+          const { SecureMetadataStorage } = await import('../../utils/secureMetadataStorage');
+          await SecureMetadataStorage.storeMetadata(identityId, result.encryptedMetadata);
+          console.log('✅ [StorageCredentials] Hydrated encrypted metadata from API');
+        }
+      } catch (error) {
+        console.warn('⚠️ [StorageCredentials] API hydration failed (non-blocking):', error);
+      }
+    },
+    [apiEndpoint]
+  );
 
   const upsertDriveAccount = React.useCallback(async (
     params: {
@@ -323,6 +386,8 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
         const { SecureMetadataStorage } = await import('../../utils/secureMetadataStorage');
         const { SecureMetadataCrypto } = await import('../../utils/secureMetadata');
 
+        await hydrateStorageCredentialsFromAPI(authenticatedUser.id);
+
         try {
           await SecureMetadataStorage.syncMetadataFromCloud(authenticatedUser.id);
         } catch (cloudSyncError) {
@@ -392,7 +457,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
 
     loadTokenFromMetadata();
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [authenticatedUser?.id, authenticatedUser?.pnName, aggregatorService]);
+  }, [authenticatedUser?.id, authenticatedUser?.pnName, aggregatorService, hydrateStorageCredentialsFromAPI]);
 
   // Resolve auth credentials
   useEffect(() => {
@@ -1352,7 +1417,6 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
       };
     } else {
       // Fallback to API endpoint
-      const apiEndpoint = import.meta.env.VITE_API_ENDPOINT || 'https://api.parnoir.com';
       const response = await fetch(`${apiEndpoint}/api/auth/google-oauth/token`, {
         method: 'POST',
         headers: {
@@ -1548,6 +1612,11 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
             updatedStorageCredentials
           );
           console.log('✅ [handleConnectGoogleDrive] Saved Google Drive account credentials to encrypted metadata');
+
+          const latestMetadata = await SecureMetadataStorage.getMetadata(authenticatedUser.id);
+          if (latestMetadata) {
+            await persistStorageCredentialsToAPI(authenticatedUser.id, latestMetadata);
+          }
         } catch (metadataError) {
           console.warn('⚠️ [handleConnectGoogleDrive] Failed to save token to metadata (non-critical):', metadataError);
           // Don't fail the connection if metadata save fails
@@ -1919,7 +1988,6 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
         .filter(l => l.length > 0);
 
       // Update via API endpoint
-      const apiEndpoint = import.meta.env.VITE_API_ENDPOINT || 'https://api.parnoir.com';
       const response = await fetch(`${apiEndpoint}/api/aggregator/metadata-index/${editingFile.id}`, {
         method: 'PUT',
         headers: {

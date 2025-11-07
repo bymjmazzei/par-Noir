@@ -428,6 +428,71 @@ class ProductionServer {
       }
     });
 
+    // PUT /api/storage/credentials/:identityId - Save encrypted storage credentials
+    this.app.put('/api/storage/credentials/:identityId', async (req, res) => {
+      try {
+        const { identityId } = req.params;
+        const { encryptedMetadata, cid } = req.body;
+
+        if (!identityId) {
+          return res.status(400).json({ error: 'Missing identityId parameter' });
+        }
+
+        if (!encryptedMetadata) {
+          return res.status(400).json({ error: 'Missing encryptedMetadata in request body' });
+        }
+
+        const { storageCredentialsService } = await import('./server/modules/storageCredentialsService');
+        const record = await storageCredentialsService.upsertCredentials(identityId, encryptedMetadata, cid);
+
+        return res.json({
+          success: true,
+          identityId: record.identityId,
+          cid: record.cid,
+          updatedAt: record.updatedAt
+        });
+      } catch (error: any) {
+        console.error('Error saving storage credentials:', error);
+        return res.status(500).json({
+          error: 'Failed to save storage credentials',
+          message: error.message
+        });
+      }
+    });
+
+    // GET /api/storage/credentials/:identityId - Retrieve encrypted storage credentials
+    this.app.get('/api/storage/credentials/:identityId', async (req, res) => {
+      try {
+        const { identityId } = req.params;
+
+        if (!identityId) {
+          return res.status(400).json({ error: 'Missing identityId parameter' });
+        }
+
+        const { storageCredentialsService } = await import('./server/modules/storageCredentialsService');
+        const record = await storageCredentialsService.getCredentials(identityId);
+
+        if (!record) {
+          return res.status(404).json({ error: 'No storage credentials found for identity' });
+        }
+
+        return res.json({
+          success: true,
+          identityId: record.identityId,
+          encryptedMetadata: record.encryptedMetadata,
+          cid: record.cid,
+          updatedAt: record.updatedAt,
+          createdAt: record.createdAt
+        });
+      } catch (error: any) {
+        console.error('Error retrieving storage credentials:', error);
+        return res.status(500).json({
+          error: 'Failed to retrieve storage credentials',
+          message: error.message
+        });
+      }
+    });
+
     // POST /api/aggregator/engagement/:fileId/:type - Update engagement metrics
     this.app.post('/api/aggregator/engagement/:fileId/:type', async (req, res) => {
       try {
