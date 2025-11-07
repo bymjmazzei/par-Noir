@@ -3,12 +3,25 @@
  * Dashboard aggregator that collects files from all connected storage backends
  */
 import React, { useState, useEffect, useRef } from 'react';
-import { HardDrive, Download, File, RefreshCw, AlertCircle, Lock, Globe, EyeOff, Info, X, Edit, Eye, Grid, List, Plus, Cloud, GoogleDriveIcon } from 'lucide-react';
+import { Download, File, RefreshCw, AlertCircle, Lock, Globe, EyeOff, Info, X, Edit, Eye, Grid, List, Plus, Cloud } from 'lucide-react';
 import { getFileAggregatorService } from '../../services/aggregator/FileAggregatorService';
 import { getEncryptionService } from '../../services/aggregator/EncryptionService';
 import { getMetadataIndexService } from '../../services/metadata/MetadataIndexService';
 import { AggregatedFile, AuthSession, PublicMetadata, ShareToken, EncryptedFilePackage } from '../../types/aggregator';
 import { AuthSession as CryptoAuthSession } from '../../types/crypto';
+
+const GoogleDriveIcon: React.FC<{ className?: string }> = ({ className }) => (
+  <svg
+    className={className}
+    viewBox="0 0 48 48"
+    fill="none"
+    xmlns="http://www.w3.org/2000/svg"
+  >
+    <path fill="#0F9D58" d="M16.65 29.6 10 41h28l-6.65-11.4z" />
+    <path fill="#4285F4" d="M29.35 29.6H45L31.35 6H15.7z" />
+    <path fill="#F4B400" d="M18.9 6H6l13.65 23.6h13.65z" />
+  </svg>
+);
 
 interface FileStorageAggregatorProps {
   authenticatedUser?: AuthSession | CryptoAuthSession | any | null;
@@ -95,13 +108,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
   
   const [fileMetadataMap, setFileMetadataMap] = useState<Map<string, PublicMetadata>>(new Map());
 
-  const googleDriveAccountLabel =
-    userEmails.get('google_drive') ||
-    authenticatedUser?.email ||
-    (authenticatedUser as any)?.username ||
-    (authenticatedUser as any)?.pnName ||
-    resolvedAuth?.pnName ||
-    '';
+  const googleDriveEmail = userEmails.get('google_drive') || (authenticatedUser as any)?.email || '';
 
   // Load Google Drive token from encrypted metadata when user unlocks
   useEffect(() => {
@@ -2284,7 +2291,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
               disabled={isLoading}
               title={connectedBackends.has('google_drive') ? 'Google Drive already connected' : 'Connect Google Drive'}
             >
-              <HardDrive className="h-4 w-4 text-white" />
+              <GoogleDriveIcon className="h-4 w-4" />
               <span>{connectedBackends.has('google_drive') ? 'Google Drive Connected' : 'Connect Google Drive'}</span>
             </button>
           </div>
@@ -2345,12 +2352,12 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
         <div className="bg-neutral-900/60 border border-neutral-700 rounded-xl p-6">
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center space-x-3">
-              <HardDrive className="h-5 w-5 text-blue-400" />
+              <GoogleDriveIcon className="h-5 w-5" />
               <div className="flex flex-col">
                 <span className="text-white font-semibold">Google Drive</span>
-                {googleDriveAccountLabel && (
-                  <span className="text-text-secondary text-sm truncate max-w-xs">{googleDriveAccountLabel}</span>
-                )}
+                <span className="text-text-secondary text-sm truncate max-w-xs">
+                  {googleDriveEmail || 'Connected account'}
+                </span>
               </div>
               {connectedBackends.has('google_drive') && (
                 <button
