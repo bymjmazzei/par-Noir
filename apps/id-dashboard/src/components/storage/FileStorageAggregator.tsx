@@ -2385,25 +2385,6 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
         </div>
       )}
 
-      {/* File Upload */}
-      {hasConnectedBackends && (
-        <div className="bg-neutral-900/60 border border-neutral-700 rounded-xl p-6">
-          <label className="flex items-center space-x-3 cursor-pointer">
-            <Plus className="h-5 w-5 text-blue-400" />
-            <span className="text-white font-medium">Upload File</span>
-            <input
-              type="file"
-              onChange={handleUpload}
-              className="hidden"
-              disabled={isLoading}
-            />
-          </label>
-          <p className="text-text-secondary text-sm mt-2">
-            Files are encrypted before upload using your pN credentials
-          </p>
-        </div>
-      )}
-
       {/* File List */}
       {hasConnectedBackends && (
         <div className="bg-neutral-900/60 border border-neutral-700 rounded-xl p-6">
