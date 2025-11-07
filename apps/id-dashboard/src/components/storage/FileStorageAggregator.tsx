@@ -2118,25 +2118,22 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
     setLoadingPreviews(prev => new Set(prev).add(file.id));
 
     try {
-        // SIMPLIFIED: Use token-based decryption ONLY (same as aggregator browser)
-        // No credentials needed - token is in the owner index
-      // Get token from metadata map or cache
-      let token: any = null;
+      let previewUrl: string | null = null;
+
+      // ---------- Attempt 1: Token-based preview (preferred) ----------
       const metadata = fileMetadataMap.get(file.id);
-      
-      // Try 1: Get token from metadata map
+      let token: any = null;
+
       if (metadata?.publicToken) {
-        token = typeof metadata.publicToken === 'string' 
-          ? JSON.parse(metadata.publicToken) 
+        token = typeof metadata.publicToken === 'string'
+          ? JSON.parse(metadata.publicToken)
           : metadata.publicToken;
       }
-      
-      // Try 2: Get token from cache
+
       if (!token) {
         token = shareTokenCache.current.get(file.backendFileId);
       }
-      
-      // If no token, attempt to load metadata for this file once
+
       if (!token) {
         const currentRetries = previewRetryCounts.current.get(file.id) || 0;
         if (currentRetries < 1) {
@@ -2157,52 +2154,130 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
             token = shareTokenCache.current.get(file.backendFileId) || null;
           }
         }
+      }
 
-        if (!token) {
-          console.warn('⚠️ [Preview] No share token found for file after refresh:', file.id, {
-            hasMetadata: !!metadata,
-            hasTokenInMetadata: !!metadata?.publicToken,
-            cacheSize: shareTokenCache.current.size,
-            hasTokenInCache: shareTokenCache.current.has(file.backendFileId),
-            fileMetadataMapSize: fileMetadataMap.size
+      if (token) {
+        try {
+          console.log('✅ [Preview] Token found, decrypting...', {
+            fileId: file.id,
+            fileName: file.name,
+            hasShareKey: !!token.shareKey,
+            hasShareEncrypted: !!token.shareEncrypted
           });
-          setLoadingPreviews(prev => {
-            const next = new Set(prev);
-            next.delete(file.id);
-            return next;
-          });
-          return;
+
+          const { decryptWithToken } = await import('../../utils/tokenDecryption');
+          const decryptedBlob = await decryptWithToken(token);
+          previewUrl = URL.createObjectURL(decryptedBlob);
+          previewRetryCounts.current.delete(file.id);
+        } catch (tokenError) {
+          console.warn('⚠️ [Preview] Token-based decryption failed, will attempt owner fallback:', tokenError);
         }
       }
-      
-      console.log('✅ [Preview] Token found, decrypting...', {
-        fileId: file.id,
-        fileName: file.name,
-        hasShareKey: !!token.shareKey,
-        hasShareEncrypted: !!token.shareEncrypted
-      });
-      
-      // Use token-based decryption (SAME as aggregator browser)
-      try {
-        const { decryptWithToken } = await import('../../utils/tokenDecryption');
-        const decryptedBlob = await decryptWithToken(token);
-        
-        const previewUrl = URL.createObjectURL(decryptedBlob);
+
+      // ---------- Attempt 2: Owner fallback (private files) ----------
+      if (!previewUrl) {
+        try {
+          if (!aggregatorService || !encryptionService) {
+            throw new Error('Aggregator or encryption service not available');
+          }
+
+          const sessionId = authenticatedUser?.id;
+          let sessionPublicKey = resolvedAuth?.publicKey || authenticatedUser?.publicKey || (authenticatedUser?.id?.startsWith('did:key:') ? authenticatedUser.id : undefined);
+
+          if (!sessionId || !sessionPublicKey) {
+            // Try secure storage as last resort
+            try {
+              const { SecureStorage } = await import('../../utils/storage');
+              const storage = new SecureStorage();
+              await storage.init();
+              const session = await storage.getCurrentSession();
+              if (session) {
+                if (!sessionPublicKey) {
+                  sessionPublicKey = (session as any).publicKey || (session.id && session.id.startsWith('did:key:') ? session.id : undefined);
+                }
+              }
+            } catch (storageError) {
+              console.warn('⚠️ [Preview] Secure storage unavailable during fallback:', storageError);
+            }
+          }
+
+          if (!sessionId || !sessionPublicKey) {
+            throw new Error('Missing pN identity (id/publicKey) for owner decryption');
+          }
+
+          console.log('🔐 [Preview] Using owner fallback decryption...', {
+            fileId: file.id,
+            backendFileId: file.backendFileId,
+            sessionId: sessionId.substring(0, 24) + '...',
+            hasPublicKey: !!sessionPublicKey
+          });
+
+          const encryptedBlob = await aggregatorService.downloadFromBackend(
+            file.backend,
+            file.backendFileId
+          );
+
+          const encryptedPackageText = await encryptedBlob.text();
+          const encryptedPackage = JSON.parse(encryptedPackageText);
+
+          const session: AuthSession = {
+            id: sessionId,
+            publicKey: sessionPublicKey,
+          };
+
+          const { decryptedBlob, metadata } = await encryptionService.decryptFileFromDownload(
+            encryptedPackage,
+            session
+          );
+
+          previewUrl = URL.createObjectURL(decryptedBlob);
+          previewRetryCounts.current.delete(file.id);
+
+          // Cache metadata fields for future reference
+          if (metadata?.publicToken) {
+            try {
+              const parsedToken = typeof metadata.publicToken === 'string'
+                ? JSON.parse(metadata.publicToken)
+                : metadata.publicToken;
+              shareTokenCache.current.set(file.backendFileId, parsedToken);
+            } catch (cacheError) {
+              console.warn('⚠️ [Preview] Unable to cache token from owner metadata:', cacheError);
+            }
+          }
+
+          setFileMetadataMap(prev => {
+            const next = new Map(prev);
+            const existing = next.get(file.id) || {} as PublicMetadata;
+            next.set(file.id, {
+              ...existing,
+              thumbnail: existing.thumbnail || metadata?.thumbnail,
+              name: existing.name || metadata?.originalName || file.originalName || file.name,
+              description: existing.description || metadata?.description,
+              publicToken: metadata?.publicToken || existing.publicToken,
+            });
+            return next;
+          });
+
+          console.log('✅ [Preview] Owner fallback decryption successful');
+        } catch (ownerError) {
+          console.error('❌ [Preview] Owner fallback failed:', ownerError);
+        }
+      }
+
+      if (previewUrl) {
         setFilePreviewUrls(prev => {
           const next = new Map(prev);
-          next.set(file.id, previewUrl);
+          next.set(file.id, previewUrl!);
           return next;
         });
-        
-        console.log('✅ [Preview] Token-based decryption successful (same as aggregator browser)');
-        previewRetryCounts.current.delete(file.id);
-      } catch (tokenError) {
-        console.error('❌ [Preview] Token-based decryption failed:', tokenError);
+      } else {
+        console.warn('⚠️ [Preview] Unable to generate preview for file after all attempts:', file.id);
         setLoadingPreviews(prev => {
           const next = new Set(prev);
           next.delete(file.id);
           return next;
         });
+        return;
       }
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : String(err);
