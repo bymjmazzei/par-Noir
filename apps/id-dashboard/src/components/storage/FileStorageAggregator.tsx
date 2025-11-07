@@ -118,7 +118,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
       }
     })() ||
     (authenticatedUser as any)?.email ||
-    '';
+    undefined;
 
   // Load Google Drive token from encrypted metadata when user unlocks
   useEffect(() => {
@@ -2297,12 +2297,11 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
           <div className="flex items-center space-x-3">
             <button
               onClick={handleConnectGoogleDrive}
-              className="flex items-center space-x-2 px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50"
+              className={`p-2 rounded-lg border border-blue-500/40 bg-blue-600/10 hover:bg-blue-600/20 transition-colors ${isLoading ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
               disabled={isLoading}
-              title={connectedBackends.has('google_drive') ? 'Google Drive already connected' : 'Connect Google Drive'}
+              title={connectedBackends.has('google_drive') ? 'Google Drive connected' : 'Connect Google Drive'}
             >
-              <GoogleDriveIcon className="h-4 w-4" />
-              <span>{connectedBackends.has('google_drive') ? 'Google Drive Connected' : 'Connect Google Drive'}</span>
+              <GoogleDriveIcon className="h-6 w-6" />
             </button>
           </div>
         </div>
@@ -2364,7 +2363,11 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
             <div className="flex items-center space-x-3">
               <GoogleDriveIcon className="h-5 w-5" />
               <span className="text-white font-semibold truncate max-w-xs">
-                {googleDriveEmail || 'Google Drive account'}
+                {googleDriveEmail && (
+                  <span className="text-white font-semibold truncate max-w-xs">
+                    {googleDriveEmail}
+                  </span>
+                )}
               </span>
               {connectedBackends.has('google_drive') && (
                 <button
