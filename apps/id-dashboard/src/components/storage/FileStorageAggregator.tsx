@@ -855,6 +855,13 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
         console.log('📁 [loadFiles] Falling back to Google Drive scan...');
         const aggregatedFiles = await aggregatorService.aggregateFiles(currentPnIdentifier || undefined);
         console.log(`📁 [loadFiles] Found ${aggregatedFiles.length} file(s) from Google Drive scan`);
+        if (aggregatedFiles.length === 0) {
+          console.log('📁 [loadFiles] No files found in Drive scan - folder may not exist yet');
+          setFiles([]);
+          setFileMetadataMap(new Map());
+          setIsLoading(false);
+          return;
+        }
         setFiles(aggregatedFiles);
         
         // IMPORTANT: Still try to load tokens from owner index for these files

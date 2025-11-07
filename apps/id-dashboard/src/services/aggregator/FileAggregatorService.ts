@@ -90,7 +90,7 @@ export class FileAggregatorService {
       }
 
       try {
-        const files = await backend.listFiles(pnIdentifier);
+        const files = await backend.listFiles(undefined, pnIdentifier);
         files.forEach(file => {
           aggregated.push({
             ...file,
