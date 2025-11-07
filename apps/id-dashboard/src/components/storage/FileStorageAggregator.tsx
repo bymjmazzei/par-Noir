@@ -378,99 +378,6 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
     loadTokenFromMetadata();
   }, [authenticatedUser?.id, authenticatedUser?.pnName, aggregatorService, resolveIdentifiersForEmail, upsertDriveAccount]);
 
-  // Initialize and restore connections (legacy localStorage fallback)
-  useEffect(() => {
-    const init = async () => {
-      if (!aggregatorService) {
-        return;
-      }
-
-      try {
-        await aggregatorService.ensureInitialized();
-      } catch (initError) {
-        console.warn('⚠️ [init] Unable to initialize aggregator service:', initError);
-        return;
-      }
-
-      let storedAccounts: DriveAccountState[] = [];
-      try {
-        const raw = localStorage.getItem(DRIVE_ACCOUNTS_STORAGE_KEY);
-        if (raw) {
-          const parsed = JSON.parse(raw);
-          if (Array.isArray(parsed)) {
-            storedAccounts = parsed.filter((entry) => entry && entry.backendId && entry.keyPrefix);
-          }
-        }
-      } catch (parseError) {
-        console.warn('⚠️ [init] Failed to parse stored drive accounts', parseError);
-      }
-
-      if (storedAccounts.length === 0) {
-        // Legacy fallback: migrate single-account tokens if present
-        const legacyToken = localStorage.getItem('google_drive_token');
-        if (legacyToken) {
-          const legacyEmail = localStorage.getItem('google_drive_email');
-          const legacyRefresh = localStorage.getItem('google_drive_refresh_token');
-          const identifiers = resolveIdentifiersForEmail(legacyEmail);
-          await upsertDriveAccount({
-            backendId: identifiers.backendId,
-            keyPrefix: identifiers.keyPrefix,
-            token: legacyToken,
-            refreshToken: legacyRefresh,
-            email: legacyEmail
-          });
-        }
-      } else {
-        for (const account of storedAccounts) {
-          const token = localStorage.getItem(`${account.keyPrefix}_token`);
-          const refresh = localStorage.getItem(`${account.keyPrefix}_refresh_token`);
-
-          if (!token) {
-            continue;
-          }
-
-          await upsertDriveAccount({
-            backendId: account.backendId,
-            keyPrefix: account.keyPrefix,
-            token,
-            refreshToken: refresh,
-            email: account.email
-          });
-        }
-      }
-
-      if (driveAccounts.length > 0 || storedAccounts.length > 0) {
-        try {
-          await loadFiles();
-          await loadStorageQuota();
-        } catch (loadError) {
-          console.warn('⚠️ [init] Failed to load files during initialization', loadError);
-        }
-      }
-    };
-
-    init();
-
-    const handleTokenExpired = (event: Event) => {
-      const detailBackendId = (event as CustomEvent)?.detail?.backendId as string | undefined;
-      const targetBackendId = detailBackendId || activeBackendId;
-
-      if (!targetBackendId) {
-        return;
-      }
-
-      console.warn('Google Drive token expired - disconnecting', { backendId: targetBackendId });
-      removeDriveAccount(targetBackendId);
-      setError('Google Drive authentication expired. Please reconnect.');
-    };
-
-    window.addEventListener('google-drive-token-expired', handleTokenExpired);
-
-    return () => {
-      window.removeEventListener('google-drive-token-expired', handleTokenExpired);
-    };
-  }, [activeBackendId, aggregatorService, loadFiles, loadStorageQuota, removeDriveAccount, resolveIdentifiersForEmail, upsertDriveAccount]);
-
   // Resolve auth credentials
   useEffect(() => {
     const resolveAuth = async () => {
@@ -1263,6 +1170,99 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
       console.warn('⚠️ Could not load storage quota (Google Drive may not be connected):', err);
     }
   };
+
+  // Initialize and restore connections (legacy localStorage fallback)
+  useEffect(() => {
+    const init = async () => {
+      if (!aggregatorService) {
+        return;
+      }
+
+      try {
+        await aggregatorService.ensureInitialized();
+      } catch (initError) {
+        console.warn('⚠️ [init] Unable to initialize aggregator service:', initError);
+        return;
+      }
+
+      let storedAccounts: DriveAccountState[] = [];
+      try {
+        const raw = localStorage.getItem(DRIVE_ACCOUNTS_STORAGE_KEY);
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (Array.isArray(parsed)) {
+            storedAccounts = parsed.filter((entry) => entry && entry.backendId && entry.keyPrefix);
+          }
+        }
+      } catch (parseError) {
+        console.warn('⚠️ [init] Failed to parse stored drive accounts', parseError);
+      }
+
+      if (storedAccounts.length === 0) {
+        // Legacy fallback: migrate single-account tokens if present
+        const legacyToken = localStorage.getItem('google_drive_token');
+        if (legacyToken) {
+          const legacyEmail = localStorage.getItem('google_drive_email');
+          const legacyRefresh = localStorage.getItem('google_drive_refresh_token');
+          const identifiers = resolveIdentifiersForEmail(legacyEmail);
+          await upsertDriveAccount({
+            backendId: identifiers.backendId,
+            keyPrefix: identifiers.keyPrefix,
+            token: legacyToken,
+            refreshToken: legacyRefresh,
+            email: legacyEmail
+          });
+        }
+      } else {
+        for (const account of storedAccounts) {
+          const token = localStorage.getItem(`${account.keyPrefix}_token`);
+          const refresh = localStorage.getItem(`${account.keyPrefix}_refresh_token`);
+
+          if (!token) {
+            continue;
+          }
+
+          await upsertDriveAccount({
+            backendId: account.backendId,
+            keyPrefix: account.keyPrefix,
+            token,
+            refreshToken: refresh,
+            email: account.email
+          });
+        }
+      }
+
+      if (driveAccounts.length > 0 || storedAccounts.length > 0) {
+        try {
+          await loadFiles();
+          await loadStorageQuota();
+        } catch (loadError) {
+          console.warn('⚠️ [init] Failed to load files during initialization', loadError);
+        }
+      }
+    };
+
+    init();
+
+    const handleTokenExpired = (event: Event) => {
+      const detailBackendId = (event as CustomEvent)?.detail?.backendId as string | undefined;
+      const targetBackendId = detailBackendId || activeBackendId;
+
+      if (!targetBackendId) {
+        return;
+      }
+
+      console.warn('Google Drive token expired - disconnecting', { backendId: targetBackendId });
+      removeDriveAccount(targetBackendId);
+      setError('Google Drive authentication expired. Please reconnect.');
+    };
+
+    window.addEventListener('google-drive-token-expired', handleTokenExpired);
+
+    return () => {
+      window.removeEventListener('google-drive-token-expired', handleTokenExpired);
+    };
+  }, [activeBackendId, aggregatorService, driveAccounts.length, loadFiles, loadStorageQuota, removeDriveAccount, resolveIdentifiersForEmail, upsertDriveAccount]);
 
   // Helper function to exchange authorization code for tokens
   // Uses Google OAuth endpoint directly (client-side exchange)
