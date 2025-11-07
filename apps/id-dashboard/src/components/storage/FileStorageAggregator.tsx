@@ -1424,74 +1424,93 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
 
       const token = tokenData.accessToken;
 
-      // Ensure backends are initialized, then get Google Drive backend
-      await aggregatorService.ensureInitialized();
-      const googleDriveBackend = aggregatorService.getBackend('google_drive');
-      
-      if (!googleDriveBackend) {
-        // Last resort: try to initialize directly
-        const { GoogleDriveBackend } = await import('../../services/storage/GoogleDriveBackend');
-        const GoogleDriveBackendConstructor = GoogleDriveBackend;
-        const backend = new GoogleDriveBackendConstructor();
-        aggregatorService.registerBackend(backend);
-        const restoredBackend = aggregatorService.getBackend('google_drive');
-        if (!restoredBackend) {
-          throw new Error('Google Drive backend not initialized');
-        }
-        await restoredBackend.connect({ token, refreshToken: tokenData.refreshToken, email: userInfo.email });
-        const userInfo = await restoredBackend.getUserInfo();
-        setConnectedBackends(prev => new Set([...prev, 'google_drive']));
-        setUserEmails(prev => {
-          const next = new Map(prev);
-          next.set('google_drive', userInfo.email);
-          return next;
-        });
-        await loadFiles();
-        await loadStorageQuota();
-        return;
+      if (!aggregatorService) {
+        throw new Error('File aggregator service is not available');
       }
 
-      // Get user info
-      await googleDriveBackend.connect({ token, refreshToken: tokenData.refreshToken, email: userInfo.email });
-      const userInfo = await googleDriveBackend.getUserInfo();
+      await aggregatorService.ensureInitialized();
 
-      setConnectedBackends(prev => new Set([...prev, 'google_drive']));
-      setUserEmails(prev => {
-        const next = new Map(prev);
-        next.set('google_drive', userInfo.email);
-        return next;
+      // Resolve user info so we can scope the backend to a specific account
+      const oauthUserInfo = await fetchDriveUserInfo(token);
+      const connectedEmail = oauthUserInfo?.email || null;
+      const identifiers = resolveIdentifiersForEmail(connectedEmail);
+
+      const backend = await upsertDriveAccount({
+        backendId: identifiers.backendId,
+        keyPrefix: identifiers.keyPrefix,
+        token,
+        refreshToken: tokenData.refreshToken,
+        email: connectedEmail
       });
+
+      if (!backend) {
+        throw new Error('Unable to register Google Drive backend for this account');
+      }
+
+      setActiveBackendId(identifiers.backendId);
 
       // Save token and refresh token to encrypted pN metadata for persistence
       if (resolvedAuth?.pnName && resolvedAuth?.passcode && authenticatedUser?.id) {
         try {
           const { SecureMetadataStorage } = await import('../../utils/secureMetadataStorage');
+          const { SecureMetadataCrypto } = await import('../../utils/secureMetadata');
+
+          const existingMetadata = await SecureMetadataStorage.getMetadata(authenticatedUser.id);
+          let updatedStorageCredentials: any = {};
+
+          if (existingMetadata) {
+            try {
+              const decrypted = await SecureMetadataCrypto.decryptMetadata(
+                existingMetadata,
+                resolvedAuth.pnName,
+                resolvedAuth.passcode
+              );
+              updatedStorageCredentials = { ...(decrypted.storageCredentials || {}) };
+            } catch (decryptError) {
+              console.warn('⚠️ [handleConnectGoogleDrive] Failed to decrypt existing storage credentials:', decryptError);
+            }
+          }
+
+          const newAccountEntry = {
+            backendId: identifiers.backendId,
+            keyPrefix: identifiers.keyPrefix,
+            accessToken: token,
+            refreshToken: tokenData.refreshToken,
+            email: connectedEmail,
+            connectedAt: new Date().toISOString(),
+            expiresIn: tokenData.expiresIn,
+          };
+
+          const existingAccounts = Array.isArray(updatedStorageCredentials.googleDriveAccounts)
+            ? [...updatedStorageCredentials.googleDriveAccounts]
+            : [];
+
+          const filteredAccounts = existingAccounts.filter((account) => account.backendId !== identifiers.backendId);
+          filteredAccounts.push(newAccountEntry);
+
+          updatedStorageCredentials.googleDriveAccounts = filteredAccounts;
+
           await SecureMetadataStorage.updateMetadataField(
             resolvedAuth.pnName,
             resolvedAuth.pnName,
             resolvedAuth.passcode,
             'storageCredentials',
-            {
-              googleDrive: {
-                accessToken: token,
-                refreshToken: tokenData.refreshToken, // Store refresh token for automatic renewal
-                email: userInfo.email,
-                connectedAt: new Date().toISOString(),
-                expiresIn: tokenData.expiresIn,
-              }
-            }
+            updatedStorageCredentials
           );
-          console.log('✅ [handleConnectGoogleDrive] Saved Google Drive tokens (including refresh token) to encrypted metadata');
+          console.log('✅ [handleConnectGoogleDrive] Saved Google Drive account credentials to encrypted metadata');
         } catch (metadataError) {
           console.warn('⚠️ [handleConnectGoogleDrive] Failed to save token to metadata (non-critical):', metadataError);
           // Don't fail the connection if metadata save fails
         }
       }
 
-      // Also store refresh token in localStorage for quick access (will be migrated to encrypted storage)
+      // Persist refresh token for local fallback using scoped key prefix
       if (tokenData.refreshToken) {
-        localStorage.setItem('google_drive_refresh_token', tokenData.refreshToken);
-        console.log('✅ [handleConnectGoogleDrive] Stored refresh token in localStorage');
+        try {
+          localStorage.setItem(`${identifiers.keyPrefix}_refresh_token`, tokenData.refreshToken);
+        } catch (storageError) {
+          console.warn('⚠️ [handleConnectGoogleDrive] Unable to persist refresh token locally:', storageError);
+        }
       }
 
       // Load files and quota
