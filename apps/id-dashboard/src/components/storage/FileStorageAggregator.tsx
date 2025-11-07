@@ -82,7 +82,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
       return null;
     }
   }, []);
-
+  
   const encryptionService = React.useMemo(() => {
     try {
       return getEncryptionService();
@@ -91,7 +91,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
       return null;
     }
   }, []);
-
+  
   const metadataIndexService = React.useMemo(() => {
     try {
       return getMetadataIndexService();
@@ -100,7 +100,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
       return null;
     }
   }, []);
-
+  
   const resolveIdentifiersForEmail = React.useCallback((email?: string | null) => {
     const normalizedEmail = email?.toLowerCase() || null;
     if (normalizedEmail) {
@@ -139,7 +139,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
       email?: string | null;
     }
   ): Promise<GoogleDriveBackend | null> => {
-    if (!aggregatorService) {
+        if (!aggregatorService) {
       console.warn('⚠️ [DriveAccounts] Aggregator service not ready');
       return null;
     }
@@ -174,10 +174,10 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
       if (!resolvedEmail) {
         return prev;
       }
-      const next = new Map(prev);
+                    const next = new Map(prev);
       next.set(params.backendId, resolvedEmail);
-      return next;
-    });
+                    return next;
+                  });
 
     setDriveAccounts((prev) => {
       const existingIndex = prev.findIndex((account) => account.backendId === params.backendId);
@@ -313,8 +313,8 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
         return;
       }
 
-      try {
-        const passcode = sessionStorage.getItem('pn_session_passcode');
+        try {
+          const passcode = sessionStorage.getItem('pn_session_passcode');
         if (!passcode) {
           return;
         }
@@ -323,26 +323,26 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
           return;
         }
 
-        const { SecureMetadataStorage } = await import('../../utils/secureMetadataStorage');
-        const { SecureMetadataCrypto } = await import('../../utils/secureMetadata');
-
-        const metadata = await SecureMetadataStorage.getMetadata(authenticatedUser.id);
+            const { SecureMetadataStorage } = await import('../../utils/secureMetadataStorage');
+            const { SecureMetadataCrypto } = await import('../../utils/secureMetadata');
+            
+            const metadata = await SecureMetadataStorage.getMetadata(authenticatedUser.id);
         if (!metadata) {
           return;
         }
 
-        const decrypted = await SecureMetadataCrypto.decryptMetadata(
-          metadata,
-          authenticatedUser.pnName,
-          passcode
-        );
-
+              const decrypted = await SecureMetadataCrypto.decryptMetadata(
+                metadata,
+                authenticatedUser.pnName,
+                passcode
+              );
+              
         const storedCreds = decrypted.storageCredentials?.googleDriveAccounts || decrypted.storageCredentials?.googleDrive;
         const credsArray = Array.isArray(storedCreds) ? storedCreds : storedCreds ? [storedCreds] : [];
 
         for (const creds of credsArray) {
           const token = creds?.accessToken;
-          if (!token) {
+      if (!token) {
             continue;
           }
 
@@ -515,7 +515,118 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
     });
   }, [authenticatedUser]);
 
-  const loadFiles = async () => {
+  const loadFileMetadata = React.useCallback(async (filesToLoad: AggregatedFile[]) => {
+    try {
+      console.log('📋 [Metadata] Loading file metadata...', { fileCount: filesToLoad.length });
+      const backend = aggregatorService?.getBackend('google_drive');
+      if (backend && backend.isConnected() && resolvedAuth?.pnName) {
+        try {
+          const { GoogleDriveMetadataService } = await import('../../services/storage/GoogleDriveMetadataService');
+          const token = (backend as any).token || localStorage.getItem('google_drive_token');
+
+          if (token) {
+            console.log('✅ [Metadata] Google Drive connected, loading owner index...');
+            let pnIdentifier: string;
+            if (authenticatedUser?.id && resolvedAuth?.publicKey) {
+              const combined = `${authenticatedUser.id}:${resolvedAuth.publicKey}`;
+              const encoder = new TextEncoder();
+              const data = encoder.encode(combined);
+              const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+              const hashArray = Array.from(new Uint8Array(hashBuffer));
+              const hexHash = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+              const shortHash = hexHash.substring(0, 12);
+              pnIdentifier = `pn-${shortHash}`;
+            } else {
+              pnIdentifier = resolvedAuth.pnName;
+            }
+
+            const pnFolderId = await GoogleDriveMetadataService.getOrCreatePNFolder(token, pnIdentifier);
+            const metadataFolderId = await GoogleDriveMetadataService.getOrCreateMetadataFolder(token, pnFolderId);
+            const ownerIndex = await GoogleDriveMetadataService.getOwnerFileIndex(token, metadataFolderId, pnIdentifier);
+
+            if (ownerIndex && ownerIndex.files) {
+              const metadataMap = new Map<string, PublicMetadata>();
+              const indexMap = new Map<string, any>();
+              ownerIndex.files.forEach(entry => {
+                indexMap.set(entry.googleDriveFileId, entry);
+              });
+
+              for (const file of filesToLoad) {
+                const indexEntry = indexMap.get(file.backendFileId);
+                if (indexEntry) {
+                  const publicMetadata: PublicMetadata = {
+                    fileId: indexEntry.fileId || file.id,
+                    backend: file.backend,
+                    backendFileId: indexEntry.googleDriveFileId,
+                    name: indexEntry.originalName || indexEntry.fileName,
+                    description: indexEntry.description,
+                    keywords: indexEntry.tags || [],
+                    uploadDate: indexEntry.uploadedAt,
+                    fileType: indexEntry.mimeType?.split('/')[0] || 'other',
+                    isPublic: indexEntry.visibility === 'public',
+                    creator: indexEntry.owner?.did ? {
+                      '@type': 'Person',
+                      '@id': indexEntry.owner.did,
+                      identifier: {
+                        '@type': 'PropertyValue',
+                        name: 'DID',
+                        value: indexEntry.owner.did
+                      }
+                    } : undefined,
+                    thumbnail: indexEntry.thumbnail,
+                    publicToken: indexEntry.publicToken,
+                    engagement: indexEntry.engagement,
+                    inReplyTo: indexEntry.inReplyTo,
+                    repostOf: indexEntry.repostOf,
+                    isPartOf: indexEntry.isPartOf,
+                    '@context': ['https://schema.org/'],
+                    '@type': 'CreativeWork',
+                    '@id': `https://parnoir.com/resource/${indexEntry.fileId || file.id}`
+                  };
+                  metadataMap.set(file.id, publicMetadata);
+
+                  if (indexEntry.publicToken) {
+                    try {
+                      const token = typeof indexEntry.publicToken === 'string'
+                        ? JSON.parse(indexEntry.publicToken)
+                        : indexEntry.publicToken;
+                      shareTokenCache.current.set(file.backendFileId, token);
+                      console.log('💾 [Metadata] Cached share token from owner index for file:', file.id);
+                    } catch (e) {
+                      console.warn('⚠️ [Metadata] Failed to cache token from owner index:', e);
+                    }
+                  }
+                }
+              }
+
+              setFileMetadataMap(metadataMap);
+              return;
+            }
+          }
+        } catch (ownerIndexError) {
+          console.warn('Failed to load from owner index, falling back to metadata service:', ownerIndexError);
+        }
+      }
+
+      if (!metadataIndexService) {
+        return;
+      }
+
+      await metadataIndexService.initialize();
+      const metadataMap = new Map<string, PublicMetadata>();
+      for (const file of filesToLoad) {
+        const metadata = await metadataIndexService.getFileMetadata(file.id);
+        if (metadata) {
+          metadataMap.set(file.id, metadata);
+        }
+      }
+      setFileMetadataMap(metadataMap);
+    } catch (err) {
+      console.error('Failed to load file metadata:', err);
+    }
+  }, [aggregatorService, resolvedAuth, authenticatedUser, metadataIndexService]);
+
+  const loadFiles = React.useCallback(async () => {
     try {
       setIsLoading(true);
       setError(null);
@@ -795,129 +906,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
     } finally {
       setIsLoading(false);
     }
-  };
-
-  const loadFileMetadata = async (filesToLoad: AggregatedFile[]) => {
-    try {
-      console.log('📋 [Metadata] Loading file metadata...', { fileCount: filesToLoad.length });
-      // Load metadata from owner index for all files (since user owns them)
-      const backend = aggregatorService?.getBackend('google_drive');
-      if (backend && backend.isConnected() && resolvedAuth?.pnName) {
-        try {
-          const { GoogleDriveMetadataService } = await import('../../services/storage/GoogleDriveMetadataService');
-          const token = (backend as any).token || localStorage.getItem('google_drive_token');
-          
-          if (token) {
-            console.log('✅ [Metadata] Google Drive connected, loading owner index...');
-            // Generate stable pN identifier
-            let pnIdentifier: string;
-            if (authenticatedUser?.id && resolvedAuth?.publicKey) {
-              const combined = `${authenticatedUser.id}:${resolvedAuth.publicKey}`;
-              const encoder = new TextEncoder();
-              const data = encoder.encode(combined);
-              const hashBuffer = await crypto.subtle.digest('SHA-256', data);
-              const hashArray = Array.from(new Uint8Array(hashBuffer));
-              const hexHash = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
-              const shortHash = hexHash.substring(0, 12);
-              pnIdentifier = `pn-${shortHash}`;
-            } else {
-              pnIdentifier = resolvedAuth.pnName;
-            }
-
-            // Get pN folder and metadata folder
-            const pnFolderId = await GoogleDriveMetadataService.getOrCreatePNFolder(token, pnIdentifier);
-            const metadataFolderId = await GoogleDriveMetadataService.getOrCreateMetadataFolder(token, pnFolderId);
-            
-            // Load owner index (contains all files with thumbnails)
-            const ownerIndex = await GoogleDriveMetadataService.getOwnerFileIndex(token, metadataFolderId, pnIdentifier);
-            
-            if (ownerIndex && ownerIndex.files) {
-              const metadataMap = new Map<string, PublicMetadata>();
-              
-              // Create a map of backendFileId to metadata
-              const indexMap = new Map<string, any>();
-              ownerIndex.files.forEach(entry => {
-                indexMap.set(entry.googleDriveFileId, entry);
-              });
-
-              // Match files with owner index entries
-              for (const file of filesToLoad) {
-                const indexEntry = indexMap.get(file.backendFileId);
-                if (indexEntry) {
-                  // Convert to PublicMetadata format
-                  const publicMetadata: PublicMetadata = {
-                    fileId: indexEntry.fileId || file.id,
-                    backend: file.backend,
-                    backendFileId: indexEntry.googleDriveFileId,
-                    name: indexEntry.originalName || indexEntry.fileName,
-                    description: indexEntry.description,
-                    keywords: indexEntry.tags || [],
-                    uploadDate: indexEntry.uploadedAt,
-                    fileType: indexEntry.mimeType?.split('/')[0] || 'other',
-                    isPublic: indexEntry.visibility === 'public',
-                    creator: indexEntry.owner?.did ? {
-                      '@type': 'Person',
-                      '@id': indexEntry.owner.did,
-                      identifier: {
-                        '@type': 'PropertyValue',
-                        name: 'DID',
-                        value: indexEntry.owner.did
-                      }
-                    } : undefined,
-                    thumbnail: indexEntry.thumbnail,
-                    publicToken: indexEntry.publicToken, // Share token stored on upload - available for owner viewing
-                    engagement: indexEntry.engagement,
-                    inReplyTo: indexEntry.inReplyTo,
-                    repostOf: indexEntry.repostOf,
-                    isPartOf: indexEntry.isPartOf,
-                    '@context': ['https://schema.org/'],
-                    '@type': 'CreativeWork',
-                    '@id': `https://parnoir.com/resource/${indexEntry.fileId || file.id}`
-                  };
-                  metadataMap.set(file.id, publicMetadata);
-                  
-                  // If token exists, cache it for quick access
-                  if (indexEntry.publicToken) {
-                    try {
-                      const token = typeof indexEntry.publicToken === 'string'
-                        ? JSON.parse(indexEntry.publicToken)
-                        : indexEntry.publicToken;
-                      shareTokenCache.current.set(file.backendFileId, token);
-                      console.log('💾 [Metadata] Cached share token from owner index for file:', file.id);
-                    } catch (e) {
-                      console.warn('⚠️ [Metadata] Failed to cache token from owner index:', e);
-                    }
-                  }
-                }
-              }
-              
-              setFileMetadataMap(metadataMap);
-              return; // Successfully loaded from owner index
-            }
-          }
-        } catch (ownerIndexError) {
-          console.warn('Failed to load from owner index, falling back to metadata service:', ownerIndexError);
-        }
-      }
-
-      // Fallback to metadata index service if owner index not available
-      if (!metadataIndexService) {
-        return;
-      }
-      
-      await metadataIndexService.initialize();
-      const metadataMap = new Map<string, PublicMetadata>();
-      for (const file of filesToLoad) {
-        const metadata = await metadataIndexService.getFileMetadata(file.id);
-        if (metadata) {
-          metadataMap.set(file.id, metadata);
-        }
-      }
-      setFileMetadataMap(metadataMap);
-    } catch (err) {
-      console.error('Failed to load file metadata:', err);
-    }
-  };
+  }, [aggregatorService, authenticatedUser, resolvedAuth, loadFileMetadata]);
 
   const handleTogglePublic = async (file: AggregatedFile) => {
     try {
@@ -1148,7 +1137,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
     }
   };
 
-  const loadStorageQuota = async () => {
+  const loadStorageQuota = React.useCallback(async () => {
     try {
       // Ensure backends are initialized (gracefully fail if Google Drive not connected)
       await aggregatorService.ensureInitialized();
@@ -1169,7 +1158,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
       // Don't log as error - this is expected if Google Drive isn't connected
       console.warn('⚠️ Could not load storage quota (Google Drive may not be connected):', err);
     }
-  };
+  }, [aggregatorService]);
 
   // Initialize and restore connections (legacy localStorage fallback)
   useEffect(() => {
@@ -2406,9 +2395,9 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
               <p className="text-text-secondary text-sm">
                 Access your encrypted files with the desktop app
               </p>
-            </div>
           </div>
-            
+        </div>
+        
             <button
               onClick={() => setShowDesktopAppInfo(true)}
               className="flex items-center space-x-2 text-text-secondary hover:text-text-primary transition-colors"
@@ -2417,17 +2406,17 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
               <span className="text-sm">About the Desktop App</span>
             </button>
         </div>
-        
-          <a
-            href="https://github.com/bymjmazzei/par-Noir/releases"
-            target="_blank"
-            rel="noopener noreferrer"
+
+        <a
+          href="https://github.com/bymjmazzei/par-Noir/releases"
+          target="_blank"
+          rel="noopener noreferrer"
             className="inline-flex items-center space-x-2 px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors ml-4"
-          >
-            <Download className="h-4 w-4" />
-            <span>Download Desktop App</span>
-          </a>
-        </div>
+        >
+          <Download className="h-4 w-4" />
+          <span>Download Desktop App</span>
+        </a>
+      </div>
 
         {/* Desktop App Info Modal Overlay */}
         {showDesktopAppInfo && (
@@ -2441,14 +2430,14 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
             >
               <div className="flex justify-between items-center mb-4">
                 <h3 className="text-lg font-semibold">About the Desktop App</h3>
-                <button
+          <button
                   onClick={() => setShowDesktopAppInfo(false)}
-                  className="text-text-secondary hover:text-text-primary transition-colors"
-                >
+            className="text-text-secondary hover:text-text-primary transition-colors"
+          >
                   <X className="h-5 w-5" />
-                </button>
-              </div>
-              
+          </button>
+        </div>
+
               <p className="text-text-secondary text-sm mb-4">
             The par Noir Desktop App provides secure, local access to your encrypted files stored in Google Drive. 
             Files are automatically synced and encrypted with your pN credentials.
@@ -2467,19 +2456,19 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
 
       {/* Secure Cloud Providers */}
       <div className="bg-neutral-900/60 border border-neutral-700 rounded-xl p-6">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center space-x-3">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center space-x-3">
             <Cloud className="h-5 w-5 text-blue-400" />
-            <div>
+              <div>
               <h3 className="text-lg font-semibold text-white">Secure Cloud</h3>
               <p className="text-text-secondary text-sm">Connect encrypted cloud storage providers.</p>
+              </div>
             </div>
-          </div>
           <div className="flex items-center space-x-3">
-            <button
-              onClick={handleConnectGoogleDrive}
+              <button
+                onClick={handleConnectGoogleDrive}
               className={`p-2 rounded-lg border border-blue-500/40 bg-blue-600/10 hover:bg-blue-600/20 transition-colors ${isLoading ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
-              disabled={isLoading}
+                disabled={isLoading}
               title={connectedBackends.has('google_drive') ? 'Google Drive connected' : 'Connect Google Drive'}
             >
               <img
@@ -2488,7 +2477,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
                 className="h-6 w-6"
                 loading="lazy"
               />
-            </button>
+              </button>
           </div>
         </div>
       </div>
@@ -2571,13 +2560,13 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
               >
                 <RefreshCw className={`h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} />
               </button>
-              <input
+            <input
                 ref={fileInputRef}
-                type="file"
-                onChange={handleUpload}
-                className="hidden"
-                disabled={isLoading}
-              />
+              type="file"
+              onChange={handleUpload}
+              className="hidden"
+              disabled={isLoading}
+            />
               <button
                 onClick={() => fileInputRef.current?.click()}
                 disabled={isLoading}
@@ -2608,7 +2597,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
               >
                 <Grid className="h-4 w-4" />
               </button>
-            </div>
+        </div>
           </div>
 
           {isLoading && files.length === 0 ? (
@@ -2807,7 +2796,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
                     </div>
                   </div>
                   <div className="flex items-center space-x-2">
-                      <button
+                    <button
                         onClick={(e) => {
                           e.stopPropagation();
                           handleEditMetadata(file);

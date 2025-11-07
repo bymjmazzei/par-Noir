@@ -635,6 +635,11 @@ export class GoogleDriveBackend extends AbstractStorageBackend {
       `https://www.googleapis.com/drive/v3/files?q='${folderId}' in parents and trashed=false and mimeType!='application/vnd.google-apps.folder'&fields=files(id,name,modifiedTime,size,mimeType)&pageSize=100&orderBy=modifiedTime desc`
     );
 
+    if (response.status === 404) {
+      console.warn(`⚠️ [listFiles] Folder ${folderId.substring(0, 12)}... not found (404) - treating as empty`);
+      return [];
+    }
+
     if (!response.ok) {
       const errorText = await response.text();
       console.error(`❌ [listFiles] Failed to fetch files from folder ${folderId.substring(0, 12)}...:`, errorText);
