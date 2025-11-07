@@ -2,8 +2,8 @@
  * File Storage Aggregator Component
  * Dashboard aggregator that collects files from all connected storage backends
  */
-import React, { useState, useEffect } from 'react';
-import { HardDrive, Upload, Download, Trash2, File, RefreshCw, AlertCircle, Lock, Globe, EyeOff, Info, X, Edit, Eye, Grid, List } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { HardDrive, Download, File, RefreshCw, AlertCircle, Lock, Globe, EyeOff, Info, X, Edit, Eye, Grid, List, Plus } from 'lucide-react';
 import { getFileAggregatorService } from '../../services/aggregator/FileAggregatorService';
 import { getEncryptionService } from '../../services/aggregator/EncryptionService';
 import { getMetadataIndexService } from '../../services/metadata/MetadataIndexService';
@@ -17,6 +17,7 @@ interface FileStorageAggregatorProps {
 export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ authenticatedUser }) => {
   // Cache for share tokens (fileId -> shareToken) - generated during upload for quick access
   const shareTokenCache = React.useRef<Map<string, ShareToken>>(new Map());
+  const fileInputRef = React.useRef<HTMLInputElement | null>(null);
   
   // Use global constructors directly - terser will preserve them via reserved list
   
@@ -2364,7 +2365,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
       {hasConnectedBackends && (
         <div className="bg-neutral-900/60 border border-neutral-700 rounded-xl p-6">
           <label className="flex items-center space-x-3 cursor-pointer">
-            <Upload className="h-5 w-5 text-blue-400" />
+            <Plus className="h-5 w-5 text-blue-400" />
             <span className="text-white font-medium">Upload File</span>
             <input
               type="file"
@@ -2387,6 +2388,21 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
             Your Files ({totalFiles})
           </h3>
             <div className="flex items-center space-x-2">
+              <input
+                ref={fileInputRef}
+                type="file"
+                onChange={handleUpload}
+                className="hidden"
+                disabled={isLoading}
+              />
+              <button
+                onClick={() => fileInputRef.current?.click()}
+                disabled={isLoading}
+                className="p-2 rounded bg-blue-600 text-white hover:bg-blue-500 transition-colors disabled:opacity-50"
+                title="Upload File"
+              >
+                <Plus className="h-4 w-4" />
+              </button>
               <button
                 onClick={() => setViewMode('list')}
                 className={`p-2 rounded transition-colors ${
@@ -2436,12 +2452,12 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
                 return (
                   <div
                     key={`${file.backend}-${file.backendFileId}`}
-                    className="bg-neutral-800/50 rounded-lg overflow-hidden hover:bg-neutral-800 transition-colors group"
+                    className="bg-neutral-800/50 rounded-lg overflow-hidden hover:bg-neutral-800 transition-colors group cursor-pointer"
+                    onClick={() => handleViewFile(file)}
                   >
                     {/* Preview - displays actual file at smaller size */}
                     <div 
-                      className="relative aspect-square bg-neutral-700/50 cursor-pointer overflow-hidden"
-                      onClick={() => handleViewFile(file)}
+                      className="relative aspect-square bg-neutral-700/50 overflow-hidden"
                       onMouseEnter={() => {
                         if ((isImage || isVideo) && !previewUrl && !isLoadingPreview) {
                           loadFilePreview(file);
@@ -2493,14 +2509,6 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
                       
                       {/* Actions */}
                       <div className="flex items-center justify-between mt-2 pt-2 border-t border-neutral-700">
-                        <button
-                          onClick={() => handleViewFile(file)}
-                          disabled={isLoading}
-                          className="p-1.5 text-text-secondary hover:text-text-primary transition-colors"
-                          title="View"
-                        >
-                          <Eye className="h-3.5 w-3.5" />
-                        </button>
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
@@ -2561,7 +2569,8 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
                 return (
                 <div
                   key={`${file.backend}-${file.backendFileId}`}
-                  className="flex items-center justify-between p-3 bg-neutral-800/50 rounded-lg hover:bg-neutral-800 transition-colors"
+                  className="flex items-center justify-between p-3 bg-neutral-800/50 rounded-lg hover:bg-neutral-800 transition-colors cursor-pointer"
+                  onClick={() => handleViewFile(file)}
                 >
                   <div className="flex items-center space-x-3 flex-1 min-w-0">
                       {/* Preview or icon - displays actual file at smaller size */}
@@ -2584,7 +2593,6 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
                       ) : (isImage || isVideo) ? (
                         <div 
                           className="w-12 h-12 flex-shrink-0 rounded bg-neutral-700 flex items-center justify-center cursor-pointer"
-                          onClick={() => loadFilePreview(file)}
                           onMouseEnter={() => {
                             if (!previewUrl && !isLoadingPreview) {
                               loadFilePreview(file);
@@ -2617,15 +2625,10 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
                   </div>
                   <div className="flex items-center space-x-2">
                       <button
-                        onClick={() => handleViewFile(file)}
-                        disabled={isLoading}
-                        className="px-2 py-1.5 text-xs font-medium rounded-lg transition-colors disabled:opacity-50 bg-neutral-700/50 hover:bg-neutral-700 text-text-secondary hover:text-text-primary"
-                        title="View"
-                      >
-                        <Eye className="h-4 w-4" />
-                      </button>
-                      <button
-                        onClick={() => handleEditMetadata(file)}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleEditMetadata(file);
+                        }}
                         disabled={isLoading}
                         className="px-2 py-1.5 text-xs font-medium rounded-lg transition-colors disabled:opacity-50 bg-neutral-700/50 hover:bg-neutral-700 text-text-secondary hover:text-text-primary"
                         title="Edit Metadata"
@@ -2633,7 +2636,10 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
                         <Edit className="h-4 w-4" />
                       </button>
                     <button
-                      onClick={() => handleTogglePublic(file)}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleTogglePublic(file);
+                      }}
                       disabled={isLoading}
                       className="px-2 py-1.5 text-xs font-medium rounded-lg transition-colors disabled:opacity-50"
                         title={metadata?.isPublic ? 'Make Private' : 'Make Public'}
@@ -2653,7 +2659,10 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
                       )}
                     </button>
                     <button
-                      onClick={() => handleDownload(file)}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleDownload(file);
+                      }}
                       disabled={isLoading}
                       className="px-3 py-1.5 bg-blue-600 text-white text-xs font-medium rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50"
                     >
