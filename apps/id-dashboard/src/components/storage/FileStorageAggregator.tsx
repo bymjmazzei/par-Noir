@@ -3,7 +3,7 @@
  * Dashboard aggregator that collects files from all connected storage backends
  */
 import React, { useState, useEffect, useRef } from 'react';
-import { HardDrive, Download, File, RefreshCw, AlertCircle, Lock, Globe, EyeOff, Info, X, Edit, Eye, Grid, List, Plus, Cloud } from 'lucide-react';
+import { HardDrive, Download, File, RefreshCw, AlertCircle, Lock, Globe, EyeOff, Info, X, Edit, Eye, Grid, List, Plus, Cloud, GoogleDriveIcon } from 'lucide-react';
 import { getFileAggregatorService } from '../../services/aggregator/FileAggregatorService';
 import { getEncryptionService } from '../../services/aggregator/EncryptionService';
 import { getMetadataIndexService } from '../../services/metadata/MetadataIndexService';
@@ -97,13 +97,10 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
 
   const googleDriveAccountLabel =
     userEmails.get('google_drive') ||
-    resolvedAuth?.pnName ||
-    authenticatedUser?.pnName ||
+    authenticatedUser?.email ||
     (authenticatedUser as any)?.username ||
-    (authenticatedUser as any)?.email ||
-    (authenticatedUser as any)?.name ||
-    resolvedAuth?.publicKey ||
-    authenticatedUser?.id ||
+    (authenticatedUser as any)?.pnName ||
+    resolvedAuth?.pnName ||
     '';
 
   // Load Google Drive token from encrypted metadata when user unlocks
@@ -2272,43 +2269,24 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
 
       {/* Secure Cloud Providers */}
       <div className="bg-neutral-900/60 border border-neutral-700 rounded-xl p-6">
-        <div className="flex items-center space-x-3 mb-3">
-          <Cloud className="h-5 w-5 text-blue-400" />
-          <div>
-            <h3 className="text-lg font-semibold text-white">Secure Cloud</h3>
-            <p className="text-text-secondary text-sm">Add or manage encrypted cloud storage connections.</p>
-          </div>
-        </div>
-
-        <div className="space-y-4">
-          <div className="flex items-center justify-between rounded-lg border border-neutral-700 px-4 py-3">
-            <div className="flex items-center space-x-3">
-              <HardDrive className="h-5 w-5 text-blue-400" />
-              <div>
-                <span className="text-white font-medium">Google Drive</span>
-                {connectedBackends.has('google_drive') && userEmails.has('google_drive') && (
-                  <p className="text-text-secondary text-xs">
-                    Connected as {userEmails.get('google_drive')}
-                  </p>
-                )}
-              </div>
+        <div className="flex items-center justify-between">
+          <div className="flex items-center space-x-3">
+            <Cloud className="h-5 w-5 text-blue-400" />
+            <div>
+              <h3 className="text-lg font-semibold text-white">Secure Cloud</h3>
+              <p className="text-text-secondary text-sm">Connect encrypted cloud storage providers.</p>
             </div>
-            {connectedBackends.has('google_drive') ? (
-              <button
-                onClick={() => handleDisconnect('google_drive')}
-                className="text-red-400 hover:text-red-300 text-sm"
-              >
-                Disconnect
-              </button>
-            ) : (
-              <button
-                onClick={handleConnectGoogleDrive}
-                disabled={isLoading}
-                className="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50"
-              >
-                Connect
-              </button>
-            )}
+          </div>
+          <div className="flex items-center space-x-3">
+            <button
+              onClick={handleConnectGoogleDrive}
+              className="flex items-center space-x-2 px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50"
+              disabled={isLoading}
+              title={connectedBackends.has('google_drive') ? 'Google Drive already connected' : 'Connect Google Drive'}
+            >
+              <HardDrive className="h-4 w-4 text-white" />
+              <span>{connectedBackends.has('google_drive') ? 'Google Drive Connected' : 'Connect Google Drive'}</span>
+            </button>
           </div>
         </div>
       </div>
