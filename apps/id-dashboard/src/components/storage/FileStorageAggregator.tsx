@@ -88,6 +88,8 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
   const hydrationSuccessRef = React.useRef<string | null>(null);
   const hydrationRateLimitUntilRef = React.useRef<number | null>(null);
   const hydrationRateLimitLoggedRef = React.useRef(false);
+  const hydrationRetryTimeoutRef = React.useRef<number | null>(null);
+  const hydrationInProgressRef = React.useRef(false);
 
   const getStorageIdentityCandidates = React.useCallback(() => {
     const candidates: string[] = [];
@@ -484,8 +486,23 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
     }
   }, [activeBackendId, persistDriveAccounts]);
 
+  React.useEffect(() => {
+    return () => {
+      if (hydrationRetryTimeoutRef.current !== null) {
+        window.clearTimeout(hydrationRetryTimeoutRef.current);
+        hydrationRetryTimeoutRef.current = null;
+      }
+    };
+  }, []);
+
   const hydrateStorageCredentialsFromAPI = React.useCallback(async () => {
+    if (hydrationInProgressRef.current) {
+      return;
+    }
+    hydrationInProgressRef.current = true;
+
     if (hydrationSuccessRef.current) {
+      hydrationInProgressRef.current = false;
       return;
     }
 
@@ -500,6 +517,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
           nextAttemptInMs: hydrationRateLimitUntilRef.current - now,
         });
       }
+      hydrationInProgressRef.current = false;
       return;
     }
     hydrationRateLimitLoggedRef.current = false;
@@ -555,6 +573,15 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
             candidateId,
             retryAfterMs,
           });
+          if (hydrationRetryTimeoutRef.current !== null) {
+            window.clearTimeout(hydrationRetryTimeoutRef.current);
+          }
+          hydrationRetryTimeoutRef.current = window.setTimeout(() => {
+            hydrationRateLimitUntilRef.current = null;
+            hydrationRateLimitLoggedRef.current = false;
+            hydrationRetryTimeoutRef.current = null;
+            hydrateStorageCredentialsFromAPI();
+          }, retryAfterMs + 200);
           break;
         }
 
@@ -625,6 +652,10 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
         hydrationMissingCandidatesRef.current.delete(candidateId);
         hydrationRateLimitUntilRef.current = null;
         hydrationRateLimitLoggedRef.current = false;
+        if (hydrationRetryTimeoutRef.current !== null) {
+          window.clearTimeout(hydrationRetryTimeoutRef.current);
+          hydrationRetryTimeoutRef.current = null;
+        }
         break;
       } catch (error) {
         lastError = error;
@@ -641,6 +672,8 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
         lastError,
       });
     }
+
+    hydrationInProgressRef.current = false;
 
     if (hydrated) {
       const loadFilesFn = loadFilesRef.current;
@@ -1245,240 +1278,185 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
         console.warn('⚠️ [loadFiles] Unable to determine pN identifier - owner index cannot be loaded until credentials are available');
       }
 
-      const activeEntry =
-        (activeBackendId && connectedEntries.find(({ id }) => id === activeBackendId)) ||
-        connectedEntries[0] ||
-        null;
+      const aggregatedAllFiles: AggregatedFile[] = [];
+      const aggregatedMetadataMap = new Map<string, PublicMetadata>();
+      const filesNeedingMetadata: AggregatedFile[] = [];
 
-      if (!activeEntry) {
-        console.log('ℹ️ [loadFiles] No active storage entry resolved yet; will retry after connection completes', {
-          activeBackendId,
-          connectedBackendIds: connectedEntries.map(({ id }) => id),
-        });
-        setIsLoading(false);
-        return;
-      }
+      for (const entry of connectedEntries) {
+        const backendId = entry.id;
+        const backend = entry.backend as GoogleDriveBackend;
+        const keyPrefix =
+          getDriveAccountByBackendId(backendId)?.keyPrefix ||
+          (typeof backend.getStorageKeyPrefix === 'function' ? backend.getStorageKeyPrefix() : null);
 
-      const backendId = activeEntry.id;
-      const backend = activeEntry.backend as GoogleDriveBackend;
-      const keyPrefix =
-        getDriveAccountByBackendId(backendId)?.keyPrefix ||
-        (typeof backend.getStorageKeyPrefix === 'function' ? backend.getStorageKeyPrefix() : null);
+        if (!backend?.isConnected()) {
+          console.debug('ℹ️ [loadFiles] Backend not connected yet; skipping for now', {
+            backendId,
+            keyPrefix,
+          });
+          continue;
+        }
 
-      if (!backend.isConnected()) {
-        console.log('ℹ️ [loadFiles] Active storage backend not connected yet; will retry after connection completes', {
-          backendId,
-          keyPrefix,
-        });
-        setIsLoading(false);
-        return;
-      }
-      
-      // PRIMARY: Load files from owner-file-index.json (contains ALL files - private, public, friends)
-      // This is the source of truth for the owner's files - same logic as aggregator browser uses for public files
-      if (backend && backend.isConnected() && currentPnIdentifier) {
-        try {
-          const { GoogleDriveMetadataService } = await import('../../services/storage/GoogleDriveMetadataService');
-          const localTokenKey = keyPrefix
-            ? `${keyPrefix}_token`
-            : backendId
-              ? `${backendId}_token`
-              : 'google_drive_token';
-          const token = (backend as any).token || localStorage.getItem(localTokenKey);
-          
-          if (token) {
-            console.warn('📋 [loadFiles] Loading files from owner index (same as aggregator browser)...', { pnIdentifier: currentPnIdentifier });
+        const localTokenKey = keyPrefix
+          ? `${keyPrefix}_token`
+          : backendId
+            ? `${backendId}_token`
+            : 'google_drive_token';
+
+        const token = (backend as any).token || (localTokenKey ? localStorage.getItem(localTokenKey) : null);
+        let ownerIndex: any = null;
+
+        if (token && currentPnIdentifier) {
+          try {
+            const { GoogleDriveMetadataService } = await import('../../services/storage/GoogleDriveMetadataService');
             const pnFolderId = await GoogleDriveMetadataService.getOrCreatePNFolder(token, currentPnIdentifier);
             const metadataFolderId = await GoogleDriveMetadataService.getOrCreateMetadataFolder(token, pnFolderId);
-            const ownerIndex = await GoogleDriveMetadataService.getOwnerFileIndex(token, metadataFolderId, currentPnIdentifier);
-            
-            console.warn('📋 [loadFiles] Owner index response', { 
-              hasIndex: !!ownerIndex, 
+            ownerIndex = await GoogleDriveMetadataService.getOwnerFileIndex(token, metadataFolderId, currentPnIdentifier);
+            console.debug('📋 [loadFiles] Owner index response', {
+              backendId,
+              hasIndex: !!ownerIndex,
               fileCount: ownerIndex?.files?.length || 0,
-              indexKeys: ownerIndex ? Object.keys(ownerIndex) : [],
-              ownerIndexSample: ownerIndex?.files?.slice?.(0, 3)
             });
-            
-            if (ownerIndex && ownerIndex.files && ownerIndex.files.length > 0) {
-              console.warn(`✅ [loadFiles] Using owner index as source`, { ownerIndexLength: ownerIndex.files.length });
-              
-              // Convert owner index entries to AggregatedFile format (same structure as aggregator browser)
-              const aggregatedFiles: AggregatedFile[] = ownerIndex.files.map((entry: any) => {
-                const derivedMime =
-                  entry.mimeType ||
-                  (entry.fileName?.toLowerCase().endsWith('.encrypted') ? 'application/octet-stream' : undefined);
+          } catch (ownerIndexError) {
+            console.warn('⚠️ [loadFiles] Failed to read owner index (non-blocking):', {
+              backendId,
+              error: ownerIndexError,
+            });
+          }
+        }
 
-                const normalizedName = entry.fileName || entry.originalName || 'Untitled';
-                const parsedSize = typeof entry.size === 'number' ? entry.size : Number(entry.size || 0);
+        let filesForBackend: AggregatedFile[] = [];
 
-                return {
-                  id: entry.fileId,
-                  backend: backendId,
-                  backendFileId: entry.googleDriveFileId,
-                  name: normalizedName,
-                  originalName: entry.originalName || normalizedName,
-                  mimeType: derivedMime,
-                  size: Number.isFinite(parsedSize) ? parsedSize.toString() : '0',
-                  encrypted: true, // All files in owner index are encrypted
-                  visibility: entry.visibility || 'private',
-                };
-              });
+        if (ownerIndex?.files?.length) {
+          filesForBackend = ownerIndex.files.map((entry: any) => {
+            const derivedMime =
+              entry.mimeType ||
+              (entry.fileName?.toLowerCase().endsWith('.encrypted') ? 'application/octet-stream' : undefined);
 
-              console.warn('📄 [loadFiles] Aggregated owner index files', {
-                aggregatedFiles,
-                rawOwnerIndex: ownerIndex.files,
-              });
-              
-              setFiles(aggregatedFiles);
-              
-              // Load metadata (convert owner index entries to PublicMetadata format - same as aggregator browser)
-              const metadataMap = new Map<string, PublicMetadata>();
-              ownerIndex.files.forEach((entry: any) => {
-                const fileId = entry.fileId;
-                const publicMetadata: PublicMetadata = {
-                  fileId: fileId,
-                  backend: backendId,
-                  backendFileId: entry.googleDriveFileId,
-                  name: entry.originalName || entry.fileName,
-                  description: entry.description,
-                  keywords: entry.tags || [],
-                  uploadDate: entry.uploadedAt,
-                  fileType: entry.mimeType?.split('/')[0] || 'other',
-                  isPublic: entry.visibility === 'public',
-                  creator: entry.owner?.did ? {
+            const normalizedName = entry.fileName || entry.originalName || 'Untitled';
+            const parsedSize = typeof entry.size === 'number' ? entry.size : Number(entry.size || 0);
+
+            return {
+              id: entry.fileId,
+              backend: backendId,
+              backendFileId: entry.googleDriveFileId,
+              name: normalizedName,
+              originalName: entry.originalName || normalizedName,
+              mimeType: derivedMime,
+              size: Number.isFinite(parsedSize) ? parsedSize.toString() : '0',
+              encrypted: true,
+              visibility: entry.visibility || 'private',
+            };
+          });
+
+          ownerIndex.files.forEach((entry: any) => {
+            const fileId = entry.fileId;
+            const metadata: PublicMetadata = {
+              fileId,
+              backend: backendId,
+              backendFileId: entry.googleDriveFileId,
+              name: entry.originalName || entry.fileName,
+              description: entry.description,
+              keywords: entry.tags || [],
+              uploadDate: entry.uploadedAt,
+              fileType: entry.mimeType?.split('/')[0] || 'other',
+              isPublic: entry.visibility === 'public',
+              creator: entry.owner?.did
+                ? {
                     '@type': 'Person',
                     '@id': entry.owner.did,
                     identifier: {
                       '@type': 'PropertyValue',
                       name: 'DID',
-                      value: entry.owner.did
-                    }
-                  } : undefined,
-                  thumbnail: entry.thumbnail,
-                  publicToken: entry.publicToken, // Share token - SAME as aggregator browser uses
-                  engagement: entry.engagement,
-                  inReplyTo: entry.inReplyTo,
-                  repostOf: entry.repostOf,
-                  isPartOf: entry.isPartOf,
-                  '@context': ['https://schema.org/'],
-                  '@type': 'CreativeWork',
-                  '@id': `https://parnoir.com/resource/${fileId}`
-                };
-                metadataMap.set(fileId, publicMetadata);
-                
-                // Cache share token if available (SAME as aggregator browser)
-                if (entry.publicToken) {
-                  try {
-                    const shareToken = typeof entry.publicToken === 'string'
-                      ? JSON.parse(entry.publicToken)
-                      : entry.publicToken;
-                    const backendIdForCache = backendId;
-                    const cacheKey = makeShareTokenCacheKey(backendIdForCache, entry.googleDriveFileId);
-                    shareTokenCache.current.set(cacheKey, shareToken);
-                    console.warn('💾 [loadFiles] Cached share token from owner index for file:', fileId, { hasToken: !!shareToken });
-                  } catch (e) {
-                    console.warn('⚠️ [loadFiles] Failed to cache token from owner index:', e, { publicToken: entry.publicToken });
+                      value: entry.owner.did,
+                    },
                   }
-                } else {
-                  console.warn('⚠️ [loadFiles] File in owner index has no publicToken:', fileId, entry.fileName);
-                }
-              });
-              
-              setFileMetadataMap(metadataMap);
-              setIsLoading(false);
-              console.warn('✅ [loadFiles] Successfully loaded from owner index - ready for token-based decryption', { aggregatedCount: ownerIndex.files.length });
-              return; // Successfully loaded from owner index
-            } else {
-              console.warn('📋 [loadFiles] Owner index empty or missing, falling back to Drive scan');
-            }
-          } else {
-            console.warn('⚠️ [loadFiles] No Google Drive token available for owner index');
-          }
-        } catch (ownerIndexError) {
-          console.error('❌ [loadFiles] Failed to load from owner index, falling back to scanning:', ownerIndexError);
-        }
-      } else {
-        console.log('ℹ️ [loadFiles] Owner index skipped until backend is ready', {
-          backendId,
-          hasBackend: !!backend, 
-          isConnected: backend?.isConnected(), 
-          hasPnIdentifier: !!currentPnIdentifier,
-          availableBackendIds:
-            typeof aggregatorService?.listBackendEntries === 'function'
-              ? aggregatorService.listBackendEntries().map(({ id }) => id)
-              : [],
-          connectedBackendIds:
-            typeof aggregatorService?.listBackendEntries === 'function'
-              ? aggregatorService
-                  .listBackendEntries()
-                  .filter(({ backend: entryBackend }) => entryBackend.isConnected())
-                  .map(({ id }) => id)
-              : [],
-        });
-      }
-      
-      // FALLBACK: Scan Google Drive if owner index doesn't exist or is empty (backwards compatibility)
-      // BUT: Still try to load tokens from owner index for these files
-      try {
-        console.warn('📁 [loadFiles] Falling back to Google Drive scan...');
-        const aggregatedFiles = await aggregatorService.aggregateFiles(currentPnIdentifier || undefined);
-        console.warn('📁 [loadFiles] Google Drive scan results', { count: aggregatedFiles.length });
-        if (aggregatedFiles.length === 0) {
-          console.warn('📁 [loadFiles] No files found in Drive scan - folder may not exist yet');
-          setFiles([]);
-          setFileMetadataMap(new Map());
-          setIsLoading(false);
-          return;
-        }
-        setFiles(aggregatedFiles);
-        
-        // IMPORTANT: Still try to load tokens from owner index for these files
-        if (backend && backend.isConnected() && currentPnIdentifier) {
-          try {
-            const { GoogleDriveMetadataService } = await import('../../services/storage/GoogleDriveMetadataService');
-            const localTokenKey = keyPrefix
-              ? `${keyPrefix}_token`
-              : backendId
-                ? `${backendId}_token`
-                : 'google_drive_token';
-            const token = (backend as any).token || localStorage.getItem(localTokenKey);
-            if (token) {
-              const pnFolderId = await GoogleDriveMetadataService.getOrCreatePNFolder(token, currentPnIdentifier);
-              const metadataFolderId = await GoogleDriveMetadataService.getOrCreateMetadataFolder(token, pnFolderId);
-              const ownerIndex = await GoogleDriveMetadataService.getOwnerFileIndex(token, metadataFolderId, currentPnIdentifier);
-              
-              if (ownerIndex?.files) {
-                // Match files and load tokens
-                aggregatedFiles.forEach((file: AggregatedFile) => {
-                  const indexEntry = ownerIndex.files.find((entry: any) => entry.googleDriveFileId === file.backendFileId);
-                  if (indexEntry?.publicToken) {
-                    try {
-                      const shareToken = typeof indexEntry.publicToken === 'string'
-                        ? JSON.parse(indexEntry.publicToken)
-                        : indexEntry.publicToken;
-                      const cacheKey = makeShareTokenCacheKey(file.backend || (backend as any)?.id || 'google_drive', file.backendFileId);
-                      shareTokenCache.current.set(cacheKey, shareToken);
-                      console.log('💾 [loadFiles] Loaded token from owner index for scanned file:', file.id);
-                    } catch (e) {
-                      console.warn('⚠️ [loadFiles] Failed to parse token for scanned file:', e);
-                    }
-                  }
+                : undefined,
+              thumbnail: entry.thumbnail,
+              publicToken: entry.publicToken,
+              engagement: entry.engagement,
+              inReplyTo: entry.inReplyTo,
+              repostOf: entry.repostOf,
+              isPartOf: entry.isPartOf,
+              '@context': ['https://schema.org/'],
+              '@type': 'CreativeWork',
+              '@id': `https://parnoir.com/resource/${fileId}`,
+            };
+            aggregatedMetadataMap.set(fileId, metadata);
+
+            if (entry.publicToken) {
+              try {
+                const shareToken = typeof entry.publicToken === 'string'
+                  ? JSON.parse(entry.publicToken)
+                  : entry.publicToken;
+                const cacheKey = makeShareTokenCacheKey(backendId, entry.googleDriveFileId);
+                shareTokenCache.current.set(cacheKey, shareToken);
+                console.debug('💾 [loadFiles] Cached share token from owner index', { backendId, fileId });
+              } catch (tokenError) {
+                console.warn('⚠️ [loadFiles] Failed to cache owner index share token', {
+                  backendId,
+                  fileId,
+                  error: tokenError,
                 });
               }
             }
-          } catch (tokenLoadError) {
-            console.warn('⚠️ [loadFiles] Failed to load tokens from owner index for scanned files:', tokenLoadError);
+          });
+        } else {
+          console.debug('ℹ️ [loadFiles] Owner index empty; scanning Drive contents', { backendId });
+          try {
+            const scannedFiles = await backend.listFiles(undefined, currentPnIdentifier);
+            filesForBackend = scannedFiles.map((file: any) => ({
+              ...file,
+              backend: backendId,
+              backendFileId: file.id,
+            }));
+            filesNeedingMetadata.push(...filesForBackend);
+
+            if (ownerIndex?.files?.length) {
+              filesForBackend.forEach((file) => {
+                const indexEntry = ownerIndex.files.find((entry: any) => entry.googleDriveFileId === file.backendFileId);
+                if (indexEntry?.publicToken) {
+                  try {
+                    const shareToken = typeof indexEntry.publicToken === 'string'
+                      ? JSON.parse(indexEntry.publicToken)
+                      : indexEntry.publicToken;
+                    const cacheKey = makeShareTokenCacheKey(backendId, file.backendFileId);
+                    shareTokenCache.current.set(cacheKey, shareToken);
+                  } catch (tokenError) {
+                    console.warn('⚠️ [loadFiles] Unable to parse share token for scanned file', {
+                      backendId,
+                      fileId: file.id,
+                      error: tokenError,
+                    });
+                  }
+                }
+              });
+            }
+          } catch (scanError) {
+            console.warn('⚠️ [loadFiles] Drive scan failed (non-blocking)', {
+              backendId,
+              error: scanError,
+            });
+            continue;
           }
         }
-        
-        // Load metadata for all files (non-blocking)
-        loadFileMetadata(aggregatedFiles).catch((err) => {
+
+        if (filesForBackend.length === 0) {
+          console.debug('ℹ️ [loadFiles] No files discovered for backend', { backendId });
+          continue;
+        }
+
+        aggregatedAllFiles.push(...filesForBackend);
+      }
+
+      setFiles(aggregatedAllFiles);
+      setFileMetadataMap(aggregatedMetadataMap);
+
+      const filesWithoutMetadata = filesNeedingMetadata.filter((file) => !aggregatedMetadataMap.has(file.id));
+      if (filesWithoutMetadata.length > 0) {
+        loadFileMetadata(filesWithoutMetadata).catch((err) => {
           console.warn('⚠️ Failed to load file metadata (non-blocking):', err);
         });
-      } catch (aggregateError) {
-        // Don't break unlock if file aggregation fails
-        console.warn('⚠️ Failed to aggregate files (non-blocking, unlock can proceed):', aggregateError);
-        setFiles([]); // Just show empty list
       }
     } catch (err) {
       // Don't set error or break unlock - just log it
@@ -1488,7 +1466,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
       setIsLoading(false);
       isLoadingFilesRef.current = false;
     }
-  }, [aggregatorService, authenticatedUser, resolvedAuth, loadFileMetadata, resolveActiveBackendEntry]);
+  }, [aggregatorService, authenticatedUser, resolvedAuth, loadFileMetadata, getDriveAccountByBackendId]);
 
   const handleTogglePublic = async (file: AggregatedFile) => {
     try {
