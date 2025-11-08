@@ -121,12 +121,32 @@ export class StorageCredentialsService {
     let credentials: any = null;
 
     try {
-      const encryptedPayload: EncryptedPayload = JSON.parse(row.encrypted_metadata);
+      const encryptedRaw = row.encrypted_metadata;
+      let encryptedPayload: EncryptedPayload;
+
+      if (typeof encryptedRaw === 'string') {
+        encryptedPayload = JSON.parse(encryptedRaw);
+      } else if (encryptedRaw && typeof encryptedRaw === 'object') {
+        // Handles legacy JSONB rows that may already be objects
+        encryptedPayload = encryptedRaw as EncryptedPayload;
+      } else {
+        throw new Error('Unsupported encrypted payload format');
+      }
+
+      if (!encryptedPayload?.iv || !encryptedPayload?.authTag || !encryptedPayload?.ciphertext) {
+        throw new Error('Encrypted payload missing required fields');
+      }
+
       const decrypted = this.decryptPayload(encryptedPayload);
       credentials = JSON.parse(decrypted);
     } catch (error) {
-      console.error(`Failed to decrypt storage credentials for identity ${identityId}:`, error);
-      throw new Error('Failed to decrypt storage credentials');
+      console.warn(`⚠️ Failed to decrypt storage credentials for identity ${identityId}:`, error);
+      try {
+        await this.deleteCredentials(identityId);
+      } catch (cleanupError) {
+        console.warn(`⚠️ Failed to clean up corrupted credentials for identity ${identityId}:`, cleanupError);
+      }
+      return null;
     }
 
     return {

@@ -82,13 +82,42 @@ export async function initializeDatabase(): Promise<void> {
     // Create storage_credentials table for encrypted storage metadata
     await db.query(`
       CREATE TABLE IF NOT EXISTS storage_credentials (
-        identity_id VARCHAR(255) PRIMARY KEY,
-        encrypted_metadata JSONB NOT NULL,
-        cid VARCHAR(255),
+        identity_id TEXT PRIMARY KEY,
+        encrypted_metadata TEXT NOT NULL,
+        cid TEXT,
         updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
         created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
       )
     `);
+
+    // Ensure existing installations have the correct column types
+    try {
+      await db.query(`
+        ALTER TABLE storage_credentials
+        ALTER COLUMN identity_id TYPE TEXT
+      `);
+    } catch (error) {
+      console.debug('ℹ️ storage_credentials.identity_id already TEXT or table missing:', (error as Error).message);
+    }
+
+    try {
+      await db.query(`
+        ALTER TABLE storage_credentials
+        ALTER COLUMN encrypted_metadata TYPE TEXT
+        USING encrypted_metadata::text
+      `);
+    } catch (error) {
+      console.debug('ℹ️ storage_credentials.encrypted_metadata already TEXT or table missing:', (error as Error).message);
+    }
+
+    try {
+      await db.query(`
+        ALTER TABLE storage_credentials
+        ALTER COLUMN cid TYPE TEXT
+      `);
+    } catch (error) {
+      console.debug('ℹ️ storage_credentials.cid already TEXT or table missing:', (error as Error).message);
+    }
 
     await db.query(`
       CREATE INDEX IF NOT EXISTS idx_storage_credentials_updated_at
