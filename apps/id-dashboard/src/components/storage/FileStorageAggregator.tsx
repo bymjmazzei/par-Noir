@@ -10,8 +10,9 @@ import { getMetadataIndexService } from '../../services/metadata/MetadataIndexSe
 import { GoogleDriveBackend } from '../../services/storage/GoogleDriveBackend';
 import { AggregatedFile, AuthSession, PublicMetadata, ShareToken, EncryptedFilePackage } from '../../types/aggregator';
 import { AuthSession as CryptoAuthSession } from '../../types/crypto';
+import GoogleDriveIconUrl from '../../assets/icons/google-drive.svg?url';
 
-const GOOGLE_DRIVE_ICON_URL = 'https://upload.wikimedia.org/wikipedia/commons/thumb/1/12/Google_Drive_icon_%282020%29.svg/1200px-Google_Drive_icon_%282020%29.svg.png';
+const GOOGLE_DRIVE_ICON_URL = GoogleDriveIconUrl;
 const DRIVE_ACCOUNTS_STORAGE_KEY = 'pn_google_drive_accounts';
 
 interface DriveAccountState {
@@ -78,6 +79,15 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
   const [filePreviewUrls, setFilePreviewUrls] = useState<Map<string, string>>(new Map()); // fileId -> decrypted blob URL
   const [loadingPreviews, setLoadingPreviews] = useState<Set<string>>(new Set());
   const isLoadingFilesRef = React.useRef(false);
+  const lastIdentityLogRef = React.useRef<string | null>(null);
+  const missingIdentityLogRef = React.useRef(false);
+  const missingPnNameLogRef = React.useRef(false);
+  const missingPasscodeLogRef = React.useRef(false);
+  const hydrationAttemptedRef = React.useRef<Set<string>>(new Set());
+  const hydrationMissingCandidatesRef = React.useRef<Set<string>>(new Set());
+  const hydrationSuccessRef = React.useRef<string | null>(null);
+  const hydrationRateLimitUntilRef = React.useRef<number | null>(null);
+  const hydrationRateLimitLoggedRef = React.useRef(false);
 
   const getStorageIdentityCandidates = React.useCallback(() => {
     const candidates: string[] = [];
@@ -105,20 +115,28 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
   const deriveIdentityKey = React.useCallback(() => {
     const candidates = getStorageIdentityCandidates();
     const identityKey = candidates.length > 0 ? candidates[0] : null;
-    console.warn('🆔 [StorageCredentials] Deriving identity', {
-      candidates,
-      chosen: identityKey,
-    });
-    if (!identityKey) {
+    if (identityKey) {
+      if (lastIdentityLogRef.current !== identityKey) {
+        lastIdentityLogRef.current = identityKey;
+        missingIdentityLogRef.current = false;
+        console.debug('🆔 [StorageCredentials] Identity resolved', {
+          candidates,
+          chosen: identityKey,
+        });
+      }
+      return identityKey;
+    }
+    if (!missingIdentityLogRef.current) {
+      missingIdentityLogRef.current = true;
       console.warn('⚠️ [StorageCredentials] Unable to derive identity key', {
         hasAuthenticatedUserId: !!authenticatedUser?.id,
         hasAuthenticatedUserPublicKey: !!authenticatedUser?.publicKey,
         hasResolvedAuth: !!resolvedAuth,
+        candidates,
       });
-      return null;
     }
-    return identityKey;
-  }, [getStorageIdentityCandidates]);
+    return null;
+  }, [authenticatedUser?.id, authenticatedUser?.publicKey, getStorageIdentityCandidates, resolvedAuth]);
 
   // Initialize services - useMemo to avoid re-initializing on every render
   const aggregatorService = React.useMemo(() => {
@@ -467,6 +485,25 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
   }, [activeBackendId, persistDriveAccounts]);
 
   const hydrateStorageCredentialsFromAPI = React.useCallback(async () => {
+    if (hydrationSuccessRef.current) {
+      return;
+    }
+
+    const now = Date.now();
+    if (
+      hydrationRateLimitUntilRef.current &&
+      now < hydrationRateLimitUntilRef.current
+    ) {
+      if (!hydrationRateLimitLoggedRef.current) {
+        hydrationRateLimitLoggedRef.current = true;
+        console.debug('ℹ️ [StorageCredentials] Hydration paused due to recent rate limit', {
+          nextAttemptInMs: hydrationRateLimitUntilRef.current - now,
+        });
+      }
+      return;
+    }
+    hydrationRateLimitLoggedRef.current = false;
+
     const identityCandidates = getStorageIdentityCandidates();
 
     if (identityCandidates.length === 0) {
@@ -478,18 +515,47 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
     let lastError: unknown = null;
 
     for (const candidateId of identityCandidates) {
+      if (hydrationSuccessRef.current) {
+        break;
+      }
+
+      if (hydrationMissingCandidatesRef.current.has(candidateId)) {
+        continue;
+      }
+
+      const hasAttempted = hydrationAttemptedRef.current.has(candidateId);
+      hydrationAttemptedRef.current.add(candidateId);
+
+      if (hasAttempted && !hydrationMissingCandidatesRef.current.has(candidateId)) {
+        continue;
+      }
+
       try {
-        console.log('📥 [StorageCredentials] Fetching credentials from API...', {
+        console.debug('📥 [StorageCredentials] Fetching credentials from API...', {
           candidateId,
           endpoint: apiEndpoint,
         });
 
         const response = await fetch(`${apiEndpoint}/api/storage/credentials/${encodeURIComponent(candidateId)}`);
         if (response.status === 404) {
-          console.log('ℹ️ [StorageCredentials] No stored credentials found for identity (404)', {
+          hydrationMissingCandidatesRef.current.add(candidateId);
+          console.debug('ℹ️ [StorageCredentials] No stored credentials found for identity (404)', {
             candidateId,
           });
           continue;
+        }
+
+        if (response.status === 429) {
+          const retryAfterHeader = response.headers.get('Retry-After');
+          const retryAfterSeconds = retryAfterHeader ? parseInt(retryAfterHeader, 10) : NaN;
+          const retryAfterMs = Number.isFinite(retryAfterSeconds) ? retryAfterSeconds * 1000 : 30000;
+          hydrationRateLimitUntilRef.current = Date.now() + retryAfterMs;
+          hydrationRateLimitLoggedRef.current = false;
+          console.warn('⚠️ [StorageCredentials] API rate limited hydration; backing off', {
+            candidateId,
+            retryAfterMs,
+          });
+          break;
         }
 
         if (!response.ok) {
@@ -555,6 +621,10 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
         }
 
         hydrated = true;
+        hydrationSuccessRef.current = candidateId;
+        hydrationMissingCandidatesRef.current.delete(candidateId);
+        hydrationRateLimitUntilRef.current = null;
+        hydrationRateLimitLoggedRef.current = false;
         break;
       } catch (error) {
         lastError = error;
@@ -565,8 +635,8 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
       }
     }
 
-    if (!hydrated && identityCandidates.length > 0) {
-      console.warn('ℹ️ [StorageCredentials] No stored credentials found across candidates', {
+    if (!hydrated && identityCandidates.length > 0 && lastError) {
+      console.warn('⚠️ [StorageCredentials] No stored credentials available yet', {
         identityCandidates,
         lastError,
       });
@@ -662,9 +732,13 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
         null;
 
       if (!effectivePnName) {
-        console.warn('⚠️ [loadTokenFromMetadata] No pnName available yet – deferring restore');
+        if (!missingPnNameLogRef.current) {
+          missingPnNameLogRef.current = true;
+          console.debug('ℹ️ [loadTokenFromMetadata] No pnName available yet – deferring restore');
+        }
         return;
       }
+      missingPnNameLogRef.current = false;
 
       if (!aggregatorService) {
         return;
@@ -703,9 +777,13 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
         }
 
         if (!passcode) {
-          console.warn('⚠️ [loadTokenFromMetadata] Passcode not available yet – stored encrypted metadata for later');
+          if (!missingPasscodeLogRef.current) {
+            missingPasscodeLogRef.current = true;
+            console.debug('ℹ️ [loadTokenFromMetadata] Passcode not available yet – stored encrypted metadata for later');
+          }
           return;
         }
+        missingPasscodeLogRef.current = false;
 
         const decrypted = await SecureMetadataCrypto.decryptMetadata(metadata, effectivePnName, passcode);
 
