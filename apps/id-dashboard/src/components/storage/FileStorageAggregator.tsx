@@ -10,7 +10,7 @@ import { getMetadataIndexService } from '../../services/metadata/MetadataIndexSe
 import { GoogleDriveBackend } from '../../services/storage/GoogleDriveBackend';
 import { AggregatedFile, AuthSession, PublicMetadata, ShareToken, EncryptedFilePackage } from '../../types/aggregator';
 import { AuthSession as CryptoAuthSession } from '../../types/crypto';
-import GoogleDriveIconUrl from '../../assets/icons/google-drive.svg?url';
+import GoogleDriveIconUrl from '../../assets/icons/google-drive-logo.png?url';
 
 const GOOGLE_DRIVE_ICON_URL = GoogleDriveIconUrl;
 const DRIVE_ACCOUNTS_STORAGE_KEY = 'pn_google_drive_accounts';
@@ -627,21 +627,64 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
           if (!token) {
             continue;
           }
+
           const email = account?.email || null;
           const refreshToken = account?.refreshToken || null;
-          const identifiers = resolveIdentifiersForEmail(email);
+
+          let backendId: string | null =
+            typeof account?.backendId === 'string' && account.backendId.length > 0
+              ? account.backendId
+              : null;
+          let keyPrefix: string | null =
+            typeof account?.keyPrefix === 'string' && account.keyPrefix.length > 0
+              ? account.keyPrefix
+              : null;
+
+          if (!backendId || !keyPrefix) {
+            const identifiers = resolveIdentifiersForEmail(email);
+            backendId = identifiers.backendId;
+            keyPrefix = identifiers.keyPrefix;
+          } else {
+            const existing = driveAccounts.find((entry) => entry.backendId === backendId);
+            if (existing) {
+              keyPrefix = existing.keyPrefix;
+            }
+          }
+
+          if (!backendId || !keyPrefix) {
+            console.warn('⚠️ [StorageCredentials] Unable to determine backend identifiers for hydrated account', {
+              email,
+              backendId,
+              keyPrefix,
+            });
+            continue;
+          }
 
           try {
             await upsertDriveAccount({
-              backendId: identifiers.backendId,
-              keyPrefix: identifiers.keyPrefix,
+              backendId,
+              keyPrefix,
               token,
               refreshToken,
               email,
             });
+
+            try {
+              localStorage.setItem(`${keyPrefix}_token`, token);
+              if (refreshToken) {
+                localStorage.setItem(`${keyPrefix}_refresh_token`, refreshToken);
+              }
+            } catch (storageError) {
+              console.warn('⚠️ [StorageCredentials] Failed to cache hydrated tokens locally', {
+                backendId,
+                keyPrefix,
+                storageError,
+              });
+            }
           } catch (upsertError) {
             console.warn('⚠️ [StorageCredentials] Failed to reconnect Google Drive account from API payload', {
               email,
+              backendId,
               upsertError,
             });
           }
@@ -694,7 +737,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
         }
       }
     }
-  }, [apiEndpoint, getStorageIdentityCandidates, resolveIdentifiersForEmail, upsertDriveAccount]);
+  }, [apiEndpoint, driveAccounts, getStorageIdentityCandidates, resolveIdentifiersForEmail, upsertDriveAccount]);
 
   const fetchDriveUserInfo = React.useCallback(async (accessToken: string) => {
     try {
