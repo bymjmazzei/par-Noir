@@ -90,6 +90,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
   const hydrationRateLimitLoggedRef = React.useRef(false);
   const hydrationRetryTimeoutRef = React.useRef<number | null>(null);
   const hydrationInProgressRef = React.useRef(false);
+  const skipMetadataUpdateLoggedRef = React.useRef(false);
 
   const getStorageIdentityCandidates = React.useCallback(() => {
     const candidates: string[] = [];
@@ -331,11 +332,6 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
         seen.add(identityId);
 
         try {
-          console.warn('📤 [StorageCredentials] Persisting credentials to API...', {
-            identityId,
-            hasCid: !!cid,
-          });
-
           const response = await fetch(`${apiEndpoint}/api/storage/credentials/${encodeURIComponent(identityId)}`, {
             method: 'PUT',
             headers: {
@@ -353,10 +349,6 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
               identityId,
               status: response.status,
               error: errorText,
-            });
-          } else {
-            console.warn('✅ [StorageCredentials] Credentials persisted to API', {
-              identityId,
             });
           }
         } catch (error) {
@@ -659,7 +651,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
             : [];
 
         if (accountsArray.length === 0) {
-          console.warn('ℹ️ [StorageCredentials] Credentials payload contained no Google Drive accounts', {
+          console.debug('ℹ️ [StorageCredentials] Credentials payload contained no Google Drive accounts', {
             candidateId,
           });
           continue;
@@ -800,7 +792,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
         }
       }
     } catch (driveError) {
-      console.warn('⚠️ [fetchDriveUserInfo] drive/v3/about failed, falling back', driveError);
+      console.debug('ℹ️ [fetchDriveUserInfo] drive/v3/about failed, falling back', driveError);
     }
 
     try {
@@ -818,14 +810,10 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
         };
       }
     } catch (oauthError) {
-      console.warn('⚠️ [fetchDriveUserInfo] oauth2 userinfo failed', oauthError);
+      console.debug('ℹ️ [fetchDriveUserInfo] oauth2 userinfo failed', oauthError);
     }
 
     return { email: undefined, name: undefined };
-  }, []);
-  // Version check - this will help verify new code is loading
-  React.useEffect(() => {
-    console.log('🚀 [FileStorageAggregator] Component loaded - Version: 2024-12-05-v2');
   }, []);
 
   const [fileMetadataMap, setFileMetadataMap] = useState<Map<string, PublicMetadata>>(new Map());
@@ -2070,12 +2058,6 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
             clearTimeout(timeout);
             window.removeEventListener('message', messageHandler);
             // Don't try to close popup - COOP blocks it, let it close itself
-            try {
-              popup.close();
-            } catch (e) {
-              // Ignore COOP errors
-            }
-
             if (event.data.error) {
               reject(new Error(event.data.error));
             } else if (event.data.code) {
@@ -2215,13 +2197,14 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
           'storageCredentials',
           updatedStorageCredentials
         );
-        console.log('✅ [handleConnectGoogleDrive] Saved Google Drive account credentials to encrypted metadata');
+        console.debug('✅ [handleConnectGoogleDrive] Saved Google Drive account credentials to encrypted metadata');
       } catch (metadataError) {
         console.warn('⚠️ [handleConnectGoogleDrive] Failed to save token to metadata (non-critical):', metadataError);
         // Don't fail the connection if metadata save fails
       }
-    } else {
-      console.warn('ℹ️ [handleConnectGoogleDrive] Skipping secure metadata update; session passcode unavailable');
+    } else if (!skipMetadataUpdateLoggedRef.current) {
+      console.debug('ℹ️ [handleConnectGoogleDrive] Skipping secure metadata update; session passcode unavailable');
+      skipMetadataUpdateLoggedRef.current = true;
     }
 
     await persistStorageCredentialsToAPI(updatedStorageCredentials);
