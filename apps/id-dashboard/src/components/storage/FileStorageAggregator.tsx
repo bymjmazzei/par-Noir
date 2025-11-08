@@ -31,11 +31,11 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
   const fileInputRefs = React.useRef<Map<string, HTMLInputElement | null>>(new Map());
   const hasRestoredFromMetadataRef = React.useRef<string | null>(null);
   const hasInitializedLegacyRef = React.useRef<boolean>(false);
+  const loadFilesRef = React.useRef<(() => Promise<void>) | null>(null);
+  const loadStorageQuotaRef = React.useRef<(() => Promise<void>) | null>(null);
   const makeShareTokenCacheKey = React.useCallback((backendId: string, backendFileId: string) => `${backendId}|${backendFileId}`, []);
   const apiEndpoint = React.useMemo(() => import.meta.env.VITE_API_ENDPOINT || 'https://api.parnoir.com', []);
-  
-  // Use global constructors directly - terser will preserve them via reserved list
-  
+
   const [isLoading, setIsLoading] = useState(false);
   const [files, setFiles] = useState<AggregatedFile[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -44,7 +44,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
   const [driveAccounts, setDriveAccounts] = useState<DriveAccountState[]>([]);
   const [activeBackendId, setActiveBackendId] = useState<string | null>(null);
   const [storageQuotas, setStorageQuotas] = useState<Map<string, any>>(new Map());
-  const [resolvedAuth, setResolvedAuth] = useState<{ pnName: string; publicKey: string } | null>(null);
+  const [resolvedAuth, setResolvedAuth] = useState<{ pnName: string; publicKey: string; passcode?: string } | null>(null);
   
   const [showDesktopAppInfo, setShowDesktopAppInfo] = useState(false);
   const [editingFile, setEditingFile] = useState<AggregatedFile | null>(null);
@@ -79,6 +79,47 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
   const [loadingPreviews, setLoadingPreviews] = useState<Set<string>>(new Set());
   const isLoadingFilesRef = React.useRef(false);
 
+  const getStorageIdentityCandidates = React.useCallback(() => {
+    const candidates: string[] = [];
+    if (resolvedAuth?.publicKey) {
+      candidates.push(resolvedAuth.publicKey);
+    }
+    if (typeof authenticatedUser?.publicKey === 'string') {
+      candidates.push(authenticatedUser.publicKey);
+    }
+    if (typeof authenticatedUser?.id === 'string') {
+      candidates.push(authenticatedUser.id);
+    }
+    if (typeof resolvedAuth?.pnName === 'string') {
+      candidates.push(resolvedAuth.pnName);
+    }
+    if (typeof authenticatedUser?.pnName === 'string') {
+      candidates.push(authenticatedUser.pnName);
+    }
+    if (typeof (authenticatedUser as any)?.username === 'string') {
+      candidates.push((authenticatedUser as any).username);
+    }
+    return Array.from(new Set(candidates.filter((value) => value && value.trim().length > 0)));
+  }, [authenticatedUser?.id, authenticatedUser?.pnName, authenticatedUser?.publicKey, resolvedAuth?.pnName, resolvedAuth?.publicKey]);
+
+  const deriveIdentityKey = React.useCallback(() => {
+    const candidates = getStorageIdentityCandidates();
+    const identityKey = candidates.length > 0 ? candidates[0] : null;
+    console.warn('🆔 [StorageCredentials] Deriving identity', {
+      candidates,
+      chosen: identityKey,
+    });
+    if (!identityKey) {
+      console.warn('⚠️ [StorageCredentials] Unable to derive identity key', {
+        hasAuthenticatedUserId: !!authenticatedUser?.id,
+        hasAuthenticatedUserPublicKey: !!authenticatedUser?.publicKey,
+        hasResolvedAuth: !!resolvedAuth,
+      });
+      return null;
+    }
+    return identityKey;
+  }, [getStorageIdentityCandidates]);
+
   // Initialize services - useMemo to avoid re-initializing on every render
   const aggregatorService = React.useMemo(() => {
     try {
@@ -88,6 +129,61 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
       return null;
     }
   }, []);
+  
+  const getResolvedAuthCredentials = React.useCallback(() => {
+    let pnName =
+      resolvedAuth?.pnName ||
+      authenticatedUser?.pnName ||
+      (authenticatedUser as any)?.username ||
+      (authenticatedUser as any)?.name ||
+      null;
+
+    let publicKey =
+      resolvedAuth?.publicKey ||
+      authenticatedUser?.publicKey ||
+      (typeof authenticatedUser?.id === 'string' ? authenticatedUser.id : null) ||
+      null;
+
+    if (!pnName && authenticatedUser?.id && typeof authenticatedUser.id === 'string') {
+      const idParts = authenticatedUser.id.split('-');
+      if (idParts.length > 0 && idParts[0] !== 'did:key') {
+        pnName = idParts[0];
+      }
+    }
+
+    let passcode = resolvedAuth?.passcode || null;
+    if (!passcode) {
+      try {
+        passcode = sessionStorage.getItem('pn_session_passcode');
+      } catch (e) {
+        passcode = null;
+      }
+    }
+
+    if (!pnName || !publicKey) {
+      return null;
+    }
+
+    return {
+      pnName,
+      publicKey,
+      passcode: passcode || undefined,
+    };
+  }, [authenticatedUser, resolvedAuth]);
+  
+  React.useEffect(() => {
+    if (!resolvedAuth || resolvedAuth.passcode) {
+      return;
+    }
+    try {
+      const storedPasscode = sessionStorage.getItem('pn_session_passcode');
+      if (storedPasscode) {
+        setResolvedAuth((prev) => (prev ? { ...prev, passcode: storedPasscode } : prev));
+      }
+    } catch (e) {
+      console.warn('⚠️ [FileStorageAggregator] Unable to hydrate passcode from session storage:', e);
+    }
+  }, [resolvedAuth]);
   
   const encryptionService = React.useMemo(() => {
     try {
@@ -136,66 +232,122 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
     }
   }, []);
 
-  const persistStorageCredentialsToAPI = React.useCallback(
-    async (identityId: string, encryptedMetadata: any, cid?: string | null) => {
-      if (!identityId || !encryptedMetadata) {
-        return;
+  const getDriveAccountByBackendId = React.useCallback(
+    (backendId: string | null | undefined) => {
+      if (!backendId) {
+        return null;
       }
-
-      try {
-        const response = await fetch(`${apiEndpoint}/api/storage/credentials/${encodeURIComponent(identityId)}`, {
-          method: 'PUT',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            encryptedMetadata,
-            cid: cid ?? null,
-          }),
-        });
-
-        if (!response.ok) {
-          const errorText = await response.text().catch(() => 'Unknown error');
-          console.warn('⚠️ [StorageCredentials] Failed to persist credentials to API:', errorText);
-        } else {
-          console.log('✅ [StorageCredentials] Credentials persisted to API');
-        }
-      } catch (error) {
-        console.warn('⚠️ [StorageCredentials] API persistence failed (non-blocking):', error);
-      }
+      return driveAccounts.find((account) => account.backendId === backendId) || null;
     },
-    [apiEndpoint]
+    [driveAccounts]
   );
 
-  const hydrateStorageCredentialsFromAPI = React.useCallback(
-    async (identityId: string) => {
-      if (!identityId) {
+  const resolveActiveBackendEntry = React.useCallback(() => {
+    const empty = {
+      backendId: null as string | null,
+      backend: null as GoogleDriveBackend | null,
+      account: null as DriveAccountState | null,
+      keyPrefix: null as string | null,
+    };
+
+    if (!aggregatorService) {
+      return empty;
+    }
+
+    const finalize = (backendId: string, backend: GoogleDriveBackend) => {
+      const account = getDriveAccountByBackendId(backendId);
+      const keyPrefix =
+        account?.keyPrefix ||
+        (typeof backend.getStorageKeyPrefix === 'function' ? backend.getStorageKeyPrefix() : null);
+      return { backendId, backend, account, keyPrefix };
+    };
+
+    let backendId = activeBackendId;
+    if (!backendId && driveAccounts.length > 0) {
+      backendId = driveAccounts[0].backendId;
+    }
+
+    if (backendId) {
+      const backend = aggregatorService.getBackend(backendId) as GoogleDriveBackend | null;
+      if (backend) {
+        return finalize(backendId, backend);
+      }
+    }
+
+    if (typeof aggregatorService.listBackendEntries === 'function') {
+      const connectedEntry = aggregatorService
+        .listBackendEntries()
+        .find(({ backend }) => backend.isConnected());
+      if (connectedEntry) {
+        return finalize(
+          connectedEntry.id,
+          connectedEntry.backend as GoogleDriveBackend
+        );
+      }
+    }
+
+    return empty;
+  }, [aggregatorService, activeBackendId, driveAccounts, getDriveAccountByBackendId]);
+
+  const persistStorageCredentialsToAPI = React.useCallback(
+    async (credentialsPayload?: any, cid?: string | null) => {
+      if (!credentialsPayload) {
+        console.warn('⚠️ [StorageCredentials] No credentials payload provided; skipping API persistence');
         return;
       }
 
-      try {
-        const response = await fetch(`${apiEndpoint}/api/storage/credentials/${encodeURIComponent(identityId)}`);
-        if (response.status === 404) {
-          return;
-        }
+      const identityCandidates = getStorageIdentityCandidates();
 
-        if (!response.ok) {
-          const errorText = await response.text().catch(() => 'Unknown error');
-          console.warn('⚠️ [StorageCredentials] Failed to fetch credentials from API:', errorText);
-          return;
-        }
+      if (identityCandidates.length === 0) {
+        console.warn('⚠️ [StorageCredentials] No identity candidates available for persistence');
+        return;
+      }
 
-        const result = await response.json();
-        if (result?.encryptedMetadata) {
-          const { SecureMetadataStorage } = await import('../../utils/secureMetadataStorage');
-          await SecureMetadataStorage.storeMetadata(identityId, result.encryptedMetadata);
-          console.log('✅ [StorageCredentials] Hydrated encrypted metadata from API');
+      const seen = new Set<string>();
+      for (const identityId of identityCandidates) {
+        if (!identityId || seen.has(identityId)) {
+          continue;
         }
-      } catch (error) {
-        console.warn('⚠️ [StorageCredentials] API hydration failed (non-blocking):', error);
+        seen.add(identityId);
+
+        try {
+          console.warn('📤 [StorageCredentials] Persisting credentials to API...', {
+            identityId,
+            hasCid: !!cid,
+          });
+
+          const response = await fetch(`${apiEndpoint}/api/storage/credentials/${encodeURIComponent(identityId)}`, {
+            method: 'PUT',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              credentials: credentialsPayload,
+              cid: cid ?? null,
+            }),
+          });
+
+          if (!response.ok) {
+            const errorText = await response.text().catch(() => 'Unknown error');
+            console.warn('⚠️ [StorageCredentials] Failed to persist credentials to API:', {
+              identityId,
+              status: response.status,
+              error: errorText,
+            });
+          } else {
+            console.warn('✅ [StorageCredentials] Credentials persisted to API', {
+              identityId,
+            });
+          }
+        } catch (error) {
+          console.warn('⚠️ [StorageCredentials] API persistence failed (non-blocking):', {
+            identityId,
+            error,
+          });
+        }
       }
     },
-    [apiEndpoint]
+    [apiEndpoint, getStorageIdentityCandidates]
   );
 
   const upsertDriveAccount = React.useCallback(async (
@@ -314,6 +466,133 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
     }
   }, [activeBackendId, persistDriveAccounts]);
 
+  const hydrateStorageCredentialsFromAPI = React.useCallback(async () => {
+    const identityCandidates = getStorageIdentityCandidates();
+
+    if (identityCandidates.length === 0) {
+      console.warn('⚠️ [StorageCredentials] No identity candidates available for hydration');
+      return;
+    }
+
+    let hydrated = false;
+    let lastError: unknown = null;
+
+    for (const candidateId of identityCandidates) {
+      try {
+        console.log('📥 [StorageCredentials] Fetching credentials from API...', {
+          candidateId,
+          endpoint: apiEndpoint,
+        });
+
+        const response = await fetch(`${apiEndpoint}/api/storage/credentials/${encodeURIComponent(candidateId)}`);
+        if (response.status === 404) {
+          console.log('ℹ️ [StorageCredentials] No stored credentials found for identity (404)', {
+            candidateId,
+          });
+          continue;
+        }
+
+        if (!response.ok) {
+          const errorText = await response.text().catch(() => 'Unknown error');
+          console.warn('⚠️ [StorageCredentials] Failed to fetch credentials from API:', {
+            candidateId,
+            status: response.status,
+            error: errorText,
+          });
+          continue;
+        }
+
+        const result = await response.json();
+        const payload = result?.credentials;
+        if (!payload) {
+          console.warn('⚠️ [StorageCredentials] API returned no credentials payload', {
+            candidateId,
+            endpoint: `${apiEndpoint}/api/storage/credentials/${candidateId}`,
+          });
+          continue;
+        }
+
+        const storedAccounts =
+          payload.googleDriveAccounts ||
+          payload.googleDrive ||
+          [];
+        const accountsArray = Array.isArray(storedAccounts)
+          ? storedAccounts
+          : storedAccounts
+            ? [storedAccounts]
+            : [];
+
+        if (accountsArray.length === 0) {
+          console.warn('ℹ️ [StorageCredentials] Credentials payload contained no Google Drive accounts', {
+            candidateId,
+          });
+          continue;
+        }
+
+        for (const account of accountsArray) {
+          const token = account?.accessToken;
+          if (!token) {
+            continue;
+          }
+          const email = account?.email || null;
+          const refreshToken = account?.refreshToken || null;
+          const identifiers = resolveIdentifiersForEmail(email);
+
+          try {
+            await upsertDriveAccount({
+              backendId: identifiers.backendId,
+              keyPrefix: identifiers.keyPrefix,
+              token,
+              refreshToken,
+              email,
+            });
+          } catch (upsertError) {
+            console.warn('⚠️ [StorageCredentials] Failed to reconnect Google Drive account from API payload', {
+              email,
+              upsertError,
+            });
+          }
+        }
+
+        hydrated = true;
+        break;
+      } catch (error) {
+        lastError = error;
+        console.warn('⚠️ [StorageCredentials] Candidate fetch failed (non-blocking):', {
+          candidateId,
+          error,
+        });
+      }
+    }
+
+    if (!hydrated && identityCandidates.length > 0) {
+      console.warn('ℹ️ [StorageCredentials] No stored credentials found across candidates', {
+        identityCandidates,
+        lastError,
+      });
+    }
+
+    if (hydrated) {
+      const loadFilesFn = loadFilesRef.current;
+      if (loadFilesFn) {
+        try {
+          await loadFilesFn();
+        } catch (loadErr) {
+          console.warn('⚠️ [StorageCredentials] Failed to load files after hydration', loadErr);
+        }
+      }
+
+      const loadStorageQuotaFn = loadStorageQuotaRef.current;
+      if (loadStorageQuotaFn) {
+        try {
+          await loadStorageQuotaFn();
+        } catch (quotaErr) {
+          console.warn('⚠️ [StorageCredentials] Failed to load storage quota after hydration', quotaErr);
+        }
+      }
+    }
+  }, [apiEndpoint, getStorageIdentityCandidates, resolveIdentifiersForEmail, upsertDriveAccount]);
+
   const fetchDriveUserInfo = React.useCallback(async (accessToken: string) => {
     try {
       const response = await fetch('https://www.googleapis.com/drive/v3/about?fields=user', {
@@ -365,7 +644,25 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
   // Load Google Drive token from encrypted metadata when user unlocks
   useEffect(() => {
     const loadTokenFromMetadata = async () => {
-      if (!authenticatedUser?.id || !authenticatedUser?.pnName) {
+      const identityId = deriveIdentityKey();
+      if (!authenticatedUser?.id || !identityId) {
+        console.warn('⚠️ [loadTokenFromMetadata] Missing authenticated identity details', {
+          hasAuthenticatedUser: !!authenticatedUser,
+          hasId: !!authenticatedUser?.id,
+          identityId,
+        });
+        return;
+      }
+
+      const effectivePnName =
+        authenticatedUser?.pnName ||
+        resolvedAuth?.pnName ||
+        (authenticatedUser as any)?.username ||
+        (authenticatedUser as any)?.name ||
+        null;
+
+      if (!effectivePnName) {
+        console.warn('⚠️ [loadTokenFromMetadata] No pnName available yet – deferring restore');
         return;
       }
 
@@ -379,14 +676,11 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
 
       try {
         const passcode = sessionStorage.getItem('pn_session_passcode');
-        if (!passcode) {
-          return;
-        }
+
+        await hydrateStorageCredentialsFromAPI();
 
         const { SecureMetadataStorage } = await import('../../utils/secureMetadataStorage');
         const { SecureMetadataCrypto } = await import('../../utils/secureMetadata');
-
-        await hydrateStorageCredentialsFromAPI(authenticatedUser.id);
 
         try {
           await SecureMetadataStorage.syncMetadataFromCloud(authenticatedUser.id);
@@ -408,14 +702,21 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
           return;
         }
 
-        const decrypted = await SecureMetadataCrypto.decryptMetadata(
-          metadata,
-          authenticatedUser.pnName,
-          passcode
-        );
+        if (!passcode) {
+          console.warn('⚠️ [loadTokenFromMetadata] Passcode not available yet – stored encrypted metadata for later');
+          return;
+        }
+
+        const decrypted = await SecureMetadataCrypto.decryptMetadata(metadata, effectivePnName, passcode);
 
         const storedCreds = decrypted.storageCredentials?.googleDriveAccounts || decrypted.storageCredentials?.googleDrive;
         const credsArray = Array.isArray(storedCreds) ? storedCreds : storedCreds ? [storedCreds] : [];
+
+        if (decrypted.storageCredentials) {
+          persistStorageCredentialsToAPI(decrypted.storageCredentials).catch((error) => {
+            console.warn('⚠️ [StorageCredentials] Failed to persist during load (non-blocking):', error);
+          });
+        }
 
         for (const creds of credsArray) {
           const token = creds?.accessToken;
@@ -457,7 +758,16 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
 
     loadTokenFromMetadata();
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [authenticatedUser?.id, authenticatedUser?.pnName, aggregatorService, hydrateStorageCredentialsFromAPI]);
+  }, [
+    authenticatedUser?.id,
+    authenticatedUser?.pnName,
+    aggregatorService,
+    hydrateStorageCredentialsFromAPI,
+    persistStorageCredentialsToAPI,
+    resolvedAuth?.publicKey,
+    resolvedAuth?.pnName,
+    resolvedAuth?.passcode,
+  ]);
 
   // Resolve auth credentials
   useEffect(() => {
@@ -533,8 +843,11 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
         
         if (pnName && publicKey) {
           console.log('✅ [FileStorageAggregator] Auth resolved from prop:', { hasPnName: !!pnName, publicKey: publicKey.substring(0, 20) + '...' });
-          const resolved = { pnName, publicKey, passcode: passcode || undefined };
-          setResolvedAuth(resolved);
+          setResolvedAuth((prev) => ({
+            pnName,
+            publicKey,
+            passcode: passcode || prev?.passcode,
+          }));
           setError(null);
           return;
         } else {
@@ -576,7 +889,11 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
           
           if (pnName && publicKey) {
             console.log('✅ [FileStorageAggregator] Auth resolved from storage');
-            setResolvedAuth({ pnName, publicKey, passcode: passcode || undefined });
+            setResolvedAuth((prev) => ({
+              pnName,
+              publicKey,
+              passcode: passcode || prev?.passcode,
+            }));
             setError(null);
           } else {
             console.warn('⚠️ [FileStorageAggregator] Missing credentials from storage:', { hasPnName: !!pnName, hasPublicKey: !!publicKey });
@@ -599,11 +916,16 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
   const loadFileMetadata = React.useCallback(async (filesToLoad: AggregatedFile[]) => {
     try {
       console.log('📋 [Metadata] Loading file metadata...', { fileCount: filesToLoad.length });
-      const backend = aggregatorService?.getBackend('google_drive');
+      const { backend, backendId, keyPrefix } = resolveActiveBackendEntry();
       if (backend && backend.isConnected() && resolvedAuth?.pnName) {
         try {
-          const { GoogleDriveMetadataService } = await import('../../services/storage/GoogleDriveMetadataService');
-          const token = (backend as any).token || localStorage.getItem('google_drive_token');
+      const { GoogleDriveMetadataService } = await import('../../services/storage/GoogleDriveMetadataService');
+          const localTokenKey = keyPrefix
+            ? `${keyPrefix}_token`
+            : backendId
+              ? `${backendId}_token`
+              : 'google_drive_token';
+          const token = (backend as any).token || localStorage.getItem(localTokenKey);
 
           if (token) {
             console.log('✅ [Metadata] Google Drive connected, loading owner index...');
@@ -706,7 +1028,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
     } catch (err) {
       console.error('Failed to load file metadata:', err);
     }
-  }, [aggregatorService, resolvedAuth, authenticatedUser, metadataIndexService]);
+  }, [aggregatorService, resolvedAuth, authenticatedUser, metadataIndexService, resolveActiveBackendEntry]);
 
   const loadFiles = React.useCallback(async () => {
     if (isLoadingFilesRef.current) {
@@ -735,6 +1057,25 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
         setIsLoading(false);
         setFiles([]); // Set empty files, don't show error
         return;
+      }
+
+      const backendEntries = typeof aggregatorService.listBackendEntries === 'function'
+        ? aggregatorService.listBackendEntries()
+        : [];
+      const connectedEntries = backendEntries.filter(({ backend }) => backend.isConnected());
+
+      if (connectedEntries.length === 0) {
+        console.log('ℹ️ [loadFiles] No connected storage backends yet; skipping owner index load until connection completes', {
+          backendEntries: backendEntries.map(({ id }) => id),
+          connectedBackends: connectedEntries.map(({ id }) => id),
+        });
+        setFiles([]);
+        setIsLoading(false);
+        return;
+      }
+
+      if (!activeBackendId) {
+        setActiveBackendId((prev) => prev || connectedEntries[0]?.id || null);
       }
       
       // Try to generate pN identifier - if it fails, backend will search for folders directly
@@ -825,42 +1166,90 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
       if (!currentPnIdentifier) {
         console.warn('⚠️ [loadFiles] Unable to determine pN identifier - owner index cannot be loaded until credentials are available');
       }
+
+      const activeEntry =
+        (activeBackendId && connectedEntries.find(({ id }) => id === activeBackendId)) ||
+        connectedEntries[0] ||
+        null;
+
+      if (!activeEntry) {
+        console.log('ℹ️ [loadFiles] No active storage entry resolved yet; will retry after connection completes', {
+          activeBackendId,
+          connectedBackendIds: connectedEntries.map(({ id }) => id),
+        });
+        setIsLoading(false);
+        return;
+      }
+
+      const backendId = activeEntry.id;
+      const backend = activeEntry.backend as GoogleDriveBackend;
+      const keyPrefix =
+        getDriveAccountByBackendId(backendId)?.keyPrefix ||
+        (typeof backend.getStorageKeyPrefix === 'function' ? backend.getStorageKeyPrefix() : null);
+
+      if (!backend.isConnected()) {
+        console.log('ℹ️ [loadFiles] Active storage backend not connected yet; will retry after connection completes', {
+          backendId,
+          keyPrefix,
+        });
+        setIsLoading(false);
+        return;
+      }
       
       // PRIMARY: Load files from owner-file-index.json (contains ALL files - private, public, friends)
       // This is the source of truth for the owner's files - same logic as aggregator browser uses for public files
-      const backend = aggregatorService?.getBackend('google_drive');
       if (backend && backend.isConnected() && currentPnIdentifier) {
         try {
           const { GoogleDriveMetadataService } = await import('../../services/storage/GoogleDriveMetadataService');
-          const token = (backend as any).token || localStorage.getItem('google_drive_token');
+          const localTokenKey = keyPrefix
+            ? `${keyPrefix}_token`
+            : backendId
+              ? `${backendId}_token`
+              : 'google_drive_token';
+          const token = (backend as any).token || localStorage.getItem(localTokenKey);
           
           if (token) {
-            console.log('📋 [loadFiles] Loading files from owner index (same as aggregator browser)...', { pnIdentifier: currentPnIdentifier });
+            console.warn('📋 [loadFiles] Loading files from owner index (same as aggregator browser)...', { pnIdentifier: currentPnIdentifier });
             const pnFolderId = await GoogleDriveMetadataService.getOrCreatePNFolder(token, currentPnIdentifier);
             const metadataFolderId = await GoogleDriveMetadataService.getOrCreateMetadataFolder(token, pnFolderId);
             const ownerIndex = await GoogleDriveMetadataService.getOwnerFileIndex(token, metadataFolderId, currentPnIdentifier);
             
-            console.log('📋 [loadFiles] Owner index loaded:', { 
+            console.warn('📋 [loadFiles] Owner index response', { 
               hasIndex: !!ownerIndex, 
               fileCount: ownerIndex?.files?.length || 0,
-              indexKeys: ownerIndex ? Object.keys(ownerIndex) : []
+              indexKeys: ownerIndex ? Object.keys(ownerIndex) : [],
+              ownerIndexSample: ownerIndex?.files?.slice?.(0, 3)
             });
             
             if (ownerIndex && ownerIndex.files && ownerIndex.files.length > 0) {
-              console.log(`✅ [loadFiles] Found ${ownerIndex.files.length} file(s) in owner index - using as source of truth`);
+              console.warn(`✅ [loadFiles] Using owner index as source`, { ownerIndexLength: ownerIndex.files.length });
               
               // Convert owner index entries to AggregatedFile format (same structure as aggregator browser)
-              const aggregatedFiles: AggregatedFile[] = ownerIndex.files.map((entry: any) => ({
-                id: entry.fileId,
-                backend: 'google_drive',
-                backendFileId: entry.googleDriveFileId,
-                name: entry.fileName,
-                originalName: entry.originalName || entry.fileName,
-                mimeType: entry.mimeType,
-                size: entry.size?.toString() || '0',
-                encrypted: true, // All files in owner index are encrypted
-                visibility: entry.visibility || 'private'
-              }));
+              const aggregatedFiles: AggregatedFile[] = ownerIndex.files.map((entry: any) => {
+                const derivedMime =
+                  entry.mimeType ||
+                  (entry.fileName?.toLowerCase().endsWith('.encrypted') ? 'application/octet-stream' : undefined);
+
+                const normalizedName = entry.fileName || entry.originalName || 'Untitled';
+                const parsedSize = typeof entry.size === 'number' ? entry.size : Number(entry.size || 0);
+
+                return {
+                  id: entry.fileId,
+                  backend: backendId,
+                  backendFileId: entry.googleDriveFileId,
+                  name: normalizedName,
+                  originalName: entry.originalName || normalizedName,
+                  mimeType: derivedMime,
+                  size: Number.isFinite(parsedSize) ? parsedSize.toString() : '0',
+                  encrypted: true, // All files in owner index are encrypted
+                  visibility: entry.visibility || 'private',
+                };
+              });
+
+              console.warn('📄 [loadFiles] Aggregated owner index files', {
+                aggregatedFiles,
+                rawOwnerIndex: ownerIndex.files,
+              });
               
               setFiles(aggregatedFiles);
               
@@ -870,7 +1259,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
                 const fileId = entry.fileId;
                 const publicMetadata: PublicMetadata = {
                   fileId: fileId,
-                  backend: 'google_drive',
+                  backend: backendId,
                   backendFileId: entry.googleDriveFileId,
                   name: entry.originalName || entry.fileName,
                   description: entry.description,
@@ -905,10 +1294,10 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
                     const shareToken = typeof entry.publicToken === 'string'
                       ? JSON.parse(entry.publicToken)
                       : entry.publicToken;
-                    const backendIdForCache = (backend as any)?.id || 'google_drive';
+                    const backendIdForCache = backendId;
                     const cacheKey = makeShareTokenCacheKey(backendIdForCache, entry.googleDriveFileId);
                     shareTokenCache.current.set(cacheKey, shareToken);
-                    console.log('💾 [loadFiles] Cached share token from owner index for file:', fileId, { hasToken: !!shareToken });
+                    console.warn('💾 [loadFiles] Cached share token from owner index for file:', fileId, { hasToken: !!shareToken });
                   } catch (e) {
                     console.warn('⚠️ [loadFiles] Failed to cache token from owner index:', e, { publicToken: entry.publicToken });
                   }
@@ -919,10 +1308,10 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
               
               setFileMetadataMap(metadataMap);
               setIsLoading(false);
-              console.log('✅ [loadFiles] Successfully loaded from owner index - ready for token-based decryption');
+              console.warn('✅ [loadFiles] Successfully loaded from owner index - ready for token-based decryption', { aggregatedCount: ownerIndex.files.length });
               return; // Successfully loaded from owner index
             } else {
-              console.log('📋 [loadFiles] Owner index is empty or doesn\'t exist, falling back to scanning Google Drive');
+              console.warn('📋 [loadFiles] Owner index empty or missing, falling back to Drive scan');
             }
           } else {
             console.warn('⚠️ [loadFiles] No Google Drive token available for owner index');
@@ -931,21 +1320,33 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
           console.error('❌ [loadFiles] Failed to load from owner index, falling back to scanning:', ownerIndexError);
         }
       } else {
-        console.warn('⚠️ [loadFiles] Cannot load from owner index:', { 
+        console.log('ℹ️ [loadFiles] Owner index skipped until backend is ready', {
+          backendId,
           hasBackend: !!backend, 
           isConnected: backend?.isConnected(), 
-          hasPnIdentifier: !!currentPnIdentifier 
+          hasPnIdentifier: !!currentPnIdentifier,
+          availableBackendIds:
+            typeof aggregatorService?.listBackendEntries === 'function'
+              ? aggregatorService.listBackendEntries().map(({ id }) => id)
+              : [],
+          connectedBackendIds:
+            typeof aggregatorService?.listBackendEntries === 'function'
+              ? aggregatorService
+                  .listBackendEntries()
+                  .filter(({ backend: entryBackend }) => entryBackend.isConnected())
+                  .map(({ id }) => id)
+              : [],
         });
       }
       
       // FALLBACK: Scan Google Drive if owner index doesn't exist or is empty (backwards compatibility)
       // BUT: Still try to load tokens from owner index for these files
       try {
-        console.log('📁 [loadFiles] Falling back to Google Drive scan...');
+        console.warn('📁 [loadFiles] Falling back to Google Drive scan...');
         const aggregatedFiles = await aggregatorService.aggregateFiles(currentPnIdentifier || undefined);
-        console.log(`📁 [loadFiles] Found ${aggregatedFiles.length} file(s) from Google Drive scan`);
+        console.warn('📁 [loadFiles] Google Drive scan results', { count: aggregatedFiles.length });
         if (aggregatedFiles.length === 0) {
-          console.log('📁 [loadFiles] No files found in Drive scan - folder may not exist yet');
+          console.warn('📁 [loadFiles] No files found in Drive scan - folder may not exist yet');
           setFiles([]);
           setFileMetadataMap(new Map());
           setIsLoading(false);
@@ -957,7 +1358,12 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
         if (backend && backend.isConnected() && currentPnIdentifier) {
           try {
             const { GoogleDriveMetadataService } = await import('../../services/storage/GoogleDriveMetadataService');
-            const token = (backend as any).token || localStorage.getItem('google_drive_token');
+            const localTokenKey = keyPrefix
+              ? `${keyPrefix}_token`
+              : backendId
+                ? `${backendId}_token`
+                : 'google_drive_token';
+            const token = (backend as any).token || localStorage.getItem(localTokenKey);
             if (token) {
               const pnFolderId = await GoogleDriveMetadataService.getOrCreatePNFolder(token, currentPnIdentifier);
               const metadataFolderId = await GoogleDriveMetadataService.getOrCreateMetadataFolder(token, pnFolderId);
@@ -1004,7 +1410,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
       setIsLoading(false);
       isLoadingFilesRef.current = false;
     }
-  }, [aggregatorService, authenticatedUser, resolvedAuth, loadFileMetadata]);
+  }, [aggregatorService, authenticatedUser, resolvedAuth, loadFileMetadata, resolveActiveBackendEntry]);
 
   const handleTogglePublic = async (file: AggregatedFile) => {
     try {
@@ -1284,6 +1690,14 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
     }
   }, [aggregatorService]);
 
+  React.useEffect(() => {
+    loadFilesRef.current = loadFiles;
+  }, [loadFiles]);
+
+  React.useEffect(() => {
+    loadStorageQuotaRef.current = loadStorageQuota;
+  }, [loadStorageQuota]);
+
   // Initialize and restore connections (legacy localStorage fallback)
   useEffect(() => {
     if (!aggregatorService || hasInitializedLegacyRef.current) {
@@ -1545,9 +1959,9 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
       await aggregatorService.ensureInitialized();
 
       // Resolve user info so we can scope the backend to a specific account
-      const oauthUserInfo = await fetchDriveUserInfo(token);
-      const connectedEmail = oauthUserInfo?.email || null;
-      const identifiers = resolveIdentifiersForEmail(connectedEmail);
+    const oauthUserInfo = await fetchDriveUserInfo(token);
+    const connectedEmail = oauthUserInfo?.email || null;
+    const identifiers = resolveIdentifiersForEmail(connectedEmail);
 
       const backend = await upsertDriveAccount({
         backendId: identifiers.backendId,
@@ -1563,65 +1977,97 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
 
       setActiveBackendId(identifiers.backendId);
 
-      // Save token and refresh token to encrypted pN metadata for persistence
-      if (resolvedAuth?.pnName && resolvedAuth?.passcode && authenticatedUser?.id) {
+      // Resolve metadata auth inputs (pnName + passcode) so we can encrypt credentials
+      const resolvedCredentials = getResolvedAuthCredentials();
+      let metadataPnName =
+        resolvedCredentials?.pnName ||
+        authenticatedUser?.pnName ||
+        (authenticatedUser as any)?.username ||
+        (authenticatedUser as any)?.name ||
+        null;
+      let metadataPasscode = resolvedCredentials?.passcode || null;
+      if (!metadataPasscode) {
         try {
-          const { SecureMetadataStorage } = await import('../../utils/secureMetadataStorage');
-          const { SecureMetadataCrypto } = await import('../../utils/secureMetadata');
-
-          const existingMetadata = await SecureMetadataStorage.getMetadata(authenticatedUser.id);
-          let updatedStorageCredentials: any = {};
-
-          if (existingMetadata) {
-            try {
-              const decrypted = await SecureMetadataCrypto.decryptMetadata(
-                existingMetadata,
-                resolvedAuth.pnName,
-                resolvedAuth.passcode
-              );
-              updatedStorageCredentials = { ...(decrypted.storageCredentials || {}) };
-            } catch (decryptError) {
-              console.warn('⚠️ [handleConnectGoogleDrive] Failed to decrypt existing storage credentials:', decryptError);
-            }
-          }
-
-          const newAccountEntry = {
-            backendId: identifiers.backendId,
-            keyPrefix: identifiers.keyPrefix,
-            accessToken: token,
-            refreshToken: tokenData.refreshToken,
-            email: connectedEmail,
-            connectedAt: new Date().toISOString(),
-            expiresIn: tokenData.expiresIn,
-          };
-
-          const existingAccounts = Array.isArray(updatedStorageCredentials.googleDriveAccounts)
-            ? [...updatedStorageCredentials.googleDriveAccounts]
-            : [];
-
-          const filteredAccounts = existingAccounts.filter((account) => account.backendId !== identifiers.backendId);
-          filteredAccounts.push(newAccountEntry);
-
-          updatedStorageCredentials.googleDriveAccounts = filteredAccounts;
-
-          await SecureMetadataStorage.updateMetadataField(
-            authenticatedUser.id,
-            resolvedAuth.pnName,
-            resolvedAuth.passcode,
-            'storageCredentials',
-            updatedStorageCredentials
-          );
-          console.log('✅ [handleConnectGoogleDrive] Saved Google Drive account credentials to encrypted metadata');
-
-          const latestMetadata = await SecureMetadataStorage.getMetadata(authenticatedUser.id);
-          if (latestMetadata) {
-            await persistStorageCredentialsToAPI(authenticatedUser.id, latestMetadata);
-          }
-        } catch (metadataError) {
-          console.warn('⚠️ [handleConnectGoogleDrive] Failed to save token to metadata (non-critical):', metadataError);
-          // Don't fail the connection if metadata save fails
+          metadataPasscode = sessionStorage.getItem('pn_session_passcode');
+        } catch (e) {
+          metadataPasscode = null;
         }
       }
+
+      if (!metadataPnName && authenticatedUser?.id && typeof authenticatedUser.id === 'string') {
+        const idParts = authenticatedUser.id.split('-');
+        if (idParts.length > 0 && idParts[0] !== 'did:key') {
+          metadataPnName = idParts[0];
+        }
+      }
+
+    const newAccountEntry = {
+      backendId: identifiers.backendId,
+      keyPrefix: identifiers.keyPrefix,
+      accessToken: token,
+      refreshToken: tokenData.refreshToken,
+      email: connectedEmail,
+      connectedAt: new Date().toISOString(),
+      expiresIn: tokenData.expiresIn,
+    };
+
+    const mergeAccountIntoCredentials = (base?: any) => {
+      const existingAccounts = Array.isArray(base?.googleDriveAccounts)
+        ? [...base.googleDriveAccounts]
+        : [];
+      const filteredAccounts = existingAccounts.filter(
+        (account: any) => account.backendId !== identifiers.backendId
+      );
+      filteredAccounts.push(newAccountEntry);
+      return {
+        ...(base || {}),
+        googleDriveAccounts: filteredAccounts,
+      };
+    };
+
+    let updatedStorageCredentials: any = mergeAccountIntoCredentials();
+
+    // Save token and refresh token to encrypted pN metadata for persistence (optional)
+    if (metadataPnName && metadataPasscode && authenticatedUser?.id) {
+      try {
+        const { SecureMetadataStorage } = await import('../../utils/secureMetadataStorage');
+        const { SecureMetadataCrypto } = await import('../../utils/secureMetadata');
+
+        const existingMetadata = await SecureMetadataStorage.getMetadata(authenticatedUser.id);
+        let baseCredentials: any = {};
+
+        if (existingMetadata) {
+          try {
+            const decrypted = await SecureMetadataCrypto.decryptMetadata(
+              existingMetadata,
+              metadataPnName,
+              metadataPasscode
+            );
+            baseCredentials = { ...(decrypted.storageCredentials || {}) };
+          } catch (decryptError) {
+            console.warn('⚠️ [handleConnectGoogleDrive] Failed to decrypt existing storage credentials:', decryptError);
+          }
+        }
+
+        updatedStorageCredentials = mergeAccountIntoCredentials(baseCredentials);
+
+        await SecureMetadataStorage.updateMetadataField(
+          authenticatedUser.id,
+          metadataPnName,
+          metadataPasscode,
+          'storageCredentials',
+          updatedStorageCredentials
+        );
+        console.log('✅ [handleConnectGoogleDrive] Saved Google Drive account credentials to encrypted metadata');
+      } catch (metadataError) {
+        console.warn('⚠️ [handleConnectGoogleDrive] Failed to save token to metadata (non-critical):', metadataError);
+        // Don't fail the connection if metadata save fails
+      }
+    } else {
+      console.warn('ℹ️ [handleConnectGoogleDrive] Skipping secure metadata update; session passcode unavailable');
+    }
+
+    await persistStorageCredentialsToAPI(updatedStorageCredentials);
 
       // Persist refresh token for local fallback using scoped key prefix
       if (tokenData.refreshToken) {
@@ -1734,7 +2180,39 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
 
     // Update resolvedAuth state for future use
     if (!resolvedAuth || resolvedAuth.pnName !== pnName || resolvedAuth.publicKey !== publicKey) {
-      setResolvedAuth({ pnName: pnName!, publicKey: publicKey! });
+      let sessionPasscode: string | null = passcodeToUse;
+      if (!sessionPasscode) {
+        try {
+          sessionPasscode = sessionStorage.getItem('pn_session_passcode');
+        } catch (e) {
+          sessionPasscode = null;
+        }
+      }
+      setResolvedAuth((prev) => ({
+        pnName: pnName!,
+        publicKey: publicKey!,
+        passcode: sessionPasscode || prev?.passcode,
+      }));
+    } else if (!resolvedAuth.passcode) {
+      // Ensure we hydrate passcode if it was missing
+      let sessionPasscode: string | null = passcodeToUse;
+      if (!sessionPasscode) {
+        try {
+          sessionPasscode = sessionStorage.getItem('pn_session_passcode');
+        } catch (e) {
+          sessionPasscode = null;
+        }
+      }
+      if (sessionPasscode) {
+        setResolvedAuth((prev) =>
+          prev
+            ? {
+                ...prev,
+                passcode: sessionPasscode || prev.passcode,
+              }
+            : prev
+        );
+      }
     }
 
     try {

@@ -118,9 +118,10 @@ class ProductionServer {
     this.app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
     // Request logging
+    // Request logging (development only)
     this.app.use((req, res, next) => {
       if (NODE_ENV === 'development') {
-        console.log(`${new Date().toISOString()} - ${req.method} ${req.path}`);
+        console.log(`${new Date().toISOString()} - ${req.method} ${req.originalUrl}`);
       }
       next();
     });
@@ -428,27 +429,27 @@ class ProductionServer {
       }
     });
 
-    // PUT /api/storage/credentials/:identityId - Save encrypted storage credentials
+    // PUT /api/storage/credentials/:identityId - Save storage credentials (server encrypted)
     this.app.put('/api/storage/credentials/:identityId', async (req, res) => {
       try {
         const { identityId } = req.params;
-        const { encryptedMetadata, cid } = req.body;
+        const { credentials, cid } = req.body;
 
         if (!identityId) {
           return res.status(400).json({ error: 'Missing identityId parameter' });
         }
 
-        if (!encryptedMetadata) {
-          return res.status(400).json({ error: 'Missing encryptedMetadata in request body' });
+        if (!credentials) {
+          return res.status(400).json({ error: 'Missing credentials in request body' });
         }
 
         const { storageCredentialsService } = await import('./server/modules/storageCredentialsService');
-        const record = await storageCredentialsService.upsertCredentials(identityId, encryptedMetadata, cid);
+        const record = await storageCredentialsService.upsertCredentials(identityId, credentials, cid);
 
         return res.json({
           success: true,
           identityId: record.identityId,
-          cid: record.cid,
+          cid: record.cid ?? null,
           updatedAt: record.updatedAt
         });
       } catch (error: any) {
@@ -479,7 +480,7 @@ class ProductionServer {
         return res.json({
           success: true,
           identityId: record.identityId,
-          encryptedMetadata: record.encryptedMetadata,
+          credentials: record.credentials,
           cid: record.cid,
           updatedAt: record.updatedAt,
           createdAt: record.createdAt
