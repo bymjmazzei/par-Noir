@@ -370,6 +370,49 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
     [apiEndpoint, getStorageIdentityCandidates]
   );
 
+  const fetchStoredCredentialsPayload = React.useCallback(
+    async (): Promise<{ identityId: string; credentials: any } | null> => {
+      const identityCandidates = getStorageIdentityCandidates();
+      for (const identityId of identityCandidates) {
+        if (!identityId) {
+          continue;
+        }
+
+        try {
+          const response = await fetch(
+            `${apiEndpoint}/api/storage/credentials/${encodeURIComponent(identityId)}`
+          );
+
+          if (response.status === 404) {
+            continue;
+          }
+
+          if (!response.ok) {
+            const errorText = await response.text().catch(() => 'Unknown error');
+            console.debug('ℹ️ [StorageCredentials] Unable to fetch stored payload for merge', {
+              identityId,
+              status: response.status,
+              error: errorText,
+            });
+            continue;
+          }
+
+          const result = await response.json();
+          if (result?.credentials) {
+            return { identityId, credentials: result.credentials };
+          }
+        } catch (error) {
+          console.debug('ℹ️ [StorageCredentials] Fetch for merge failed (non-blocking)', {
+            error,
+          });
+        }
+      }
+
+      return null;
+    },
+    [apiEndpoint, getStorageIdentityCandidates]
+  );
+
   const upsertDriveAccount = React.useCallback(async (
     params: {
       backendId: string;
@@ -2100,6 +2143,16 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
         }
       }
 
+    let serverStoredCredentials: any = null;
+    try {
+      const fetched = await fetchStoredCredentialsPayload();
+      serverStoredCredentials = fetched?.credentials || null;
+    } catch (serverFetchError) {
+      console.debug('ℹ️ [handleConnectGoogleDrive] Unable to fetch stored credentials payload for merge', {
+        error: serverFetchError,
+      });
+    }
+
     const newAccountEntry = {
       backendId: identifiers.backendId,
       keyPrefix: identifiers.keyPrefix,
@@ -2124,7 +2177,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
       };
     };
 
-    let updatedStorageCredentials: any = mergeAccountIntoCredentials();
+    let updatedStorageCredentials: any = mergeAccountIntoCredentials(serverStoredCredentials);
 
     // Save token and refresh token to encrypted pN metadata for persistence (optional)
     if (metadataPnName && metadataPasscode && authenticatedUser?.id) {
@@ -2148,7 +2201,12 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
           }
         }
 
-        updatedStorageCredentials = mergeAccountIntoCredentials(baseCredentials);
+        const baseForMerge =
+          baseCredentials && Object.keys(baseCredentials).length > 0
+            ? baseCredentials
+            : serverStoredCredentials;
+
+        updatedStorageCredentials = mergeAccountIntoCredentials(baseForMerge);
 
         await SecureMetadataStorage.updateMetadataField(
           authenticatedUser.id,
