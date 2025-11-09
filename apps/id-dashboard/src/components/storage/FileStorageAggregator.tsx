@@ -271,6 +271,14 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
     }
   }, []);
 
+  const persistDriveAccounts = React.useCallback((accounts: DriveAccountState[]) => {
+    try {
+      localStorage.setItem(DRIVE_ACCOUNTS_STORAGE_KEY, JSON.stringify(accounts));
+    } catch (storageError) {
+      console.warn('⚠️ [DriveAccounts] Unable to persist drive accounts', storageError);
+    }
+  }, []);
+
   const removeDriveAccount = React.useCallback((backendId: string) => {
     let nextActiveId: string | null = null;
 
@@ -569,14 +577,6 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
       isNew: true
     };
   }, [driveAccounts]);
-
-  const persistDriveAccounts = React.useCallback((accounts: DriveAccountState[]) => {
-    try {
-      localStorage.setItem(DRIVE_ACCOUNTS_STORAGE_KEY, JSON.stringify(accounts));
-    } catch (storageError) {
-      console.warn('⚠️ [DriveAccounts] Unable to persist drive accounts', storageError);
-    }
-  }, []);
 
   const persistStorageCredentialsToAPI = React.useCallback(
     async (credentialsPayload?: any, cid?: string | null) => {
