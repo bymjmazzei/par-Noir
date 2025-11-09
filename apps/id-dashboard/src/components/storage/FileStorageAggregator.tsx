@@ -70,10 +70,9 @@ interface DriveAccountState {
 
 interface FileStorageAggregatorProps {
   authenticatedUser?: AuthSession | CryptoAuthSession | any | null;
-  hideSecureFolderSection?: boolean;
 }
 
-export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ authenticatedUser, hideSecureFolderSection = false }) => {
+export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ authenticatedUser }) => {
   // Cache for share tokens (fileId -> shareToken) - generated during upload for quick access
   const shareTokenCache = React.useRef<Map<string, ShareToken>>(new Map());
   const previewRetryCounts = React.useRef<Map<string, number>>(new Map());
@@ -1355,35 +1354,146 @@ const handleGoogleDriveAuthFailure = React.useCallback(
   // Resolve auth credentials
   useEffect(() => {
     const resolveAuth = async () => {
-      if (!authenticatedUser) {
-        console.warn('⚠️ [FileStorageAggregator] No authenticatedUser prop');
-        return;
+      // Always log - this is critical debugging
+      console.log('🔍 [FileStorageAggregator] Resolving auth...');
+      console.log('🔍 [FileStorageAggregator] authenticatedUser prop:', authenticatedUser);
+      
+      // Try prop first
+      if (authenticatedUser) {
+        // Safely get keys without breaking if object has getters
+        try {
+          console.log('🔍 [FileStorageAggregator] authenticatedUser keys:', Object.keys(authenticatedUser));
+          console.log('🔍 [FileStorageAggregator] authenticatedUser structure:', {
+            id: authenticatedUser.id,
+            pnName: authenticatedUser.pnName,
+            publicKey: authenticatedUser.publicKey,
+            nickname: authenticatedUser.nickname,
+            username: (authenticatedUser as any).username,
+            name: (authenticatedUser as any).name,
+            fullObject: JSON.stringify(authenticatedUser, null, 2)
+          });
+        } catch (e) {
+          console.warn('🔍 [FileStorageAggregator] Could not inspect authenticatedUser:', e);
+        }
+        
+        // Try multiple ways to extract pnName
+        let pnName = authenticatedUser.pnName;
+        if (!pnName) {
+          pnName = (authenticatedUser as any).username;
+        }
+        if (!pnName) {
+          pnName = (authenticatedUser as any).name;
+        }
+        if (!pnName && authenticatedUser.id && typeof authenticatedUser.id === 'string') {
+          // Last resort: try to extract from id if it's a username pattern
+          const idParts = authenticatedUser.id.split('-');
+          if (idParts.length > 0 && idParts[0] !== 'did:key') {
+            pnName = idParts[0];
+          }
+        }
+        
+        // Try multiple ways to extract publicKey
+        let publicKey = authenticatedUser.publicKey;
+        if (!publicKey && authenticatedUser.id) {
+          if (typeof authenticatedUser.id === 'string' && authenticatedUser.id.startsWith('did:key:')) {
+            publicKey = authenticatedUser.id;
+          } else if (typeof authenticatedUser.id === 'string') {
+            // Use id as publicKey if it's not a DID
+            publicKey = authenticatedUser.id;
+          }
+        }
+        
+        console.log('🔍 [FileStorageAggregator] Extracted from prop:', { 
+          pnName, 
+          publicKey, 
+          hasId: !!authenticatedUser.id,
+          idValue: authenticatedUser.id,
+          idType: typeof authenticatedUser.id,
+          hasPnName: !!authenticatedUser.pnName,
+          hasUsername: !!(authenticatedUser as any).username,
+          hasName: !!(authenticatedUser as any).name,
+          hasPublicKey: !!authenticatedUser.publicKey
+        });
+        
+        let passcode: string | null = null;
+        try {
+          passcode = sessionStorage.getItem('pn_session_passcode');
+          console.log('🔍 [FileStorageAggregator] Passcode from sessionStorage:', passcode ? 'found' : 'not found');
+        } catch (e) {
+          console.warn('🔍 [FileStorageAggregator] sessionStorage not available');
+        }
+        
+        if (pnName && publicKey) {
+          console.log('✅ [FileStorageAggregator] Auth resolved from prop:', { hasPnName: !!pnName, publicKey: publicKey.substring(0, 20) + '...' });
+          setResolvedAuth((prev) => ({
+            pnName,
+            publicKey,
+            passcode: passcode || prev?.passcode,
+          }));
+          setError(null);
+          return;
+        } else {
+          console.warn('⚠️ [FileStorageAggregator] Missing credentials from prop:', { 
+            pnName, 
+            publicKey,
+            hasPnName: !!pnName, 
+            hasPublicKey: !!publicKey,
+            authenticatedUserKeys: Object.keys(authenticatedUser || {})
+          });
+        }
+      } else {
+        console.log('⚠️ [FileStorageAggregator] No authenticatedUser prop');
       }
-
-      setResolvedAuth({
-        pnName: authenticatedUser.pnName,
-        publicKey: authenticatedUser.publicKey,
-        passcode: authenticatedUser.passcode,
-      });
+      
+      // Fallback: Try to load from storage
+      try {
+        console.log('🔍 [FileStorageAggregator] Trying storage fallback...');
+        const { SecureStorage } = await import('../../utils/storage');
+        const storage = new SecureStorage();
+        await storage.init(); // Initialize database first
+        const session = await storage.getCurrentSession();
+        
+        console.log('🔍 [FileStorageAggregator] Session from storage:', session);
+        
+        if (session) {
+          const pnName = (session as any).pnName || (session as any).username || (session as any).name;
+          const publicKey = (session as any).publicKey || 
+            (session.id && session.id.startsWith('did:key:') ? session.id : session.id);
+          
+          console.log('🔍 [FileStorageAggregator] Extracted from storage:', { hasPnName: !!pnName, publicKey: publicKey.substring(0, 20) + '...', sessionKeys: Object.keys(session) });
+          
+          let passcode: string | null = null;
+          try {
+            passcode = sessionStorage.getItem('pn_session_passcode');
+          } catch (e) {
+            // sessionStorage might not be available
+          }
+          
+          if (pnName && publicKey) {
+            console.log('✅ [FileStorageAggregator] Auth resolved from storage');
+            setResolvedAuth((prev) => ({
+              pnName,
+              publicKey,
+              passcode: passcode || prev?.passcode,
+            }));
+            setError(null);
+          } else {
+            console.warn('⚠️ [FileStorageAggregator] Missing credentials from storage:', { hasPnName: !!pnName, hasPublicKey: !!publicKey });
+          }
+        } else {
+          console.warn('⚠️ [FileStorageAggregator] No session found in storage');
+        }
+      } catch (err) {
+        console.error('❌ [FileStorageAggregator] Error loading from storage:', err);
+      }
     };
-
+    
+    // Wrap in try-catch to prevent unhandled promise rejections
     resolveAuth().catch((err) => {
       console.error('❌ [FileStorageAggregator] Auth resolution failed:', err);
       // Don't break the app - just log the error
     });
   }, [authenticatedUser]);
-
-  React.useEffect(() => {
-    if (resolvedAuth?.pnName && resolvedAuth.publicKey && resolvedAuth.passcode) {
-      const payload = {
-        pnName: resolvedAuth.pnName,
-        publicKey: resolvedAuth.publicKey,
-        passcode: resolvedAuth.passcode,
-      };
-
-      window.dispatchEvent(new CustomEvent('pn-auth-session', { detail: payload }));
-    }
-  }, [resolvedAuth]);
 
   const loadFileMetadata = React.useCallback(async (filesToLoad: AggregatedFile[]) => {
     try {
@@ -3578,79 +3688,75 @@ const handleGoogleDriveAuthFailure = React.useCallback(
 
   return (
     <div className="space-y-6">
-      {!hideSecureFolderSection && (
-        <>
-          {/* Secure Folder / Desktop App Section */}
-          <div className="bg-neutral-900/60 border border-neutral-700 rounded-xl p-6">
-            <div className="flex items-center justify-between">
-              <div className="flex-1">
-                <div className="flex items-center space-x-3 mb-4">
-                  <Lock className="h-5 w-5 text-blue-400" />
-                  <div>
-                    <h3 className="text-lg font-semibold text-white">Secure Folder</h3>
-                    <p className="text-text-secondary text-sm">
-                      Access your encrypted files with the desktop app
-                    </p>
-                  </div>
-                </div>
-
-                <button
-                  onClick={() => setShowDesktopAppInfo(true)}
-                  className="flex items-center space-x-2 text-text-secondary hover:text-text-primary transition-colors"
-                >
-                  <Info className="h-4 w-4" />
-                  <span className="text-sm">About the Desktop App</span>
-                </button>
-              </div>
-
-              <a
-                href="https://github.com/bymjmazzei/par-Noir/releases"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center space-x-2 px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors ml-4"
-              >
-                <Download className="h-4 w-4" />
-                <span>Download Desktop App</span>
-              </a>
-            </div>
+      {/* Secure Folder / Desktop App Section */}
+      <div className="bg-neutral-900/60 border border-neutral-700 rounded-xl p-6">
+        <div className="flex items-center justify-between">
+          <div className="flex-1">
+            <div className="flex items-center space-x-3 mb-4">
+            <Lock className="h-5 w-5 text-blue-400" />
+            <div>
+              <h3 className="text-lg font-semibold text-white">Secure Folder</h3>
+              <p className="text-text-secondary text-sm">
+                Access your encrypted files with the desktop app
+              </p>
           </div>
-
-          {/* Desktop App Info Modal Overlay */}
-          {showDesktopAppInfo && (
-            <div
-              className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4"
-              onClick={() => setShowDesktopAppInfo(false)}
+        </div>
+        
+            <button
+              onClick={() => setShowDesktopAppInfo(true)}
+              className="flex items-center space-x-2 text-text-secondary hover:text-text-primary transition-colors"
             >
-              <div
-                className="bg-neutral-800 rounded-lg p-6 max-w-md w-full text-text-primary border border-neutral-700 shadow-2xl"
-                onClick={(e) => e.stopPropagation()}
-              >
-                <div className="flex justify-between items-center mb-4">
-                  <h3 className="text-lg font-semibold">About the Desktop App</h3>
-                  <button
-                    onClick={() => setShowDesktopAppInfo(false)}
-                    className="text-text-secondary hover:text-text-primary transition-colors"
-                  >
-                    <X className="h-5 w-5" />
-                  </button>
-                </div>
+              <Info className="h-4 w-4" />
+              <span className="text-sm">About the Desktop App</span>
+            </button>
+        </div>
 
-                <p className="text-text-secondary text-sm mb-4">
-                  The par Noir Desktop App provides secure, local access to your encrypted files stored in Google Drive.
-                  Files are automatically synced and encrypted with your pN credentials.
-                </p>
+        <a
+          href="https://github.com/bymjmazzei/par-Noir/releases"
+          target="_blank"
+          rel="noopener noreferrer"
+            className="inline-flex items-center space-x-2 px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors ml-4"
+        >
+          <Download className="h-4 w-4" />
+          <span>Download Desktop App</span>
+        </a>
+      </div>
 
-                <div className="space-y-2 text-xs text-text-secondary">
-                  <p>• Secure local file access</p>
-                  <p>• Automatic encryption/decryption</p>
-                  <p>• Works offline with cached files</p>
-                  <p>• Native desktop integration</p>
-                </div>
-              </div>
-            </div>
-          )}
-        </>
-      )}
+        {/* Desktop App Info Modal Overlay */}
+        {showDesktopAppInfo && (
+          <div 
+            className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4"
+            onClick={() => setShowDesktopAppInfo(false)}
+          >
+            <div 
+              className="bg-neutral-800 rounded-lg p-6 max-w-md w-full text-text-primary border border-neutral-700 shadow-2xl"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex justify-between items-center mb-4">
+                <h3 className="text-lg font-semibold">About the Desktop App</h3>
+          <button
+                  onClick={() => setShowDesktopAppInfo(false)}
+            className="text-text-secondary hover:text-text-primary transition-colors"
+          >
+                  <X className="h-5 w-5" />
+          </button>
+        </div>
+
+              <p className="text-text-secondary text-sm mb-4">
+            The par Noir Desktop App provides secure, local access to your encrypted files stored in Google Drive. 
+            Files are automatically synced and encrypted with your pN credentials.
+          </p>
+              
+          <div className="space-y-2 text-xs text-text-secondary">
+            <p>• Secure local file access</p>
+            <p>• Automatic encryption/decryption</p>
+            <p>• Works offline with cached files</p>
+            <p>• Native desktop integration</p>
+          </div>
+        </div>
+          </div>
+        )}
+      </div>
 
       {/* Secure Cloud Providers */}
       <div className="bg-neutral-900/60 border border-neutral-700 rounded-xl p-6">
