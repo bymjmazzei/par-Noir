@@ -19,6 +19,8 @@ export class GoogleDriveBackend extends AbstractStorageBackend {
   private keyPrefix: string;
   private connected = false;
   private apiEndpoint: string | null = null;
+  private backendId: string;
+  private refreshPromise: Promise<string | null> | null = null;
   
   // Load folder cache from localStorage on init
   private loadFolderCache(): void {
@@ -80,6 +82,7 @@ export class GoogleDriveBackend extends AbstractStorageBackend {
     });
     this.keyPrefix = prefix;
     this.apiEndpoint = config?.apiEndpoint || null;
+    this.backendId = config?.id || prefix;
     
     // Load stored token if available
     try {
@@ -214,97 +217,150 @@ export class GoogleDriveBackend extends AbstractStorageBackend {
    * Refresh access token using refresh token
    */
   private async refreshAccessToken(refreshToken: string): Promise<string | null> {
-    if (this.apiEndpoint) {
+    if (this.refreshPromise) {
+      return this.refreshPromise;
+    }
+
+    this.refreshPromise = (async () => {
+      console.debug(
+        '🔁 [GoogleDriveBackend] Refresh access token',
+        this.apiEndpoint ? 'via API endpoint' : 'directly with Google'
+      );
+
+      if (this.apiEndpoint) {
+        try {
+          const response = await fetch(`${this.apiEndpoint}/api/auth/google-oauth/refresh`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ refreshToken }),
+          });
+
+          const responseText = await response.text();
+
+          if (!response.ok) {
+            let errorData: any;
+            try {
+              errorData = JSON.parse(responseText);
+            } catch {
+              errorData = { error: responseText };
+            }
+            throw new Error(
+              `API refresh failed: ${response.status} ${response.statusText} - ${errorData.error || responseText}`
+            );
+          }
+
+          let tokenData: {
+            access_token: string;
+            refresh_token?: string;
+            expires_in?: number;
+            token_type?: string;
+          };
+
+          try {
+            tokenData = JSON.parse(responseText);
+          } catch (parseError) {
+            throw new Error(`Failed to parse refresh response: ${(parseError as Error).message}`);
+          }
+
+          if (tokenData.refresh_token) {
+            this.refreshToken = tokenData.refresh_token;
+            try {
+              localStorage.setItem(`${this.keyPrefix}_refresh_token`, tokenData.refresh_token);
+            } catch (storageError) {
+              console.warn('⚠️ [GoogleDriveBackend] Unable to persist refreshed refresh token locally:', storageError);
+            }
+          }
+
+          if (tokenData.access_token) {
+            window.dispatchEvent(
+              new CustomEvent('google-drive-token-refreshed', {
+                detail: {
+                  backendId: this.backendId,
+                  accessToken: tokenData.access_token,
+                  refreshToken: this.refreshToken ?? refreshToken,
+                  email: this.userEmail,
+                },
+              })
+            );
+          }
+
+          return tokenData.access_token || null;
+        } catch (apiError) {
+          console.error('⚠️ [GoogleDriveBackend] Failed to refresh token via API endpoint:', apiError);
+        }
+      }
+
       try {
-        const response = await fetch(`${this.apiEndpoint}/api/auth/google-oauth/refresh`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({ refreshToken }),
+        const clientId =
+          import.meta.env.VITE_GOOGLE_DRIVE_CLIENT_ID ||
+          '43740774041-fo57a1gqenc9dmggkcrhjl5cvrp40gnq.apps.googleusercontent.com';
+        const clientSecret = import.meta.env.VITE_GOOGLE_DRIVE_CLIENT_SECRET;
+
+        const params = new URLSearchParams({
+          client_id: clientId,
+          refresh_token: refreshToken,
+          grant_type: 'refresh_token',
         });
 
-        const responseText = await response.text();
+        if (clientSecret) {
+          params.set('client_secret', clientSecret);
+        }
+
+        const response = await fetch('https://oauth2.googleapis.com/token', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/x-www-form-urlencoded',
+          },
+          body: params,
+        });
 
         if (!response.ok) {
-          let errorData: any;
+          let errorBody = '';
           try {
-            errorData = JSON.parse(responseText);
-          } catch {
-            errorData = { error: responseText };
+            errorBody = await response.text();
+          } catch (e) {
+            errorBody = 'Unable to read error body';
           }
-          throw new Error(
-            `API refresh failed: ${response.status} ${response.statusText} - ${errorData.error || responseText}`
-          );
+          throw new Error(`Token refresh failed: ${response.status} ${response.statusText} - ${errorBody}`);
         }
 
-        let tokenData: {
-          access_token: string;
-          refresh_token?: string;
-          expires_in?: number;
-          token_type?: string;
-        };
+        const data = await response.json();
 
-        try {
-          tokenData = JSON.parse(responseText);
-        } catch (parseError) {
-          throw new Error(`Failed to parse refresh response: ${(parseError as Error).message}`);
-        }
-
-        if (tokenData.refresh_token) {
-          this.refreshToken = tokenData.refresh_token;
+        if (data.refresh_token) {
+          this.refreshToken = data.refresh_token;
           try {
-            localStorage.setItem(`${this.keyPrefix}_refresh_token`, tokenData.refresh_token);
+            localStorage.setItem(`${this.keyPrefix}_refresh_token`, data.refresh_token);
           } catch (storageError) {
             console.warn('⚠️ [GoogleDriveBackend] Unable to persist refreshed refresh token locally:', storageError);
           }
         }
 
-        return tokenData.access_token || null;
-      } catch (apiError) {
-        console.error('⚠️ [GoogleDriveBackend] Failed to refresh token via API endpoint:', apiError);
+        if (data.access_token) {
+          window.dispatchEvent(
+            new CustomEvent('google-drive-token-refreshed', {
+              detail: {
+                backendId: this.backendId,
+                accessToken: data.access_token,
+                refreshToken: this.refreshToken ?? refreshToken,
+                email: this.userEmail,
+              },
+            })
+          );
+        }
+
+        return data.access_token || null;
+      } catch (error) {
+        console.error('Failed to refresh token:', error);
+        return null;
       }
-    }
+    })();
 
     try {
-      const clientId =
-        import.meta.env.VITE_GOOGLE_DRIVE_CLIENT_ID ||
-        '43740774041-fo57a1gqenc9dmggkcrhjl5cvrp40gnq.apps.googleusercontent.com';
-      const clientSecret = import.meta.env.VITE_GOOGLE_DRIVE_CLIENT_SECRET;
-
-      const params = new URLSearchParams({
-        client_id: clientId,
-        refresh_token: refreshToken,
-        grant_type: 'refresh_token',
-      });
-
-      if (clientSecret) {
-        params.set('client_secret', clientSecret);
-      }
-
-      const response = await fetch('https://oauth2.googleapis.com/token', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/x-www-form-urlencoded',
-        },
-        body: params,
-      });
-
-      if (!response.ok) {
-        let errorBody = '';
-        try {
-          errorBody = await response.text();
-        } catch (e) {
-          errorBody = 'Unable to read error body';
-        }
-        throw new Error(`Token refresh failed: ${response.status} ${response.statusText} - ${errorBody}`);
-      }
-
-      const data = await response.json();
-      return data.access_token || null;
-    } catch (error) {
-      console.error('Failed to refresh token:', error);
-      return null;
+      return await this.refreshPromise;
+    } finally {
+      this.refreshPromise = null;
     }
   }
 
@@ -427,12 +483,12 @@ export class GoogleDriveBackend extends AbstractStorageBackend {
     // IMPORTANT: For pN folders, search for exact match and exclude subfolders (no parent restriction)
     // For metadata folders (name='_metadata'), parentFolderId will filter correctly
     let searchQuery: string;
+    const sanitizedFolderName = folderName.replace(/'/g, "\\'");
     if (pnIdentifier) {
       // For pN folders: search for EXACT name match
       // CRITICAL: folderName is already "par Noir - pn-XXX", search for EXACT match
       // MUST NOT match "_metadata" folder - exclude it explicitly
-      const exactName = encodeURIComponent(folderName);
-      searchQuery = `name='${exactName}' and name!='_metadata' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
+      searchQuery = `name='${sanitizedFolderName}' and name!='_metadata' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
       // CRITICAL: pN folders are at ROOT level, so if it has a parent, it's wrong
       // We can't easily check "no parent" in Google Drive API, so we'll validate the results
       // If parentFolderId is specified (shouldn't happen for pN folders), add parent filter
@@ -441,10 +497,10 @@ export class GoogleDriveBackend extends AbstractStorageBackend {
       }
     } else if (parentFolderId) {
       // For metadata folders: search inside parent folder
-      searchQuery = `name='${encodeURIComponent(folderName)}' and '${parentFolderId}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`;
+      searchQuery = `name='${sanitizedFolderName}' and '${parentFolderId}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`;
     } else {
       // For base folders: search at root level
-      searchQuery = `name='${encodeURIComponent(folderName)}' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
+      searchQuery = `name='${sanitizedFolderName}' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
     }
     
     const searchResponse = await this.makeRequest(

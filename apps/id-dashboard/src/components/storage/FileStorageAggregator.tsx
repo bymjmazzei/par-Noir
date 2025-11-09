@@ -253,6 +253,58 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
     }
   }, []);
 
+  const persistAllDriveCredentials = React.useCallback(
+    async (override?: { backendId: string; accessToken: string; refreshToken?: string | null; email?: string | null }) => {
+      if (driveAccounts.length === 0) {
+        return;
+      }
+
+      const accountsPayload = driveAccounts
+        .map((account) => {
+          let accessToken: string | null = null;
+          let refreshToken: string | null = null;
+
+          if (override && override.backendId === account.backendId) {
+            accessToken = override.accessToken;
+            refreshToken = override.refreshToken ?? null;
+          } else {
+            try {
+              accessToken = localStorage.getItem(`${account.keyPrefix}_token`);
+              refreshToken = localStorage.getItem(`${account.keyPrefix}_refresh_token`);
+            } catch (storageError) {
+              console.debug('ℹ️ [DriveAccounts] Unable to read cached token for persistence', {
+                backendId: account.backendId,
+                error: storageError,
+              });
+            }
+          }
+
+          if (!accessToken) {
+            return null;
+          }
+
+          return {
+            backendId: account.backendId,
+            keyPrefix: account.keyPrefix,
+            accessToken,
+            refreshToken: refreshToken ?? null,
+            email: override && override.backendId === account.backendId ? override.email ?? account.email : account.email,
+            connectedAt: new Date().toISOString(),
+          };
+        })
+        .filter((entry): entry is NonNullable<typeof entry> => entry !== null);
+
+      if (accountsPayload.length === 0) {
+        return;
+      }
+
+      await persistStorageCredentialsToAPI({
+        googleDriveAccounts: accountsPayload,
+      });
+    },
+    [driveAccounts, persistStorageCredentialsToAPI]
+  );
+
   const getDriveAccountByBackendId = React.useCallback(
     (backendId: string | null | undefined) => {
       if (!backendId) {
@@ -262,6 +314,68 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
     },
     [driveAccounts]
   );
+
+  React.useEffect(() => {
+    const handleTokenRefreshed = (event: Event) => {
+      const detail = (event as CustomEvent<{
+        backendId?: string;
+        accessToken?: string;
+        refreshToken?: string | null;
+        email?: string | null;
+      }>).detail;
+
+      if (!detail?.backendId || !detail.accessToken) {
+        return;
+      }
+
+      const account = getDriveAccountByBackendId(detail.backendId);
+      if (!account) {
+        return;
+      }
+
+      try {
+        localStorage.setItem(`${account.keyPrefix}_token`, detail.accessToken);
+        if (typeof detail.refreshToken === 'string') {
+          localStorage.setItem(`${account.keyPrefix}_refresh_token`, detail.refreshToken);
+        }
+      } catch (storageError) {
+        console.warn('⚠️ [DriveAccounts] Unable to cache refreshed tokens locally', {
+          backendId: account.backendId,
+          error: storageError,
+        });
+      }
+
+      setDriveAccounts((prev) => {
+        const next = prev.map((entry) =>
+          entry.backendId === account.backendId
+            ? {
+                ...entry,
+                email: detail.email ?? entry.email,
+              }
+            : entry
+        );
+        persistDriveAccounts(next);
+        return next;
+      });
+
+      persistAllDriveCredentials({
+        backendId: account.backendId,
+        accessToken: detail.accessToken,
+        refreshToken: detail.refreshToken ?? null,
+        email: detail.email ?? account.email,
+      }).catch((error) => {
+        console.warn('⚠️ [DriveAccounts] Failed to persist refreshed credentials to API', {
+          backendId: account.backendId,
+          error,
+        });
+      });
+    };
+
+    window.addEventListener('google-drive-token-refreshed', handleTokenRefreshed as EventListener);
+    return () => {
+      window.removeEventListener('google-drive-token-refreshed', handleTokenRefreshed as EventListener);
+    };
+  }, [getDriveAccountByBackendId, persistAllDriveCredentials, persistDriveAccounts]);
 
   const resolveActiveBackendEntry = React.useCallback(() => {
     const empty = {
