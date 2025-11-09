@@ -87,18 +87,18 @@ export class FileAggregatorService {
     for (const [backendId, backend] of this.backends.entries()) {
       if (!backend.isConnected()) {
         continue;
-      }
+    }
 
-      try {
+    try {
         const files = await backend.listFiles(undefined, pnIdentifier);
         files.forEach(file => {
           aggregated.push({
-            ...file,
+        ...file,
             backend: backendId,
-            backendFileId: file.id,
+        backendFileId: file.id,
           });
         });
-      } catch (error) {
+    } catch (error) {
         console.error(`Failed to aggregate files from backend ${backendId}:`, error);
       }
     }

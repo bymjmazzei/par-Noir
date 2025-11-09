@@ -264,13 +264,13 @@ class GoogleDriveMetadataService {
 
       // Set file permissions to allow public read (for aggregator scanning)
       try {
-        await drive.permissions.create({
-          fileId: file.data.id,
-          requestBody: {
-            role: 'reader',
-            type: 'anyone'
-          }
-        });
+      await drive.permissions.create({
+        fileId: file.data.id,
+        requestBody: {
+          role: 'reader',
+          type: 'anyone'
+        }
+      });
       } catch (permError) {
         // Permission might already exist or fail, log but don't throw
         console.warn('Failed to set public permissions on index file:', permError.message);

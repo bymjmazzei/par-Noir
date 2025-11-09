@@ -75,7 +75,7 @@ export class CentralMetadataAggregator {
       if (filters?.authorDid) params.append('authorDid', filters.authorDid);
 
       console.log(`🔍 [CentralMetadataAggregator] Fetching from API: ${this.API_ENDPOINT}${this.CENTRAL_INDEX_PATH}`);
-      
+
       const response = await fetch(
         `${this.API_ENDPOINT}${this.CENTRAL_INDEX_PATH}?${params.toString()}`,
         {

@@ -189,12 +189,12 @@ export const GoogleDriveStorage: React.FC = () => {
         });
         await loadFiles();
       } else {
-        const token = localStorage.getItem('google_drive_token');
+      const token = localStorage.getItem('google_drive_token');
         const email = localStorage.getItem('google_drive_email');
         if (!token || !email) {
           throw new Error('No access token or email found');
-        }
-
+      }
+      
         // Get pnIdentifier from authenticated user or use email as fallback
         // In production, this should come from the authenticated pN identity
         const authenticatedUserStr = localStorage.getItem('authenticated_user');
@@ -223,7 +223,7 @@ export const GoogleDriveStorage: React.FC = () => {
         const uploadFormData = new FormData();
         uploadFormData.append('metadata', new Blob([JSON.stringify(metadata)], { type: 'application/json' }));
         uploadFormData.append('file', file);
-
+      
         const uploadResponse = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart', {
           method: 'POST',
           headers: {
@@ -231,7 +231,7 @@ export const GoogleDriveStorage: React.FC = () => {
           },
           body: uploadFormData
         });
-
+      
         if (!uploadResponse.ok) {
           throw new Error(`Upload failed: ${uploadResponse.statusText}`);
         }
@@ -273,8 +273,8 @@ export const GoogleDriveStorage: React.FC = () => {
         }
 
         // If file is public, add to public index (will be handled when visibility is changed)
-        
-        await loadFiles();
+      
+      await loadFiles();
       }
     } catch (err: any) {
       setError(err.message || 'Failed to upload file');

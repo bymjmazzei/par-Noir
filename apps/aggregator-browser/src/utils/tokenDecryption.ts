@@ -136,11 +136,11 @@ function base64ToArrayBuffer(base64: string): ArrayBuffer {
     }
     
     const binary = atob(cleanBase64);
-    const bytes = new Uint8Array(binary.length);
-    for (let i = 0; i < binary.length; i++) {
-      bytes[i] = binary.charCodeAt(i);
-    }
-    return bytes.buffer;
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) {
+    bytes[i] = binary.charCodeAt(i);
+  }
+  return bytes.buffer;
   } catch (error) {
     throw new Error(`Failed to decode base64: ${error instanceof Error ? error.message : 'Unknown error'}. Input length: ${base64?.length || 0}`);
   }

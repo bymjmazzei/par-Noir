@@ -8,6 +8,7 @@ import { getFileAggregatorService } from '../../services/aggregator/FileAggregat
 import { getEncryptionService } from '../../services/aggregator/EncryptionService';
 import { getMetadataIndexService } from '../../services/metadata/MetadataIndexService';
 import { GoogleDriveBackend } from '../../services/storage/GoogleDriveBackend';
+import type { CompanionMetadata } from '../../services/storage/GoogleDriveMetadataService';
 import { AggregatedFile, AuthSession, PublicMetadata, ShareToken, EncryptedFilePackage } from '../../types/aggregator';
 import { AuthSession as CryptoAuthSession } from '../../types/crypto';
 import GoogleDriveIconUrl from '../../assets/icons/google-drive-logo.png?url';
@@ -269,6 +270,216 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
       return null;
     }
   }, []);
+
+  const resolvePnIdentifierForDrive = React.useCallback(async (): Promise<string | undefined> => {
+    if (authenticatedUser?.id && resolvedAuth?.publicKey && typeof crypto !== 'undefined' && crypto.subtle) {
+      try {
+        const combined = `${authenticatedUser.id}:${resolvedAuth.publicKey}`;
+        const data = new TextEncoder().encode(combined);
+        const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+        const hashArray = Array.from(new Uint8Array(hashBuffer));
+        const hexHash = hashArray.map((b) => b.toString(16).padStart(2, '0')).join('');
+        return `pn-${hexHash.substring(0, 12)}`;
+      } catch (err) {
+        console.warn('⚠️ [GoogleDriveSync] Failed to generate hashed pn identifier:', err);
+      }
+    }
+
+    if (resolvedAuth?.pnName) {
+      return resolvedAuth.pnName;
+    }
+
+    if (resolvedAuth?.publicKey) {
+      return `pn-${resolvedAuth.publicKey.substring(0, 12).replace(/[^a-f0-9]/g, '')}`;
+    }
+
+    return undefined;
+  }, [authenticatedUser?.id, resolvedAuth?.pnName, resolvedAuth?.publicKey]);
+
+  const syncGoogleDriveMetadata = React.useCallback(
+    async (file: AggregatedFile, metadata: PublicMetadata, visibility: 'public' | 'private') => {
+      if (!aggregatorService) {
+        return;
+      }
+
+      const metadataAny = metadata as any;
+      const fallbackPublicKey =
+        resolvedAuth?.publicKey ||
+        metadataAny?.creator?.identifier?.value ||
+        metadataAny?.creator?.publicKey ||
+        metadataAny?.author?.did ||
+        null;
+
+      if (!fallbackPublicKey) {
+        console.warn('⚠️ [GoogleDriveSync] Missing public key for metadata sync', { fileId: file.id });
+        return;
+      }
+
+      const backend = aggregatorService.getBackend(file.backend);
+      if (!backend || !(backend instanceof GoogleDriveBackend)) {
+        console.warn('⚠️ [GoogleDriveSync] Backend unavailable for metadata sync', { backendId: file.backend });
+        return;
+      }
+
+      if (!backend.isConnected()) {
+        console.warn('⚠️ [GoogleDriveSync] Backend not connected - skipping metadata sync', { backendId: file.backend });
+        return;
+      }
+
+      let accessToken: string | null = null;
+      if (typeof backend.getAccessToken === 'function') {
+        accessToken = backend.getAccessToken();
+      }
+
+      if (!accessToken) {
+        try {
+          const keyPrefix =
+            typeof (backend as any).getStorageKeyPrefix === 'function'
+              ? (backend as any).getStorageKeyPrefix()
+              : undefined;
+          if (keyPrefix) {
+            accessToken = localStorage.getItem(`${keyPrefix}_token`);
+          }
+        } catch (storageError) {
+          console.warn('⚠️ [GoogleDriveSync] Failed to load Google Drive token from storage:', storageError);
+        }
+      }
+
+      if (!accessToken) {
+        try {
+          accessToken = localStorage.getItem('google_drive_token');
+        } catch {
+          /* ignore */
+        }
+      }
+
+      if (!accessToken) {
+        console.warn('⚠️ [GoogleDriveSync] No Google Drive token available for metadata sync', { backendId: file.backend });
+        return;
+      }
+
+      let pnIdentifier = await resolvePnIdentifierForDrive();
+      if (!pnIdentifier) {
+        pnIdentifier =
+          metadataAny?.owner?.identifier ||
+          `pn-${fallbackPublicKey.substring(0, 12).replace(/[^a-f0-9]/g, '')}`;
+      }
+
+      const didUri = fallbackPublicKey.startsWith('did:')
+        ? fallbackPublicKey
+        : `did:key:${fallbackPublicKey}`;
+
+      const mimeType =
+        file.mimeType ||
+        (metadataAny?.encodingFormat as string | undefined) ||
+        (metadataAny?.schema?.encodingFormat as string | undefined) ||
+        'application/octet-stream';
+
+      const fileTitle = file.encrypted
+        ? file.originalName || file.name.replace(/\.encrypted$/i, '')
+        : file.name;
+      const uploadDate = metadata.uploadDate || file.modifiedTime || new Date().toISOString();
+      const size = parseInt(file.size?.toString() || '0', 10);
+
+      const schema: Record<string, any> = {};
+      if (metadataAny?.schema && typeof metadataAny.schema === 'object') {
+        Object.assign(schema, metadataAny.schema);
+      } else {
+        if (mimeType) {
+          schema.encodingFormat = mimeType;
+        }
+        if (size) {
+          schema.fileSize = size;
+        }
+        if (metadata.genre) {
+          schema.genre = metadata.genre;
+        }
+        if (metadata.category) {
+          schema.category = metadata.category;
+        }
+        if (metadataAny.locationCreated) {
+          schema.locationCreated = metadataAny.locationCreated;
+        }
+        if (metadata.license) {
+          schema.license = metadata.license;
+        }
+        if (metadata.inLanguage) {
+          schema.inLanguage = metadata.inLanguage;
+        }
+        if (metadataAny.width) {
+          schema.width = metadataAny.width;
+        }
+        if (metadataAny.height) {
+          schema.height = metadataAny.height;
+        }
+        if (metadataAny.duration) {
+          schema.duration = metadataAny.duration;
+        }
+        if (metadataAny.bitrate) {
+          schema.bitrate = metadataAny.bitrate;
+        }
+        if (metadataAny.frameRate) {
+          schema.frameRate = metadataAny.frameRate;
+        }
+      }
+
+      const companionMetadata: CompanionMetadata = {
+        fileId: file.id,
+        googleDriveFileId: file.backendFileId,
+        fileName: file.name,
+        originalName: metadata.name || fileTitle,
+        mimeType,
+        size,
+        visibility,
+        uploadedAt: uploadDate,
+        owner: {
+          did: didUri,
+          identifier: pnIdentifier,
+        },
+        tags: metadata.keywords || metadata.tags || [],
+        description: metadata.description,
+        metadata: metadataAny.metadata || {},
+        publicToken: visibility === 'public' ? metadata.publicToken : undefined,
+        thumbnail: metadataAny.thumbnail,
+        schema,
+        engagement:
+          metadata.engagement || {
+            views: 0,
+            likes: 0,
+            comments: 0,
+            shares: 0,
+            lastUpdated: uploadDate,
+          },
+        inReplyTo: metadataAny.inReplyTo,
+        repostOf: metadataAny.repostOf,
+        isPartOf: metadataAny.isPartOf,
+      };
+
+      try {
+        const { GoogleDriveMetadataService } = await import('../../services/storage/GoogleDriveMetadataService');
+        await GoogleDriveMetadataService.createCompanionMetadataFile(accessToken, pnIdentifier, companionMetadata);
+        await GoogleDriveMetadataService.updateOwnerFileIndex(accessToken, pnIdentifier, companionMetadata);
+        await GoogleDriveMetadataService.updatePublicFileIndex(accessToken, pnIdentifier, companionMetadata);
+        console.log(`✅ [GoogleDriveSync] Synced Google Drive metadata for ${visibility} file`, {
+          fileId: file.id,
+          backendId: file.backend,
+        });
+      } catch (driveError) {
+        if (isGoogleDriveAuthExpired(driveError)) {
+          handleGoogleDriveAuthFailure(file.backend, 'Google Drive authentication expired. Please reconnect.');
+          return;
+        }
+        console.error('❌ [GoogleDriveSync] Failed to sync metadata with Google Drive:', driveError);
+        throw driveError;
+      }
+    },
+    [
+      aggregatorService,
+      resolvePnIdentifierForDrive,
+      resolvedAuth?.publicKey,
+      handleGoogleDriveAuthFailure,
+    ]
+  );
   
   const resolveIdentifiersForEmail = React.useCallback((email?: string | null) => {
     const normalizedEmail = email?.toLowerCase() || null;
@@ -1760,115 +1971,105 @@ const handleGoogleDriveAuthFailure = React.useCallback(
         setError('Metadata service not available');
         return;
       }
-      
+
       await metadataIndexService.initialize();
-      
+
       const existingMetadata = fileMetadataMap.get(file.id);
       const isCurrentlyPublic = existingMetadata?.isPublic || false;
 
+      const fileTitle = file.encrypted ? file.originalName || file.name.replace('.encrypted', '') : file.name;
+      let mimeCategory = file.mimeType?.split('/')[0] || 'file';
+      if (mimeCategory === 'application' || mimeCategory === 'file') {
+        const loweredName = fileTitle.toLowerCase();
+        if (loweredName.match(/\.(jpg|jpeg|png|gif|webp|svg|bmp|ico)$/)) {
+          mimeCategory = 'image';
+        } else if (loweredName.match(/\.(mp4|mov|avi|webm|mkv|flv|wmv)$/)) {
+          mimeCategory = 'video';
+        } else if (loweredName.match(/\.(mp3|wav|ogg|flac|aac)$/)) {
+          mimeCategory = 'audio';
+        } else if (loweredName.match(/\.(pdf|doc|docx|txt|md)$/)) {
+          mimeCategory = 'document';
+        }
+      }
+
       if (isCurrentlyPublic) {
-        // Make private - remove from index
+        const updatedMetadata: PublicMetadata = existingMetadata
+          ? { ...existingMetadata, isPublic: false, publicToken: undefined }
+          : {
+              fileId: file.id,
+              backend: file.backend,
+              backendFileId: file.backendFileId,
+              name: fileTitle,
+              description: '',
+              keywords: [],
+              uploadDate: file.modifiedTime || new Date().toISOString(),
+              fileType: mimeCategory,
+              isPublic: false,
+            };
+
+        await syncGoogleDriveMetadata(file, updatedMetadata, 'private');
         await metadataIndexService.removeFromIndex(file.id);
-        setFileMetadataMap(prev => {
+
+        setFileMetadataMap((prev) => {
           const next = new Map(prev);
-          next.delete(file.id);
+          next.set(file.id, updatedMetadata);
           return next;
         });
       } else {
-        // Make public - create metadata and index
         if (!resolvedAuth?.pnName || !resolvedAuth?.publicKey) {
           setError('Please unlock your pN to make files public');
           return;
         }
 
-        // Generate public metadata with Semantic Web standards (JSON-LD)
-        // CRITICAL: Never include pN name (username) in public metadata - it's a secret
-        const fileTitle = file.encrypted ? file.originalName || file.name.replace('.encrypted', '') : file.name;
-        
-        // Detect file type from mimeType (if original) or filename
-        // Encrypted files have mimeType "application/json", so we need to detect from filename
-        let mimeCategory = file.mimeType?.split('/')[0] || 'file';
-        if (mimeCategory === 'application' || mimeCategory === 'file') {
-          // Try to detect from filename
-          const fileName = fileTitle.toLowerCase();
-          if (fileName.match(/\.(jpg|jpeg|png|gif|webp|svg|bmp|ico)$/)) {
-            mimeCategory = 'image';
-          } else if (fileName.match(/\.(mp4|mov|avi|webm|mkv)$/)) {
-            mimeCategory = 'video';
-          } else if (fileName.match(/\.(mp3|wav|ogg|flac|aac)$/)) {
-            mimeCategory = 'audio';
-          } else if (fileName.match(/\.(pdf|doc|docx|txt|md)$/)) {
-            mimeCategory = 'document';
-          }
-        }
-        
-        // Map file types to schema.org types
-        const schemaType = 
-          mimeCategory === 'image' ? 'ImageObject' :
-          mimeCategory === 'video' ? 'VideoObject' :
-          mimeCategory === 'audio' ? 'AudioObject' :
-          'CreativeWork';
-        
-        // Generate resource URI (consistent with metadata service)
+        const schemaType =
+          mimeCategory === 'image'
+            ? 'ImageObject'
+            : mimeCategory === 'video'
+            ? 'VideoObject'
+            : mimeCategory === 'audio'
+            ? 'AudioObject'
+            : 'CreativeWork';
+
         const resourceUri = `https://parnoir.com/resource/${file.id}`;
-        const didUri = resolvedAuth.publicKey.startsWith('did:') 
-          ? resolvedAuth.publicKey 
+        const didUri = resolvedAuth.publicKey.startsWith('did:')
+          ? resolvedAuth.publicKey
           : `did:key:${resolvedAuth.publicKey}`;
-        
+
         const publicMetadata: PublicMetadata = {
-          "@context": [
-            "https://schema.org/",
-            "https://parnoir.com/ns/v1#"
-          ],
-          "@type": schemaType,
-          "@id": resourceUri,
-          
-          // Core identifiers
+          '@context': ['https://schema.org/', 'https://parnoir.com/ns/v1#'],
+          '@type': schemaType,
+          '@id': resourceUri,
           fileId: file.id,
           backend: file.backend,
           backendFileId: file.backendFileId,
-          
-          // Schema.org CreativeWork
           name: fileTitle,
           description: '',
-          keywords: [], // Can be populated from tags
+          keywords: [],
           uploadDate: file.modifiedTime || new Date().toISOString(),
           fileType: mimeCategory,
-          
-          // Author (schema.org:creator)
           creator: {
-            "@type": "Person",
-            "@id": didUri,
+            '@type': 'Person',
+            '@id': didUri,
             identifier: {
-              "@type": "PropertyValue",
-              name: "DID",
-              value: resolvedAuth.publicKey
-            }
+              '@type': 'PropertyValue',
+              name: 'DID',
+              value: resolvedAuth.publicKey,
+            },
           },
-          
-          // Legacy author support (for backward compatibility)
           author: {
-            did: didUri
+            did: didUri,
           },
-          
-          // Initialize engagement metrics
           engagement: {
             views: 0,
             likes: 0,
             comments: 0,
             shares: 0,
-            lastUpdated: file.modifiedTime || new Date().toISOString()
+            lastUpdated: file.modifiedTime || new Date().toISOString(),
           },
-          
-          // par Noir specific
-          isPublic: true
+          isPublic: true,
         };
 
-        // Phase 3: Generate share token for public file access
-        let shareToken: ShareToken | undefined = undefined;
-        
-        // Try to get share token from cache first (generated during upload)
-        // Try multiple possible cache keys since file ID might be stored differently
+        let shareToken: ShareToken | undefined;
         const candidateKeys: string[] = [];
         if (file.backend) {
           candidateKeys.push(makeShareTokenCacheKey(file.backend, file.backendFileId));
@@ -1884,21 +2085,19 @@ const handleGoogleDriveAuthFailure = React.useCallback(
         }
 
         if (!shareToken) {
-          // Fallback to legacy cache keys (pre multi-account)
-          shareToken = shareTokenCache.current.get(file.backendFileId) ||
-                       shareTokenCache.current.get(file.id) ||
-                       shareTokenCache.current.get((file as any).backendFile?.id);
+          shareToken =
+            shareTokenCache.current.get(file.backendFileId) ||
+            shareTokenCache.current.get(file.id) ||
+            shareTokenCache.current.get((file as any).backendFile?.id);
         }
-        
+
         if (!shareToken) {
-          // If not in cache, generate it now (for files uploaded before this change)
           console.log('🔑 [Phase 3] Share token not in cache, generating now...', {
             backendFileId: file.backendFileId,
             fileId: file.id,
-            cacheSize: shareTokenCache.current.size
+            cacheSize: shareTokenCache.current.size,
           });
           try {
-            // Download the encrypted file to get the EncryptedFilePackage
             if (!aggregatorService) {
               throw new Error('Aggregator service not available');
             }
@@ -1908,41 +2107,29 @@ const handleGoogleDriveAuthFailure = React.useCallback(
               const encryptedPackageJson = await encryptedBlob.text();
               const encryptedPackage: EncryptedFilePackage = JSON.parse(encryptedPackageJson);
 
-              // Create session object for token generation using stable pN identity
-              // Use authenticatedUser.id if available (stable), otherwise fall back
               const session: AuthSession = {
                 id: authenticatedUser?.id || resolvedAuth.publicKey,
                 publicKey: resolvedAuth.publicKey,
                 accessToken: authenticatedUser?.accessToken,
-                nickname: authenticatedUser?.nickname
+                nickname: authenticatedUser?.nickname,
               };
 
-              // Generate share token using stable pN identity (no passcode needed)
-              console.log('🔑 [Phase 3] Starting token generation...', { 
-                fileId: file.id, 
-                hasSession: !!session,
-                hasId: !!session.id,
-                hasPublicKey: !!session.publicKey
-              });
               if (!encryptionService) {
                 throw new Error('Encryption service not available');
               }
-              shareToken = await encryptionService.generateShareToken(
-                encryptedPackage,
-                session
+              shareToken = await encryptionService.generateShareToken(encryptedPackage, session);
+
+              const shareTokenKey = makeShareTokenCacheKey(
+                file.backend || activeBackendId || 'google_drive',
+                file.backendFileId
               );
-              
-              // Cache it for future use
-              const shareTokenKey = makeShareTokenCacheKey(file.backend || activeBackendId || 'google_drive', file.backendFileId);
               shareTokenCache.current.set(shareTokenKey, shareToken);
-              console.log('💾 [Phase 3] Share token cached for future use');
-              
-              // Store token in metadata
+
               publicMetadata.publicToken = JSON.stringify(shareToken);
               console.log('✅ [Phase 3] Share token generated and stored in metadata:', file.id, {
                 tokenHasShareKey: !!shareToken.shareKey,
                 tokenHasShareEncrypted: !!shareToken.shareEncrypted,
-                tokenLength: JSON.stringify(shareToken).length
+                tokenLength: JSON.stringify(shareToken).length,
               });
             } else {
               throw new Error('Backend not connected');
@@ -1953,23 +2140,19 @@ const handleGoogleDriveAuthFailure = React.useCallback(
             throw new Error(`Failed to generate share token: ${errorMessage}`);
           }
         } else {
-          console.log('✅ [Phase 3] Using cached share token');
-          // Store token in metadata
           publicMetadata.publicToken = JSON.stringify(shareToken);
+          console.log('✅ [Phase 3] Using cached share token');
         }
 
-        // Index the file - pass pN identifier so metadata folder is created inside pN folder
-        // Get pN identifier for metadata folder location (same as folder naming)
-        let metadataPnIdentifier: string | undefined = undefined;
+        let metadataPnIdentifier: string | undefined;
         try {
-          // Use the same stable identifier generation as folder naming (id + publicKey hash)
-          if (authenticatedUser?.id && resolvedAuth?.publicKey) {
+          if (authenticatedUser?.id && resolvedAuth?.publicKey && typeof crypto !== 'undefined' && crypto.subtle) {
             const combined = `${authenticatedUser.id}:${resolvedAuth.publicKey}`;
             const encoder = new TextEncoder();
             const data = encoder.encode(combined);
             const hashBuffer = await crypto.subtle.digest('SHA-256', data);
             const hashArray = Array.from(new Uint8Array(hashBuffer));
-            const hexHash = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+            const hexHash = hashArray.map((b) => b.toString(16).padStart(2, '0')).join('');
             const shortHash = hexHash.substring(0, 12);
             metadataPnIdentifier = `pn-${shortHash}`;
             console.log('📁 [Phase 3] Generated pN identifier for metadata folder:', metadataPnIdentifier);
@@ -1977,18 +2160,18 @@ const handleGoogleDriveAuthFailure = React.useCallback(
         } catch (err) {
           console.warn('Failed to generate pN identifier for metadata folder:', err);
         }
-        
-        // Index the file (will use pN identifier to create metadata folder inside pN folder)
-        // Token is included in publicMetadata.publicToken
+
+        await syncGoogleDriveMetadata(file, publicMetadata, 'public');
+
         console.log('📤 [Phase 3] Submitting metadata to index...', {
           fileId: file.id,
           hasToken: !!publicMetadata.publicToken,
-          tokenLength: publicMetadata.publicToken?.length || 0
+          tokenLength: publicMetadata.publicToken?.length || 0,
         });
         await metadataIndexService.indexFile(file, publicMetadata, metadataPnIdentifier);
         console.log('✅ [Phase 3] Metadata indexed with token');
-        
-        setFileMetadataMap(prev => {
+
+        setFileMetadataMap((prev) => {
           const next = new Map(prev);
           next.set(file.id, publicMetadata);
           return next;

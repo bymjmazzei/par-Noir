@@ -92,7 +92,7 @@ export class MetadataIndexService {
         console.warn('⚠️ [MetadataIndexService] localStorage quota exceeded, clearing old cache and retrying...');
         try {
           localStorage.removeItem('pn_public_metadata_index');
-          localStorage.setItem('pn_public_metadata_index', JSON.stringify(allMetadata));
+    localStorage.setItem('pn_public_metadata_index', JSON.stringify(allMetadata));
         } catch (retryError) {
           console.error('❌ [MetadataIndexService] Failed to store metadata cache after clearing:', retryError);
           // Continue - metadata is still in memory and will be submitted to API
@@ -140,7 +140,7 @@ export class MetadataIndexService {
       .map(m => this.stripLargeFields(m));
     
     try {
-      localStorage.setItem('pn_public_metadata_index', JSON.stringify(allMetadata));
+    localStorage.setItem('pn_public_metadata_index', JSON.stringify(allMetadata));
     } catch (error) {
       if (error instanceof DOMException && error.name === 'QuotaExceededError') {
         console.warn('⚠️ [MetadataIndexService] localStorage quota exceeded, clearing cache...');

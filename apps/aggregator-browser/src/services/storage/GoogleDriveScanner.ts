@@ -61,11 +61,11 @@ export class GoogleDriveScanner {
         : `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(pnFoldersQuery)}&fields=files(id,name)&pageSize=100`;
       
       const headers: HeadersInit = {
-        'Content-Type': 'application/json'
+            'Content-Type': 'application/json'
       };
       if (authHeader) {
         headers['Authorization'] = authHeader;
-      }
+        }
       
       const foldersResponse = await fetch(url, { headers });
 
@@ -103,11 +103,11 @@ export class GoogleDriveScanner {
             : `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(metadataFolderQuery)}&fields=files(id,name)`;
           
           const metadataFolderHeaders: HeadersInit = {
-            'Content-Type': 'application/json'
+                'Content-Type': 'application/json'
           };
           if (authHeader) {
             metadataFolderHeaders['Authorization'] = authHeader;
-          }
+            }
           
           const metadataFolderResponse = await fetch(metadataFolderUrl, { headers: metadataFolderHeaders });
 
@@ -131,11 +131,11 @@ export class GoogleDriveScanner {
                 : `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(indexFileQuery)}&fields=files(id,name)`;
               
               const indexFileHeaders: HeadersInit = {
-                'Content-Type': 'application/json'
+                    'Content-Type': 'application/json'
               };
               if (authHeader) {
                 indexFileHeaders['Authorization'] = authHeader;
-              }
+                }
               
               const indexFileResponse = await fetch(indexFileUrl, { headers: indexFileHeaders });
 
@@ -167,13 +167,13 @@ export class GoogleDriveScanner {
                   if (downloadResponse.ok) {
                     const indexText = await downloadResponse.text();
                     try {
-                      const indexData = JSON.parse(indexText);
+                    const indexData = JSON.parse(indexText);
 
                       // public-file-index.json structure: { identifier: string, files: [...], updatedAt: string }
                       if (indexData && Array.isArray(indexData.files)) {
                         // Filter for public files only
                         const publicFiles = indexData.files.filter((file: any) => file.visibility === 'public');
-                        // Add all public files from this pN's metadata
+                      // Add all public files from this pN's metadata
                         // Each file entry in the array is already the metadata object
                         allMetadata.push(...publicFiles);
                         console.log(`✅ Loaded ${publicFiles.length} public file(s) from pN ${pnFolder.name} (${indexData.files.length} total files in index)`);
