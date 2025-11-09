@@ -198,6 +198,81 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
     }
   }, []);
   
+  const ensureGoogleDriveAccessToken = React.useCallback(
+    async (backend: GoogleDriveBackend | null, forceRefresh = false): Promise<string | null> => {
+      if (!backend) {
+        return null;
+      }
+
+      const keyPrefix = (() => {
+        try {
+          return typeof (backend as any).getStorageKeyPrefix === 'function'
+            ? (backend as any).getStorageKeyPrefix()
+            : null;
+        } catch (err) {
+          console.warn('⚠️ [GoogleDriveSync] Unable to resolve Drive storage key prefix:', err);
+          return null;
+        }
+      })();
+
+      const persistToken = (token: string) => {
+        if (keyPrefix) {
+          try {
+            localStorage.setItem(`${keyPrefix}_token`, token);
+          } catch (storageError) {
+            console.warn('⚠️ [GoogleDriveSync] Unable to persist refreshed token locally:', storageError);
+          }
+        }
+      };
+
+      const readCachedToken = () => {
+        if (keyPrefix) {
+          try {
+            const cached = localStorage.getItem(`${keyPrefix}_token`);
+            if (cached) {
+              return cached;
+            }
+          } catch {
+            /* ignore */
+          }
+        }
+        try {
+          return localStorage.getItem('google_drive_token');
+        } catch {
+          return null;
+        }
+      };
+
+      let token: string | null = forceRefresh ? null : (typeof backend.getAccessToken === 'function' ? backend.getAccessToken() : null);
+      if (!token && !forceRefresh) {
+        token = readCachedToken();
+      }
+
+      if (!token || forceRefresh) {
+        const refreshToken = typeof backend.getRefreshToken === 'function' ? backend.getRefreshToken() : null;
+        if (refreshToken && typeof (backend as any).refreshAccessToken === 'function') {
+          try {
+            const refreshed = await (backend as any).refreshAccessToken(refreshToken);
+            if (refreshed) {
+              token = refreshed;
+              persistToken(refreshed);
+              try {
+                (backend as any).token = refreshed;
+              } catch {
+                /* ignore */
+              }
+            }
+          } catch (refreshError) {
+            console.error('⚠️ [GoogleDriveSync] Failed to refresh Google Drive token:', refreshError);
+          }
+        }
+      }
+
+      return token;
+    },
+    []
+  );
+  
   const getResolvedAuthCredentials = React.useCallback(() => {
     let pnName =
       resolvedAuth?.pnName ||
