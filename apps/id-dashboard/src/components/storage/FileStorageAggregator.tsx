@@ -1355,146 +1355,35 @@ const handleGoogleDriveAuthFailure = React.useCallback(
   // Resolve auth credentials
   useEffect(() => {
     const resolveAuth = async () => {
-      // Always log - this is critical debugging
-      console.log('🔍 [FileStorageAggregator] Resolving auth...');
-      console.log('🔍 [FileStorageAggregator] authenticatedUser prop:', authenticatedUser);
-      
-      // Try prop first
-      if (authenticatedUser) {
-        // Safely get keys without breaking if object has getters
-        try {
-          console.log('🔍 [FileStorageAggregator] authenticatedUser keys:', Object.keys(authenticatedUser));
-          console.log('🔍 [FileStorageAggregator] authenticatedUser structure:', {
-            id: authenticatedUser.id,
-            pnName: authenticatedUser.pnName,
-            publicKey: authenticatedUser.publicKey,
-            nickname: authenticatedUser.nickname,
-            username: (authenticatedUser as any).username,
-            name: (authenticatedUser as any).name,
-            fullObject: JSON.stringify(authenticatedUser, null, 2)
-          });
-        } catch (e) {
-          console.warn('🔍 [FileStorageAggregator] Could not inspect authenticatedUser:', e);
-        }
-        
-        // Try multiple ways to extract pnName
-        let pnName = authenticatedUser.pnName;
-        if (!pnName) {
-          pnName = (authenticatedUser as any).username;
-        }
-        if (!pnName) {
-          pnName = (authenticatedUser as any).name;
-        }
-        if (!pnName && authenticatedUser.id && typeof authenticatedUser.id === 'string') {
-          // Last resort: try to extract from id if it's a username pattern
-          const idParts = authenticatedUser.id.split('-');
-          if (idParts.length > 0 && idParts[0] !== 'did:key') {
-            pnName = idParts[0];
-          }
-        }
-        
-        // Try multiple ways to extract publicKey
-        let publicKey = authenticatedUser.publicKey;
-        if (!publicKey && authenticatedUser.id) {
-          if (typeof authenticatedUser.id === 'string' && authenticatedUser.id.startsWith('did:key:')) {
-            publicKey = authenticatedUser.id;
-          } else if (typeof authenticatedUser.id === 'string') {
-            // Use id as publicKey if it's not a DID
-            publicKey = authenticatedUser.id;
-          }
-        }
-        
-        console.log('🔍 [FileStorageAggregator] Extracted from prop:', { 
-          pnName, 
-          publicKey, 
-          hasId: !!authenticatedUser.id,
-          idValue: authenticatedUser.id,
-          idType: typeof authenticatedUser.id,
-          hasPnName: !!authenticatedUser.pnName,
-          hasUsername: !!(authenticatedUser as any).username,
-          hasName: !!(authenticatedUser as any).name,
-          hasPublicKey: !!authenticatedUser.publicKey
-        });
-        
-        let passcode: string | null = null;
-        try {
-          passcode = sessionStorage.getItem('pn_session_passcode');
-          console.log('🔍 [FileStorageAggregator] Passcode from sessionStorage:', passcode ? 'found' : 'not found');
-        } catch (e) {
-          console.warn('🔍 [FileStorageAggregator] sessionStorage not available');
-        }
-        
-        if (pnName && publicKey) {
-          console.log('✅ [FileStorageAggregator] Auth resolved from prop:', { hasPnName: !!pnName, publicKey: publicKey.substring(0, 20) + '...' });
-          setResolvedAuth((prev) => ({
-            pnName,
-            publicKey,
-            passcode: passcode || prev?.passcode,
-          }));
-          setError(null);
-          return;
-        } else {
-          console.warn('⚠️ [FileStorageAggregator] Missing credentials from prop:', { 
-            pnName, 
-            publicKey,
-            hasPnName: !!pnName, 
-            hasPublicKey: !!publicKey,
-            authenticatedUserKeys: Object.keys(authenticatedUser || {})
-          });
-        }
-      } else {
-        console.log('⚠️ [FileStorageAggregator] No authenticatedUser prop');
+      if (!authenticatedUser) {
+        console.warn('⚠️ [FileStorageAggregator] No authenticatedUser prop');
+        return;
       }
-      
-      // Fallback: Try to load from storage
-      try {
-        console.log('🔍 [FileStorageAggregator] Trying storage fallback...');
-        const { SecureStorage } = await import('../../utils/storage');
-        const storage = new SecureStorage();
-        await storage.init(); // Initialize database first
-        const session = await storage.getCurrentSession();
-        
-        console.log('🔍 [FileStorageAggregator] Session from storage:', session);
-        
-        if (session) {
-          const pnName = (session as any).pnName || (session as any).username || (session as any).name;
-          const publicKey = (session as any).publicKey || 
-            (session.id && session.id.startsWith('did:key:') ? session.id : session.id);
-          
-          console.log('🔍 [FileStorageAggregator] Extracted from storage:', { hasPnName: !!pnName, publicKey: publicKey.substring(0, 20) + '...', sessionKeys: Object.keys(session) });
-          
-          let passcode: string | null = null;
-          try {
-            passcode = sessionStorage.getItem('pn_session_passcode');
-          } catch (e) {
-            // sessionStorage might not be available
-          }
-          
-          if (pnName && publicKey) {
-            console.log('✅ [FileStorageAggregator] Auth resolved from storage');
-            setResolvedAuth((prev) => ({
-              pnName,
-              publicKey,
-              passcode: passcode || prev?.passcode,
-            }));
-            setError(null);
-          } else {
-            console.warn('⚠️ [FileStorageAggregator] Missing credentials from storage:', { hasPnName: !!pnName, hasPublicKey: !!publicKey });
-          }
-        } else {
-          console.warn('⚠️ [FileStorageAggregator] No session found in storage');
-        }
-      } catch (err) {
-        console.error('❌ [FileStorageAggregator] Error loading from storage:', err);
-      }
+
+      setResolvedAuth({
+        pnName: authenticatedUser.pnName,
+        publicKey: authenticatedUser.publicKey,
+        passcode: authenticatedUser.passcode,
+      });
     };
-    
-    // Wrap in try-catch to prevent unhandled promise rejections
+
     resolveAuth().catch((err) => {
       console.error('❌ [FileStorageAggregator] Auth resolution failed:', err);
       // Don't break the app - just log the error
     });
   }, [authenticatedUser]);
+
+  React.useEffect(() => {
+    if (resolvedAuth?.pnName && resolvedAuth.publicKey && resolvedAuth.passcode) {
+      const payload = {
+        pnName: resolvedAuth.pnName,
+        publicKey: resolvedAuth.publicKey,
+        passcode: resolvedAuth.passcode,
+      };
+
+      window.dispatchEvent(new CustomEvent('pn-auth-session', { detail: payload }));
+    }
+  }, [resolvedAuth]);
 
   const loadFileMetadata = React.useCallback(async (filesToLoad: AggregatedFile[]) => {
     try {
