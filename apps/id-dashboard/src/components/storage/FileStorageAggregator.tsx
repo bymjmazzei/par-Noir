@@ -402,35 +402,10 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
         return;
       }
 
-      let accessToken: string | null = null;
-      if (typeof backend.getAccessToken === 'function') {
-        accessToken = backend.getAccessToken();
-      }
-
+      let accessToken = await ensureGoogleDriveAccessToken(backend, false);
       if (!accessToken) {
-        try {
-          const keyPrefix =
-            typeof (backend as any).getStorageKeyPrefix === 'function'
-              ? (backend as any).getStorageKeyPrefix()
-              : undefined;
-          if (keyPrefix) {
-            accessToken = localStorage.getItem(`${keyPrefix}_token`);
-          }
-        } catch (storageError) {
-          console.warn('⚠️ [GoogleDriveSync] Failed to load Google Drive token from storage:', storageError);
-        }
-      }
-
-      if (!accessToken) {
-        try {
-          accessToken = localStorage.getItem('google_drive_token');
-        } catch {
-          /* ignore */
-        }
-      }
-
-      if (!accessToken) {
-        console.warn('⚠️ [GoogleDriveSync] No Google Drive token available for metadata sync', { backendId: file.backend });
+        console.warn('⚠️ [GoogleDriveSync] Unable to resolve Google Drive token before metadata sync', { backendId: file.backend });
+        handleGoogleDriveAuthFailure(file.backend, 'Google Drive authentication expired. Please reconnect.');
         return;
       }
 
@@ -531,17 +506,38 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
         isPartOf: metadataAny.isPartOf,
       };
 
-      try {
+      const syncMetadataWithToken = async (token: string) => {
         const { GoogleDriveMetadataService } = await import('../../services/storage/GoogleDriveMetadataService');
-        await GoogleDriveMetadataService.createCompanionMetadataFile(accessToken, pnIdentifier, companionMetadata);
-        await GoogleDriveMetadataService.updateOwnerFileIndex(accessToken, pnIdentifier, companionMetadata);
-        await GoogleDriveMetadataService.updatePublicFileIndex(accessToken, pnIdentifier, companionMetadata);
+        await GoogleDriveMetadataService.createCompanionMetadataFile(token, pnIdentifier, companionMetadata);
+        await GoogleDriveMetadataService.updateOwnerFileIndex(token, pnIdentifier, companionMetadata);
+        await GoogleDriveMetadataService.updatePublicFileIndex(token, pnIdentifier, companionMetadata);
+      };
+
+      try {
+        await syncMetadataWithToken(accessToken);
         console.log(`✅ [GoogleDriveSync] Synced Google Drive metadata for ${visibility} file`, {
           fileId: file.id,
           backendId: file.backend,
         });
       } catch (driveError) {
         if (isGoogleDriveAuthExpired(driveError)) {
+          const refreshedToken = await ensureGoogleDriveAccessToken(backend, true);
+          if (refreshedToken && refreshedToken !== accessToken) {
+            try {
+              await syncMetadataWithToken(refreshedToken);
+              console.log('✅ [GoogleDriveSync] Metadata sync succeeded after token refresh', {
+                fileId: file.id,
+                backendId: file.backend,
+              });
+              return;
+            } catch (retryError) {
+              if (!isGoogleDriveAuthExpired(retryError)) {
+                console.error('❌ [GoogleDriveSync] Metadata sync failed after token refresh attempt:', retryError);
+                throw retryError;
+              }
+              console.warn('⚠️ [GoogleDriveSync] Token refresh did not resolve authentication error');
+            }
+          }
           handleGoogleDriveAuthFailure(file.backend, 'Google Drive authentication expired. Please reconnect.');
           return;
         }
@@ -553,6 +549,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
       aggregatorService,
       resolvePnIdentifierForDrive,
       resolvedAuth?.publicKey,
+      ensureGoogleDriveAccessToken,
       handleGoogleDriveAuthFailure,
     ]
   );
