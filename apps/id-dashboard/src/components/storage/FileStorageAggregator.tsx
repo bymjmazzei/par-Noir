@@ -271,6 +271,54 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
     }
   }, []);
 
+  const removeDriveAccount = React.useCallback((backendId: string) => {
+    let nextActiveId: string | null = null;
+
+    setDriveAccounts((prev) => {
+      const updated = prev.filter((account) => account.backendId !== backendId);
+      persistDriveAccounts(updated);
+      nextActiveId = updated.length > 0 ? updated[0].backendId : null;
+      return updated;
+    });
+
+    setConnectedBackends((prev) => {
+      const next = new Set(prev);
+      next.delete(backendId);
+      return next;
+    });
+
+    setUserEmails((prev) => {
+      if (!prev.has(backendId)) {
+        return prev;
+      }
+      const next = new Map(prev);
+      next.delete(backendId);
+      return next;
+    });
+
+    setFiles((prev) => prev.filter((file) => file.backend !== backendId));
+
+    setFilePreviewUrls((prev) => {
+      const next = new Map(prev);
+      Array.from(next.keys()).forEach((key) => {
+        if (key.startsWith(`${backendId}:`)) {
+          next.delete(key);
+        }
+      });
+      return next;
+    });
+
+    shareTokenCache.current.forEach((_value, key) => {
+      if (key.startsWith(`${backendId}|`)) {
+        shareTokenCache.current.delete(key);
+      }
+    });
+
+    if (activeBackendId === backendId) {
+      setActiveBackendId(nextActiveId);
+    }
+  }, [activeBackendId, persistDriveAccounts]);
+
   const handleGoogleDriveAuthFailure = React.useCallback(
     (backendId: string | null, message?: string) => {
       if (backendId) {
@@ -869,63 +917,6 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
 
     return backend;
   }, [aggregatorService, activeBackendId, persistDriveAccounts]);
-
-  const removeDriveAccount = React.useCallback((backendId: string) => {
-    let nextActiveId: string | null = null;
-
-    setDriveAccounts((prev) => {
-      const updated = prev.filter((account) => account.backendId !== backendId);
-      persistDriveAccounts(updated);
-      nextActiveId = updated.length > 0 ? updated[0].backendId : null;
-      return updated;
-    });
-
-    setConnectedBackends((prev) => {
-      const next = new Set(prev);
-      next.delete(backendId);
-      return next;
-    });
-
-    setUserEmails((prev) => {
-      if (!prev.has(backendId)) {
-        return prev;
-      }
-      const next = new Map(prev);
-      next.delete(backendId);
-      return next;
-    });
-
-    setFiles((prev) => prev.filter((file) => file.backend !== backendId));
-
-    setFilePreviewUrls((prev) => {
-      const next = new Map(prev);
-      Array.from(next.keys()).forEach((key) => {
-        if (key.startsWith(`${backendId}:`)) {
-          next.delete(key);
-        }
-      });
-      return next;
-    });
-
-    shareTokenCache.current.forEach((_value, key) => {
-      if (key.startsWith(`${backendId}|`)) {
-        shareTokenCache.current.delete(key);
-      }
-    });
-
-    if (activeBackendId === backendId) {
-      setActiveBackendId(nextActiveId);
-    }
-  }, [activeBackendId, persistDriveAccounts]);
-
-  React.useEffect(() => {
-    return () => {
-      if (hydrationRetryTimeoutRef.current !== null) {
-        window.clearTimeout(hydrationRetryTimeoutRef.current);
-        hydrationRetryTimeoutRef.current = null;
-      }
-    };
-  }, []);
 
   const hydrateStorageCredentialsFromAPI = React.useCallback(async () => {
     if (hydrationInProgressRef.current) {
