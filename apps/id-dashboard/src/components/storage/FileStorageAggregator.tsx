@@ -271,6 +271,26 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
     }
   }, []);
 
+  const handleGoogleDriveAuthFailure = React.useCallback(
+    (backendId: string | null, message?: string) => {
+      if (backendId) {
+        try {
+          const backend = aggregatorService?.getBackend?.(backendId) as GoogleDriveBackend | undefined;
+          if (backend && typeof backend.disconnect === 'function') {
+            void backend.disconnect().catch(() => {
+              /* non-blocking */
+            });
+          }
+        } catch {
+          /* ignore */
+        }
+        removeDriveAccount(backendId);
+      }
+      setError(message || 'Google Drive authentication expired. Please reconnect.');
+    },
+    [aggregatorService, removeDriveAccount]
+  );
+
   const resolvePnIdentifierForDrive = React.useCallback(async (): Promise<string | undefined> => {
     if (authenticatedUser?.id && resolvedAuth?.publicKey && typeof crypto !== 'undefined' && crypto.subtle) {
       try {
@@ -897,26 +917,6 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
       setActiveBackendId(nextActiveId);
     }
   }, [activeBackendId, persistDriveAccounts]);
-
-const handleGoogleDriveAuthFailure = React.useCallback(
-  (backendId: string | null, message?: string) => {
-    if (backendId) {
-      try {
-        const backend = aggregatorService?.getBackend?.(backendId) as GoogleDriveBackend | undefined;
-        if (backend && typeof backend.disconnect === 'function') {
-          void backend.disconnect().catch(() => {
-            /* non-blocking */
-          });
-        }
-      } catch {
-        /* ignore */
-      }
-      removeDriveAccount(backendId);
-    }
-    setError(message || 'Google Drive authentication expired. Please reconnect.');
-  },
-  [aggregatorService, removeDriveAccount]
-);
 
   React.useEffect(() => {
     return () => {
