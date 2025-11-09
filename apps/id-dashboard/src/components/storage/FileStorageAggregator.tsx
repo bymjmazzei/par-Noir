@@ -1561,19 +1561,12 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
   const loadFileMetadata = React.useCallback(async (filesToLoad: AggregatedFile[]) => {
     try {
       console.log('📋 [Metadata] Loading file metadata...', { fileCount: filesToLoad.length });
-      const { backend, backendId, keyPrefix } = resolveActiveBackendEntry();
+      const { backend, backendId } = resolveActiveBackendEntry();
       if (backend && backend.isConnected() && resolvedAuth?.pnName) {
         try {
-      const { GoogleDriveMetadataService } = await import('../../services/storage/GoogleDriveMetadataService');
-          const localTokenKey = keyPrefix
-            ? `${keyPrefix}_token`
-            : backendId
-              ? `${backendId}_token`
-              : 'google_drive_token';
-          const token = (backend as any).token || localStorage.getItem(localTokenKey);
+          const { GoogleDriveMetadataService } = await import('../../services/storage/GoogleDriveMetadataService');
 
-          if (token) {
-            console.log('✅ [Metadata] Google Drive connected, loading owner index...');
+          const loadOwnerIndex = async (tokenToUse: string) => {
             let pnIdentifier: string;
             if (authenticatedUser?.id && resolvedAuth?.publicKey) {
               const combined = `${authenticatedUser.id}:${resolvedAuth.publicKey}`;
@@ -1588,9 +1581,35 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
               pnIdentifier = resolvedAuth.pnName;
             }
 
-            const pnFolderId = await GoogleDriveMetadataService.getOrCreatePNFolder(token, pnIdentifier);
-            const metadataFolderId = await GoogleDriveMetadataService.getOrCreateMetadataFolder(token, pnFolderId);
-            const ownerIndex = await GoogleDriveMetadataService.getOwnerFileIndex(token, metadataFolderId, pnIdentifier);
+            const pnFolderId = await GoogleDriveMetadataService.getOrCreatePNFolder(tokenToUse, pnIdentifier);
+            const metadataFolderId = await GoogleDriveMetadataService.getOrCreateMetadataFolder(tokenToUse, pnFolderId);
+            return await GoogleDriveMetadataService.getOwnerFileIndex(tokenToUse, metadataFolderId, pnIdentifier);
+          };
+
+          let accessToken = await ensureGoogleDriveAccessToken(backend, false);
+          if (!accessToken) {
+            accessToken = await ensureGoogleDriveAccessToken(backend, true);
+          }
+
+          if (accessToken) {
+            console.log('✅ [Metadata] Google Drive connected, loading owner index...');
+            let ownerIndex: any | null = null;
+            try {
+              ownerIndex = await loadOwnerIndex(accessToken);
+            } catch (ownerIndexError) {
+              if (isGoogleDriveAuthExpired(ownerIndexError)) {
+                const refreshed = await ensureGoogleDriveAccessToken(backend, true);
+                if (refreshed) {
+                  ownerIndex = await loadOwnerIndex(refreshed);
+                  accessToken = refreshed;
+                } else {
+                  handleGoogleDriveAuthFailure(backendId, 'Google Drive authentication expired. Please reconnect.');
+                  ownerIndex = null;
+                }
+              } else {
+                throw ownerIndexError;
+              }
+            }
 
             if (ownerIndex && ownerIndex.files) {
               const metadataMap = new Map<string, PublicMetadata>();
@@ -1635,14 +1654,14 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
 
                   if (indexEntry.publicToken) {
                     try {
-                      const token = typeof indexEntry.publicToken === 'string'
+                      const parsedToken = typeof indexEntry.publicToken === 'string'
                         ? JSON.parse(indexEntry.publicToken)
                         : indexEntry.publicToken;
                       const cacheKey = makeShareTokenCacheKey(file.backend || '', file.backendFileId);
-                      shareTokenCache.current.set(cacheKey, token);
-                  storageLog.debug('💾 [Metadata] Cached share token from owner index for file:', file.id);
+                      shareTokenCache.current.set(cacheKey, parsedToken);
+                      storageLog.debug('💾 [Metadata] Cached share token from owner index for file:', file.id);
                     } catch (e) {
-                  storageLog.warn('⚠️ [Metadata] Failed to cache token from owner index:', e);
+                      storageLog.warn('⚠️ [Metadata] Failed to cache token from owner index:', e);
                     }
                   }
                 }
@@ -1651,6 +1670,8 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
               setFileMetadataMap(metadataMap);
               return;
             }
+          } else {
+            handleGoogleDriveAuthFailure(backendId, 'Google Drive authentication expired. Please reconnect.');
           }
         } catch (ownerIndexError) {
           storageLog.warn('Failed to load from owner index, falling back to metadata service:', ownerIndexError);
