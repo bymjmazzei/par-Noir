@@ -426,14 +426,20 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
       backend = new GoogleDriveBackend({
         id: params.backendId,
         name: params.email || 'Google Drive',
-        storageKeyPrefix: params.keyPrefix
+        storageKeyPrefix: params.keyPrefix,
+        apiEndpoint,
       });
       aggregatorService.registerBackend(params.backendId, backend);
     }
 
+    let refreshTokenToUse = params.refreshToken ?? undefined;
+    if (!refreshTokenToUse && typeof backend.getRefreshToken === 'function') {
+      refreshTokenToUse = backend.getRefreshToken() ?? undefined;
+    }
+
     await backend.connect({
       token: params.token,
-      refreshToken: params.refreshToken || undefined,
+      refreshToken: refreshTokenToUse,
       email: params.email || undefined
     });
 
@@ -2135,11 +2141,43 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
       });
     }
 
+    const serverAccountsArray = Array.isArray(serverStoredCredentials?.googleDriveAccounts)
+      ? serverStoredCredentials.googleDriveAccounts
+      : serverStoredCredentials?.googleDriveAccounts
+        ? [serverStoredCredentials.googleDriveAccounts]
+        : [];
+
+    const matchedServerAccount = serverAccountsArray.find((account: any) => {
+      if (!account) return false;
+      if (account.backendId && account.backendId === identifiers.backendId) {
+        return true;
+      }
+      if (account.email && connectedEmail && account.email.toLowerCase() === connectedEmail.toLowerCase()) {
+        return true;
+      }
+      return false;
+    });
+
+    let effectiveRefreshToken: string | null = tokenData.refreshToken ?? null;
+    if (!effectiveRefreshToken && matchedServerAccount?.refreshToken) {
+      effectiveRefreshToken = matchedServerAccount.refreshToken;
+    }
+    if (!effectiveRefreshToken) {
+      try {
+        const localFallback = localStorage.getItem(`${identifiers.keyPrefix}_refresh_token`);
+        if (localFallback) {
+          effectiveRefreshToken = localFallback;
+        }
+      } catch (storageError) {
+        console.debug('ℹ️ [handleConnectGoogleDrive] Unable to read refresh token fallback from localStorage', storageError);
+      }
+    }
+
     const newAccountEntry = {
       backendId: identifiers.backendId,
       keyPrefix: identifiers.keyPrefix,
       accessToken: token,
-      refreshToken: tokenData.refreshToken,
+      refreshToken: effectiveRefreshToken,
       email: connectedEmail,
       connectedAt: new Date().toISOString(),
       expiresIn: tokenData.expiresIn,
@@ -2152,7 +2190,11 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
       const filteredAccounts = existingAccounts.filter(
         (account: any) => account.backendId !== identifiers.backendId
       );
-      filteredAccounts.push(newAccountEntry);
+      filteredAccounts.push({
+        ...matchedServerAccount,
+        ...newAccountEntry,
+        refreshToken: newAccountEntry.refreshToken ?? matchedServerAccount?.refreshToken ?? null,
+      });
       return {
         ...(base || {}),
         googleDriveAccounts: filteredAccounts,
@@ -2210,9 +2252,9 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
     await persistStorageCredentialsToAPI(updatedStorageCredentials);
 
       // Persist refresh token for local fallback using scoped key prefix
-      if (tokenData.refreshToken) {
+      if (effectiveRefreshToken) {
         try {
-          localStorage.setItem(`${identifiers.keyPrefix}_refresh_token`, tokenData.refreshToken);
+          localStorage.setItem(`${identifiers.keyPrefix}_refresh_token`, effectiveRefreshToken);
         } catch (storageError) {
           console.warn('⚠️ [handleConnectGoogleDrive] Unable to persist refresh token locally:', storageError);
         }

@@ -35,6 +35,7 @@ export interface StorageBackendConfig {
   id: string;
   name: string;
   type: 'google_drive' | 'dropbox' | 's3' | 'local';
+  apiEndpoint?: string;
 }
 
 /**

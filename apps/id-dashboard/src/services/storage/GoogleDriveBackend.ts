@@ -18,6 +18,7 @@ export class GoogleDriveBackend extends AbstractStorageBackend {
   private pnFolderCache: Map<string, string> = new Map(); // Cache pN-specific folders
   private keyPrefix: string;
   private connected = false;
+  private apiEndpoint: string | null = null;
   
   // Load folder cache from localStorage on init
   private loadFolderCache(): void {
@@ -78,6 +79,7 @@ export class GoogleDriveBackend extends AbstractStorageBackend {
       ...config
     });
     this.keyPrefix = prefix;
+    this.apiEndpoint = config?.apiEndpoint || null;
     
     // Load stored token if available
     try {
@@ -212,20 +214,80 @@ export class GoogleDriveBackend extends AbstractStorageBackend {
    * Refresh access token using refresh token
    */
   private async refreshAccessToken(refreshToken: string): Promise<string | null> {
+    if (this.apiEndpoint) {
+      try {
+        const response = await fetch(`${this.apiEndpoint}/api/auth/google-oauth/refresh`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ refreshToken }),
+        });
+
+        const responseText = await response.text();
+
+        if (!response.ok) {
+          let errorData: any;
+          try {
+            errorData = JSON.parse(responseText);
+          } catch {
+            errorData = { error: responseText };
+          }
+          throw new Error(
+            `API refresh failed: ${response.status} ${response.statusText} - ${errorData.error || responseText}`
+          );
+        }
+
+        let tokenData: {
+          access_token: string;
+          refresh_token?: string;
+          expires_in?: number;
+          token_type?: string;
+        };
+
+        try {
+          tokenData = JSON.parse(responseText);
+        } catch (parseError) {
+          throw new Error(`Failed to parse refresh response: ${(parseError as Error).message}`);
+        }
+
+        if (tokenData.refresh_token) {
+          this.refreshToken = tokenData.refresh_token;
+          try {
+            localStorage.setItem(`${this.keyPrefix}_refresh_token`, tokenData.refresh_token);
+          } catch (storageError) {
+            console.warn('⚠️ [GoogleDriveBackend] Unable to persist refreshed refresh token locally:', storageError);
+          }
+        }
+
+        return tokenData.access_token || null;
+      } catch (apiError) {
+        console.error('⚠️ [GoogleDriveBackend] Failed to refresh token via API endpoint:', apiError);
+      }
+    }
+
     try {
-      const clientId = import.meta.env.VITE_GOOGLE_DRIVE_CLIENT_ID || 
+      const clientId =
+        import.meta.env.VITE_GOOGLE_DRIVE_CLIENT_ID ||
         '43740774041-fo57a1gqenc9dmggkcrhjl5cvrp40gnq.apps.googleusercontent.com';
-      
+      const clientSecret = import.meta.env.VITE_GOOGLE_DRIVE_CLIENT_SECRET;
+
+      const params = new URLSearchParams({
+        client_id: clientId,
+        refresh_token: refreshToken,
+        grant_type: 'refresh_token',
+      });
+
+      if (clientSecret) {
+        params.set('client_secret', clientSecret);
+      }
+
       const response = await fetch('https://oauth2.googleapis.com/token', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/x-www-form-urlencoded',
         },
-        body: new URLSearchParams({
-          client_id: clientId,
-          refresh_token: refreshToken,
-          grant_type: 'refresh_token',
-        }),
+        body: params,
       });
 
       if (!response.ok) {
