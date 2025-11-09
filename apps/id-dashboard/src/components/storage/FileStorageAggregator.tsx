@@ -15,6 +15,52 @@ import GoogleDriveIconUrl from '../../assets/icons/google-drive-logo.png?url';
 const GOOGLE_DRIVE_ICON_URL = GoogleDriveIconUrl;
 const DRIVE_ACCOUNTS_STORAGE_KEY = 'pn_google_drive_accounts';
 
+const STORAGE_DEBUG_ENABLED =
+  import.meta.env.DEV ||
+  (() => {
+    try {
+      return localStorage.getItem('pn_storage_debug') === '1';
+    } catch {
+      return false;
+    }
+  })();
+
+const storageLog = {
+  debug: (...args: unknown[]) => {
+    if (STORAGE_DEBUG_ENABLED) {
+      console.debug(...args);
+    }
+  },
+  info: (...args: unknown[]) => {
+    if (STORAGE_DEBUG_ENABLED) {
+      console.info(...args);
+    }
+  },
+  warn: (...args: unknown[]) => {
+    if (STORAGE_DEBUG_ENABLED) {
+      console.warn(...args);
+    }
+  },
+  error: (...args: unknown[]) => {
+    if (STORAGE_DEBUG_ENABLED) {
+      console.error(...args);
+    }
+  },
+};
+
+const isGoogleDriveAuthExpired = (error: unknown): boolean => {
+  if (!error) {
+    return false;
+  }
+  if (error instanceof Error) {
+    return error.message.toLowerCase().includes('google drive authentication expired');
+  }
+  if (typeof error === 'string') {
+    return error.toLowerCase().includes('google drive authentication expired');
+  }
+  return false;
+};
+
 interface DriveAccountState {
   backendId: string;
   keyPrefix: string;
@@ -640,6 +686,26 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
       setActiveBackendId(nextActiveId);
     }
   }, [activeBackendId, persistDriveAccounts]);
+
+const handleGoogleDriveAuthFailure = React.useCallback(
+  (backendId: string | null, message?: string) => {
+    if (backendId) {
+      try {
+        const backend = aggregatorService?.getBackend?.(backendId) as GoogleDriveBackend | undefined;
+        if (backend && typeof backend.disconnect === 'function') {
+          void backend.disconnect().catch(() => {
+            /* non-blocking */
+          });
+        }
+      } catch {
+        /* ignore */
+      }
+      removeDriveAccount(backendId);
+    }
+    setError(message || 'Google Drive authentication expired. Please reconnect.');
+  },
+  [aggregatorService, removeDriveAccount]
+);
 
   React.useEffect(() => {
     return () => {
@@ -1300,9 +1366,9 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
                         : indexEntry.publicToken;
                       const cacheKey = makeShareTokenCacheKey(file.backend || '', file.backendFileId);
                       shareTokenCache.current.set(cacheKey, token);
-                      console.log('💾 [Metadata] Cached share token from owner index for file:', file.id);
+                  storageLog.debug('💾 [Metadata] Cached share token from owner index for file:', file.id);
                     } catch (e) {
-                      console.warn('⚠️ [Metadata] Failed to cache token from owner index:', e);
+                  storageLog.warn('⚠️ [Metadata] Failed to cache token from owner index:', e);
                     }
                   }
                 }
@@ -1313,7 +1379,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
             }
           }
         } catch (ownerIndexError) {
-          console.warn('Failed to load from owner index, falling back to metadata service:', ownerIndexError);
+          storageLog.warn('Failed to load from owner index, falling back to metadata service:', ownerIndexError);
         }
       }
 
@@ -1337,7 +1403,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
 
   const loadFiles = React.useCallback(async () => {
     if (isLoadingFilesRef.current) {
-      console.log('⏳ [loadFiles] Load already in progress, skipping');
+      storageLog.debug('⏳ [loadFiles] Load already in progress, skipping');
       return;
     }
     isLoadingFilesRef.current = true;
@@ -1348,7 +1414,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
       // Ensure backends are initialized (gracefully fail if Google Drive not connected)
       // Don't block unlock if Google Drive initialization fails
       if (!aggregatorService) {
-        console.warn('⚠️ [loadFiles] Aggregator service not available');
+        storageLog.warn('⚠️ [loadFiles] Aggregator service not available');
         setIsLoading(false);
         setFiles([]);
         return;
@@ -1358,7 +1424,9 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
         await aggregatorService.ensureInitialized();
       } catch (initError) {
         // Don't log as error - just return empty list
-        console.warn('⚠️ [loadFiles] Backend initialization skipped (Google Drive may not be connected)');
+        if (!isGoogleDriveAuthExpired(initError)) {
+          storageLog.warn('⚠️ [loadFiles] Backend initialization skipped (Google Drive may not be connected)');
+        }
         setIsLoading(false);
         setFiles([]); // Set empty files, don't show error
         return;
@@ -1370,7 +1438,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
       const connectedEntries = backendEntries.filter(({ backend }) => backend.isConnected());
 
       if (connectedEntries.length === 0) {
-        console.log('ℹ️ [loadFiles] No connected storage backends yet; skipping owner index load until connection completes', {
+        storageLog.debug('ℹ️ [loadFiles] No connected storage backends yet; skipping owner index load until connection completes', {
           backendEntries: backendEntries.map(({ id }) => id),
           connectedBackends: connectedEntries.map(({ id }) => id),
         });
@@ -1440,12 +1508,14 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
             passcode,
             publicKey
           });
-          console.log(`✅ [loadFiles] Generated pN identifier: ${currentPnIdentifier.substring(0, 8)}...`);
+          storageLog.debug(`✅ [loadFiles] Generated pN identifier: ${currentPnIdentifier.substring(0, 8)}...`);
         } else {
-          console.log(`⚠️ [loadFiles] Cannot generate pN identifier (missing: ${!pnName ? 'pnName ' : ''}${!publicKey ? 'publicKey ' : ''}${!passcode ? 'passcode' : ''}) - backend will search for folders directly`);
+          storageLog.debug(`⚠️ [loadFiles] Cannot generate pN identifier (missing: ${!pnName ? 'pnName ' : ''}${!publicKey ? 'publicKey ' : ''}${!passcode ? 'passcode' : ''}) - backend will search for folders directly`);
         }
       } catch (err) {
-        console.warn('⚠️ [loadFiles] Failed to generate pN identifier:', err);
+        if (!isGoogleDriveAuthExpired(err)) {
+          storageLog.warn('⚠️ [loadFiles] Failed to generate pN identifier:', err);
+        }
       }
       
       // Fallback: derive identifier from stable DID + public key (no passcode required)
@@ -1461,15 +1531,17 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
             const hashArray = Array.from(new Uint8Array(hashBuffer));
             const hexHash = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
             currentPnIdentifier = `pn-${hexHash.substring(0, 12)}`;
-            console.log(`✅ [loadFiles] Using fallback pN identifier: ${currentPnIdentifier}`);
+          storageLog.debug(`✅ [loadFiles] Using fallback pN identifier: ${currentPnIdentifier}`);
           }
-        } catch (fallbackError) {
-          console.warn('⚠️ [loadFiles] Fallback identifier generation failed:', fallbackError);
+      } catch (fallbackError) {
+          if (!isGoogleDriveAuthExpired(fallbackError)) {
+            storageLog.warn('⚠️ [loadFiles] Fallback identifier generation failed:', fallbackError);
+          }
         }
       }
       
       if (!currentPnIdentifier) {
-        console.warn('⚠️ [loadFiles] Unable to determine pN identifier - owner index cannot be loaded until credentials are available');
+        storageLog.debug('⚠️ [loadFiles] Unable to determine pN identifier - owner index cannot be loaded until credentials are available');
       }
 
       const aggregatedAllFiles: AggregatedFile[] = [];
@@ -1484,7 +1556,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
           (typeof backend.getStorageKeyPrefix === 'function' ? backend.getStorageKeyPrefix() : null);
 
         if (!backend?.isConnected()) {
-          console.debug('ℹ️ [loadFiles] Backend not connected yet; skipping for now', {
+          storageLog.debug('ℹ️ [loadFiles] Backend not connected yet; skipping for now', {
             backendId,
             keyPrefix,
           });
@@ -1506,13 +1578,17 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
             const pnFolderId = await GoogleDriveMetadataService.getOrCreatePNFolder(token, currentPnIdentifier);
             const metadataFolderId = await GoogleDriveMetadataService.getOrCreateMetadataFolder(token, pnFolderId);
             ownerIndex = await GoogleDriveMetadataService.getOwnerFileIndex(token, metadataFolderId, currentPnIdentifier);
-            console.debug('📋 [loadFiles] Owner index response', {
+            storageLog.debug('📋 [loadFiles] Owner index response', {
               backendId,
               hasIndex: !!ownerIndex,
               fileCount: ownerIndex?.files?.length || 0,
             });
           } catch (ownerIndexError) {
-            console.warn('⚠️ [loadFiles] Failed to read owner index (non-blocking):', {
+            if (isGoogleDriveAuthExpired(ownerIndexError)) {
+              handleGoogleDriveAuthFailure(backendId);
+              continue;
+            }
+            storageLog.warn('⚠️ [loadFiles] Failed to read owner index (non-blocking):', {
               backendId,
               error: ownerIndexError,
             });
@@ -1596,7 +1672,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
             }
           });
         } else {
-          console.debug('ℹ️ [loadFiles] Owner index empty; scanning Drive contents', { backendId });
+          storageLog.debug('ℹ️ [loadFiles] Owner index empty; scanning Drive contents', { backendId });
           try {
             const scannedFiles = await backend.listFiles(undefined, currentPnIdentifier);
             filesForBackend = scannedFiles.map((file: any) => ({
@@ -1627,7 +1703,11 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
               });
             }
           } catch (scanError) {
-            console.warn('⚠️ [loadFiles] Drive scan failed (non-blocking)', {
+            if (isGoogleDriveAuthExpired(scanError)) {
+              handleGoogleDriveAuthFailure(backendId);
+              continue;
+            }
+            storageLog.warn('⚠️ [loadFiles] Drive scan failed (non-blocking)', {
               backendId,
               error: scanError,
             });
@@ -1636,7 +1716,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
         }
 
         if (filesForBackend.length === 0) {
-          console.debug('ℹ️ [loadFiles] No files discovered for backend', { backendId });
+          storageLog.debug('ℹ️ [loadFiles] No files discovered for backend', { backendId });
           continue;
         }
 
@@ -1653,14 +1733,26 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
         });
       }
     } catch (err) {
-      // Don't set error or break unlock - just log it
-      console.warn('⚠️ [loadFiles] Error (non-blocking, unlock can proceed):', err);
+      if (isGoogleDriveAuthExpired(err)) {
+        handleGoogleDriveAuthFailure(activeBackendId ?? null);
+      } else {
+        // Don't set error or break unlock - just log it
+        storageLog.warn('⚠️ [loadFiles] Error (non-blocking, unlock can proceed):', err);
+      }
       setFiles([]); // Show empty list
     } finally {
       setIsLoading(false);
       isLoadingFilesRef.current = false;
     }
-  }, [aggregatorService, authenticatedUser, resolvedAuth, loadFileMetadata, getDriveAccountByBackendId]);
+  }, [
+    activeBackendId,
+    aggregatorService,
+    authenticatedUser,
+    resolvedAuth,
+    loadFileMetadata,
+    getDriveAccountByBackendId,
+    handleGoogleDriveAuthFailure,
+  ]);
 
   const handleTogglePublic = async (file: AggregatedFile) => {
     try {
@@ -2031,9 +2123,8 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
         return;
       }
 
-      console.warn('Google Drive token expired - disconnecting', { backendId: targetBackendId });
-      removeDriveAccount(targetBackendId);
-      setError('Google Drive authentication expired. Please reconnect.');
+  storageLog.warn('Google Drive token expired - disconnecting', { backendId: targetBackendId });
+  handleGoogleDriveAuthFailure(targetBackendId);
     };
 
     window.addEventListener('google-drive-token-expired', handleTokenExpired);
@@ -2041,7 +2132,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
     return () => {
       window.removeEventListener('google-drive-token-expired', handleTokenExpired);
     };
-  }, [activeBackendId, removeDriveAccount]);
+}, [activeBackendId, handleGoogleDriveAuthFailure]);
 
   // Helper function to exchange authorization code for tokens
   // Uses Google OAuth endpoint directly (client-side exchange)
