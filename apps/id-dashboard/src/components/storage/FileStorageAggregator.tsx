@@ -253,6 +253,58 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
     }
   }, []);
 
+  const persistStorageCredentialsToAPI = React.useCallback(
+    async (credentialsPayload?: any, cid?: string | null) => {
+      if (!credentialsPayload) {
+        console.warn('⚠️ [StorageCredentials] No credentials payload provided; skipping API persistence');
+        return;
+      }
+
+      const identityCandidates = getStorageIdentityCandidates();
+
+      if (identityCandidates.length === 0) {
+        console.warn('⚠️ [StorageCredentials] No identity candidates available for persistence');
+        return;
+      }
+
+      const seen = new Set<string>();
+      for (const identityId of identityCandidates) {
+        if (!identityId || seen.has(identityId)) {
+          continue;
+        }
+        seen.add(identityId);
+
+        try {
+          const response = await fetch(`${apiEndpoint}/api/storage/credentials/${encodeURIComponent(identityId)}`, {
+            method: 'PUT',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              credentials: credentialsPayload,
+              cid: cid ?? null,
+            }),
+          });
+
+          if (!response.ok) {
+            const errorText = await response.text().catch(() => 'Unknown error');
+            console.warn('⚠️ [StorageCredentials] Failed to persist credentials to API:', {
+              identityId,
+              status: response.status,
+              error: errorText,
+            });
+          }
+        } catch (error) {
+          console.warn('⚠️ [StorageCredentials] API persistence failed (non-blocking):', {
+            identityId,
+            error,
+          });
+        }
+      }
+    },
+    [apiEndpoint, getStorageIdentityCandidates]
+  );
+
   const persistAllDriveCredentials = React.useCallback(
     async (override?: { backendId: string; accessToken: string; refreshToken?: string | null; email?: string | null }) => {
       if (driveAccounts.length === 0) {
@@ -423,58 +475,6 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
 
     return empty;
   }, [aggregatorService, activeBackendId, driveAccounts, getDriveAccountByBackendId]);
-
-  const persistStorageCredentialsToAPI = React.useCallback(
-    async (credentialsPayload?: any, cid?: string | null) => {
-      if (!credentialsPayload) {
-        console.warn('⚠️ [StorageCredentials] No credentials payload provided; skipping API persistence');
-        return;
-      }
-
-      const identityCandidates = getStorageIdentityCandidates();
-
-      if (identityCandidates.length === 0) {
-        console.warn('⚠️ [StorageCredentials] No identity candidates available for persistence');
-        return;
-      }
-
-      const seen = new Set<string>();
-      for (const identityId of identityCandidates) {
-        if (!identityId || seen.has(identityId)) {
-          continue;
-        }
-        seen.add(identityId);
-
-        try {
-          const response = await fetch(`${apiEndpoint}/api/storage/credentials/${encodeURIComponent(identityId)}`, {
-            method: 'PUT',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-              credentials: credentialsPayload,
-              cid: cid ?? null,
-            }),
-          });
-
-          if (!response.ok) {
-            const errorText = await response.text().catch(() => 'Unknown error');
-            console.warn('⚠️ [StorageCredentials] Failed to persist credentials to API:', {
-              identityId,
-              status: response.status,
-              error: errorText,
-            });
-          }
-        } catch (error) {
-          console.warn('⚠️ [StorageCredentials] API persistence failed (non-blocking):', {
-            identityId,
-            error,
-          });
-        }
-      }
-    },
-    [apiEndpoint, getStorageIdentityCandidates]
-  );
 
   const fetchStoredCredentialsPayload = React.useCallback(
     async (): Promise<{ identityId: string; credentials: any } | null> => {
