@@ -238,16 +238,6 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
     }
   }, []);
   
-  const getDriveAccountByBackendId = React.useCallback(
-    (backendId: string | null | undefined) => {
-      if (!backendId) {
-        return null;
-      }
-      return driveAccounts.find((account) => account.backendId === backendId) || null;
-    },
-    [driveAccounts]
-  );
-  
   const scheduleTokenRetry = React.useCallback((backendIds: string[], options?: { delayMs?: number; resetAttempts?: boolean }) => {
     if (!backendIds.length) {
       return;
@@ -315,7 +305,8 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
       }
 
       const existingCredential = driveCredentialCacheRef.current.get(backendId);
-      const account = getDriveAccountByBackendId(backendId);
+      const account =
+        driveAccounts.find((entry) => entry.backendId === backendId) || null;
       const keyPrefix =
         account?.keyPrefix ||
         existingCredential?.keyPrefix ||
@@ -412,7 +403,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
     return () => {
       window.removeEventListener('google-drive-token-refreshed', handleTokenRefreshed as EventListener);
     };
-  }, [aggregatorService, getDriveAccountByBackendId, persistDriveAccounts, persistStorageCredentialsToAPI]);
+  }, [aggregatorService, driveAccounts, persistDriveAccounts, persistStorageCredentialsToAPI]);
 
   React.useEffect(() => {
     return () => {
@@ -752,7 +743,8 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
     }
 
     const finalize = (backendId: string, backend: GoogleDriveBackend) => {
-      const account = getDriveAccountByBackendId(backendId);
+      const account =
+        driveAccounts.find((entry) => entry.backendId === backendId) || null;
       const keyPrefix =
         account?.keyPrefix ||
         (typeof backend.getStorageKeyPrefix === 'function' ? backend.getStorageKeyPrefix() : null);
@@ -784,7 +776,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
     }
 
     return empty;
-  }, [aggregatorService, activeBackendId, driveAccounts, getDriveAccountByBackendId]);
+  }, [aggregatorService, activeBackendId, driveAccounts]);
 
   const loadThirdPartyIndexers = React.useCallback(
     async (metadata?: PublicMetadata | null, options?: { force?: boolean }) => {
@@ -2085,8 +2077,10 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
       for (const entry of connectedEntries) {
         const backendId = entry.id;
         const backend = entry.backend as GoogleDriveBackend;
+        const accountForBackend =
+          driveAccounts.find((account) => account.backendId === backendId) || null;
         const keyPrefix =
-          getDriveAccountByBackendId(backendId)?.keyPrefix ||
+          accountForBackend?.keyPrefix ||
           (typeof backend.getStorageKeyPrefix === 'function' ? backend.getStorageKeyPrefix() : null);
 
         if (rateLimitedBackendsRef.current.has(backendId)) {
@@ -2379,7 +2373,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
       setIsLoading(false);
       isLoadingFilesRef.current = false;
     }
-  }, [aggregatorService, authenticatedUser, resolvedAuth, loadFileMetadata, getDriveAccountByBackendId, scheduleTokenRetry]);
+  }, [aggregatorService, authenticatedUser, resolvedAuth, driveAccounts, loadFileMetadata, scheduleTokenRetry]);
 
   const handleTogglePublic = async (file: AggregatedFile) => {
     try {
