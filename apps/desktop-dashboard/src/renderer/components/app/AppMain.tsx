@@ -7,23 +7,27 @@ import '../../../../../id-dashboard/src/index.css';
 
 export const AppMain: React.FC = () => {
   React.useEffect(() => {
-    const baseUrl = import.meta.env.BASE_URL || '/';
+    const baseUrl = import.meta.env.BASE_URL || './';
     const darkBg = `url('${baseUrl}branding/Par-Noir-Background-Dark.png')`;
     const lightBg = `url('${baseUrl}branding/Par-Noir-Background-Light.png')`;
+
     document.documentElement.style.setProperty('--pn-bg-dark', darkBg);
     document.documentElement.style.setProperty('--pn-bg-light', lightBg);
+
+    document.body.classList.add('theme-dark', 'bg-bg-primary', 'min-h-screen');
 
     return () => {
       document.documentElement.style.removeProperty('--pn-bg-dark');
       document.documentElement.style.removeProperty('--pn-bg-light');
+      document.body.classList.remove('theme-dark', 'bg-bg-primary', 'min-h-screen');
     };
   }, []);
 
   return (
-    <div className="theme-dark">
+    <>
       <App />
       <OAuthHandler />
-    </div>
+    </>
   );
 };
 
