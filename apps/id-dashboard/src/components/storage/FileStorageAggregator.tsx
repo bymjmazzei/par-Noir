@@ -42,6 +42,16 @@ interface DriveAccountState {
   email: string | null;
 }
 
+type StoredDriveCredential = {
+  backendId: string;
+  keyPrefix: string;
+  accessToken: string;
+  refreshToken?: string | null;
+  email?: string | null;
+  connectedAt?: string;
+  updatedAt?: string;
+};
+
 interface FileStorageAggregatorProps {
   authenticatedUser?: AuthSession | CryptoAuthSession | any | null;
   hideSecureFolderSection?: boolean;
@@ -52,6 +62,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
   const shareTokenCache = React.useRef<Map<string, ShareToken>>(new Map());
   const previewRetryCounts = React.useRef<Map<string, number>>(new Map());
   const fileInputRefs = React.useRef<Map<string, HTMLInputElement | null>>(new Map());
+  const driveCredentialCacheRef = React.useRef<Map<string, StoredDriveCredential>>(new Map());
   const hasRestoredFromMetadataRef = React.useRef<string | null>(null);
   const hasInitializedLegacyRef = React.useRef<boolean>(false);
   const loadFilesRef = React.useRef<(() => Promise<void>) | null>(null);
@@ -262,8 +273,62 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
 
   React.useEffect(() => {
     const handleTokenRefreshed = (event: Event) => {
-      const backendId = (event as CustomEvent<{ backendId?: string }>).detail?.backendId;
+      const detail = (event as CustomEvent<{ backendId?: string; accessToken?: string; refreshToken?: string | null; email?: string | null }>).detail;
+      const backendId = detail?.backendId;
       if (backendId) {
+        if (detail?.accessToken) {
+          const existingCredential = driveCredentialCacheRef.current.get(backendId);
+          const account = getDriveAccountByBackendId(backendId);
+          const keyPrefix =
+            account?.keyPrefix ||
+            existingCredential?.keyPrefix ||
+            `google_drive_${backendId.replace(/[^a-z0-9]+/gi, '-')}`;
+          const resolvedEmail =
+            detail?.email ??
+            existingCredential?.email ??
+            account?.email ??
+            userEmails.get(backendId) ??
+            null;
+          const connectedAt = existingCredential?.connectedAt || new Date().toISOString();
+          const nowIso = new Date().toISOString();
+
+          driveCredentialCacheRef.current.set(backendId, {
+            backendId,
+            keyPrefix,
+            accessToken: detail.accessToken,
+            refreshToken: detail.refreshToken ?? existingCredential?.refreshToken ?? null,
+            email: resolvedEmail,
+            connectedAt,
+            updatedAt: nowIso
+          });
+
+          if (detail.email) {
+            setDriveAccounts((prev) => {
+              const index = prev.findIndex((entry) => entry.backendId === backendId);
+              if (index === -1) {
+                return prev;
+              }
+              const next = [...prev];
+              next[index] = {
+                ...next[index],
+                email: detail.email
+              };
+              persistDriveAccounts(next);
+              return next;
+            });
+
+            setUserEmails((prev) => {
+              const next = new Map(prev);
+              next.set(backendId, detail.email as string);
+              return next;
+            });
+          }
+
+          persistStorageCredentialsToAPI(undefined).catch((persistError) => {
+            console.warn('⚠️ [StorageCredentials] Failed to persist refreshed token snapshot:', persistError);
+          });
+        }
+
         ownerIndexRetryCountsRef.current.delete(backendId);
         ownerIndexWarningLoggedRef.current.delete(backendId);
         rateLimitedBackendsRef.current.delete(backendId);
@@ -416,6 +481,96 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
       console.warn('⚠️ [DriveAccounts] Unable to persist drive accounts', storageError);
     }
   }, []);
+
+  const buildStorageCredentialPayload = React.useCallback(() => {
+    const entries = Array.from(driveCredentialCacheRef.current.values());
+    if (entries.length === 0) {
+      return null;
+    }
+    const now = new Date().toISOString();
+    return {
+      googleDriveAccounts: entries.map((entry) => ({
+        backendId: entry.backendId,
+        keyPrefix: entry.keyPrefix,
+        accessToken: entry.accessToken,
+        refreshToken: entry.refreshToken ?? null,
+        email: entry.email ?? null,
+        connectedAt: entry.connectedAt ?? now,
+        updatedAt: now
+      }))
+    };
+  }, []);
+
+  const persistCredentialsToSecureMetadata = React.useCallback(
+    async (payload: any) => {
+      if (
+        !payload ||
+        !Array.isArray(payload.googleDriveAccounts) ||
+        payload.googleDriveAccounts.length === 0 ||
+        !authenticatedUser?.id
+      ) {
+        return;
+      }
+
+      const resolved = getResolvedAuthCredentials();
+      let metadataPnName =
+        resolved?.pnName ||
+        authenticatedUser?.pnName ||
+        (authenticatedUser as any)?.username ||
+        (authenticatedUser as any)?.name ||
+        null;
+
+      let metadataPasscode = resolved?.passcode || null;
+      if (!metadataPasscode) {
+        try {
+          metadataPasscode = sessionStorage.getItem('pn_session_passcode');
+        } catch {
+          metadataPasscode = null;
+        }
+      }
+
+      if (!metadataPnName || !metadataPasscode) {
+        return;
+      }
+
+      try {
+        const { SecureMetadataStorage } = await import('../../utils/secureMetadataStorage');
+        const { SecureMetadataCrypto } = await import('../../utils/secureMetadata');
+
+        const existingMetadata = await SecureMetadataStorage.getMetadata(authenticatedUser.id);
+        let baseCredentials: any = {};
+
+        if (existingMetadata) {
+          try {
+            const decrypted = await SecureMetadataCrypto.decryptMetadata(
+              existingMetadata,
+              metadataPnName,
+              metadataPasscode
+            );
+            baseCredentials = { ...(decrypted.storageCredentials || {}) };
+          } catch (decryptError) {
+            console.warn('⚠️ [StorageCredentials] Failed to decrypt secure metadata during refresh:', decryptError);
+          }
+        }
+
+        const updatedCredentials = {
+          ...baseCredentials,
+          googleDriveAccounts: payload.googleDriveAccounts
+        };
+
+        await SecureMetadataStorage.updateMetadataField(
+          authenticatedUser.id,
+          metadataPnName,
+          metadataPasscode,
+          'storageCredentials',
+          updatedCredentials
+        );
+      } catch (error) {
+        console.warn('⚠️ [StorageCredentials] Unable to update secure metadata during refresh:', error);
+      }
+    },
+    [authenticatedUser?.id, authenticatedUser?.pnName, getResolvedAuthCredentials]
+  );
 
   const getDriveAccountByBackendId = React.useCallback(
     (backendId: string | null | undefined) => {
@@ -608,10 +763,21 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
 
   const persistStorageCredentialsToAPI = React.useCallback(
     async (credentialsPayload?: any, cid?: string | null) => {
-      if (!credentialsPayload) {
-        console.warn('⚠️ [StorageCredentials] No credentials payload provided; skipping API persistence');
+      let payload = credentialsPayload;
+      if (!payload) {
+        payload = buildStorageCredentialPayload();
+      }
+
+      if (
+        !payload ||
+        !Array.isArray(payload.googleDriveAccounts) ||
+        payload.googleDriveAccounts.length === 0
+      ) {
+        console.warn('⚠️ [StorageCredentials] No Google Drive accounts available; skipping API persistence');
         return;
       }
+
+      await persistCredentialsToSecureMetadata(payload);
 
       const identityCandidates = getStorageIdentityCandidates();
 
@@ -639,7 +805,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
               'Content-Type': 'application/json',
             },
             body: JSON.stringify({
-              credentials: credentialsPayload,
+              credentials: payload,
               cid: cid ?? null,
             }),
           });
@@ -664,7 +830,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
         }
       }
     },
-    [apiEndpoint, getStorageIdentityCandidates]
+    [apiEndpoint, buildStorageCredentialPayload, getStorageIdentityCandidates, persistCredentialsToSecureMetadata]
   );
 
   const upsertDriveAccount = React.useCallback(async (
@@ -674,6 +840,8 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
       token: string;
       refreshToken?: string | null;
       email?: string | null;
+      connectedAt?: string;
+      updatedAt?: string;
     }
   ): Promise<GoogleDriveBackend | null> => {
         if (!aggregatorService) {
@@ -708,6 +876,19 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
       return next;
     });
 
+    const existingCredential = driveCredentialCacheRef.current.get(params.backendId);
+    const nowIso = new Date().toISOString();
+
+    driveCredentialCacheRef.current.set(params.backendId, {
+      backendId: params.backendId,
+      keyPrefix: params.keyPrefix,
+      accessToken: params.token,
+      refreshToken: params.refreshToken ?? existingCredential?.refreshToken ?? null,
+      email: resolvedEmail ?? existingCredential?.email ?? null,
+      connectedAt: params.connectedAt || existingCredential?.connectedAt || nowIso,
+      updatedAt: params.updatedAt || nowIso
+    });
+
     setUserEmails((prev) => {
       if (!resolvedEmail) {
         return prev;
@@ -738,6 +919,8 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
 
   const removeDriveAccount = React.useCallback((backendId: string) => {
     let nextActiveId: string | null = null;
+
+    driveCredentialCacheRef.current.delete(backendId);
 
     setDriveAccounts((prev) => {
       const updated = prev.filter((account) => account.backendId !== backendId);
@@ -927,7 +1110,11 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
           }
           const email = account?.email || null;
           const refreshToken = account?.refreshToken || null;
-          const identifiers = resolveIdentifiersForEmail(email);
+          const storedBackendId = typeof account?.backendId === 'string' ? account.backendId : null;
+          const storedKeyPrefix = typeof account?.keyPrefix === 'string' ? account.keyPrefix : null;
+          const identifiers = storedBackendId && storedKeyPrefix
+            ? { backendId: storedBackendId, keyPrefix: storedKeyPrefix, isNew: false }
+            : resolveIdentifiersForEmail(email);
 
           try {
             await upsertDriveAccount({
@@ -936,6 +1123,8 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
               token,
               refreshToken,
               email,
+              connectedAt: account?.connectedAt,
+              updatedAt: account?.updatedAt
             });
           } catch (upsertError) {
             console.warn('⚠️ [StorageCredentials] Failed to reconnect Google Drive account from API payload', {
@@ -3965,7 +4154,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
 
       window.dispatchEvent(new CustomEvent<DesktopUnlockPayload>('pn-auth-session', { detail: payload }));
     }
-  }, [resolvedAuth]);
+  }, [isDesktopShell, resolvedAuth]);
 
   return (
     <div className="space-y-6">
@@ -4050,7 +4239,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
                           <div className="flex items-center space-x-2">
                             <Globe className="h-4 w-4" />
                             <div className="text-left">
-                              <p className="text-sm font-medium">Public</p>
+                              <p className="text-sm font-medium">PUBLIC</p>
                               <p className="text-xs text-text-secondary">
                                 File is discoverable and viewable by anyone.
                               </p>
@@ -4069,7 +4258,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
                           <div className="flex items-center space-x-2">
                             <Lock className="h-4 w-4" />
                             <div className="text-left">
-                              <p className="text-sm font-medium">Private</p>
+                              <p className="text-sm font-medium">PRIVATE</p>
                               <p className="text-xs text-text-secondary">
                                 Only visible to you and explicitly shared users.
                               </p>
@@ -4081,6 +4270,65 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
                     <p className="text-xs text-text-secondary border border-neutral-800 bg-neutral-900/60 rounded-lg px-3 py-3">
                       Public files are discoverable from the par Noir public index. Private files remain visible only to you. External sharing to individual users will be added later.
                     </p>
+                    {shareVisibility === 'public' ? (
+                      <div className="border border-neutral-700 bg-neutral-900/60 rounded-lg px-4 py-4">
+                        <div className="flex items-start justify-between">
+                          <div>
+                            <span className="text-xs uppercase tracking-wide text-text-secondary">Third-Party Indexing</span>
+                            <p className="mt-1 text-xs text-text-secondary">
+                              Enable or disable indexing for each approved partner.
+                            </p>
+                          </div>
+                          {isLoadingIndexers && (
+                            <span className="text-xs text-text-secondary">Loading…</span>
+                          )}
+                        </div>
+                        {indexerError ? (
+                          <p className="mt-3 text-xs text-red-400">{indexerError}</p>
+                        ) : thirdPartyIndexers.length === 0 && !isLoadingIndexers ? (
+                          <p className="mt-3 text-xs text-text-secondary">
+                            No third-party indexers are connected to this pN yet.
+                          </p>
+                        ) : (
+                          <div className="mt-4 space-y-3">
+                            {thirdPartyIndexers.map((indexer) => {
+                              const enabled = indexerToggles[indexer.id] ?? true;
+                              return (
+                                <div
+                                  key={indexer.id}
+                                  className="flex items-center justify-between rounded-md border border-neutral-700 bg-neutral-900/70 px-3 py-3"
+                                >
+                                  <div className="pr-4">
+                                    <p className="text-sm font-medium text-white">{indexer.name}</p>
+                                    {indexer.description && (
+                                      <p className="mt-1 text-xs text-text-secondary">{indexer.description}</p>
+                                    )}
+                                  </div>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleIndexerToggle(indexer.id)}
+                                    className={`px-3 py-2 text-xs font-semibold tracking-wide rounded-md border transition-colors ${
+                                      enabled
+                                        ? 'border-green-500 bg-green-600/10 text-green-100 hover:bg-green-600/20'
+                                        : 'border-neutral-600 bg-neutral-900 text-text-secondary hover:border-neutral-500'
+                                    }`}
+                                  >
+                                    {enabled ? 'ENABLED' : 'DISABLED'}
+                                  </button>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    ) : (
+                      <div className="border border-dashed border-neutral-700 bg-neutral-900/40 rounded-lg px-4 py-4">
+                        <span className="text-xs uppercase tracking-wide text-text-secondary">Third-Party Indexing</span>
+                        <p className="mt-2 text-xs text-text-secondary">
+                          Switch the file to <span className="text-white font-medium">PUBLIC</span> to manage partner indexing permissions.
+                        </p>
+                      </div>
+                    )}
                   </div>
 
                   <div className="mt-6 flex justify-end space-x-3">
@@ -4089,14 +4337,14 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
                       className="px-4 py-2 rounded-lg border border-neutral-700 text-sm text-text-secondary hover:text-text-primary hover:border-neutral-500 transition-colors"
                       disabled={isSavingShare}
                     >
-                      Cancel
+                      CANCEL
                     </button>
                     <button
                       onClick={handleSaveShareSettings}
                       className="px-4 py-2 rounded-lg bg-blue-600 text-sm font-medium text-white hover:bg-blue-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                       disabled={isSavingShare}
                     >
-                      {isSavingShare ? 'Saving…' : 'Save'}
+                      {isSavingShare ? 'SAVING…' : 'SAVE'}
                     </button>
                   </div>
                 </div>
