@@ -1,7 +1,9 @@
 /**
  * Central Metadata Aggregator Service (Dashboard)
- * Submits public metadata to the central aggregator API
+ * Submits and queries public metadata in the central aggregator API
  */
+
+import { PublicMetadata } from '../../types/aggregator';
 
 const CENTRAL_API_URL = 'https://api.parnoir.com';
 const CENTRAL_INDEX_PATH = '/api/aggregator/metadata-index';
@@ -18,6 +20,26 @@ export interface PublicMetadataSubmission {
   isPublic: boolean;
   uploadDate: string;
   publicToken?: string | any; // Can be string or ShareToken object
+  indexingPermissions?: {
+    mode?: 'all' | 'custom' | 'none';
+    allowed?: string[];
+    blocked?: string[];
+    updatedAt?: string;
+  };
+  pnIdentifier?: string;
+}
+
+export interface CentralIndexEntry {
+  fileId: string;
+  metadata: PublicMetadata;
+  submittedAt: string;
+  pnIdentifier?: string;
+}
+
+export interface CentralIndexResponse {
+  files: CentralIndexEntry[];
+  updatedAt: string;
+  totalFiles: number;
 }
 
 export class CentralMetadataAggregator {
@@ -55,8 +77,10 @@ export class CentralMetadataAggregator {
         console.log(`📤 [CentralMetadataAggregator] No publicToken provided`);
       }
 
+      const { pnIdentifier, ...metadataWithoutIdentity } = metadata;
+
       const payload = {
-        ...metadata,
+        ...metadataWithoutIdentity,
         publicToken: publicToken
       };
 
@@ -73,7 +97,10 @@ export class CentralMetadataAggregator {
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ metadata: payload }),
+        body: JSON.stringify({
+          metadata: payload,
+          pnIdentifier
+        }),
       });
 
       if (!response.ok) {
@@ -129,6 +156,54 @@ export class CentralMetadataAggregator {
     } catch (error) {
       console.warn('⚠️ Central aggregator API not available:', error);
       // Don't throw - removal is best-effort
+    }
+  }
+
+  /**
+   * Fetch public metadata from the central aggregator API
+   */
+  async fetchPublicMetadata(filters?: {
+    tags?: string[];
+    fileType?: string;
+    authorDid?: string;
+    indexerId?: string;
+  }): Promise<CentralIndexEntry[]> {
+    try {
+      const params = new URLSearchParams();
+      if (filters?.tags && filters.tags.length > 0) {
+        params.append('tags', filters.tags.join(','));
+      }
+      if (filters?.fileType) {
+        params.append('fileType', filters.fileType);
+      }
+      if (filters?.authorDid) {
+        params.append('authorDid', filters.authorDid);
+      }
+      if (filters?.indexerId) {
+        params.append('indexerId', filters.indexerId);
+      }
+
+      const response = await fetch(
+        `${CENTRAL_API_URL}${CENTRAL_INDEX_PATH}${params.toString() ? `?${params.toString()}` : ''}`,
+        {
+          method: 'GET',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+        }
+      );
+
+      if (!response.ok) {
+        const errorText = await response.text().catch(() => 'Unknown error');
+        throw new Error(`API returned ${response.status}: ${errorText}`);
+      }
+
+      const data: CentralIndexResponse = await response.json();
+      return data.files || [];
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unknown error';
+      console.error('❌ [CentralMetadataAggregator] Failed to fetch public metadata:', message);
+      return [];
     }
   }
 }

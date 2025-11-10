@@ -77,6 +77,8 @@ export class AggregatorMetadataServiceDB {
       const authorDid = validatedMetadata.creator?.identifier?.value || validatedMetadata.creator?.["@id"] || validatedMetadata.author?.did;
       const authorDisplay = authorDid ? authorDid.substring(0, 12) + '...' : 'Unknown';
       console.log(`✅ Added public metadata for file: ${validatedMetadata.fileId} (${displayTitle}) by ${authorDisplay}`);
+
+      await this.syncFileVisibilityOverrides(validatedMetadata.fileId, validatedMetadata.indexingPermissions);
     } catch (error) {
       console.error(`❌ Failed to submit metadata for file ${validatedMetadata.fileId}:`, error);
       throw error;
@@ -113,6 +115,7 @@ export class AggregatorMetadataServiceDB {
     tags?: string[];
     fileType?: string;
     authorDid?: string;
+    indexerId?: string;
   }): Promise<CentralIndexEntry[]> {
     const db = getDatabasePool();
 
@@ -139,6 +142,25 @@ export class AggregatorMetadataServiceDB {
           metadata->'author'->>'did' = $${paramIndex}
         )`;
         params.push(filters.authorDid);
+        paramIndex++;
+      }
+
+      if (filters?.indexerId) {
+        const idxParam = `$${paramIndex}`;
+        query += ` AND (
+          metadata->'indexingPermissions' IS NULL
+          OR metadata->'indexingPermissions'->>'mode' IS NULL
+          OR (
+            metadata->'indexingPermissions'->>'mode' = 'all'
+            AND NOT (COALESCE(metadata->'indexingPermissions'->'blocked', '[]'::jsonb) ? ${idxParam})
+          )
+          OR (
+            metadata->'indexingPermissions'->>'mode' = 'custom'
+            AND (COALESCE(metadata->'indexingPermissions'->'allowed', '[]'::jsonb) ? ${idxParam})
+            AND NOT (COALESCE(metadata->'indexingPermissions'->'blocked', '[]'::jsonb) ? ${idxParam})
+          )
+        )`;
+        params.push(filters.indexerId);
         paramIndex++;
       }
 
@@ -229,6 +251,7 @@ export class AggregatorMetadataServiceDB {
     tags?: string[];
     fileType?: string;
     authorDid?: string;
+    indexerId?: string;
   }): Promise<CentralIndexResponse> {
     const files = await this.getPublicMetadata(filters);
     const stats = await this.getStats();
@@ -429,6 +452,100 @@ export class AggregatorMetadataServiceDB {
     } catch (error) {
       console.error(`❌ Failed to update metadata for file ${fileId}:`, error);
       throw error;
+    }
+  }
+
+  /**
+   * Update third-party indexing permissions for a file
+   */
+  async updateIndexingPermissions(
+    fileId: string,
+    indexingPermissions?: PublicMetadata['indexingPermissions']
+  ): Promise<PublicMetadata | null> {
+    const db = getDatabasePool();
+
+    try {
+      const current = await this.getFileMetadata(fileId);
+      if (!current) {
+        return null;
+      }
+
+      const updatedMetadata: PublicMetadata = {
+        ...current.metadata,
+        indexingPermissions: indexingPermissions || undefined
+      };
+
+      await db.query(
+        `UPDATE aggregator_metadata
+           SET metadata = $1,
+               updated_at = NOW()
+         WHERE file_id = $2`,
+        [JSON.stringify(updatedMetadata), fileId]
+      );
+
+      await this.syncFileVisibilityOverrides(fileId, indexingPermissions);
+      console.log(`✅ Updated indexing permissions for file: ${fileId}`);
+
+      return updatedMetadata;
+    } catch (error) {
+      console.error(`❌ Failed to update indexing permissions for file ${fileId}:`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * Synchronize relational overrides table with indexing permissions
+   */
+  private async syncFileVisibilityOverrides(
+    fileId: string,
+    indexingPermissions?: PublicMetadata['indexingPermissions']
+  ): Promise<void> {
+    const db = getDatabasePool();
+    const client = await db.connect();
+
+    try {
+      await client.query('BEGIN');
+
+      await client.query('DELETE FROM file_index_visibility WHERE file_id = $1', [fileId]);
+
+      if (indexingPermissions) {
+        const records: Array<[string, boolean]> = [];
+        const mode = indexingPermissions.mode || 'all';
+
+        if (mode === 'custom') {
+          (indexingPermissions.allowed || []).forEach((id) => {
+            records.push([id, true]);
+          });
+          (indexingPermissions.blocked || []).forEach((id) => {
+            records.push([id, false]);
+          });
+        } else if (mode === 'all') {
+          (indexingPermissions.blocked || []).forEach((id) => {
+            records.push([id, false]);
+          });
+        } else if (mode === 'none') {
+          // When mode is none, no indexers are allowed. Leaving table empty signals full restriction.
+        }
+
+        for (const [thirdPartyId, isAllowed] of records) {
+          await client.query(
+            `INSERT INTO file_index_visibility (file_id, third_party_id, is_allowed, updated_at)
+             VALUES ($1, $2, $3, NOW())
+             ON CONFLICT (file_id, third_party_id) DO UPDATE SET
+               is_allowed = EXCLUDED.is_allowed,
+               updated_at = NOW()`,
+            [fileId, thirdPartyId, isAllowed]
+          );
+        }
+      }
+
+      await client.query('COMMIT');
+    } catch (error) {
+      await client.query('ROLLBACK');
+      console.error(`❌ Failed to sync file visibility overrides for file ${fileId}:`, error);
+      throw error;
+    } finally {
+      client.release();
     }
   }
 

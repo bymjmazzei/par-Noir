@@ -3,63 +3,38 @@
  * Dashboard aggregator that collects files from all connected storage backends
  */
 import React, { useState, useEffect, useRef } from 'react';
-import { Download, File, RefreshCw, AlertCircle, Lock, Globe, EyeOff, Info, X, Edit, Eye, Grid, List, Plus, Cloud } from 'lucide-react';
+import { Download, File, RefreshCw, AlertCircle, Lock, Globe, Info, X, Edit, Eye, Grid, List, Plus, Cloud, MoreVertical, Share2 } from 'lucide-react';
+import { DesktopSecureFolderPanel } from './DesktopSecureFolderPanel';
 import { getFileAggregatorService } from '../../services/aggregator/FileAggregatorService';
 import { getEncryptionService } from '../../services/aggregator/EncryptionService';
 import { getMetadataIndexService } from '../../services/metadata/MetadataIndexService';
 import { GoogleDriveBackend } from '../../services/storage/GoogleDriveBackend';
 import { AggregatedFile, AuthSession, PublicMetadata, ShareToken, EncryptedFilePackage } from '../../types/aggregator';
+import type { CompanionMetadata } from '../../services/storage/GoogleDriveMetadataService';
 import { AuthSession as CryptoAuthSession } from '../../types/crypto';
 import GoogleDriveIconUrl from '../../assets/icons/google-drive-logo.png?url';
+import type { ThirdPartyIndexer, IndexingPermissions } from '../../types/indexers';
 
 const GOOGLE_DRIVE_ICON_URL = GoogleDriveIconUrl;
 const DRIVE_ACCOUNTS_STORAGE_KEY = 'pn_google_drive_accounts';
 
-const STORAGE_DEBUG_ENABLED =
-  import.meta.env.DEV ||
-  (() => {
-    try {
-      return localStorage.getItem('pn_storage_debug') === '1';
-    } catch {
-      return false;
-    }
-  })();
+const isDesktopShell = typeof window !== 'undefined' && Boolean(window.parNoirDesktop);
 
-const storageLog = {
-  debug: (...args: unknown[]) => {
-    if (STORAGE_DEBUG_ENABLED) {
-      console.debug(...args);
-    }
-  },
-  info: (...args: unknown[]) => {
-    if (STORAGE_DEBUG_ENABLED) {
-      console.info(...args);
-    }
-  },
-  warn: (...args: unknown[]) => {
-    if (STORAGE_DEBUG_ENABLED) {
-      console.warn(...args);
-    }
-  },
-  error: (...args: unknown[]) => {
-    if (STORAGE_DEBUG_ENABLED) {
-      console.error(...args);
-    }
-  },
+type DesktopUnlockPayload = {
+  pnName: string;
+  publicKey: string;
+  passcode: string;
 };
 
-const isGoogleDriveAuthExpired = (error: unknown): boolean => {
-  if (!error) {
-    return false;
+function normalizeVisibility(value: any): 'public' | 'private' | 'friends' {
+  if (value === 'public') {
+    return 'public';
   }
-  if (error instanceof Error) {
-    return error.message.toLowerCase().includes('google drive authentication expired');
+  if (value === 'friends') {
+    return 'friends';
   }
-  if (typeof error === 'string') {
-    return error.toLowerCase().includes('google drive authentication expired');
-  }
-  return false;
-};
+  return 'private';
+}
 
 interface DriveAccountState {
   backendId: string;
@@ -69,9 +44,10 @@ interface DriveAccountState {
 
 interface FileStorageAggregatorProps {
   authenticatedUser?: AuthSession | CryptoAuthSession | any | null;
+  hideSecureFolderSection?: boolean;
 }
 
-export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ authenticatedUser }) => {
+export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ authenticatedUser, hideSecureFolderSection = false }) => {
   // Cache for share tokens (fileId -> shareToken) - generated during upload for quick access
   const shareTokenCache = React.useRef<Map<string, ShareToken>>(new Map());
   const previewRetryCounts = React.useRef<Map<string, number>>(new Map());
@@ -91,6 +67,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
   const [driveAccounts, setDriveAccounts] = useState<DriveAccountState[]>([]);
   const [activeBackendId, setActiveBackendId] = useState<string | null>(null);
   const [storageQuotas, setStorageQuotas] = useState<Map<string, any>>(new Map());
+  const [fileMetadataMap, setFileMetadataMap] = useState<Map<string, PublicMetadata>>(new Map());
   const [resolvedAuth, setResolvedAuth] = useState<{ pnName: string; publicKey: string; passcode?: string } | null>(null);
   
   const [showDesktopAppInfo, setShowDesktopAppInfo] = useState(false);
@@ -120,6 +97,37 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
     license: '',
     language: ''
   });
+  const [openMenuFor, setOpenMenuFor] = useState<string | null>(null);
+  const actionMenuRef = React.useRef<HTMLDivElement | null>(null);
+  const [sharingFile, setSharingFile] = useState<AggregatedFile | null>(null);
+  const [shareVisibility, setShareVisibility] = useState<'public' | 'private'>('private');
+  const [isSavingShare, setIsSavingShare] = useState(false);
+  const [thirdPartyIndexers, setThirdPartyIndexers] = useState<ThirdPartyIndexer[]>([]);
+  const [indexerToggles, setIndexerToggles] = useState<Record<string, boolean>>({});
+  const [indexingPermissionsState, setIndexingPermissionsState] = useState<IndexingPermissions | null>(null);
+  const [isLoadingIndexers, setIsLoadingIndexers] = useState(false);
+  const [indexerError, setIndexerError] = useState<string | null>(null);
+
+  React.useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (!actionMenuRef.current) {
+        return;
+      }
+      if (event.target instanceof Node && !actionMenuRef.current.contains(event.target)) {
+        setOpenMenuFor(null);
+        actionMenuRef.current = null;
+      }
+    };
+
+    if (openMenuFor) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [openMenuFor]);
+
   const [viewMode, setViewMode] = useState<'list' | 'grid'>('list');
   const [viewingFile, setViewingFile] = useState<AggregatedFile | null>(null);
   const [filePreviewUrls, setFilePreviewUrls] = useState<Map<string, string>>(new Map()); // fileId -> decrypted blob URL
@@ -136,7 +144,10 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
   const hydrationRateLimitLoggedRef = React.useRef(false);
   const hydrationRetryTimeoutRef = React.useRef<number | null>(null);
   const hydrationInProgressRef = React.useRef(false);
-  const skipMetadataUpdateLoggedRef = React.useRef(false);
+  const ownerIndexWarningLoggedRef = React.useRef<Set<string>>(new Set());
+  const ownerIndexRetryCountsRef = React.useRef<Map<string, number>>(new Map());
+  const rateLimitedBackendsRef = React.useRef<Set<string>>(new Set());
+  const pendingRetryTimeoutRef = React.useRef<number | null>(null);
 
   const getStorageIdentityCandidates = React.useCallback(() => {
     const candidates: string[] = [];
@@ -196,6 +207,113 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
       return null;
     }
   }, []);
+  
+  const scheduleTokenRetry = React.useCallback((backendIds: string[], options?: { delayMs?: number; resetAttempts?: boolean }) => {
+    if (!backendIds.length) {
+      return;
+    }
+
+    // Increment retry counts and determine delay (exponential backoff)
+    const attempts: number[] = [];
+    backendIds.forEach((backendId) => {
+      if (options?.resetAttempts) {
+        ownerIndexRetryCountsRef.current.set(backendId, 0);
+      }
+      const nextCount = (ownerIndexRetryCountsRef.current.get(backendId) || 0) + 1;
+      ownerIndexRetryCountsRef.current.set(backendId, nextCount);
+      attempts.push(nextCount);
+    });
+
+    const maxAttempts = Math.max(...attempts);
+    const delay = options?.delayMs ?? Math.min(15000, 2000 * maxAttempts);
+
+    if (maxAttempts >= 4 && !options?.delayMs) {
+      console.warn('⚠️ [loadFiles] Giving up on owner index auto-refresh after repeated failures', {
+        backendIds,
+        attempts: attempts.reduce((acc, attempt, index) => {
+          acc[backendIds[index]] = attempt;
+          return acc;
+        }, {} as Record<string, number>),
+      });
+      setError('Google Drive session expired. Please reconnect from the storage tab.');
+      return;
+    }
+
+    if (pendingRetryTimeoutRef.current) {
+      window.clearTimeout(pendingRetryTimeoutRef.current);
+    }
+
+    console.debug('⏳ [loadFiles] Scheduling token retry', {
+      backendIds,
+      attempts: attempts.reduce((acc, attempt, index) => {
+        acc[backendIds[index]] = attempt;
+        return acc;
+      }, {} as Record<string, number>),
+      delay,
+    });
+
+    pendingRetryTimeoutRef.current = window.setTimeout(() => {
+      pendingRetryTimeoutRef.current = null;
+      if (loadFilesRef.current) {
+        loadFilesRef.current();
+      }
+    }, delay);
+  }, []);
+
+  React.useEffect(() => {
+    const handleTokenRefreshed = (event: Event) => {
+      const backendId = (event as CustomEvent<{ backendId?: string }>).detail?.backendId;
+      if (backendId) {
+        ownerIndexRetryCountsRef.current.delete(backendId);
+        ownerIndexWarningLoggedRef.current.delete(backendId);
+        rateLimitedBackendsRef.current.delete(backendId);
+      } else {
+        ownerIndexRetryCountsRef.current.clear();
+        rateLimitedBackendsRef.current.clear();
+      }
+      if (loadFilesRef.current) {
+        loadFilesRef.current();
+      }
+    };
+    window.addEventListener('google-drive-token-refreshed', handleTokenRefreshed as EventListener);
+    return () => {
+      window.removeEventListener('google-drive-token-refreshed', handleTokenRefreshed as EventListener);
+    };
+  }, []);
+
+  React.useEffect(() => {
+    return () => {
+      ownerIndexWarningLoggedRef.current.clear();
+      ownerIndexRetryCountsRef.current.clear();
+      rateLimitedBackendsRef.current.clear();
+      if (pendingRetryTimeoutRef.current) {
+        window.clearTimeout(pendingRetryTimeoutRef.current);
+        pendingRetryTimeoutRef.current = null;
+      }
+    };
+  }, []);
+
+  React.useEffect(() => {
+    const handleRateLimited = (event: Event) => {
+      const detail = (event as CustomEvent<{ backendId?: string; retryAfterMs?: number }>).detail;
+      const backendId = detail?.backendId;
+      const retryAfterMs = detail?.retryAfterMs ?? 60000;
+
+      if (backendId) {
+        rateLimitedBackendsRef.current.add(backendId);
+        scheduleTokenRetry([backendId], { delayMs: retryAfterMs, resetAttempts: true });
+      } else if (rateLimitedBackendsRef.current.size > 0) {
+        scheduleTokenRetry(Array.from(rateLimitedBackendsRef.current), { delayMs: retryAfterMs, resetAttempts: true });
+      }
+
+      setError('Google Drive rate limited requests. Retrying shortly...');
+    };
+
+    window.addEventListener('google-drive-refresh-rate-limited', handleRateLimited as EventListener);
+    return () => {
+      window.removeEventListener('google-drive-refresh-rate-limited', handleRateLimited as EventListener);
+    };
+  }, [scheduleTokenRetry]);
   
   const getResolvedAuthCredentials = React.useCallback(() => {
     let pnName =
@@ -299,110 +417,6 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
     }
   }, []);
 
-  const persistStorageCredentialsToAPI = React.useCallback(
-    async (credentialsPayload?: any, cid?: string | null) => {
-      if (!credentialsPayload) {
-        console.warn('⚠️ [StorageCredentials] No credentials payload provided; skipping API persistence');
-        return;
-      }
-
-      const identityCandidates = getStorageIdentityCandidates();
-
-      if (identityCandidates.length === 0) {
-        console.warn('⚠️ [StorageCredentials] No identity candidates available for persistence');
-        return;
-      }
-
-      const seen = new Set<string>();
-      for (const identityId of identityCandidates) {
-        if (!identityId || seen.has(identityId)) {
-          continue;
-        }
-        seen.add(identityId);
-
-        try {
-          const response = await fetch(`${apiEndpoint}/api/storage/credentials/${encodeURIComponent(identityId)}`, {
-            method: 'PUT',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-              credentials: credentialsPayload,
-              cid: cid ?? null,
-            }),
-          });
-
-          if (!response.ok) {
-            const errorText = await response.text().catch(() => 'Unknown error');
-            console.warn('⚠️ [StorageCredentials] Failed to persist credentials to API:', {
-              identityId,
-              status: response.status,
-              error: errorText,
-            });
-          }
-        } catch (error) {
-          console.warn('⚠️ [StorageCredentials] API persistence failed (non-blocking):', {
-            identityId,
-            error,
-          });
-        }
-      }
-    },
-    [apiEndpoint, getStorageIdentityCandidates]
-  );
-
-  const persistAllDriveCredentials = React.useCallback(
-    async (override?: { backendId: string; accessToken: string; refreshToken?: string | null; email?: string | null }) => {
-      if (driveAccounts.length === 0) {
-        return;
-      }
-
-      const accountsPayload = driveAccounts
-        .map((account) => {
-          let accessToken: string | null = null;
-          let refreshToken: string | null = null;
-
-          if (override && override.backendId === account.backendId) {
-            accessToken = override.accessToken;
-            refreshToken = override.refreshToken ?? null;
-          } else {
-            try {
-              accessToken = localStorage.getItem(`${account.keyPrefix}_token`);
-              refreshToken = localStorage.getItem(`${account.keyPrefix}_refresh_token`);
-            } catch (storageError) {
-              console.debug('ℹ️ [DriveAccounts] Unable to read cached token for persistence', {
-                backendId: account.backendId,
-                error: storageError,
-              });
-            }
-          }
-
-          if (!accessToken) {
-            return null;
-          }
-
-          return {
-            backendId: account.backendId,
-            keyPrefix: account.keyPrefix,
-            accessToken,
-            refreshToken: refreshToken ?? null,
-            email: override && override.backendId === account.backendId ? override.email ?? account.email : account.email,
-            connectedAt: new Date().toISOString(),
-          };
-        })
-        .filter((entry): entry is NonNullable<typeof entry> => entry !== null);
-
-      if (accountsPayload.length === 0) {
-        return;
-      }
-
-      await persistStorageCredentialsToAPI({
-        googleDriveAccounts: accountsPayload,
-      });
-    },
-    [driveAccounts, persistStorageCredentialsToAPI]
-  );
-
   const getDriveAccountByBackendId = React.useCallback(
     (backendId: string | null | undefined) => {
       if (!backendId) {
@@ -413,67 +427,93 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
     [driveAccounts]
   );
 
-  React.useEffect(() => {
-    const handleTokenRefreshed = (event: Event) => {
-      const detail = (event as CustomEvent<{
-        backendId?: string;
-        accessToken?: string;
-        refreshToken?: string | null;
-        email?: string | null;
-      }>).detail;
+  const resolveShareVisibility = React.useCallback(
+    (file: AggregatedFile): 'public' | 'private' => {
+      const metadata =
+        fileMetadataMap.get(file.id) ||
+        (file.backendFileId ? fileMetadataMap.get(file.backendFileId) : undefined);
 
-      if (!detail?.backendId || !detail.accessToken) {
-        return;
-      }
-
-      const account = getDriveAccountByBackendId(detail.backendId);
-      if (!account) {
-        return;
-      }
-
-      try {
-        localStorage.setItem(`${account.keyPrefix}_token`, detail.accessToken);
-        if (typeof detail.refreshToken === 'string') {
-          localStorage.setItem(`${account.keyPrefix}_refresh_token`, detail.refreshToken);
+      if (metadata) {
+        if (metadata.isPublic === true) {
+          return 'public';
         }
-      } catch (storageError) {
-        console.warn('⚠️ [DriveAccounts] Unable to cache refreshed tokens locally', {
-          backendId: account.backendId,
-          error: storageError,
-        });
+        if (metadata.isPublic === false) {
+          return 'private';
+        }
+        if ((metadata as any).visibility === 'public') {
+          return 'public';
+        }
+        if ((metadata as any).publicToken) {
+          return 'public';
+        }
       }
 
-      setDriveAccounts((prev) => {
-        const next = prev.map((entry) =>
-          entry.backendId === account.backendId
-            ? {
-                ...entry,
-                email: detail.email ?? entry.email,
-              }
-            : entry
-        );
-        persistDriveAccounts(next);
-        return next;
-      });
+      const cacheKeyPrimary = makeShareTokenCacheKey(file.backend || activeBackendId || 'google_drive', file.backendFileId);
+      const cacheKeyFallback = makeShareTokenCacheKey(file.backend || activeBackendId || 'google_drive', file.id);
+      if (shareTokenCache.current.has(cacheKeyPrimary) || shareTokenCache.current.has(cacheKeyFallback)) {
+        return 'public';
+      }
 
-      persistAllDriveCredentials({
-        backendId: account.backendId,
-        accessToken: detail.accessToken,
-        refreshToken: detail.refreshToken ?? null,
-        email: detail.email ?? account.email,
-      }).catch((error) => {
-        console.warn('⚠️ [DriveAccounts] Failed to persist refreshed credentials to API', {
-          backendId: account.backendId,
-          error,
-        });
-      });
-    };
+      if ((file as any).visibility === 'public') {
+        return 'public';
+      }
 
-    window.addEventListener('google-drive-token-refreshed', handleTokenRefreshed as EventListener);
-    return () => {
-      window.removeEventListener('google-drive-token-refreshed', handleTokenRefreshed as EventListener);
-    };
-  }, [getDriveAccountByBackendId, persistAllDriveCredentials, persistDriveAccounts]);
+      return 'private';
+    },
+    [fileMetadataMap]
+  );
+
+  const deriveIndexingPermissions = React.useCallback(
+    (metadata?: PublicMetadata | null): IndexingPermissions => {
+      const permissions = metadata?.indexingPermissions;
+      if (!permissions) {
+        return {
+          mode: 'all',
+          blocked: []
+        };
+      }
+      return {
+        mode: permissions.mode || 'all',
+        allowed: permissions.allowed ? [...permissions.allowed] : permissions.allowed,
+        blocked: permissions.blocked ? [...permissions.blocked] : [],
+        updatedAt: permissions.updatedAt
+      };
+    },
+    []
+  );
+
+  const computeTogglesFromPermissions = React.useCallback(
+    (indexers: ThirdPartyIndexer[], permissions: IndexingPermissions): Record<string, boolean> => {
+      const blocked = new Set(permissions.blocked || []);
+      const allowed = new Set(permissions.allowed || []);
+      return indexers.reduce<Record<string, boolean>>((acc, indexer) => {
+        let enabled = true;
+        if (permissions.mode === 'none') {
+          enabled = false;
+        } else if (permissions.mode === 'custom') {
+          if (allowed.size > 0) {
+            enabled = allowed.has(indexer.id);
+          } else {
+            enabled = !blocked.has(indexer.id);
+          }
+        } else {
+          enabled = !blocked.has(indexer.id);
+        }
+        acc[indexer.id] = enabled;
+        return acc;
+      }, {});
+    },
+    []
+  );
+
+  React.useEffect(() => {
+    if (sharingFile) {
+      setShareVisibility((prev) => {
+        const computed = resolveShareVisibility(sharingFile);
+        return prev === computed ? prev : computed;
+      });
+    }
+  }, [sharingFile, fileMetadataMap, resolveShareVisibility]);
 
   const resolveActiveBackendEntry = React.useCallback(() => {
     const empty = {
@@ -522,45 +562,107 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
     return empty;
   }, [aggregatorService, activeBackendId, driveAccounts, getDriveAccountByBackendId]);
 
-  const fetchStoredCredentialsPayload = React.useCallback(
-    async (): Promise<{ identityId: string; credentials: any } | null> => {
-      const identityCandidates = getStorageIdentityCandidates();
-      for (const identityId of identityCandidates) {
-        if (!identityId) {
-          continue;
+  const loadThirdPartyIndexers = React.useCallback(
+    async (metadata?: PublicMetadata | null) => {
+      setIsLoadingIndexers(true);
+      setIndexerError(null);
+
+      try {
+        const identity = deriveIdentityKey();
+        const endpoint = new URL(`${apiEndpoint}/api/third-party/indexers`);
+        if (identity) {
+          endpoint.searchParams.set('identity', identity);
         }
 
-        try {
-          const response = await fetch(
-            `${apiEndpoint}/api/storage/credentials/${encodeURIComponent(identityId)}`
-          );
-
-          if (response.status === 404) {
-            continue;
+        const response = await fetch(endpoint.toString(), {
+          method: 'GET',
+          headers: {
+            'Content-Type': 'application/json'
           }
+        });
+
+        if (!response.ok) {
+          const errorText = await response.text().catch(() => response.statusText);
+          throw new Error(errorText || `Failed to load indexers (${response.status})`);
+        }
+
+        const payload = await response.json();
+        const indexers: ThirdPartyIndexer[] = Array.isArray(payload.indexers) ? payload.indexers : [];
+        setThirdPartyIndexers(indexers);
+
+        const basePermissions = deriveIndexingPermissions(metadata);
+        setIndexingPermissionsState(basePermissions);
+
+        const toggles = computeTogglesFromPermissions(indexers, basePermissions);
+        setIndexerToggles(toggles);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Unable to load third-party indexers';
+        console.error('❌ [ShareSettings] Failed to load third-party indexers:', error);
+        setIndexerError(message);
+      } finally {
+        setIsLoadingIndexers(false);
+      }
+    },
+    [apiEndpoint, computeTogglesFromPermissions, deriveIdentityKey, deriveIndexingPermissions]
+  );
+
+  const persistStorageCredentialsToAPI = React.useCallback(
+    async (credentialsPayload?: any, cid?: string | null) => {
+      if (!credentialsPayload) {
+        console.warn('⚠️ [StorageCredentials] No credentials payload provided; skipping API persistence');
+        return;
+      }
+
+      const identityCandidates = getStorageIdentityCandidates();
+
+      if (identityCandidates.length === 0) {
+        console.warn('⚠️ [StorageCredentials] No identity candidates available for persistence');
+        return;
+      }
+
+      const seen = new Set<string>();
+      for (const identityId of identityCandidates) {
+        if (!identityId || seen.has(identityId)) {
+          continue;
+        }
+        seen.add(identityId);
+
+        try {
+          console.warn('📤 [StorageCredentials] Persisting credentials to API...', {
+            identityId,
+            hasCid: !!cid,
+          });
+
+          const response = await fetch(`${apiEndpoint}/api/storage/credentials/${encodeURIComponent(identityId)}`, {
+            method: 'PUT',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              credentials: credentialsPayload,
+              cid: cid ?? null,
+            }),
+          });
 
           if (!response.ok) {
             const errorText = await response.text().catch(() => 'Unknown error');
-            console.debug('ℹ️ [StorageCredentials] Unable to fetch stored payload for merge', {
+            console.warn('⚠️ [StorageCredentials] Failed to persist credentials to API:', {
               identityId,
               status: response.status,
               error: errorText,
             });
-            continue;
-          }
-
-          const result = await response.json();
-          if (result?.credentials) {
-            return { identityId, credentials: result.credentials };
+          } else {
+            console.warn('✅ [StorageCredentials] Credentials persisted to API', {
+              identityId,
+            });
           }
         } catch (error) {
-          console.debug('ℹ️ [StorageCredentials] Fetch for merge failed (non-blocking)', {
+          console.warn('⚠️ [StorageCredentials] API persistence failed (non-blocking):', {
+            identityId,
             error,
           });
         }
       }
-
-      return null;
     },
     [apiEndpoint, getStorageIdentityCandidates]
   );
@@ -587,19 +689,14 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
         id: params.backendId,
         name: params.email || 'Google Drive',
         storageKeyPrefix: params.keyPrefix,
-        apiEndpoint,
+        apiEndpoint
       });
       aggregatorService.registerBackend(params.backendId, backend);
     }
 
-    let refreshTokenToUse = params.refreshToken ?? undefined;
-    if (!refreshTokenToUse && typeof backend.getRefreshToken === 'function') {
-      refreshTokenToUse = backend.getRefreshToken() ?? undefined;
-    }
-
     await backend.connect({
       token: params.token,
-      refreshToken: refreshTokenToUse,
+      refreshToken: params.refreshToken || undefined,
       email: params.email || undefined
     });
 
@@ -637,7 +734,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
     setActiveBackendId(params.backendId);
 
     return backend;
-  }, [aggregatorService, activeBackendId, persistDriveAccounts]);
+  }, [aggregatorService, activeBackendId, persistDriveAccounts, apiEndpoint]);
 
   const removeDriveAccount = React.useCallback((backendId: string) => {
     let nextActiveId: string | null = null;
@@ -686,26 +783,6 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
       setActiveBackendId(nextActiveId);
     }
   }, [activeBackendId, persistDriveAccounts]);
-
-const handleGoogleDriveAuthFailure = React.useCallback(
-  (backendId: string | null, message?: string) => {
-    if (backendId) {
-      try {
-        const backend = aggregatorService?.getBackend?.(backendId) as GoogleDriveBackend | undefined;
-        if (backend && typeof backend.disconnect === 'function') {
-          void backend.disconnect().catch(() => {
-            /* non-blocking */
-          });
-        }
-      } catch {
-        /* ignore */
-      }
-      removeDriveAccount(backendId);
-    }
-    setError(message || 'Google Drive authentication expired. Please reconnect.');
-  },
-  [aggregatorService, removeDriveAccount]
-);
 
   React.useEffect(() => {
     return () => {
@@ -837,7 +914,7 @@ const handleGoogleDriveAuthFailure = React.useCallback(
             : [];
 
         if (accountsArray.length === 0) {
-          console.debug('ℹ️ [StorageCredentials] Credentials payload contained no Google Drive accounts', {
+          console.warn('ℹ️ [StorageCredentials] Credentials payload contained no Google Drive accounts', {
             candidateId,
           });
           continue;
@@ -848,64 +925,21 @@ const handleGoogleDriveAuthFailure = React.useCallback(
           if (!token) {
             continue;
           }
-
           const email = account?.email || null;
           const refreshToken = account?.refreshToken || null;
-
-          let backendId: string | null =
-            typeof account?.backendId === 'string' && account.backendId.length > 0
-              ? account.backendId
-              : null;
-          let keyPrefix: string | null =
-            typeof account?.keyPrefix === 'string' && account.keyPrefix.length > 0
-              ? account.keyPrefix
-              : null;
-
-          if (!backendId || !keyPrefix) {
-            const identifiers = resolveIdentifiersForEmail(email);
-            backendId = identifiers.backendId;
-            keyPrefix = identifiers.keyPrefix;
-          } else {
-            const existing = driveAccounts.find((entry) => entry.backendId === backendId);
-            if (existing) {
-              keyPrefix = existing.keyPrefix;
-            }
-          }
-
-          if (!backendId || !keyPrefix) {
-            console.warn('⚠️ [StorageCredentials] Unable to determine backend identifiers for hydrated account', {
-              email,
-              backendId,
-              keyPrefix,
-            });
-            continue;
-          }
+          const identifiers = resolveIdentifiersForEmail(email);
 
           try {
             await upsertDriveAccount({
-              backendId,
-              keyPrefix,
+              backendId: identifiers.backendId,
+              keyPrefix: identifiers.keyPrefix,
               token,
               refreshToken,
               email,
             });
-
-            try {
-              localStorage.setItem(`${keyPrefix}_token`, token);
-              if (refreshToken) {
-                localStorage.setItem(`${keyPrefix}_refresh_token`, refreshToken);
-              }
-            } catch (storageError) {
-              console.warn('⚠️ [StorageCredentials] Failed to cache hydrated tokens locally', {
-                backendId,
-                keyPrefix,
-                storageError,
-              });
-            }
           } catch (upsertError) {
             console.warn('⚠️ [StorageCredentials] Failed to reconnect Google Drive account from API payload', {
               email,
-              backendId,
               upsertError,
             });
           }
@@ -958,7 +992,7 @@ const handleGoogleDriveAuthFailure = React.useCallback(
         }
       }
     }
-  }, [apiEndpoint, driveAccounts, getStorageIdentityCandidates, resolveIdentifiersForEmail, upsertDriveAccount]);
+  }, [apiEndpoint, getStorageIdentityCandidates, resolveIdentifiersForEmail, upsertDriveAccount]);
 
   const fetchDriveUserInfo = React.useCallback(async (accessToken: string) => {
     try {
@@ -978,7 +1012,7 @@ const handleGoogleDriveAuthFailure = React.useCallback(
         }
       }
     } catch (driveError) {
-      console.debug('ℹ️ [fetchDriveUserInfo] drive/v3/about failed, falling back', driveError);
+      console.warn('⚠️ [fetchDriveUserInfo] drive/v3/about failed, falling back', driveError);
     }
 
     try {
@@ -996,13 +1030,15 @@ const handleGoogleDriveAuthFailure = React.useCallback(
         };
       }
     } catch (oauthError) {
-      console.debug('ℹ️ [fetchDriveUserInfo] oauth2 userinfo failed', oauthError);
+      console.warn('⚠️ [fetchDriveUserInfo] oauth2 userinfo failed', oauthError);
     }
 
     return { email: undefined, name: undefined };
   }, []);
-
-  const [fileMetadataMap, setFileMetadataMap] = useState<Map<string, PublicMetadata>>(new Map());
+  // Version check - this will help verify new code is loading
+  React.useEffect(() => {
+    console.log('🚀 [FileStorageAggregator] Component loaded - Version: 2024-12-05-v2');
+  }, []);
 
   // Load Google Drive token from encrypted metadata when user unlocks
   useEffect(() => {
@@ -1284,6 +1320,18 @@ const handleGoogleDriveAuthFailure = React.useCallback(
     });
   }, [authenticatedUser]);
 
+  React.useEffect(() => {
+    if (resolvedAuth?.pnName && resolvedAuth.publicKey && resolvedAuth.passcode) {
+      const payload = {
+        pnName: resolvedAuth.pnName,
+        publicKey: resolvedAuth.publicKey,
+        passcode: resolvedAuth.passcode,
+      };
+
+      window.dispatchEvent(new CustomEvent('pn-auth-session', { detail: payload }));
+    }
+  }, [resolvedAuth]);
+
   const loadFileMetadata = React.useCallback(async (filesToLoad: AggregatedFile[]) => {
     try {
       console.log('📋 [Metadata] Loading file metadata...', { fileCount: filesToLoad.length });
@@ -1291,12 +1339,24 @@ const handleGoogleDriveAuthFailure = React.useCallback(
       if (backend && backend.isConnected() && resolvedAuth?.pnName) {
         try {
       const { GoogleDriveMetadataService } = await import('../../services/storage/GoogleDriveMetadataService');
+          let ensuredToken: string | null = null;
+          if (typeof (backend as any).ensureAccessToken === 'function') {
+            try {
+              ensuredToken = await (backend as any).ensureAccessToken();
+            } catch (ensureError) {
+              console.warn('⚠️ [Metadata] ensureAccessToken failed (non-blocking):', ensureError);
+            }
+          }
           const localTokenKey = keyPrefix
             ? `${keyPrefix}_token`
             : backendId
               ? `${backendId}_token`
               : 'google_drive_token';
-          const token = (backend as any).token || localStorage.getItem(localTokenKey);
+          const token =
+            ensuredToken ||
+            (typeof backend.getAccessToken === 'function' ? backend.getAccessToken() : null) ||
+            (backend as any).token ||
+            localStorage.getItem(localTokenKey);
 
           if (token) {
             console.log('✅ [Metadata] Google Drive connected, loading owner index...');
@@ -1366,20 +1426,30 @@ const handleGoogleDriveAuthFailure = React.useCallback(
                         : indexEntry.publicToken;
                       const cacheKey = makeShareTokenCacheKey(file.backend || '', file.backendFileId);
                       shareTokenCache.current.set(cacheKey, token);
-                  storageLog.debug('💾 [Metadata] Cached share token from owner index for file:', file.id);
+                      console.log('💾 [Metadata] Cached share token from owner index for file:', file.id);
                     } catch (e) {
-                  storageLog.warn('⚠️ [Metadata] Failed to cache token from owner index:', e);
+                      console.warn('⚠️ [Metadata] Failed to cache token from owner index:', e);
                     }
                   }
                 }
               }
 
-              setFileMetadataMap(metadataMap);
+              const normalized = new Map<string, PublicMetadata>();
+              metadataMap.forEach((item, key) => {
+                normalized.set(key, item);
+                if (item.backendFileId && item.backendFileId !== key) {
+                  normalized.set(item.backendFileId, item);
+                }
+                if (item.fileId && item.fileId !== key) {
+                  normalized.set(item.fileId, item);
+                }
+              });
+              setFileMetadataMap(normalized);
               return;
             }
           }
         } catch (ownerIndexError) {
-          storageLog.warn('Failed to load from owner index, falling back to metadata service:', ownerIndexError);
+          console.warn('Failed to load from owner index, falling back to metadata service:', ownerIndexError);
         }
       }
 
@@ -1388,22 +1458,175 @@ const handleGoogleDriveAuthFailure = React.useCallback(
       }
 
       await metadataIndexService.initialize();
+
+      try {
+        const preferredDid =
+          resolvedAuth?.publicKey
+            ? (resolvedAuth.publicKey.startsWith('did:') ? resolvedAuth.publicKey : `did:key:${resolvedAuth.publicKey}`)
+            : authenticatedUser?.id && authenticatedUser.id.startsWith('did:')
+              ? authenticatedUser.id
+              : undefined;
+
+        await metadataIndexService.syncFromCentralAggregator({
+          authorDid: preferredDid,
+        });
+      } catch (centralSyncError) {
+        console.warn('⚠️ [Metadata] Central aggregator sync failed (non-blocking):', centralSyncError);
+      }
+
       const metadataMap = new Map<string, PublicMetadata>();
+      const allPublicMetadata = await metadataIndexService.getAllPublicMetadata();
+      allPublicMetadata.forEach((item) => {
+        if (!item.fileId) {
+          return;
+        }
+        metadataMap.set(item.fileId, item);
+        if (item.backendFileId && item.backendFileId !== item.fileId) {
+          metadataMap.set(item.backendFileId, item);
+        }
+      });
       for (const file of filesToLoad) {
-        const metadata = await metadataIndexService.getFileMetadata(file.id);
-        if (metadata) {
-          metadataMap.set(file.id, metadata);
+        const candidateIds = new Set<string>([file.id]);
+        if (file.backendFileId) {
+          candidateIds.add(file.backendFileId);
+        }
+
+        let metadata: PublicMetadata | null = null;
+        for (const candidateId of candidateIds) {
+          if (metadataMap.has(candidateId)) {
+            metadata = metadataMap.get(candidateId)!;
+            break;
+          }
+          const fetched = await metadataIndexService.getFileMetadata(candidateId);
+          if (fetched) {
+            metadataMap.set(candidateId, fetched);
+            if (fetched.fileId && fetched.fileId !== candidateId) {
+              metadataMap.set(fetched.fileId, fetched);
+            }
+            if (fetched.backendFileId && fetched.backendFileId !== candidateId) {
+              metadataMap.set(fetched.backendFileId, fetched);
+            }
+            metadata = fetched;
+            break;
+          }
+        }
+
+        if (!metadata && metadataIndexService) {
+          const fetched = await metadataIndexService.getFileMetadata(file.id);
+          if (fetched) {
+            metadataMap.set(file.id, fetched);
+            if (fetched.backendFileId && fetched.backendFileId !== file.id) {
+              metadataMap.set(fetched.backendFileId, fetched);
+            }
+          }
         }
       }
-      setFileMetadataMap(metadataMap);
+      setFileMetadataMap(new Map(metadataMap));
     } catch (err) {
       console.error('Failed to load file metadata:', err);
     }
   }, [aggregatorService, resolvedAuth, authenticatedUser, metadataIndexService, resolveActiveBackendEntry]);
 
+  const openShareSettings = React.useCallback(
+    (file: AggregatedFile) => {
+      const initialVisibility = resolveShareVisibility(file);
+      setShareVisibility(initialVisibility);
+      setSharingFile(file);
+      const existingMetadata =
+        fileMetadataMap.get(file.id) ||
+        (file.backendFileId ? fileMetadataMap.get(file.backendFileId) : undefined);
+      loadThirdPartyIndexers(existingMetadata);
+
+      if (initialVisibility === 'private') {
+        const metadata =
+          fileMetadataMap.get(file.id) ||
+          (file.backendFileId ? fileMetadataMap.get(file.backendFileId) : undefined);
+
+        if (!metadata || typeof metadata.isPublic !== 'boolean') {
+          loadFileMetadata([file]).catch((metadataError) => {
+            console.warn('⚠️ [ShareSettings] Unable to hydrate metadata before opening modal:', metadataError);
+          });
+        }
+      }
+
+      if (metadataIndexService) {
+        (async () => {
+          try {
+            if (resolvedAuth?.publicKey) {
+              const preferredDid = resolvedAuth.publicKey.startsWith('did:')
+                ? resolvedAuth.publicKey
+                : `did:key:${resolvedAuth.publicKey}`;
+              await metadataIndexService.syncFromCentralAggregator({
+                authorDid: preferredDid,
+                force: true,
+              });
+            } else {
+              await metadataIndexService.syncFromCentralAggregator({ force: true });
+            }
+            const refreshedMetadata =
+              (await metadataIndexService.getFileMetadata(file.id)) ||
+              (file.backendFileId ? await metadataIndexService.getFileMetadata(file.backendFileId) : null);
+            if (refreshedMetadata) {
+              setFileMetadataMap((prev) => {
+                const next = new Map(prev);
+                const normalizedVisibility =
+                  refreshedMetadata.isPublic === true ||
+                  (refreshedMetadata as any).visibility === 'public' ||
+                  !!(refreshedMetadata as any).publicToken;
+                const normalizedMetadata: PublicMetadata = {
+                  ...refreshedMetadata,
+                  isPublic: normalizedVisibility ? true : refreshedMetadata.isPublic === false ? false : refreshedMetadata.isPublic,
+                };
+                next.set(file.id, normalizedMetadata);
+                if (file.backendFileId) {
+                  next.set(file.backendFileId, normalizedMetadata);
+                }
+                if (normalizedMetadata.fileId) {
+                  next.set(normalizedMetadata.fileId, normalizedMetadata);
+                }
+                if ((normalizedMetadata as any).backendFileId) {
+                  next.set((normalizedMetadata as any).backendFileId, normalizedMetadata);
+                }
+                return next;
+              });
+
+              const isPublic =
+                refreshedMetadata.isPublic === true ||
+                (refreshedMetadata as any).visibility === 'public' ||
+                !!(refreshedMetadata as any).publicToken;
+
+              setShareVisibility(isPublic ? 'public' : 'private');
+              loadThirdPartyIndexers(refreshedMetadata);
+            }
+          } catch (centralSyncError) {
+            console.warn('⚠️ [ShareSettings] Central metadata sync failed (non-blocking):', centralSyncError);
+          }
+        })();
+      }
+    },
+    [resolveShareVisibility, fileMetadataMap, loadFileMetadata, loadThirdPartyIndexers, metadataIndexService, resolvedAuth?.publicKey]
+  );
+
+  const closeShareSettings = React.useCallback(() => {
+    setSharingFile(null);
+    setShareVisibility('private');
+    setThirdPartyIndexers([]);
+    setIndexerToggles({});
+    setIndexingPermissionsState(null);
+    setIndexerError(null);
+  }, []);
+
+  const handleIndexerToggle = React.useCallback((indexerId: string) => {
+    setIndexerToggles((prev) => {
+      const next = { ...prev };
+      next[indexerId] = !prev[indexerId];
+      return next;
+    });
+  }, []);
+
   const loadFiles = React.useCallback(async () => {
     if (isLoadingFilesRef.current) {
-      storageLog.debug('⏳ [loadFiles] Load already in progress, skipping');
+      console.log('⏳ [loadFiles] Load already in progress, skipping');
       return;
     }
     isLoadingFilesRef.current = true;
@@ -1414,7 +1637,7 @@ const handleGoogleDriveAuthFailure = React.useCallback(
       // Ensure backends are initialized (gracefully fail if Google Drive not connected)
       // Don't block unlock if Google Drive initialization fails
       if (!aggregatorService) {
-        storageLog.warn('⚠️ [loadFiles] Aggregator service not available');
+        console.warn('⚠️ [loadFiles] Aggregator service not available');
         setIsLoading(false);
         setFiles([]);
         return;
@@ -1424,9 +1647,7 @@ const handleGoogleDriveAuthFailure = React.useCallback(
         await aggregatorService.ensureInitialized();
       } catch (initError) {
         // Don't log as error - just return empty list
-        if (!isGoogleDriveAuthExpired(initError)) {
-          storageLog.warn('⚠️ [loadFiles] Backend initialization skipped (Google Drive may not be connected)');
-        }
+        console.warn('⚠️ [loadFiles] Backend initialization skipped (Google Drive may not be connected)');
         setIsLoading(false);
         setFiles([]); // Set empty files, don't show error
         return;
@@ -1438,7 +1659,7 @@ const handleGoogleDriveAuthFailure = React.useCallback(
       const connectedEntries = backendEntries.filter(({ backend }) => backend.isConnected());
 
       if (connectedEntries.length === 0) {
-        storageLog.debug('ℹ️ [loadFiles] No connected storage backends yet; skipping owner index load until connection completes', {
+        console.log('ℹ️ [loadFiles] No connected storage backends yet; skipping owner index load until connection completes', {
           backendEntries: backendEntries.map(({ id }) => id),
           connectedBackends: connectedEntries.map(({ id }) => id),
         });
@@ -1508,14 +1729,12 @@ const handleGoogleDriveAuthFailure = React.useCallback(
             passcode,
             publicKey
           });
-          storageLog.debug(`✅ [loadFiles] Generated pN identifier: ${currentPnIdentifier.substring(0, 8)}...`);
+          console.log(`✅ [loadFiles] Generated pN identifier: ${currentPnIdentifier.substring(0, 8)}...`);
         } else {
-          storageLog.debug(`⚠️ [loadFiles] Cannot generate pN identifier (missing: ${!pnName ? 'pnName ' : ''}${!publicKey ? 'publicKey ' : ''}${!passcode ? 'passcode' : ''}) - backend will search for folders directly`);
+          console.log(`⚠️ [loadFiles] Cannot generate pN identifier (missing: ${!pnName ? 'pnName ' : ''}${!publicKey ? 'publicKey ' : ''}${!passcode ? 'passcode' : ''}) - backend will search for folders directly`);
         }
       } catch (err) {
-        if (!isGoogleDriveAuthExpired(err)) {
-          storageLog.warn('⚠️ [loadFiles] Failed to generate pN identifier:', err);
-        }
+        console.warn('⚠️ [loadFiles] Failed to generate pN identifier:', err);
       }
       
       // Fallback: derive identifier from stable DID + public key (no passcode required)
@@ -1531,22 +1750,21 @@ const handleGoogleDriveAuthFailure = React.useCallback(
             const hashArray = Array.from(new Uint8Array(hashBuffer));
             const hexHash = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
             currentPnIdentifier = `pn-${hexHash.substring(0, 12)}`;
-          storageLog.debug(`✅ [loadFiles] Using fallback pN identifier: ${currentPnIdentifier}`);
+            console.log(`✅ [loadFiles] Using fallback pN identifier: ${currentPnIdentifier}`);
           }
-      } catch (fallbackError) {
-          if (!isGoogleDriveAuthExpired(fallbackError)) {
-            storageLog.warn('⚠️ [loadFiles] Fallback identifier generation failed:', fallbackError);
-          }
+        } catch (fallbackError) {
+          console.warn('⚠️ [loadFiles] Fallback identifier generation failed:', fallbackError);
         }
       }
       
       if (!currentPnIdentifier) {
-        storageLog.debug('⚠️ [loadFiles] Unable to determine pN identifier - owner index cannot be loaded until credentials are available');
+        console.warn('⚠️ [loadFiles] Unable to determine pN identifier - owner index cannot be loaded until credentials are available');
       }
 
       const aggregatedAllFiles: AggregatedFile[] = [];
       const aggregatedMetadataMap = new Map<string, PublicMetadata>();
       const filesNeedingMetadata: AggregatedFile[] = [];
+      const retryBackends = new Set<string>();
 
       for (const entry of connectedEntries) {
         const backendId = entry.id;
@@ -1555,12 +1773,29 @@ const handleGoogleDriveAuthFailure = React.useCallback(
           getDriveAccountByBackendId(backendId)?.keyPrefix ||
           (typeof backend.getStorageKeyPrefix === 'function' ? backend.getStorageKeyPrefix() : null);
 
+        if (rateLimitedBackendsRef.current.has(backendId)) {
+          console.debug('⏳ [loadFiles] Skipping backend during refresh cooldown', { backendId });
+          continue;
+        }
+
         if (!backend?.isConnected()) {
-          storageLog.debug('ℹ️ [loadFiles] Backend not connected yet; skipping for now', {
+          console.debug('ℹ️ [loadFiles] Backend not connected yet; skipping for now', {
             backendId,
             keyPrefix,
           });
           continue;
+        }
+
+        let ensuredAccessToken: string | null = null;
+        if (typeof (backend as any).ensureAccessToken === 'function') {
+          try {
+            ensuredAccessToken = await (backend as any).ensureAccessToken();
+          } catch (ensureError) {
+            console.warn('⚠️ [loadFiles] ensureAccessToken failed (non-blocking):', {
+              backendId,
+              error: ensureError,
+            });
+          }
         }
 
         const localTokenKey = keyPrefix
@@ -1569,35 +1804,65 @@ const handleGoogleDriveAuthFailure = React.useCallback(
             ? `${backendId}_token`
             : 'google_drive_token';
 
-        const token = (backend as any).token || (localTokenKey ? localStorage.getItem(localTokenKey) : null);
+        const accessToken =
+          ensuredAccessToken ||
+          (typeof backend.getAccessToken === 'function' ? backend.getAccessToken() : undefined) ||
+          (backend as any).token ||
+          (localTokenKey ? localStorage.getItem(localTokenKey) : null);
+        if (!accessToken) {
+          retryBackends.add(backendId);
+          console.debug('⏳ [loadFiles] Waiting for refreshed token', { backendId });
+        }
         let ownerIndex: any = null;
 
-        if (token && currentPnIdentifier) {
+        if (accessToken && currentPnIdentifier) {
           try {
             const { GoogleDriveMetadataService } = await import('../../services/storage/GoogleDriveMetadataService');
-            const pnFolderId = await GoogleDriveMetadataService.getOrCreatePNFolder(token, currentPnIdentifier);
-            const metadataFolderId = await GoogleDriveMetadataService.getOrCreateMetadataFolder(token, pnFolderId);
-            ownerIndex = await GoogleDriveMetadataService.getOwnerFileIndex(token, metadataFolderId, currentPnIdentifier);
-            storageLog.debug('📋 [loadFiles] Owner index response', {
+            const pnFolderId = await GoogleDriveMetadataService.getOrCreatePNFolder(accessToken, currentPnIdentifier);
+            const metadataFolderId = await GoogleDriveMetadataService.getOrCreateMetadataFolder(accessToken, pnFolderId);
+            ownerIndex = await GoogleDriveMetadataService.getOwnerFileIndex(accessToken, metadataFolderId, currentPnIdentifier);
+            console.debug('📋 [loadFiles] Owner index response', {
               backendId,
               hasIndex: !!ownerIndex,
               fileCount: ownerIndex?.files?.length || 0,
             });
           } catch (ownerIndexError) {
-            if (isGoogleDriveAuthExpired(ownerIndexError)) {
-              handleGoogleDriveAuthFailure(backendId);
+            const errorMessage =
+              ownerIndexError instanceof Error ? ownerIndexError.message : String(ownerIndexError);
+            const isAuthRelated =
+              typeof errorMessage === 'string' &&
+              (errorMessage.includes('Failed to search for pN folder') ||
+               errorMessage.includes('Failed to search for metadata folder') ||
+               errorMessage.includes('Google Drive authentication expired') ||
+               errorMessage.includes('token refresh is temporarily rate limited'));
+
+            if (isAuthRelated) {
+              retryBackends.add(backendId);
+              rateLimitedBackendsRef.current.add(backendId);
+              console.debug('⏳ [loadFiles] Owner index request will retry after token refresh', {
+                backendId,
+                error: errorMessage,
+              });
               continue;
-            }
-            storageLog.warn('⚠️ [loadFiles] Failed to read owner index (non-blocking):', {
+            } else if (!ownerIndexWarningLoggedRef.current.has(backendId)) {
+            console.warn('⚠️ [loadFiles] Failed to read owner index (non-blocking):', {
               backendId,
               error: ownerIndexError,
             });
+              ownerIndexWarningLoggedRef.current.add(backendId);
+            } else {
+              console.debug('ℹ️ [loadFiles] Owner index still unavailable', {
+                backendId,
+                error: errorMessage,
+              });
+            }
           }
         }
 
         let filesForBackend: AggregatedFile[] = [];
 
         if (ownerIndex?.files?.length) {
+          ownerIndexRetryCountsRef.current.delete(backendId);
           filesForBackend = ownerIndex.files.map((entry: any) => {
             const derivedMime =
               entry.mimeType ||
@@ -1605,9 +1870,10 @@ const handleGoogleDriveAuthFailure = React.useCallback(
 
             const normalizedName = entry.fileName || entry.originalName || 'Untitled';
             const parsedSize = typeof entry.size === 'number' ? entry.size : Number(entry.size || 0);
+            const fileId = entry.fileId || entry.googleDriveFileId || `${backendId}:${entry.fileName}`;
 
             return {
-              id: entry.fileId,
+              id: fileId,
               backend: backendId,
               backendFileId: entry.googleDriveFileId,
               name: normalizedName,
@@ -1615,44 +1881,68 @@ const handleGoogleDriveAuthFailure = React.useCallback(
               mimeType: derivedMime,
               size: Number.isFinite(parsedSize) ? parsedSize.toString() : '0',
               encrypted: true,
-              visibility: entry.visibility || 'private',
+              visibility: normalizeVisibility(entry.visibility),
+              aggregatedAt: entry.uploadedAt || new Date().toISOString(),
             };
           });
 
           ownerIndex.files.forEach((entry: any) => {
-            const fileId = entry.fileId;
+            const fileId = entry.fileId || entry.googleDriveFileId || `${backendId}:${entry.fileName}`;
+            const name = entry.originalName || entry.fileName || 'Untitled';
+            const mime =
+              entry.mimeType ||
+              (name?.toLowerCase().endsWith('.encrypted') ? 'application/octet-stream' : undefined);
+            const schemaType =
+              mime?.startsWith('image/')
+                ? 'ImageObject'
+                : mime?.startsWith('video/')
+                ? 'VideoObject'
+                : mime?.startsWith('audio/')
+                ? 'AudioObject'
+                : 'CreativeWork';
+            const isPublic = entry.visibility === 'public';
+            const publicToken =
+              typeof entry.publicToken === 'string'
+                ? entry.publicToken
+                : entry.publicToken
+                ? JSON.stringify(entry.publicToken)
+                : undefined;
+
             const metadata: PublicMetadata = {
               fileId,
               backend: backendId,
               backendFileId: entry.googleDriveFileId,
-              name: entry.originalName || entry.fileName,
-              description: entry.description,
+              name,
+              description: entry.description || '',
               keywords: entry.tags || [],
               uploadDate: entry.uploadedAt,
-              fileType: entry.mimeType?.split('/')[0] || 'other',
-              isPublic: entry.visibility === 'public',
+              fileType: schemaType === 'ImageObject' ? 'image' : schemaType === 'VideoObject' ? 'video' : schemaType === 'AudioObject' ? 'audio' : 'document',
+              isPublic,
               creator: entry.owner?.did
                 ? {
-                    '@type': 'Person',
-                    '@id': entry.owner.did,
+                    "@type": "Person",
+                    "@id": entry.owner.did,
                     identifier: {
-                      '@type': 'PropertyValue',
+                      "@type": "PropertyValue",
                       name: 'DID',
                       value: entry.owner.did,
                     },
                   }
                 : undefined,
               thumbnail: entry.thumbnail,
-              publicToken: entry.publicToken,
+              publicToken,
               engagement: entry.engagement,
               inReplyTo: entry.inReplyTo,
               repostOf: entry.repostOf,
               isPartOf: entry.isPartOf,
-              '@context': ['https://schema.org/'],
-              '@type': 'CreativeWork',
-              '@id': `https://parnoir.com/resource/${fileId}`,
+              "@context": ["https://schema.org/", "https://parnoir.com/ns/v1#"],
+              "@type": schemaType,
+              "@id": `https://parnoir.com/resource/${fileId}`,
             };
             aggregatedMetadataMap.set(fileId, metadata);
+            if (metadata.backendFileId && metadata.backendFileId !== fileId) {
+              aggregatedMetadataMap.set(metadata.backendFileId, metadata);
+            }
 
             if (entry.publicToken) {
               try {
@@ -1672,7 +1962,7 @@ const handleGoogleDriveAuthFailure = React.useCallback(
             }
           });
         } else {
-          storageLog.debug('ℹ️ [loadFiles] Owner index empty; scanning Drive contents', { backendId });
+          console.debug('ℹ️ [loadFiles] Owner index empty; scanning Drive contents', { backendId });
           try {
             const scannedFiles = await backend.listFiles(undefined, currentPnIdentifier);
             filesForBackend = scannedFiles.map((file: any) => ({
@@ -1703,11 +1993,20 @@ const handleGoogleDriveAuthFailure = React.useCallback(
               });
             }
           } catch (scanError) {
-            if (isGoogleDriveAuthExpired(scanError)) {
-              handleGoogleDriveAuthFailure(backendId);
-              continue;
+            const scanMessage =
+              scanError instanceof Error ? scanError.message : String(scanError);
+            const scanCode = (scanError as any)?.code;
+
+            if (
+              scanCode === 'GOOGLE_DRIVE_REFRESH_COOLDOWN' ||
+              scanMessage.includes('token refresh is temporarily rate limited') ||
+              scanMessage.includes('Google Drive authentication expired')
+            ) {
+              retryBackends.add(backendId);
+              rateLimitedBackendsRef.current.add(backendId);
             }
-            storageLog.warn('⚠️ [loadFiles] Drive scan failed (non-blocking)', {
+
+            console.warn('⚠️ [loadFiles] Drive scan failed (non-blocking)', {
               backendId,
               error: scanError,
             });
@@ -1716,7 +2015,7 @@ const handleGoogleDriveAuthFailure = React.useCallback(
         }
 
         if (filesForBackend.length === 0) {
-          storageLog.debug('ℹ️ [loadFiles] No files discovered for backend', { backendId });
+          console.debug('ℹ️ [loadFiles] No files discovered for backend', { backendId });
           continue;
         }
 
@@ -1724,35 +2023,47 @@ const handleGoogleDriveAuthFailure = React.useCallback(
       }
 
       setFiles(aggregatedAllFiles);
-      setFileMetadataMap(aggregatedMetadataMap);
+      const normalizedMetadataMap = new Map<string, PublicMetadata>();
+      aggregatedMetadataMap.forEach((metadata, key) => {
+        normalizedMetadataMap.set(key, metadata);
+        if (metadata.backendFileId && metadata.backendFileId !== key) {
+          normalizedMetadataMap.set(metadata.backendFileId, metadata);
+        }
+        if (metadata.fileId && metadata.fileId !== key) {
+          normalizedMetadataMap.set(metadata.fileId, metadata);
+        }
+      });
+      setFileMetadataMap(normalizedMetadataMap);
 
-      const filesWithoutMetadata = filesNeedingMetadata.filter((file) => !aggregatedMetadataMap.has(file.id));
+      const filesWithoutMetadata = filesNeedingMetadata.filter((file) => {
+        if (aggregatedMetadataMap.has(file.id)) {
+          return false;
+        }
+        if (file.backendFileId && aggregatedMetadataMap.has(file.backendFileId)) {
+          return false;
+        }
+        return true;
+      });
       if (filesWithoutMetadata.length > 0) {
         loadFileMetadata(filesWithoutMetadata).catch((err) => {
           console.warn('⚠️ Failed to load file metadata (non-blocking):', err);
         });
       }
-    } catch (err) {
-      if (isGoogleDriveAuthExpired(err)) {
-        handleGoogleDriveAuthFailure(activeBackendId ?? null);
-      } else {
-        // Don't set error or break unlock - just log it
-        storageLog.warn('⚠️ [loadFiles] Error (non-blocking, unlock can proceed):', err);
+      if (retryBackends.size > 0) {
+        console.debug('⏳ [loadFiles] Scheduling retry after token refresh', {
+          retryBackends: Array.from(retryBackends),
+        });
+        scheduleTokenRetry(Array.from(retryBackends));
       }
+    } catch (err) {
+      // Don't set error or break unlock - just log it
+      console.warn('⚠️ [loadFiles] Error (non-blocking, unlock can proceed):', err);
       setFiles([]); // Show empty list
     } finally {
       setIsLoading(false);
       isLoadingFilesRef.current = false;
     }
-  }, [
-    activeBackendId,
-    aggregatorService,
-    authenticatedUser,
-    resolvedAuth,
-    loadFileMetadata,
-    getDriveAccountByBackendId,
-    handleGoogleDriveAuthFailure,
-  ]);
+  }, [aggregatorService, authenticatedUser, resolvedAuth, loadFileMetadata, getDriveAccountByBackendId, scheduleTokenRetry]);
 
   const handleTogglePublic = async (file: AggregatedFile) => {
     try {
@@ -1763,15 +2074,23 @@ const handleGoogleDriveAuthFailure = React.useCallback(
       
       await metadataIndexService.initialize();
       
-      const existingMetadata = fileMetadataMap.get(file.id);
+      const existingMetadata =
+        fileMetadataMap.get(file.id) ||
+        (file.backendFileId ? fileMetadataMap.get(file.backendFileId) : undefined);
       const isCurrentlyPublic = existingMetadata?.isPublic || false;
 
       if (isCurrentlyPublic) {
         // Make private - remove from index
-        await metadataIndexService.removeFromIndex(file.id);
+        await metadataIndexService.removeFromIndex(existingMetadata?.fileId || file.id);
         setFileMetadataMap(prev => {
           const next = new Map(prev);
           next.delete(file.id);
+          if (file.backendFileId) {
+            next.delete(file.backendFileId);
+          }
+          if (existingMetadata?.fileId && existingMetadata.fileId !== file.id) {
+            next.delete(existingMetadata.fileId);
+          }
           return next;
         });
       } else {
@@ -1991,6 +2310,12 @@ const handleGoogleDriveAuthFailure = React.useCallback(
         setFileMetadataMap(prev => {
           const next = new Map(prev);
           next.set(file.id, publicMetadata);
+          if (file.backendFileId && !next.has(file.backendFileId)) {
+            next.set(file.backendFileId, publicMetadata);
+          }
+          if (publicMetadata.fileId && !next.has(publicMetadata.fileId)) {
+            next.set(publicMetadata.fileId, publicMetadata);
+          }
           return next;
         });
       }
@@ -2000,6 +2325,140 @@ const handleGoogleDriveAuthFailure = React.useCallback(
       setError(errorMessage);
     }
   };
+
+  const handleSaveShareSettings = React.useCallback(async () => {
+    if (!sharingFile) {
+      return;
+    }
+
+    try {
+      setIsSavingShare(true);
+      const existingMetadata =
+        fileMetadataMap.get(sharingFile.id) ||
+        (sharingFile.backendFileId ? fileMetadataMap.get(sharingFile.backendFileId) : undefined);
+      const targetFileId = existingMetadata?.fileId || sharingFile.id;
+
+      const isCurrentlyPublic = existingMetadata?.isPublic || false;
+      const makePublic = shareVisibility === 'public';
+
+      const blockedIds = Object.entries(indexerToggles)
+        .filter(([, enabled]) => !enabled)
+        .map(([id]) => id);
+      const enabledIds = Object.entries(indexerToggles)
+        .filter(([, enabled]) => enabled)
+        .map(([id]) => id);
+
+      let nextPermissions: IndexingPermissions | null = null;
+      if (thirdPartyIndexers.length > 0) {
+        if (blockedIds.length === 0) {
+          nextPermissions = {
+            mode: 'all',
+            blocked: [],
+            allowed: enabledIds,
+            updatedAt: new Date().toISOString()
+          };
+        } else if (blockedIds.length === thirdPartyIndexers.length) {
+          nextPermissions = {
+            mode: 'none',
+            blocked: [...blockedIds],
+            allowed: [],
+            updatedAt: new Date().toISOString()
+          };
+        } else {
+          nextPermissions = {
+            mode: 'all',
+            blocked: [...blockedIds],
+            allowed: enabledIds,
+            updatedAt: new Date().toISOString()
+          };
+        }
+      } else if (indexingPermissionsState) {
+        nextPermissions = {
+          ...indexingPermissionsState,
+          updatedAt: new Date().toISOString()
+        };
+      }
+
+      if (makePublic !== isCurrentlyPublic) {
+        await handleTogglePublic(sharingFile);
+        await loadFileMetadata([sharingFile]);
+      }
+
+      if (makePublic && nextPermissions) {
+        try {
+          const response = await fetch(
+            `${apiEndpoint}/api/third-party/files/${encodeURIComponent(targetFileId)}/index-visibility`,
+            {
+              method: 'PUT',
+              headers: {
+                'Content-Type': 'application/json'
+              },
+              body: JSON.stringify({
+                indexingPermissions: nextPermissions
+              })
+            }
+          );
+
+          if (!response.ok) {
+            const errorText = await response.text().catch(() => response.statusText);
+            throw new Error(errorText || `Failed to update index visibility (${response.status})`);
+          }
+        } catch (apiError) {
+          const message = apiError instanceof Error ? apiError.message : 'Failed to update index visibility';
+          setIndexerError(message);
+          console.error('❌ [Sharing] Failed to update third-party visibility via API:', apiError);
+          throw apiError;
+        }
+      }
+
+      if (nextPermissions) {
+        setFileMetadataMap((prev) => {
+          const next = new Map(prev);
+          const targets = new Set<string>();
+          targets.add(sharingFile.id);
+          targets.add(targetFileId);
+          if (sharingFile.backendFileId) {
+            targets.add(sharingFile.backendFileId);
+          }
+          if (existingMetadata?.fileId) {
+            targets.add(existingMetadata.fileId);
+          }
+
+          targets.forEach((key) => {
+            const current = next.get(key);
+            if (current) {
+              next.set(key, {
+                ...current,
+                indexingPermissions: nextPermissions
+              });
+            }
+          });
+
+          return next;
+        });
+        setIndexingPermissionsState(nextPermissions);
+      }
+
+      closeShareSettings();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to update sharing settings';
+      setError(message);
+      console.error('❌ [Sharing] Failed to update sharing settings:', error);
+    } finally {
+      setIsSavingShare(false);
+    }
+  }, [
+    sharingFile,
+    shareVisibility,
+    fileMetadataMap,
+    indexerToggles,
+    thirdPartyIndexers,
+    indexingPermissionsState,
+    handleTogglePublic,
+    loadFileMetadata,
+    apiEndpoint,
+    closeShareSettings
+  ]);
 
   const loadStorageQuota = React.useCallback(async () => {
     if (!aggregatorService) {
@@ -2123,8 +2582,9 @@ const handleGoogleDriveAuthFailure = React.useCallback(
         return;
       }
 
-  storageLog.warn('Google Drive token expired - disconnecting', { backendId: targetBackendId });
-  handleGoogleDriveAuthFailure(targetBackendId);
+      console.warn('Google Drive token expired - disconnecting', { backendId: targetBackendId });
+      removeDriveAccount(targetBackendId);
+      setError('Google Drive authentication expired. Please reconnect.');
     };
 
     window.addEventListener('google-drive-token-expired', handleTokenExpired);
@@ -2132,7 +2592,7 @@ const handleGoogleDriveAuthFailure = React.useCallback(
     return () => {
       window.removeEventListener('google-drive-token-expired', handleTokenExpired);
     };
-}, [activeBackendId, handleGoogleDriveAuthFailure]);
+  }, [activeBackendId, removeDriveAccount]);
 
   // Helper function to exchange authorization code for tokens
   // Uses Google OAuth endpoint directly (client-side exchange)
@@ -2269,6 +2729,12 @@ const handleGoogleDriveAuthFailure = React.useCallback(
             clearTimeout(timeout);
             window.removeEventListener('message', messageHandler);
             // Don't try to close popup - COOP blocks it, let it close itself
+            try {
+              popup.close();
+            } catch (e) {
+              // Ignore COOP errors
+            }
+
             if (event.data.error) {
               reject(new Error(event.data.error));
             } else if (event.data.code) {
@@ -2336,53 +2802,11 @@ const handleGoogleDriveAuthFailure = React.useCallback(
         }
       }
 
-    let serverStoredCredentials: any = null;
-    try {
-      const fetched = await fetchStoredCredentialsPayload();
-      serverStoredCredentials = fetched?.credentials || null;
-    } catch (serverFetchError) {
-      console.debug('ℹ️ [handleConnectGoogleDrive] Unable to fetch stored credentials payload for merge', {
-        error: serverFetchError,
-      });
-    }
-
-    const serverAccountsArray = Array.isArray(serverStoredCredentials?.googleDriveAccounts)
-      ? serverStoredCredentials.googleDriveAccounts
-      : serverStoredCredentials?.googleDriveAccounts
-        ? [serverStoredCredentials.googleDriveAccounts]
-        : [];
-
-    const matchedServerAccount = serverAccountsArray.find((account: any) => {
-      if (!account) return false;
-      if (account.backendId && account.backendId === identifiers.backendId) {
-        return true;
-      }
-      if (account.email && connectedEmail && account.email.toLowerCase() === connectedEmail.toLowerCase()) {
-        return true;
-      }
-      return false;
-    });
-
-    let effectiveRefreshToken: string | null = tokenData.refreshToken ?? null;
-    if (!effectiveRefreshToken && matchedServerAccount?.refreshToken) {
-      effectiveRefreshToken = matchedServerAccount.refreshToken;
-    }
-    if (!effectiveRefreshToken) {
-      try {
-        const localFallback = localStorage.getItem(`${identifiers.keyPrefix}_refresh_token`);
-        if (localFallback) {
-          effectiveRefreshToken = localFallback;
-        }
-      } catch (storageError) {
-        console.debug('ℹ️ [handleConnectGoogleDrive] Unable to read refresh token fallback from localStorage', storageError);
-      }
-    }
-
     const newAccountEntry = {
       backendId: identifiers.backendId,
       keyPrefix: identifiers.keyPrefix,
       accessToken: token,
-      refreshToken: effectiveRefreshToken,
+      refreshToken: tokenData.refreshToken,
       email: connectedEmail,
       connectedAt: new Date().toISOString(),
       expiresIn: tokenData.expiresIn,
@@ -2395,18 +2819,14 @@ const handleGoogleDriveAuthFailure = React.useCallback(
       const filteredAccounts = existingAccounts.filter(
         (account: any) => account.backendId !== identifiers.backendId
       );
-      filteredAccounts.push({
-        ...matchedServerAccount,
-        ...newAccountEntry,
-        refreshToken: newAccountEntry.refreshToken ?? matchedServerAccount?.refreshToken ?? null,
-      });
+      filteredAccounts.push(newAccountEntry);
       return {
         ...(base || {}),
         googleDriveAccounts: filteredAccounts,
       };
     };
 
-    let updatedStorageCredentials: any = mergeAccountIntoCredentials(serverStoredCredentials);
+    let updatedStorageCredentials: any = mergeAccountIntoCredentials();
 
     // Save token and refresh token to encrypted pN metadata for persistence (optional)
     if (metadataPnName && metadataPasscode && authenticatedUser?.id) {
@@ -2430,12 +2850,7 @@ const handleGoogleDriveAuthFailure = React.useCallback(
           }
         }
 
-        const baseForMerge =
-          baseCredentials && Object.keys(baseCredentials).length > 0
-            ? baseCredentials
-            : serverStoredCredentials;
-
-        updatedStorageCredentials = mergeAccountIntoCredentials(baseForMerge);
+        updatedStorageCredentials = mergeAccountIntoCredentials(baseCredentials);
 
         await SecureMetadataStorage.updateMetadataField(
           authenticatedUser.id,
@@ -2444,22 +2859,21 @@ const handleGoogleDriveAuthFailure = React.useCallback(
           'storageCredentials',
           updatedStorageCredentials
         );
-        console.debug('✅ [handleConnectGoogleDrive] Saved Google Drive account credentials to encrypted metadata');
+        console.log('✅ [handleConnectGoogleDrive] Saved Google Drive account credentials to encrypted metadata');
       } catch (metadataError) {
         console.warn('⚠️ [handleConnectGoogleDrive] Failed to save token to metadata (non-critical):', metadataError);
         // Don't fail the connection if metadata save fails
       }
-    } else if (!skipMetadataUpdateLoggedRef.current) {
-      console.debug('ℹ️ [handleConnectGoogleDrive] Skipping secure metadata update; session passcode unavailable');
-      skipMetadataUpdateLoggedRef.current = true;
+    } else {
+      console.warn('ℹ️ [handleConnectGoogleDrive] Skipping secure metadata update; session passcode unavailable');
     }
 
     await persistStorageCredentialsToAPI(updatedStorageCredentials);
 
       // Persist refresh token for local fallback using scoped key prefix
-      if (effectiveRefreshToken) {
+      if (tokenData.refreshToken) {
         try {
-          localStorage.setItem(`${identifiers.keyPrefix}_refresh_token`, effectiveRefreshToken);
+          localStorage.setItem(`${identifiers.keyPrefix}_refresh_token`, tokenData.refreshToken);
         } catch (storageError) {
           console.warn('⚠️ [handleConnectGoogleDrive] Unable to persist refresh token locally:', storageError);
         }
@@ -2478,6 +2892,10 @@ const handleGoogleDriveAuthFailure = React.useCallback(
 
   const handleDisconnect = async (backendId: string) => {
     try {
+      if (!aggregatorService) {
+        console.warn('⚠️ [handleDisconnect] Aggregator service unavailable');
+        return;
+      }
       const backend = aggregatorService.getBackend(backendId);
       if (backend) {
         await backend.disconnect();
@@ -2727,7 +3145,6 @@ const handleGoogleDriveAuthFailure = React.useCallback(
           { 
             fileName: encryptedFileName, 
             pnIdentifier,
-            publicToken: shareToken // Pass share token so it's stored in metadata on upload
           }
         );
 
@@ -2968,7 +3385,7 @@ const handleGoogleDriveAuthFailure = React.useCallback(
             const existingSchema = (currentMetadata as any)?.schema || {};
             
             // Update companion metadata file
-            const companionMetadata = {
+            const companionMetadata: CompanionMetadata = {
               fileId: editingFile.id,
               googleDriveFileId: editingFile.backendFileId,
               fileName: editingFile.name,
@@ -2989,6 +3406,7 @@ const handleGoogleDriveAuthFailure = React.useCallback(
               inReplyTo: currentMetadata.inReplyTo,
               repostOf: currentMetadata.repostOf,
               isPartOf: currentMetadata.isPartOf,
+              indexingPermissions: currentMetadata.indexingPermissions,
               schema: {
                 ...existingSchema, // Preserve auto-extracted technical metadata (width, height, duration, etc.)
                 ...(genre.length > 0 && { genre }),
@@ -3039,7 +3457,17 @@ const handleGoogleDriveAuthFailure = React.useCallback(
       if (updatedMetadata.metadata) {
         setFileMetadataMap(prev => {
           const next = new Map(prev);
-          next.set(editingFile.id, updatedMetadata.metadata);
+          const metadata = updatedMetadata.metadata;
+          next.set(editingFile.id, metadata);
+          if (editingFile.backendFileId && editingFile.backendFileId !== editingFile.id) {
+            next.set(editingFile.backendFileId, metadata);
+          }
+          if (metadata.fileId && metadata.fileId !== editingFile.id) {
+            next.set(metadata.fileId, metadata);
+          }
+          if (metadata.backendFileId && metadata.backendFileId !== editingFile.id) {
+            next.set(metadata.backendFileId, metadata);
+          }
           return next;
         });
       }
@@ -3220,13 +3648,27 @@ const handleGoogleDriveAuthFailure = React.useCallback(
 
           setFileMetadataMap(prev => {
             const next = new Map(prev);
-            const existing = next.get(file.id) || {} as PublicMetadata;
-            next.set(file.id, {
+            const lookupKeys = [
+              file.id,
+              file.backendFileId && file.backendFileId !== file.id ? file.backendFileId : null,
+            ].filter(Boolean) as string[];
+            if (metadata?.fileId && !lookupKeys.includes(metadata.fileId)) {
+              lookupKeys.push(metadata.fileId);
+            }
+            if (metadata?.backendFileId && !lookupKeys.includes(metadata.backendFileId)) {
+              lookupKeys.push(metadata.backendFileId);
+            }
+            const existingKey = lookupKeys.find((key) => next.has(key));
+            const existing = existingKey ? next.get(existingKey)! : ({} as PublicMetadata);
+            const merged: PublicMetadata = {
               ...existing,
               thumbnail: existing.thumbnail || metadata?.thumbnail,
               name: existing.name || metadata?.originalName || file.originalName || file.name,
               description: existing.description || metadata?.description,
               publicToken: metadata?.publicToken || existing.publicToken,
+            };
+            lookupKeys.forEach((key) => {
+              next.set(key, merged);
             });
             return next;
           });
@@ -3321,6 +3763,12 @@ const handleGoogleDriveAuthFailure = React.useCallback(
   }, []);
 
   const handleDownload = async (file: AggregatedFile) => {
+    if (!aggregatorService) {
+      console.error('⚠️ [Download] Aggregator service unavailable');
+      setError('Storage service not available. Try reconnecting your drive.');
+      return;
+    }
+
     console.log('📥 [Download] Starting download...', { fileName: file.name, fileId: file.backendFileId });
 
     // Resolve auth credentials - try multiple sources (same as upload)
@@ -3503,77 +3951,194 @@ const handleGoogleDriveAuthFailure = React.useCallback(
     return map;
   }, [files]);
 
+  React.useEffect(() => {
+    if (!isDesktopShell) {
+      return;
+    }
+
+    if (resolvedAuth?.pnName && resolvedAuth.publicKey && resolvedAuth.passcode) {
+      const payload: DesktopUnlockPayload = {
+        pnName: resolvedAuth.pnName,
+        publicKey: resolvedAuth.publicKey,
+        passcode: resolvedAuth.passcode,
+      };
+
+      window.dispatchEvent(new CustomEvent<DesktopUnlockPayload>('pn-auth-session', { detail: payload }));
+    }
+  }, [resolvedAuth]);
+
   return (
     <div className="space-y-6">
       {/* Secure Folder / Desktop App Section */}
-      <div className="bg-neutral-900/60 border border-neutral-700 rounded-xl p-6">
-        <div className="flex items-center justify-between">
-          <div className="flex-1">
-            <div className="flex items-center space-x-3 mb-4">
-            <Lock className="h-5 w-5 text-blue-400" />
-            <div>
-              <h3 className="text-lg font-semibold text-white">Secure Folder</h3>
-              <p className="text-text-secondary text-sm">
-                Access your encrypted files with the desktop app
-              </p>
-          </div>
-        </div>
-        
-            <button
-              onClick={() => setShowDesktopAppInfo(true)}
-              className="flex items-center space-x-2 text-text-secondary hover:text-text-primary transition-colors"
-            >
-              <Info className="h-4 w-4" />
-              <span className="text-sm">About the Desktop App</span>
-            </button>
-        </div>
+      {!hideSecureFolderSection && (
+        isDesktopShell ? (
+          <DesktopSecureFolderPanel />
+        ) : (
+          <>
+            <div className="bg-neutral-900/60 border border-neutral-700 rounded-xl p-6">
+              <div className="flex items-center justify-between">
+                <div className="flex-1">
+                  <div className="flex items-center space-x-3 mb-4">
+                    <Lock className="h-5 w-5 text-blue-400" />
+                    <div>
+                      <h3 className="text-lg font-semibold text-white">Secure Folder</h3>
+                      <p className="text-text-secondary text-sm">
+                        Access your encrypted files with the desktop app
+                      </p>
+                    </div>
+                  </div>
 
-        <a
-          href="https://github.com/bymjmazzei/par-Noir/releases"
-          target="_blank"
-          rel="noopener noreferrer"
-            className="inline-flex items-center space-x-2 px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors ml-4"
-        >
-          <Download className="h-4 w-4" />
-          <span>Download Desktop App</span>
-        </a>
-      </div>
+                  <button
+                    onClick={() => setShowDesktopAppInfo(true)}
+                    className="flex items-center space-x-2 text-text-secondary hover:text-text-primary transition-colors"
+                  >
+                    <Info className="h-4 w-4" />
+                    <span className="text-sm">About the Desktop App</span>
+                  </button>
+                </div>
 
-        {/* Desktop App Info Modal Overlay */}
-        {showDesktopAppInfo && (
-          <div 
-            className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4"
-            onClick={() => setShowDesktopAppInfo(false)}
-          >
-            <div 
-              className="bg-neutral-800 rounded-lg p-6 max-w-md w-full text-text-primary border border-neutral-700 shadow-2xl"
-              onClick={(e) => e.stopPropagation()}
-            >
-              <div className="flex justify-between items-center mb-4">
-                <h3 className="text-lg font-semibold">About the Desktop App</h3>
-          <button
-                  onClick={() => setShowDesktopAppInfo(false)}
-            className="text-text-secondary hover:text-text-primary transition-colors"
-          >
-                  <X className="h-5 w-5" />
-          </button>
-        </div>
+                <a
+                  href="https://github.com/bymjmazzei/par-Noir/releases"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center space-x-2 px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors ml-4"
+                >
+                  <Download className="h-4 w-4" />
+                  <span>Download Desktop App</span>
+                </a>
+              </div>
+            </div>
 
-              <p className="text-text-secondary text-sm mb-4">
-            The par Noir Desktop App provides secure, local access to your encrypted files stored in Google Drive. 
-            Files are automatically synced and encrypted with your pN credentials.
-          </p>
-              
-          <div className="space-y-2 text-xs text-text-secondary">
-            <p>• Secure local file access</p>
-            <p>• Automatic encryption/decryption</p>
-            <p>• Works offline with cached files</p>
-            <p>• Native desktop integration</p>
-          </div>
-        </div>
-          </div>
-        )}
-      </div>
+            {sharingFile && (
+              <div
+                className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-50 p-4"
+                onClick={closeShareSettings}
+              >
+                <div
+                  className="bg-neutral-800 rounded-lg p-6 max-w-lg w-full text-text-primary border border-neutral-700 shadow-2xl"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <div className="flex justify-between items-center mb-4">
+                    <div>
+                      <h3 className="text-lg font-semibold text-white">Share Settings</h3>
+                      <p className="text-sm text-text-secondary">
+                        Control how others can access <span className="text-white font-medium">{sharingFile.encrypted ? sharingFile.originalName : sharingFile.name}</span>
+                      </p>
+                    </div>
+                    <button
+                      onClick={closeShareSettings}
+                      className="text-text-secondary hover:text-text-primary transition-colors"
+                      aria-label="Close share settings"
+                    >
+                      <X className="h-5 w-5" />
+                    </button>
+                  </div>
+
+                  <div className="space-y-6">
+                    <div>
+                      <span className="text-xs uppercase tracking-wide text-text-secondary">Visibility</span>
+                      <div className="mt-2 flex space-x-3">
+                        <button
+                          type="button"
+                          onClick={() => setShareVisibility('public')}
+                          className={`flex-1 px-4 py-3 rounded-lg border transition-colors ${
+                            shareVisibility === 'public'
+                              ? 'border-blue-500 bg-blue-600/10 text-blue-100'
+                              : 'border-neutral-700 bg-neutral-900 text-text-secondary hover:border-neutral-600'
+                          }`}
+                        >
+                          <div className="flex items-center space-x-2">
+                            <Globe className="h-4 w-4" />
+                            <div className="text-left">
+                              <p className="text-sm font-medium">Public</p>
+                              <p className="text-xs text-text-secondary">
+                                File is discoverable and viewable by anyone.
+                              </p>
+                            </div>
+                          </div>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setShareVisibility('private')}
+                          className={`flex-1 px-4 py-3 rounded-lg border transition-colors ${
+                            shareVisibility === 'private'
+                              ? 'border-blue-500 bg-blue-600/10 text-blue-100'
+                              : 'border-neutral-700 bg-neutral-900 text-text-secondary hover:border-neutral-600'
+                          }`}
+                        >
+                          <div className="flex items-center space-x-2">
+                            <Lock className="h-4 w-4" />
+                            <div className="text-left">
+                              <p className="text-sm font-medium">Private</p>
+                              <p className="text-xs text-text-secondary">
+                                Only visible to you and explicitly shared users.
+                              </p>
+                            </div>
+                          </div>
+                        </button>
+                      </div>
+                    </div>
+                    <p className="text-xs text-text-secondary border border-neutral-800 bg-neutral-900/60 rounded-lg px-3 py-3">
+                      Public files are discoverable from the par Noir public index. Private files remain visible only to you. External sharing to individual users will be added later.
+                    </p>
+                  </div>
+
+                  <div className="mt-6 flex justify-end space-x-3">
+                    <button
+                      onClick={closeShareSettings}
+                      className="px-4 py-2 rounded-lg border border-neutral-700 text-sm text-text-secondary hover:text-text-primary hover:border-neutral-500 transition-colors"
+                      disabled={isSavingShare}
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      onClick={handleSaveShareSettings}
+                      className="px-4 py-2 rounded-lg bg-blue-600 text-sm font-medium text-white hover:bg-blue-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                      disabled={isSavingShare}
+                    >
+                      {isSavingShare ? 'Saving…' : 'Save'}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {showDesktopAppInfo && (
+              <div
+                className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4"
+                onClick={() => setShowDesktopAppInfo(false)}
+              >
+                <div
+                  className="bg-neutral-800 rounded-lg p-6 max-w-md w-full text-text-primary border border-neutral-700 shadow-2xl"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <div className="flex justify-between items-center mb-4">
+                    <h3 className="text-lg font-semibold">About the Desktop App</h3>
+                    <button
+                      onClick={() => setShowDesktopAppInfo(false)}
+                      className="text-text-secondary hover:text-text-primary transition-colors"
+                    >
+                      <X className="h-5 w-5" />
+                    </button>
+                  </div>
+
+                  <p className="text-text-secondary text-sm mb-4">
+                    The par Noir Desktop App provides secure, local access to your encrypted files stored in Google Drive.
+                    Files are automatically synced and encrypted with your pN credentials.
+                  </p>
+
+                  <div className="space-y-2 text-xs text-text-secondary">
+                    <p>• Secure local file access</p>
+                    <p>• Automatic encryption/decryption</p>
+                    <p>• Works offline with cached files</p>
+                    <p>• Native desktop integration</p>
+                  </div>
+                </div>
+              </div>
+            )}
+          </>
+        )
+      )}
 
       {/* Secure Cloud Providers */}
       <div className="bg-neutral-900/60 border border-neutral-700 rounded-xl p-6">
@@ -3828,47 +4393,81 @@ const handleGoogleDriveAuthFailure = React.useCallback(
                               {(parseInt(file.size?.toString() || '0') / 1024).toFixed(1)} KB
                             </p>
 
-                            <div className="flex items-center justify-between mt-2 pt-2 border-t border-neutral-700">
+                            <div className="flex items-center justify-end mt-2 pt-2 border-t border-neutral-700">
+                              <div className="relative">
                               <button
                                 onClick={(e) => {
                                   e.stopPropagation();
+                                    setOpenMenuFor((prev) =>
+                                      prev === file.backendFileId ? null : file.backendFileId
+                                    );
+                                  }}
+                                  className="p-1.5 text-text-secondary hover:text-text-primary transition-colors rounded"
+                                  title="File actions"
+                                  disabled={isLoading}
+                                >
+                                  <MoreVertical className="h-4 w-4" />
+                                </button>
+                                {openMenuFor === file.backendFileId && (
+                                  <div
+                                    ref={(node) => {
+                                      if (node) {
+                                        actionMenuRef.current = node;
+                                      }
+                                    }}
+                                    className="absolute right-0 mt-2 w-44 bg-neutral-900 border border-neutral-700 rounded-lg shadow-xl z-30 py-1"
+                                  >
+                                    <button
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setOpenMenuFor(null);
+                                        actionMenuRef.current = null;
                                   handleEditMetadata(file);
                                 }}
+                                      className="flex w-full items-center space-x-2 px-3 py-2 text-sm text-text-secondary hover:text-text-primary hover:bg-neutral-800 transition-colors"
                                 disabled={isLoading}
-                                className="p-1.5 text-text-secondary hover:text-text-primary transition-colors"
-                                title="Edit"
                               >
-                                <Edit className="h-3.5 w-3.5" />
+                                      <Edit className="h-4 w-4" />
+                                      <span>Edit metadata</span>
                               </button>
                               <button
                                 onClick={(e) => {
                                   e.stopPropagation();
-                                  handleTogglePublic(file);
+                                        setOpenMenuFor(null);
+                                        actionMenuRef.current = null;
+                                        handleDownload(file);
                                 }}
+                                      className="flex w-full items-center space-x-2 px-3 py-2 text-sm text-text-secondary hover:text-text-primary hover:bg-neutral-800 transition-colors"
                                 disabled={isLoading}
-                                className="p-1.5 transition-colors"
-                                title={metadata?.isPublic ? 'Make Private' : 'Make Public'}
-                                style={{
-                                  color: metadata?.isPublic ? 'rgb(74, 222, 128)' : 'rgb(156, 163, 175)'
+                                    >
+                                      <Download className="h-4 w-4" />
+                                      <span>Download</span>
+                                    </button>
+                                    <button
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                      }}
+                                      className="flex w-full items-center space-x-2 px-3 py-2 text-sm text-text-secondary hover:text-text-primary hover:bg-neutral-800 transition-colors"
+                                      disabled={isLoading}
+                                      hidden
+                                    >
+                              </button>
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                        setOpenMenuFor(null);
+                                        actionMenuRef.current = null;
+                                        openShareSettings(file);
                                 }}
+                                      className="flex w-full items-center space-x-2 px-3 py-2 text-sm text-text-secondary hover:text-text-primary hover:bg-neutral-800 transition-colors"
+                                disabled={isLoading}
                               >
-                                {metadata?.isPublic ? (
-                                  <Globe className="h-3.5 w-3.5" />
-                                ) : (
-                                  <EyeOff className="h-3.5 w-3.5" />
+                                      <Share2 className="h-4 w-4" />
+                                      <span>Share settings</span>
+                              </button>
+                                  </div>
                                 )}
-                              </button>
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  handleDownload(file);
-                                }}
-                                disabled={isLoading}
-                                className="p-1.5 text-blue-400 hover:text-blue-300 transition-colors"
-                                title="Download"
-                              >
-                                <Download className="h-3.5 w-3.5" />
-                              </button>
+                              </div>
                             </div>
                           </div>
                         </div>
@@ -3934,7 +4533,7 @@ const handleGoogleDriveAuthFailure = React.useCallback(
                                   {file.encrypted ? file.originalName : file.name}
                                 </p>
                                 {metadata?.isPublic && (
-                                  <Globe className="h-3 w-3 text-green-400 flex-shrink-0" title="Public" />
+                                  <Globe className="h-3 w-3 text-green-400 flex-shrink-0" aria-label="Public" />
                                 )}
                               </div>
                               <p className="text-text-secondary text-xs">
@@ -3942,51 +4541,72 @@ const handleGoogleDriveAuthFailure = React.useCallback(
                               </p>
                             </div>
                           </div>
-                          <div className="flex items-center space-x-2">
+                          <div className="flex items-center justify-end space-x-2">
+                            <div className="relative">
                             <button
                               onClick={(e) => {
                                 e.stopPropagation();
-                                handleEditMetadata(file);
+                                  setOpenMenuFor((prev) =>
+                                    prev === file.backendFileId ? null : file.backendFileId
+                                  );
                               }}
-                              disabled={isLoading}
                               className="px-2 py-1.5 text-xs font-medium rounded-lg transition-colors disabled:opacity-50 bg-neutral-700/50 hover:bg-neutral-700 text-text-secondary hover:text-text-primary"
-                              title="Edit Metadata"
+                                title="File actions"
+                                disabled={isLoading}
                             >
-                              <Edit className="h-4 w-4" />
+                                <MoreVertical className="h-4 w-4" />
                             </button>
+                              {openMenuFor === file.backendFileId && (
+                                <div
+                                  ref={(node) => {
+                                    if (node) {
+                                      actionMenuRef.current = node;
+                                    }
+                                  }}
+                                  className="absolute right-0 mt-2 w-44 bg-neutral-900 border border-neutral-700 rounded-lg shadow-xl z-30 py-1"
+                                >
                             <button
                               onClick={(e) => {
                                 e.stopPropagation();
-                                handleTogglePublic(file);
+                                      setOpenMenuFor(null);
+                                      actionMenuRef.current = null;
+                                      handleEditMetadata(file);
                               }}
+                                    className="flex w-full items-center space-x-2 px-3 py-2 text-sm text-text-secondary hover:text-text-primary hover:bg-neutral-800 transition-colors"
                               disabled={isLoading}
-                              className="px-2 py-1.5 text-xs font-medium rounded-lg transition-colors disabled:opacity-50"
-                              title={metadata?.isPublic ? 'Make Private' : 'Make Public'}
-                              style={{
-                                backgroundColor: metadata?.isPublic
-                                  ? 'rgba(34, 197, 94, 0.2)'
-                                  : 'rgba(107, 114, 128, 0.2)',
-                                color: metadata?.isPublic
-                                  ? 'rgb(74, 222, 128)'
-                                  : 'rgb(156, 163, 175)',
-                              }}
-                            >
-                              {metadata?.isPublic ? (
-                                <Globe className="h-4 w-4" />
-                              ) : (
-                                <EyeOff className="h-4 w-4" />
-                              )}
+                                  >
+                                    <Edit className="h-4 w-4" />
+                                    <span>Edit metadata</span>
                             </button>
                             <button
                               onClick={(e) => {
                                 e.stopPropagation();
+                                      setOpenMenuFor(null);
+                                      actionMenuRef.current = null;
                                 handleDownload(file);
                               }}
+                                    className="flex w-full items-center space-x-2 px-3 py-2 text-sm text-text-secondary hover:text-text-primary hover:bg-neutral-800 transition-colors"
                               disabled={isLoading}
-                              className="px-3 py-1.5 bg-blue-600 text-white text-xs font-medium rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50"
                             >
                               <Download className="h-4 w-4" />
+                                    <span>Download</span>
+                                  </button>
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setOpenMenuFor(null);
+                                      actionMenuRef.current = null;
+                                      openShareSettings(file);
+                                    }}
+                                    className="flex w-full items-center space-x-2 px-3 py-2 text-sm text-text-secondary hover:text-text-primary hover:bg-neutral-800 transition-colors"
+                                    disabled={isLoading}
+                                  >
+                                    <Share2 className="h-4 w-4" />
+                                    <span>Share settings</span>
                             </button>
+                                </div>
+                              )}
+                            </div>
                           </div>
                         </div>
                       );
