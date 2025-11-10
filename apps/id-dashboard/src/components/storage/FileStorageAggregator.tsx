@@ -238,14 +238,6 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
     }
   }, []);
   
-  const persistDriveAccounts = React.useCallback((accounts: DriveAccountState[]) => {
-    try {
-      localStorage.setItem(DRIVE_ACCOUNTS_STORAGE_KEY, JSON.stringify(accounts));
-    } catch (storageError) {
-      console.warn('⚠️ [DriveAccounts] Unable to persist drive accounts', storageError);
-    }
-  }, []);
-  
   const scheduleTokenRetry = React.useCallback((backendIds: string[], options?: { delayMs?: number; resetAttempts?: boolean }) => {
     if (!backendIds.length) {
       return;
@@ -411,7 +403,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
     return () => {
       window.removeEventListener('google-drive-token-refreshed', handleTokenRefreshed as EventListener);
     };
-  }, [aggregatorService, driveAccounts, persistDriveAccounts, persistStorageCredentialsToAPI]);
+  }, [aggregatorService, driveAccounts, persistStorageCredentialsToAPI]);
 
   React.useEffect(() => {
     return () => {
@@ -520,6 +512,14 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
     }
   }, []);
   
+  function persistDriveAccounts(accounts: DriveAccountState[]) {
+    try {
+      localStorage.setItem(DRIVE_ACCOUNTS_STORAGE_KEY, JSON.stringify(accounts));
+    } catch (storageError) {
+      console.warn('⚠️ [DriveAccounts] Unable to persist drive accounts', storageError);
+    }
+  }
+  
   const resolveIdentifiersForEmail = React.useCallback((email?: string | null) => {
     const normalizedEmail = email?.toLowerCase() || null;
     if (normalizedEmail) {
@@ -541,6 +541,13 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
     };
   }, [driveAccounts]);
 
+  function getDriveAccountByBackendId(backendId: string | null | undefined) {
+    if (!backendId) {
+      return null;
+    }
+    return driveAccounts.find((account) => account.backendId === backendId) || null;
+  }
+  
   const buildStorageCredentialPayload = React.useCallback(() => {
     const entries = Array.from(driveCredentialCacheRef.current.values());
     if (entries.length === 0) {
@@ -1084,7 +1091,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
     setActiveBackendId(params.backendId);
 
     return backend;
-  }, [aggregatorService, activeBackendId, persistDriveAccounts, apiEndpoint]);
+  }, [aggregatorService, activeBackendId, apiEndpoint]);
 
   const removeDriveAccount = React.useCallback((backendId: string) => {
     let nextActiveId: string | null = null;
@@ -1134,7 +1141,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
     if (activeBackendId === backendId) {
       setActiveBackendId(nextActiveId);
     }
-  }, [activeBackendId, persistDriveAccounts]);
+  }, [activeBackendId]);
 
   React.useEffect(() => {
     return () => {
