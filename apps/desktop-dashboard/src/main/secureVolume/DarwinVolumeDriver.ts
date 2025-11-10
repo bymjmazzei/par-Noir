@@ -55,27 +55,44 @@ export class DarwinVolumeDriver implements VolumeDriver {
   public readonly platform: NodeJS.Platform = 'darwin';
   public readonly driver = 'hdiutil';
 
-  private readonly bundlePath: string;
-  private readonly mountPoint: string;
-  private readonly volumeName: string;
+  private readonly bundleRoot: string;
+  private readonly mountRoot: string;
+  private readonly defaultVolumeName: string;
+  private bundlePath: string;
+  private mountPoint: string;
+  private volumeName: string;
   private unlockContext: SecureVolumeUnlockPayload | null = null;
   private lastMountedAt?: string;
+  private identityKey: string | null = null;
 
   public constructor(config: SecureVolumeConfig) {
-    const bundleName = config.bundleName ?? 'par-noir-secure.sparsebundle';
-    const mountDirectory = config.mountRoot ?? path.join(config.userDataPath, 'Secure Folder');
+    this.bundleRoot = path.join(config.userDataPath, 'secure-volumes');
+    this.mountRoot = config.mountRoot ?? path.join(config.userDataPath, 'Secure Folder');
+    this.defaultVolumeName = config.volumeName ?? 'par Noir Secure';
 
-    this.bundlePath = path.join(config.userDataPath, bundleName);
-    this.mountPoint = mountDirectory;
-    this.volumeName = config.volumeName ?? 'par Noir Secure';
+    const defaultDirName = this.sanitiseName(this.defaultVolumeName);
+    this.bundlePath = path.join(this.bundleRoot, `${defaultDirName}.sparsebundle`);
+    this.mountPoint = path.join(this.mountRoot, defaultDirName);
+    this.volumeName = this.defaultVolumeName;
   }
 
   public async init(): Promise<void> {
-    await fs.mkdir(path.dirname(this.bundlePath), { recursive: true });
-    await fs.mkdir(this.mountPoint, { recursive: true });
+    await fs.mkdir(this.bundleRoot, { recursive: true });
+    await fs.mkdir(this.mountRoot, { recursive: true });
   }
 
   public async setUnlockContext(payload: SecureVolumeUnlockPayload): Promise<void> {
+    const identityKey = this.deriveIdentityKey(payload);
+    if (identityKey !== this.identityKey) {
+      this.identityKey = identityKey;
+      const dirName = this.sanitiseName(identityKey ?? this.defaultVolumeName);
+      this.volumeName = identityKey ?? this.defaultVolumeName;
+      this.bundlePath = path.join(this.bundleRoot, `${dirName}.sparsebundle`);
+      this.mountPoint = path.join(this.mountRoot, dirName);
+    }
+
+    await fs.mkdir(path.dirname(this.bundlePath), { recursive: true });
+    await fs.mkdir(this.mountPoint, { recursive: true });
     this.unlockContext = payload;
   }
 
@@ -152,6 +169,9 @@ export class DarwinVolumeDriver implements VolumeDriver {
       throw new Error('Unlock context required to create secure volume');
     }
 
+    await fs.mkdir(path.dirname(this.bundlePath), { recursive: true });
+    await fs.mkdir(this.mountPoint, { recursive: true });
+
     await spawnAsync('hdiutil', [
       'create',
       '-type', 'SPARSEBUNDLE',
@@ -175,5 +195,19 @@ export class DarwinVolumeDriver implements VolumeDriver {
     } catch {
       return false;
     }
+  }
+
+  private sanitiseName(name: string): string {
+    return name.replace(/[\/:*?"<>|]+/g, '-').trim() || 'par-noir-secure';
+  }
+
+  private deriveIdentityKey(payload: SecureVolumeUnlockPayload): string {
+    const raw = payload.pnName?.trim() || payload.publicKey?.trim();
+    if (!raw) {
+      return this.defaultVolumeName;
+    }
+
+    const normalized = raw.startsWith('par Noir') ? raw : `par Noir - ${raw}`;
+    return normalized;
   }
 }

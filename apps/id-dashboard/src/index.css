@@ -118,7 +118,7 @@ input, textarea, select {
 }
 
 .theme-dark .bg-bg-primary {
-  background-image: var(--pn-bg-dark, url('/branding/Par-Noir-Background-Dark.png'));
+  background-image: var(--pn-bg-dark, url('./branding/Par-Noir-Background-Dark.png'));
   background-size: cover;
   background-position: center;
   background-repeat: no-repeat;
@@ -163,7 +163,7 @@ input, textarea, select {
 }
 
 .theme-light .bg-bg-primary {
-  background-image: var(--pn-bg-light, url('/branding/Par-Noir-Background-Light.png'));
+  background-image: var(--pn-bg-light, url('./branding/Par-Noir-Background-Light.png'));
   background-size: cover;
   background-position: center;
   background-repeat: no-repeat;

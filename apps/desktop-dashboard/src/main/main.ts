@@ -24,7 +24,7 @@ const registerIpc = () => {
 
   ipcMain.handle(SECURE_VOLUME_IPC_CHANNEL.unlock, async (_event, payload: SecureVolumeUnlockPayload) => {
     await secureVolumeManager.setUnlockContext(payload);
-    return secureVolumeManager.getStatus();
+    return secureVolumeManager.mount();
   });
 
   ipcMain.handle(SECURE_VOLUME_IPC_CHANNEL.lock, async () => {
