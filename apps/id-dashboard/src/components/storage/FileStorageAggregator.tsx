@@ -540,6 +540,16 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
     }
   }, []);
 
+  const getDriveAccountByBackendId = React.useCallback(
+    (backendId: string | null | undefined) => {
+      if (!backendId) {
+        return null;
+      }
+      return driveAccounts.find((account) => account.backendId === backendId) || null;
+    },
+    [driveAccounts]
+  );
+
   const buildStorageCredentialPayload = React.useCallback(() => {
     const entries = Array.from(driveCredentialCacheRef.current.values());
     if (entries.length === 0) {
@@ -628,16 +638,6 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
       }
     },
     [authenticatedUser?.id, authenticatedUser?.pnName, getResolvedAuthCredentials]
-  );
-
-  const getDriveAccountByBackendId = React.useCallback(
-    (backendId: string | null | undefined) => {
-      if (!backendId) {
-        return null;
-      }
-      return driveAccounts.find((account) => account.backendId === backendId) || null;
-    },
-    [driveAccounts]
   );
 
   const resolveShareVisibility = React.useCallback(
