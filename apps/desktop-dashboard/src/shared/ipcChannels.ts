@@ -22,7 +22,8 @@ export const SECURE_VOLUME_IPC_CHANNEL = {
   status: 'secure-volume:status',
   unlock: 'secure-volume:unlock',
   lock: 'secure-volume:lock',
-  hydrate: 'secure-volume:hydrate'
+  hydrate: 'secure-volume:hydrate',
+  getPasscode: 'secure-volume:get-passcode'
 } as const;
 
 export const NATIVE_IPC_CHANNEL = {

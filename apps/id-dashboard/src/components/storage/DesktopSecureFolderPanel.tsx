@@ -217,7 +217,28 @@ export const DesktopSecureFolderPanel: React.FC = () => {
       return status;
     }
 
-    if (identityCandidate && !sessionPasscode) {
+    if (identityCandidate) {
+      try {
+        const cached = secureVolume?.getPasscode ? await secureVolume.getPasscode(identityCandidate) : null;
+        if (cached && cached.trim().length > 0) {
+          console.log('[DesktopSecureFolderPanel] Retrieved passcode from Keychain');
+          try {
+            sessionStorage.setItem('pn_session_passcode', cached);
+          } catch (storageErr) {
+            console.warn('[DesktopSecureFolderPanel] Unable to persist passcode from Keychain', storageErr);
+          }
+          const payload: SecureVolumeUnlockPayload = {
+            pnName: identityCandidate.pnName,
+            publicKey: identityCandidate.publicKey,
+            passcode: cached,
+          };
+          const status = await applyUnlockContext(payload);
+          return status;
+        }
+      } catch (keychainErr) {
+        console.warn('[DesktopSecureFolderPanel] Failed to load passcode from Keychain', keychainErr);
+      }
+
       setManualPasscode('');
       setManualPasscodeError(null);
       setIsPasscodePromptOpen(true);

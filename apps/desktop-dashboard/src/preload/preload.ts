@@ -21,7 +21,9 @@ const secureVolume = {
     ipcRenderer.invoke(SECURE_VOLUME_IPC_CHANNEL.unlock, payload),
   lock: async (): Promise<SecureVolumeMountState> => ipcRenderer.invoke(SECURE_VOLUME_IPC_CHANNEL.lock),
   hydrate: async (identity: SecureVolumeIdentity): Promise<SecureVolumeMountState> =>
-    ipcRenderer.invoke(SECURE_VOLUME_IPC_CHANNEL.hydrate, identity)
+    ipcRenderer.invoke(SECURE_VOLUME_IPC_CHANNEL.hydrate, identity),
+  getPasscode: async (identity: SecureVolumeIdentity): Promise<string | null> =>
+    ipcRenderer.invoke(SECURE_VOLUME_IPC_CHANNEL.getPasscode, identity)
 };
 
 const nativeBridge = {

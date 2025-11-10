@@ -65,6 +65,10 @@ export class SecureVolumeManager {
     return this.getDriver().getStatus();
   }
 
+  public async getCachedPasscode(identity: SecureVolumeIdentity): Promise<string | null> {
+    return KeychainService.load(identity);
+  }
+
   private getDriver(): VolumeDriver {
     if (!this.driver) {
       throw new Error('SecureVolumeManager not initialized');
