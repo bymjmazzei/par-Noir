@@ -1246,6 +1246,17 @@ function App() {
         } catch (e) {
           console.warn('Could not store passcode in sessionStorage:', e);
         }
+
+        try {
+          const authEventDetail = {
+            pnName: session.pnName,
+            publicKey: session.publicKey || session.id,
+            passcode: session.passcode,
+          };
+          window.dispatchEvent(new CustomEvent('pn-auth-session', { detail: authEventDetail }));
+        } catch (eventError) {
+          console.warn('Could not dispatch pn-auth-session event:', eventError);
+        }
       }
 
       // Set the authenticated user
