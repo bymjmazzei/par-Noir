@@ -215,7 +215,8 @@ class ProductionServer {
       const identity = req.params.identity;
 
       if (!identity) {
-        return res.status(400).json({ error: 'Identity is required' });
+        res.status(400).json({ error: 'Identity is required' });
+        return;
       }
 
       const updates = Array.isArray(req.body?.updates) ? req.body.updates : [];
@@ -240,7 +241,8 @@ class ProductionServer {
       const { fileId } = req.params;
 
       if (!fileId) {
-        return res.status(400).json({ error: 'fileId parameter is required' });
+        res.status(400).json({ error: 'fileId parameter is required' });
+        return;
       }
 
       try {
@@ -273,7 +275,8 @@ class ProductionServer {
       const { indexingPermissions } = req.body || {};
 
       if (!fileId) {
-        return res.status(400).json({ error: 'fileId parameter is required' });
+        res.status(400).json({ error: 'fileId parameter is required' });
+        return;
       }
 
       try {
