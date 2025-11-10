@@ -5,15 +5,128 @@
  */
 
 import { PublicMetadata, AggregatedFile } from '../../types/aggregator';
-import { CentralMetadataAggregator } from '../../services/metadata/CentralMetadataAggregator';
+import { CentralMetadataAggregator, CentralIndexEntry } from '../../services/metadata/CentralMetadataAggregator';
 
 export class MetadataIndexService {
   private isInitialized = false;
   private metadataStore: Map<string, PublicMetadata> = new Map();
+  private aliasMap: Map<string, string> = new Map();
+  private lastCentralSyncAt: number | null = null;
+  private centralSyncPromise: Promise<void> | null = null;
   private centralAggregator: CentralMetadataAggregator;
 
   constructor() {
     this.centralAggregator = new CentralMetadataAggregator();
+  }
+
+  private getPrimaryIdFromMetadata(metadata: PublicMetadata): string | null {
+    if (!metadata) {
+      return null;
+    }
+
+    return (
+      metadata.fileId ||
+      (metadata as any)?.backendFileId ||
+      (metadata as any)?.googleDriveFileId ||
+      null
+    );
+  }
+
+  private registerMetadata(
+    metadata: PublicMetadata,
+    options?: { skipPersist?: boolean }
+  ): boolean {
+    const normalized: PublicMetadata = {
+      ...metadata,
+    };
+
+    if (normalized.isPublic === undefined) {
+      const visibility = (normalized as any)?.visibility;
+      if (visibility === 'public') {
+        normalized.isPublic = true;
+      } else if (visibility === 'private') {
+        normalized.isPublic = false;
+      } else if ((normalized as any)?.publicToken) {
+        normalized.isPublic = true;
+      }
+    }
+
+    const primaryId = this.getPrimaryIdFromMetadata(normalized);
+    if (!primaryId) {
+      console.warn('⚠️ [MetadataIndexService] Unable to register metadata without identifier', metadata);
+      return false;
+    }
+
+    // Remove old aliases pointing to this primary id
+    for (const [alias, target] of Array.from(this.aliasMap.entries())) {
+      if (target === primaryId) {
+        this.aliasMap.delete(alias);
+      }
+    }
+
+    this.metadataStore.set(primaryId, normalized);
+
+    const aliasCandidates = new Set<string>();
+    if (normalized.fileId) {
+      aliasCandidates.add(normalized.fileId);
+    }
+    if ((normalized as any)?.backendFileId) {
+      aliasCandidates.add((normalized as any).backendFileId);
+    }
+    if ((normalized as any)?.googleDriveFileId) {
+      aliasCandidates.add((normalized as any).googleDriveFileId);
+    }
+    aliasCandidates.add(primaryId);
+
+    aliasCandidates.forEach((alias) => {
+      if (alias) {
+        this.aliasMap.set(alias, primaryId);
+      }
+    });
+
+    if (!options?.skipPersist) {
+      this.persistMetadataCache();
+    }
+
+    return true;
+  }
+
+  private removeMetadata(primaryId: string): void {
+    const canonicalId = this.aliasMap.get(primaryId) || primaryId;
+    if (!this.metadataStore.has(canonicalId)) {
+      return;
+    }
+
+    this.metadataStore.delete(canonicalId);
+    for (const [alias, target] of Array.from(this.aliasMap.entries())) {
+      if (alias === canonicalId || target === canonicalId) {
+        this.aliasMap.delete(alias);
+      }
+    }
+
+    this.persistMetadataCache();
+  }
+
+  private persistMetadataCache(): void {
+    const allMetadata = Array.from(this.metadataStore.values()).map((item) =>
+      this.stripLargeFields(item)
+    );
+
+    try {
+      localStorage.setItem('pn_public_metadata_index', JSON.stringify(allMetadata));
+    } catch (error) {
+      if (error instanceof DOMException && error.name === 'QuotaExceededError') {
+        console.warn('⚠️ [MetadataIndexService] localStorage quota exceeded, clearing old cache and retrying...');
+        try {
+          localStorage.removeItem('pn_public_metadata_index');
+          localStorage.setItem('pn_public_metadata_index', JSON.stringify(allMetadata));
+        } catch (retryError) {
+          console.error('❌ [MetadataIndexService] Failed to store metadata cache after clearing:', retryError);
+        }
+      } else {
+        console.error('❌ [MetadataIndexService] Failed to persist metadata cache:', error);
+      }
+    }
   }
 
   /**
@@ -32,9 +145,7 @@ export class MetadataIndexService {
           const parsed = JSON.parse(cachedMetadata);
           if (Array.isArray(parsed)) {
             parsed.forEach((item: PublicMetadata) => {
-              if (item.fileId) {
-                this.metadataStore.set(item.fileId, item);
-              }
+              this.registerMetadata(item, { skipPersist: true });
             });
           }
         } catch (e) {
@@ -54,7 +165,11 @@ export class MetadataIndexService {
    */
   async getFileMetadata(fileId: string): Promise<PublicMetadata | null> {
     await this.initialize();
-    return this.metadataStore.get(fileId) || null;
+    const primaryId = this.aliasMap.get(fileId) || (this.metadataStore.has(fileId) ? fileId : null);
+    if (!primaryId) {
+      return null;
+    }
+    return this.metadataStore.get(primaryId) || null;
   }
 
   /**
@@ -77,30 +192,8 @@ export class MetadataIndexService {
   ): Promise<void> {
     await this.initialize();
 
-    // Store in memory (with thumbnail)
-    this.metadataStore.set(file.id, publicMetadata);
-
-    // Save to localStorage cache (without thumbnails to avoid quota issues)
-    const allMetadata = Array.from(this.metadataStore.values())
-      .map(m => this.stripLargeFields(m));
-    
-    try {
-      localStorage.setItem('pn_public_metadata_index', JSON.stringify(allMetadata));
-    } catch (error) {
-      // If still failing, try to clear old cache and retry
-      if (error instanceof DOMException && error.name === 'QuotaExceededError') {
-        console.warn('⚠️ [MetadataIndexService] localStorage quota exceeded, clearing old cache and retrying...');
-        try {
-          localStorage.removeItem('pn_public_metadata_index');
-    localStorage.setItem('pn_public_metadata_index', JSON.stringify(allMetadata));
-        } catch (retryError) {
-          console.error('❌ [MetadataIndexService] Failed to store metadata cache after clearing:', retryError);
-          // Continue - metadata is still in memory and will be submitted to API
-        }
-      } else {
-        throw error;
-      }
-    }
+    // Store locally (with thumbnail) and persist cache
+    this.registerMetadata(publicMetadata);
 
     // Submit to central aggregator API
     // The aggregator browser queries this API to discover public files
@@ -116,7 +209,9 @@ export class MetadataIndexService {
         creator: publicMetadata.creator,
         isPublic: publicMetadata.isPublic || false,
         uploadDate: publicMetadata.uploadDate || new Date().toISOString(),
-        publicToken: publicMetadata.publicToken
+        publicToken: publicMetadata.publicToken,
+        indexingPermissions: publicMetadata.indexingPermissions,
+        pnIdentifier
       });
       console.log('✅ [MetadataIndexService] Metadata submitted to central aggregator API');
     } catch (error) {
@@ -132,23 +227,7 @@ export class MetadataIndexService {
   async removeFromIndex(fileId: string): Promise<void> {
     await this.initialize();
 
-    // Remove from memory
-    this.metadataStore.delete(fileId);
-
-    // Update localStorage cache (without thumbnails)
-    const allMetadata = Array.from(this.metadataStore.values())
-      .map(m => this.stripLargeFields(m));
-    
-    try {
-    localStorage.setItem('pn_public_metadata_index', JSON.stringify(allMetadata));
-    } catch (error) {
-      if (error instanceof DOMException && error.name === 'QuotaExceededError') {
-        console.warn('⚠️ [MetadataIndexService] localStorage quota exceeded, clearing cache...');
-        localStorage.removeItem('pn_public_metadata_index');
-      } else {
-        console.error('❌ [MetadataIndexService] Failed to update metadata cache:', error);
-      }
-    }
+    this.removeMetadata(fileId);
 
     // Remove from central aggregator API
     try {
@@ -158,6 +237,75 @@ export class MetadataIndexService {
       console.warn('⚠️ [MetadataIndexService] Failed to remove from central aggregator:', error);
       // Continue - metadata is still removed locally
     }
+  }
+
+  /**
+   * Synchronize metadata from the central aggregator API
+   */
+  async syncFromCentralAggregator(options?: {
+    authorDid?: string | string[];
+    tags?: string[];
+    fileType?: string;
+    force?: boolean;
+  }): Promise<void> {
+    await this.initialize();
+
+    const now = Date.now();
+    const force = options?.force ?? false;
+
+    if (this.centralSyncPromise) {
+      return this.centralSyncPromise;
+    }
+
+    if (!force && this.lastCentralSyncAt && now - this.lastCentralSyncAt < 60000) {
+      // Skip sync if we synced within the last minute
+      return;
+    }
+
+    const authorIds = options?.authorDid
+      ? Array.isArray(options.authorDid)
+        ? options.authorDid.filter(Boolean)
+        : [options.authorDid]
+      : [undefined];
+
+    this.centralSyncPromise = (async () => {
+      let updated = false;
+
+      for (const authorId of authorIds) {
+        const filters = {
+          tags: options?.tags,
+          fileType: options?.fileType,
+          authorDid: authorId,
+        };
+
+        const entries: CentralIndexEntry[] = await this.centralAggregator.fetchPublicMetadata(filters);
+
+        if (!entries || entries.length === 0) {
+          continue;
+        }
+
+        entries.forEach((entry) => {
+          if (entry?.metadata) {
+            const didUpdate = this.registerMetadata(entry.metadata, { skipPersist: true });
+            updated = updated || didUpdate;
+          }
+        });
+      }
+
+      if (updated) {
+        this.persistMetadataCache();
+      }
+
+      this.lastCentralSyncAt = Date.now();
+    })()
+      .catch((error) => {
+        console.error('❌ [MetadataIndexService] Failed to sync central metadata:', error);
+      })
+      .finally(() => {
+        this.centralSyncPromise = null;
+      });
+
+    return this.centralSyncPromise;
   }
 
   /**

@@ -176,6 +176,152 @@ class ProductionServer {
       });
     });
 
+    // Third-party indexers catalog
+    this.app.get('/api/third-party/indexers', async (req, res) => {
+      try {
+        const { getThirdPartyIndexersService } = await import('./server/modules/thirdPartyIndexersService');
+        const service = getThirdPartyIndexersService();
+        const identity = typeof req.query.identity === 'string' ? req.query.identity : undefined;
+
+        const [indexers, access] = await Promise.all([
+          service.listIndexers(),
+          identity ? service.getAccessForIdentity(identity) : Promise.resolve([])
+        ]);
+
+        const accessMap = access.reduce<Record<string, boolean>>((acc, entry) => {
+          acc[entry.thirdPartyId] = entry.isEnabled;
+          return acc;
+        }, {});
+
+        const response = indexers.map((indexer) => ({
+          ...indexer,
+          isAuthorized: identity ? !!accessMap[indexer.id] : undefined
+        }));
+
+        res.json({
+          indexers: response,
+          access
+        });
+      } catch (error: any) {
+        console.error('❌ [GET /api/third-party/indexers] Error:', error);
+        res.status(500).json({
+          error: 'Failed to load third-party indexers',
+          message: error.message
+        });
+      }
+    });
+
+    this.app.put('/api/third-party/access/:identity', async (req, res) => {
+      const identity = req.params.identity;
+
+      if (!identity) {
+        return res.status(400).json({ error: 'Identity is required' });
+      }
+
+      const updates = Array.isArray(req.body?.updates) ? req.body.updates : [];
+
+      try {
+        const { getThirdPartyIndexersService } = await import('./server/modules/thirdPartyIndexersService');
+        const service = getThirdPartyIndexersService();
+        await service.upsertAccess(identity, updates);
+
+        const access = await service.getAccessForIdentity(identity);
+        res.json({ success: true, access });
+      } catch (error: any) {
+        console.error('❌ [PUT /api/third-party/access] Error:', error);
+        res.status(500).json({
+          error: 'Failed to update third-party access',
+          message: error.message
+        });
+      }
+    });
+
+    this.app.get('/api/third-party/files/:fileId/index-visibility', async (req, res) => {
+      const { fileId } = req.params;
+
+      if (!fileId) {
+        return res.status(400).json({ error: 'fileId parameter is required' });
+      }
+
+      try {
+        const [{ AggregatorMetadataServiceDB }, { getThirdPartyIndexersService }] = await Promise.all([
+          import('./server/modules/aggregatorMetadataServiceDB'),
+          import('./server/modules/thirdPartyIndexersService')
+        ]);
+
+        const aggregator = AggregatorMetadataServiceDB.getInstance();
+        const service = getThirdPartyIndexersService();
+
+        const metadataEntry = await aggregator.getFileMetadata(fileId);
+        const overrides = await service.getFileOverrides(fileId);
+
+        res.json({
+          indexingPermissions: metadataEntry?.metadata.indexingPermissions || null,
+          overrides
+        });
+      } catch (error: any) {
+        console.error('❌ [GET /api/third-party/files/:fileId/index-visibility] Error:', error);
+        res.status(500).json({
+          error: 'Failed to load file indexing visibility',
+          message: error.message
+        });
+      }
+    });
+
+    this.app.put('/api/third-party/files/:fileId/index-visibility', async (req, res) => {
+      const { fileId } = req.params;
+      const { indexingPermissions } = req.body || {};
+
+      if (!fileId) {
+        return res.status(400).json({ error: 'fileId parameter is required' });
+      }
+
+      try {
+        const [{ AggregatorMetadataServiceDB }, { getThirdPartyIndexersService }] = await Promise.all([
+          import('./server/modules/aggregatorMetadataServiceDB'),
+          import('./server/modules/thirdPartyIndexersService')
+        ]);
+
+        const aggregator = AggregatorMetadataServiceDB.getInstance();
+        const service = getThirdPartyIndexersService();
+
+        const updatedMetadata = await aggregator.updateIndexingPermissions(fileId, indexingPermissions);
+
+        // Derive overrides from permissions
+        const overridesPayload: { thirdPartyId: string; isAllowed: boolean }[] = [];
+        if (indexingPermissions) {
+          const mode = indexingPermissions.mode || 'all';
+          if (mode === 'custom') {
+            (indexingPermissions.allowed || []).forEach((id: string) => {
+              overridesPayload.push({ thirdPartyId: id, isAllowed: true });
+            });
+            (indexingPermissions.blocked || []).forEach((id: string) => {
+              overridesPayload.push({ thirdPartyId: id, isAllowed: false });
+            });
+          } else if (mode === 'all') {
+            (indexingPermissions.blocked || []).forEach((id: string) => {
+              overridesPayload.push({ thirdPartyId: id, isAllowed: false });
+            });
+          } else if (mode === 'none') {
+            // No overrides needed; absence represents full restriction.
+          }
+        }
+
+        await service.setFileOverrides(fileId, overridesPayload);
+
+        res.json({
+          success: true,
+          indexingPermissions: updatedMetadata?.indexingPermissions || indexingPermissions || null
+        });
+      } catch (error: any) {
+        console.error('❌ [PUT /api/third-party/files/:fileId/index-visibility] Error:', error);
+        res.status(500).json({
+          error: 'Failed to update file indexing visibility',
+          message: error.message
+        });
+      }
+    });
+
     // Authentication endpoints with rate limiting (skip OPTIONS for CORS preflight)
     this.app.use('/api/auth', (req, res, next) => {
       if (req.method === 'OPTIONS') {
@@ -229,11 +375,13 @@ class ProductionServer {
         const tags = req.query.tags ? (req.query.tags as string).split(',').map(t => t.trim()) : undefined;
         const fileType = req.query.fileType as string | undefined;
         const authorDid = req.query.authorDid as string | undefined;
+        const indexerId = req.query.indexerId as string | undefined;
 
         const response = await service.getIndexResponse({
           tags,
           fileType,
-          authorDid
+          authorDid,
+          indexerId
         });
 
         console.log(`📤 [GET /api/aggregator/metadata-index] Returning ${response.files.length} files`);
@@ -934,6 +1082,15 @@ class ProductionServer {
     } catch (error) {
       console.warn('⚠️ Failed to start Google Drive sync service:', error);
       // Continue anyway - sync is optional
+    }
+
+    // Warm third-party catalog
+    try {
+      const { getThirdPartyIndexersService } = await import('./server/modules/thirdPartyIndexersService');
+      const service = getThirdPartyIndexersService();
+      await service.listIndexers();
+    } catch (error) {
+      console.warn('⚠️ Failed to load third-party indexers catalog during startup:', error);
     }
 
     return new Promise((resolve, reject) => {

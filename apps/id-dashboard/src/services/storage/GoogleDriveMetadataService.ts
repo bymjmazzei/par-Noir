@@ -46,6 +46,14 @@ export interface CompanionMetadata {
   // Share token and thumbnail
   publicToken?: any; // Share token for public files (ShareToken object)
   thumbnail?: string; // Base64 data URL or URL for thumbnail/preview
+
+  // Indexing permissions for third-party catalogs
+  indexingPermissions?: {
+    mode?: 'all' | 'custom' | 'none';
+    allowed?: string[];
+    blocked?: string[];
+    updatedAt?: string;
+  };
   
   // ============================================================================
   // DUBLIN CORE METADATA (dc:)
@@ -294,34 +302,6 @@ export interface PublicFileIndex {
   updatedAt: string;
 }
 
-const METADATA_DEBUG_ENABLED =
-  import.meta.env.DEV ||
-  (() => {
-    try {
-      return localStorage.getItem('pn_storage_debug') === '1';
-    } catch {
-      return false;
-    }
-  })();
-
-const metadataLog = {
-  debug: (...args: unknown[]) => {
-    if (METADATA_DEBUG_ENABLED) {
-      console.debug(...args);
-    }
-  },
-  warn: (...args: unknown[]) => {
-    if (METADATA_DEBUG_ENABLED) {
-      console.warn(...args);
-    }
-  },
-  error: (...args: unknown[]) => {
-    if (METADATA_DEBUG_ENABLED) {
-      console.error(...args);
-    }
-  },
-};
-
 export class GoogleDriveMetadataService {
   private static readonly METADATA_FOLDER_NAME = '_metadata';
   private static readonly PUBLIC_INDEX_FILE_NAME = 'public-file-index.json';
@@ -566,6 +546,9 @@ export class GoogleDriveMetadataService {
         '@id': `${resourceUri}/thumbnail`,
         'foaf:thumbnail': `${resourceUri}/thumbnail`
       } : undefined,
+
+      // Third-party indexing permissions
+      indexingPermissions: companion.indexingPermissions
       
       // ============================================================================
       // CONTENT RELATIONSHIPS
@@ -609,21 +592,6 @@ export class GoogleDriveMetadataService {
   }
   
   /**
-   * Normalize Drive API responses and surface auth errors explicitly
-   */
-  private static async ensureSuccess(response: Response, errorMessage: string): Promise<Response> {
-    if (response.status === 401) {
-      throw new Error('Google Drive authentication expired. Please reconnect.');
-    }
-    if (!response.ok) {
-      const errorText = await response.text().catch(() => '');
-      const message = errorText ? `${errorMessage}: ${errorText}` : errorMessage;
-      throw new Error(message);
-    }
-    return response;
-  }
-
-  /**
    * Get service account email for sharing folders
    * This allows the API server to scan Google Drive for public files
    */
@@ -654,7 +622,7 @@ export class GoogleDriveMetadataService {
     
     if (!serviceAccountEmail) {
       // Service account not configured - this is okay, just skip sharing
-      metadataLog.debug('ℹ️ Service account email not configured - skipping folder sharing');
+      console.log('ℹ️ Service account email not configured - skipping folder sharing');
       return;
     }
 
@@ -669,14 +637,14 @@ export class GoogleDriveMetadataService {
         }
       );
 
-      if ((await this.ensureSuccess(permissionsResponse, 'Failed to check folder permissions')).ok) {
+      if (permissionsResponse.ok) {
         const permissionsData = await permissionsResponse.json();
         const hasPermission = permissionsData.permissions?.some(
           (p: any) => p.emailAddress === serviceAccountEmail
         );
         
         if (hasPermission) {
-          metadataLog.debug('✅ Folder already shared with service account');
+          console.log('✅ Folder already shared with service account');
           return;
         }
       }
@@ -698,10 +666,15 @@ export class GoogleDriveMetadataService {
         }
       );
 
-      await this.ensureSuccess(shareResponse, 'Failed to share folder with service account');
-      metadataLog.debug(`✅ Shared folder with service account: ${serviceAccountEmail}`);
+      if (shareResponse.ok) {
+        console.log(`✅ Shared folder with service account: ${serviceAccountEmail}`);
+      } else {
+        const errorText = await shareResponse.text();
+        console.warn(`⚠️ Failed to share folder with service account: ${shareResponse.status} - ${errorText}`);
+        // Don't throw - this is not critical, just log a warning
+      }
     } catch (error) {
-      metadataLog.warn('⚠️ Error sharing folder with service account:', error);
+      console.warn('⚠️ Error sharing folder with service account:', error);
       // Don't throw - this is not critical for the main operation
     }
   }
@@ -729,7 +702,9 @@ export class GoogleDriveMetadataService {
       }
     );
 
-    await this.ensureSuccess(searchResponse, 'Failed to search for pN folder');
+    if (!searchResponse.ok) {
+      throw new Error('Failed to search for pN folder');
+    }
 
     const searchData = await searchResponse.json();
     
@@ -753,7 +728,9 @@ export class GoogleDriveMetadataService {
       }
     );
 
-    await this.ensureSuccess(createResponse, 'Failed to create pN folder');
+    if (!createResponse.ok) {
+      throw new Error('Failed to create pN folder');
+    }
 
     const folderData = await createResponse.json();
     return folderData.id;
@@ -776,7 +753,9 @@ export class GoogleDriveMetadataService {
       }
     );
 
-    await this.ensureSuccess(searchResponse, 'Failed to search for metadata folder');
+    if (!searchResponse.ok) {
+      throw new Error('Failed to search for metadata folder');
+    }
 
     const searchData = await searchResponse.json();
     
@@ -801,7 +780,9 @@ export class GoogleDriveMetadataService {
       }
     );
 
-    await this.ensureSuccess(createResponse, 'Failed to create metadata folder');
+    if (!createResponse.ok) {
+      throw new Error('Failed to create metadata folder');
+    }
 
     const folderData = await createResponse.json();
     return folderData.id;
@@ -816,16 +797,16 @@ export class GoogleDriveMetadataService {
     fileMetadata: CompanionMetadata
   ): Promise<void> {
     try {
-      metadataLog.debug('Creating companion metadata file for:', fileMetadata.googleDriveFileId);
+      console.log('Creating companion metadata file for:', fileMetadata.googleDriveFileId);
       
       // Get or create folder structure
-      metadataLog.debug('Getting/creating pN folder for:', pnIdentifier);
+      console.log('Getting/creating pN folder for:', pnIdentifier);
       const pnFolderId = await this.getOrCreatePNFolder(accessToken, pnIdentifier);
-      metadataLog.debug('pN folder ID:', pnFolderId);
+      console.log('pN folder ID:', pnFolderId);
       
-      metadataLog.debug('Getting/creating metadata folder');
+      console.log('Getting/creating metadata folder');
       const metadataFolderId = await this.getOrCreateMetadataFolder(accessToken, pnFolderId);
-      metadataLog.debug('Metadata folder ID:', metadataFolderId);
+      console.log('Metadata folder ID:', metadataFolderId);
 
       const metadataFileName = `${fileMetadata.googleDriveFileId}.metadata.json`;
       
@@ -839,7 +820,9 @@ export class GoogleDriveMetadataService {
         }
       );
 
-      await this.ensureSuccess(searchResponse, 'Failed to search for existing metadata file');
+      if (!searchResponse.ok) {
+        throw new Error('Failed to search for existing metadata file');
+      }
 
       const searchData = await searchResponse.json();
       const metadataContent = JSON.stringify(fileMetadata, null, 2);
@@ -859,10 +842,6 @@ export class GoogleDriveMetadataService {
               }
             }
           );
-
-          if (getResponse.status === 401) {
-            throw new Error('Google Drive authentication expired. Please reconnect.');
-          }
 
           if (getResponse.ok) {
             const existingMetadataText = await getResponse.text();
@@ -886,12 +865,15 @@ export class GoogleDriveMetadataService {
               if (existingMetadata.isPartOf) {
                 fileMetadata.isPartOf = existingMetadata.isPartOf;
               }
+              if (existingMetadata.indexingPermissions && !fileMetadata.indexingPermissions) {
+                fileMetadata.indexingPermissions = existingMetadata.indexingPermissions;
+              }
             } catch (parseError) {
-              metadataLog.warn('Failed to parse existing metadata, continuing with new metadata');
+              console.warn('Failed to parse existing metadata, continuing with new metadata');
             }
           }
         } catch (getError) {
-          metadataLog.warn('Failed to get existing metadata, continuing with new metadata:', getError);
+          console.warn('Failed to get existing metadata, continuing with new metadata:', getError);
         }
 
         // Update file content (JSON) using media upload (avoids multipart issues)
@@ -907,13 +889,9 @@ export class GoogleDriveMetadataService {
           }
         );
 
-        if (updateResponse.status === 401) {
-          throw new Error('Google Drive authentication expired. Please reconnect.');
-        }
-
         if (!updateResponse.ok) {
           const errorText = await updateResponse.text();
-          metadataLog.error('Failed to update companion metadata file:', {
+          console.error('Failed to update companion metadata file:', {
             status: updateResponse.status,
             statusText: updateResponse.statusText,
             errorText
@@ -940,21 +918,17 @@ export class GoogleDriveMetadataService {
           }
         );
 
-        if (createResponse.status === 401) {
-          throw new Error('Google Drive authentication expired. Please reconnect.');
-        }
-
         if (!createResponse.ok) {
           const errorText = await createResponse.text();
-          metadataLog.error('Failed to create metadata file. Status:', createResponse.status, 'StatusText:', createResponse.statusText);
-          metadataLog.error('Error response:', errorText);
+          console.error('Failed to create metadata file. Status:', createResponse.status, 'StatusText:', createResponse.statusText);
+          console.error('Error response:', errorText);
           throw new Error(`Failed to create metadata file: ${createResponse.status} ${createResponse.statusText}. ${errorText}`);
         }
         
-        metadataLog.debug('✅ Metadata file created successfully');
+        console.log('✅ Metadata file created successfully');
       }
     } catch (error) {
-      metadataLog.error('Error creating companion metadata file:', error);
+      console.error('Error creating companion metadata file:', error);
       throw error;
     }
   }
@@ -976,10 +950,6 @@ export class GoogleDriveMetadataService {
       }
     );
 
-    if (searchResponse.status === 401) {
-      throw new Error('Google Drive authentication expired. Please reconnect.');
-    }
-
     if (!searchResponse.ok) {
       return null;
     }
@@ -1000,10 +970,6 @@ export class GoogleDriveMetadataService {
         }
       }
     );
-
-    if (getResponse.status === 401) {
-      throw new Error('Google Drive authentication expired. Please reconnect.');
-    }
 
     if (!getResponse.ok) {
       return null;
@@ -1113,7 +1079,8 @@ export class GoogleDriveMetadataService {
         engagement: fileMetadata.engagement,
         inReplyTo: fileMetadata.inReplyTo,
         repostOf: fileMetadata.repostOf,
-        isPartOf: fileMetadata.isPartOf
+        isPartOf: fileMetadata.isPartOf,
+        indexingPermissions: fileMetadata.indexingPermissions
       };
 
       // Update or add file entry (all files go in owner index)
@@ -1190,13 +1157,9 @@ export class GoogleDriveMetadataService {
           }
         );
 
-        if (updateResponse.status === 401) {
-          throw new Error('Google Drive authentication expired. Please reconnect.');
-        }
-
         if (!updateResponse.ok) {
           const errorText = await updateResponse.text();
-          metadataLog.error('Failed to update owner index file:', {
+          console.error('Failed to update owner index file:', {
             status: updateResponse.status,
             statusText: updateResponse.statusText,
             errorText
@@ -1228,9 +1191,9 @@ export class GoogleDriveMetadataService {
         }
       }
 
-      metadataLog.debug(`✅ Updated owner file index for ${pnIdentifier}`);
+      console.log(`✅ Updated owner file index for ${pnIdentifier}`);
     } catch (error) {
-      metadataLog.error('Error updating owner file index:', error);
+      console.error('Error updating owner file index:', error);
       throw error;
     }
   }
@@ -1285,7 +1248,8 @@ export class GoogleDriveMetadataService {
           tags: fileMetadata.tags || [],
           description: fileMetadata.description,
           thumbnail: fileMetadata.thumbnail,
-          publicToken: fileMetadata.publicToken
+          publicToken: fileMetadata.publicToken,
+          indexingPermissions: fileMetadata.indexingPermissions
         };
 
         const isNewPublicFile = fileIndex < 0;
@@ -1330,7 +1294,7 @@ export class GoogleDriveMetadataService {
       } else {
         // Remove from index if not public (should not be in index, but clean up just in case)
         if (fileIndex >= 0) {
-          metadataLog.debug(`Removing file ${fileMetadata.googleDriveFileId} from public index (visibility: ${fileMetadata.visibility})`);
+          console.log(`Removing file ${fileMetadata.googleDriveFileId} from public index (visibility: ${fileMetadata.visibility})`);
           index.files.splice(fileIndex, 1);
         }
       }
@@ -1376,7 +1340,7 @@ export class GoogleDriveMetadataService {
 
         if (!updateResponse.ok) {
           const errorText = await updateResponse.text();
-          metadataLog.error('Failed to update public index file:', {
+          console.error('Failed to update public index file:', {
             status: updateResponse.status,
             statusText: updateResponse.statusText,
             errorText
@@ -1402,7 +1366,7 @@ export class GoogleDriveMetadataService {
           );
         } catch (permError) {
           // Permission might already exist, ignore
-          metadataLog.warn('Failed to set public permissions:', permError);
+          console.warn('Failed to set public permissions:', permError);
         }
       } else {
         // Create new index
@@ -1447,11 +1411,11 @@ export class GoogleDriveMetadataService {
             }
           );
         } catch (permError) {
-          metadataLog.warn('Failed to set public permissions:', permError);
+          console.warn('Failed to set public permissions:', permError);
         }
       }
     } catch (error) {
-      metadataLog.error('Error updating public file index:', error);
+      console.error('Error updating public file index:', error);
       throw error;
     }
   }

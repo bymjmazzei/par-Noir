@@ -79,6 +79,52 @@ export async function initializeDatabase(): Promise<void> {
       ON aggregator_metadata(updated_at DESC)
     `);
 
+    // Third-party indexers catalog
+    await db.query(`
+      CREATE TABLE IF NOT EXISTS third_party_indexers (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        description TEXT,
+        website TEXT,
+        status TEXT DEFAULT 'active',
+        requested_scopes TEXT[] DEFAULT ARRAY[]::TEXT[],
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        updated_at TIMESTAMPTZ DEFAULT NOW()
+      )
+    `);
+
+    await db.query(`
+      CREATE TABLE IF NOT EXISTS pn_third_party_access (
+        identity TEXT NOT NULL,
+        third_party_id TEXT NOT NULL REFERENCES third_party_indexers(id) ON DELETE CASCADE,
+        granted_scopes TEXT[] DEFAULT ARRAY[]::TEXT[],
+        status TEXT DEFAULT 'active',
+        granted_at TIMESTAMPTZ DEFAULT NOW(),
+        updated_at TIMESTAMPTZ DEFAULT NOW(),
+        PRIMARY KEY (identity, third_party_id)
+      )
+    `);
+
+    await db.query(`
+      CREATE TABLE IF NOT EXISTS file_index_visibility (
+        file_id TEXT NOT NULL,
+        third_party_id TEXT NOT NULL REFERENCES third_party_indexers(id) ON DELETE CASCADE,
+        is_allowed BOOLEAN NOT NULL,
+        updated_at TIMESTAMPTZ DEFAULT NOW(),
+        PRIMARY KEY (file_id, third_party_id)
+      )
+    `);
+
+    await db.query(`
+      CREATE INDEX IF NOT EXISTS idx_pn_third_party_access_identity
+      ON pn_third_party_access(identity)
+    `);
+
+    await db.query(`
+      CREATE INDEX IF NOT EXISTS idx_file_index_visibility_file
+      ON file_index_visibility(file_id)
+    `);
+
     // Create storage_credentials table for encrypted storage metadata
     await db.query(`
       CREATE TABLE IF NOT EXISTS storage_credentials (

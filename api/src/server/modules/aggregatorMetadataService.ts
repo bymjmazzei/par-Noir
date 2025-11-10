@@ -79,6 +79,14 @@ export interface PublicMetadata {
   // Linked Data
   sameAs?: string[];
   about?: string[];
+
+  // Third-party indexing permissions
+  indexingPermissions?: {
+    mode?: 'all' | 'custom' | 'none';
+    allowed?: string[];
+    blocked?: string[];
+    updatedAt?: string;
+  };
 }
 
 export interface CentralIndexEntry {
@@ -166,6 +174,7 @@ export class AggregatorMetadataService {
     tags?: string[];
     fileType?: string;
     authorDid?: string;
+    indexerId?: string;
   }): CentralIndexEntry[] {
     let entries = Array.from(this.metadataIndex.values())
       .filter(entry => entry.metadata.isPublic);
@@ -190,6 +199,12 @@ export class AggregatorMetadataService {
                                 entry.metadata.author?.did;
           return entryAuthorDid === filters.authorDid;
         });
+      }
+
+      if (filters.indexerId) {
+        entries = entries.filter(entry =>
+          this.isIndexerAllowed(entry.metadata.indexingPermissions, filters.indexerId!)
+        );
       }
     }
 
@@ -220,6 +235,7 @@ export class AggregatorMetadataService {
     tags?: string[];
     fileType?: string;
     authorDid?: string;
+    indexerId?: string;
   }): CentralIndexResponse {
     const files = this.getPublicMetadata(filters);
 
@@ -228,6 +244,31 @@ export class AggregatorMetadataService {
       updatedAt: this.lastUpdated.toISOString(),
       totalFiles: files.length
     };
+  }
+
+  private isIndexerAllowed(
+    permissions: PublicMetadata['indexingPermissions'] | undefined,
+    indexerId: string
+  ): boolean {
+    if (!permissions || !permissions.mode || permissions.mode === 'all') {
+      const blocked = permissions?.blocked || [];
+      return !blocked.includes(indexerId);
+    }
+
+    if (permissions.mode === 'custom') {
+      const blocked = permissions.blocked || [];
+      if (blocked.includes(indexerId)) {
+        return false;
+      }
+      const allowed = permissions.allowed || [];
+      return allowed.includes(indexerId);
+    }
+
+    if (permissions.mode === 'none') {
+      return false;
+    }
+
+    return true;
   }
 }
 
