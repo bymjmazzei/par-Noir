@@ -290,6 +290,16 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
     }, delay);
   }, []);
 
+  const getDriveAccountByBackendId = React.useCallback(
+    (backendId: string | null | undefined) => {
+      if (!backendId) {
+        return null;
+      }
+      return driveAccounts.find((account) => account.backendId === backendId) || null;
+    },
+    [driveAccounts]
+  );
+
   React.useEffect(() => {
     const handleTokenRefreshed = (event: Event) => {
       const detail = (event as CustomEvent<{ backendId?: string; accessToken?: string; refreshToken?: string | null; email?: string | null }>).detail;
@@ -531,16 +541,6 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
       isNew: true
     };
   }, [driveAccounts]);
-
-  const getDriveAccountByBackendId = React.useCallback(
-    (backendId: string | null | undefined) => {
-      if (!backendId) {
-        return null;
-      }
-      return driveAccounts.find((account) => account.backendId === backendId) || null;
-    },
-    [driveAccounts]
-  );
 
   const persistDriveAccounts = React.useCallback((accounts: DriveAccountState[]) => {
     try {
