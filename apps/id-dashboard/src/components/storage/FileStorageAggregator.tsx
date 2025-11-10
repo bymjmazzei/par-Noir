@@ -2991,34 +2991,11 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
         }
       }
 
-    const newAccountEntry = {
-      backendId: identifiers.backendId,
-      keyPrefix: identifiers.keyPrefix,
-      accessToken: token,
-      refreshToken: tokenData.refreshToken,
-      email: connectedEmail,
-      connectedAt: new Date().toISOString(),
-      expiresIn: tokenData.expiresIn,
-    };
-
-    const mergeAccountIntoCredentials = (base?: any) => {
-      const existingAccounts = Array.isArray(base?.googleDriveAccounts)
-        ? [...base.googleDriveAccounts]
-        : [];
-      const filteredAccounts = existingAccounts.filter(
-        (account: any) => account.backendId !== identifiers.backendId
-      );
-      filteredAccounts.push(newAccountEntry);
-      return {
-        ...(base || {}),
-        googleDriveAccounts: filteredAccounts,
-      };
-    };
-
-    let updatedStorageCredentials: any = mergeAccountIntoCredentials();
+    const credentialsSnapshot = buildStorageCredentialPayload();
+    let payloadForPersistence: any = credentialsSnapshot || null;
 
     // Save token and refresh token to encrypted pN metadata for persistence (optional)
-    if (metadataPnName && metadataPasscode && authenticatedUser?.id) {
+    if (metadataPnName && metadataPasscode && authenticatedUser?.id && credentialsSnapshot) {
       try {
         const { SecureMetadataStorage } = await import('../../utils/secureMetadataStorage');
         const { SecureMetadataCrypto } = await import('../../utils/secureMetadata');
@@ -3039,14 +3016,17 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
           }
         }
 
-        updatedStorageCredentials = mergeAccountIntoCredentials(baseCredentials);
+        payloadForPersistence = {
+          ...baseCredentials,
+          googleDriveAccounts: credentialsSnapshot.googleDriveAccounts,
+        };
 
         await SecureMetadataStorage.updateMetadataField(
           authenticatedUser.id,
           metadataPnName,
           metadataPasscode,
           'storageCredentials',
-          updatedStorageCredentials
+          payloadForPersistence
         );
         console.log('✅ [handleConnectGoogleDrive] Saved Google Drive account credentials to encrypted metadata');
       } catch (metadataError) {
@@ -3057,7 +3037,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
       console.warn('ℹ️ [handleConnectGoogleDrive] Skipping secure metadata update; session passcode unavailable');
     }
 
-    await persistStorageCredentialsToAPI(updatedStorageCredentials);
+    await persistStorageCredentialsToAPI(payloadForPersistence || undefined);
 
       // Persist refresh token for local fallback using scoped key prefix
       if (tokenData.refreshToken) {

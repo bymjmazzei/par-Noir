@@ -44,22 +44,6 @@ const DEFAULT_INDEXERS: Array<Omit<ThirdPartyIndexer, 'createdAt' | 'updatedAt' 
     requestedScopes: ['index_media'],
     status: 'active',
   },
-  {
-    id: 'noir_collective',
-    name: 'Noir Collective',
-    description: 'Curated arts catalog highlighting noir creators and cultural archives.',
-    website: 'https://collective.parnoir.com',
-    requestedScopes: ['index_media', 'metrics_read'],
-    status: 'active',
-  },
-  {
-    id: 'atlas_archive',
-    name: 'Atlas Archive',
-    description: 'Permissioned preservation network for long-term cultural archiving.',
-    website: 'https://atlas.parnoir.com',
-    requestedScopes: ['index_media', 'high_resolution_assets'],
-    status: 'active',
-  },
 ];
 
 export class ThirdPartyIndexersService {
