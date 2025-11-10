@@ -129,8 +129,6 @@ export const DesktopSecureFolderPanel: React.FC = () => {
         console.warn('[DesktopSecureFolderPanel] Failed to lock secure volume during cleanup', err);
       });
     }
-    setHasUnlockContext(false);
-    setUnlockContext(null);
   }, [secureVolume]);
 
   React.useEffect(() => {
