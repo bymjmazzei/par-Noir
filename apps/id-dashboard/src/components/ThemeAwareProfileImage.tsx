@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { getAssetUrl } from '../utils/assetPaths';
 
 interface ThemeAwareProfileImageProps {
   className?: string;
@@ -33,7 +34,9 @@ export const ThemeAwareProfileImage: React.FC<ThemeAwareProfileImageProps> = ({
 
   return (
     <img
-      src={currentTheme === 'dark' ? '/branding/Par-Noir-Icon-White.png' : '/branding/Par-Noir-Icon-Black.png'}
+      src={currentTheme === 'dark'
+        ? getAssetUrl('branding/Par-Noir-Icon-White.png')
+        : getAssetUrl('branding/Par-Noir-Icon-Black.png')}
       alt={alt}
       className={className}
     />

@@ -26,8 +26,11 @@ export default defineConfig(async () => {
     },
     resolve: {
       alias: {
-        '@renderer': rendererRoot
-      }
+        '@renderer': rendererRoot,
+        react: path.resolve(__dirname, '../../node_modules/react'),
+        'react-dom': path.resolve(__dirname, '../../node_modules/react-dom')
+      },
+      dedupe: ['react', 'react-dom']
     }
   };
 });

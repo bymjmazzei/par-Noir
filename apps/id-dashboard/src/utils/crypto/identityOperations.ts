@@ -5,6 +5,8 @@ import { KeyGenerator } from './keyGenerator';
 import { RecoveryKeyManager } from './recoveryKeyManager';
 import { EncryptionManager } from './encryptionManager';
 import { TokenManager } from './tokenManager';
+import { getKeyPairFromKeystore, storeIdentity } from './identityStorage';
+import { getAssetUrl } from '../assetPaths';
 
 export class IdentityOperations {
   private static readonly DID_PREFIX = 'did:key:';
@@ -55,7 +57,7 @@ export class IdentityOperations {
         phone: '',
         recoveryEmail: recoveryEmail || '',
         recoveryPhone: recoveryPhone || '',
-        profilePicture: '/branding/Par-Noir-Icon-White.png',
+        profilePicture: getAssetUrl('branding/Par-Noir-Icon-White.png'),
         createdAt: new Date().toISOString(),
         status: 'active',
         custodiansRequired: true,

@@ -1,12 +1,28 @@
 import React from 'react';
-import { FileStorageAggregator } from '../../../../../id-dashboard/src/components/storage/FileStorageAggregator';
+
+import App from '../../../../../id-dashboard/src/App';
+import { OAuthHandler } from '../../../../../id-dashboard/src/components/OAuthHandler';
+
+import '../../../../../id-dashboard/src/index.css';
 
 export const AppMain: React.FC = () => {
+  React.useEffect(() => {
+    const baseUrl = import.meta.env.BASE_URL || '/';
+    const darkBg = `url('${baseUrl}branding/Par-Noir-Background-Dark.png')`;
+    const lightBg = `url('${baseUrl}branding/Par-Noir-Background-Light.png')`;
+    document.documentElement.style.setProperty('--pn-bg-dark', darkBg);
+    document.documentElement.style.setProperty('--pn-bg-light', lightBg);
+
+    return () => {
+      document.documentElement.style.removeProperty('--pn-bg-dark');
+      document.documentElement.style.removeProperty('--pn-bg-light');
+    };
+  }, []);
+
   return (
-    <div className="min-h-screen theme-dark bg-bg-primary text-text-primary">
-      <main className="mx-auto w-full max-w-7xl px-6 py-10">
-        <FileStorageAggregator />
-      </main>
+    <div className="theme-dark">
+      <App />
+      <OAuthHandler />
     </div>
   );
 };

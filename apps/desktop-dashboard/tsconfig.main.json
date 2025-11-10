@@ -4,13 +4,13 @@
     "module": "CommonJS",
     "lib": ["ES2020", "DOM"],
     "outDir": "dist-electron/main",
-    "rootDir": "src/main",
+    "rootDir": "src",
     "strict": true,
     "moduleResolution": "Node",
     "esModuleInterop": true,
     "resolveJsonModule": true,
     "types": ["node"]
   },
-  "include": ["src/main/**/*.ts"]
+  "include": ["src/main/**/*.ts", "src/shared/**/*.ts"]
 }
 

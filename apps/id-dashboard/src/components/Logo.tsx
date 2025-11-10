@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { getAssetUrl } from '../utils/assetPaths';
 
 interface LogoProps {
   className?: string;
@@ -40,7 +41,9 @@ export const Logo: React.FC<LogoProps> = ({ className = '', size }) => {
   return (
     <div className={`flex items-center justify-center ${className} ${containerClasses} overflow-hidden`}>
       <img 
-        src={currentTheme === 'dark' ? '/branding/Par-Noir-Logo-White.png' : '/branding/Par-Noir-Logo-Black.png'}
+        src={currentTheme === 'dark'
+          ? getAssetUrl('branding/Par-Noir-Logo-White.png')
+          : getAssetUrl('branding/Par-Noir-Logo-Black.png')}
         alt="Par Noir"
         className="w-full h-full object-contain scale-110"
         style={{

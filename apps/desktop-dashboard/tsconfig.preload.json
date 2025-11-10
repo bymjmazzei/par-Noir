@@ -4,13 +4,13 @@
     "module": "CommonJS",
     "lib": ["ES2020", "DOM"],
     "outDir": "dist-electron/preload",
-    "rootDir": "src/preload",
+    "rootDir": "src",
     "strict": true,
     "moduleResolution": "Node",
     "esModuleInterop": true,
     "resolveJsonModule": true,
     "types": ["node"]
   },
-  "include": ["src/preload/**/*.ts"]
+  "include": ["src/preload/**/*.ts", "src/shared/**/*.ts"]
 }
 

@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { getAssetUrl } from '../utils/assetPaths';
 
 interface IconProps {
   className?: string;
@@ -7,6 +8,10 @@ interface IconProps {
 
 export const Icon: React.FC<IconProps> = ({ className = '', size = 'md' }) => {
   const [currentTheme, setCurrentTheme] = useState<'dark' | 'light'>('dark');
+  const iconSources = {
+    dark: getAssetUrl('branding/Par-Noir-Icon-White.png'),
+    light: getAssetUrl('branding/Par-Noir-Icon-Black.png')
+  } as const;
   
   const sizeClasses = {
     sm: 'w-6 h-6',
@@ -37,7 +42,7 @@ export const Icon: React.FC<IconProps> = ({ className = '', size = 'md' }) => {
   return (
     <div className={`${className} ${sizeClasses[size]}`}>
       <img 
-        src={currentTheme === 'dark' ? '/branding/Par-Noir-Icon-White.png' : '/branding/Par-Noir-Icon-Black.png'}
+        src={iconSources[currentTheme]}
         alt="Par Noir Icon"
         className="w-full h-full object-contain"
       />

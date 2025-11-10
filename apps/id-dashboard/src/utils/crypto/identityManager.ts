@@ -4,6 +4,8 @@ import { DIDManager } from './didManager';
 import { RecoveryKeyManager } from './recoveryKeyManager';
 import { EncryptionManager } from './encryptionManager';
 import { TokenManager } from './tokenManager';
+import { v4 as uuidv4 } from 'uuid';
+import { getAssetUrl } from '../assetPaths';
 
 export class IdentityManager {
     /**
@@ -33,7 +35,7 @@ export class IdentityManager {
                 phone: '',
                 recoveryEmail: recoveryEmail || '',
                 recoveryPhone: recoveryPhone || '',
-                profilePicture: '/branding/Par-Noir-Icon-White.png',
+                profilePicture: getAssetUrl('branding/Par-Noir-Icon-White.png'),
                 createdAt: new Date().toISOString(),
                 status: 'active',
                 custodiansRequired: true,

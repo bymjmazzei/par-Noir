@@ -58,7 +58,7 @@ export class IdentityCrypto {
                 phone: '',
                 recoveryEmail: recoveryEmail || '',
                 recoveryPhone: recoveryPhone || '',
-                profilePicture: '/branding/Par-Noir-Icon-White.png',
+                profilePicture: getAssetUrl('branding/Par-Noir-Icon-White.png'),
                 createdAt: new Date().toISOString(),
                 status: 'active',
                 custodiansRequired: true,
