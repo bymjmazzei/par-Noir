@@ -35,6 +35,7 @@ export const DesktopSecureFolderPanel: React.FC = () => {
   const [isLoading, setIsLoading] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const [unlockContext, setUnlockContext] = React.useState<SecureVolumeUnlockPayload | null>(null);
+  const [hasUnlockContext, setHasUnlockContext] = React.useState(false);
 
   const secureVolume = React.useMemo(getSecureVolumeApi, []);
   const openPath = window.parNoirDesktop?.native?.openPath;
@@ -111,6 +112,7 @@ export const DesktopSecureFolderPanel: React.FC = () => {
       const status = await secureVolume.unlock(payload);
       setMountState(status);
       setError(null);
+      setHasUnlockContext(true);
 
       if (status.bundleExists && !status.mounted) {
         void mountVolume();
@@ -118,6 +120,7 @@ export const DesktopSecureFolderPanel: React.FC = () => {
     } catch (err) {
       console.error('[DesktopSecureFolderPanel] Failed to unlock secure volume', err);
       setError('Failed to unlock secure folder. Verify your pN session credentials.');
+      setHasUnlockContext(false);
     } finally {
       setIsLoading(false);
     }
@@ -151,6 +154,8 @@ export const DesktopSecureFolderPanel: React.FC = () => {
         console.warn('[DesktopSecureFolderPanel] Failed to lock secure volume during cleanup', err);
       });
     }
+    setHasUnlockContext(false);
+    setUnlockContext(null);
   }, [secureVolume]);
 
   React.useEffect(() => {
@@ -163,6 +168,10 @@ export const DesktopSecureFolderPanel: React.FC = () => {
   }, [mountState.mounted, mountState.mountPoint, openPath]);
 
   const handlePrimaryAction = () => {
+    if (!hasUnlockContext) {
+      setError('Unlock your pN with the correct passcode before mounting the secure folder.');
+      return;
+    }
     if (mountState.mounted) {
       void unmountVolume();
       return;

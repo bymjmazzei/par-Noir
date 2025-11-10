@@ -12,6 +12,7 @@ export default defineConfig(async () => {
     base: './',
     root: rendererRoot,
     plugins: [react()],
+    publicDir: path.resolve(__dirname, 'public'),
     build: {
       outDir,
       emptyOutDir: true,

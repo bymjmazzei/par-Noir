@@ -17,6 +17,8 @@ import type { ThirdPartyIndexer, IndexingPermissions } from '../../types/indexer
 
 const GOOGLE_DRIVE_ICON_URL = GoogleDriveIconUrl;
 const DRIVE_ACCOUNTS_STORAGE_KEY = 'pn_google_drive_accounts';
+const METADATA_SYNC_MIN_INTERVAL_MS = 90_000;
+const INDEXER_CACHE_TTL_MS = 5 * 60 * 1000;
 
 const isDesktopShell = typeof window !== 'undefined' && Boolean(window.parNoirDesktop);
 
@@ -118,6 +120,18 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
   const [indexingPermissionsState, setIndexingPermissionsState] = useState<IndexingPermissions | null>(null);
   const [isLoadingIndexers, setIsLoadingIndexers] = useState(false);
   const [indexerError, setIndexerError] = useState<string | null>(null);
+  const thirdPartyIndexersCacheRef = React.useRef<{
+    identity: string | null;
+    indexers: ThirdPartyIndexer[];
+    fetchedAt: number;
+  } | null>(null);
+  const metadataRefreshStateRef = React.useRef<{
+    lastSyncAt: number;
+    inFlight: Promise<void> | null;
+  }>({
+    lastSyncAt: 0,
+    inFlight: null
+  });
 
   React.useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -661,6 +675,17 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
     []
   );
 
+  const applyIndexersState = React.useCallback(
+    (indexers: ThirdPartyIndexer[], metadata?: PublicMetadata | null) => {
+      setThirdPartyIndexers(indexers);
+      const basePermissions = deriveIndexingPermissions(metadata);
+      setIndexingPermissionsState(basePermissions);
+      const toggles = computeTogglesFromPermissions(indexers, basePermissions);
+      setIndexerToggles(toggles);
+    },
+    [computeTogglesFromPermissions, deriveIndexingPermissions]
+  );
+
   React.useEffect(() => {
     if (sharingFile) {
       setShareVisibility((prev) => {
@@ -718,12 +743,26 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
   }, [aggregatorService, activeBackendId, driveAccounts, getDriveAccountByBackendId]);
 
   const loadThirdPartyIndexers = React.useCallback(
-    async (metadata?: PublicMetadata | null) => {
+    async (metadata?: PublicMetadata | null, options?: { force?: boolean }) => {
+      const identity = deriveIdentityKey();
+      const cacheEntry = thirdPartyIndexersCacheRef.current;
+      const shouldUseCache =
+        !options?.force &&
+        cacheEntry &&
+        cacheEntry.indexers.length > 0 &&
+        cacheEntry.identity === (identity || null) &&
+        Date.now() - cacheEntry.fetchedAt < INDEXER_CACHE_TTL_MS;
+
+      if (shouldUseCache) {
+        setIndexerError(null);
+        applyIndexersState(cacheEntry.indexers, metadata);
+        return;
+      }
+
       setIsLoadingIndexers(true);
       setIndexerError(null);
 
       try {
-        const identity = deriveIdentityKey();
         const endpoint = new URL(`${apiEndpoint}/api/third-party/indexers`);
         if (identity) {
           endpoint.searchParams.set('identity', identity);
@@ -743,22 +782,116 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
 
         const payload = await response.json();
         const indexers: ThirdPartyIndexer[] = Array.isArray(payload.indexers) ? payload.indexers : [];
-        setThirdPartyIndexers(indexers);
-
-        const basePermissions = deriveIndexingPermissions(metadata);
-        setIndexingPermissionsState(basePermissions);
-
-        const toggles = computeTogglesFromPermissions(indexers, basePermissions);
-        setIndexerToggles(toggles);
+        thirdPartyIndexersCacheRef.current = {
+          identity: identity || null,
+          indexers,
+          fetchedAt: Date.now()
+        };
+        applyIndexersState(indexers, metadata);
       } catch (error) {
         const message = error instanceof Error ? error.message : 'Unable to load third-party indexers';
         console.error('❌ [ShareSettings] Failed to load third-party indexers:', error);
         setIndexerError(message);
+        thirdPartyIndexersCacheRef.current = null;
       } finally {
         setIsLoadingIndexers(false);
       }
     },
-    [apiEndpoint, computeTogglesFromPermissions, deriveIdentityKey, deriveIndexingPermissions]
+    [apiEndpoint, applyIndexersState, deriveIdentityKey]
+  );
+
+  const refreshMetadataInBackground = React.useCallback(
+    async (
+      file: AggregatedFile,
+      options?: {
+        forceSync?: boolean;
+        refreshIndexers?: boolean;
+      }
+    ) => {
+      if (!metadataIndexService) {
+        return;
+      }
+
+      if (metadataRefreshStateRef.current.inFlight && !options?.forceSync) {
+        return metadataRefreshStateRef.current.inFlight;
+      }
+
+      const execute = async () => {
+        try {
+          await metadataIndexService.initialize();
+
+          const now = Date.now();
+          const shouldSync =
+            options?.forceSync ||
+            !metadataRefreshStateRef.current.lastSyncAt ||
+            now - metadataRefreshStateRef.current.lastSyncAt > METADATA_SYNC_MIN_INTERVAL_MS;
+
+          if (shouldSync) {
+            const preferredDid =
+              resolvedAuth?.publicKey
+                ? resolvedAuth.publicKey.startsWith('did:')
+                  ? resolvedAuth.publicKey
+                  : `did:key:${resolvedAuth.publicKey}`
+                : authenticatedUser?.id && authenticatedUser.id.startsWith('did:')
+                  ? authenticatedUser.id
+                  : undefined;
+
+            await metadataIndexService.syncFromCentralAggregator({
+              authorDid: preferredDid,
+              force: options?.forceSync,
+            });
+            metadataRefreshStateRef.current.lastSyncAt = Date.now();
+          }
+
+          const refreshedMetadata =
+            (await metadataIndexService.getFileMetadata(file.id)) ||
+            (file.backendFileId ? await metadataIndexService.getFileMetadata(file.backendFileId) : null);
+
+          if (refreshedMetadata) {
+            setFileMetadataMap((prev) => {
+              const next = new Map(prev);
+              const normalizedVisibility =
+                refreshedMetadata.isPublic === true ||
+                (refreshedMetadata as any).visibility === 'public' ||
+                !!(refreshedMetadata as any).publicToken;
+              const normalizedMetadata: PublicMetadata = {
+                ...refreshedMetadata,
+                isPublic: normalizedVisibility
+                  ? true
+                  : refreshedMetadata.isPublic === false
+                    ? false
+                    : refreshedMetadata.isPublic,
+              };
+              next.set(file.id, normalizedMetadata);
+              if (file.backendFileId) {
+                next.set(file.backendFileId, normalizedMetadata);
+              }
+              if (normalizedMetadata.fileId) {
+                next.set(normalizedMetadata.fileId, normalizedMetadata);
+              }
+              if ((normalizedMetadata as any).backendFileId) {
+                next.set((normalizedMetadata as any).backendFileId, normalizedMetadata);
+              }
+              return next;
+            });
+
+            await loadThirdPartyIndexers(
+              refreshedMetadata,
+              options?.refreshIndexers ? { force: true } : undefined
+            );
+          }
+        } catch (centralSyncError) {
+          console.warn('⚠️ [ShareSettings] Central metadata sync failed (non-blocking):', centralSyncError);
+        } finally {
+          metadataRefreshStateRef.current.inFlight = null;
+        }
+      };
+
+      const run = execute();
+      metadataRefreshStateRef.current.inFlight = run;
+      return run;
+    },
+    [authenticatedUser?.id, loadThirdPartyIndexers, metadataIndexService, resolvedAuth?.publicKey]
   );
 
   const persistStorageCredentialsToAPI = React.useCallback(
@@ -1738,62 +1871,12 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
         }
       }
 
-      if (metadataIndexService) {
-        (async () => {
-          try {
-            if (resolvedAuth?.publicKey) {
-              const preferredDid = resolvedAuth.publicKey.startsWith('did:')
-                ? resolvedAuth.publicKey
-                : `did:key:${resolvedAuth.publicKey}`;
-              await metadataIndexService.syncFromCentralAggregator({
-                authorDid: preferredDid,
-                force: true,
-              });
-            } else {
-              await metadataIndexService.syncFromCentralAggregator({ force: true });
-            }
-            const refreshedMetadata =
-              (await metadataIndexService.getFileMetadata(file.id)) ||
-              (file.backendFileId ? await metadataIndexService.getFileMetadata(file.backendFileId) : null);
-            if (refreshedMetadata) {
-              setFileMetadataMap((prev) => {
-                const next = new Map(prev);
-                const normalizedVisibility =
-                  refreshedMetadata.isPublic === true ||
-                  (refreshedMetadata as any).visibility === 'public' ||
-                  !!(refreshedMetadata as any).publicToken;
-                const normalizedMetadata: PublicMetadata = {
-                  ...refreshedMetadata,
-                  isPublic: normalizedVisibility ? true : refreshedMetadata.isPublic === false ? false : refreshedMetadata.isPublic,
-                };
-                next.set(file.id, normalizedMetadata);
-                if (file.backendFileId) {
-                  next.set(file.backendFileId, normalizedMetadata);
-                }
-                if (normalizedMetadata.fileId) {
-                  next.set(normalizedMetadata.fileId, normalizedMetadata);
-                }
-                if ((normalizedMetadata as any).backendFileId) {
-                  next.set((normalizedMetadata as any).backendFileId, normalizedMetadata);
-                }
-                return next;
-              });
-
-              const isPublic =
-                refreshedMetadata.isPublic === true ||
-                (refreshedMetadata as any).visibility === 'public' ||
-                !!(refreshedMetadata as any).publicToken;
-
-              setShareVisibility(isPublic ? 'public' : 'private');
-              loadThirdPartyIndexers(refreshedMetadata);
-            }
-          } catch (centralSyncError) {
-            console.warn('⚠️ [ShareSettings] Central metadata sync failed (non-blocking):', centralSyncError);
-          }
-        })();
-      }
+      void refreshMetadataInBackground(file, {
+        forceSync: !existingMetadata,
+        refreshIndexers: !existingMetadata,
+      });
     },
-    [resolveShareVisibility, fileMetadataMap, loadFileMetadata, loadThirdPartyIndexers, metadataIndexService, resolvedAuth?.publicKey]
+    [resolveShareVisibility, fileMetadataMap, loadFileMetadata, loadThirdPartyIndexers, refreshMetadataInBackground]
   );
 
   const closeShareSettings = React.useCallback(() => {
@@ -2522,6 +2605,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
 
     try {
       setIsSavingShare(true);
+      const fileForRefresh = sharingFile;
       const existingMetadata =
         fileMetadataMap.get(sharingFile.id) ||
         (sharingFile.backendFileId ? fileMetadataMap.get(sharingFile.backendFileId) : undefined);
@@ -2628,6 +2712,11 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
         setIndexingPermissionsState(nextPermissions);
       }
 
+      void refreshMetadataInBackground(fileForRefresh, {
+        forceSync: true,
+        refreshIndexers: true,
+      });
+
       closeShareSettings();
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Failed to update sharing settings';
@@ -2646,7 +2735,8 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
     handleTogglePublic,
     loadFileMetadata,
     apiEndpoint,
-    closeShareSettings
+    closeShareSettings,
+    refreshMetadataInBackground
   ]);
 
   const loadStorageQuota = React.useCallback(async () => {
