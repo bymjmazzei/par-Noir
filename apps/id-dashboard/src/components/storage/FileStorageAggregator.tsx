@@ -938,77 +938,74 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
     [authenticatedUser?.id, loadThirdPartyIndexers, metadataIndexService, resolvedAuth?.publicKey]
   );
 
-  const persistStorageCredentialsToAPI = React.useCallback(
-    async (credentialsPayload?: any, cid?: string | null) => {
-      let payload = credentialsPayload;
-      if (!payload) {
-        payload = buildStorageCredentialPayload();
+  async function persistStorageCredentialsToAPI(credentialsPayload?: any, cid?: string | null) {
+    let payload = credentialsPayload;
+    if (!payload) {
+      payload = buildStorageCredentialPayload();
+    }
+
+    if (
+      !payload ||
+      !Array.isArray(payload.googleDriveAccounts) ||
+      payload.googleDriveAccounts.length === 0
+    ) {
+      console.warn('⚠️ [StorageCredentials] No Google Drive accounts available; skipping API persistence');
+      return;
+    }
+
+    await persistCredentialsToSecureMetadata(payload);
+
+    const identityCandidates = getStorageIdentityCandidates();
+
+    if (identityCandidates.length === 0) {
+      console.warn('⚠️ [StorageCredentials] No identity candidates available for persistence');
+      return;
+    }
+
+    const seen = new Set<string>();
+    for (const identityId of identityCandidates) {
+      if (!identityId || seen.has(identityId)) {
+        continue;
       }
+      seen.add(identityId);
 
-      if (
-        !payload ||
-        !Array.isArray(payload.googleDriveAccounts) ||
-        payload.googleDriveAccounts.length === 0
-      ) {
-        console.warn('⚠️ [StorageCredentials] No Google Drive accounts available; skipping API persistence');
-        return;
-      }
+      try {
+        console.warn('📤 [StorageCredentials] Persisting credentials to API...', {
+          identityId,
+          hasCid: !!cid,
+        });
 
-      await persistCredentialsToSecureMetadata(payload);
+        const response = await fetch(`${apiEndpoint}/api/storage/credentials/${encodeURIComponent(identityId)}`, {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            credentials: payload,
+            cid: cid ?? null,
+          }),
+        });
 
-      const identityCandidates = getStorageIdentityCandidates();
-
-      if (identityCandidates.length === 0) {
-        console.warn('⚠️ [StorageCredentials] No identity candidates available for persistence');
-        return;
-      }
-
-      const seen = new Set<string>();
-      for (const identityId of identityCandidates) {
-        if (!identityId || seen.has(identityId)) {
-          continue;
-        }
-        seen.add(identityId);
-
-        try {
-          console.warn('📤 [StorageCredentials] Persisting credentials to API...', {
+        if (!response.ok) {
+          const errorText = await response.text().catch(() => 'Unknown error');
+          console.warn('⚠️ [StorageCredentials] Failed to persist credentials to API:', {
             identityId,
-            hasCid: !!cid,
+            status: response.status,
+            error: errorText,
           });
-
-          const response = await fetch(`${apiEndpoint}/api/storage/credentials/${encodeURIComponent(identityId)}`, {
-            method: 'PUT',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-              credentials: payload,
-              cid: cid ?? null,
-            }),
-          });
-
-          if (!response.ok) {
-            const errorText = await response.text().catch(() => 'Unknown error');
-            console.warn('⚠️ [StorageCredentials] Failed to persist credentials to API:', {
-              identityId,
-              status: response.status,
-              error: errorText,
-            });
-          } else {
-            console.warn('✅ [StorageCredentials] Credentials persisted to API', {
-              identityId,
-            });
-          }
-        } catch (error) {
-          console.warn('⚠️ [StorageCredentials] API persistence failed (non-blocking):', {
+        } else {
+          console.warn('✅ [StorageCredentials] Credentials persisted to API', {
             identityId,
-            error,
           });
         }
+      } catch (error) {
+        console.warn('⚠️ [StorageCredentials] API persistence failed (non-blocking):', {
+          identityId,
+          error,
+        });
       }
-    },
-    [apiEndpoint, buildStorageCredentialPayload, getStorageIdentityCandidates, persistCredentialsToSecureMetadata]
-  );
+    }
+  }
 
   const upsertDriveAccount = React.useCallback(async (
     params: {
