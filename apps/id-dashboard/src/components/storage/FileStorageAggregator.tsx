@@ -167,14 +167,22 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
       const custom = event as CustomEvent<DesktopUnlockPayload>;
       const detail = custom.detail;
       if (!detail || typeof detail.passcode !== 'string' || !detail.passcode.trim()) {
+        console.warn('⚠️ [FileStorageAggregator] pn-auth-session event missing passcode', detail);
         return;
       }
 
       const nextPnName = detail.pnName ?? resolvedAuth?.pnName ?? authenticatedUser?.pnName ?? (authenticatedUser as any)?.username ?? null;
       const nextPublicKey = detail.publicKey ?? resolvedAuth?.publicKey ?? authenticatedUser?.publicKey ?? (typeof authenticatedUser?.id === 'string' ? authenticatedUser.id : null);
 
+      console.log('✅ [FileStorageAggregator] pn-auth-session event received', {
+        pnName: nextPnName,
+        publicKeyPreview: nextPublicKey?.slice(0, 16),
+        passcodeLength: detail.passcode.length,
+      });
+
       try {
         sessionStorage.setItem('pn_session_passcode', detail.passcode);
+        console.log('✅ [FileStorageAggregator] Stored passcode from pn-auth-session event');
       } catch (storageError) {
         console.warn('⚠️ [FileStorageAggregator] Unable to persist passcode from pn-auth-session event', storageError);
       }
@@ -1815,15 +1823,23 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
   }, [authenticatedUser]);
 
   React.useEffect(() => {
-    if (resolvedAuth?.pnName && resolvedAuth.publicKey && resolvedAuth.passcode) {
-      const payload = {
-        pnName: resolvedAuth.pnName,
-        publicKey: resolvedAuth.publicKey,
-        passcode: resolvedAuth.passcode,
-      };
-
-      window.dispatchEvent(new CustomEvent('pn-auth-session', { detail: payload }));
+    if (!resolvedAuth?.pnName || !resolvedAuth.publicKey) {
+      return;
     }
+
+    const payload = {
+      pnName: resolvedAuth.pnName,
+      publicKey: resolvedAuth.publicKey,
+      passcode: resolvedAuth.passcode ?? null,
+    };
+
+    console.log('📡 [FileStorageAggregator] Broadcasting pn-auth-session', {
+      pnName: payload.pnName,
+      publicKeyPreview: payload.publicKey.slice(0, 16),
+      hasPasscode: Boolean(payload.passcode),
+    });
+
+    window.dispatchEvent(new CustomEvent('pn-auth-session', { detail: payload }));
   }, [resolvedAuth]);
 
   const loadFileMetadata = React.useCallback(async (filesToLoad: AggregatedFile[]) => {
