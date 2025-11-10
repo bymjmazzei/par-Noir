@@ -1,7 +1,7 @@
 import { app, BrowserWindow, ipcMain, shell } from 'electron';
 import path from 'path';
 
-import { NATIVE_IPC_CHANNEL, SECURE_VOLUME_IPC_CHANNEL, type SecureVolumeUnlockPayload } from '../shared/ipcChannels';
+import { NATIVE_IPC_CHANNEL, SECURE_VOLUME_IPC_CHANNEL, type SecureVolumeIdentity, type SecureVolumeUnlockPayload } from '../shared/ipcChannels';
 import { SecureVolumeManager } from './secureVolume/SecureVolumeManager';
 
 const isDev = !app.isPackaged || Boolean(process.env.VITE_DEV_SERVER_URL);
@@ -30,6 +30,10 @@ const registerIpc = () => {
   ipcMain.handle(SECURE_VOLUME_IPC_CHANNEL.lock, async () => {
     await secureVolumeManager.clearUnlockContext();
     return secureVolumeManager.getStatus();
+  });
+
+  ipcMain.handle(SECURE_VOLUME_IPC_CHANNEL.hydrate, async (_event, identity: SecureVolumeIdentity) => {
+    return secureVolumeManager.hydrate(identity);
   });
 
   ipcMain.handle(NATIVE_IPC_CHANNEL.openPath, async (_event, target: string) => {

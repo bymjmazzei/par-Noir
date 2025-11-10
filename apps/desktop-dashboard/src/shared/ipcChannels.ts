@@ -7,9 +7,12 @@ export interface SecureVolumeMountState {
   bundleExists: boolean;
 }
 
-export interface SecureVolumeUnlockPayload {
+export interface SecureVolumeIdentity {
   pnName: string;
   publicKey: string;
+}
+
+export interface SecureVolumeUnlockPayload extends SecureVolumeIdentity {
   passcode: string;
 }
 
@@ -18,7 +21,8 @@ export const SECURE_VOLUME_IPC_CHANNEL = {
   unmount: 'secure-volume:unmount',
   status: 'secure-volume:status',
   unlock: 'secure-volume:unlock',
-  lock: 'secure-volume:lock'
+  lock: 'secure-volume:lock',
+  hydrate: 'secure-volume:hydrate'
 } as const;
 
 export const NATIVE_IPC_CHANNEL = {

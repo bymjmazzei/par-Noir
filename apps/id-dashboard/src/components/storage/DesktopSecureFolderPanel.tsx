@@ -1,7 +1,7 @@
 import React from 'react';
 import { FolderOpen } from 'lucide-react';
 
-import type { SecureVolumeMountState, SecureVolumeUnlockPayload } from '../../desktop-dashboard/src/shared/ipcChannels';
+import type { SecureVolumeIdentity, SecureVolumeMountState, SecureVolumeUnlockPayload } from '../../desktop-dashboard/src/shared/ipcChannels';
 
 const hasWindow = typeof window !== 'undefined';
 const getSecureVolumeApi = () => (hasWindow ? window.parNoirDesktop?.secureVolume : undefined);
@@ -23,8 +23,8 @@ export const DesktopSecureFolderPanel: React.FC = () => {
   const [isOpening, setIsOpening] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const [unlockContext, setUnlockContext] = React.useState<SecureVolumeUnlockPayload | null>(null);
-  const [identity, setIdentity] = React.useState<{ pnName: string; publicKey: string } | null>(null);
-  const identityRef = React.useRef<{ pnName: string; publicKey: string } | null>(null);
+  const [identity, setIdentity] = React.useState<SecureVolumeIdentity | null>(null);
+  const identityRef = React.useRef<SecureVolumeIdentity | null>(null);
 
   const secureVolume = React.useMemo(getSecureVolumeApi, []);
   const nativeApi = React.useMemo(getNativeApi, []);
@@ -71,6 +71,14 @@ export const DesktopSecureFolderPanel: React.FC = () => {
       setUnlockContext(payload);
       identityRef.current = { pnName: payload.pnName, publicKey: payload.publicKey };
       setIdentity(identityRef.current);
+
+      if (hasWindow) {
+        try {
+          window.sessionStorage.setItem('pn_session_passcode', payload.passcode);
+        } catch (storageErr) {
+          console.warn('[DesktopSecureFolderPanel] Unable to persist session passcode', storageErr);
+        }
+      }
       return status;
     } catch (err) {
       console.error('[DesktopSecureFolderPanel] Failed to unlock secure volume', err);
@@ -167,7 +175,7 @@ export const DesktopSecureFolderPanel: React.FC = () => {
       }
     }
 
-    const identityCandidate = identityRef.current;
+    const identityCandidate = identityRef.current ?? identity;
     const sessionPasscode = getSessionPasscode();
     if (identityCandidate && sessionPasscode) {
       const payload: SecureVolumeUnlockPayload = {
@@ -177,6 +185,17 @@ export const DesktopSecureFolderPanel: React.FC = () => {
       };
       const status = await applyUnlockContext(payload);
       return status;
+    }
+
+    if (identityCandidate && secureVolume?.hydrate) {
+      try {
+        const status = await secureVolume.hydrate(identityCandidate);
+        setMountState(status);
+        setError(null);
+        return status;
+      } catch (err) {
+        console.warn('[DesktopSecureFolderPanel] Failed to hydrate secure volume from keychain', err);
+      }
     }
 
     setError('Secure folder locked. Re-authenticate to continue.');
@@ -201,20 +220,37 @@ export const DesktopSecureFolderPanel: React.FC = () => {
   }, [ensureUnlocked, nativeApi]);
 
   React.useEffect(() => {
-    if (unlockContext || !identity) {
+    if (!identity) {
       return;
     }
+
+    if (unlockContext) {
+      return;
+    }
+
     const passcode = getSessionPasscode();
-    if (!passcode) {
+    if (passcode) {
+      const payload: SecureVolumeUnlockPayload = {
+        pnName: identity.pnName,
+        publicKey: identity.publicKey,
+        passcode,
+      };
+      void applyUnlockContext(payload);
       return;
     }
-    const payload: SecureVolumeUnlockPayload = {
-      pnName: identity.pnName,
-      publicKey: identity.publicKey,
-      passcode,
-    };
-    void applyUnlockContext(payload);
-  }, [applyUnlockContext, getSessionPasscode, identity, unlockContext]);
+
+    if (secureVolume?.hydrate) {
+      void secureVolume
+        .hydrate(identity)
+        .then((status) => {
+          setMountState(status);
+          setError(null);
+        })
+        .catch((err) => {
+          console.warn('[DesktopSecureFolderPanel] Unable to hydrate secure volume via keychain', err);
+        });
+    }
+  }, [applyUnlockContext, getSessionPasscode, identity, secureVolume, unlockContext]);
 
   return (
     <section className="bg-neutral-900/80 border border-neutral-700 rounded-2xl p-6 shadow-xl flex flex-col space-y-4">

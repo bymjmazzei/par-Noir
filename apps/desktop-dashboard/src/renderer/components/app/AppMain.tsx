@@ -7,8 +7,16 @@ import '../../../../../id-dashboard/src/index.css';
 
 export const AppMain: React.FC = () => {
   React.useEffect(() => {
-    const darkBg = "url('./branding/Par-Noir-Background-Dark.png')";
-    const lightBg = "url('./branding/Par-Noir-Background-Light.png')";
+    const resolveAsset = window.parNoirDesktop?.assets?.resolve;
+    const darkSource = resolveAsset
+      ? resolveAsset('branding/Par-Noir-Background-Dark.png')
+      : './branding/Par-Noir-Background-Dark.png';
+    const lightSource = resolveAsset
+      ? resolveAsset('branding/Par-Noir-Background-Light.png')
+      : './branding/Par-Noir-Background-Light.png';
+
+    const darkBg = `url('${darkSource}')`;
+    const lightBg = `url('${lightSource}')`;
 
     document.documentElement.style.setProperty('--pn-bg-dark', darkBg);
     document.documentElement.style.setProperty('--pn-bg-light', lightBg);
