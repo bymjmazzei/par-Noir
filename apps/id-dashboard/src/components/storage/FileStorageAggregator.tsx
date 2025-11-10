@@ -520,7 +520,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
     }
   }
   
-  const resolveIdentifiersForEmail = React.useCallback((email?: string | null) => {
+  function resolveIdentifiersForEmail(email?: string | null) {
     const normalizedEmail = email?.toLowerCase() || null;
     if (normalizedEmail) {
       const existing = driveAccounts.find((account) => account.email?.toLowerCase() === normalizedEmail);
@@ -530,22 +530,23 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
     }
 
     const safeBase = (normalizedEmail || `account-${Date.now().toString(36)}`).replace(/[^a-z0-9]+/g, '-');
-    const uniqueSuffix = (typeof crypto !== 'undefined' && crypto.randomUUID)
+    const uniqueSuffix =
+      typeof crypto !== 'undefined' && crypto.randomUUID
       ? crypto.randomUUID().split('-')[0]
       : Math.random().toString(36).slice(2, 10);
     const slug = `${safeBase}-${uniqueSuffix}`;
     return {
       backendId: `google_drive::${slug}`,
       keyPrefix: `google_drive_${slug}`,
-      isNew: true
+      isNew: true,
     };
-  }, [driveAccounts]);
+  }
 
   function getDriveAccountByBackendId(backendId: string | null | undefined) {
-    if (!backendId) {
-      return null;
-    }
-    return driveAccounts.find((account) => account.backendId === backendId) || null;
+      if (!backendId) {
+        return null;
+      }
+      return driveAccounts.find((account) => account.backendId === backendId) || null;
   }
   
   const buildStorageCredentialPayload = React.useCallback(() => {
@@ -1357,7 +1358,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
         }
       }
     }
-  }, [apiEndpoint, getStorageIdentityCandidates, resolveIdentifiersForEmail, upsertDriveAccount]);
+  }, [apiEndpoint, getStorageIdentityCandidates, upsertDriveAccount]);
 
   const fetchDriveUserInfo = React.useCallback(async (accessToken: string) => {
     try {
@@ -4278,75 +4279,75 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
         isDesktopShell ? (
           <DesktopSecureFolderPanel />
         ) : (
-          <>
-            <div className="bg-neutral-900/60 border border-neutral-700 rounded-xl p-6">
-              <div className="flex items-center justify-between">
-                <div className="flex-1">
-                  <div className="flex items-center space-x-3 mb-4">
-                    <Lock className="h-5 w-5 text-blue-400" />
-                    <div>
-                      <h3 className="text-lg font-semibold text-white">Secure Folder</h3>
-                      <p className="text-text-secondary text-sm">
-                        Access your encrypted files with the desktop app
-                      </p>
-                    </div>
-                  </div>
+        <>
+      <div className="bg-neutral-900/60 border border-neutral-700 rounded-xl p-6">
+        <div className="flex items-center justify-between">
+          <div className="flex-1">
+            <div className="flex items-center space-x-3 mb-4">
+            <Lock className="h-5 w-5 text-blue-400" />
+            <div>
+              <h3 className="text-lg font-semibold text-white">Secure Folder</h3>
+              <p className="text-text-secondary text-sm">
+                Access your encrypted files with the desktop app
+              </p>
+          </div>
+        </div>
+        
+            <button
+              onClick={() => setShowDesktopAppInfo(true)}
+              className="flex items-center space-x-2 text-text-secondary hover:text-text-primary transition-colors"
+            >
+              <Info className="h-4 w-4" />
+              <span className="text-sm">About the Desktop App</span>
+            </button>
+        </div>
 
-                  <button
-                    onClick={() => setShowDesktopAppInfo(true)}
-                    className="flex items-center space-x-2 text-text-secondary hover:text-text-primary transition-colors"
-                  >
-                    <Info className="h-4 w-4" />
-                    <span className="text-sm">About the Desktop App</span>
-                  </button>
-                </div>
-
-                <a
-                  href="https://github.com/bymjmazzei/par-Noir/releases"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center space-x-2 px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors ml-4"
-                >
-                  <Download className="h-4 w-4" />
-                  <span>Download Desktop App</span>
-                </a>
-              </div>
+        <a
+          href="https://github.com/bymjmazzei/par-Noir/releases"
+          target="_blank"
+          rel="noopener noreferrer"
+            className="inline-flex items-center space-x-2 px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors ml-4"
+        >
+          <Download className="h-4 w-4" />
+          <span>Download Desktop App</span>
+        </a>
             </div>
+      </div>
 
-            {showDesktopAppInfo && (
-              <div
-                className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4"
-                onClick={() => setShowDesktopAppInfo(false)}
-              >
-                <div
-                  className="bg-neutral-800 rounded-lg p-6 max-w-md w-full text-text-primary border border-neutral-700 shadow-2xl"
-                  onClick={(e) => e.stopPropagation()}
-                >
-                  <div className="flex justify-between items-center mb-4">
-                    <h3 className="text-lg font-semibold">About the Desktop App</h3>
-                    <button
-                      onClick={() => setShowDesktopAppInfo(false)}
-                      className="text-text-secondary hover:text-text-primary transition-colors"
-                    >
-                      <X className="h-5 w-5" />
-                    </button>
-                  </div>
+        {showDesktopAppInfo && (
+          <div 
+            className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4"
+            onClick={() => setShowDesktopAppInfo(false)}
+          >
+            <div 
+              className="bg-neutral-800 rounded-lg p-6 max-w-md w-full text-text-primary border border-neutral-700 shadow-2xl"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex justify-between items-center mb-4">
+                <h3 className="text-lg font-semibold">About the Desktop App</h3>
+          <button
+                  onClick={() => setShowDesktopAppInfo(false)}
+            className="text-text-secondary hover:text-text-primary transition-colors"
+          >
+                  <X className="h-5 w-5" />
+          </button>
+        </div>
 
-                  <p className="text-text-secondary text-sm mb-4">
-                    The par Noir Desktop App provides secure, local access to your encrypted files stored in Google Drive.
-                    Files are automatically synced and encrypted with your pN credentials.
-                  </p>
-
-                  <div className="space-y-2 text-xs text-text-secondary">
-                    <p>• Secure local file access</p>
-                    <p>• Automatic encryption/decryption</p>
-                    <p>• Works offline with cached files</p>
-                    <p>• Native desktop integration</p>
-                  </div>
-                </div>
-              </div>
-            )}
-          </>
+              <p className="text-text-secondary text-sm mb-4">
+            The par Noir Desktop App provides secure, local access to your encrypted files stored in Google Drive. 
+            Files are automatically synced and encrypted with your pN credentials.
+          </p>
+              
+          <div className="space-y-2 text-xs text-text-secondary">
+            <p>• Secure local file access</p>
+            <p>• Automatic encryption/decryption</p>
+            <p>• Works offline with cached files</p>
+            <p>• Native desktop integration</p>
+          </div>
+        </div>
+          </div>
+        )}
+        </>
         )
       )}
 
