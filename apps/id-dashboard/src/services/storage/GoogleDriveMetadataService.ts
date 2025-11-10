@@ -548,7 +548,7 @@ export class GoogleDriveMetadataService {
       } : undefined,
 
       // Third-party indexing permissions
-      indexingPermissions: companion.indexingPermissions
+      indexingPermissions: companion.indexingPermissions,
       
       // ============================================================================
       // CONTENT RELATIONSHIPS
