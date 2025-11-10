@@ -65,6 +65,12 @@ export class ThirdPartyIndexersService {
     }
 
     const db = getDatabasePool();
+
+    // Remove legacy demo indexers if they still exist.
+    await db.query('DELETE FROM third_party_indexers WHERE id = ANY($1::text[])', [
+      ['noir_collective', 'atlas_archive'],
+    ]);
+
     const result = await db.query<{ count: string }>('SELECT COUNT(*)::text AS count FROM third_party_indexers');
     const count = Number(result.rows[0]?.count || 0);
 
