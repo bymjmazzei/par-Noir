@@ -77,6 +77,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
   const [error, setError] = useState<string | null>(null);
   const [connectedBackends, setConnectedBackends] = useState<Set<string>>(new Set());
   const [userEmails, setUserEmails] = useState<Map<string, string>>(new Map());
+  const userEmailsRef = React.useRef(userEmails);
   const [driveAccounts, setDriveAccounts] = useState<DriveAccountState[]>([]);
   const [activeBackendId, setActiveBackendId] = useState<string | null>(null);
   const [storageQuotas, setStorageQuotas] = useState<Map<string, any>>(new Map());
@@ -152,6 +153,10 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
       document.removeEventListener('mousedown', handleClickOutside);
     };
   }, [openMenuFor]);
+
+  React.useEffect(() => {
+    userEmailsRef.current = userEmails;
+  }, [userEmails]);
 
   const [viewMode, setViewMode] = useState<'list' | 'grid'>('list');
   const [viewingFile, setViewingFile] = useState<AggregatedFile | null>(null);
@@ -289,76 +294,115 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
     const handleTokenRefreshed = (event: Event) => {
       const detail = (event as CustomEvent<{ backendId?: string; accessToken?: string; refreshToken?: string | null; email?: string | null }>).detail;
       const backendId = detail?.backendId;
-      if (backendId) {
-        if (detail?.accessToken) {
-          const existingCredential = driveCredentialCacheRef.current.get(backendId);
-          const account = getDriveAccountByBackendId(backendId);
-          const keyPrefix =
-            account?.keyPrefix ||
-            existingCredential?.keyPrefix ||
-            `google_drive_${backendId.replace(/[^a-z0-9]+/gi, '-')}`;
-          const resolvedEmail =
-            detail?.email ??
-            existingCredential?.email ??
-            account?.email ??
-            userEmails.get(backendId) ??
-            null;
-          const connectedAt = existingCredential?.connectedAt || new Date().toISOString();
-          const nowIso = new Date().toISOString();
 
-          driveCredentialCacheRef.current.set(backendId, {
-            backendId,
-            keyPrefix,
-            accessToken: detail.accessToken,
-            refreshToken: detail.refreshToken ?? existingCredential?.refreshToken ?? null,
-            email: resolvedEmail,
-            connectedAt,
-            updatedAt: nowIso
-          });
-
-          if (detail.email) {
-            setDriveAccounts((prev) => {
-              const index = prev.findIndex((entry) => entry.backendId === backendId);
-              if (index === -1) {
-                return prev;
-              }
-              const next = [...prev];
-              next[index] = {
-                ...next[index],
-                email: detail.email
-              };
-              persistDriveAccounts(next);
-              return next;
-            });
-
-            setUserEmails((prev) => {
-              const next = new Map(prev);
-              next.set(backendId, detail.email as string);
-              return next;
-            });
-          }
-
-          persistStorageCredentialsToAPI(undefined).catch((persistError) => {
-            console.warn('⚠️ [StorageCredentials] Failed to persist refreshed token snapshot:', persistError);
-          });
-        }
-
-        ownerIndexRetryCountsRef.current.delete(backendId);
-        ownerIndexWarningLoggedRef.current.delete(backendId);
-        rateLimitedBackendsRef.current.delete(backendId);
-      } else {
+      if (!backendId) {
         ownerIndexRetryCountsRef.current.clear();
         rateLimitedBackendsRef.current.clear();
+        if (loadFilesRef.current) {
+          loadFilesRef.current();
+        }
+        return;
       }
+
+      const existingCredential = driveCredentialCacheRef.current.get(backendId);
+      const account = getDriveAccountByBackendId(backendId);
+      const keyPrefix =
+        account?.keyPrefix ||
+        existingCredential?.keyPrefix ||
+        `google_drive_${backendId.replace(/[^a-z0-9]+/gi, '-')}`;
+      const resolvedEmail =
+        detail?.email ??
+        existingCredential?.email ??
+        account?.email ??
+        userEmailsRef.current.get(backendId) ??
+        null;
+      const connectedAt = existingCredential?.connectedAt || new Date().toISOString();
+      const nowIso = new Date().toISOString();
+      const nextAccessToken = detail?.accessToken ?? existingCredential?.accessToken ?? null;
+      const nextRefreshToken = detail?.refreshToken ?? existingCredential?.refreshToken ?? null;
+
+      if (nextAccessToken) {
+        driveCredentialCacheRef.current.set(backendId, {
+          backendId,
+          keyPrefix,
+          accessToken: nextAccessToken,
+          refreshToken: nextRefreshToken,
+          email: resolvedEmail,
+          connectedAt,
+          updatedAt: nowIso,
+        });
+      }
+
+      const backendInstance =
+        aggregatorService && typeof aggregatorService.getBackend === 'function'
+          ? (aggregatorService.getBackend(backendId) as GoogleDriveBackend | null)
+          : null;
+      if (backendInstance && nextAccessToken) {
+        void backendInstance
+          .connect({
+            token: nextAccessToken,
+            refreshToken: nextRefreshToken ?? undefined,
+            email: resolvedEmail ?? undefined,
+          })
+          .catch((connectError) => {
+            console.warn('⚠️ [StorageCredentials] Failed to apply refreshed token to backend', connectError);
+          });
+      }
+
+      if (resolvedEmail && nextAccessToken) {
+        setDriveAccounts((prev) => {
+          const normalized = resolvedEmail.toLowerCase();
+          const emailIndex = prev.findIndex(
+            (entry) => entry.email && entry.email.toLowerCase() === normalized
+          );
+          const backendIndex = prev.findIndex((entry) => entry.backendId === backendId);
+
+          const next = [...prev];
+          if (backendIndex >= 0) {
+            next[backendIndex] = {
+              ...next[backendIndex],
+              email: resolvedEmail,
+              keyPrefix,
+            };
+          } else if (emailIndex >= 0) {
+            next[emailIndex] = {
+              backendId,
+              keyPrefix,
+              email: resolvedEmail,
+            };
+          } else {
+            next.push({ backendId, keyPrefix, email: resolvedEmail });
+          }
+
+          persistDriveAccounts(next);
+          return next;
+        });
+
+        setUserEmails((prev) => {
+          const next = new Map(prev);
+          next.set(backendId, resolvedEmail);
+          return next;
+        });
+      }
+
+      persistStorageCredentialsToAPI(undefined).catch((persistError) => {
+        console.warn('⚠️ [StorageCredentials] Failed to persist refreshed token snapshot:', persistError);
+      });
+
+      ownerIndexRetryCountsRef.current.delete(backendId);
+      ownerIndexWarningLoggedRef.current.delete(backendId);
+      rateLimitedBackendsRef.current.delete(backendId);
+
       if (loadFilesRef.current) {
         loadFilesRef.current();
       }
     };
+
     window.addEventListener('google-drive-token-refreshed', handleTokenRefreshed as EventListener);
     return () => {
       window.removeEventListener('google-drive-token-refreshed', handleTokenRefreshed as EventListener);
     };
-  }, []);
+  }, [aggregatorService, getDriveAccountByBackendId, persistDriveAccounts, persistStorageCredentialsToAPI]);
 
   React.useEffect(() => {
     return () => {
