@@ -332,6 +332,8 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
           connectedAt,
           updatedAt: nowIso,
         });
+
+        purgeDuplicateBackendsForEmail(backendId, resolvedEmail ?? existingCredential?.email ?? null);
       }
 
       const backendInstance =
@@ -353,28 +355,17 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
       if (resolvedEmail && nextAccessToken) {
         setDriveAccounts((prev) => {
           const normalized = resolvedEmail.toLowerCase();
-          const emailIndex = prev.findIndex(
-            (entry) => entry.email && entry.email.toLowerCase() === normalized
-          );
-          const backendIndex = prev.findIndex((entry) => entry.backendId === backendId);
+          const filtered = prev.filter((entry) => {
+            if (entry.backendId === backendId) {
+              return false;
+            }
+            if (entry.email && entry.email.toLowerCase() === normalized) {
+              return false;
+            }
+            return true;
+          });
 
-          const next = [...prev];
-          if (backendIndex >= 0) {
-            next[backendIndex] = {
-              ...next[backendIndex],
-              email: resolvedEmail,
-              keyPrefix,
-            };
-          } else if (emailIndex >= 0) {
-            next[emailIndex] = {
-              backendId,
-              keyPrefix,
-              email: resolvedEmail,
-            };
-          } else {
-            next.push({ backendId, keyPrefix, email: resolvedEmail });
-          }
-
+          const next = [...filtered, { backendId, keyPrefix, email: resolvedEmail }];
           persistDriveAccounts(next);
           return next;
         });
@@ -518,6 +509,66 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
     } catch (storageError) {
       console.warn('⚠️ [DriveAccounts] Unable to persist drive accounts', storageError);
     }
+  }
+
+  const unregisterBackend = React.useCallback(
+    (backendId: string) => {
+      if (!backendId) {
+        return;
+      }
+
+      driveCredentialCacheRef.current.delete(backendId);
+
+      setConnectedBackends((prev) => {
+        if (!prev.has(backendId)) {
+          return prev;
+        }
+        const next = new Set(prev);
+        next.delete(backendId);
+        return next;
+      });
+
+      if (aggregatorService && typeof aggregatorService.removeBackend === 'function') {
+        aggregatorService.removeBackend(backendId);
+      }
+    },
+    [aggregatorService]
+  );
+
+  function purgeDuplicateBackendsForEmail(preferredBackendId: string, email: string | null | undefined) {
+    if (!email) {
+      return;
+    }
+
+    const normalized = email.toLowerCase();
+    const staleBackendIds: string[] = [];
+
+    for (const [cachedBackendId, credential] of Array.from(driveCredentialCacheRef.current.entries())) {
+      if (cachedBackendId === preferredBackendId) {
+        continue;
+      }
+      const cachedEmail = credential.email?.toLowerCase() || null;
+      if (cachedEmail && cachedEmail === normalized) {
+        staleBackendIds.push(cachedBackendId);
+      }
+    }
+
+    if (staleBackendIds.length === 0) {
+      return;
+    }
+
+    staleBackendIds.forEach((backendId) => {
+      unregisterBackend(backendId);
+    });
+
+    setDriveAccounts((prev) => {
+      const filtered = prev.filter((account) => !staleBackendIds.includes(account.backendId));
+      if (filtered.length === prev.length) {
+        return prev;
+      }
+      persistDriveAccounts(filtered);
+      return filtered;
+    });
   }
   
   function resolveIdentifiersForEmail(email?: string | null) {
@@ -1063,6 +1114,25 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
       updatedAt: params.updatedAt || nowIso
     });
 
+    purgeDuplicateBackendsForEmail(params.backendId, resolvedEmail ?? existingCredential?.email ?? null);
+
+    const normalizedEmailForCleanup = resolvedEmail?.toLowerCase() ?? existingCredential?.email?.toLowerCase() ?? null;
+    const staleBackends: string[] = [];
+
+    if (normalizedEmailForCleanup) {
+      for (const account of driveAccounts) {
+        if (
+          account.backendId !== params.backendId &&
+          account.email &&
+          account.email.toLowerCase() === normalizedEmailForCleanup
+        ) {
+          staleBackends.push(account.backendId);
+        }
+      }
+    }
+
+    staleBackends.forEach((backendId) => unregisterBackend(backendId));
+
     setUserEmails((prev) => {
       if (!resolvedEmail) {
         return prev;
@@ -1073,17 +1143,21 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
                   });
 
     setDriveAccounts((prev) => {
-      const existingIndex = prev.findIndex((account) => account.backendId === params.backendId);
-      const updated: DriveAccountState[] = existingIndex >= 0 ? [...prev] : [...prev, { backendId: params.backendId, keyPrefix: params.keyPrefix, email: resolvedEmail }];
-      if (existingIndex >= 0) {
-        updated[existingIndex] = {
+      const filtered = prev.filter(
+        (account) =>
+          account.backendId !== params.backendId && !staleBackends.includes(account.backendId)
+      );
+
+      const next: DriveAccountState[] = [
+        ...filtered,
+        {
           backendId: params.backendId,
           keyPrefix: params.keyPrefix,
           email: resolvedEmail
-        };
-      }
-      persistDriveAccounts(updated);
-      return updated;
+        }
+      ];
+      persistDriveAccounts(next);
+      return next;
     });
 
     setActiveBackendId(params.backendId);
