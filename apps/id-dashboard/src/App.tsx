@@ -1267,7 +1267,8 @@ function App() {
         accessToken: session.accessToken,
         expiresIn: session.expiresIn,
         authenticatedAt: session.authenticatedAt,
-        publicKey: session.publicKey || ''
+        publicKey: session.publicKey || '',
+        passcode: session.passcode
       });
 
       // Set the unlocked identity for notifications
