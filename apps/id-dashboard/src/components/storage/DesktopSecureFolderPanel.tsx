@@ -23,6 +23,8 @@ export const DesktopSecureFolderPanel: React.FC = () => {
   const [isOpening, setIsOpening] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const [unlockContext, setUnlockContext] = React.useState<SecureVolumeUnlockPayload | null>(null);
+  const [identity, setIdentity] = React.useState<{ pnName: string; publicKey: string } | null>(null);
+  const identityRef = React.useRef<{ pnName: string; publicKey: string } | null>(null);
 
   const secureVolume = React.useMemo(getSecureVolumeApi, []);
   const nativeApi = React.useMemo(getNativeApi, []);
@@ -43,34 +45,74 @@ export const DesktopSecureFolderPanel: React.FC = () => {
     }
   }, [secureVolume]);
 
+  const getSessionPasscode = React.useCallback((): string | null => {
+    if (!hasWindow) {
+      return null;
+    }
+    try {
+      const value = window.sessionStorage.getItem('pn_session_passcode');
+      return value && value.trim().length > 0 ? value.trim() : null;
+    } catch (err) {
+      console.warn('[DesktopSecureFolderPanel] Unable to read session passcode', err);
+      return null;
+    }
+  }, []);
+
+  const applyUnlockContext = React.useCallback(async (payload: SecureVolumeUnlockPayload) => {
+    if (!secureVolume) {
+      setError('Secure volume interface unavailable.');
+      return null;
+    }
+
+    try {
+      const status = await secureVolume.unlock(payload);
+      setMountState(status);
+      setError(null);
+      setUnlockContext(payload);
+      identityRef.current = { pnName: payload.pnName, publicKey: payload.publicKey };
+      setIdentity(identityRef.current);
+      return status;
+    } catch (err) {
+      console.error('[DesktopSecureFolderPanel] Failed to unlock secure volume', err);
+      setError('Failed to unlock secure folder. Verify your pN session credentials.');
+      return null;
+    }
+  }, [secureVolume]);
+
   const handleUnlock = React.useCallback(async (payload: SecureVolumeUnlockPayload) => {
     if (!secureVolume) {
       setError('Secure volume interface unavailable.');
       return;
     }
 
-    if (!payload.passcode?.trim()) {
+    identityRef.current = { pnName: payload.pnName, publicKey: payload.publicKey };
+    setIdentity(identityRef.current);
+
+    let resolvedPasscode = payload.passcode?.trim() ?? null;
+    if (!resolvedPasscode) {
+      resolvedPasscode = getSessionPasscode();
+    }
+
+    if (!resolvedPasscode) {
       setError('Unlock failed: missing pN passcode. Re-authenticate to continue.');
-      setUnlockContext(null);
       return;
     }
 
-    setUnlockContext(payload);
+    const unlockPayload: SecureVolumeUnlockPayload = {
+      pnName: payload.pnName,
+      publicKey: payload.publicKey,
+      passcode: resolvedPasscode,
+    };
 
-    try {
-      const status = await secureVolume.unlock(payload);
-      setMountState(status);
-      setError(null);
-
-      if (status.mounted && status.mountPoint && nativeApi?.openPath) {
+    const status = await applyUnlockContext(unlockPayload);
+    if (status?.mounted && status.mountPoint && nativeApi?.openPath) {
+      try {
         await nativeApi.openPath(status.mountPoint);
+      } catch (err) {
+        console.warn('[DesktopSecureFolderPanel] Failed to reveal secure folder after unlock', err);
       }
-    } catch (err) {
-      console.error('[DesktopSecureFolderPanel] Failed to unlock secure volume', err);
-      setError('Failed to unlock secure folder. Verify your pN session credentials.');
-      setUnlockContext(null);
     }
-  }, [secureVolume, nativeApi]);
+  }, [secureVolume, nativeApi, applyUnlockContext, getSessionPasscode]);
 
   React.useEffect(() => {
     void refreshStatus();
@@ -102,30 +144,77 @@ export const DesktopSecureFolderPanel: React.FC = () => {
     }
   }, [secureVolume]);
 
-  const handleRevealInFinder = React.useCallback(async () => {
-    if (mountState.mounted && mountState.mountPoint && nativeApi?.openPath) {
-      try {
-        await nativeApi.openPath(mountState.mountPoint);
-      } catch (err: unknown) {
-        console.warn('[DesktopSecureFolderPanel] Failed to reveal secure folder', err);
-      }
-    } else if (secureVolume && unlockContext) {
+  const ensureUnlocked = React.useCallback(async (): Promise<SecureVolumeMountState | null> => {
+    if (!secureVolume) {
+      setError('Secure volume interface unavailable.');
+      return null;
+    }
+
+    if (mountState.mounted) {
+      return mountState;
+    }
+
+    const existingContext = unlockContext;
+    if (existingContext) {
       try {
         const status = await secureVolume.mount();
         setMountState(status);
-        if (status.mounted && status.mountPoint && nativeApi?.openPath) {
-          await nativeApi.openPath(status.mountPoint);
-        } else {
-          setError('Secure folder locked. Re-authenticate to continue.');
-        }
+        return status;
+      } catch (err) {
+        console.warn('[DesktopSecureFolderPanel] Mount failed, retrying unlock', err);
+        const refreshed = await applyUnlockContext(existingContext);
+        return refreshed;
+      }
+    }
+
+    const identityCandidate = identityRef.current;
+    const sessionPasscode = getSessionPasscode();
+    if (identityCandidate && sessionPasscode) {
+      const payload: SecureVolumeUnlockPayload = {
+        pnName: identityCandidate.pnName,
+        publicKey: identityCandidate.publicKey,
+        passcode: sessionPasscode,
+      };
+      const status = await applyUnlockContext(payload);
+      return status;
+    }
+
+    setError('Secure folder locked. Re-authenticate to continue.');
+    return null;
+  }, [applyUnlockContext, getSessionPasscode, mountState, secureVolume, unlockContext, identity]);
+
+  const handleRevealInFinder = React.useCallback(async () => {
+    const status = await ensureUnlocked();
+    if (!status) {
+      return;
+    }
+
+    if (status.mounted && status.mountPoint && nativeApi?.openPath) {
+      try {
+        await nativeApi.openPath(status.mountPoint);
       } catch (err: unknown) {
-        console.error('[DesktopSecureFolderPanel] Failed to mount on demand', err);
-        setError('Unable to open secure folder. Re-authenticate and try again.');
+        console.warn('[DesktopSecureFolderPanel] Failed to reveal secure folder', err);
       }
     } else {
       setError('Secure folder locked. Re-authenticate to continue.');
     }
-  }, [mountState.mounted, mountState.mountPoint, nativeApi, secureVolume, unlockContext]);
+  }, [ensureUnlocked, nativeApi]);
+
+  React.useEffect(() => {
+    if (unlockContext || !identity) {
+      return;
+    }
+    const passcode = getSessionPasscode();
+    if (!passcode) {
+      return;
+    }
+    const payload: SecureVolumeUnlockPayload = {
+      pnName: identity.pnName,
+      publicKey: identity.publicKey,
+      passcode,
+    };
+    void applyUnlockContext(payload);
+  }, [applyUnlockContext, getSessionPasscode, identity, unlockContext]);
 
   return (
     <section className="bg-neutral-900/80 border border-neutral-700 rounded-2xl p-6 shadow-xl flex flex-col space-y-4">
