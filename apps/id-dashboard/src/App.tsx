@@ -1225,6 +1225,21 @@ function App() {
 
 
 
+  const deriveAuthToken = async (pnName: string | undefined, publicKey: string | undefined, passcode: string | undefined): Promise<string | null> => {
+    if (!pnName || !publicKey || !passcode) {
+      return null;
+    }
+    try {
+      const encoder = new TextEncoder();
+      const data = encoder.encode(`${pnName}::${publicKey}::${passcode}`);
+      const digest = await window.crypto.subtle.digest('SHA-256', data);
+      return Array.from(new Uint8Array(digest)).map((byte) => byte.toString(16).padStart(2, '0')).join('');
+    } catch (error) {
+      console.warn('Failed to derive auth token', error);
+      return null;
+    }
+  };
+
   const handleAuthSuccess = async (session: any) => {
     try {
       // Store the session using AuthSession interface
@@ -1235,7 +1250,9 @@ function App() {
         accessToken: session.accessToken,
         expiresIn: session.expiresIn,
         authenticatedAt: session.authenticatedAt,
-        publicKey: session.publicKey || ''
+        publicKey: session.publicKey || '',
+        passcode: session.passcode,
+        authToken: await deriveAuthToken(session.pnName, session.publicKey || session.id, session.passcode),
       });
 
       // Store passcode in sessionStorage for file decryption (only during this session)
@@ -1252,6 +1269,7 @@ function App() {
             pnName: session.pnName,
             publicKey: session.publicKey || session.id,
             passcode: session.passcode,
+            authToken: await deriveAuthToken(session.pnName, session.publicKey || session.id, session.passcode),
           };
           window.dispatchEvent(new CustomEvent('pn-auth-session', { detail: authEventDetail }));
         } catch (eventError) {
@@ -1268,7 +1286,8 @@ function App() {
         expiresIn: session.expiresIn,
         authenticatedAt: session.authenticatedAt,
         publicKey: session.publicKey || '',
-        passcode: session.passcode
+        passcode: session.passcode,
+        authToken: session.authToken || undefined,
       });
 
       // Set the unlocked identity for notifications

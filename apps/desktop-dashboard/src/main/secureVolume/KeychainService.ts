@@ -3,10 +3,9 @@ import type { SecureVolumeIdentity } from '../../shared/ipcChannels';
 
 const SERVICE_NAME = 'com.parnoir.secure-volume';
 
-const buildAccount = ({ pnName, publicKey }: SecureVolumeIdentity): string => {
-  // Account string is stable per identity; prefer pnName when available for readability.
-  const identityKey = pnName?.trim() ? pnName.trim() : publicKey.trim();
-  return `pn-secure-volume::${identityKey}`;
+const buildAccount = ({ authToken, pnName, publicKey }: SecureVolumeIdentity): string => {
+  const base = authToken?.trim() || pnName?.trim() || publicKey.trim();
+  return `pn-secure-volume::${base}`;
 };
 
 export const KeychainService = {

@@ -33,6 +33,13 @@ export const DesktopSecureFolderPanel: React.FC = () => {
   const secureVolume = React.useMemo(getSecureVolumeApi, []);
   const nativeApi = React.useMemo(getNativeApi, []);
 
+  const deriveAuthToken = React.useCallback(async (pnName: string, publicKey: string, passcode: string): Promise<string> => {
+    const encoder = new TextEncoder();
+    const data = encoder.encode(`${pnName}::${publicKey}::${passcode}`);
+    const digest = await window.crypto.subtle.digest('SHA-256', data);
+    return Array.from(new Uint8Array(digest)).map((byte) => byte.toString(16).padStart(2, '0')).join('');
+  }, []);
+
   const refreshStatus = React.useCallback(async () => {
     if (!secureVolume) {
       setError('Secure volume interface unavailable.');
@@ -73,7 +80,7 @@ export const DesktopSecureFolderPanel: React.FC = () => {
       setMountState(status);
       setError(null);
       setUnlockContext(payload);
-      identityRef.current = { pnName: payload.pnName, publicKey: payload.publicKey };
+      identityRef.current = { pnName: payload.pnName, publicKey: payload.publicKey, authToken: payload.authToken };
       setIdentity(identityRef.current);
 
       if (hasWindow) {
@@ -103,7 +110,7 @@ export const DesktopSecureFolderPanel: React.FC = () => {
       hasPasscode: Boolean(payload.passcode),
     });
 
-    identityRef.current = { pnName: payload.pnName, publicKey: payload.publicKey };
+    identityRef.current = { pnName: payload.pnName, publicKey: payload.publicKey, authToken: payload.authToken };
     setIdentity(identityRef.current);
 
     let resolvedPasscode = payload.passcode?.trim() ?? null;
@@ -131,10 +138,13 @@ export const DesktopSecureFolderPanel: React.FC = () => {
       console.warn('[DesktopSecureFolderPanel] Unable to persist passcode from pn-auth-session payload', storageError);
     }
 
+    const authToken = payload.authToken ?? (await deriveAuthToken(payload.pnName, payload.publicKey, resolvedPasscode));
+
     const unlockPayload: SecureVolumeUnlockPayload = {
       pnName: payload.pnName,
       publicKey: payload.publicKey,
       passcode: resolvedPasscode,
+      authToken,
     };
 
     const status = await applyUnlockContext(unlockPayload);
@@ -145,7 +155,7 @@ export const DesktopSecureFolderPanel: React.FC = () => {
         console.warn('[DesktopSecureFolderPanel] Failed to reveal secure folder after unlock', err);
       }
     }
-  }, [secureVolume, nativeApi, applyUnlockContext, getSessionPasscode]);
+  }, [secureVolume, nativeApi, applyUnlockContext, getSessionPasscode, deriveAuthToken]);
 
   React.useEffect(() => {
     void refreshStatus();
@@ -212,6 +222,7 @@ export const DesktopSecureFolderPanel: React.FC = () => {
         pnName: identityCandidate.pnName,
         publicKey: identityCandidate.publicKey,
         passcode: sessionPasscode,
+        authToken: identityCandidate.authToken ?? (await deriveAuthToken(identityCandidate.pnName, identityCandidate.publicKey, sessionPasscode)),
       };
       const status = await applyUnlockContext(payload);
       return status;
@@ -231,6 +242,7 @@ export const DesktopSecureFolderPanel: React.FC = () => {
             pnName: identityCandidate.pnName,
             publicKey: identityCandidate.publicKey,
             passcode: cached,
+            authToken: identityCandidate.authToken ?? (await deriveAuthToken(identityCandidate.pnName, identityCandidate.publicKey, cached)),
           };
           const status = await applyUnlockContext(payload);
           return status;
@@ -259,7 +271,7 @@ export const DesktopSecureFolderPanel: React.FC = () => {
 
     setError('Secure folder locked. Re-authenticate to continue.');
     return null;
-  }, [applyUnlockContext, getSessionPasscode, mountState, secureVolume, unlockContext, identity]);
+  }, [applyUnlockContext, getSessionPasscode, mountState, secureVolume, unlockContext, identity, deriveAuthToken]);
 
   const handleRevealInFinder = React.useCallback(async () => {
     const status = await ensureUnlocked();
@@ -289,12 +301,15 @@ export const DesktopSecureFolderPanel: React.FC = () => {
 
     const passcode = getSessionPasscode();
     if (passcode) {
-      const payload: SecureVolumeUnlockPayload = {
-        pnName: identity.pnName,
-        publicKey: identity.publicKey,
-        passcode,
-      };
-      void applyUnlockContext(payload);
+      void (async () => {
+        const payload: SecureVolumeUnlockPayload = {
+          pnName: identity.pnName,
+          publicKey: identity.publicKey,
+          passcode,
+          authToken: identity.authToken ?? (await deriveAuthToken(identity.pnName, identity.publicKey, passcode)),
+        };
+        void applyUnlockContext(payload);
+      })();
       return;
     }
 
@@ -309,7 +324,7 @@ export const DesktopSecureFolderPanel: React.FC = () => {
           console.warn('[DesktopSecureFolderPanel] Unable to hydrate secure volume via keychain', err);
         });
     }
-  }, [applyUnlockContext, getSessionPasscode, identity, secureVolume, unlockContext]);
+  }, [applyUnlockContext, getSessionPasscode, identity, secureVolume, unlockContext, deriveAuthToken]);
 
   return (
     <>
@@ -378,10 +393,12 @@ export const DesktopSecureFolderPanel: React.FC = () => {
                   setIsSubmittingPasscode(true);
                   setManualPasscodeError(null);
                   try {
+                    const authToken = identityRef.current.authToken ?? (await deriveAuthToken(identityRef.current.pnName, identityRef.current.publicKey, manualPasscode.trim()));
                     const payload: SecureVolumeUnlockPayload = {
                       pnName: identityRef.current.pnName,
                       publicKey: identityRef.current.publicKey,
                       passcode: manualPasscode.trim(),
+                      authToken,
                     };
                     const status = await applyUnlockContext(payload);
                     if (!status) {

@@ -33,7 +33,11 @@ export class SecureVolumeManager {
   }
 
   public async setUnlockContext(payload: SecureVolumeUnlockPayload): Promise<void> {
-    this.identity = { pnName: payload.pnName, publicKey: payload.publicKey };
+    this.identity = {
+      pnName: payload.pnName,
+      publicKey: payload.publicKey,
+      authToken: payload.authToken
+    };
     await this.getDriver().setUnlockContext(payload);
     await KeychainService.save(this.identity, payload.passcode);
   }
