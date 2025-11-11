@@ -29,10 +29,6 @@ export const DesktopSecureFolderPanel: React.FC = () => {
   const [unlockContext, setUnlockContext] = React.useState<SecureVolumeUnlockPayload | null>(null);
   const [identity, setIdentity] = React.useState<SecureVolumeIdentity | null>(null);
   const identityRef = React.useRef<SecureVolumeIdentity | null>(null);
-  const [isPasscodePromptOpen, setIsPasscodePromptOpen] = React.useState(false);
-  const [manualPasscode, setManualPasscode] = React.useState('');
-  const [manualPasscodeError, setManualPasscodeError] = React.useState<string | null>(null);
-  const [isSubmittingPasscode, setIsSubmittingPasscode] = React.useState(false);
 
   const resolveSecureVolume = React.useCallback(() => resolveSecureVolumeApi(), []);
   const resolveNative = React.useCallback(() => resolveNativeApi(), []);
@@ -299,10 +295,7 @@ export const DesktopSecureFolderPanel: React.FC = () => {
     }
 
     if (identityCandidate) {
-      setManualPasscode('');
-      setManualPasscodeError(null);
-      setIsPasscodePromptOpen(true);
-      setError('Enter your pN passcode to open the secure folder.');
+      setError('Secure folder locked. Re-authenticate to continue.');
       return null;
     }
 
@@ -404,109 +397,6 @@ export const DesktopSecureFolderPanel: React.FC = () => {
           </p>
         )}
       </section>
-
-      {isPasscodePromptOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm px-4">
-          <div className="w-full max-w-md rounded-2xl border border-neutral-700 bg-neutral-900 p-6 shadow-2xl">
-            <div className="flex items-center gap-3 mb-4">
-              <Lock className="h-5 w-5 text-blue-400" />
-              <div>
-                <h3 className="text-lg font-semibold text-white">Secure Folder Passcode Required</h3>
-                <p className="text-xs text-text-secondary">Enter your pN passcode to mount the encrypted volume on this device.</p>
-              </div>
-            </div>
-
-            <form
-              onSubmit={(event) => {
-                event.preventDefault();
-                void (async () => {
-                  if (!identityRef.current) {
-                    setManualPasscodeError('pN identity unavailable. Unlock your session first.');
-                    return;
-                  }
-                  if (!manualPasscode.trim()) {
-                    setManualPasscodeError('Passcode is required.');
-                    return;
-                  }
-
-                  setIsSubmittingPasscode(true);
-                  setManualPasscodeError(null);
-                  try {
-                    const authToken = identityRef.current.authToken ?? (await deriveAuthToken(identityRef.current.pnName, identityRef.current.publicKey, manualPasscode.trim()));
-                    const payload: SecureVolumeUnlockPayload = {
-                      pnName: identityRef.current.pnName,
-                      publicKey: identityRef.current.publicKey,
-                      passcode: manualPasscode.trim(),
-                      authToken,
-                    };
-                    const status = await applyUnlockContext(payload);
-                    if (!status) {
-                      setManualPasscodeError('Unable to unlock with the provided passcode.');
-                      return;
-                    }
-                    try {
-                      sessionStorage.setItem('pn_session_passcode', manualPasscode.trim());
-                    } catch (storageErr) {
-                      console.warn('[DesktopSecureFolderPanel] Unable to persist manual passcode', storageErr);
-                    }
-                    setIsPasscodePromptOpen(false);
-                    setManualPasscode('');
-                    setManualPasscodeError(null);
-                    const nativeApi = resolveNative();
-                    if (status.mounted && status.mountPoint && nativeApi?.openPath) {
-                      await nativeApi.openPath(status.mountPoint);
-                    }
-                  } catch (manualErr) {
-                    console.error('[DesktopSecureFolderPanel] Manual passcode submission failed', manualErr);
-                    setManualPasscodeError('Unexpected error while unlocking.');
-                  } finally {
-                    setIsSubmittingPasscode(false);
-                  }
-                })();
-              }}
-              className="space-y-4"
-            >
-              <div>
-                <label className="block text-xs uppercase tracking-wide text-text-secondary mb-1">
-                  Passcode
-                </label>
-                <input
-                  type="password"
-                  value={manualPasscode}
-                  onChange={(event) => setManualPasscode(event.target.value)}
-                  className="w-full rounded-lg border border-neutral-700 bg-neutral-800 px-3 py-2 text-sm text-white focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  autoFocus
-                />
-              </div>
-
-              {manualPasscodeError && (
-                <p className="text-sm text-red-400">{manualPasscodeError}</p>
-              )}
-
-              <div className="flex items-center justify-end gap-3 pt-2">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setIsPasscodePromptOpen(false);
-                    setManualPasscode('');
-                    setManualPasscodeError(null);
-                  }}
-                  className="rounded-lg border border-neutral-700 px-4 py-2 text-sm font-medium text-text-secondary hover:border-neutral-500 hover:text-white"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={isSubmittingPasscode}
-                  className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-500 disabled:opacity-60"
-                >
-                  {isSubmittingPasscode ? 'Unlocking…' : 'Unlock & Mount'}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
     </>
   );
 };
