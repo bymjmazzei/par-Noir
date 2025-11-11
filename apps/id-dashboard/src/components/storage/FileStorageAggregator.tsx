@@ -26,6 +26,7 @@ type DesktopUnlockPayload = {
   pnName: string;
   publicKey: string;
   passcode: string;
+  authToken?: string;
 };
 
 function normalizeVisibility(value: any): 'public' | 'private' | 'friends' {
@@ -82,7 +83,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
   const [activeBackendId, setActiveBackendId] = useState<string | null>(null);
   const [storageQuotas, setStorageQuotas] = useState<Map<string, any>>(new Map());
   const [fileMetadataMap, setFileMetadataMap] = useState<Map<string, PublicMetadata>>(new Map());
-  const [resolvedAuth, setResolvedAuth] = useState<{ pnName: string; publicKey: string; passcode?: string } | null>(null);
+  const [resolvedAuth, setResolvedAuth] = useState<{ pnName: string; publicKey: string; passcode?: string; authToken?: string } | null>(null);
   
   const [showDesktopAppInfo, setShowDesktopAppInfo] = useState(false);
   const [editingFile, setEditingFile] = useState<AggregatedFile | null>(null);
@@ -1685,12 +1686,15 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
           console.warn('🔍 [FileStorageAggregator] sessionStorage not available');
         }
         
+        const authToken = authenticatedUser?.authToken;
+        
         if (pnName && publicKey) {
           console.log('✅ [FileStorageAggregator] Auth resolved from prop:', { hasPnName: !!pnName, publicKey: publicKey.substring(0, 20) + '...' });
           setResolvedAuth((prev) => ({
             pnName,
             publicKey,
             passcode: passcode || prev?.passcode,
+            authToken: authToken || prev?.authToken,
           }));
           setError(null);
           return;
@@ -1721,6 +1725,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
           const pnName = (session as any).pnName || (session as any).username || (session as any).name;
           const publicKey = (session as any).publicKey || 
             (session.id && session.id.startsWith('did:key:') ? session.id : session.id);
+          const sessionAuthToken = (session as any).authToken;
           
           console.log('🔍 [FileStorageAggregator] Extracted from storage:', { hasPnName: !!pnName, publicKey: publicKey.substring(0, 20) + '...', sessionKeys: Object.keys(session) });
           
@@ -1737,6 +1742,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
               pnName,
               publicKey,
               passcode: passcode || prev?.passcode,
+              authToken: sessionAuthToken || prev?.authToken,
             }));
             setError(null);
           } else {
@@ -1759,13 +1765,14 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
 
   React.useEffect(() => {
     if (resolvedAuth?.pnName && resolvedAuth.publicKey && resolvedAuth.passcode) {
-      const payload = {
+      const payload: DesktopUnlockPayload = {
         pnName: resolvedAuth.pnName,
         publicKey: resolvedAuth.publicKey,
         passcode: resolvedAuth.passcode,
+        authToken: resolvedAuth.authToken,
       };
 
-      window.dispatchEvent(new CustomEvent('pn-auth-session', { detail: payload }));
+      window.dispatchEvent(new CustomEvent<DesktopUnlockPayload>('pn-auth-session', { detail: payload }));
     }
   }, [resolvedAuth]);
 
@@ -4337,6 +4344,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
         pnName: resolvedAuth.pnName,
         publicKey: resolvedAuth.publicKey,
         passcode: resolvedAuth.passcode,
+        authToken: resolvedAuth.authToken,
       };
 
       window.dispatchEvent(new CustomEvent<DesktopUnlockPayload>('pn-auth-session', { detail: payload }));

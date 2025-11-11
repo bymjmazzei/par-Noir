@@ -230,7 +230,20 @@ export const DesktopSecureFolderPanel: React.FC = () => {
       hasIdentity: Boolean(identityCandidate?.pnName && identityCandidate?.publicKey),
       hasSessionPasscode: Boolean(sessionPasscode),
       hasUnlockContext: Boolean(unlockContext?.passcode),
+      hasAuthToken: Boolean(identityCandidate?.authToken || unlockContext?.authToken),
     });
+
+    if (identityCandidate && secureVolume?.hydrate) {
+      try {
+        const status = await secureVolume.hydrate(identityCandidate);
+        setMountState(status);
+        setError(null);
+        return status;
+      } catch (err) {
+        console.warn('[DesktopSecureFolderPanel] Hydrate failed, falling back to session context', err);
+      }
+    }
+
     if (identityCandidate && sessionPasscode) {
       const payload: SecureVolumeUnlockPayload = {
         pnName: identityCandidate.pnName,
@@ -243,44 +256,11 @@ export const DesktopSecureFolderPanel: React.FC = () => {
     }
 
     if (identityCandidate) {
-      try {
-        const cached = secureVolume?.getPasscode ? await secureVolume.getPasscode(identityCandidate) : null;
-        if (cached && cached.trim().length > 0) {
-          console.log('[DesktopSecureFolderPanel] Retrieved passcode from Keychain');
-          try {
-            sessionStorage.setItem('pn_session_passcode', cached);
-          } catch (storageErr) {
-            console.warn('[DesktopSecureFolderPanel] Unable to persist passcode from Keychain', storageErr);
-          }
-          const payload: SecureVolumeUnlockPayload = {
-            pnName: identityCandidate.pnName,
-            publicKey: identityCandidate.publicKey,
-            passcode: cached,
-            authToken: identityCandidate.authToken ?? (await deriveAuthToken(identityCandidate.pnName, identityCandidate.publicKey, cached)),
-          };
-          const status = await applyUnlockContext(payload);
-          return status;
-        }
-      } catch (keychainErr) {
-        console.warn('[DesktopSecureFolderPanel] Failed to load passcode from Keychain', keychainErr);
-      }
-
       setManualPasscode('');
       setManualPasscodeError(null);
       setIsPasscodePromptOpen(true);
       setError('Enter your pN passcode to open the secure folder.');
       return null;
-    }
-
-    if (identityCandidate && secureVolume?.hydrate) {
-      try {
-        const status = await secureVolume.hydrate(identityCandidate);
-        setMountState(status);
-        setError(null);
-        return status;
-      } catch (err) {
-        console.warn('[DesktopSecureFolderPanel] Failed to hydrate secure volume from keychain', err);
-      }
     }
 
     setError('Secure folder locked. Re-authenticate to continue.');
