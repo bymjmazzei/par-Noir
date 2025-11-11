@@ -116,6 +116,20 @@ export const DesktopSecureFolderPanel: React.FC = () => {
     let resolvedPasscode = payload.passcode?.trim() ?? null;
     if (!resolvedPasscode) {
       resolvedPasscode = getSessionPasscode();
+      if (!resolvedPasscode && secureVolume?.getPasscode) {
+        try {
+          const cached = await secureVolume.getPasscode({
+            pnName: payload.pnName,
+            publicKey: payload.publicKey,
+            authToken: payload.authToken,
+          });
+          if (cached && cached.trim().length > 0) {
+            resolvedPasscode = cached.trim();
+          }
+        } catch (keychainErr) {
+          console.warn('[DesktopSecureFolderPanel] Unable to read passcode from Keychain during unlock', keychainErr);
+        }
+      }
     }
 
     if (!resolvedPasscode) {
