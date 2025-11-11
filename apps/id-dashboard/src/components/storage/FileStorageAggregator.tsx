@@ -1686,16 +1686,6 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
           console.warn('🔍 [FileStorageAggregator] sessionStorage not available');
         }
         
-        if (!passcode && typeof authenticatedUser?.passcode === 'string' && authenticatedUser.passcode.trim().length > 0) {
-          passcode = authenticatedUser.passcode.trim();
-          try {
-            sessionStorage.setItem('pn_session_passcode', passcode);
-            console.log('✅ [FileStorageAggregator] Persisted passcode from authenticatedUser prop to sessionStorage');
-          } catch (storageErr) {
-            console.warn('⚠️ [FileStorageAggregator] Unable to persist passcode from authenticatedUser prop', storageErr);
-          }
-        }
-        
         const authToken = authenticatedUser?.authToken;
         
         if (pnName && publicKey) {
