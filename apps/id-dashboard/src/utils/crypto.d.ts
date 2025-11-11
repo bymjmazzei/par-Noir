@@ -22,6 +22,7 @@ export interface AuthSession {
     expiresIn: number;
     authenticatedAt: string;
     publicKey: string;
+    passcode?: string;
 }
 export declare class IdentityCrypto {
     private static readonly DID_PREFIX;

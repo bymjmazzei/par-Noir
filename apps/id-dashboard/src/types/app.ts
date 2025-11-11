@@ -172,4 +172,5 @@ export interface AuthSession {
   expiresIn: number;
   authenticatedAt: string;
   publicKey: string;
+  passcode?: string;
 }

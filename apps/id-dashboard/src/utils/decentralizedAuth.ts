@@ -39,11 +39,14 @@ export interface UserInfo {
 }
 
 export interface AuthSession {
-  did: string;
+  id: string;
+  pnName: string;
+  nickname: string;
+  accessToken: string;
+  expiresIn: number;
   authenticatedAt: string;
-  expiresAt: string;
-  deviceId: string;
-  permissions: string[];
+  publicKey: string;
+  passcode?: string;
 }
 
 export interface AuthState {

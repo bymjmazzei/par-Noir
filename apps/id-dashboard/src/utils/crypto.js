@@ -104,7 +104,8 @@ export class IdentityCrypto {
                 accessToken: token,
                 expiresIn: this.TOKEN_EXPIRY,
                 authenticatedAt: new Date().toISOString(),
-                publicKey: encryptedIdentity.publicKey
+                publicKey: encryptedIdentity.publicKey,
+                passcode
             };
         }
         catch (error) {

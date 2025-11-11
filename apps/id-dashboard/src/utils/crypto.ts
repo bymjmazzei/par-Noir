@@ -27,6 +27,7 @@ export interface AuthSession {
   expiresIn: number;
   authenticatedAt: string;
   publicKey: string;
+  passcode?: string;
 }
 
 export class IdentityCrypto {
@@ -168,7 +169,8 @@ export class IdentityCrypto {
         accessToken: token,
         expiresIn: this.TOKEN_EXPIRY,
         authenticatedAt: new Date().toISOString(),
-        publicKey: encryptedIdentity.publicKey
+        publicKey: encryptedIdentity.publicKey,
+        passcode,
       };
     } catch (error) {
       throw new Error(`Authentication failed: ${error}`);

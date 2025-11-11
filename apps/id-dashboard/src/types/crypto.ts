@@ -21,6 +21,8 @@ export interface AuthSession {
     identity?: any;
     token?: string;
     expiresAt?: string;
+    publicKey: string;
+    passcode?: string;
 }
 
 export interface IdentityData {

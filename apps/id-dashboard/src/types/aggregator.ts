@@ -14,18 +14,14 @@ export interface AggregatedFile {
 }
 
 export interface AuthSession {
-  id?: string;
-  pnName?: string;
-  publicKey?: string;
+  id: string;
+  pnName: string;
+  nickname: string;
+  accessToken: string;
+  expiresIn: number;
+  authenticatedAt: string;
+  publicKey: string;
   passcode?: string;
-  accessToken?: string;
-  refreshToken?: string;
-  nickname?: string;
-  email?: string;
-  success?: boolean;
-  token?: string;
-  expiresAt?: string;
-  [key: string]: any;
 }
 
 export interface ShareToken {
