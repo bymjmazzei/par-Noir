@@ -25,8 +25,7 @@ const isDesktopShell = typeof window !== 'undefined' && Boolean(window.parNoirDe
 type DesktopUnlockPayload = {
   pnName: string;
   publicKey: string;
-  passcode?: string;
-  authToken?: string;
+  authToken: string;
 };
 
 function normalizeVisibility(value: any): 'public' | 'private' | 'friends' {
@@ -1764,16 +1763,14 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
   }, [authenticatedUser]);
 
   React.useEffect(() => {
-    if (resolvedAuth?.pnName && resolvedAuth.publicKey && (resolvedAuth.passcode || resolvedAuth.authToken)) {
+    if (resolvedAuth?.pnName && resolvedAuth.publicKey && resolvedAuth.authToken) {
       const payload: DesktopUnlockPayload = {
         pnName: resolvedAuth.pnName,
         publicKey: resolvedAuth.publicKey,
-        passcode: resolvedAuth.passcode,
         authToken: resolvedAuth.authToken,
       };
 
       console.debug('[FileStorageAggregator] Dispatching pn-auth-session', {
-        hasPasscode: Boolean(payload.passcode),
         hasAuthToken: Boolean(payload.authToken),
       });
 
@@ -4344,11 +4341,10 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
       return;
     }
 
-    if (resolvedAuth?.pnName && resolvedAuth.publicKey && (resolvedAuth.passcode || resolvedAuth.authToken)) {
+    if (resolvedAuth?.pnName && resolvedAuth.publicKey && resolvedAuth.authToken) {
       const payload: DesktopUnlockPayload = {
         pnName: resolvedAuth.pnName,
         publicKey: resolvedAuth.publicKey,
-        passcode: resolvedAuth.passcode,
         authToken: resolvedAuth.authToken,
       };
 

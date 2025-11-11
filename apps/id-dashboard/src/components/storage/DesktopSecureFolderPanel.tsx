@@ -1,10 +1,10 @@
 import React from 'react';
-import { FolderOpen, Lock } from 'lucide-react';
+import { FolderOpen } from 'lucide-react';
 
 import type { SecureVolumeIdentity, SecureVolumeMountState, SecureVolumeUnlockPayload } from '../../desktop-dashboard/src/shared/ipcChannels';
 
 interface DesktopAuthEventPayload extends SecureVolumeIdentity {
-  passcode?: string;
+  authToken: string;
 }
 
 const hasWindow = typeof window !== 'undefined';
@@ -26,19 +26,11 @@ export const DesktopSecureFolderPanel: React.FC = () => {
   const [mountState, setMountState] = React.useState<SecureVolumeMountState>(initialState);
   const [isOpening, setIsOpening] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
-  const [unlockContext, setUnlockContext] = React.useState<SecureVolumeUnlockPayload | null>(null);
   const [identity, setIdentity] = React.useState<SecureVolumeIdentity | null>(null);
-  const identityRef = React.useRef<SecureVolumeIdentity | null>(null);
+  const contextRef = React.useRef<SecureVolumeUnlockPayload | null>(null);
 
   const resolveSecureVolume = React.useCallback(() => resolveSecureVolumeApi(), []);
   const resolveNative = React.useCallback(() => resolveNativeApi(), []);
-
-  const deriveAuthToken = React.useCallback(async (pnName: string, publicKey: string, passcode: string): Promise<string> => {
-    const encoder = new TextEncoder();
-    const data = encoder.encode(`${pnName}::${publicKey}::${passcode}`);
-    const digest = await window.crypto.subtle.digest('SHA-256', data);
-    return Array.from(new Uint8Array(digest)).map((byte) => byte.toString(16).padStart(2, '0')).join('');
-  }, []);
 
   const refreshStatus = React.useCallback(async () => {
     const secureVolume = resolveSecureVolume();
@@ -57,156 +49,58 @@ export const DesktopSecureFolderPanel: React.FC = () => {
     }
   }, [resolveSecureVolume]);
 
-  const getSessionPasscode = React.useCallback((): string | null => {
-    if (!hasWindow) {
-      return null;
-    }
-    try {
-      const value = window.sessionStorage.getItem('pn_session_passcode');
-      return value && value.trim().length > 0 ? value.trim() : null;
-    } catch (err) {
-      console.warn('[DesktopSecureFolderPanel] Unable to read session passcode', err);
-      return null;
-    }
-  }, []);
-
-  const applyUnlockContext = React.useCallback(async (payload: SecureVolumeUnlockPayload) => {
-    const secureVolume = resolveSecureVolume();
-    if (!secureVolume) {
-      setError('Secure volume interface unavailable.');
-      return null;
-    }
-
-    try {
-      const status = await secureVolume.unlock(payload);
-      setMountState(status);
-      setError(null);
-      setUnlockContext(payload);
-      identityRef.current = { pnName: payload.pnName, publicKey: payload.publicKey, authToken: payload.authToken };
-      setIdentity(identityRef.current);
-
-      if (hasWindow) {
-        try {
-          window.sessionStorage.setItem('pn_session_passcode', payload.passcode);
-        } catch (storageErr) {
-          console.warn('[DesktopSecureFolderPanel] Unable to persist session passcode', storageErr);
-        }
+  const unlockWithContext = React.useCallback(
+    async (context: SecureVolumeUnlockPayload): Promise<SecureVolumeMountState | null> => {
+      const secureVolume = resolveSecureVolume();
+      const nativeApi = resolveNative();
+      if (!secureVolume) {
+        setError('Secure volume interface unavailable.');
+        return null;
       }
-      return status;
-    } catch (err) {
-      console.error('[DesktopSecureFolderPanel] Failed to unlock secure volume', err);
-      setError('Failed to unlock secure folder. Verify your pN session credentials.');
-      return null;
-    }
-  }, [resolveSecureVolume]);
 
-  const handleUnlock = React.useCallback(async (payload: DesktopAuthEventPayload) => {
-    const secureVolume = resolveSecureVolume();
-    const nativeApi = resolveNative();
-    if (!secureVolume) {
-      setError('Secure volume interface unavailable.');
-      return;
-    }
-
-    console.log('[DesktopSecureFolderPanel] pn-auth-session payload received', {
-      pnName: payload.pnName,
-      publicKeyPreview: payload.publicKey?.slice(0, 16),
-      hasPasscode: Boolean(payload.passcode),
-      hasAuthToken: Boolean(payload.authToken),
-    });
-
-    console.debug('[DesktopSecureFolderPanel] secureVolume API snapshot', {
-      hasSecureVolume: Boolean(secureVolume),
-      hasHydrate: typeof secureVolume?.hydrate,
-      hasUnlock: typeof secureVolume?.unlock,
-      availableKeys: secureVolume ? Object.keys(secureVolume as Record<string, unknown>) : [],
-    });
-
-    identityRef.current = { pnName: payload.pnName, publicKey: payload.publicKey, authToken: payload.authToken };
-    setIdentity(identityRef.current);
-
-    let resolvedPasscode = payload.passcode?.trim() ?? null;
-    if (!resolvedPasscode) {
-      resolvedPasscode = getSessionPasscode();
-    }
-
-    if (!resolvedPasscode && identityRef.current && secureVolume?.getPasscode) {
       try {
-        const cachedPasscode = await secureVolume.getPasscode(identityRef.current);
-        if (cachedPasscode) {
-          resolvedPasscode = cachedPasscode;
-          console.log('[DesktopSecureFolderPanel] Retrieved passcode from Keychain via getPasscode');
-        }
-      } catch (keychainErr) {
-        console.warn('[DesktopSecureFolderPanel] Failed to retrieve passcode from Keychain via getPasscode', keychainErr);
-      }
-    }
+        const status = await secureVolume.unlock(context);
+        setMountState(status);
+        setError(null);
 
-    if (!resolvedPasscode) {
-      if (identityRef.current?.authToken) {
-        try {
-          const status = await secureVolume.hydrate(identityRef.current);
-          setMountState(status);
-          setError(null);
-
-          if (status?.mounted && status.mountPoint && nativeApi?.openPath) {
-            try {
-              await nativeApi.openPath(status.mountPoint);
-            } catch (err) {
-              console.warn('[DesktopSecureFolderPanel] Failed to reveal secure folder after hydrate', err);
-            }
-          }
-
+        if (status.mounted && status.mountPoint && nativeApi?.openPath) {
           try {
-            const cachedAfterHydrate = await secureVolume.getPasscode?.(identityRef.current);
-            if (cachedAfterHydrate) {
-              sessionStorage.setItem('pn_session_passcode', cachedAfterHydrate);
-              const unlockPayload: SecureVolumeUnlockPayload = {
-                pnName: identityRef.current.pnName,
-                publicKey: identityRef.current.publicKey,
-                passcode: cachedAfterHydrate,
-                authToken: identityRef.current.authToken,
-              };
-              setUnlockContext(unlockPayload);
-            }
-          } catch (persistErr) {
-            console.warn('[DesktopSecureFolderPanel] Unable to persist passcode after hydrate', persistErr);
+            await nativeApi.openPath(status.mountPoint);
+          } catch (err) {
+            console.warn('[DesktopSecureFolderPanel] Failed to reveal secure folder after unlock', err);
           }
-          return;
-        } catch (hydrateErr) {
-          console.warn('[DesktopSecureFolderPanel] Hydrate via authToken failed', hydrateErr);
         }
-      }
 
-      setError('Unlock failed: missing pN passcode. Re-authenticate to continue.');
-      return;
-    }
-
-    try {
-      sessionStorage.setItem('pn_session_passcode', resolvedPasscode);
-      console.log('[DesktopSecureFolderPanel] Stored passcode from pn-auth-session payload');
-    } catch (storageError) {
-      console.warn('[DesktopSecureFolderPanel] Unable to persist passcode from pn-auth-session payload', storageError);
-    }
-
-    const authToken = payload.authToken ?? (await deriveAuthToken(payload.pnName, payload.publicKey, resolvedPasscode));
-
-    const unlockPayload: SecureVolumeUnlockPayload = {
-      pnName: payload.pnName,
-      publicKey: payload.publicKey,
-      passcode: resolvedPasscode,
-      authToken,
-    };
-
-    const status = await applyUnlockContext(unlockPayload);
-    if (status?.mounted && status.mountPoint && nativeApi?.openPath) {
-      try {
-        await nativeApi.openPath(status.mountPoint);
+        return status;
       } catch (err) {
-        console.warn('[DesktopSecureFolderPanel] Failed to reveal secure folder after unlock', err);
+        console.error('[DesktopSecureFolderPanel] Failed to unlock secure volume', err);
+        setError('Failed to unlock secure folder. Verify your pN session credentials.');
+        return null;
       }
-    }
-  }, [resolveSecureVolume, resolveNative, applyUnlockContext, getSessionPasscode, deriveAuthToken]);
+    },
+    [resolveSecureVolume, resolveNative]
+  );
+
+  const handleUnlock = React.useCallback(
+    async (payload: DesktopAuthEventPayload) => {
+      if (!payload.authToken || !payload.authToken.trim()) {
+        setError('Secure folder unlock failed: missing authenticated user token.');
+        return;
+      }
+
+      const context: SecureVolumeUnlockPayload = {
+        pnName: payload.pnName,
+        publicKey: payload.publicKey,
+        authToken: payload.authToken.trim(),
+      };
+
+      contextRef.current = context;
+      setIdentity({ pnName: payload.pnName, publicKey: payload.publicKey });
+
+      await unlockWithContext(context);
+    },
+    [unlockWithContext]
+  );
 
   React.useEffect(() => {
     void refreshStatus();
@@ -223,6 +117,7 @@ export const DesktopSecureFolderPanel: React.FC = () => {
     if (hasWindow) {
       window.addEventListener('pn-auth-session', listener as EventListener);
     }
+
     return () => {
       if (hasWindow) {
         window.removeEventListener('pn-auth-session', listener as EventListener);
@@ -230,14 +125,17 @@ export const DesktopSecureFolderPanel: React.FC = () => {
     };
   }, [handleUnlock]);
 
-  React.useEffect(() => () => {
-    const secureVolume = resolveSecureVolume();
-    if (secureVolume) {
-      void secureVolume.lock().catch((err: unknown) => {
-        console.warn('[DesktopSecureFolderPanel] Failed to lock secure volume during cleanup', err);
-      });
-    }
-  }, [resolveSecureVolume]);
+  React.useEffect(
+    () => () => {
+      const secureVolume = resolveSecureVolume();
+      if (secureVolume) {
+        void secureVolume.lock().catch((err: unknown) => {
+          console.warn('[DesktopSecureFolderPanel] Failed to lock secure volume during cleanup', err);
+        });
+      }
+    },
+    [resolveSecureVolume]
+  );
 
   const ensureUnlocked = React.useCallback(async (): Promise<SecureVolumeMountState | null> => {
     const secureVolume = resolveSecureVolume();
@@ -250,154 +148,98 @@ export const DesktopSecureFolderPanel: React.FC = () => {
       return mountState;
     }
 
-    const existingContext = unlockContext;
-    if (existingContext) {
-      try {
-        const status = await secureVolume.mount();
-        setMountState(status);
+    if (contextRef.current) {
+      const status = await unlockWithContext(contextRef.current);
+      if (status) {
         return status;
-      } catch (err) {
-        console.warn('[DesktopSecureFolderPanel] Mount failed, retrying unlock', err);
-        const refreshed = await applyUnlockContext(existingContext);
-        return refreshed;
       }
     }
 
-    const identityCandidate = identityRef.current ?? identity;
-    const sessionPasscode = getSessionPasscode();
-    console.log('[DesktopSecureFolderPanel] ensureUnlocked state', {
-      hasIdentity: Boolean(identityCandidate?.pnName && identityCandidate?.publicKey),
-      hasSessionPasscode: Boolean(sessionPasscode),
-      hasUnlockContext: Boolean(unlockContext?.passcode),
-      hasAuthToken: Boolean(identityCandidate?.authToken || unlockContext?.authToken),
-    });
-
-    if (identityCandidate && secureVolume?.hydrate) {
+    if (identity) {
       try {
-        const status = await secureVolume.hydrate(identityCandidate);
+        const status = await secureVolume.hydrate(identity);
         setMountState(status);
         setError(null);
         return status;
       } catch (err) {
-        console.warn('[DesktopSecureFolderPanel] Hydrate failed, falling back to session context', err);
+        console.warn('[DesktopSecureFolderPanel] Hydrate failed', err);
       }
     }
 
-    if (identityCandidate && sessionPasscode) {
-      const payload: SecureVolumeUnlockPayload = {
-        pnName: identityCandidate.pnName,
-        publicKey: identityCandidate.publicKey,
-        passcode: sessionPasscode,
-        authToken: identityCandidate.authToken ?? (await deriveAuthToken(identityCandidate.pnName, identityCandidate.publicKey, sessionPasscode)),
-      };
-      const status = await applyUnlockContext(payload);
-      return status;
-    }
-
-    if (identityCandidate) {
-      setError('Secure folder locked. Re-authenticate to continue.');
-      return null;
-    }
-
-    setError('Secure folder locked. Re-authenticate to continue.');
+    setError('Secure folder locked. Unlock your pN session to continue.');
     return null;
-  }, [applyUnlockContext, getSessionPasscode, mountState, unlockContext, identity, deriveAuthToken, resolveSecureVolume]);
+  }, [identity, mountState, resolveSecureVolume, unlockWithContext]);
 
   const handleRevealInFinder = React.useCallback(async () => {
-    const status = await ensureUnlocked();
-    if (!status) {
-      return;
-    }
-
-    const nativeApi = resolveNative();
-    if (status.mounted && status.mountPoint && nativeApi?.openPath) {
-      try {
-        await nativeApi.openPath(status.mountPoint);
-      } catch (err: unknown) {
-        console.warn('[DesktopSecureFolderPanel] Failed to reveal secure folder', err);
+    setIsOpening(true);
+    setError(null);
+    try {
+      const status = await ensureUnlocked();
+      if (!status) {
+        return;
       }
-    } else {
-      setError('Secure folder locked. Re-authenticate to continue.');
+
+      if (status.mounted && status.mountPoint) {
+        const nativeApi = resolveNative();
+        if (nativeApi?.openPath) {
+          try {
+            await nativeApi.openPath(status.mountPoint);
+          } catch (err: unknown) {
+            console.warn('[DesktopSecureFolderPanel] Failed to reveal secure folder', err);
+          }
+        }
+      } else {
+        setError('Secure folder locked. Unlock your pN session to continue.');
+      }
+    } finally {
+      setIsOpening(false);
     }
   }, [ensureUnlocked, resolveNative]);
 
-  React.useEffect(() => {
-    if (!identity) {
-      return;
-    }
-
-    if (unlockContext) {
-      return;
-    }
-
-    const passcode = getSessionPasscode();
-    if (passcode) {
-      void (async () => {
-        const payload: SecureVolumeUnlockPayload = {
-          pnName: identity.pnName,
-          publicKey: identity.publicKey,
-          passcode,
-          authToken: identity.authToken ?? (await deriveAuthToken(identity.pnName, identity.publicKey, passcode)),
-        };
-        void applyUnlockContext(payload);
-      })();
-      return;
-    }
-
-    const secureVolume = resolveSecureVolume();
-    if (secureVolume?.hydrate) {
-      void secureVolume
-        .hydrate(identity)
-        .then((status) => {
-          setMountState(status);
-          setError(null);
-        })
-        .catch((err) => {
-          console.warn('[DesktopSecureFolderPanel] Unable to hydrate secure volume via keychain', err);
-        });
-    }
-  }, [applyUnlockContext, getSessionPasscode, identity, unlockContext, deriveAuthToken, resolveSecureVolume]);
-
   return (
-    <>
-      <section className="bg-neutral-900/80 border border-neutral-700 rounded-2xl p-6 shadow-xl flex flex-col space-y-4">
-        <button
-          type="button"
-          onClick={() => {
-            setIsOpening(true);
-            setError(null);
-            void (async () => {
-              try {
-                await handleRevealInFinder();
-              } finally {
-                setIsOpening(false);
-              }
-            })();
-          }}
-          disabled={isOpening}
-          className="uppercase inline-flex items-center justify-center px-5 py-3 rounded-xl bg-blue-600 text-white text-sm font-semibold tracking-wide hover:bg-blue-700 disabled:opacity-60 disabled:cursor-not-allowed transition-colors"
-        >
-          <FolderOpen className="h-4 w-4 mr-2" />
-          {isOpening ? 'OPENING…' : 'OPEN SECURE FOLDER'}
-        </button>
+    <section className="bg-neutral-900/80 border border-neutral-700 rounded-2xl p-6 shadow-xl flex flex-col space-y-4">
+      <button
+        type="button"
+        onClick={() => {
+          setIsOpening(true);
+          setError(null);
+          void (async () => {
+            try {
+              await handleRevealInFinder();
+            } finally {
+              setIsOpening(false);
+            }
+          })();
+        }}
+        disabled={isOpening}
+        className="uppercase inline-flex items-center justify-center px-5 py-3 rounded-xl bg-blue-600 text-white text-sm font-semibold tracking-wide hover:bg-blue-700 disabled:opacity-60 disabled:cursor-not-allowed transition-colors"
+      >
+        <FolderOpen className="h-4 w-4 mr-2" />
+        {isOpening ? 'OPENING…' : 'OPEN SECURE FOLDER'}
+      </button>
 
+      <p className="text-xs text-text-secondary">
+        Unlock your pN session to access the encrypted volume on this device. The folder mounts automatically when your session is active.
+      </p>
+
+      {identity && (
         <p className="text-xs text-text-secondary">
-          Unlock your pN session to access the encrypted folder on this device. Files stay local and mount automatically when your session is active.
+          Volume identity <span className="text-white font-medium">par Noir - {identity.pnName}</span>
         </p>
+      )}
 
-        {mountState.mounted && mountState.mountPoint && (
-          <p className="text-xs text-text-secondary">
-            Mounted at <span className="text-white font-medium">{mountState.mountPoint}</span>
-          </p>
-        )}
+      {mountState.mounted && mountState.mountPoint && (
+        <p className="text-xs text-text-secondary">
+          Mounted at <span className="text-white font-medium">{mountState.mountPoint}</span>
+        </p>
+      )}
 
-        {error && (
-          <p className="text-sm text-red-400">
-            {error}
-          </p>
-        )}
-      </section>
-    </>
+      {error && (
+        <p className="text-sm text-red-400">
+          {error}
+        </p>
+      )}
+    </section>
   );
 };
 

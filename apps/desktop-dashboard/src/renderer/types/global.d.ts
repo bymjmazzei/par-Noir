@@ -12,7 +12,6 @@ declare global {
         unlock: (payload: SecureVolumeUnlockPayload) => Promise<SecureVolumeMountState>;
         lock: () => Promise<SecureVolumeMountState>;
         hydrate: (identity: SecureVolumeIdentity) => Promise<SecureVolumeMountState>;
-        getPasscode: (identity: SecureVolumeIdentity) => Promise<string | null>;
       };
       native: {
         openPath: (target: string) => Promise<string>;

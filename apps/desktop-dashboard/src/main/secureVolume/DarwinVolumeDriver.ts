@@ -119,7 +119,7 @@ export class DarwinVolumeDriver implements VolumeDriver {
       this.mountPoint,
       '-nobrowse',
       '-quiet'
-    ], { input: `${this.unlockContext.passcode}\n` });
+    ], { input: `${this.unlockContext.authToken}\n` });
 
     this.lastMountedAt = new Date().toISOString();
     return this.getStatus();
@@ -181,7 +181,7 @@ export class DarwinVolumeDriver implements VolumeDriver {
       '-size', '512m',
       '-volname', this.volumeName,
       this.bundlePath
-    ], { input: `${this.unlockContext.passcode}\n` });
+    ], { input: `${this.unlockContext.authToken}\n` });
   }
 
   private async isMounted(): Promise<boolean> {

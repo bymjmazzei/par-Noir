@@ -35,11 +35,10 @@ export class SecureVolumeManager {
   public async setUnlockContext(payload: SecureVolumeUnlockPayload): Promise<void> {
     this.identity = {
       pnName: payload.pnName,
-      publicKey: payload.publicKey,
-      authToken: payload.authToken
+      publicKey: payload.publicKey
     };
     await this.getDriver().setUnlockContext(payload);
-    await KeychainService.save(this.identity, payload.passcode);
+    await KeychainService.save(this.identity, payload.authToken);
   }
 
   public async clearUnlockContext(): Promise<void> {
@@ -47,13 +46,13 @@ export class SecureVolumeManager {
   }
 
   public async hydrate(identity: SecureVolumeIdentity): Promise<SecureVolumeMountState> {
-    const cachedPasscode = await KeychainService.load(identity);
-    if (!cachedPasscode) {
-      throw new Error('Cached passcode unavailable for secure volume');
+    const cachedToken = await KeychainService.load(identity);
+    if (!cachedToken) {
+      throw new Error('Cached token unavailable for secure volume');
     }
 
     this.identity = identity;
-    await this.getDriver().setUnlockContext({ ...identity, passcode: cachedPasscode });
+    await this.getDriver().setUnlockContext({ ...identity, authToken: cachedToken });
     return this.mount();
   }
 
@@ -67,10 +66,6 @@ export class SecureVolumeManager {
 
   public async getStatus(): Promise<SecureVolumeMountState> {
     return this.getDriver().getStatus();
-  }
-
-  public async getCachedPasscode(identity: SecureVolumeIdentity): Promise<string | null> {
-    return KeychainService.load(identity);
   }
 
   private getDriver(): VolumeDriver {

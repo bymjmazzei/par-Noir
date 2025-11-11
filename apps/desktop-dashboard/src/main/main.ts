@@ -36,13 +36,6 @@ const registerIpc = () => {
     return secureVolumeManager.hydrate(identity);
   });
 
-  ipcMain.handle(SECURE_VOLUME_IPC_CHANNEL.getPasscode, async (_event, identity: SecureVolumeIdentity) => {
-    if (!identity?.pnName || !identity?.publicKey) {
-      throw new Error('Missing identity details for passcode lookup');
-    }
-    return secureVolumeManager.getCachedPasscode(identity);
-  });
-
   ipcMain.handle(NATIVE_IPC_CHANNEL.openPath, async (_event, target: string) => {
     if (!target) {
       throw new Error('Missing target path');
