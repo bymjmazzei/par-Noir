@@ -8,8 +8,8 @@ interface DesktopAuthEventPayload extends SecureVolumeIdentity {
 }
 
 const hasWindow = typeof window !== 'undefined';
-const getSecureVolumeApi = () => (hasWindow ? window.parNoirDesktop?.secureVolume : undefined);
-const getNativeApi = () => (hasWindow ? window.parNoirDesktop?.native : undefined);
+const resolveSecureVolumeApi = () => (hasWindow ? window.parNoirDesktop?.secureVolume : undefined);
+const resolveNativeApi = () => (hasWindow ? window.parNoirDesktop?.native : undefined);
 
 const bootstrapPlatform = hasWindow ? window.parNoirDesktop?.platform ?? 'unknown' : 'unknown';
 
@@ -34,8 +34,8 @@ export const DesktopSecureFolderPanel: React.FC = () => {
   const [manualPasscodeError, setManualPasscodeError] = React.useState<string | null>(null);
   const [isSubmittingPasscode, setIsSubmittingPasscode] = React.useState(false);
 
-  const secureVolume = React.useMemo(getSecureVolumeApi, []);
-  const nativeApi = React.useMemo(getNativeApi, []);
+  const resolveSecureVolume = React.useCallback(() => resolveSecureVolumeApi(), []);
+  const resolveNative = React.useCallback(() => resolveNativeApi(), []);
 
   const deriveAuthToken = React.useCallback(async (pnName: string, publicKey: string, passcode: string): Promise<string> => {
     const encoder = new TextEncoder();
@@ -45,6 +45,7 @@ export const DesktopSecureFolderPanel: React.FC = () => {
   }, []);
 
   const refreshStatus = React.useCallback(async () => {
+    const secureVolume = resolveSecureVolume();
     if (!secureVolume) {
       setError('Secure volume interface unavailable.');
       return;
@@ -58,7 +59,7 @@ export const DesktopSecureFolderPanel: React.FC = () => {
       console.error('[DesktopSecureFolderPanel] Failed to fetch status', err);
       setError('Unable to read secure folder status.');
     }
-  }, [secureVolume]);
+  }, [resolveSecureVolume]);
 
   const getSessionPasscode = React.useCallback((): string | null => {
     if (!hasWindow) {
@@ -74,6 +75,7 @@ export const DesktopSecureFolderPanel: React.FC = () => {
   }, []);
 
   const applyUnlockContext = React.useCallback(async (payload: SecureVolumeUnlockPayload) => {
+    const secureVolume = resolveSecureVolume();
     if (!secureVolume) {
       setError('Secure volume interface unavailable.');
       return null;
@@ -100,9 +102,11 @@ export const DesktopSecureFolderPanel: React.FC = () => {
       setError('Failed to unlock secure folder. Verify your pN session credentials.');
       return null;
     }
-  }, [secureVolume]);
+  }, [resolveSecureVolume]);
 
   const handleUnlock = React.useCallback(async (payload: DesktopAuthEventPayload) => {
+    const secureVolume = resolveSecureVolume();
+    const nativeApi = resolveNative();
     if (!secureVolume) {
       setError('Secure volume interface unavailable.');
       return;
@@ -112,6 +116,14 @@ export const DesktopSecureFolderPanel: React.FC = () => {
       pnName: payload.pnName,
       publicKeyPreview: payload.publicKey?.slice(0, 16),
       hasPasscode: Boolean(payload.passcode),
+      hasAuthToken: Boolean(payload.authToken),
+    });
+
+    console.debug('[DesktopSecureFolderPanel] secureVolume API snapshot', {
+      hasSecureVolume: Boolean(secureVolume),
+      hasHydrate: typeof secureVolume?.hydrate,
+      hasUnlock: typeof secureVolume?.unlock,
+      availableKeys: secureVolume ? Object.keys(secureVolume as Record<string, unknown>) : [],
     });
 
     identityRef.current = { pnName: payload.pnName, publicKey: payload.publicKey, authToken: payload.authToken };
@@ -198,7 +210,7 @@ export const DesktopSecureFolderPanel: React.FC = () => {
         console.warn('[DesktopSecureFolderPanel] Failed to reveal secure folder after unlock', err);
       }
     }
-  }, [secureVolume, nativeApi, applyUnlockContext, getSessionPasscode, deriveAuthToken]);
+  }, [resolveSecureVolume, resolveNative, applyUnlockContext, getSessionPasscode, deriveAuthToken]);
 
   React.useEffect(() => {
     void refreshStatus();
@@ -223,14 +235,16 @@ export const DesktopSecureFolderPanel: React.FC = () => {
   }, [handleUnlock]);
 
   React.useEffect(() => () => {
+    const secureVolume = resolveSecureVolume();
     if (secureVolume) {
       void secureVolume.lock().catch((err: unknown) => {
         console.warn('[DesktopSecureFolderPanel] Failed to lock secure volume during cleanup', err);
       });
     }
-  }, [secureVolume]);
+  }, [resolveSecureVolume]);
 
   const ensureUnlocked = React.useCallback(async (): Promise<SecureVolumeMountState | null> => {
+    const secureVolume = resolveSecureVolume();
     if (!secureVolume) {
       setError('Secure volume interface unavailable.');
       return null;
@@ -302,6 +316,7 @@ export const DesktopSecureFolderPanel: React.FC = () => {
       return;
     }
 
+    const nativeApi = resolveNative();
     if (status.mounted && status.mountPoint && nativeApi?.openPath) {
       try {
         await nativeApi.openPath(status.mountPoint);
@@ -311,7 +326,7 @@ export const DesktopSecureFolderPanel: React.FC = () => {
     } else {
       setError('Secure folder locked. Re-authenticate to continue.');
     }
-  }, [ensureUnlocked, nativeApi]);
+  }, [ensureUnlocked, resolveNative]);
 
   React.useEffect(() => {
     if (!identity) {
@@ -336,6 +351,7 @@ export const DesktopSecureFolderPanel: React.FC = () => {
       return;
     }
 
+    const secureVolume = resolveSecureVolume();
     if (secureVolume?.hydrate) {
       void secureVolume
         .hydrate(identity)
@@ -347,7 +363,7 @@ export const DesktopSecureFolderPanel: React.FC = () => {
           console.warn('[DesktopSecureFolderPanel] Unable to hydrate secure volume via keychain', err);
         });
     }
-  }, [applyUnlockContext, getSessionPasscode, identity, secureVolume, unlockContext, deriveAuthToken]);
+  }, [applyUnlockContext, getSessionPasscode, identity, resolveSecureVolume]);
 
   return (
     <>
@@ -436,6 +452,7 @@ export const DesktopSecureFolderPanel: React.FC = () => {
                     setIsPasscodePromptOpen(false);
                     setManualPasscode('');
                     setManualPasscodeError(null);
+                    const nativeApi = resolveNative();
                     if (status.mounted && status.mountPoint && nativeApi?.openPath) {
                       await nativeApi.openPath(status.mountPoint);
                     }

@@ -1772,6 +1772,11 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
         authToken: resolvedAuth.authToken,
       };
 
+      console.debug('[FileStorageAggregator] Dispatching pn-auth-session', {
+        hasPasscode: Boolean(payload.passcode),
+        hasAuthToken: Boolean(payload.authToken),
+      });
+
       window.dispatchEvent(new CustomEvent<DesktopUnlockPayload>('pn-auth-session', { detail: payload }));
     }
   }, [resolvedAuth]);

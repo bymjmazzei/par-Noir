@@ -15,6 +15,8 @@ export const AppMain: React.FC = () => {
       ? resolveAsset('branding/Par-Noir-Background-Light.png')
       : './branding/Par-Noir-Background-Light.png';
 
+    console.debug('[desktop] Background assets', { darkSource, lightSource, hasResolver: Boolean(resolveAsset) });
+
     const darkBg = `url('${darkSource}')`;
     const lightBg = `url('${lightSource}')`;
 
