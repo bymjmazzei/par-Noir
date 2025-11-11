@@ -308,7 +308,7 @@ export const DesktopSecureFolderPanel: React.FC = () => {
 
     setError('Secure folder locked. Re-authenticate to continue.');
     return null;
-  }, [applyUnlockContext, getSessionPasscode, mountState, secureVolume, unlockContext, identity, deriveAuthToken]);
+  }, [applyUnlockContext, getSessionPasscode, mountState, unlockContext, identity, deriveAuthToken, resolveSecureVolume]);
 
   const handleRevealInFinder = React.useCallback(async () => {
     const status = await ensureUnlocked();
@@ -363,7 +363,7 @@ export const DesktopSecureFolderPanel: React.FC = () => {
           console.warn('[DesktopSecureFolderPanel] Unable to hydrate secure volume via keychain', err);
         });
     }
-  }, [applyUnlockContext, getSessionPasscode, identity, resolveSecureVolume]);
+  }, [applyUnlockContext, getSessionPasscode, identity, unlockContext, deriveAuthToken, resolveSecureVolume]);
 
   return (
     <>

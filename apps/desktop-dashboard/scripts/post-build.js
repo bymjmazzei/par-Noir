@@ -69,3 +69,8 @@ copyDirectory(
   path.join(projectRoot, 'public', 'branding'),
   path.join(rendererDist, 'branding')
 );
+
+copyDirectory(
+  path.join(projectRoot, 'public', 'branding'),
+  path.join(rendererDist, 'assets', 'branding')
+);
