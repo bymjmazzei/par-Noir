@@ -19,6 +19,10 @@ export interface StoredSession {
   accessToken: string;
   expiresAt: string;
   createdAt: string;
+  pnName?: string;
+  publicKey?: string;
+  authToken?: string;
+  passcode?: string;
 }
 
 export interface StoredCustodian {
@@ -301,7 +305,11 @@ export class SecureStorage {
       id: session.id,
       accessToken: session.accessToken,
       expiresAt: new Date(Date.now() + session.expiresIn * 1000).toISOString(),
-      createdAt: session.authenticatedAt
+      createdAt: session.authenticatedAt,
+      pnName: session.pnName,
+      publicKey: session.publicKey,
+      authToken: session.authToken,
+      passcode: session.passcode,
     };
 
     return this.performTransaction('sessions', 'readwrite', (store) => {

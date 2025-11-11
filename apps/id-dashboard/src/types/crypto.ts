@@ -17,12 +17,15 @@ export interface DIDKeyPair {
 }
 
 export interface AuthSession {
-    success: boolean;
-    identity?: any;
-    token?: string;
-    expiresAt?: string;
+    id: string;
+    pnName: string;
+    nickname: string;
+    accessToken: string;
+    expiresIn: number;
+    authenticatedAt: string;
     publicKey: string;
     passcode?: string;
+    authToken?: string;
 }
 
 export interface IdentityData {

@@ -28,6 +28,7 @@ export interface AuthSession {
   authenticatedAt: string;
   publicKey: string;
   passcode?: string;
+  authToken?: string;
 }
 
 export class IdentityCrypto {
@@ -162,15 +163,23 @@ export class IdentityCrypto {
       // Generate JWT-like token
       const token = await this.generateAuthToken(identity.id, identity.username);
       
+      const resolvedPnName = identity.pnName || identity.username || identity.nickname || expectedUsername || identity.id;
+
+      const encoder = new TextEncoder();
+      const digestData = encoder.encode(`${resolvedPnName}::${encryptedIdentity.publicKey || identity.id}::${passcode}`);
+      const digestBuffer = await window.crypto.subtle.digest('SHA-256', digestData);
+      const authToken = Array.from(new Uint8Array(digestBuffer)).map((byte) => byte.toString(16).padStart(2, '0')).join('');
+
       return {
         id: identity.id, // DID comes from decrypted data
-        pnName: identity.pnName,
-                  nickname: identity.nickname || identity.pnName,
+        pnName: resolvedPnName,
+        nickname: identity.nickname || resolvedPnName,
         accessToken: token,
         expiresIn: this.TOKEN_EXPIRY,
         authenticatedAt: new Date().toISOString(),
         publicKey: encryptedIdentity.publicKey,
         passcode,
+        authToken,
       };
     } catch (error) {
       throw new Error(`Authentication failed: ${error}`);

@@ -22,6 +22,7 @@ export interface AuthSession {
   authenticatedAt: string;
   publicKey: string;
   passcode?: string;
+  authToken?: string;
 }
 
 export interface ShareToken {

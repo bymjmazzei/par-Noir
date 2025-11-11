@@ -23,6 +23,7 @@ export interface AuthSession {
     authenticatedAt: string;
     publicKey: string;
     passcode?: string;
+    authToken?: string;
 }
 export declare class IdentityCrypto {
     private static readonly DID_PREFIX;
