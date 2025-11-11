@@ -37,8 +37,25 @@ export class SecureVolumeManager {
       pnName: payload.pnName,
       publicKey: payload.publicKey
     };
-    await this.getDriver().setUnlockContext(payload);
-    await KeychainService.save(this.identity, payload.authToken);
+
+    const persistedToken = await KeychainService.load(this.identity);
+    const tokenToUse = (persistedToken ?? payload.authToken)?.trim();
+
+    if (!tokenToUse) {
+      throw new Error('Secure volume unlock token missing.');
+    }
+
+    const context: SecureVolumeUnlockPayload = {
+      pnName: payload.pnName,
+      publicKey: payload.publicKey,
+      authToken: tokenToUse
+    };
+
+    await this.getDriver().setUnlockContext(context);
+
+    if (!persistedToken) {
+      await KeychainService.save(this.identity, tokenToUse);
+    }
   }
 
   public async clearUnlockContext(): Promise<void> {
@@ -47,12 +64,12 @@ export class SecureVolumeManager {
 
   public async hydrate(identity: SecureVolumeIdentity): Promise<SecureVolumeMountState> {
     const cachedToken = await KeychainService.load(identity);
-    if (!cachedToken) {
+    if (!cachedToken || !cachedToken.trim()) {
       throw new Error('Cached token unavailable for secure volume');
     }
 
     this.identity = identity;
-    await this.getDriver().setUnlockContext({ ...identity, authToken: cachedToken });
+    await this.getDriver().setUnlockContext({ ...identity, authToken: cachedToken.trim() });
     return this.mount();
   }
 

@@ -93,7 +93,7 @@ export class DarwinVolumeDriver implements VolumeDriver {
 
     await fs.mkdir(path.dirname(this.bundlePath), { recursive: true });
     await fs.mkdir(this.mountPoint, { recursive: true });
-    this.unlockContext = payload;
+    this.unlockContext = { ...payload, authToken: payload.authToken.trim() };
   }
 
   public async clearUnlockContext(): Promise<void> {
@@ -111,15 +111,24 @@ export class DarwinVolumeDriver implements VolumeDriver {
       return this.getStatus();
     }
 
-    await spawnAsync('hdiutil', [
-      'attach',
-      this.bundlePath,
-      '-stdinpass',
-      '-mountpoint',
-      this.mountPoint,
-      '-nobrowse',
-      '-quiet'
-    ], { input: `${this.unlockContext.authToken}\n` });
+    try {
+      await spawnAsync('hdiutil', [
+        'attach',
+        this.bundlePath,
+        '-stdinpass',
+        '-mountpoint',
+        this.mountPoint,
+        '-nobrowse',
+        '-quiet'
+      ], { input: `${this.unlockContext.authToken}\n` });
+    } catch (error) {
+      console.error('[SecureVolume] hdiutil attach failed', {
+        bundlePath: this.bundlePath,
+        mountPoint: this.mountPoint,
+        message: (error as Error).message
+      });
+      throw error;
+    }
 
     this.lastMountedAt = new Date().toISOString();
     return this.getStatus();
@@ -172,16 +181,24 @@ export class DarwinVolumeDriver implements VolumeDriver {
     await fs.mkdir(path.dirname(this.bundlePath), { recursive: true });
     await fs.mkdir(this.mountPoint, { recursive: true });
 
-    await spawnAsync('hdiutil', [
-      'create',
-      '-type', 'SPARSEBUNDLE',
-      '-fs', 'APFS',
-      '-encryption', 'AES-256',
-      '-stdinpass',
-      '-size', '512m',
-      '-volname', this.volumeName,
-      this.bundlePath
-    ], { input: `${this.unlockContext.authToken}\n` });
+    try {
+      await spawnAsync('hdiutil', [
+        'create',
+        '-type', 'SPARSEBUNDLE',
+        '-fs', 'APFS',
+        '-encryption', 'AES-256',
+        '-stdinpass',
+        '-size', '512m',
+        '-volname', this.volumeName,
+        this.bundlePath
+      ], { input: `${this.unlockContext.authToken}\n` });
+    } catch (error) {
+      console.error('[SecureVolume] hdiutil create failed', {
+        bundlePath: this.bundlePath,
+        message: (error as Error).message
+      });
+      throw error;
+    }
   }
 
   private async isMounted(): Promise<boolean> {
