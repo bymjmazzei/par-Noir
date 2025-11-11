@@ -26,8 +26,6 @@ const secureVolume = {
     ipcRenderer.invoke(SECURE_VOLUME_IPC_CHANNEL.getPasscode, identity)
 };
 
-console.log('[preload] secureVolume API exposed', Object.keys(secureVolume));
-
 const nativeBridge = {
   openPath: async (target: string): Promise<string> => ipcRenderer.invoke(NATIVE_IPC_CHANNEL.openPath, target)
 };
