@@ -25,7 +25,7 @@ const isDesktopShell = typeof window !== 'undefined' && Boolean(window.parNoirDe
 type DesktopUnlockPayload = {
   pnName: string;
   publicKey: string;
-  passcode: string;
+  passcode?: string;
   authToken?: string;
 };
 
@@ -1764,7 +1764,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
   }, [authenticatedUser]);
 
   React.useEffect(() => {
-    if (resolvedAuth?.pnName && resolvedAuth.publicKey && resolvedAuth.passcode) {
+    if (resolvedAuth?.pnName && resolvedAuth.publicKey && (resolvedAuth.passcode || resolvedAuth.authToken)) {
       const payload: DesktopUnlockPayload = {
         pnName: resolvedAuth.pnName,
         publicKey: resolvedAuth.publicKey,
@@ -4339,7 +4339,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
       return;
     }
 
-    if (resolvedAuth?.pnName && resolvedAuth.publicKey && resolvedAuth.passcode) {
+    if (resolvedAuth?.pnName && resolvedAuth.publicKey && (resolvedAuth.passcode || resolvedAuth.authToken)) {
       const payload: DesktopUnlockPayload = {
         pnName: resolvedAuth.pnName,
         publicKey: resolvedAuth.publicKey,

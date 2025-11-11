@@ -3,6 +3,10 @@ import { FolderOpen, Lock } from 'lucide-react';
 
 import type { SecureVolumeIdentity, SecureVolumeMountState, SecureVolumeUnlockPayload } from '../../desktop-dashboard/src/shared/ipcChannels';
 
+interface DesktopAuthEventPayload extends SecureVolumeIdentity {
+  passcode?: string;
+}
+
 const hasWindow = typeof window !== 'undefined';
 const getSecureVolumeApi = () => (hasWindow ? window.parNoirDesktop?.secureVolume : undefined);
 const getNativeApi = () => (hasWindow ? window.parNoirDesktop?.native : undefined);
@@ -98,7 +102,7 @@ export const DesktopSecureFolderPanel: React.FC = () => {
     }
   }, [secureVolume]);
 
-  const handleUnlock = React.useCallback(async (payload: SecureVolumeUnlockPayload) => {
+  const handleUnlock = React.useCallback(async (payload: DesktopAuthEventPayload) => {
     if (!secureVolume) {
       setError('Secure volume interface unavailable.');
       return;
@@ -116,31 +120,56 @@ export const DesktopSecureFolderPanel: React.FC = () => {
     let resolvedPasscode = payload.passcode?.trim() ?? null;
     if (!resolvedPasscode) {
       resolvedPasscode = getSessionPasscode();
-      if (!resolvedPasscode && secureVolume?.getPasscode) {
-        try {
-          const cached = await secureVolume.getPasscode({
-            pnName: payload.pnName,
-            publicKey: payload.publicKey,
-            authToken: payload.authToken,
-          });
-          if (cached && cached.trim().length > 0) {
-            resolvedPasscode = cached.trim();
-          }
-        } catch (keychainErr) {
-          console.warn('[DesktopSecureFolderPanel] Unable to read passcode from Keychain during unlock', keychainErr);
+    }
+
+    if (!resolvedPasscode && identityRef.current && secureVolume?.getPasscode) {
+      try {
+        const cachedPasscode = await secureVolume.getPasscode(identityRef.current);
+        if (cachedPasscode) {
+          resolvedPasscode = cachedPasscode;
+          console.log('[DesktopSecureFolderPanel] Retrieved passcode from Keychain via getPasscode');
         }
+      } catch (keychainErr) {
+        console.warn('[DesktopSecureFolderPanel] Failed to retrieve passcode from Keychain via getPasscode', keychainErr);
       }
     }
 
     if (!resolvedPasscode) {
-      console.warn('[DesktopSecureFolderPanel] pn-auth-session missing passcode; prompting user');
-      setManualPasscode('');
-      setManualPasscodeError(null);
-      setIsPasscodePromptOpen(true);
-      return;
-    }
+      if (identityRef.current?.authToken) {
+        try {
+          const status = await secureVolume.hydrate(identityRef.current);
+          setMountState(status);
+          setError(null);
 
-    if (!resolvedPasscode) {
+          if (status?.mounted && status.mountPoint && nativeApi?.openPath) {
+            try {
+              await nativeApi.openPath(status.mountPoint);
+            } catch (err) {
+              console.warn('[DesktopSecureFolderPanel] Failed to reveal secure folder after hydrate', err);
+            }
+          }
+
+          try {
+            const cachedAfterHydrate = await secureVolume.getPasscode?.(identityRef.current);
+            if (cachedAfterHydrate) {
+              sessionStorage.setItem('pn_session_passcode', cachedAfterHydrate);
+              const unlockPayload: SecureVolumeUnlockPayload = {
+                pnName: identityRef.current.pnName,
+                publicKey: identityRef.current.publicKey,
+                passcode: cachedAfterHydrate,
+                authToken: identityRef.current.authToken,
+              };
+              setUnlockContext(unlockPayload);
+            }
+          } catch (persistErr) {
+            console.warn('[DesktopSecureFolderPanel] Unable to persist passcode after hydrate', persistErr);
+          }
+          return;
+        } catch (hydrateErr) {
+          console.warn('[DesktopSecureFolderPanel] Hydrate via authToken failed', hydrateErr);
+        }
+      }
+
       setError('Unlock failed: missing pN passcode. Re-authenticate to continue.');
       return;
     }
@@ -177,7 +206,7 @@ export const DesktopSecureFolderPanel: React.FC = () => {
 
   React.useEffect(() => {
     const listener = (event: Event) => {
-      const custom = event as CustomEvent<SecureVolumeUnlockPayload>;
+      const custom = event as CustomEvent<DesktopAuthEventPayload>;
       if (custom.detail?.pnName && custom.detail.publicKey) {
         void handleUnlock(custom.detail);
       }

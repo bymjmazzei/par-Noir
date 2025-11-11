@@ -2,6 +2,8 @@ const fs = require('fs');
 const path = require('path');
 
 const distRoot = path.join(__dirname, '..', 'dist-electron');
+const projectRoot = path.join(__dirname, '..');
+const rendererDist = path.join(projectRoot, 'dist');
 
 const pickFirstExisting = (candidates) => candidates.find((candidate) => candidate && fs.existsSync(candidate));
 
@@ -62,3 +64,8 @@ copyDirectory([
   path.join(distRoot, 'main', 'main', 'secureVolume'),
   path.join(distRoot, 'main', 'secureVolume')
 ], path.join(distRoot, 'main', 'secureVolume'));
+
+copyDirectory(
+  path.join(projectRoot, 'public', 'branding'),
+  path.join(rendererDist, 'branding')
+);
