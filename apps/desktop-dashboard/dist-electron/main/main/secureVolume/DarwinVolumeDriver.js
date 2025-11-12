@@ -157,31 +157,28 @@ class DarwinVolumeDriver {
         return `par Noir - ${identifier}`;
     }
     resolveIdentifier(payload) {
+        // If pnIdentifier is provided, use it directly (must match Google Drive folder name)
         const byIdentifier = payload.pnIdentifier?.trim();
         if (byIdentifier) {
-            return this.normalisePnIdentifier(byIdentifier);
+            // Ensure it has the pn- prefix, but don't normalize further to preserve exact match
+            const trimmed = byIdentifier.trim();
+            if (trimmed.startsWith('pn-')) {
+                return trimmed; // Use as-is to match Google Drive exactly
+            }
+            return `pn-${trimmed}`;
         }
+        // Fallback: derive identifier using same method as Google Drive
         const token = payload.authToken?.trim();
         if (token) {
-            return this.normalisePnIdentifier(`pn-${token.substring(0, 12)}`);
+            return `pn-${token.substring(0, 12).toLowerCase()}`;
         }
         if (payload.publicKey?.trim()) {
-            return this.normalisePnIdentifier(`pn-${this.shortHash(payload.publicKey.trim())}`);
+            return `pn-${this.shortHash(payload.publicKey.trim())}`;
         }
         if (payload.pnName?.trim()) {
-            return this.normalisePnIdentifier(`pn-${this.shortHash(payload.pnName.trim())}`);
+            return `pn-${this.shortHash(payload.pnName.trim())}`;
         }
         return 'pn-default';
-    }
-    normalisePnIdentifier(value) {
-        const trimmed = value.trim();
-        if (!trimmed) {
-            return 'pn-default';
-        }
-        const withoutBrandPrefix = trimmed.replace(/^par\s*noir\s*-\s*/i, '').trim();
-        const base = withoutBrandPrefix.replace(/^pn-/i, '').trim();
-        const sanitised = base.replace(/[^a-z0-9-]/gi, '').toLowerCase();
-        return sanitised ? `pn-${sanitised}` : 'pn-default';
     }
     shortHash(value) {
         const crypto = require('crypto');

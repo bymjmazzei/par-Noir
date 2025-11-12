@@ -195,12 +195,12 @@ class DarwinVolumeDriver {
             throw new Error('Unlock context required');
         }
         // hdiutil attach with password from stdin
+        // Note: We don't use -nobrowse so the volume appears in Finder
         await (0, VeraCryptDriver_1.spawnAsync)('hdiutil', [
             'attach',
             this.containerPath,
             '-mountpoint', this.mountPoint,
-            '-stdinpass',
-            '-nobrowse'
+            '-stdinpass'
         ], { input: this.unlockContext.authToken });
     }
     async executeUnmount() {
