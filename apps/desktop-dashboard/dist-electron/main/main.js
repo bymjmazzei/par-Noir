@@ -11,9 +11,18 @@ const SecureVolumeManager_1 = require("./secureVolume/SecureVolumeManager");
 const isDev = !electron_1.app.isPackaged || Boolean(process.env.VITE_DEV_SERVER_URL);
 const resolveDataRoot = () => {
     const override = process.env.PN_DATA_ROOT?.trim();
-    const baseCandidate = override && override.length > 0
-        ? path_1.default.resolve(override)
-        : path_1.default.resolve(electron_1.app.getAppPath(), '..', 'data');
+    let baseCandidate;
+    if (override && override.length > 0) {
+        baseCandidate = path_1.default.resolve(override);
+    }
+    else if (electron_1.app.isPackaged) {
+        // In packaged mode, use directory containing the executable
+        baseCandidate = path_1.default.resolve(path_1.default.dirname(electron_1.app.getPath('exe')), 'data');
+    }
+    else {
+        // In dev mode, use directory next to app
+        baseCandidate = path_1.default.resolve(electron_1.app.getAppPath(), '..', 'data');
+    }
     try {
         fs_1.default.mkdirSync(baseCandidate, { recursive: true });
     }

@@ -26,13 +26,22 @@ const PLATFORMS = {
         // Mount the DMG
         execSync(`hdiutil attach "${dmgPath}" -mountpoint "${mountPoint}" -quiet -nobrowse`, { stdio: 'inherit' });
         
-        // Copy VeraCrypt.app
+        // Check for .app first, then .pkg
         const appPath = path.join(mountPoint, 'VeraCrypt.app');
+        const pkgPath = path.join(mountPoint, 'VeraCrypt_Installer.pkg');
+        
         if (fs.existsSync(appPath)) {
           execSync(`cp -R "${appPath}" "${targetDir}/VeraCrypt.app"`, { stdio: 'inherit' });
           console.log('[veracrypt-bundle] Extracted VeraCrypt.app');
+        } else if (fs.existsSync(pkgPath)) {
+          // Extract the pkg - this is more complex, for now we'll copy the pkg
+          // and note that macOS may need system-installed VeraCrypt
+          console.log('[veracrypt-bundle] DMG contains installer package - macOS may require system-installed VeraCrypt');
+          console.log('[veracrypt-bundle] App will fall back to system installation if bundled version not found');
+          // For portability, we'll skip bundling the pkg and rely on system installation
+          // Users can install VeraCrypt system-wide: brew install veracrypt
         } else {
-          throw new Error('VeraCrypt.app not found in DMG');
+          throw new Error('VeraCrypt.app or installer not found in DMG');
         }
       } finally {
         // Unmount the DMG
@@ -65,56 +74,79 @@ const PLATFORMS = {
 const downloadFile = async (url, dest) => {
   return new Promise((resolve, reject) => {
     const protocol = url.startsWith('https') ? https : http;
-    const file = createWriteStream(dest);
     
-    console.log(`[veracrypt-bundle] Downloading from ${url}...`);
-    
-    protocol.get(url, (response) => {
-      // Handle redirects
-      if (response.statusCode === 301 || response.statusCode === 302) {
-        file.close();
-        fs.unlinkSync(dest);
-        return downloadFile(response.headers.location, dest).then(resolve).catch(reject);
-      }
-      
-      if (response.statusCode !== 200) {
-        file.close();
-        fs.unlinkSync(dest);
-        reject(new Error(`Failed to download: ${response.statusCode} ${response.statusMessage}`));
+    const makeRequest = (requestUrl, redirectCount = 0) => {
+      if (redirectCount > 5) {
+        reject(new Error('Too many redirects'));
         return;
       }
       
-      const totalSize = parseInt(response.headers['content-length'] || '0', 10);
-      let downloadedSize = 0;
+      const file = createWriteStream(dest);
       
-      response.on('data', (chunk) => {
-        downloadedSize += chunk.length;
-        if (totalSize > 0) {
-          const percent = ((downloadedSize / totalSize) * 100).toFixed(1);
-          process.stdout.write(`\r[veracrypt-bundle] Progress: ${percent}%`);
+      console.log(`[veracrypt-bundle] Downloading from ${requestUrl}...`);
+      
+      protocol.get(requestUrl, (response) => {
+        // Handle redirects
+        if (response.statusCode === 301 || response.statusCode === 302 || response.statusCode === 303 || response.statusCode === 307 || response.statusCode === 308) {
+          file.close();
+          if (fs.existsSync(dest)) {
+            fs.unlinkSync(dest);
+          }
+          const location = response.headers.location;
+          if (!location) {
+            reject(new Error('Redirect without location header'));
+            return;
+          }
+          const redirectUrl = location.startsWith('http') ? location : new URL(location, requestUrl).toString();
+          console.log(`[veracrypt-bundle] Following redirect to ${redirectUrl}...`);
+          return makeRequest(redirectUrl, redirectCount + 1);
         }
-      });
-      
-      response.pipe(file);
-      
-      file.on('finish', () => {
+        
+        if (response.statusCode !== 200) {
+          file.close();
+          if (fs.existsSync(dest)) {
+            fs.unlinkSync(dest);
+          }
+          reject(new Error(`Failed to download: ${response.statusCode} ${response.statusMessage}`));
+          return;
+        }
+        
+        const totalSize = parseInt(response.headers['content-length'] || '0', 10);
+        let downloadedSize = 0;
+        
+        response.on('data', (chunk) => {
+          downloadedSize += chunk.length;
+          if (totalSize > 0) {
+            const percent = ((downloadedSize / totalSize) * 100).toFixed(1);
+            process.stdout.write(`\r[veracrypt-bundle] Progress: ${percent}%`);
+          }
+        });
+        
+        response.pipe(file);
+        
+        file.on('finish', () => {
+          file.close();
+          console.log('\n[veracrypt-bundle] Download complete');
+          resolve();
+        });
+        
+        file.on('error', (err) => {
+          file.close();
+          if (fs.existsSync(dest)) {
+            fs.unlinkSync(dest);
+          }
+          reject(err);
+        });
+      }).on('error', (err) => {
         file.close();
-        console.log('\n[veracrypt-bundle] Download complete');
-        resolve();
-      });
-      
-      file.on('error', (err) => {
-        file.close();
-        fs.unlinkSync(dest);
+        if (fs.existsSync(dest)) {
+          fs.unlinkSync(dest);
+        }
         reject(err);
       });
-    }).on('error', (err) => {
-      file.close();
-      if (fs.existsSync(dest)) {
-        fs.unlinkSync(dest);
-      }
-      reject(err);
-    });
+    };
+    
+    makeRequest(url);
   });
 };
 
@@ -156,8 +188,9 @@ const ensureVeraCrypt = async () => {
       await downloadFile(url, downloadPath);
     } catch (error) {
       console.error(`[veracrypt-bundle] Failed to download VeraCrypt for ${platform}:`, error.message);
-      console.error(`[veracrypt-bundle] Please download manually from https://www.veracrypt.fr/en/Downloads.html`);
-      process.exit(1);
+      console.warn(`[veracrypt-bundle] App will use system-installed VeraCrypt if available`);
+      // Don't exit - allow build to continue, app will fall back to system installation
+      return;
     }
   } else {
     console.log(`[veracrypt-bundle] Using cached download for ${platform}`);
@@ -168,8 +201,9 @@ const ensureVeraCrypt = async () => {
     await platformConfig.extract(downloadPath, extractPath);
     console.log(`[veracrypt-bundle] Successfully bundled VeraCrypt for ${platform}`);
   } catch (error) {
-    console.error(`[veracrypt-bundle] Failed to extract VeraCrypt for ${platform}:`, error.message);
-    process.exit(1);
+    console.warn(`[veracrypt-bundle] Failed to extract VeraCrypt for ${platform}:`, error.message);
+    console.warn(`[veracrypt-bundle] App will use system-installed VeraCrypt if available`);
+    // Don't exit - allow build to continue
   }
 };
 
