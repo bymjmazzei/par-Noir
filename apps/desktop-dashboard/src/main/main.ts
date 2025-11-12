@@ -9,9 +9,17 @@ const isDev = !app.isPackaged || Boolean(process.env.VITE_DEV_SERVER_URL);
 
 const resolveDataRoot = (): string => {
   const override = process.env.PN_DATA_ROOT?.trim();
-  const baseCandidate = override && override.length > 0
-    ? path.resolve(override)
-    : path.resolve(app.getAppPath(), '..', 'data');
+  let baseCandidate: string;
+  
+  if (override && override.length > 0) {
+    baseCandidate = path.resolve(override);
+  } else if (app.isPackaged) {
+    // In packaged mode, use directory containing the executable
+    baseCandidate = path.resolve(path.dirname(app.getPath('exe')), 'data');
+  } else {
+    // In dev mode, use directory next to app
+    baseCandidate = path.resolve(app.getAppPath(), '..', 'data');
+  }
 
   try {
     fs.mkdirSync(baseCandidate, { recursive: true });
