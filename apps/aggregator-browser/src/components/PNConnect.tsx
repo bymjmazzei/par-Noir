@@ -47,12 +47,13 @@ export function PNConnect({ onConnect, compact = false }: PNConnectProps) {
           const userInfo = await PNOAuthService.getUserInfo(tokenResponse.access_token);
 
           // Create and save session
+          // Note: pN name is NOT stored - it's a secret
           const session = {
             accessToken: tokenResponse.access_token,
             refreshToken: tokenResponse.refresh_token,
             expiresAt: Date.now() + (tokenResponse.expires_in * 1000),
             did: userInfo.did,
-            pnName: userInfo.pn_name
+            nickname: userInfo.nickname // Optional nickname if available
           };
 
           PNOAuthService.saveSession(session);

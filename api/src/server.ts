@@ -1815,6 +1815,8 @@ class ProductionServer {
         // The public_key from request should match the one used to encrypt
 
         // Generate authorization code
+        // Note: pN name is a SECRET and should NOT be stored in tokens or shared
+        // It's only used for verification during authentication
         const scopes = scope ? scope.split(' ') : ['openid', 'profile'];
         const code = PNOAuthService.generateAuthorizationCode({
           clientId: client_id,
@@ -1822,8 +1824,8 @@ class ProductionServer {
           scope: scopes,
           state,
           nonce,
-          did,
-          pnName: pn_name // Store verified pN name
+          did
+          // pN name is NOT stored - it's a secret
         });
 
         // Return authorization code
@@ -1943,10 +1945,11 @@ class ProductionServer {
         }
 
         // Return user info based on token payload
+        // Note: pN name is NOT returned - it's a secret and should never be shared
         res.json({
           sub: tokenPayload.did,
-          did: tokenPayload.did,
-          pn_name: tokenPayload.pnName || undefined
+          did: tokenPayload.did
+          // pN name is NOT returned - it's a secret
         });
         return;
       } catch (error: any) {

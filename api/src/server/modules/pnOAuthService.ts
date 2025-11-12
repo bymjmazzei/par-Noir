@@ -14,7 +14,7 @@ export interface AuthorizationCode {
   state?: string;
   nonce?: string;
   did: string; // User's DID
-  pnName?: string; // User's pN name
+  // pN name is NOT stored here - it's a secret and should never be stored
   expiresAt: number; // Timestamp
 }
 
@@ -75,7 +75,7 @@ export class PNOAuthService {
     state?: string;
     nonce?: string;
     did: string;
-    pnName?: string;
+    // Note: pN name is NOT accepted here - it's a secret and should never be stored
   }): string {
     const code = crypto.randomBytes(32).toString('hex');
     
@@ -87,7 +87,7 @@ export class PNOAuthService {
       state: params.state,
       nonce: params.nonce,
       did: params.did,
-      pnName: params.pnName,
+      // pN name is NOT stored - it's a secret
       expiresAt: Date.now() + this.CODE_EXPIRY
     });
 

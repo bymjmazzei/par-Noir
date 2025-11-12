@@ -22,7 +22,8 @@ export interface OAuthTokenResponse {
 export interface OAuthUserInfo {
   sub: string;
   did: string;
-  pn_name?: string;
+  // pN name is NOT returned - it's a secret
+  nickname?: string; // Optional nickname if available
 }
 
 export interface AuthSession {
@@ -30,7 +31,8 @@ export interface AuthSession {
   refreshToken?: string;
   expiresAt: number;
   did: string;
-  pnName?: string;
+  // pN name is NOT stored - it's a secret
+  nickname?: string; // Optional nickname if available
 }
 
 export class PNOAuthService {
