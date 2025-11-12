@@ -21,6 +21,7 @@ import { KeyboardShortcuts } from './components/KeyboardShortcuts';
 import { LoadingSkeleton } from './components/LoadingSkeleton';
 import { Settings } from 'lucide-react';
 import { useKeyboardNavigation } from './hooks/useKeyboardNavigation';
+import { useSwipeGesture } from './hooks/useSwipeGesture';
 
 // Shared types - importing from id-dashboard
 // In production, these would come from a shared package
@@ -143,6 +144,15 @@ function App() {
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [showFeedBrowser, showSettings, viewingCreatorId]);
+
+  // Swipe gestures for mobile
+  const swipeRef = useSwipeGesture({
+    onSwipeUp: viewMode === 'feed' ? handleNextPost : undefined,
+    onSwipeDown: viewMode === 'feed' ? handlePreviousPost : undefined,
+    onSwipeLeft: viewMode === 'feed' ? handleNextFeed : undefined,
+    onSwipeRight: viewMode === 'feed' ? handlePreviousFeed : undefined,
+    enabled: viewMode === 'feed' && !showFeedBrowser && !showSettings && !showShortcuts && !viewingCreatorId
+  });
 
   // Intersection Observer for auto-playing videos in feed mode
   useEffect(() => {
@@ -702,7 +712,13 @@ function App() {
           </div>
         ) : viewMode === 'feed' ? (
           // TikTok-style feed view - takes full viewport
-          <div ref={feedScrollRef} className="flex-1 overflow-y-scroll snap-y snap-mandatory h-full">
+          <div 
+            ref={(el) => {
+              feedScrollRef.current = el;
+              (swipeRef as React.MutableRefObject<HTMLElement | null>).current = el;
+            }}
+            className="flex-1 overflow-y-scroll snap-y snap-mandatory h-full"
+          >
             {indexedFiles.map((indexedFile) => {
               const file = indexedFile.metadata;
               const isVideo = file.fileType === 'video' || 
