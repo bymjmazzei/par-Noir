@@ -6,9 +6,10 @@
 
 const API_ENDPOINT = process.env.REACT_APP_API_ENDPOINT || 'https://api.parnoir.com';
 const CLIENT_ID = process.env.REACT_APP_PN_CLIENT_ID || 'browser-app';
+// For popup flow, redirect_uri should be oauth-callback.html (matches oauth-authorize.html)
 const REDIRECT_URI = typeof window !== 'undefined' 
-  ? `${window.location.origin}${window.location.pathname}`
-  : 'http://localhost:3000';
+  ? `${window.location.origin}/oauth-callback.html`
+  : 'http://localhost:3000/oauth-callback.html';
 
 export interface OAuthTokenResponse {
   access_token: string;
