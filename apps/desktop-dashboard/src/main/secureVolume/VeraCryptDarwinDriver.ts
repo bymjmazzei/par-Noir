@@ -18,16 +18,19 @@ export class VeraCryptDarwinDriver extends VeraCryptDriver {
   protected findVeraCryptBinary(): string {
     const candidates: string[] = [];
     
-    // Check bundled resources first (electron-builder puts resources in app.asar.unpacked or Resources)
+    // Check bundled resources first (electron-builder puts extraResources in Contents/Resources/)
     if (this.appPath) {
       const appDir = path.dirname(this.appPath);
+      // For packaged apps: appPath is Contents/MacOS/par Noir Desktop
+      // Resources are at Contents/Resources/veracrypt/...
       const resourcesDir = path.join(appDir, '..', 'Resources');
-      const unpackedDir = path.join(appDir, '..', '..', 'resources', 'veracrypt', 'darwin', 'extracted');
       
       candidates.push(
+        // Bundled VeraCrypt from extraResources
         path.join(resourcesDir, 'veracrypt', 'darwin', 'extracted', 'VeraCrypt.app', 'Contents', 'MacOS', 'VeraCrypt'),
-        path.join(unpackedDir, 'VeraCrypt.app', 'Contents', 'MacOS', 'VeraCrypt'),
-        path.join(appDir, 'veracrypt', 'VeraCrypt.app', 'Contents', 'MacOS', 'VeraCrypt'),
+        // Alternative paths for different packaging scenarios
+        path.join(appDir, '..', '..', 'Resources', 'veracrypt', 'darwin', 'extracted', 'VeraCrypt.app', 'Contents', 'MacOS', 'VeraCrypt'),
+        path.join(appDir, 'veracrypt', 'darwin', 'extracted', 'VeraCrypt.app', 'Contents', 'MacOS', 'VeraCrypt'),
         path.join(appDir, 'VeraCrypt.app', 'Contents', 'MacOS', 'VeraCrypt'),
         path.join(appDir, 'veracrypt')
       );

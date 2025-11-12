@@ -22,6 +22,8 @@ const PLATFORMS = {
     extract: async (dmgPath, targetDir) => {
       console.log('[veracrypt-bundle] Extracting macOS DMG...');
       const mountPoint = path.join(targetDir, 'mount');
+      const pkgExtractDir = path.join(targetDir, 'pkg-extract');
+      
       try {
         // Mount the DMG
         execSync(`hdiutil attach "${dmgPath}" -mountpoint "${mountPoint}" -quiet -nobrowse`, { stdio: 'inherit' });
@@ -34,16 +36,71 @@ const PLATFORMS = {
           execSync(`cp -R "${appPath}" "${targetDir}/VeraCrypt.app"`, { stdio: 'inherit' });
           console.log('[veracrypt-bundle] Extracted VeraCrypt.app');
         } else if (fs.existsSync(pkgPath)) {
-          // Extract the pkg - this is more complex, for now we'll copy the pkg
-          // and note that macOS may need system-installed VeraCrypt
-          console.log('[veracrypt-bundle] DMG contains installer package - macOS may require system-installed VeraCrypt');
-          console.log('[veracrypt-bundle] App will fall back to system installation if bundled version not found');
-          // For portability, we'll skip bundling the pkg and rely on system installation
-          // Users can install VeraCrypt system-wide: brew install veracrypt
+          console.log('[veracrypt-bundle] Extracting VeraCrypt.app from installer package...');
+          
+          // Create extraction directory
+          fs.mkdirSync(pkgExtractDir, { recursive: true });
+          
+          // Use pkgutil to expand the installer (handles nested pkgs better)
+          const expandedDir = path.join(pkgExtractDir, 'expanded');
+          execSync(`pkgutil --expand "${pkgPath}" "${expandedDir}"`, { stdio: 'inherit' });
+          
+          // Find the Payload file - it's usually in a nested pkg
+          const nestedPkgDir = path.join(expandedDir, 'veracrypt.pkg');
+          const payloadPath = fs.existsSync(nestedPkgDir) 
+            ? path.join(nestedPkgDir, 'Payload')
+            : path.join(expandedDir, 'Payload');
+          
+          if (fs.existsSync(payloadPath)) {
+            // Extract the Payload (cpio archive)
+            const extractDir = fs.existsSync(nestedPkgDir) ? nestedPkgDir : expandedDir;
+            execSync(`cd "${extractDir}" && cat Payload | gunzip -dc | cpio -i`, { stdio: 'inherit' });
+            
+            // Look for VeraCrypt.app in the extracted files
+            // It's usually in Applications/VeraCrypt.app
+            const extractedAppPath = path.join(extractDir, 'Applications', 'VeraCrypt.app');
+            if (fs.existsSync(extractedAppPath)) {
+              execSync(`cp -R "${extractedAppPath}" "${targetDir}/VeraCrypt.app"`, { stdio: 'inherit' });
+              console.log('[veracrypt-bundle] Successfully extracted VeraCrypt.app from installer');
+            } else {
+              // Try alternative locations
+              const altPaths = [
+                path.join(extractDir, 'VeraCrypt.app'),
+                path.join(extractDir, 'usr', 'local', 'bin', 'VeraCrypt.app'),
+                path.join(extractDir, 'Library', 'Application Support', 'VeraCrypt', 'VeraCrypt.app')
+              ];
+              
+              let found = false;
+              for (const altPath of altPaths) {
+                if (fs.existsSync(altPath)) {
+                  execSync(`cp -R "${altPath}" "${targetDir}/VeraCrypt.app"`, { stdio: 'inherit' });
+                  console.log('[veracrypt-bundle] Successfully extracted VeraCrypt.app from installer');
+                  found = true;
+                  break;
+                }
+              }
+              
+              if (!found) {
+                // List what we extracted for debugging
+                console.log('[veracrypt-bundle] Contents of extracted pkg:');
+                execSync(`find "${extractDir}" -name "*.app" -type d 2>/dev/null | head -10`, { stdio: 'inherit' });
+                throw new Error('VeraCrypt.app not found in extracted installer package');
+              }
+            }
+          } else {
+            throw new Error('Payload file not found in extracted pkg');
+          }
         } else {
           throw new Error('VeraCrypt.app or installer not found in DMG');
         }
       } finally {
+        // Clean up extraction directory
+        try {
+          if (fs.existsSync(pkgExtractDir)) {
+            execSync(`rm -rf "${pkgExtractDir}"`, { stdio: 'ignore' });
+          }
+        } catch {}
+        
         // Unmount the DMG
         try {
           execSync(`hdiutil detach "${mountPoint}" -quiet`, { stdio: 'ignore' });
