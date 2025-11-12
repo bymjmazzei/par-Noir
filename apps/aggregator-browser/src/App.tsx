@@ -21,6 +21,7 @@ import { KeyboardShortcuts } from './components/KeyboardShortcuts';
 import { LoadingSkeleton } from './components/LoadingSkeleton';
 import { ContentRatingBadge } from './components/ContentRatingBadge';
 import { EmptyState } from './components/EmptyState';
+import { WelcomeModal } from './components/WelcomeModal';
 import { Settings } from 'lucide-react';
 import { useKeyboardNavigation } from './hooks/useKeyboardNavigation';
 import { useSwipeGesture } from './hooks/useSwipeGesture';
@@ -48,6 +49,14 @@ function App() {
   const [showFeedBrowser, setShowFeedBrowser] = useState(false); // Show feed browser modal
   const [showSettings, setShowSettings] = useState(false); // Show settings panel
   const [showShortcuts, setShowShortcuts] = useState(false); // Show keyboard shortcuts
+  const [showWelcome, setShowWelcome] = useState(() => {
+    // Show welcome on first visit
+    try {
+      return !localStorage.getItem('pn_welcome_completed');
+    } catch {
+      return false;
+    }
+  });
   const [viewingCreatorId, setViewingCreatorId] = useState<string | null>(null); // Creator ID for index view
   const [feedViewedTimestamps, setFeedViewedTimestamps] = useState<Map<string, string>>(
     () => loadFeedViewedTimestamps()
@@ -750,7 +759,7 @@ function App() {
                 <div
                   key={file.fileId}
                   data-file-id={file.fileId}
-                  className="h-screen w-full snap-start flex items-center justify-center bg-black relative"
+                  className="h-screen w-full snap-start flex items-center justify-center bg-black relative feed-item"
                 >
                   {/* Full-screen video */}
                   {isVideo && videoBlobs.get(file.fileId) && (
@@ -1155,6 +1164,27 @@ function App() {
         {showShortcuts && (
           <KeyboardShortcuts
             onClose={() => setShowShortcuts(false)}
+          />
+        )}
+
+        {/* Welcome Modal */}
+        {showWelcome && (
+          <WelcomeModal
+            onClose={() => {
+              setShowWelcome(false);
+              try {
+                localStorage.setItem('pn_welcome_completed', 'true');
+              } catch (e) {
+                console.warn('Failed to save welcome completion:', e);
+              }
+            }}
+            onComplete={() => {
+              try {
+                localStorage.setItem('pn_welcome_completed', 'true');
+              } catch (e) {
+                console.warn('Failed to save welcome completion:', e);
+              }
+            }}
           />
         )}
       </div>

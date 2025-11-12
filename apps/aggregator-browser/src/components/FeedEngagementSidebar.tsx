@@ -40,7 +40,7 @@ export function FeedEngagementSidebar({
   };
 
   return (
-    <div className="absolute right-4 bottom-24 flex flex-col items-center space-y-6 z-10">
+    <div className="absolute right-2 md:right-4 bottom-20 md:bottom-24 flex flex-col items-center space-y-4 md:space-y-6 z-10">
       {/* Like Button */}
       <button
         onClick={() => handleAction('like', onLike)}
@@ -51,8 +51,8 @@ export function FeedEngagementSidebar({
           {!userState.isUnlocked && (
             <Lock className="absolute -top-1 -right-1 h-3 w-3 text-yellow-400" />
           )}
-          <div className="w-12 h-12 rounded-full bg-black/30 backdrop-blur-sm flex items-center justify-center group-hover:bg-black/50 transition-colors">
-            <Heart className={`h-6 w-6 transition-colors ${
+          <div className="w-12 h-12 md:w-14 md:h-14 rounded-full bg-black/30 backdrop-blur-sm flex items-center justify-center group-hover:bg-black/50 active:bg-black/70 transition-colors touch-manipulation">
+            <Heart className={`h-6 w-6 md:h-7 md:w-7 transition-colors ${
               userState.isUnlocked
                 ? 'text-white group-hover:text-red-400'
                 : 'text-white/50'
@@ -72,8 +72,8 @@ export function FeedEngagementSidebar({
           {!userState.isUnlocked && (
             <Lock className="absolute -top-1 -right-1 h-3 w-3 text-yellow-400" />
           )}
-          <div className="w-12 h-12 rounded-full bg-black/30 backdrop-blur-sm flex items-center justify-center group-hover:bg-black/50 transition-colors">
-            <MessageCircle className={`h-6 w-6 transition-colors ${
+          <div className="w-12 h-12 md:w-14 md:h-14 rounded-full bg-black/30 backdrop-blur-sm flex items-center justify-center group-hover:bg-black/50 active:bg-black/70 transition-colors touch-manipulation">
+            <MessageCircle className={`h-6 w-6 md:h-7 md:w-7 transition-colors ${
               userState.isUnlocked
                 ? 'text-white group-hover:text-blue-400'
                 : 'text-white/50'
@@ -89,8 +89,8 @@ export function FeedEngagementSidebar({
         className="flex flex-col items-center space-y-1 group"
         title="Share"
       >
-        <div className="w-12 h-12 rounded-full bg-black/30 backdrop-blur-sm flex items-center justify-center group-hover:bg-black/50 transition-colors">
-          <Share2 className="h-6 w-6 text-white group-hover:text-green-400 transition-colors" />
+        <div className="w-12 h-12 md:w-14 md:h-14 rounded-full bg-black/30 backdrop-blur-sm flex items-center justify-center group-hover:bg-black/50 active:bg-black/70 transition-colors touch-manipulation">
+          <Share2 className="h-6 w-6 md:h-7 md:w-7 text-white group-hover:text-green-400 transition-colors" />
         </div>
         <span className="text-xs text-white font-medium">Share</span>
       </button>
@@ -102,8 +102,8 @@ export function FeedEngagementSidebar({
           className="flex flex-col items-center space-y-1 group"
           title="Bookmark"
         >
-          <div className="w-12 h-12 rounded-full bg-black/30 backdrop-blur-sm flex items-center justify-center group-hover:bg-black/50 transition-colors">
-            <Bookmark className="h-6 w-6 text-white group-hover:text-yellow-400 transition-colors" />
+          <div className="w-12 h-12 md:w-14 md:h-14 rounded-full bg-black/30 backdrop-blur-sm flex items-center justify-center group-hover:bg-black/50 active:bg-black/70 transition-colors touch-manipulation">
+            <Bookmark className="h-6 w-6 md:h-7 md:w-7 text-white group-hover:text-yellow-400 transition-colors" />
           </div>
         </button>
       )}
@@ -115,8 +115,8 @@ export function FeedEngagementSidebar({
           className="flex flex-col items-center space-y-1 group"
           title="More options"
         >
-          <div className="w-12 h-12 rounded-full bg-black/30 backdrop-blur-sm flex items-center justify-center group-hover:bg-black/50 transition-colors">
-            <MoreVertical className="h-6 w-6 text-white transition-colors" />
+          <div className="w-12 h-12 md:w-14 md:h-14 rounded-full bg-black/30 backdrop-blur-sm flex items-center justify-center group-hover:bg-black/50 active:bg-black/70 transition-colors touch-manipulation">
+            <MoreVertical className="h-6 w-6 md:h-7 md:w-7 text-white transition-colors" />
           </div>
         </button>
       )}
