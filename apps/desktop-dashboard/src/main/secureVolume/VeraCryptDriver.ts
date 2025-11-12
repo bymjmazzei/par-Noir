@@ -108,7 +108,11 @@ export abstract class VeraCryptDriver implements VolumeDriver {
     }
 
     await fs.mkdir(path.dirname(this.containerPath), { recursive: true });
-    await fs.mkdir(this.mountPoint, { recursive: true });
+    // Don't create mount point if it's a system mount root (e.g., /Volumes on macOS)
+    // VeraCrypt will create it automatically when mounting
+    if (!this.isSystemMountRoot(this.mountRoot)) {
+      await fs.mkdir(this.mountPoint, { recursive: true });
+    }
     this.unlockContext = { ...payload, authToken: payload.authToken.trim() };
   }
 
@@ -202,7 +206,11 @@ export abstract class VeraCryptDriver implements VolumeDriver {
     }
 
     await fs.mkdir(path.dirname(this.containerPath), { recursive: true });
-    await fs.mkdir(this.mountPoint, { recursive: true });
+    // Don't create mount point if it's a system mount root (e.g., /Volumes on macOS)
+    // VeraCrypt will create it automatically when mounting
+    if (!this.isSystemMountRoot(this.mountRoot)) {
+      await fs.mkdir(this.mountPoint, { recursive: true });
+    }
 
     try {
       await this.executeCreate();
@@ -213,6 +221,11 @@ export abstract class VeraCryptDriver implements VolumeDriver {
       });
       throw error;
     }
+  }
+
+  protected isSystemMountRoot(mountRoot: string): boolean {
+    // System mount roots that don't allow directory creation
+    return mountRoot === '/Volumes' || mountRoot === '/mnt' || mountRoot.startsWith('/Volumes/');
   }
 
   protected abstract executeCreate(): Promise<void>;

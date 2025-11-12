@@ -83,7 +83,11 @@ class VeraCryptDriver {
             this.mountPoint = path_1.default.join(this.mountRoot, dirName);
         }
         await fs_1.promises.mkdir(path_1.default.dirname(this.containerPath), { recursive: true });
-        await fs_1.promises.mkdir(this.mountPoint, { recursive: true });
+        // Don't create mount point if it's a system mount root (e.g., /Volumes on macOS)
+        // VeraCrypt will create it automatically when mounting
+        if (!this.isSystemMountRoot(this.mountRoot)) {
+            await fs_1.promises.mkdir(this.mountPoint, { recursive: true });
+        }
         this.unlockContext = { ...payload, authToken: payload.authToken.trim() };
     }
     async clearUnlockContext() {
@@ -158,7 +162,11 @@ class VeraCryptDriver {
             throw new Error('Unlock context required to create secure volume');
         }
         await fs_1.promises.mkdir(path_1.default.dirname(this.containerPath), { recursive: true });
-        await fs_1.promises.mkdir(this.mountPoint, { recursive: true });
+        // Don't create mount point if it's a system mount root (e.g., /Volumes on macOS)
+        // VeraCrypt will create it automatically when mounting
+        if (!this.isSystemMountRoot(this.mountRoot)) {
+            await fs_1.promises.mkdir(this.mountPoint, { recursive: true });
+        }
         try {
             await this.executeCreate();
         }
@@ -169,6 +177,10 @@ class VeraCryptDriver {
             });
             throw error;
         }
+    }
+    isSystemMountRoot(mountRoot) {
+        // System mount roots that don't allow directory creation
+        return mountRoot === '/Volumes' || mountRoot === '/mnt' || mountRoot.startsWith('/Volumes/');
     }
     sanitiseName(name) {
         return name.replace(/[\/:*?"<>|]+/g, '-').trim() || 'par-noir-secure';

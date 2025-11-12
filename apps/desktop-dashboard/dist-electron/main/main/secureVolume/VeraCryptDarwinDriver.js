@@ -16,12 +16,17 @@ class VeraCryptDarwinDriver extends VeraCryptDriver_1.VeraCryptDriver {
     }
     findVeraCryptBinary() {
         const candidates = [];
-        // Check bundled resources first (electron-builder puts resources in app.asar.unpacked or Resources)
+        // Check bundled resources first (electron-builder puts extraResources in Contents/Resources/)
         if (this.appPath) {
             const appDir = path_1.default.dirname(this.appPath);
+            // For packaged apps: appPath is Contents/MacOS/par Noir Desktop
+            // Resources are at Contents/Resources/veracrypt/...
             const resourcesDir = path_1.default.join(appDir, '..', 'Resources');
-            const unpackedDir = path_1.default.join(appDir, '..', '..', 'resources', 'veracrypt', 'darwin', 'extracted');
-            candidates.push(path_1.default.join(resourcesDir, 'veracrypt', 'darwin', 'extracted', 'VeraCrypt.app', 'Contents', 'MacOS', 'VeraCrypt'), path_1.default.join(unpackedDir, 'VeraCrypt.app', 'Contents', 'MacOS', 'VeraCrypt'), path_1.default.join(appDir, 'veracrypt', 'VeraCrypt.app', 'Contents', 'MacOS', 'VeraCrypt'), path_1.default.join(appDir, 'VeraCrypt.app', 'Contents', 'MacOS', 'VeraCrypt'), path_1.default.join(appDir, 'veracrypt'));
+            candidates.push(
+            // Bundled VeraCrypt from extraResources
+            path_1.default.join(resourcesDir, 'veracrypt', 'darwin', 'extracted', 'VeraCrypt.app', 'Contents', 'MacOS', 'VeraCrypt'), 
+            // Alternative paths for different packaging scenarios
+            path_1.default.join(appDir, '..', '..', 'Resources', 'veracrypt', 'darwin', 'extracted', 'VeraCrypt.app', 'Contents', 'MacOS', 'VeraCrypt'), path_1.default.join(appDir, 'veracrypt', 'darwin', 'extracted', 'VeraCrypt.app', 'Contents', 'MacOS', 'VeraCrypt'), path_1.default.join(appDir, 'VeraCrypt.app', 'Contents', 'MacOS', 'VeraCrypt'), path_1.default.join(appDir, 'veracrypt'));
         }
         candidates.push('/Applications/VeraCrypt.app/Contents/MacOS/VeraCrypt', '/usr/local/bin/veracrypt', '/opt/homebrew/bin/veracrypt', 'veracrypt');
         for (const candidate of candidates) {
