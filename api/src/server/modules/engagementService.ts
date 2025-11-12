@@ -218,6 +218,34 @@ export class EngagementService {
   }
 
   /**
+   * Check which files a user has liked (bulk)
+   */
+  static async getBulkLikedFiles(fileIds: string[], userDid: string): Promise<Set<string>> {
+    const db = getDatabasePool();
+    const likedSet = new Set<string>();
+
+    if (fileIds.length === 0) {
+      return likedSet;
+    }
+
+    try {
+      const result = await db.query(`
+        SELECT file_id FROM engagement 
+        WHERE file_id = ANY($1::text[]) AND user_did = $2 AND type = 'like'
+      `, [fileIds, userDid]);
+
+      result.rows.forEach(row => {
+        likedSet.add(row.file_id);
+      });
+
+      return likedSet;
+    } catch (error) {
+      console.error('Failed to get bulk liked files:', error);
+      return likedSet;
+    }
+  }
+
+  /**
    * Get engagement stats for multiple files
    */
   static async getBulkEngagementStats(fileIds: string[]): Promise<Map<string, EngagementStats>> {

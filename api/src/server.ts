@@ -814,6 +814,42 @@ class ProductionServer {
       }
     });
 
+    // POST /api/engagement/bulk-stats - Get engagement stats for multiple files
+    this.app.post('/api/engagement/bulk-stats', async (req, res) => {
+      try {
+        const { EngagementService } = await import('./server/modules/engagementService');
+        const { fileIds, userDid } = req.body;
+
+        if (!fileIds || !Array.isArray(fileIds)) {
+          return res.status(400).json({ error: 'fileIds array is required' });
+        }
+
+        const statsMap = await EngagementService.getBulkEngagementStats(fileIds);
+
+        // Convert Map to object for JSON response
+        const stats: Record<string, any> = {};
+        statsMap.forEach((value, key) => {
+          stats[key] = value;
+        });
+
+        // Also check which files the user has liked if userDid is provided
+        const likedFiles: string[] = [];
+        if (userDid && fileIds.length > 0) {
+          const likedSet = await EngagementService.getBulkLikedFiles(fileIds, userDid);
+          likedFiles.push(...Array.from(likedSet));
+        }
+
+        return res.json({
+          stats,
+          likedFiles,
+          count: fileIds.length
+        });
+      } catch (error: any) {
+        console.error('Error getting bulk engagement stats:', error);
+        return res.status(500).json({ error: 'Failed to get bulk engagement stats', message: error.message });
+      }
+    });
+
     // GET /api/aggregator/curated/:did - Get curated feed for a DID
     // ============================================================================
     // Feed Management APIs

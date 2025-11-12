@@ -75,7 +75,7 @@ function App() {
   const videoRefs = React.useRef<Map<string, HTMLVideoElement>>(new Map()); // Store video element refs
   
   const metadataIndexService = getMetadataIndexService();
-  const { toggleLike, share, getLikeCount, isLiked, getComments, getShareCount } = useEngagement();
+  const { toggleLike, share, getLikeCount, isLiked, getComments, getShareCount, loadBulkEngagementStats } = useEngagement();
   const { toasts, removeToast, success, error } = useToast();
   const { getParam, setParam } = useURLParams();
 
@@ -119,6 +119,19 @@ function App() {
 
     loadSubscriptions();
   }, [userState.isUnlocked, userState.pnIdentifier]);
+
+  // Load bulk engagement stats when files are loaded
+  useEffect(() => {
+    if (indexedFiles.length > 0) {
+      const fileIds = indexedFiles.map(file => file.metadata.fileId);
+      // Load engagement stats in batches to avoid overwhelming the API
+      const batchSize = 50;
+      for (let i = 0; i < fileIds.length; i += batchSize) {
+        const batch = fileIds.slice(i, i + batchSize);
+        loadBulkEngagementStats(batch);
+      }
+    }
+  }, [indexedFiles.length, loadBulkEngagementStats]); // Only reload when count changes
 
   // Initialize from URL params
   useEffect(() => {

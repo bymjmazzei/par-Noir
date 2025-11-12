@@ -74,8 +74,6 @@ export function useEngagement() {
 
   // Load engagement stats from backend when user is authenticated
   const loadEngagementStats = useCallback(async (fileId: string) => {
-    if (!userState.isUnlocked || !userState.pnIdentifier) return;
-
     if (loadingStats.has(fileId)) return;
     setLoadingStats(prev => new Set(prev).add(fileId));
 
@@ -99,7 +97,66 @@ export function useEngagement() {
         return next;
       });
     }
-  }, [userState.isUnlocked, userState.pnIdentifier, loadingStats]);
+  }, [loadingStats]);
+
+  // Load bulk engagement stats for multiple files
+  const loadBulkEngagementStats = useCallback(async (fileIds: string[]) => {
+    if (fileIds.length === 0) return;
+
+    // Mark files as loading
+    setLoadingStats(prev => {
+      const next = new Set(prev);
+      fileIds.forEach(id => next.add(id));
+      return next;
+    });
+
+    try {
+      const response = await fetch(`${API_ENDPOINT}/api/engagement/bulk-stats`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          fileIds,
+          userDid: userState.isUnlocked ? userState.pnIdentifier : undefined
+        })
+      });
+
+      if (response.ok) {
+        const result = await response.json();
+        const { stats, likedFiles } = result;
+
+        // Update engagement state with backend stats
+        setEngagement(prev => {
+          const newLikes = new Set(prev.likes);
+          const newShares = new Map(prev.shares);
+
+          // Update liked files
+          if (likedFiles && Array.isArray(likedFiles)) {
+            likedFiles.forEach((fileId: string) => {
+              newLikes.add(fileId);
+            });
+          }
+
+          // Update share counts
+          Object.entries(stats || {}).forEach(([fileId, fileStats]: [string, any]) => {
+            if (fileStats && typeof fileStats.shares === 'number') {
+              newShares.set(fileId, fileStats.shares);
+            }
+          });
+
+          return { ...prev, likes: newLikes, shares: newShares };
+        });
+      }
+    } catch (error) {
+      console.warn('Failed to load bulk engagement stats:', error);
+    } finally {
+      // Remove loading state
+      setLoadingStats(prev => {
+        const next = new Set(prev);
+        fileIds.forEach(id => next.delete(id));
+        return next;
+      });
+    }
+  }, [userState.isUnlocked, userState.pnIdentifier]);
 
   const toggleLike = useCallback(async (fileId: string) => {
     if (userState.isUnlocked && userState.pnIdentifier) {
@@ -291,7 +348,8 @@ export function useEngagement() {
     getShareCount,
     loadComments,
     loadLikeStatus,
-    loadEngagementStats
+    loadEngagementStats,
+    loadBulkEngagementStats
   };
 }
 
