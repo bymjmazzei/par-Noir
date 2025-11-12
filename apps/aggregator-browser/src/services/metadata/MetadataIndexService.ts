@@ -64,14 +64,48 @@ export class MetadataIndexService {
 
       // Transform to IndexedFile format
       // aggregatedEntries are CentralIndexEntry objects from the API
+      // Backend already filters for public files, so we trust what the API returns
+      // But we also check: isPublic !== false OR has publicToken (means it's meant to be public)
+      console.log(`🔍 [MetadataIndexService] Processing ${aggregatedEntries.length} entries from API`);
+      
       let files: IndexedFile[] = aggregatedEntries
-        .filter((entry: any) => entry.metadata?.isPublic !== false) // Only public files
+        .filter((entry: any) => {
+          const metadata = entry.metadata || {};
+          const isPublic = metadata.isPublic;
+          const hasPublicToken = metadata.publicToken != null;
+          
+          // Debug logging for first entry
+          if (aggregatedEntries.indexOf(entry) === 0) {
+            console.log('🔍 [MetadataIndexService] Sample entry:', {
+              fileId: metadata.fileId,
+              isPublic,
+              hasPublicToken,
+              name: metadata.name
+            });
+          }
+          
+          // Include if: isPublic is true/undefined/null OR has publicToken
+          const shouldInclude = isPublic !== false || hasPublicToken;
+          
+          if (!shouldInclude && aggregatedEntries.indexOf(entry) < 3) {
+            console.log(`⚠️ [MetadataIndexService] Filtered out entry:`, {
+              fileId: metadata.fileId,
+              isPublic,
+              hasPublicToken
+            });
+          }
+          
+          return shouldInclude;
+        })
         .map((entry: any) => ({
           metadata: entry.metadata,
           thumbnail: entry.metadata?.thumbnail
         }));
+      
+      console.log(`✅ [MetadataIndexService] After initial filtering: ${files.length} files`);
 
       // Apply filters
+      const beforeFilters = files.length;
       if (filters) {
         if (filters.tags && filters.tags.length > 0) {
           files = files.filter(file => {
@@ -103,7 +137,9 @@ export class MetadataIndexService {
         if (filters.maxRating) {
           files = files.filter(file => {
             const fileRating = file.metadata.contentRating;
-            if (!fileRating) return false; // No rating = exclude
+            // If file has no rating, include it (assume safe default)
+            // Only filter out if file has a rating that exceeds user's preference
+            if (!fileRating) return true; // No rating = include (changed from exclude)
             return isRatingAcceptable(fileRating, filters.maxRating!);
           });
         }
@@ -143,6 +179,11 @@ export class MetadataIndexService {
             return file.metadata.creatorTier === filters.creatorTier;
           });
         }
+      }
+      
+      console.log(`✅ [MetadataIndexService] After all filters: ${files.length} files (was ${beforeFilters} before filters)`);
+      if (beforeFilters > files.length) {
+        console.log(`⚠️ [MetadataIndexService] Filtered out ${beforeFilters - files.length} files due to filters:`, filters);
       }
 
       return files;

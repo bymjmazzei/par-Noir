@@ -4,7 +4,13 @@
  * Creator hosts subscriber list, subscriber stores local reference
  */
 
-import { google } from 'googleapis';
+// Optional: Only import if googleapis is available
+let google: any;
+try {
+  google = require('googleapis').google;
+} catch (e) {
+  // googleapis not installed - this module will gracefully degrade
+}
 
 export interface SubscriberInfo {
   subscriberDid: string;

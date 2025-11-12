@@ -11,8 +11,10 @@ export default defineConfig({
   },
   build: {
     outDir: 'dist',
-    sourcemap: false
+    sourcemap: false,
+    copyPublicDir: true // Ensure public folder is copied
   },
+  publicDir: 'public', // Explicitly set public directory
   server: {
     port: 3001
   }

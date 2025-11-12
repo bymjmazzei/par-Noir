@@ -22,6 +22,39 @@ npm install @identity-protocol/identity-sdk
 
 ## 🔧 Quick Start
 
+### pN OAuth Integration (Recommended for Third-Party Platforms)
+
+**Enable users to login with their pN identity, just like Google OAuth:**
+
+```javascript
+import { createPNOAuthClient } from '@identity-protocol/identity-sdk';
+
+// Initialize OAuth client
+const pnAuth = createPNOAuthClient({
+  clientId: 'your-client-id', // Get from par Noir developer portal
+  scopes: ['openid', 'profile'],
+  usePopup: true // Opens popup window (like Google OAuth)
+});
+
+// Login button handler
+async function handleLogin() {
+  try {
+    const session = await pnAuth.authenticate();
+    
+    console.log('User logged in:', session.did);
+    console.log('pN Name:', session.pnName);
+    console.log('Access Token:', session.accessToken);
+    
+    // Store session and update UI
+    localStorage.setItem('pn_session', JSON.stringify(session));
+  } catch (error) {
+    console.error('Login failed:', error);
+  }
+}
+```
+
+**See [pN OAuth Integration Guide](./docs/developer/PN_OAUTH_INTEGRATION.md) for complete documentation.**
+
 ### ZKP-Based Authentication (New)
 
 The SDK now supports **zero-knowledge proof-based authentication** that allows third parties to verify user ownership without accessing the public pN:

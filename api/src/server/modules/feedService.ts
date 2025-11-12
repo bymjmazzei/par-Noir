@@ -507,7 +507,7 @@ export class FeedService {
         const feed = await this.getFeedById(feedId);
         if (feed) {
           const { NotificationService } = await import('./notificationService');
-          await NotificationService.notifyFeedNewPost(feedId, fileId, feed.feedName, feed.creatorDid);
+          await NotificationService.notifyFeedNewPost(feedId, fileId, feed.feedName, feed.creatorId);
         }
       } catch (error) {
         console.warn('Failed to send feed new post notification:', error);

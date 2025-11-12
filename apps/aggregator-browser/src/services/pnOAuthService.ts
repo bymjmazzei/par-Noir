@@ -35,15 +35,18 @@ export interface AuthSession {
 export class PNOAuthService {
   /**
    * Generate authorization URL
+   * For popup flow, redirect_uri should point to oauth-authorize.html
    */
   static getAuthorizationUrl(params?: {
     scope?: string[];
     state?: string;
     nonce?: string;
+    usePopup?: boolean;
   }): string {
     const scope = params?.scope || ['openid', 'profile'];
     const state = params?.state || this.generateState();
     const nonce = params?.nonce || this.generateNonce();
+    const usePopup = params?.usePopup !== false; // Default to popup
 
     // Store state and nonce for verification
     if (typeof window !== 'undefined') {
@@ -51,14 +54,25 @@ export class PNOAuthService {
       sessionStorage.setItem('pn_oauth_nonce', nonce);
     }
 
+    // For popup flow, use oauth-authorize.html as the redirect target
+    // The popup will handle the unlock UI and send code back via postMessage
+    const redirectUri = usePopup 
+      ? `${typeof window !== 'undefined' ? window.location.origin : ''}/oauth-callback.html`
+      : REDIRECT_URI;
+
     const paramsStr = new URLSearchParams({
       client_id: CLIENT_ID,
-      redirect_uri: REDIRECT_URI,
+      redirect_uri: redirectUri,
       response_type: 'code',
       scope: scope.join(' '),
       state,
       nonce
     }).toString();
+
+    // Return URL to oauth-authorize.html with params
+    if (usePopup && typeof window !== 'undefined') {
+      return `${window.location.origin}/oauth-authorize.html?${paramsStr}`;
+    }
 
     return `${API_ENDPOINT}/oauth/authorize?${paramsStr}`;
   }

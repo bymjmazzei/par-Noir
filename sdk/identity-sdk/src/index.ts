@@ -1,6 +1,16 @@
 // Main SDK exports
 export { IdentitySDK } from './IdentitySDK';
 
+// pN OAuth Client (for third-party developers)
+export { 
+  PNOAuthClient, 
+  createPNOAuthClient,
+  type PNOAuthConfig,
+  type PNOAuthTokenResponse,
+  type PNOAuthUserInfo,
+  type PNOAuthSession
+} from './PNOAuthClient';
+
 // Advanced Security exports
 export { CertificatePinning, ThreatDetectionEngine, DistributedRateLimiter } from './advancedSecurity';
 
@@ -42,15 +52,37 @@ export const providers = {
       redirectUri: '', // Set by developer
       scopes: ['openid', 'profile', 'email'],
       endpoints: {
-        authorization: 'https://identity-protocol.com/oauth/authorize',
-        token: 'https://identity-protocol.com/oauth/token',
-        userInfo: 'https://identity-protocol.com/oauth/userinfo',
-        revocation: 'https://identity-protocol.com/oauth/revoke'
+        authorization: 'https://api.parnoir.com/oauth/authorize',
+        token: 'https://api.parnoir.com/oauth/token',
+        userInfo: 'https://api.parnoir.com/oauth/userinfo',
+        revocation: 'https://api.parnoir.com/oauth/revoke'
       }
     },
     metadata: {
-      logo: 'https://identity-protocol.com/logo.png',
+      logo: 'https://parnoir.com/logo.png',
       description: 'Universal identity authentication'
+    }
+  },
+  // pN OAuth provider (recommended for new integrations)
+  pnOAuth: {
+    name: 'par Noir OAuth',
+    type: 'oauth2' as const,
+    config: {
+      name: 'par Noir',
+      clientId: '', // Set by developer
+      redirectUri: '', // Set by developer (optional for popup flow)
+      scopes: ['openid', 'profile'],
+      endpoints: {
+        authorization: 'https://api.parnoir.com/oauth/authorize',
+        token: 'https://api.parnoir.com/oauth/token',
+        userInfo: 'https://api.parnoir.com/oauth/userinfo',
+        revocation: 'https://api.parnoir.com/oauth/revoke'
+      },
+      usePopup: true // Default to popup flow
+    },
+    metadata: {
+      logo: 'https://parnoir.com/logo.png',
+      description: 'Login with your pN identity'
     }
   }
 };

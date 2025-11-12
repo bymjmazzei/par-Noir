@@ -179,7 +179,7 @@ export class AggregatorMetadataServiceDB {
 
       const result = await db.query(query, params);
       let entries: CentralIndexEntry[] = result.rows.map(row => {
-        const metadata = row.metadata as PublicMetadata;
+        const metadata = row.metadata as PublicMetadata & { feedIds?: string[] };
         // Add feedIds to metadata if they exist
         if (row.feed_ids && row.feed_ids.length > 0) {
           metadata.feedIds = row.feed_ids.map((id: string) => id.toString());

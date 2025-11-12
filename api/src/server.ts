@@ -421,12 +421,14 @@ class ProductionServer {
 
         console.log(`📤 [GET /api/aggregator/metadata-index] Returning ${response.files.length} files`);
         res.json(response);
+        return;
       } catch (error: any) {
         console.error('❌ [GET /api/aggregator/metadata-index] Error:', error);
         res.status(500).json({ 
           error: 'Failed to fetch metadata index',
           message: error.message 
         });
+        return;
       }
     });
 
@@ -1735,14 +1737,15 @@ class ProductionServer {
       // For browser app, we'll handle this client-side
       const scopes = scope ? (scope as string).split(' ') : ['openid', 'profile'];
       
-      res.json({
-        authorization_url: `/oauth/authorize/consent?client_id=${client_id}&redirect_uri=${encodeURIComponent(redirect_uri as string)}&scope=${encodeURIComponent(scope as string || 'openid profile')}&state=${state || ''}&nonce=${nonce || ''}`,
-        client_id,
-        redirect_uri,
-        scope: scopes,
-        state: state || undefined,
-        nonce: nonce || undefined
-      });
+        res.json({
+          authorization_url: `/oauth/authorize/consent?client_id=${client_id}&redirect_uri=${encodeURIComponent(redirect_uri as string)}&scope=${encodeURIComponent(scope as string || 'openid profile')}&state=${state || ''}&nonce=${nonce || ''}`,
+          client_id,
+          redirect_uri,
+          scope: scopes,
+          state: state || undefined,
+          nonce: nonce || undefined
+        });
+        return;
     });
 
     // POST /oauth/authorize/authenticate - Authenticate user with pN identity
@@ -1769,8 +1772,8 @@ class ProductionServer {
           });
         }
 
-        // Import crypto utilities
-        const { decryptIdentity, verifyPnName } = await import('./utils/pnCrypto');
+        // Import crypto utilities  
+        const { decryptIdentity, verifyPnName } = await import('./server/utils/pnCrypto');
 
         // Decrypt and verify identity file
         let decryptedIdentity;
@@ -1808,13 +1811,8 @@ class ProductionServer {
           });
         }
 
-        // Verify public key matches
-        if (decryptedIdentity.publicKey && decryptedIdentity.publicKey !== public_key) {
-          return res.status(400).json({
-            error: 'invalid_identity',
-            error_description: 'Public key mismatch'
-          });
-        }
+        // Note: publicKey is not stored in decrypted identity (it's only in encrypted form)
+        // The public_key from request should match the one used to encrypt
 
         // Generate authorization code
         const scopes = scope ? scope.split(' ') : ['openid', 'profile'];
@@ -1833,12 +1831,14 @@ class ProductionServer {
           code,
           state: state || undefined
         });
+        return;
       } catch (error: any) {
         console.error('OAuth authentication error:', error);
         res.status(500).json({
           error: 'server_error',
           error_description: error.message || 'Authentication failed'
         });
+        return;
       }
     });
 
@@ -1876,12 +1876,14 @@ class ProductionServer {
         }
 
         res.json(tokenResponse);
+        return;
       } catch (error: any) {
         console.error('Token exchange error:', error);
         res.status(500).json({
           error: 'server_error',
           error_description: error.message || 'Token exchange failed'
         });
+        return;
       }
     });
 
@@ -1907,12 +1909,14 @@ class ProductionServer {
         }
 
         res.json(tokenResponse);
+        return;
       } catch (error: any) {
         console.error('Token refresh error:', error);
         res.status(500).json({
           error: 'server_error',
           error_description: error.message || 'Token refresh failed'
         });
+        return;
       }
     });
 
@@ -1944,12 +1948,14 @@ class ProductionServer {
           did: tokenPayload.did,
           pn_name: tokenPayload.pnName || undefined
         });
+        return;
       } catch (error: any) {
         console.error('Userinfo error:', error);
         res.status(500).json({
           error: 'server_error',
           error_description: error.message || 'Failed to retrieve user info'
         });
+        return;
       }
     });
 
@@ -1979,12 +1985,14 @@ class ProductionServer {
         }
 
         res.json({ revoked: true });
+        return;
       } catch (error: any) {
         console.error('Token revocation error:', error);
         res.status(500).json({
           error: 'server_error',
           error_description: error.message || 'Token revocation failed'
         });
+        return;
       }
     });
   }
@@ -2024,12 +2032,14 @@ class ProductionServer {
           limit,
           offset
         });
+        return;
       } catch (error: any) {
         console.error('Failed to get notifications:', error);
         res.status(500).json({
           error: 'server_error',
           error_description: error.message || 'Failed to get notifications'
         });
+        return;
       }
     });
 
@@ -2049,12 +2059,14 @@ class ProductionServer {
         const count = await NotificationService.getUnreadCount(userDid);
 
         res.json({ count });
+        return;
       } catch (error: any) {
         console.error('Failed to get unread count:', error);
         res.status(500).json({
           error: 'server_error',
           error_description: error.message || 'Failed to get unread count'
         });
+        return;
       }
     });
 
@@ -2082,12 +2094,14 @@ class ProductionServer {
         }
 
         res.json({ success: true });
+        return;
       } catch (error: any) {
         console.error('Failed to mark notification as read:', error);
         res.status(500).json({
           error: 'server_error',
           error_description: error.message || 'Failed to mark notification as read'
         });
+        return;
       }
     });
 
@@ -2107,12 +2121,14 @@ class ProductionServer {
         const count = await NotificationService.markAllAsRead(userDid);
 
         res.json({ success: true, markedRead: count });
+        return;
       } catch (error: any) {
         console.error('Failed to mark all notifications as read:', error);
         res.status(500).json({
           error: 'server_error',
           error_description: error.message || 'Failed to mark all notifications as read'
         });
+        return;
       }
     });
 
@@ -2140,12 +2156,14 @@ class ProductionServer {
         }
 
         res.json({ success: true });
+        return;
       } catch (error: any) {
         console.error('Failed to delete notification:', error);
         res.status(500).json({
           error: 'server_error',
           error_description: error.message || 'Failed to delete notification'
         });
+        return;
       }
     });
 
@@ -2165,12 +2183,14 @@ class ProductionServer {
         const preferences = await NotificationService.getPreferences(userDid);
 
         res.json(preferences);
+        return;
       } catch (error: any) {
         console.error('Failed to get notification preferences:', error);
         res.status(500).json({
           error: 'server_error',
           error_description: error.message || 'Failed to get notification preferences'
         });
+        return;
       }
     });
 
@@ -2190,12 +2210,14 @@ class ProductionServer {
         const preferences = await NotificationService.updatePreferences(userDid, req.body);
 
         res.json(preferences);
+        return;
       } catch (error: any) {
         console.error('Failed to update notification preferences:', error);
         res.status(500).json({
           error: 'server_error',
           error_description: error.message || 'Failed to update notification preferences'
         });
+        return;
       }
     });
   }

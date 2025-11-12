@@ -133,7 +133,7 @@ export class EngagementService {
           const { AggregatorMetadataServiceDB } = await import('./aggregatorMetadataServiceDB');
           const aggregator = AggregatorMetadataServiceDB.getInstance();
           const fileMetadata = await aggregator.getFileMetadata(fileId);
-          ownerDid = fileMetadata?.pnIdentifier || null;
+          ownerDid = fileMetadata?.pnIdentifier || undefined;
         } catch (error) {
           console.warn('Could not fetch file owner from metadata:', error);
         }
