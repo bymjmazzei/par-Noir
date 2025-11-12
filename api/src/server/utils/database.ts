@@ -170,6 +170,115 @@ export async function initializeDatabase(): Promise<void> {
       ON storage_credentials(updated_at DESC)
     `);
 
+    // Feeds table for curated feed management
+    await db.query(`
+      CREATE TABLE IF NOT EXISTS feeds (
+        feed_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        feed_name VARCHAR(255) NOT NULL,
+        feed_category VARCHAR(50),
+        feed_description TEXT,
+        creator_did VARCHAR(255) NOT NULL,
+        creator_tier VARCHAR(20) DEFAULT 'free',
+        rating_range JSONB DEFAULT '[]'::jsonb,
+        branding JSONB DEFAULT '{}'::jsonb,
+        subscriber_count INTEGER DEFAULT 0,
+        post_count INTEGER DEFAULT 0,
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+        updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+      )
+    `);
+
+    await db.query(`
+      CREATE INDEX IF NOT EXISTS idx_feeds_creator_did
+      ON feeds(creator_did)
+    `);
+
+    await db.query(`
+      CREATE INDEX IF NOT EXISTS idx_feeds_category
+      ON feeds(feed_category)
+    `);
+
+    await db.query(`
+      CREATE INDEX IF NOT EXISTS idx_feeds_created_at
+      ON feeds(created_at DESC)
+    `);
+
+    // Feed subscriptions table
+    await db.query(`
+      CREATE TABLE IF NOT EXISTS feed_subscriptions (
+        subscription_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        feed_id UUID NOT NULL REFERENCES feeds(feed_id) ON DELETE CASCADE,
+        user_did VARCHAR(255) NOT NULL,
+        subscribed_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+        UNIQUE(feed_id, user_did)
+      )
+    `);
+
+    await db.query(`
+      CREATE INDEX IF NOT EXISTS idx_feed_subscriptions_user_did
+      ON feed_subscriptions(user_did)
+    `);
+
+    await db.query(`
+      CREATE INDEX IF NOT EXISTS idx_feed_subscriptions_feed_id
+      ON feed_subscriptions(feed_id)
+    `);
+
+    // Feed posts table (links files to feeds)
+    await db.query(`
+      CREATE TABLE IF NOT EXISTS feed_posts (
+        post_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        feed_id UUID NOT NULL REFERENCES feeds(feed_id) ON DELETE CASCADE,
+        file_id VARCHAR(255) NOT NULL,
+        added_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+        added_by VARCHAR(255),
+        UNIQUE(feed_id, file_id)
+      )
+    `);
+
+    await db.query(`
+      CREATE INDEX IF NOT EXISTS idx_feed_posts_feed_id
+      ON feed_posts(feed_id)
+    `);
+
+    await db.query(`
+      CREATE INDEX IF NOT EXISTS idx_feed_posts_file_id
+      ON feed_posts(file_id)
+    `);
+
+    await db.query(`
+      CREATE INDEX IF NOT EXISTS idx_feed_posts_added_at
+      ON feed_posts(added_at DESC)
+    `);
+
+    // Engagement table (if not exists)
+    await db.query(`
+      CREATE TABLE IF NOT EXISTS engagement (
+        engagement_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        file_id VARCHAR(255) NOT NULL,
+        user_did VARCHAR(255) NOT NULL,
+        type VARCHAR(20) NOT NULL,
+        content TEXT,
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+        UNIQUE(file_id, user_did, type)
+      )
+    `);
+
+    await db.query(`
+      CREATE INDEX IF NOT EXISTS idx_engagement_file_id
+      ON engagement(file_id)
+    `);
+
+    await db.query(`
+      CREATE INDEX IF NOT EXISTS idx_engagement_user_did
+      ON engagement(user_did)
+    `);
+
+    await db.query(`
+      CREATE INDEX IF NOT EXISTS idx_engagement_type
+      ON engagement(type)
+    `);
+
     console.log('✅ Database schema initialized');
   } catch (error) {
     console.error('❌ Failed to initialize database schema:', error);

@@ -687,6 +687,328 @@ class ProductionServer {
     });
 
     // GET /api/aggregator/curated/:did - Get curated feed for a DID
+    // ============================================================================
+    // Feed Management APIs
+    // ============================================================================
+
+    // POST /api/feeds - Create a new feed
+    this.app.post('/api/feeds', async (req, res) => {
+      try {
+        const { FeedService } = await import('./server/modules/feedService');
+        const { feedName, feedCategory, feedDescription, creatorDid, creatorTier, feedRatingRange, branding } = req.body;
+
+        if (!feedName || !creatorDid) {
+          return res.status(400).json({ error: 'feedName and creatorDid are required' });
+        }
+
+        // Only paid tiers can create feeds
+        if (creatorTier === 'free') {
+          return res.status(403).json({ error: 'Free tier cannot create feeds. Upgrade to feed or self-hosted tier.' });
+        }
+
+        const feed = await FeedService.createFeed({
+          feedName,
+          feedCategory,
+          feedDescription,
+          creatorDid,
+          creatorTier: creatorTier || 'feed',
+          feedRatingRange,
+          branding
+        });
+
+        return res.status(201).json(feed);
+      } catch (error: any) {
+        console.error('Error creating feed:', error);
+        return res.status(500).json({ error: 'Failed to create feed', message: error.message });
+      }
+    });
+
+    // GET /api/feeds - List feeds with filters
+    this.app.get('/api/feeds', async (req, res) => {
+      try {
+        const { FeedService } = await import('./server/modules/feedService');
+        const { category, creatorDid, creatorTier, search, limit, offset } = req.query;
+
+        const result = await FeedService.listFeeds({
+          category: category as any,
+          creatorDid: creatorDid as string,
+          creatorTier: creatorTier as any,
+          search: search as string,
+          limit: limit ? parseInt(limit as string, 10) : undefined,
+          offset: offset ? parseInt(offset as string, 10) : undefined
+        });
+
+        return res.json({
+          feeds: result.feeds,
+          total: result.total,
+          limit: limit ? parseInt(limit as string, 10) : undefined,
+          offset: offset ? parseInt(offset as string, 10) : undefined
+        });
+      } catch (error: any) {
+        console.error('Error listing feeds:', error);
+        return res.status(500).json({ error: 'Failed to list feeds', message: error.message });
+      }
+    });
+
+    // GET /api/feeds/:feedId - Get feed by ID
+    this.app.get('/api/feeds/:feedId', async (req, res) => {
+      try {
+        const { FeedService } = await import('./server/modules/feedService');
+        const { feedId } = req.params;
+
+        const feed = await FeedService.getFeedById(feedId);
+
+        if (!feed) {
+          return res.status(404).json({ error: 'Feed not found' });
+        }
+
+        return res.json(feed);
+      } catch (error: any) {
+        console.error('Error getting feed:', error);
+        return res.status(500).json({ error: 'Failed to get feed', message: error.message });
+      }
+    });
+
+    // PUT /api/feeds/:feedId - Update feed
+    this.app.put('/api/feeds/:feedId', async (req, res) => {
+      try {
+        const { FeedService } = await import('./server/modules/feedService');
+        const { feedId } = req.params;
+        const { feedName, feedDescription, feedCategory, ratingRange, branding, creatorDid } = req.body;
+
+        // Verify creator owns the feed
+        const existingFeed = await FeedService.getFeedById(feedId);
+        if (!existingFeed) {
+          return res.status(404).json({ error: 'Feed not found' });
+        }
+
+        if (existingFeed.creatorId !== creatorDid) {
+          return res.status(403).json({ error: 'Only feed creator can update feed' });
+        }
+
+        const feed = await FeedService.updateFeed(feedId, {
+          feedName,
+          feedDescription,
+          feedCategory,
+          ratingRange,
+          branding
+        });
+
+        if (!feed) {
+          return res.status(404).json({ error: 'Feed not found' });
+        }
+
+        return res.json(feed);
+      } catch (error: any) {
+        console.error('Error updating feed:', error);
+        return res.status(500).json({ error: 'Failed to update feed', message: error.message });
+      }
+    });
+
+    // DELETE /api/feeds/:feedId - Delete feed
+    this.app.delete('/api/feeds/:feedId', async (req, res) => {
+      try {
+        const { FeedService } = await import('./server/modules/feedService');
+        const { feedId } = req.params;
+        const { creatorDid } = req.body;
+
+        if (!creatorDid) {
+          return res.status(400).json({ error: 'creatorDid is required' });
+        }
+
+        const deleted = await FeedService.deleteFeed(feedId, creatorDid);
+
+        if (!deleted) {
+          return res.status(404).json({ error: 'Feed not found or unauthorized' });
+        }
+
+        return res.json({ success: true, message: 'Feed deleted' });
+      } catch (error: any) {
+        console.error('Error deleting feed:', error);
+        return res.status(500).json({ error: 'Failed to delete feed', message: error.message });
+      }
+    });
+
+    // GET /api/feeds/:feedId/posts - Get posts in feed
+    this.app.get('/api/feeds/:feedId/posts', async (req, res) => {
+      try {
+        const { FeedService } = await import('./server/modules/feedService');
+        const { feedId } = req.params;
+
+        const fileIds = await FeedService.getFeedPosts(feedId);
+
+        return res.json({
+          feedId,
+          fileIds,
+          count: fileIds.length
+        });
+      } catch (error: any) {
+        console.error('Error getting feed posts:', error);
+        return res.status(500).json({ error: 'Failed to get feed posts', message: error.message });
+      }
+    });
+
+    // POST /api/feeds/:feedId/posts - Add post to feed
+    this.app.post('/api/feeds/:feedId/posts', async (req, res) => {
+      try {
+        const { FeedService } = await import('./server/modules/feedService');
+        const { feedId } = req.params;
+        const { fileId, addedBy } = req.body;
+
+        if (!fileId || !addedBy) {
+          return res.status(400).json({ error: 'fileId and addedBy are required' });
+        }
+
+        // Verify creator owns the feed
+        const feed = await FeedService.getFeedById(feedId);
+        if (!feed) {
+          return res.status(404).json({ error: 'Feed not found' });
+        }
+
+        if (feed.creatorId !== addedBy) {
+          return res.status(403).json({ error: 'Only feed creator can add posts' });
+        }
+
+        const success = await FeedService.addPostToFeed(feedId, fileId, addedBy);
+
+        if (!success) {
+          return res.status(500).json({ error: 'Failed to add post to feed' });
+        }
+
+        return res.json({ success: true, message: 'Post added to feed' });
+      } catch (error: any) {
+        console.error('Error adding post to feed:', error);
+        return res.status(500).json({ error: 'Failed to add post to feed', message: error.message });
+      }
+    });
+
+    // DELETE /api/feeds/:feedId/posts/:fileId - Remove post from feed
+    this.app.delete('/api/feeds/:feedId/posts/:fileId', async (req, res) => {
+      try {
+        const { FeedService } = await import('./server/modules/feedService');
+        const { feedId, fileId } = req.params;
+        const { creatorDid } = req.body;
+
+        if (!creatorDid) {
+          return res.status(400).json({ error: 'creatorDid is required' });
+        }
+
+        // Verify creator owns the feed
+        const feed = await FeedService.getFeedById(feedId);
+        if (!feed) {
+          return res.status(404).json({ error: 'Feed not found' });
+        }
+
+        if (feed.creatorId !== creatorDid) {
+          return res.status(403).json({ error: 'Only feed creator can remove posts' });
+        }
+
+        const success = await FeedService.removePostFromFeed(feedId, fileId);
+
+        if (!success) {
+          return res.status(500).json({ error: 'Failed to remove post from feed' });
+        }
+
+        return res.json({ success: true, message: 'Post removed from feed' });
+      } catch (error: any) {
+        console.error('Error removing post from feed:', error);
+        return res.status(500).json({ error: 'Failed to remove post from feed', message: error.message });
+      }
+    });
+
+    // ============================================================================
+    // Feed Subscription APIs
+    // ============================================================================
+
+    // POST /api/feeds/:feedId/subscribe - Subscribe to feed
+    this.app.post('/api/feeds/:feedId/subscribe', async (req, res) => {
+      try {
+        const { FeedService } = await import('./server/modules/feedService');
+        const { feedId } = req.params;
+        const { userDid } = req.body;
+
+        if (!userDid) {
+          return res.status(400).json({ error: 'userDid is required' });
+        }
+
+        const success = await FeedService.subscribeToFeed(feedId, userDid);
+
+        if (!success) {
+          return res.status(500).json({ error: 'Failed to subscribe to feed' });
+        }
+
+        return res.json({ success: true, message: 'Subscribed to feed' });
+      } catch (error: any) {
+        console.error('Error subscribing to feed:', error);
+        return res.status(500).json({ error: 'Failed to subscribe to feed', message: error.message });
+      }
+    });
+
+    // DELETE /api/feeds/:feedId/subscribe - Unsubscribe from feed
+    this.app.delete('/api/feeds/:feedId/subscribe', async (req, res) => {
+      try {
+        const { FeedService } = await import('./server/modules/feedService');
+        const { feedId } = req.params;
+        const { userDid } = req.body;
+
+        if (!userDid) {
+          return res.status(400).json({ error: 'userDid is required' });
+        }
+
+        const success = await FeedService.unsubscribeFromFeed(feedId, userDid);
+
+        if (!success) {
+          return res.status(500).json({ error: 'Failed to unsubscribe from feed' });
+        }
+
+        return res.json({ success: true, message: 'Unsubscribed from feed' });
+      } catch (error: any) {
+        console.error('Error unsubscribing from feed:', error);
+        return res.status(500).json({ error: 'Failed to unsubscribe from feed', message: error.message });
+      }
+    });
+
+    // GET /api/users/:userDid/subscriptions - Get user's subscriptions
+    this.app.get('/api/users/:userDid/subscriptions', async (req, res) => {
+      try {
+        const { FeedService } = await import('./server/modules/feedService');
+        const { userDid } = req.params;
+
+        const feeds = await FeedService.getUserSubscriptions(userDid);
+
+        return res.json({
+          userDid,
+          feeds,
+          count: feeds.length
+        });
+      } catch (error: any) {
+        console.error('Error getting user subscriptions:', error);
+        return res.status(500).json({ error: 'Failed to get subscriptions', message: error.message });
+      }
+    });
+
+    // GET /api/feeds/:feedId/subscribers - Get feed subscribers count
+    this.app.get('/api/feeds/:feedId/subscribers', async (req, res) => {
+      try {
+        const { FeedService } = await import('./server/modules/feedService');
+        const { feedId } = req.params;
+
+        const feed = await FeedService.getFeedById(feedId);
+
+        if (!feed) {
+          return res.status(404).json({ error: 'Feed not found' });
+        }
+
+        return res.json({
+          feedId,
+          subscriberCount: feed.subscriberCount || 0
+        });
+      } catch (error: any) {
+        console.error('Error getting feed subscribers:', error);
+        return res.status(500).json({ error: 'Failed to get subscribers', message: error.message });
+      }
+    });
+
     this.app.get('/api/aggregator/curated/:did', async (req, res) => {
       try {
         const { AggregatorMetadataServiceDB } = await import('./server/modules/aggregatorMetadataServiceDB');
