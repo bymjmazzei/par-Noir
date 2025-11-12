@@ -4,7 +4,7 @@
  */
 
 import React from 'react';
-import { Heart, MessageCircle, Share2, Bookmark, MoreVertical } from 'lucide-react';
+import { Heart, MessageCircle, Share2, Bookmark, MoreVertical, Plus } from 'lucide-react';
 import { IndexedFile } from '../types/aggregator';
 import { useUserState } from '../contexts/UserStateContext';
 import { Lock } from 'lucide-react';
@@ -16,7 +16,9 @@ interface FeedEngagementSidebarProps {
   onShare?: () => void;
   onBookmark?: () => void;
   onMore?: () => void;
+  onAddToFeed?: () => void;
   isLiked?: boolean;
+  isOwner?: boolean;
 }
 
 export function FeedEngagementSidebar({
@@ -26,7 +28,9 @@ export function FeedEngagementSidebar({
   onShare,
   onBookmark,
   onMore,
-  isLiked = false
+  onAddToFeed,
+  isLiked = false,
+  isOwner = false
 }: FeedEngagementSidebarProps) {
   const { userState } = useUserState();
   const engagement = file.metadata.engagement;
@@ -109,6 +113,20 @@ export function FeedEngagementSidebar({
           <div className="w-12 h-12 md:w-14 md:h-14 rounded-full bg-black/30 backdrop-blur-sm flex items-center justify-center group-hover:bg-black/50 active:bg-black/70 transition-colors touch-manipulation">
             <Bookmark className="h-6 w-6 md:h-7 md:w-7 text-white group-hover:text-yellow-400 transition-colors" />
           </div>
+        </button>
+      )}
+
+      {/* Add to Feed Button (for owners) */}
+      {isOwner && onAddToFeed && (
+        <button
+          onClick={onAddToFeed}
+          className="flex flex-col items-center space-y-1 group"
+          title="Add to Feed"
+        >
+          <div className="w-12 h-12 md:w-14 md:h-14 rounded-full bg-black/30 backdrop-blur-sm flex items-center justify-center group-hover:bg-black/50 active:bg-black/70 transition-colors touch-manipulation">
+            <Plus className="h-6 w-6 md:h-7 md:w-7 text-white group-hover:text-blue-400 transition-colors" />
+          </div>
+          <span className="text-xs text-white font-medium">Feed</span>
         </button>
       )}
 

@@ -157,13 +157,22 @@ export function UploadModal({ onClose, onUploadComplete }: UploadModalProps) {
           };
 
           const apiEndpoint = process.env.REACT_APP_API_ENDPOINT || 'https://api.parnoir.com';
-          await fetch(`${apiEndpoint}/api/aggregator/metadata-index`, {
+          const indexResponse = await fetch(`${apiEndpoint}/api/aggregator/metadata-index`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(metadataPayload)
           });
-        } catch (indexError) {
+          
+          if (!indexResponse.ok) {
+            const errorText = await indexResponse.text().catch(() => 'Unknown error');
+            console.error('Failed to submit to aggregator index:', indexResponse.status, errorText);
+            showError(`Metadata indexing failed: ${indexResponse.status}. File uploaded but may not appear in browse.`);
+          } else {
+            console.log('✅ Metadata submitted to aggregator index successfully');
+          }
+        } catch (indexError: any) {
           console.error('Failed to submit to aggregator index:', indexError);
+          showError(`Metadata indexing error: ${indexError.message}. File uploaded but may not appear in browse.`);
           // Don't fail the upload
         }
       }

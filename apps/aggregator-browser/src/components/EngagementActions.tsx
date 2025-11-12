@@ -4,7 +4,7 @@
  */
 
 import React, { useState } from 'react';
-import { Heart, MessageCircle, Share2, Lock } from 'lucide-react';
+import { Heart, MessageCircle, Share2, Lock, Plus } from 'lucide-react';
 import { useUserState } from '../contexts/UserStateContext';
 import { PNConnect } from './PNConnect';
 import { IndexedFile } from '../types/aggregator';
@@ -14,7 +14,9 @@ interface EngagementActionsProps {
   onLike?: () => void;
   onComment?: () => void;
   onShare?: () => void;
+  onAddToFeed?: () => void;
   compact?: boolean;
+  isOwner?: boolean;
 }
 
 export function EngagementActions({
@@ -22,7 +24,9 @@ export function EngagementActions({
   onLike,
   onComment,
   onShare,
-  compact = false
+  onAddToFeed,
+  compact = false,
+  isOwner = false
 }: EngagementActionsProps) {
   const { userState } = useUserState();
   const [showConnectPrompt, setShowConnectPrompt] = useState(false);
@@ -66,6 +70,15 @@ export function EngagementActions({
         >
           <Share2 className="h-4 w-4" />
         </button>
+        {isOwner && onAddToFeed && (
+          <button
+            onClick={onAddToFeed}
+            className="flex items-center space-x-1 text-text-secondary hover:text-blue-400 transition-colors"
+            title="Add to Feed"
+          >
+            <Plus className="h-4 w-4" />
+          </button>
+        )}
       </div>
     );
   }

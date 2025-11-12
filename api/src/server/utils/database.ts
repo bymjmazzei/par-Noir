@@ -251,6 +251,35 @@ export async function initializeDatabase(): Promise<void> {
       ON feed_posts(added_at DESC)
     `);
 
+    // Creator subscriber index table (tracks who subscribes to creator's feeds)
+    // Also synced to creator's Google Drive
+    await db.query(`
+      CREATE TABLE IF NOT EXISTS creator_subscriber_index (
+        index_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        creator_did VARCHAR(255) NOT NULL,
+        subscriber_did VARCHAR(255) NOT NULL,
+        feed_id UUID REFERENCES feeds(feed_id) ON DELETE CASCADE,
+        subscribed_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+        synced_to_drive BOOLEAN DEFAULT FALSE,
+        UNIQUE(creator_did, subscriber_did, feed_id)
+      )
+    `);
+
+    await db.query(`
+      CREATE INDEX IF NOT EXISTS idx_creator_subscriber_index_creator_did
+      ON creator_subscriber_index(creator_did)
+    `);
+
+    await db.query(`
+      CREATE INDEX IF NOT EXISTS idx_creator_subscriber_index_subscriber_did
+      ON creator_subscriber_index(subscriber_did)
+    `);
+
+    await db.query(`
+      CREATE INDEX IF NOT EXISTS idx_creator_subscriber_index_feed_id
+      ON creator_subscriber_index(feed_id)
+    `);
+
     // Engagement table (if not exists)
     await db.query(`
       CREATE TABLE IF NOT EXISTS engagement (
@@ -277,6 +306,49 @@ export async function initializeDatabase(): Promise<void> {
     await db.query(`
       CREATE INDEX IF NOT EXISTS idx_engagement_type
       ON engagement(type)
+    `);
+
+    // Notifications table
+    await db.query(`
+      CREATE TABLE IF NOT EXISTS notifications (
+        notification_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        user_did VARCHAR(255) NOT NULL,
+        type VARCHAR(50) NOT NULL,
+        title VARCHAR(255) NOT NULL,
+        message TEXT NOT NULL,
+        data JSONB,
+        read BOOLEAN DEFAULT false,
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+      )
+    `);
+
+    await db.query(`
+      CREATE INDEX IF NOT EXISTS idx_notifications_user_did
+      ON notifications(user_did)
+    `);
+
+    await db.query(`
+      CREATE INDEX IF NOT EXISTS idx_notifications_read
+      ON notifications(user_did, read)
+    `);
+
+    await db.query(`
+      CREATE INDEX IF NOT EXISTS idx_notifications_created_at
+      ON notifications(created_at DESC)
+    `);
+
+    // Notification preferences table
+    await db.query(`
+      CREATE TABLE IF NOT EXISTS notification_preferences (
+        user_did VARCHAR(255) PRIMARY KEY,
+        feed_new_post BOOLEAN DEFAULT true,
+        feed_new_comment BOOLEAN DEFAULT true,
+        feed_new_like BOOLEAN DEFAULT false,
+        feed_new_subscriber BOOLEAN DEFAULT true,
+        comment_reply BOOLEAN DEFAULT true,
+        mention BOOLEAN DEFAULT true,
+        updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+      )
     `);
 
     console.log('✅ Database schema initialized');

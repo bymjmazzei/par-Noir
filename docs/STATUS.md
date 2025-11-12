@@ -203,9 +203,49 @@ CREATE TABLE engagement (
 - ✅ Public/private visibility selection
 - ✅ Automatic metadata submission to aggregator index
 
+**Architecture Alignment Updates (Based on Clarifications)**:
+- ✅ Engagement metrics confirmed: Option A (centralized database)
+- ✅ Creator subscriber index table (new database table)
+- ✅ Feed subscription flow: User A → pN metadata (IPFS) → Creator B subscriber index
+- ✅ Feed discovery APIs: `/api/feeds/discover`, `/api/feeds/categories`, `/api/feeds/trending`, `/api/feeds/recommended`
+- ✅ Comment architecture: File owner owns content, pN commentor references it
+- ✅ IPFS services exist for pN identity metadata (encrypted storage)
+- ✅ Google Drive secure cloud APIs exist (encrypted folder management)
+
+**New APIs Added**:
+- ✅ `GET /api/feeds/discover` - Discover feeds with filters (categories, trending, new)
+- ✅ `GET /api/feeds/categories` - List all feed categories with counts
+- ✅ `GET /api/feeds/trending` - Get trending feeds (last 7 days)
+- ✅ `GET /api/feeds/recommended` - Get recommended feeds for user
+- ✅ `GET /api/creators/:creatorDid/subscribers` - Get creator's subscriber index
+- ✅ `POST /api/feeds/:feedId/subscribe` - Creator stores subscriber on Google Drive
+- ✅ Comments now include `fileOwnerDid` field (file owner owns content)
+- ✅ Creator subscriber storage service (Google Drive integration)
+
 **Next Steps**: 
-1. Real pN authentication (replace dummy connection)
+1. ✅ Real pN authentication (replace dummy connection) - COMPLETE (OAuth 2.0 flow implemented)
 2. Test end-to-end: upload → create feed → add posts → subscribe → like/comment
-3. Add feed creation UI for paid-tier creators
-4. Add ability to add existing files to feeds from browser
+3. ✅ Add feed creation UI for paid-tier creators - COMPLETE
+4. ✅ Add ability to add existing files to feeds from browser - COMPLETE
+5. ✅ Build push notification system (event triggers notification) - COMPLETE (backend + frontend UI)
+6. ✅ Frontend integration for feed discovery (catalogue/store UI) - COMPLETE
+7. ✅ Feed subscription storage: Creator hosts on Google Drive, subscriber stores local reference - COMPLETE
+
+**Recently Completed**:
+- ✅ pN OAuth 2.0 authentication system (similar to Google OAuth)
+  - Authorization endpoint (`/oauth/authorize`)
+  - Token endpoint (`/oauth/token`)
+  - Refresh token endpoint (`/oauth/refresh`)
+  - User info endpoint (`/oauth/userinfo`)
+  - Token revocation endpoint (`/oauth/revoke`)
+  - Frontend OAuth client service
+  - Updated PNConnect component with file upload and passcode authentication
+- ✅ Push notification system
+  - Notification service backend module
+  - Notification database tables (notifications, notification_preferences)
+  - Event triggers integrated into feedService and engagementService
+  - Notification API endpoints (list, unread count, mark read, delete, preferences)
+  - Frontend notification service
+  - NotificationBell UI component with badge and dropdown
+  - Auto-notifications for: new feed posts, comments, likes, subscriptions
 

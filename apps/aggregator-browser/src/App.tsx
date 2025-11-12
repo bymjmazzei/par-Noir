@@ -26,8 +26,11 @@ import { CommentModal } from './components/CommentModal';
 import { BrandedFeedPage } from './components/BrandedFeedPage';
 import { MediaViewer } from './components/MediaViewer';
 import { UploadModal } from './components/UploadModal';
+import { CreateFeedModal } from './components/CreateFeedModal';
+import { AddToFeedModal } from './components/AddToFeedModal';
+import { NotificationBell } from './components/NotificationBell';
 import { ToastContainer } from './components/Toast';
-import { Settings, Upload } from 'lucide-react';
+import { Settings, Upload, Plus } from 'lucide-react';
 import { useKeyboardNavigation } from './hooks/useKeyboardNavigation';
 import { useSwipeGesture } from './hooks/useSwipeGesture';
 import { useEngagement } from './hooks/useEngagement';
@@ -61,6 +64,8 @@ function App() {
   const [commentingFile, setCommentingFile] = useState<IndexedFile | null>(null); // File being commented on
   const [viewingBrandedFeed, setViewingBrandedFeed] = useState<Feed | null>(null); // Branded feed being viewed
   const [showUploadModal, setShowUploadModal] = useState(false); // Show upload modal
+  const [showCreateFeedModal, setShowCreateFeedModal] = useState(false); // Show create feed modal
+  const [addingToFeedFile, setAddingToFeedFile] = useState<IndexedFile | null>(null); // File being added to feed
   const [showWelcome, setShowWelcome] = useState(() => {
     // Show welcome on first visit
     try {
@@ -78,7 +83,7 @@ function App() {
   
   const metadataIndexService = getMetadataIndexService();
   const { toggleLike, share, getLikeCount, isLiked, getComments, getShareCount, loadBulkEngagementStats } = useEngagement();
-  const { toasts, removeToast, success, error } = useToast();
+  const { toasts, removeToast, success, error: showErrorToast } = useToast();
   const { getParam, setParam } = useURLParams();
 
   useEffect(() => {
@@ -99,6 +104,18 @@ function App() {
 
     loadFeeds();
   }, []);
+
+  // Reload feeds when a new feed is created
+  const handleFeedCreated = async (feed: Feed) => {
+    try {
+      const result = await FeedService.listFeeds({ limit: 100 });
+      setFeeds(result.feeds);
+      // Optionally switch to the new feed
+      setActiveFeedId(feed.feedId);
+    } catch (error) {
+      console.error('Failed to reload feeds:', error);
+    }
+  };
 
   // Load user subscriptions when user connects
   useEffect(() => {
@@ -738,14 +755,42 @@ function App() {
             />
             </div>
             <div className="flex items-center space-x-2">
-              {userState.isUnlocked && (
-                <button
-                  onClick={() => setShowUploadModal(true)}
-                  className="p-2 text-text-secondary hover:text-white transition-colors"
-                  title="Upload File"
-                >
-                  <Upload className="h-5 w-5" />
-                </button>
+              {userState.isUnlocked && userState.pnIdentifier && (
+                <>
+                  <NotificationBell
+                    onNotificationClick={(notification) => {
+                      // Navigate to relevant content based on notification type
+                      if (notification.data?.file_id) {
+                        setViewMode('feed');
+                        setTimeout(() => {
+                          const element = document.querySelector(`[data-file-id="${notification.data.file_id}"]`);
+                          if (element && feedScrollRef.current) {
+                            element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                          }
+                        }, 100);
+                      } else if (notification.data?.feed_id) {
+                        const feed = feeds.find(f => f.feedId === notification.data.feed_id);
+                        if (feed) {
+                          setViewingBrandedFeed(feed);
+                        }
+                      }
+                    }}
+                  />
+                  <button
+                    onClick={() => setShowCreateFeedModal(true)}
+                    className="p-2 text-text-secondary hover:text-white transition-colors"
+                    title="Create Feed"
+                  >
+                    <Plus className="h-5 w-5" />
+                  </button>
+                  <button
+                    onClick={() => setShowUploadModal(true)}
+                    className="p-2 text-text-secondary hover:text-white transition-colors"
+                    title="Upload File"
+                  >
+                    <Upload className="h-5 w-5" />
+                  </button>
+                </>
               )}
               <button
                 onClick={() => setShowSettings(true)}
@@ -868,14 +913,41 @@ function App() {
                     <RefreshCw className={`h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} />
                     <span>Refresh</span>
                   </button>
-                  {userState.isUnlocked && (
-                    <button
-                      onClick={() => setShowUploadModal(true)}
-                      className="p-2 text-text-secondary hover:text-white transition-colors"
-                      title="Upload File"
-                    >
-                      <Upload className="h-5 w-5" />
-                    </button>
+                  {userState.isUnlocked && userState.pnIdentifier && (
+                    <>
+                      <NotificationBell
+                        onNotificationClick={(notification) => {
+                          if (notification.data?.file_id) {
+                            setViewMode('feed');
+                            setTimeout(() => {
+                              const element = document.querySelector(`[data-file-id="${notification.data.file_id}"]`);
+                              if (element && feedScrollRef.current) {
+                                element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                              }
+                            }, 100);
+                          } else if (notification.data?.feed_id) {
+                            const feed = feeds.find(f => f.feedId === notification.data.feed_id);
+                            if (feed) {
+                              setViewingBrandedFeed(feed);
+                            }
+                          }
+                        }}
+                      />
+                      <button
+                        onClick={() => setShowCreateFeedModal(true)}
+                        className="p-2 text-text-secondary hover:text-white transition-colors"
+                        title="Create Feed"
+                      >
+                        <Plus className="h-5 w-5" />
+                      </button>
+                      <button
+                        onClick={() => setShowUploadModal(true)}
+                        className="p-2 text-text-secondary hover:text-white transition-colors"
+                        title="Upload File"
+                      >
+                        <Upload className="h-5 w-5" />
+                      </button>
+                    </>
                   )}
                   <button
                     onClick={() => setShowSettings(true)}
@@ -1011,9 +1083,17 @@ function App() {
                         success('Link copied to clipboard!');
                         setParam('file', file.fileId);
                       } catch (err) {
-                        error('Failed to copy link. Please try again.');
+                        showErrorToast('Failed to copy link. Please try again.');
                       }
                     }}
+                    onAddToFeed={() => {
+                      // Check if user owns this file
+                      const creatorId = file.creator?.identifier?.value || file.creator?.["@id"] || file.author?.did;
+                      if (userState.isUnlocked && userState.pnIdentifier === creatorId) {
+                        setAddingToFeedFile(indexedFile);
+                      }
+                    }}
+                    isOwner={userState.isUnlocked && userState.pnIdentifier === (file.creator?.identifier?.value || file.creator?.["@id"] || file.author?.did)}
                   />
 
                   {/* Content Info Overlay - Bottom Left */}
@@ -1287,6 +1367,13 @@ function App() {
                             error('Failed to copy link. Please try again.');
                           }
                         }}
+                        onAddToFeed={() => {
+                          const creatorId = file.creator?.identifier?.value || file.creator?.["@id"] || file.author?.did;
+                          if (userState.isUnlocked && userState.pnIdentifier === creatorId) {
+                            setAddingToFeedFile(indexedFile);
+                          }
+                        }}
+                        isOwner={userState.isUnlocked && userState.pnIdentifier === (file.creator?.identifier?.value || file.creator?.["@id"] || file.author?.did)}
                       />
                     </div>
                   </div>
@@ -1317,6 +1404,35 @@ function App() {
             onFeedClick={(feed) => {
               setShowFeedBrowser(false);
               setViewingBrandedFeed(feed);
+            }}
+            onCreateFeed={() => {
+              setShowFeedBrowser(false);
+              setShowCreateFeedModal(true);
+            }}
+          />
+        )}
+
+        {/* Create Feed Modal */}
+        {showCreateFeedModal && (
+          <CreateFeedModal
+            onClose={() => setShowCreateFeedModal(false)}
+            onFeedCreated={(feed) => {
+              handleFeedCreated(feed);
+              setShowCreateFeedModal(false);
+            }}
+          />
+        )}
+
+        {/* Add to Feed Modal */}
+        {addingToFeedFile && (
+          <AddToFeedModal
+            file={addingToFeedFile}
+            feeds={feeds}
+            onClose={() => setAddingToFeedFile(null)}
+            onAdded={(feedId) => {
+              // Refresh files to show updated feed membership
+              discoverFiles(undefined, true);
+              setAddingToFeedFile(null);
             }}
           />
         )}

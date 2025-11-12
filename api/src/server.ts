@@ -354,6 +354,12 @@ class ProductionServer {
       });
     });
 
+    // pN OAuth 2.0 endpoints
+    this.setupPNOAuthEndpoints();
+
+    // Notification endpoints
+    this.setupNotificationEndpoints();
+
     // DID management endpoints
     this.app.post('/api/did/create', (req, res) => {
       // Create new DID
@@ -379,6 +385,7 @@ class ProductionServer {
         const fileType = req.query.fileType as string | undefined;
         const authorDid = req.query.authorDid as string | undefined;
         const indexerId = req.query.indexerId as string | undefined;
+        const debug = req.query.debug === 'true';
 
         const response = await service.getIndexResponse({
           tags,
@@ -386,6 +393,31 @@ class ProductionServer {
           authorDid,
           indexerId
         });
+
+        if (debug) {
+          // Debug mode: return additional info
+          const db = (await import('./server/utils/database')).getDatabasePool();
+          const allFiles = await db.query(`
+            SELECT file_id, metadata->>'isPublic' as is_public, metadata->>'name' as name, updated_at
+            FROM aggregator_metadata
+            ORDER BY updated_at DESC
+            LIMIT 100
+          `);
+          
+          return res.json({
+            ...response,
+            debug: {
+              totalInDatabase: allFiles.rows.length,
+              publicInDatabase: allFiles.rows.filter((r: any) => r.is_public === 'true').length,
+              sampleFiles: allFiles.rows.slice(0, 10).map((r: any) => ({
+                fileId: r.file_id,
+                isPublic: r.is_public,
+                name: r.name,
+                updatedAt: r.updated_at
+              }))
+            }
+          });
+        }
 
         console.log(`📤 [GET /api/aggregator/metadata-index] Returning ${response.files.length} files`);
         res.json(response);
@@ -735,19 +767,29 @@ class ProductionServer {
     });
 
     // POST /api/engagement/:fileId/comment - Add comment
+    // File owner has the content, pN commentor references it
     this.app.post('/api/engagement/:fileId/comment', async (req, res) => {
       try {
         const { EngagementService } = await import('./server/modules/engagementService');
         const { fileId } = req.params;
-        const { userDid, content, authorName } = req.body;
+        const { userDid, content, authorName, fileOwnerDid } = req.body;
 
         if (!userDid || !content) {
           return res.status(400).json({ error: 'userDid and content are required' });
         }
 
-        const comment = await EngagementService.addComment(fileId, userDid, content, authorName);
+        const comment = await EngagementService.addComment(
+          fileId, 
+          userDid, 
+          content, 
+          authorName,
+          fileOwnerDid // Optional - will be fetched from metadata if not provided
+        );
 
-        return res.status(201).json(comment);
+        return res.status(201).json({
+          ...comment,
+          note: 'File owner owns content; commentor references it'
+        });
       } catch (error: any) {
         console.error('Error adding comment:', error);
         return res.status(500).json({ error: 'Failed to add comment', message: error.message });
@@ -1085,23 +1127,32 @@ class ProductionServer {
     // ============================================================================
 
     // POST /api/feeds/:feedId/subscribe - Subscribe to feed
+    // Creator stores subscriber info on their Google Drive
+    // Subscriber stores local reference (handled by frontend)
     this.app.post('/api/feeds/:feedId/subscribe', async (req, res) => {
       try {
         const { FeedService } = await import('./server/modules/feedService');
         const { feedId } = req.params;
-        const { userDid } = req.body;
+        const { userDid, creatorGoogleTokens } = req.body;
 
         if (!userDid) {
           return res.status(400).json({ error: 'userDid is required' });
         }
 
-        const success = await FeedService.subscribeToFeed(feedId, userDid);
+        // Note: creatorGoogleTokens is optional - if creator doesn't have Drive connected,
+        // subscription is stored in database only and can sync to Drive later
+
+        const success = await FeedService.subscribeToFeed(feedId, userDid, creatorGoogleTokens);
 
         if (!success) {
           return res.status(500).json({ error: 'Failed to subscribe to feed' });
         }
 
-        return res.json({ success: true, message: 'Subscribed to feed' });
+        return res.json({ 
+          success: true, 
+          message: 'Subscribed to feed',
+          note: 'Subscription stored in database and creator Google Drive (if connected)'
+        });
       } catch (error: any) {
         console.error('Error subscribing to feed:', error);
         return res.status(500).json({ error: 'Failed to subscribe to feed', message: error.message });
@@ -1170,6 +1221,113 @@ class ProductionServer {
       } catch (error: any) {
         console.error('Error getting feed subscribers:', error);
         return res.status(500).json({ error: 'Failed to get subscribers', message: error.message });
+      }
+    });
+
+    // GET /api/creators/:creatorDid/subscribers - Get creator's subscriber index
+    this.app.get('/api/creators/:creatorDid/subscribers', async (req, res) => {
+      try {
+        const { FeedService } = await import('./server/modules/feedService');
+        const { creatorDid } = req.params;
+
+        const subscribers = await FeedService.getCreatorSubscriberIndex(creatorDid);
+
+        return res.json({
+          creatorDid,
+          subscribers,
+          count: subscribers.length
+        });
+      } catch (error: any) {
+        console.error('Error getting creator subscriber index:', error);
+        return res.status(500).json({ error: 'Failed to get subscriber index', message: error.message });
+      }
+    });
+
+    // ============================================================================
+    // Feed Discovery APIs (Catalogue/Store Interface)
+    // ============================================================================
+
+    // GET /api/feeds/discover - Discover feeds with filters (categories, trending, new)
+    this.app.get('/api/feeds/discover', async (req, res) => {
+      try {
+        const { FeedService } = await import('./server/modules/feedService');
+        const { category, sort = 'new', limit = 20, offset = 0 } = req.query;
+
+        const result = await FeedService.discoverFeeds({
+          category: category as any,
+          sort: sort as 'new' | 'trending' | 'popular',
+          limit: limit ? parseInt(limit as string, 10) : 20,
+          offset: offset ? parseInt(offset as string, 10) : 0
+        });
+
+        return res.json(result);
+      } catch (error: any) {
+        console.error('Error discovering feeds:', error);
+        return res.status(500).json({ error: 'Failed to discover feeds', message: error.message });
+      }
+    });
+
+    // GET /api/feeds/categories - List all feed categories with counts
+    this.app.get('/api/feeds/categories', async (req, res) => {
+      try {
+        const { FeedService } = await import('./server/modules/feedService');
+        const categories = await FeedService.getFeedCategories();
+
+        return res.json({
+          categories,
+          total: categories.reduce((sum, cat) => sum + cat.count, 0)
+        });
+      } catch (error: any) {
+        console.error('Error getting feed categories:', error);
+        return res.status(500).json({ error: 'Failed to get categories', message: error.message });
+      }
+    });
+
+    // GET /api/feeds/trending - Get trending feeds
+    this.app.get('/api/feeds/trending', async (req, res) => {
+      try {
+        const { FeedService } = await import('./server/modules/feedService');
+        const { limit = 20, category } = req.query;
+
+        const feeds = await FeedService.getTrendingFeeds({
+          limit: limit ? parseInt(limit as string, 10) : 20,
+          category: category as any
+        });
+
+        return res.json({
+          feeds,
+          count: feeds.length,
+          period: '7d' // Last 7 days
+        });
+      } catch (error: any) {
+        console.error('Error getting trending feeds:', error);
+        return res.status(500).json({ error: 'Failed to get trending feeds', message: error.message });
+      }
+    });
+
+    // GET /api/feeds/recommended - Get recommended feeds for user
+    this.app.get('/api/feeds/recommended', async (req, res) => {
+      try {
+        const { FeedService } = await import('./server/modules/feedService');
+        const { userDid, limit = 10 } = req.query;
+
+        if (!userDid) {
+          return res.status(400).json({ error: 'userDid is required' });
+        }
+
+        const feeds = await FeedService.getRecommendedFeeds({
+          userDid: userDid as string,
+          limit: limit ? parseInt(limit as string, 10) : 10
+        });
+
+        return res.json({
+          feeds,
+          count: feeds.length,
+          userDid
+        });
+      } catch (error: any) {
+        console.error('Error getting recommended feeds:', error);
+        return res.status(500).json({ error: 'Failed to get recommended feeds', message: error.message });
       }
     });
 
@@ -1541,6 +1699,465 @@ class ProductionServer {
     const randomBytes = crypto.getRandomValues(new Uint8Array(16));
     const random = Array.from(randomBytes).map(b => b.toString(36)).join('');
     return `${username}_${timestamp}_${random}`;
+  }
+
+  /**
+   * Setup pN OAuth 2.0 endpoints
+   * Implements authorization code flow similar to Google OAuth
+   */
+  private setupPNOAuthEndpoints(): void {
+    // Dynamic import to avoid circular dependencies
+    const PNOAuthService = require('./server/modules/pnOAuthService').PNOAuthService;
+
+    // GET /oauth/authorize - Authorization endpoint
+    // This endpoint initiates the OAuth flow
+    // Client should redirect user here with: client_id, redirect_uri, response_type=code, scope, state
+    this.app.get('/oauth/authorize', (req, res) => {
+      const { client_id, redirect_uri, response_type, scope, state, nonce } = req.query;
+
+      // Validate required parameters
+      if (!client_id || !redirect_uri || !response_type) {
+        return res.status(400).json({
+          error: 'invalid_request',
+          error_description: 'Missing required parameters: client_id, redirect_uri, response_type'
+        });
+      }
+
+      if (response_type !== 'code') {
+        return res.status(400).json({
+          error: 'unsupported_response_type',
+          error_description: 'Only authorization_code flow is supported'
+        });
+      }
+
+      // For now, return authorization page URL
+      // In production, this would render an authorization page where user uploads pN file and enters passcode
+      // For browser app, we'll handle this client-side
+      const scopes = scope ? (scope as string).split(' ') : ['openid', 'profile'];
+      
+      res.json({
+        authorization_url: `/oauth/authorize/consent?client_id=${client_id}&redirect_uri=${encodeURIComponent(redirect_uri as string)}&scope=${encodeURIComponent(scope as string || 'openid profile')}&state=${state || ''}&nonce=${nonce || ''}`,
+        client_id,
+        redirect_uri,
+        scope: scopes,
+        state: state || undefined,
+        nonce: nonce || undefined
+      });
+    });
+
+    // POST /oauth/authorize/authenticate - Authenticate user with pN identity
+    // Client sends encrypted identity file and passcode
+    // Server verifies and generates authorization code
+    this.app.post('/oauth/authorize/authenticate', async (req, res) => {
+      try {
+        const { 
+          client_id, 
+          redirect_uri, 
+          scope, 
+          state, 
+          nonce,
+          encrypted_identity, // Encrypted pN identity file
+          passcode,
+          public_key // Public key from identity
+        } = req.body;
+
+        if (!client_id || !redirect_uri || !encrypted_identity || !passcode || !public_key) {
+          return res.status(400).json({
+            error: 'invalid_request',
+            error_description: 'Missing required fields: client_id, redirect_uri, encrypted_identity, passcode, public_key'
+          });
+        }
+
+        // In production, decrypt and verify identity here
+        // For now, we'll accept a DID directly or verify the identity
+        // Extract DID from encrypted identity or use public_key to derive it
+        // This is a simplified version - in production, decrypt the identity file
+        
+        // For browser app, we'll accept a pre-authenticated DID
+        // The actual decryption happens client-side in the browser
+        const did = req.body.did || `did:key:${public_key.substring(0, 32)}`;
+
+        // Generate authorization code
+        const scopes = scope ? scope.split(' ') : ['openid', 'profile'];
+        const code = PNOAuthService.generateAuthorizationCode({
+          clientId: client_id,
+          redirectUri: redirect_uri,
+          scope: scopes,
+          state,
+          nonce,
+          did
+        });
+
+        // Return authorization code
+        res.json({
+          code,
+          state: state || undefined
+        });
+      } catch (error: any) {
+        console.error('OAuth authentication error:', error);
+        res.status(500).json({
+          error: 'server_error',
+          error_description: error.message || 'Authentication failed'
+        });
+      }
+    });
+
+    // POST /oauth/token - Token endpoint
+    // Exchange authorization code for access token
+    this.app.post('/oauth/token', (req, res) => {
+      try {
+        const { code, client_id, redirect_uri, grant_type } = req.body;
+
+        if (!code || !client_id || !redirect_uri) {
+          return res.status(400).json({
+            error: 'invalid_request',
+            error_description: 'Missing required parameters: code, client_id, redirect_uri'
+          });
+        }
+
+        if (grant_type !== 'authorization_code') {
+          return res.status(400).json({
+            error: 'unsupported_grant_type',
+            error_description: 'Only authorization_code grant type is supported'
+          });
+        }
+
+        const tokenResponse = PNOAuthService.exchangeCodeForToken({
+          code,
+          clientId: client_id,
+          redirectUri: redirect_uri
+        });
+
+        if (!tokenResponse) {
+          return res.status(400).json({
+            error: 'invalid_grant',
+            error_description: 'Invalid or expired authorization code'
+          });
+        }
+
+        res.json(tokenResponse);
+      } catch (error: any) {
+        console.error('Token exchange error:', error);
+        res.status(500).json({
+          error: 'server_error',
+          error_description: error.message || 'Token exchange failed'
+        });
+      }
+    });
+
+    // POST /oauth/refresh - Refresh token endpoint
+    this.app.post('/oauth/refresh', (req, res) => {
+      try {
+        const { refresh_token, client_id } = req.body;
+
+        if (!refresh_token || !client_id) {
+          return res.status(400).json({
+            error: 'invalid_request',
+            error_description: 'Missing required parameters: refresh_token, client_id'
+          });
+        }
+
+        const tokenResponse = PNOAuthService.refreshAccessToken(refresh_token, client_id);
+
+        if (!tokenResponse) {
+          return res.status(400).json({
+            error: 'invalid_grant',
+            error_description: 'Invalid or expired refresh token'
+          });
+        }
+
+        res.json(tokenResponse);
+      } catch (error: any) {
+        console.error('Token refresh error:', error);
+        res.status(500).json({
+          error: 'server_error',
+          error_description: error.message || 'Token refresh failed'
+        });
+      }
+    });
+
+    // GET /oauth/userinfo - User info endpoint
+    // Returns user information based on access token
+    this.app.get('/oauth/userinfo', (req, res) => {
+      try {
+        const authHeader = req.headers.authorization;
+        if (!authHeader || !authHeader.startsWith('Bearer ')) {
+          return res.status(401).json({
+            error: 'invalid_token',
+            error_description: 'Missing or invalid authorization header'
+          });
+        }
+
+        const accessToken = authHeader.substring(7);
+        const tokenPayload = PNOAuthService.validateAccessToken(accessToken);
+
+        if (!tokenPayload) {
+          return res.status(401).json({
+            error: 'invalid_token',
+            error_description: 'Invalid or expired access token'
+          });
+        }
+
+        // Return user info based on token payload
+        res.json({
+          sub: tokenPayload.did,
+          did: tokenPayload.did,
+          pn_name: tokenPayload.pnName || undefined
+        });
+      } catch (error: any) {
+        console.error('Userinfo error:', error);
+        res.status(500).json({
+          error: 'server_error',
+          error_description: error.message || 'Failed to retrieve user info'
+        });
+      }
+    });
+
+    // POST /oauth/revoke - Revoke token endpoint
+    this.app.post('/oauth/revoke', (req, res) => {
+      try {
+        const { token, token_type_hint } = req.body;
+
+        if (!token) {
+          return res.status(400).json({
+            error: 'invalid_request',
+            error_description: 'Missing required parameter: token'
+          });
+        }
+
+        // Try to revoke as access token first
+        let revoked = PNOAuthService.revokeAccessToken(token);
+        
+        // If not found and hint suggests refresh token, try that
+        if (!revoked && token_type_hint === 'refresh_token') {
+          revoked = PNOAuthService.revokeRefreshToken(token);
+        }
+
+        // If still not found, try refresh token anyway
+        if (!revoked) {
+          revoked = PNOAuthService.revokeRefreshToken(token);
+        }
+
+        res.json({ revoked: true });
+      } catch (error: any) {
+        console.error('Token revocation error:', error);
+        res.status(500).json({
+          error: 'server_error',
+          error_description: error.message || 'Token revocation failed'
+        });
+      }
+    });
+  }
+
+  /**
+   * Setup notification API endpoints
+   */
+  private setupNotificationEndpoints(): void {
+    // GET /api/notifications - Get user's notifications
+    this.app.get('/api/notifications', async (req, res) => {
+      try {
+        const userDid = req.headers['x-user-did'] as string || req.query.userDid as string;
+        
+        if (!userDid) {
+          return res.status(401).json({
+            error: 'unauthorized',
+            error_description: 'User DID required'
+          });
+        }
+
+        const { NotificationService } = require('./server/modules/notificationService');
+        const limit = parseInt(req.query.limit as string) || 50;
+        const offset = parseInt(req.query.offset as string) || 0;
+        const unreadOnly = req.query.unreadOnly === 'true';
+        const type = req.query.type as string | undefined;
+
+        const result = await NotificationService.getUserNotifications(userDid, {
+          limit,
+          offset,
+          unreadOnly,
+          type: type as any
+        });
+
+        res.json({
+          notifications: result.notifications,
+          total: result.total,
+          limit,
+          offset
+        });
+      } catch (error: any) {
+        console.error('Failed to get notifications:', error);
+        res.status(500).json({
+          error: 'server_error',
+          error_description: error.message || 'Failed to get notifications'
+        });
+      }
+    });
+
+    // GET /api/notifications/unread-count - Get unread count
+    this.app.get('/api/notifications/unread-count', async (req, res) => {
+      try {
+        const userDid = req.headers['x-user-did'] as string || req.query.userDid as string;
+        
+        if (!userDid) {
+          return res.status(401).json({
+            error: 'unauthorized',
+            error_description: 'User DID required'
+          });
+        }
+
+        const { NotificationService } = require('./server/modules/notificationService');
+        const count = await NotificationService.getUnreadCount(userDid);
+
+        res.json({ count });
+      } catch (error: any) {
+        console.error('Failed to get unread count:', error);
+        res.status(500).json({
+          error: 'server_error',
+          error_description: error.message || 'Failed to get unread count'
+        });
+      }
+    });
+
+    // PUT /api/notifications/:notificationId/read - Mark notification as read
+    this.app.put('/api/notifications/:notificationId/read', async (req, res) => {
+      try {
+        const { notificationId } = req.params;
+        const userDid = req.headers['x-user-did'] as string || req.body.userDid as string;
+        
+        if (!userDid) {
+          return res.status(401).json({
+            error: 'unauthorized',
+            error_description: 'User DID required'
+          });
+        }
+
+        const { NotificationService } = require('./server/modules/notificationService');
+        const success = await NotificationService.markAsRead(notificationId, userDid);
+
+        if (!success) {
+          return res.status(404).json({
+            error: 'not_found',
+            error_description: 'Notification not found'
+          });
+        }
+
+        res.json({ success: true });
+      } catch (error: any) {
+        console.error('Failed to mark notification as read:', error);
+        res.status(500).json({
+          error: 'server_error',
+          error_description: error.message || 'Failed to mark notification as read'
+        });
+      }
+    });
+
+    // PUT /api/notifications/read-all - Mark all notifications as read
+    this.app.put('/api/notifications/read-all', async (req, res) => {
+      try {
+        const userDid = req.headers['x-user-did'] as string || req.body.userDid as string;
+        
+        if (!userDid) {
+          return res.status(401).json({
+            error: 'unauthorized',
+            error_description: 'User DID required'
+          });
+        }
+
+        const { NotificationService } = require('./server/modules/notificationService');
+        const count = await NotificationService.markAllAsRead(userDid);
+
+        res.json({ success: true, markedRead: count });
+      } catch (error: any) {
+        console.error('Failed to mark all notifications as read:', error);
+        res.status(500).json({
+          error: 'server_error',
+          error_description: error.message || 'Failed to mark all notifications as read'
+        });
+      }
+    });
+
+    // DELETE /api/notifications/:notificationId - Delete notification
+    this.app.delete('/api/notifications/:notificationId', async (req, res) => {
+      try {
+        const { notificationId } = req.params;
+        const userDid = req.headers['x-user-did'] as string || req.query.userDid as string;
+        
+        if (!userDid) {
+          return res.status(401).json({
+            error: 'unauthorized',
+            error_description: 'User DID required'
+          });
+        }
+
+        const { NotificationService } = require('./server/modules/notificationService');
+        const success = await NotificationService.deleteNotification(notificationId, userDid);
+
+        if (!success) {
+          return res.status(404).json({
+            error: 'not_found',
+            error_description: 'Notification not found'
+          });
+        }
+
+        res.json({ success: true });
+      } catch (error: any) {
+        console.error('Failed to delete notification:', error);
+        res.status(500).json({
+          error: 'server_error',
+          error_description: error.message || 'Failed to delete notification'
+        });
+      }
+    });
+
+    // GET /api/notifications/preferences - Get notification preferences
+    this.app.get('/api/notifications/preferences', async (req, res) => {
+      try {
+        const userDid = req.headers['x-user-did'] as string || req.query.userDid as string;
+        
+        if (!userDid) {
+          return res.status(401).json({
+            error: 'unauthorized',
+            error_description: 'User DID required'
+          });
+        }
+
+        const { NotificationService } = require('./server/modules/notificationService');
+        const preferences = await NotificationService.getPreferences(userDid);
+
+        res.json(preferences);
+      } catch (error: any) {
+        console.error('Failed to get notification preferences:', error);
+        res.status(500).json({
+          error: 'server_error',
+          error_description: error.message || 'Failed to get notification preferences'
+        });
+      }
+    });
+
+    // PUT /api/notifications/preferences - Update notification preferences
+    this.app.put('/api/notifications/preferences', async (req, res) => {
+      try {
+        const userDid = req.headers['x-user-did'] as string || req.body.userDid as string;
+        
+        if (!userDid) {
+          return res.status(401).json({
+            error: 'unauthorized',
+            error_description: 'User DID required'
+          });
+        }
+
+        const { NotificationService } = require('./server/modules/notificationService');
+        const preferences = await NotificationService.updatePreferences(userDid, req.body);
+
+        res.json(preferences);
+      } catch (error: any) {
+        console.error('Failed to update notification preferences:', error);
+        res.status(500).json({
+          error: 'server_error',
+          error_description: error.message || 'Failed to update notification preferences'
+        });
+      }
+    });
   }
 
   public async start(): Promise<void> {

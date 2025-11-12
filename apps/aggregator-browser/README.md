@@ -51,10 +51,24 @@ npm run dev  # Starts dev server on port 3001
 2. **Authentication**: Uses licensed aggregator tokens to access par Noir's Google OAuth
 3. **Fallback**: Uses localStorage cache if API unavailable (for testing)
 
+## Feed Subscriptions & Google Drive Storage
+
+Feed subscriptions are stored on creator's Google Drive:
+- **Creator** stores subscriber info on their Google Drive (`par-noir-media/feed-{feedId}-subscribers.json`)
+- **Subscriber** stores local reference in browser localStorage (via UserStateContext)
+- When subscribing:
+  1. Subscriber calls API with their DID
+  2. Backend stores subscription in database
+  3. If creator has Google Drive connected, subscriber info is stored on creator's Drive
+  4. Subscriber's local reference is stored in localStorage (already handled)
+
+**Note**: If creator doesn't have Google Drive connected, subscription is stored in database only and can sync to Drive later when creator connects.
+
 ## Next Steps
 
 - [ ] Implement licensed aggregator authentication
 - [ ] Add par Noir aggregation API endpoint
 - [ ] Implement token-based decryption (Phase 3)
 - [ ] Add file preview/download with tokens
+- [x] Feed subscription Google Drive storage (creator hosts, subscriber stores local reference)
 

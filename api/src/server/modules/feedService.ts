@@ -293,16 +293,55 @@ export class FeedService {
 
   /**
    * Subscribe to feed
+   * Creator stores subscriber info on their Google Drive
+   * Subscriber stores local reference (handled by frontend)
    */
-  static async subscribeToFeed(feedId: string, userDid: string): Promise<boolean> {
+  static async subscribeToFeed(feedId: string, userDid: string, creatorGoogleTokens?: any): Promise<boolean> {
     const db = getDatabasePool();
     
     try {
+      // Get feed to find creator
+      const feed = await this.getFeedById(feedId);
+      
+      // Check if already subscribed
+      const existing = await db.query(`
+        SELECT subscription_id FROM feed_subscriptions 
+        WHERE feed_id = $1 AND user_did = $2
+        LIMIT 1
+      `, [feedId, userDid]);
+      
+      const isNewSubscription = existing.rows.length === 0;
+      if (!feed) {
+        throw new Error('Feed not found');
+      }
+
+      const creatorDid = feed.creatorId;
+
+      // Add to feed_subscriptions table (existing)
       await db.query(`
         INSERT INTO feed_subscriptions (feed_id, user_did)
         VALUES ($1, $2)
         ON CONFLICT (feed_id, user_did) DO NOTHING
       `, [feedId, userDid]);
+
+      // Add to creator subscriber index (database)
+      await db.query(`
+        INSERT INTO creator_subscriber_index (creator_did, subscriber_did, feed_id)
+        VALUES ($1, $2, $3)
+        ON CONFLICT (creator_did, subscriber_did, feed_id) 
+        DO UPDATE SET subscribed_at = NOW()
+      `, [creatorDid, userDid, feedId]);
+
+      // Store subscriber info on creator's Google Drive (if creator has Drive connected)
+      if (creatorGoogleTokens) {
+        const { CreatorSubscriberStorage } = await import('./creatorSubscriberStorage');
+        await CreatorSubscriberStorage.storeSubscriberOnCreatorDrive(
+          creatorDid,
+          feedId,
+          userDid,
+          creatorGoogleTokens
+        );
+      }
 
       // Update subscriber count
       await db.query(`
@@ -322,15 +361,42 @@ export class FeedService {
 
   /**
    * Unsubscribe from feed
+   * Removes from database and creator's Google Drive
    */
-  static async unsubscribeFromFeed(feedId: string, userDid: string): Promise<boolean> {
+  static async unsubscribeFromFeed(feedId: string, userDid: string, creatorGoogleTokens?: any): Promise<boolean> {
     const db = getDatabasePool();
     
     try {
+      // Get feed to find creator
+      const feed = await this.getFeedById(feedId);
+      if (!feed) {
+        throw new Error('Feed not found');
+      }
+
+      const creatorDid = feed.creatorId;
+
+      // Remove from feed_subscriptions table
       await db.query(`
         DELETE FROM feed_subscriptions 
         WHERE feed_id = $1 AND user_did = $2
       `, [feedId, userDid]);
+
+      // Remove from creator subscriber index
+      await db.query(`
+        DELETE FROM creator_subscriber_index
+        WHERE creator_did = $1 AND subscriber_did = $2 AND feed_id = $3
+      `, [creatorDid, userDid, feedId]);
+
+      // Remove from creator's Google Drive (if creator has Drive connected)
+      if (creatorGoogleTokens) {
+        const { CreatorSubscriberStorage } = await import('./creatorSubscriberStorage');
+        await CreatorSubscriberStorage.removeSubscriberFromCreatorDrive(
+          creatorDid,
+          feedId,
+          userDid,
+          creatorGoogleTokens
+        );
+      }
 
       // Update subscriber count
       await db.query(`
@@ -346,6 +412,37 @@ export class FeedService {
       console.error('Failed to unsubscribe from feed:', error);
       return false;
     }
+  }
+
+  /**
+   * Get creator's subscriber index (all users subscribed to creator's feeds)
+   */
+  static async getCreatorSubscriberIndex(creatorDid: string): Promise<Array<{
+    subscriberDid: string;
+    feedId: string;
+    subscribedAt: string;
+    syncedToDrive: boolean;
+  }>> {
+    const db = getDatabasePool();
+    
+    const result = await db.query<{
+      subscriber_did: string;
+      feed_id: string;
+      subscribed_at: string;
+      synced_to_drive: boolean;
+    }>(`
+      SELECT subscriber_did, feed_id, subscribed_at, synced_to_drive
+      FROM creator_subscriber_index
+      WHERE creator_did = $1
+      ORDER BY subscribed_at DESC
+    `, [creatorDid]);
+
+    return result.rows.map(row => ({
+      subscriberDid: row.subscriber_did,
+      feedId: row.feed_id,
+      subscribedAt: row.subscribed_at,
+      syncedToDrive: row.synced_to_drive
+    }));
   }
 
   /**
@@ -405,6 +502,18 @@ export class FeedService {
         WHERE feed_id = $1
       `, [feedId]);
 
+      // Trigger notification for feed subscribers
+      try {
+        const feed = await this.getFeedById(feedId);
+        if (feed) {
+          const { NotificationService } = await import('./notificationService');
+          await NotificationService.notifyFeedNewPost(feedId, fileId, feed.feedName, feed.creatorDid);
+        }
+      } catch (error) {
+        console.warn('Failed to send feed new post notification:', error);
+        // Don't fail the operation if notification fails
+      }
+
       return true;
     } catch (error) {
       console.error('Failed to add post to feed:', error);
@@ -453,6 +562,209 @@ export class FeedService {
     `, [feedId]);
 
     return result.rows.map(row => row.file_id);
+  }
+
+  /**
+   * Discover feeds with filters (for catalogue/store interface)
+   */
+  static async discoverFeeds(filters?: {
+    category?: FeedCategory;
+    sort?: 'new' | 'trending' | 'popular';
+    limit?: number;
+    offset?: number;
+  }): Promise<{ feeds: Feed[]; total: number }> {
+    const db = getDatabasePool();
+    
+    let query = `
+      SELECT f.*, 
+        COUNT(DISTINCT fs.user_did) as subscriber_count,
+        COUNT(DISTINCT fp.file_id) as post_count
+      FROM feeds f
+      LEFT JOIN feed_subscriptions fs ON f.feed_id = fs.feed_id
+      LEFT JOIN feed_posts fp ON f.feed_id = fp.feed_id
+      WHERE f.creator_tier IN ('feed', 'self-hosted')
+    `;
+    const params: any[] = [];
+    let paramCount = 0;
+
+    if (filters?.category) {
+      paramCount++;
+      query += ` AND f.feed_category = $${paramCount}`;
+      params.push(filters.category);
+    }
+
+    // Group by feed fields for aggregation
+    query += ' GROUP BY f.feed_id';
+
+    // Sorting
+    if (filters?.sort === 'trending') {
+      // Trending: most subscribers in last 7 days
+      query += ` ORDER BY 
+        (SELECT COUNT(*) FROM feed_subscriptions fs2 
+         WHERE fs2.feed_id = f.feed_id 
+         AND fs2.subscribed_at > NOW() - INTERVAL '7 days') DESC,
+        subscriber_count DESC`;
+    } else if (filters?.sort === 'popular') {
+      // Popular: most subscribers overall
+      query += ' ORDER BY subscriber_count DESC, post_count DESC';
+    } else {
+      // New: most recently created
+      query += ' ORDER BY f.created_at DESC';
+    }
+
+    // Get total count
+    const countQuery = query.replace(/SELECT.*FROM/, 'SELECT COUNT(DISTINCT f.feed_id) as total FROM');
+    const countResult = await db.query(countQuery.replace(/GROUP BY.*/, '').replace(/ORDER BY.*/, ''), params);
+    const total = parseInt(countResult.rows[0].total, 10);
+
+    // Add pagination
+    if (filters?.limit) {
+      paramCount++;
+      query += ` LIMIT $${paramCount}`;
+      params.push(filters.limit);
+    }
+
+    if (filters?.offset) {
+      paramCount++;
+      query += ` OFFSET $${paramCount}`;
+      params.push(filters.offset);
+    }
+
+    const result = await db.query<FeedRow>(query, params);
+    
+    return {
+      feeds: result.rows.map(row => this.rowToFeed(row)),
+      total
+    };
+  }
+
+  /**
+   * Get feed categories with counts
+   */
+  static async getFeedCategories(): Promise<Array<{ category: FeedCategory; count: number }>> {
+    const db = getDatabasePool();
+    
+    const result = await db.query<{ feed_category: string; count: string }>(`
+      SELECT feed_category, COUNT(*) as count
+      FROM feeds
+      WHERE creator_tier IN ('feed', 'self-hosted')
+        AND feed_category IS NOT NULL
+      GROUP BY feed_category
+      ORDER BY count DESC
+    `);
+
+    return result.rows.map(row => ({
+      category: row.feed_category as FeedCategory,
+      count: parseInt(row.count, 10)
+    }));
+  }
+
+  /**
+   * Get trending feeds (most subscribers in last 7 days)
+   */
+  static async getTrendingFeeds(filters?: {
+    limit?: number;
+    category?: FeedCategory;
+  }): Promise<Feed[]> {
+    const db = getDatabasePool();
+    
+    let query = `
+      SELECT f.*,
+        COUNT(DISTINCT fs.user_did) as subscriber_count,
+        COUNT(DISTINCT fp.file_id) as post_count
+      FROM feeds f
+      LEFT JOIN feed_subscriptions fs ON f.feed_id = fs.feed_id
+      LEFT JOIN feed_posts fp ON f.feed_id = fp.feed_id
+      WHERE f.creator_tier IN ('feed', 'self-hosted')
+        AND EXISTS (
+          SELECT 1 FROM feed_subscriptions fs2
+          WHERE fs2.feed_id = f.feed_id
+          AND fs2.subscribed_at > NOW() - INTERVAL '7 days'
+        )
+    `;
+    const params: any[] = [];
+    let paramCount = 0;
+
+    if (filters?.category) {
+      paramCount++;
+      query += ` AND f.feed_category = $${paramCount}`;
+      params.push(filters.category);
+    }
+
+    query += ' GROUP BY f.feed_id';
+    query += ` ORDER BY 
+      (SELECT COUNT(*) FROM feed_subscriptions fs3 
+       WHERE fs3.feed_id = f.feed_id 
+       AND fs3.subscribed_at > NOW() - INTERVAL '7 days') DESC,
+      subscriber_count DESC`;
+
+    if (filters?.limit) {
+      paramCount++;
+      query += ` LIMIT $${paramCount}`;
+      params.push(filters.limit);
+    }
+
+    const result = await db.query<FeedRow>(query, params);
+    
+    return result.rows.map(row => this.rowToFeed(row));
+  }
+
+  /**
+   * Get recommended feeds for user (based on their subscriptions and categories)
+   */
+  static async getRecommendedFeeds(filters: {
+    userDid: string;
+    limit?: number;
+  }): Promise<Feed[]> {
+    const db = getDatabasePool();
+    
+    // Get user's subscribed feed categories
+    const userCategoriesResult = await db.query<{ feed_category: string }>(`
+      SELECT DISTINCT f.feed_category
+      FROM feeds f
+      INNER JOIN feed_subscriptions fs ON f.feed_id = fs.feed_id
+      WHERE fs.user_did = $1
+        AND f.feed_category IS NOT NULL
+    `, [filters.userDid]);
+
+    const userCategories = userCategoriesResult.rows.map(row => row.feed_category);
+
+    let query = `
+      SELECT f.*,
+        COUNT(DISTINCT fs.user_did) as subscriber_count,
+        COUNT(DISTINCT fp.file_id) as post_count
+      FROM feeds f
+      LEFT JOIN feed_subscriptions fs ON f.feed_id = fs.feed_id
+      LEFT JOIN feed_posts fp ON f.feed_id = fp.feed_id
+      WHERE f.creator_tier IN ('feed', 'self-hosted')
+        AND NOT EXISTS (
+          SELECT 1 FROM feed_subscriptions fs2
+          WHERE fs2.feed_id = f.feed_id
+          AND fs2.user_did = $1
+        )
+    `;
+    const params: any[] = [filters.userDid];
+    let paramCount = 1;
+
+    // Prioritize feeds in categories user already subscribes to
+    if (userCategories.length > 0) {
+      paramCount++;
+      query += ` AND (f.feed_category = ANY($${paramCount}::text[]) OR f.feed_category IS NULL)`;
+      params.push(userCategories);
+    }
+
+    query += ' GROUP BY f.feed_id';
+    query += ' ORDER BY subscriber_count DESC, post_count DESC';
+
+    if (filters.limit) {
+      paramCount++;
+      query += ` LIMIT $${paramCount}`;
+      params.push(filters.limit);
+    }
+
+    const result = await db.query<FeedRow>(query, params);
+    
+    return result.rows.map(row => this.rowToFeed(row));
   }
 
   /**

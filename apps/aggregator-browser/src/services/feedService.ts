@@ -148,14 +148,23 @@ export class FeedService {
 
   /**
    * Subscribe to feed
+   * Creator stores subscriber info on their Google Drive
+   * Subscriber stores local reference (already handled by UserStateContext)
    */
   static async subscribeToFeed(feedId: string, userDid: string): Promise<void> {
+    // Call API - creator will store subscriber info on their Google Drive
+    // Subscriber's local reference is already stored in UserStateContext
     const response = await fetch(`${API_ENDPOINT}/api/feeds/${feedId}/subscribe`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json'
       },
-      body: JSON.stringify({ userDid })
+      body: JSON.stringify({ 
+        userDid
+        // Note: creatorGoogleTokens would be passed if creator is making the call
+        // For subscriber-initiated subscriptions, creator's tokens aren't available
+        // Subscription is stored in database and synced to Drive when creator is online
+      })
     });
 
     if (!response.ok) {
@@ -166,8 +175,12 @@ export class FeedService {
 
   /**
    * Unsubscribe from feed
+   * Removes from creator's Google Drive and database
+   * Local reference removed by UserStateContext
    */
   static async unsubscribeFromFeed(feedId: string, userDid: string): Promise<void> {
+    // Call API - creator will remove subscriber info from their Google Drive
+    // Subscriber's local reference is already removed by UserStateContext
     const response = await fetch(`${API_ENDPOINT}/api/feeds/${feedId}/subscribe`, {
       method: 'DELETE',
       headers: {
@@ -246,6 +259,87 @@ export class FeedService {
       const error = await response.json().catch(() => ({ error: 'Failed to remove post from feed' }));
       throw new Error(error.error || 'Failed to remove post from feed');
     }
+  }
+
+  /**
+   * Discover feeds (catalogue/store interface)
+   */
+  static async discoverFeeds(filters?: {
+    category?: FeedCategory;
+    sort?: 'new' | 'trending' | 'popular';
+    limit?: number;
+    offset?: number;
+  }): Promise<FeedListResponse> {
+    const params = new URLSearchParams();
+    if (filters?.category) params.append('category', filters.category);
+    if (filters?.sort) params.append('sort', filters.sort);
+    if (filters?.limit) params.append('limit', filters.limit.toString());
+    if (filters?.offset) params.append('offset', filters.offset.toString());
+
+    const response = await fetch(`${API_ENDPOINT}/api/feeds/discover?${params.toString()}`);
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ error: 'Failed to discover feeds' }));
+      throw new Error(error.error || 'Failed to discover feeds');
+    }
+
+    return response.json();
+  }
+
+  /**
+   * Get feed categories with counts
+   */
+  static async getFeedCategories(): Promise<Array<{ category: FeedCategory; count: number }>> {
+    const response = await fetch(`${API_ENDPOINT}/api/feeds/categories`);
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ error: 'Failed to get categories' }));
+      throw new Error(error.error || 'Failed to get categories');
+    }
+
+    const data = await response.json();
+    return data.categories || [];
+  }
+
+  /**
+   * Get trending feeds
+   */
+  static async getTrendingFeeds(filters?: {
+    limit?: number;
+    category?: FeedCategory;
+  }): Promise<Feed[]> {
+    const params = new URLSearchParams();
+    if (filters?.limit) params.append('limit', filters.limit.toString());
+    if (filters?.category) params.append('category', filters.category);
+
+    const response = await fetch(`${API_ENDPOINT}/api/feeds/trending?${params.toString()}`);
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ error: 'Failed to get trending feeds' }));
+      throw new Error(error.error || 'Failed to get trending feeds');
+    }
+
+    const data = await response.json();
+    return data.feeds || [];
+  }
+
+  /**
+   * Get recommended feeds for user
+   */
+  static async getRecommendedFeeds(userDid: string, limit?: number): Promise<Feed[]> {
+    const params = new URLSearchParams();
+    params.append('userDid', userDid);
+    if (limit) params.append('limit', limit.toString());
+
+    const response = await fetch(`${API_ENDPOINT}/api/feeds/recommended?${params.toString()}`);
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ error: 'Failed to get recommended feeds' }));
+      throw new Error(error.error || 'Failed to get recommended feeds');
+    }
+
+    const data = await response.json();
+    return data.feeds || [];
   }
 }
 

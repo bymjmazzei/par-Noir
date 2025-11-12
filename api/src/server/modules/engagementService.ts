@@ -17,11 +17,12 @@ export interface EngagementRow {
 export interface Comment {
   id: string;
   fileId: string;
-  authorId: string;
+  authorId: string; // Commentor DID (references the content)
   authorName: string;
   content: string;
   timestamp: string;
   likes?: number;
+  fileOwnerDid?: string; // File owner DID (owns the content)
 }
 
 export interface EngagementStats {
@@ -69,6 +70,25 @@ export class EngagementService {
       const count = parseInt(countResult.rows[0].count, 10);
       const liked = existing.rows.length === 0; // If it didn't exist, now it's liked
 
+      // Trigger notification for file owner (only when liking, not unliking)
+      if (liked) {
+        try {
+          // Get file owner from metadata
+          const { AggregatorMetadataServiceDB } = await import('./aggregatorMetadataServiceDB');
+          const aggregator = AggregatorMetadataServiceDB.getInstance();
+          const fileMetadata = await aggregator.getFileMetadata(fileId);
+          const fileOwnerDid = fileMetadata?.pnIdentifier;
+          
+          if (fileOwnerDid && fileOwnerDid !== userDid) {
+            const { NotificationService } = await import('./notificationService');
+            await NotificationService.notifyFileLike(fileId, userDid, fileOwnerDid);
+          }
+        } catch (error) {
+          console.warn('Failed to send like notification:', error);
+          // Don't fail the operation if notification fails
+        }
+      }
+
       return { liked, count };
     } catch (error) {
       console.error('Failed to toggle like:', error);
@@ -93,33 +113,75 @@ export class EngagementService {
 
   /**
    * Add a comment
+   * File owner has the content, pN commentor references it
+   * Comments wouldn't exist without the content; creator owns original content and hosts it
    */
   static async addComment(
     fileId: string,
     userDid: string,
     content: string,
-    authorName?: string
+    authorName?: string,
+    fileOwnerDid?: string
   ): Promise<Comment> {
     const db = getDatabasePool();
     
     try {
+      // If fileOwnerDid not provided, get it from aggregator metadata
+      let ownerDid = fileOwnerDid;
+      if (!ownerDid) {
+        try {
+          const { AggregatorMetadataServiceDB } = await import('./aggregatorMetadataServiceDB');
+          const aggregator = AggregatorMetadataServiceDB.getInstance();
+          const fileMetadata = await aggregator.getFileMetadata(fileId);
+          ownerDid = fileMetadata?.pnIdentifier || null;
+        } catch (error) {
+          console.warn('Could not fetch file owner from metadata:', error);
+        }
+      }
+
+      // Store comment with reference to file owner
+      // Note: We store file_owner in a JSONB field in content for now
+      // In production, you might want to add a separate file_owner column
+      const commentData = {
+        content,
+        fileOwnerDid: ownerDid || null,
+        commentorDid: userDid,
+        note: 'File owner owns content; commentor references it'
+      };
+
       const result = await db.query<EngagementRow>(`
         INSERT INTO engagement (file_id, user_did, type, content)
         VALUES ($1, $2, 'comment', $3)
         RETURNING *
-      `, [fileId, userDid, content]);
+      `, [fileId, userDid, JSON.stringify(commentData)]);
 
       const row = result.rows[0];
+      const parsedContent = JSON.parse(row.content || '{}');
       
-      return {
+      const comment = {
         id: row.engagement_id,
         fileId: row.file_id,
-        authorId: row.user_did,
+        authorId: row.user_did, // Commentor DID
         authorName: authorName || row.user_did.substring(0, 8),
-        content: row.content || '',
+        content: parsedContent.content || content,
         timestamp: row.created_at,
-        likes: 0
+        likes: 0,
+        // Add file owner reference
+        fileOwnerDid: parsedContent.fileOwnerDid || ownerDid || undefined
       };
+
+      // Trigger notification for file owner
+      if (ownerDid && ownerDid !== userDid) {
+        try {
+          const { NotificationService } = await import('./notificationService');
+          await NotificationService.notifyFileComment(fileId, comment.id, userDid, ownerDid);
+        } catch (error) {
+          console.warn('Failed to send comment notification:', error);
+          // Don't fail the operation if notification fails
+        }
+      }
+
+      return comment;
     } catch (error) {
       console.error('Failed to add comment:', error);
       throw error;
@@ -128,26 +190,53 @@ export class EngagementService {
 
   /**
    * Get comments for a file
+   * Returns comments with file owner reference
    */
   static async getComments(fileId: string): Promise<Comment[]> {
     const db = getDatabasePool();
     
     try {
+      // Get file owner from aggregator metadata
+      let fileOwnerDid: string | undefined;
+      try {
+        const { AggregatorMetadataServiceDB } = await import('./aggregatorMetadataServiceDB');
+        const aggregator = AggregatorMetadataServiceDB.getInstance();
+        const fileMetadata = await aggregator.getFileMetadata(fileId);
+        fileOwnerDid = fileMetadata?.pnIdentifier;
+      } catch (error) {
+        console.warn('Could not fetch file owner from metadata:', error);
+      }
+
       const result = await db.query<EngagementRow>(`
         SELECT * FROM engagement 
         WHERE file_id = $1 AND type = 'comment'
         ORDER BY created_at ASC
       `, [fileId]);
 
-      return result.rows.map(row => ({
-        id: row.engagement_id,
-        fileId: row.file_id,
-        authorId: row.user_did,
-        authorName: row.user_did.substring(0, 8),
-        content: row.content || '',
-        timestamp: row.created_at,
-        likes: 0 // TODO: Add comment likes if needed
-      }));
+      return result.rows.map(row => {
+        // Try to parse JSON content (new format) or use plain text (old format)
+        let parsedContent: any = {};
+        let commentContent = row.content || '';
+        
+        try {
+          parsedContent = JSON.parse(row.content || '{}');
+          commentContent = parsedContent.content || row.content || '';
+        } catch {
+          // Old format - plain text content
+          commentContent = row.content || '';
+        }
+
+        return {
+          id: row.engagement_id,
+          fileId: row.file_id,
+          authorId: row.user_did, // Commentor DID
+          authorName: row.user_did.substring(0, 8),
+          content: commentContent,
+          timestamp: row.created_at,
+          likes: 0, // TODO: Add comment likes if needed
+          fileOwnerDid: parsedContent.fileOwnerDid || fileOwnerDid // File owner reference
+        };
+      });
     } catch (error) {
       console.error('Failed to get comments:', error);
       throw error;
