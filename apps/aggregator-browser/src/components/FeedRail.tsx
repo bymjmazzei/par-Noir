@@ -6,7 +6,7 @@
 import React, { useRef, useEffect } from 'react';
 import { Feed } from '../types/aggregator';
 import { useUserState } from '../contexts/UserStateContext';
-import { Globe, Sparkles, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Globe, Sparkles, ChevronLeft, ChevronRight, Plus } from 'lucide-react';
 
 export interface FeedRailItem {
   feedId: string;
@@ -21,9 +21,10 @@ interface FeedRailProps {
   feeds: FeedRailItem[];
   activeFeedId: string;
   onFeedSelect: (feedId: string) => void;
+  onBrowseFeeds?: () => void;
 }
 
-export function FeedRail({ feeds, activeFeedId, onFeedSelect }: FeedRailProps) {
+export function FeedRail({ feeds, activeFeedId, onFeedSelect, onBrowseFeeds }: FeedRailProps) {
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const { userState } = useUserState();
 
@@ -93,6 +94,17 @@ export function FeedRail({ feeds, activeFeedId, onFeedSelect }: FeedRailProps) {
             </button>
           );
         })}
+        
+        {/* Browse Feeds Button */}
+        {onBrowseFeeds && (
+          <button
+            onClick={onBrowseFeeds}
+            className="flex items-center space-x-2 px-4 py-2 rounded-full whitespace-nowrap bg-neutral-800 text-text-secondary hover:bg-neutral-700 hover:text-white transition-all border-2 border-dashed border-neutral-600"
+          >
+            <Plus className="h-4 w-4" />
+            <span className="font-medium">Browse</span>
+          </button>
+        )}
       </div>
 
       {/* Right scroll button */}

@@ -13,6 +13,8 @@ import { useUserState } from './contexts/UserStateContext';
 import { FeedRail, buildFeedRailItems } from './components/FeedRail';
 import { EngagementActions } from './components/EngagementActions';
 import { PNConnect } from './components/PNConnect';
+import { FeedBrowser } from './components/FeedBrowser';
+import { CreatorIndex } from './components/CreatorIndex';
 
 // Shared types - importing from id-dashboard
 // In production, these would come from a shared package
@@ -33,6 +35,8 @@ function App() {
   const [activeFeedId, setActiveFeedId] = useState<string>('public'); // Active feed ID
   const [feeds, setFeeds] = useState<Feed[]>([]); // Available feeds
   const [visibleFileId, setVisibleFileId] = useState<string | null>(null); // Currently visible file in feed mode
+  const [showFeedBrowser, setShowFeedBrowser] = useState(false); // Show feed browser modal
+  const [viewingCreatorId, setViewingCreatorId] = useState<string | null>(null); // Creator ID for index view
   const videoRefs = React.useRef<Map<string, HTMLVideoElement>>(new Map()); // Store video element refs
   
   const metadataIndexService = getMetadataIndexService();
@@ -389,6 +393,31 @@ function App() {
     });
   };
 
+  // Show creator index if viewing a creator
+  if (viewingCreatorId) {
+    const creatorFiles = indexedFiles.filter(f => {
+      const did = f.metadata.creator?.identifier?.value || 
+                 f.metadata.creator?.["@id"] || 
+                 f.metadata.author?.did;
+      return did === viewingCreatorId;
+    });
+    
+    return (
+      <CreatorIndex
+        creatorId={viewingCreatorId}
+        creatorName={
+          creatorFiles[0]?.metadata.creator?.identifier?.value || 
+          viewingCreatorId
+        }
+        files={creatorFiles}
+        onFileClick={(file) => {
+          // TODO: Open file viewer
+        }}
+        onBack={() => setViewingCreatorId(null)}
+      />
+    );
+  }
+
   return (
     <div className={`min-h-screen bg-gradient-to-br from-neutral-900 via-neutral-800 to-neutral-900 ${viewMode === 'feed' ? 'h-screen overflow-hidden' : ''}`}>
       <div className={`${viewMode === 'feed' ? 'h-full flex flex-col' : 'max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8'}`}>
@@ -414,6 +443,7 @@ function App() {
               )}
               activeFeedId={activeFeedId}
               onFeedSelect={setActiveFeedId}
+              onBrowseFeeds={() => setShowFeedBrowser(true)}
             />
           </div>
         )}
@@ -622,12 +652,21 @@ function App() {
                       <p className="text-white/90 text-sm mb-2 line-clamp-2">{file.description}</p>
                     )}
                     <div className="flex items-center space-x-4 text-xs text-white/80">
-                      <div className="flex items-center space-x-1">
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          const creatorId = file.creator?.identifier?.value || file.creator?.["@id"] || file.author?.did;
+                          if (creatorId) {
+                            setViewingCreatorId(creatorId);
+                          }
+                        }}
+                        className="flex items-center space-x-1 hover:text-blue-400 transition-colors"
+                      >
                         <User className="h-3 w-3" />
                         <span className="truncate">
                           {file.creator?.identifier?.value || file.creator?.["@id"] || file.author?.did || 'Unknown'}
                         </span>
-                      </div>
+                      </button>
                       <span>•</span>
                       <span>{new Date(file.uploadDate).toLocaleDateString()}</span>
                       {(file.keywords || file.tags) && (file.keywords || file.tags || []).length > 0 && (
@@ -972,6 +1011,14 @@ function App() {
               </div>
             </div>
           </div>
+        )}
+
+        {/* Feed Browser Modal */}
+        {showFeedBrowser && (
+          <FeedBrowser
+            feeds={feeds}
+            onClose={() => setShowFeedBrowser(false)}
+          />
         )}
       </div>
     </div>
