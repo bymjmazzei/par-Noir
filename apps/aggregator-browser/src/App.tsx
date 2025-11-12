@@ -15,6 +15,9 @@ import { EngagementActions } from './components/EngagementActions';
 import { PNConnect } from './components/PNConnect';
 import { FeedBrowser } from './components/FeedBrowser';
 import { CreatorIndex } from './components/CreatorIndex';
+import { FeedEngagementSidebar } from './components/FeedEngagementSidebar';
+import { SettingsPanel } from './components/SettingsPanel';
+import { Settings } from 'lucide-react';
 
 // Shared types - importing from id-dashboard
 // In production, these would come from a shared package
@@ -36,6 +39,7 @@ function App() {
   const [feeds, setFeeds] = useState<Feed[]>([]); // Available feeds
   const [visibleFileId, setVisibleFileId] = useState<string | null>(null); // Currently visible file in feed mode
   const [showFeedBrowser, setShowFeedBrowser] = useState(false); // Show feed browser modal
+  const [showSettings, setShowSettings] = useState(false); // Show settings panel
   const [viewingCreatorId, setViewingCreatorId] = useState<string | null>(null); // Creator ID for index view
   const videoRefs = React.useRef<Map<string, HTMLVideoElement>>(new Map()); // Store video element refs
   
@@ -433,18 +437,27 @@ function App() {
 
         {/* Feed Rail - Only show in feed mode */}
         {viewMode === 'feed' && (
-          <div className="bg-neutral-900/60 border-b border-neutral-700 px-4 py-2">
-            <FeedRail
-              feeds={buildFeedRailItems(
-                feeds,
-                userState.preferences.subscribedFeedIds,
-                activeFeedId,
-                false // TODO: Track new third-party content
-              )}
-              activeFeedId={activeFeedId}
-              onFeedSelect={setActiveFeedId}
-              onBrowseFeeds={() => setShowFeedBrowser(true)}
-            />
+          <div className="bg-neutral-900/60 border-b border-neutral-700 px-4 py-2 flex items-center justify-between">
+            <div className="flex-1">
+              <FeedRail
+                feeds={buildFeedRailItems(
+                  feeds,
+                  userState.preferences.subscribedFeedIds,
+                  activeFeedId,
+                  false // TODO: Track new third-party content
+                )}
+                activeFeedId={activeFeedId}
+                onFeedSelect={setActiveFeedId}
+                onBrowseFeeds={() => setShowFeedBrowser(true)}
+              />
+            </div>
+            <button
+              onClick={() => setShowSettings(true)}
+              className="ml-4 p-2 text-text-secondary hover:text-white transition-colors"
+              title="Settings"
+            >
+              <Settings className="h-5 w-5" />
+            </button>
           </div>
         )}
 
@@ -549,14 +562,23 @@ function App() {
                 </button>
               </div>
               {viewMode !== 'feed' && (
-                <button
-                  onClick={() => discoverFiles(undefined, true)}
-                  disabled={isLoading}
-                  className="px-4 py-2 bg-neutral-700 text-white text-sm font-medium rounded-lg hover:bg-neutral-600 transition-colors disabled:opacity-50 flex items-center space-x-2"
-                >
-                  <RefreshCw className={`h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} />
-                  <span>Refresh</span>
-                </button>
+                <>
+                  <button
+                    onClick={() => discoverFiles(undefined, true)}
+                    disabled={isLoading}
+                    className="px-4 py-2 bg-neutral-700 text-white text-sm font-medium rounded-lg hover:bg-neutral-600 transition-colors disabled:opacity-50 flex items-center space-x-2"
+                  >
+                    <RefreshCw className={`h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} />
+                    <span>Refresh</span>
+                  </button>
+                  <button
+                    onClick={() => setShowSettings(true)}
+                    className="p-2 text-text-secondary hover:text-white transition-colors"
+                    title="Settings"
+                  >
+                    <Settings className="h-5 w-5" />
+                  </button>
+                </>
               )}
             </div>
           </div>
@@ -645,13 +667,26 @@ function App() {
                     </div>
                   )}
                   
-                  {/* File info overlay */}
-                  <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 via-black/60 to-transparent p-6">
-                    <h3 className="text-white text-xl font-bold mb-2">{fileName}</h3>
-                    {file.description && (
-                      <p className="text-white/90 text-sm mb-2 line-clamp-2">{file.description}</p>
-                    )}
-                    <div className="flex items-center space-x-4 text-xs text-white/80">
+                  {/* Engagement Sidebar - Right Side */}
+                  <FeedEngagementSidebar
+                    file={indexedFile}
+                    onLike={() => {
+                      // TODO: Implement like functionality
+                      console.log('Like:', file.fileId);
+                    }}
+                    onComment={() => {
+                      // TODO: Implement comment functionality
+                      console.log('Comment:', file.fileId);
+                    }}
+                    onShare={() => {
+                      // TODO: Implement share functionality
+                      console.log('Share:', file.fileId);
+                    }}
+                  />
+
+                  {/* Content Info Overlay - Bottom Left */}
+                  <div className="absolute bottom-0 left-0 right-20 bg-gradient-to-t from-black/80 via-black/60 to-transparent p-6">
+                    <div className="flex items-center space-x-3 mb-3">
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
@@ -660,79 +695,52 @@ function App() {
                             setViewingCreatorId(creatorId);
                           }
                         }}
-                        className="flex items-center space-x-1 hover:text-blue-400 transition-colors"
+                        className="flex items-center space-x-2 hover:opacity-80 transition-opacity"
                       >
-                        <User className="h-3 w-3" />
-                        <span className="truncate">
-                          {file.creator?.identifier?.value || file.creator?.["@id"] || file.author?.did || 'Unknown'}
-                        </span>
-                      </button>
-                      <span>•</span>
-                      <span>{new Date(file.uploadDate).toLocaleDateString()}</span>
-                      {(file.keywords || file.tags) && (file.keywords || file.tags || []).length > 0 && (
-                        <>
-                          <span>•</span>
-                          <div className="flex flex-wrap gap-1">
-                            {(file.keywords || file.tags || []).slice(0, 3).map((tag, idx) => (
-                              <span
-                                key={idx}
-                                className="px-2 py-0.5 bg-white/20 text-white text-xs rounded"
-                              >
-                                {tag}
-                              </span>
-                            ))}
+                        <div className="w-10 h-10 bg-blue-500/20 rounded-full flex items-center justify-center">
+                          <User className="h-5 w-5 text-blue-400" />
+                        </div>
+                        <div className="text-left">
+                          <div className="text-white font-semibold text-sm">
+                            {file.creator?.identifier?.value || file.creator?.["@id"] || file.author?.did || 'Unknown'}
                           </div>
-                        </>
-                      )}
-                    </div>
-                    <div className="mt-4 flex items-center justify-between">
-                      <EngagementActions
-                        file={indexedFile}
-                        compact
-                        onLike={() => {
-                          // TODO: Implement like functionality
-                          console.log('Like:', file.fileId);
-                        }}
-                        onComment={() => {
-                          // TODO: Implement comment functionality
-                          console.log('Comment:', file.fileId);
-                        }}
-                        onShare={() => {
-                          // TODO: Implement share functionality
-                          console.log('Share:', file.fileId);
-                        }}
-                      />
-                      <button
-                        onClick={async () => {
-                          try {
-                            const tokenString = file.publicToken;
-                            if (!tokenString) {
-                              alert('This file does not have a share token yet.');
-                              return;
-                            }
-                            let token: ShareToken;
-                            try {
-                              token = typeof tokenString === 'string' ? JSON.parse(tokenString) : tokenString;
-                            } catch (e) {
-                              alert('Invalid share token format.');
-                              return;
-                            }
-                            setIsLoading(true);
-                            const decryptedBlob = await decryptWithToken(token);
-                            const url = URL.createObjectURL(decryptedBlob);
-                            setViewingFile({ file: indexedFile, blob: decryptedBlob, url });
-                            setIsLoading(false);
-                          } catch (err) {
-                            setIsLoading(false);
-                            const errorMessage = err instanceof Error ? err.message : 'Failed to decrypt file';
-                            alert(`Failed to view file: ${errorMessage}`);
-                          }
-                        }}
-                        className="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors"
-                      >
-                        View Full
+                          <div className="text-white/70 text-xs">
+                            {new Date(file.uploadDate).toLocaleDateString()}
+                          </div>
+                        </div>
                       </button>
                     </div>
+                    
+                    <h3 className="text-white text-lg font-semibold mb-2 line-clamp-1">{fileName}</h3>
+                    {file.description && (
+                      <p className="text-white/90 text-sm mb-3 line-clamp-2">{file.description}</p>
+                    )}
+                    
+                    {(file.keywords || file.tags) && (file.keywords || file.tags || []).length > 0 && (
+                      <div className="flex flex-wrap gap-2 mb-3">
+                        {(file.keywords || file.tags || []).slice(0, 5).map((tag, idx) => (
+                          <span
+                            key={idx}
+                            className="px-2 py-1 bg-white/20 text-white text-xs rounded-full"
+                          >
+                            #{tag}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                    
+                    {file.contentRating && (
+                      <div className="flex items-center space-x-2">
+                        <span className="px-2 py-1 bg-blue-500/20 text-blue-400 text-xs rounded-full">
+                          {file.contentRating}
+                        </span>
+                        {file.warningTags && file.warningTags.length > 0 && (
+                          <span className="text-white/70 text-xs">
+                            {file.warningTags.join(', ')}
+                          </span>
+                        )}
+                      </div>
+                    )}
                   </div>
                 </div>
               );
@@ -1018,6 +1026,13 @@ function App() {
           <FeedBrowser
             feeds={feeds}
             onClose={() => setShowFeedBrowser(false)}
+          />
+        )}
+
+        {/* Settings Panel */}
+        {showSettings && (
+          <SettingsPanel
+            onClose={() => setShowSettings(false)}
           />
         )}
       </div>
