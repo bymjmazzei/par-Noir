@@ -110,6 +110,15 @@ export class SecureVolumeManager {
   }
 
   public async getStatus(): Promise<SecureVolumeMountState> {
+    if (!this.driver) {
+      return {
+        mounted: false,
+        mountPoint: null,
+        platform: process.platform,
+        driver: 'veracrypt',
+        bundleExists: false
+      };
+    }
     return this.getDriver().getStatus();
   }
 

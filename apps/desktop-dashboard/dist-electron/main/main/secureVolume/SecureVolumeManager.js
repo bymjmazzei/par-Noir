@@ -98,6 +98,15 @@ class SecureVolumeManager {
         return this.getDriver().unmount();
     }
     async getStatus() {
+        if (!this.driver) {
+            return {
+                mounted: false,
+                mountPoint: null,
+                platform: process.platform,
+                driver: 'veracrypt',
+                bundleExists: false
+            };
+        }
         return this.getDriver().getStatus();
     }
     getDriver() {

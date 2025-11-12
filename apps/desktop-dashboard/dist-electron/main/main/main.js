@@ -38,24 +38,66 @@ let mainWindow = null;
 const secureVolumeManager = new SecureVolumeManager_1.SecureVolumeManager();
 const registerIpc = () => {
     electron_1.ipcMain.handle(ipcChannels_1.SECURE_VOLUME_IPC_CHANNEL.status, async () => {
-        return secureVolumeManager.getStatus();
+        try {
+            return await secureVolumeManager.getStatus();
+        }
+        catch (error) {
+            console.error('[desktop] Error getting secure volume status:', error);
+            return {
+                mounted: false,
+                mountPoint: null,
+                platform: process.platform,
+                driver: 'veracrypt',
+                bundleExists: false
+            };
+        }
     });
     electron_1.ipcMain.handle(ipcChannels_1.SECURE_VOLUME_IPC_CHANNEL.mount, async () => {
-        return secureVolumeManager.mount();
+        try {
+            return await secureVolumeManager.mount();
+        }
+        catch (error) {
+            console.error('[desktop] Error mounting secure volume:', error);
+            throw error;
+        }
     });
     electron_1.ipcMain.handle(ipcChannels_1.SECURE_VOLUME_IPC_CHANNEL.unmount, async () => {
-        return secureVolumeManager.unmount();
+        try {
+            return await secureVolumeManager.unmount();
+        }
+        catch (error) {
+            console.error('[desktop] Error unmounting secure volume:', error);
+            throw error;
+        }
     });
     electron_1.ipcMain.handle(ipcChannels_1.SECURE_VOLUME_IPC_CHANNEL.unlock, async (_event, payload) => {
-        await secureVolumeManager.setUnlockContext(payload);
-        return secureVolumeManager.mount();
+        try {
+            await secureVolumeManager.setUnlockContext(payload);
+            return await secureVolumeManager.mount();
+        }
+        catch (error) {
+            console.error('[desktop] Error unlocking secure volume:', error);
+            throw error;
+        }
     });
     electron_1.ipcMain.handle(ipcChannels_1.SECURE_VOLUME_IPC_CHANNEL.lock, async () => {
-        await secureVolumeManager.clearUnlockContext();
-        return secureVolumeManager.getStatus();
+        try {
+            await secureVolumeManager.clearUnlockContext();
+            return await secureVolumeManager.getStatus();
+        }
+        catch (error) {
+            console.error('[desktop] Error locking secure volume:', error);
+            throw error;
+        }
     });
     electron_1.ipcMain.handle(ipcChannels_1.SECURE_VOLUME_IPC_CHANNEL.hydrate, async (_event, identity) => {
-        return secureVolumeManager.hydrate(identity);
+        try {
+            return await secureVolumeManager.hydrate(identity);
+        }
+        catch (error) {
+            console.error('[desktop] Error hydrating secure volume:', error);
+            throw error;
+        }
     });
     electron_1.ipcMain.handle(ipcChannels_1.NATIVE_IPC_CHANNEL.openPath, async (_event, target) => {
         if (!target) {
@@ -93,9 +135,15 @@ const createWindow = async () => {
     });
 };
 electron_1.app.whenReady().then(async () => {
-    await secureVolumeManager.init();
+    // Initialize secure volume manager, but don't block app startup if VeraCrypt isn't found
+    secureVolumeManager.init().catch((error) => {
+        console.warn('[desktop] Secure volume manager initialization failed (VeraCrypt may not be available):', error.message);
+    });
     registerIpc();
-    await secureVolumeManager.unmount();
+    // Try to unmount any existing volumes, but don't fail if it errors
+    secureVolumeManager.unmount().catch(() => {
+        // Ignore unmount errors on startup
+    });
     await createWindow();
     electron_1.app.on('activate', () => {
         if (electron_1.BrowserWindow.getAllWindows().length === 0) {
