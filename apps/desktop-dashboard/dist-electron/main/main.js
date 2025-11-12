@@ -5,9 +5,26 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 Object.defineProperty(exports, "__esModule", { value: true });
 const electron_1 = require("electron");
 const path_1 = __importDefault(require("path"));
+const fs_1 = __importDefault(require("fs"));
 const ipcChannels_1 = require("../shared/ipcChannels");
 const SecureVolumeManager_1 = require("./secureVolume/SecureVolumeManager");
 const isDev = !electron_1.app.isPackaged || Boolean(process.env.VITE_DEV_SERVER_URL);
+const resolveDataRoot = () => {
+    const override = process.env.PN_DATA_ROOT?.trim();
+    const baseCandidate = override && override.length > 0
+        ? path_1.default.resolve(override)
+        : path_1.default.resolve(electron_1.app.getAppPath(), '..', 'data');
+    try {
+        fs_1.default.mkdirSync(baseCandidate, { recursive: true });
+    }
+    catch (error) {
+        console.warn('[desktop] Failed to create portable data root at', baseCandidate, error);
+    }
+    electron_1.app.setPath('userData', baseCandidate);
+    return baseCandidate;
+};
+const portableDataRoot = resolveDataRoot();
+console.log('[desktop] userData path set to', portableDataRoot);
 let mainWindow = null;
 const secureVolumeManager = new SecureVolumeManager_1.SecureVolumeManager();
 const registerIpc = () => {
@@ -22,11 +39,14 @@ const registerIpc = () => {
     });
     electron_1.ipcMain.handle(ipcChannels_1.SECURE_VOLUME_IPC_CHANNEL.unlock, async (_event, payload) => {
         await secureVolumeManager.setUnlockContext(payload);
-        return secureVolumeManager.getStatus();
+        return secureVolumeManager.mount();
     });
     electron_1.ipcMain.handle(ipcChannels_1.SECURE_VOLUME_IPC_CHANNEL.lock, async () => {
         await secureVolumeManager.clearUnlockContext();
         return secureVolumeManager.getStatus();
+    });
+    electron_1.ipcMain.handle(ipcChannels_1.SECURE_VOLUME_IPC_CHANNEL.hydrate, async (_event, identity) => {
+        return secureVolumeManager.hydrate(identity);
     });
     electron_1.ipcMain.handle(ipcChannels_1.NATIVE_IPC_CHANNEL.openPath, async (_event, target) => {
         if (!target) {

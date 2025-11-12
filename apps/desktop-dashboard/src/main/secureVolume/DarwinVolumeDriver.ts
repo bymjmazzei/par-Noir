@@ -2,6 +2,7 @@ import { promises as fs } from 'fs';
 import fsSync from 'fs';
 import path from 'path';
 import { spawn } from 'child_process';
+import { createHash } from 'crypto';
 
 import type { SecureVolumeMountState, SecureVolumeUnlockPayload } from '../../shared/ipcChannels';
 import type { SecureVolumeConfig, VolumeDriver } from './VolumeDriver';
@@ -57,6 +58,7 @@ export class DarwinVolumeDriver implements VolumeDriver {
 
   private readonly bundleRoot: string;
   private readonly mountRoot: string;
+  private readonly allowMountPointCreation: boolean;
   private readonly defaultVolumeName: string;
   private bundlePath: string;
   private mountPoint: string;
@@ -68,6 +70,7 @@ export class DarwinVolumeDriver implements VolumeDriver {
   public constructor(config: SecureVolumeConfig) {
     this.bundleRoot = path.join(config.userDataPath, 'secure-volumes');
     this.mountRoot = config.mountRoot ?? path.join(config.userDataPath, 'Secure Folder');
+    this.allowMountPointCreation = !this.isSystemMountRoot(this.mountRoot);
     this.defaultVolumeName = config.volumeName ?? 'par Noir Secure';
 
     const defaultDirName = this.sanitiseName(this.defaultVolumeName);
@@ -78,7 +81,9 @@ export class DarwinVolumeDriver implements VolumeDriver {
 
   public async init(): Promise<void> {
     await fs.mkdir(this.bundleRoot, { recursive: true });
-    await fs.mkdir(this.mountRoot, { recursive: true });
+    if (this.allowMountPointCreation) {
+      await fs.mkdir(this.mountRoot, { recursive: true });
+    }
   }
 
   public async setUnlockContext(payload: SecureVolumeUnlockPayload): Promise<void> {
@@ -92,7 +97,9 @@ export class DarwinVolumeDriver implements VolumeDriver {
     }
 
     await fs.mkdir(path.dirname(this.bundlePath), { recursive: true });
-    await fs.mkdir(this.mountPoint, { recursive: true });
+    if (this.allowMountPointCreation) {
+      await fs.mkdir(this.mountPoint, { recursive: true });
+    }
     this.unlockContext = { ...payload, authToken: payload.authToken.trim() };
   }
 
@@ -108,8 +115,17 @@ export class DarwinVolumeDriver implements VolumeDriver {
     await this.ensureVolumeExists();
 
     if (await this.isMounted()) {
+      console.log('[SecureVolume] Volume already mounted', {
+        bundlePath: this.bundlePath,
+        mountPoint: this.mountPoint
+      });
       return this.getStatus();
     }
+
+    console.log('[SecureVolume] Mounting secure volume', {
+      bundlePath: this.bundlePath,
+      mountPoint: this.mountPoint
+    });
 
     try {
       await spawnAsync('hdiutil', [
@@ -118,9 +134,12 @@ export class DarwinVolumeDriver implements VolumeDriver {
         '-stdinpass',
         '-mountpoint',
         this.mountPoint,
-        '-nobrowse',
         '-quiet'
       ], { input: `${this.unlockContext.authToken}\n` });
+      console.log('[SecureVolume] Volume mounted successfully', {
+        bundlePath: this.bundlePath,
+        mountPoint: this.mountPoint
+      });
     } catch (error) {
       console.error('[SecureVolume] hdiutil attach failed', {
         bundlePath: this.bundlePath,
@@ -179,7 +198,9 @@ export class DarwinVolumeDriver implements VolumeDriver {
     }
 
     await fs.mkdir(path.dirname(this.bundlePath), { recursive: true });
-    await fs.mkdir(this.mountPoint, { recursive: true });
+    if (this.allowMountPointCreation) {
+      await fs.mkdir(this.mountPoint, { recursive: true });
+    }
 
     try {
       await spawnAsync('hdiutil', [
@@ -202,29 +223,69 @@ export class DarwinVolumeDriver implements VolumeDriver {
   }
 
   private async isMounted(): Promise<boolean> {
-    if (!fsSync.existsSync(this.mountPoint)) {
-      return false;
+    try {
+      const { stdout } = await spawnAsync('hdiutil', ['info']);
+      if (stdout.includes(this.bundlePath)) {
+        return true;
+      }
+    } catch (error) {
+      console.warn('[SecureVolume] Failed to query hdiutil info', {
+        bundlePath: this.bundlePath,
+        message: (error as Error).message
+      });
     }
 
-    try {
-      const entries = await fs.readdir(this.mountPoint);
-      return entries.length > 0;
-    } catch {
-      return false;
-    }
+    return fsSync.existsSync(this.mountPoint);
   }
 
   private sanitiseName(name: string): string {
     return name.replace(/[\/:*?"<>|]+/g, '-').trim() || 'par-noir-secure';
   }
 
+  private isSystemMountRoot(root: string): boolean {
+    return path.resolve(root) === '/Volumes';
+  }
+
   private deriveIdentityKey(payload: SecureVolumeUnlockPayload): string {
-    const raw = payload.pnName?.trim() || payload.publicKey?.trim();
-    if (!raw) {
-      return this.defaultVolumeName;
+    const identifier = this.resolveIdentifier(payload);
+    return `par Noir - ${identifier}`;
+  }
+
+  private resolveIdentifier(payload: SecureVolumeUnlockPayload): string {
+    const byIdentifier = payload.pnIdentifier?.trim();
+    if (byIdentifier) {
+      return this.normalisePnIdentifier(byIdentifier);
     }
 
-    const normalized = raw.startsWith('par Noir') ? raw : `par Noir - ${raw}`;
-    return normalized;
+    const token = payload.authToken?.trim();
+    if (token) {
+      return this.normalisePnIdentifier(`pn-${token.substring(0, 12)}`);
+    }
+
+    if (payload.publicKey?.trim()) {
+      return this.normalisePnIdentifier(`pn-${this.shortHash(payload.publicKey.trim())}`);
+    }
+
+    if (payload.pnName?.trim()) {
+      return this.normalisePnIdentifier(`pn-${this.shortHash(payload.pnName.trim())}`);
+    }
+
+    return 'pn-default';
+  }
+
+  private normalisePnIdentifier(value: string): string {
+    const trimmed = value.trim();
+    if (!trimmed) {
+      return 'pn-default';
+    }
+
+    const withoutBrandPrefix = trimmed.replace(/^par\s*noir\s*-\s*/i, '').trim();
+    const base = withoutBrandPrefix.replace(/^pn-/i, '').trim();
+    const sanitised = base.replace(/[^a-z0-9-]/gi, '').toLowerCase();
+    return sanitised ? `pn-${sanitised}` : 'pn-default';
+  }
+
+  private shortHash(value: string): string {
+    return createHash('sha256').update(value).digest('hex').substring(0, 12);
   }
 }

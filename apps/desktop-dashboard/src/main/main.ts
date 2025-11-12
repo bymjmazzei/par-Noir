@@ -1,10 +1,30 @@
 import { app, BrowserWindow, ipcMain, shell } from 'electron';
 import path from 'path';
+import fs from 'fs';
 
 import { NATIVE_IPC_CHANNEL, SECURE_VOLUME_IPC_CHANNEL, type SecureVolumeIdentity, type SecureVolumeMountState, type SecureVolumeUnlockPayload } from '../shared/ipcChannels';
 import { SecureVolumeManager } from './secureVolume/SecureVolumeManager';
 
 const isDev = !app.isPackaged || Boolean(process.env.VITE_DEV_SERVER_URL);
+
+const resolveDataRoot = (): string => {
+  const override = process.env.PN_DATA_ROOT?.trim();
+  const baseCandidate = override && override.length > 0
+    ? path.resolve(override)
+    : path.resolve(app.getAppPath(), '..', 'data');
+
+  try {
+    fs.mkdirSync(baseCandidate, { recursive: true });
+  } catch (error) {
+    console.warn('[desktop] Failed to create portable data root at', baseCandidate, error);
+  }
+
+  app.setPath('userData', baseCandidate);
+  return baseCandidate;
+};
+
+const portableDataRoot = resolveDataRoot();
+console.log('[desktop] userData path set to', portableDataRoot);
 
 let mainWindow: BrowserWindow | null = null;
 const secureVolumeManager = new SecureVolumeManager();

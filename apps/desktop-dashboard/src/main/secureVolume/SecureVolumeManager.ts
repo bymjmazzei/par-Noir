@@ -13,9 +13,10 @@ export class SecureVolumeManager {
 
   public async init(): Promise<void> {
     const userDataPath = app.getPath('userData');
+    const isDarwin = process.platform === 'darwin';
     const config: SecureVolumeConfig = {
       userDataPath,
-      mountRoot: path.join(userDataPath, 'Secure Folder'),
+      mountRoot: isDarwin ? '/Volumes' : path.join(userDataPath, 'Secure Folder'),
       bundleName: 'par-noir-secure.sparsebundle',
       volumeName: 'par Noir Secure'
     };
@@ -35,7 +36,8 @@ export class SecureVolumeManager {
   public async setUnlockContext(payload: SecureVolumeUnlockPayload): Promise<void> {
     this.identity = {
       pnName: payload.pnName,
-      publicKey: payload.publicKey
+      publicKey: payload.publicKey,
+      pnIdentifier: payload.pnIdentifier
     };
 
     const persistedToken = await KeychainService.load(this.identity);
@@ -48,6 +50,7 @@ export class SecureVolumeManager {
     const context: SecureVolumeUnlockPayload = {
       pnName: payload.pnName,
       publicKey: payload.publicKey,
+      pnIdentifier: payload.pnIdentifier,
       authToken: tokenToUse
     };
 
@@ -56,10 +59,18 @@ export class SecureVolumeManager {
     if (!persistedToken) {
       await KeychainService.save(this.identity, tokenToUse);
     }
+    this.identity = { ...this.identity, authToken: tokenToUse };
   }
 
   public async clearUnlockContext(): Promise<void> {
+    try {
+      await this.getDriver().unmount();
+    } catch (error) {
+      console.warn('[SecureVolumeManager] Failed to unmount during clearUnlockContext', error);
+    }
+
     await this.getDriver().clearUnlockContext();
+    this.identity = null;
   }
 
   public async hydrate(identity: SecureVolumeIdentity): Promise<SecureVolumeMountState> {
@@ -68,7 +79,7 @@ export class SecureVolumeManager {
       throw new Error('Cached token unavailable for secure volume');
     }
 
-    this.identity = identity;
+    this.identity = { ...identity, authToken: cachedToken.trim() };
     await this.getDriver().setUnlockContext({ ...identity, authToken: cachedToken.trim() });
     return this.mount();
   }

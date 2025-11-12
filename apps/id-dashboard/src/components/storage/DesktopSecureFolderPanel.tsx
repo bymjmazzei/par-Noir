@@ -1,10 +1,20 @@
 import React from 'react';
 import { FolderOpen } from 'lucide-react';
 
-import type { SecureVolumeIdentity, SecureVolumeMountState, SecureVolumeUnlockPayload } from '../../desktop-dashboard/src/shared/ipcChannels';
+import type {
+  SecureVolumeIdentity,
+  SecureVolumeMountState,
+  SecureVolumeUnlockPayload
+} from '../../desktop-dashboard/src/shared/ipcChannels';
 
 interface DesktopAuthEventPayload extends SecureVolumeIdentity {
   authToken: string;
+}
+
+interface DesktopLockEventPayload {
+  pnName?: string;
+  publicKey?: string;
+  pnIdentifier?: string;
 }
 
 const hasWindow = typeof window !== 'undefined';
@@ -63,14 +73,6 @@ export const DesktopSecureFolderPanel: React.FC = () => {
         setMountState(status);
         setError(null);
 
-        if (status.mounted && status.mountPoint && nativeApi?.openPath) {
-          try {
-            await nativeApi.openPath(status.mountPoint);
-          } catch (err) {
-            console.warn('[DesktopSecureFolderPanel] Failed to reveal secure folder after unlock', err);
-          }
-        }
-
         return status;
       } catch (err) {
         console.error('[DesktopSecureFolderPanel] Failed to unlock secure volume', err);
@@ -91,11 +93,12 @@ export const DesktopSecureFolderPanel: React.FC = () => {
       const context: SecureVolumeUnlockPayload = {
         pnName: payload.pnName,
         publicKey: payload.publicKey,
+        pnIdentifier: payload.pnIdentifier,
         authToken: payload.authToken.trim(),
       };
 
       contextRef.current = context;
-      setIdentity({ pnName: payload.pnName, publicKey: payload.publicKey });
+      setIdentity({ pnName: payload.pnName, publicKey: payload.publicKey, pnIdentifier: payload.pnIdentifier });
 
       await unlockWithContext(context);
     },
@@ -196,49 +199,94 @@ export const DesktopSecureFolderPanel: React.FC = () => {
     }
   }, [ensureUnlocked, resolveNative]);
 
+  React.useEffect(() => {
+    const handleLock = (event: Event) => {
+      const secureVolume = resolveSecureVolume();
+      if (!secureVolume) {
+        return;
+      }
+
+      const detail = (event as CustomEvent<DesktopLockEventPayload>).detail;
+
+      void secureVolume
+        .lock()
+        .then((status) => {
+          setMountState(status);
+          setIdentity(
+            detail
+              ? {
+                  pnName: detail.pnName ?? '',
+                  publicKey: detail.publicKey ?? '',
+                  pnIdentifier: detail.pnIdentifier,
+                }
+              : null
+          );
+          contextRef.current = null;
+        })
+        .catch((err: unknown) => {
+          console.warn('[DesktopSecureFolderPanel] Failed to lock secure volume on logout', err);
+          contextRef.current = null;
+          setIdentity(null);
+          setMountState((prev) => ({
+            ...prev,
+            mounted: false,
+            mountPoint: null,
+          }));
+        });
+    };
+
+    if (hasWindow) {
+      window.addEventListener('pn-auth-locked', handleLock as EventListener);
+    }
+
+    return () => {
+      if (hasWindow) {
+        window.removeEventListener('pn-auth-locked', handleLock as EventListener);
+      }
+    };
+  }, [resolveSecureVolume]);
+
   return (
-    <section className="bg-neutral-900/80 border border-neutral-700 rounded-2xl p-6 shadow-xl flex flex-col space-y-4">
-      <button
-        type="button"
-        onClick={() => {
-          setIsOpening(true);
-          setError(null);
-          void (async () => {
-            try {
-              await handleRevealInFinder();
-            } finally {
-              setIsOpening(false);
-            }
-          })();
-        }}
-        disabled={isOpening}
-        className="uppercase inline-flex items-center justify-center px-5 py-3 rounded-xl bg-blue-600 text-white text-sm font-semibold tracking-wide hover:bg-blue-700 disabled:opacity-60 disabled:cursor-not-allowed transition-colors"
-      >
-        <FolderOpen className="h-4 w-4 mr-2" />
-        {isOpening ? 'OPENING…' : 'OPEN SECURE FOLDER'}
-      </button>
-
-      <p className="text-xs text-text-secondary">
-        Unlock your pN session to access the encrypted volume on this device. The folder mounts automatically when your session is active.
-      </p>
-
-      {identity && (
-        <p className="text-xs text-text-secondary">
-          Volume identity <span className="text-white font-medium">par Noir - {identity.pnName}</span>
-        </p>
-      )}
-
-      {mountState.mounted && mountState.mountPoint && (
-        <p className="text-xs text-text-secondary">
-          Mounted at <span className="text-white font-medium">{mountState.mountPoint}</span>
-        </p>
-      )}
-
-      {error && (
-        <p className="text-sm text-red-400">
-          {error}
-        </p>
-      )}
+    <section className="bg-neutral-900/60 border border-neutral-700 rounded-xl p-6">
+      <div className="flex items-start justify-between">
+        <div className="flex items-start space-x-3">
+          <div className="mt-1 flex h-10 w-10 items-center justify-center rounded-xl bg-blue-600/10 border border-blue-500/40">
+            <FolderOpen className="h-5 w-5 text-blue-400" />
+          </div>
+          <div className="space-y-1">
+            <h3 className="text-lg font-semibold text-white">Secure Folder</h3>
+            <p className="text-text-secondary text-sm max-w-xl">
+              Encrypted device storage only available on this device.
+            </p>
+            {error && (
+              <p className="text-sm text-red-400 pt-1">
+                {error}
+              </p>
+            )}
+          </div>
+        </div>
+        <div className="flex items-center space-x-3">
+          <button
+            type="button"
+            onClick={() => {
+              setIsOpening(true);
+              setError(null);
+              void (async () => {
+                try {
+                  await handleRevealInFinder();
+                } finally {
+                  setIsOpening(false);
+                }
+              })();
+            }}
+            disabled={isOpening}
+            className="inline-flex items-center space-x-2 rounded-xl bg-blue-600/90 hover:bg-blue-500 transition-colors px-4 py-2 text-sm font-semibold text-white disabled:opacity-60 disabled:cursor-not-allowed"
+          >
+            <FolderOpen className="h-4 w-4" />
+            <span>{isOpening ? 'Opening…' : 'Open Secure Folder'}</span>
+          </button>
+        </div>
+      </div>
     </section>
   );
 };

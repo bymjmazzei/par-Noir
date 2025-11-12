@@ -26,6 +26,13 @@ type DesktopUnlockPayload = {
   pnName: string;
   publicKey: string;
   authToken: string;
+  pnIdentifier?: string;
+};
+
+type DesktopLockPayload = {
+  pnName?: string;
+  publicKey?: string;
+  pnIdentifier?: string;
 };
 
 function normalizeVisibility(value: any): 'public' | 'private' | 'friends' {
@@ -83,6 +90,8 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
   const [storageQuotas, setStorageQuotas] = useState<Map<string, any>>(new Map());
   const [fileMetadataMap, setFileMetadataMap] = useState<Map<string, PublicMetadata>>(new Map());
   const [resolvedAuth, setResolvedAuth] = useState<{ pnName: string; publicKey: string; passcode?: string; authToken?: string } | null>(null);
+  const lastDesktopPayloadRef = React.useRef<DesktopUnlockPayload | null>(null);
+  const lastDesktopAuthStateRef = React.useRef<'locked' | 'unlocked'>('locked');
   
   const [showDesktopAppInfo, setShowDesktopAppInfo] = useState(false);
   const [editingFile, setEditingFile] = useState<AggregatedFile | null>(null);
@@ -502,7 +511,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
       return null;
     }
   }, []);
-  
+
   function persistDriveAccounts(accounts: DriveAccountState[]) {
     try {
       localStorage.setItem(DRIVE_ACCOUNTS_STORAGE_KEY, JSON.stringify(accounts));
@@ -519,14 +528,14 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
 
       driveCredentialCacheRef.current.delete(backendId);
 
-      setConnectedBackends((prev) => {
-        if (!prev.has(backendId)) {
-          return prev;
-        }
+    setConnectedBackends((prev) => {
+      if (!prev.has(backendId)) {
+        return prev;
+      }
         const next = new Set(prev);
-        next.delete(backendId);
-        return next;
-      });
+      next.delete(backendId);
+      return next;
+    });
 
       if (aggregatorService && typeof aggregatorService.removeBackend === 'function') {
         aggregatorService.removeBackend(backendId);
@@ -537,8 +546,8 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
 
   function purgeDuplicateBackendsForEmail(preferredBackendId: string, email: string | null | undefined) {
     if (!email) {
-      return;
-    }
+        return;
+      }
 
     const normalized = email.toLowerCase();
     const staleBackendIds: string[] = [];
@@ -554,8 +563,8 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
     }
 
     if (staleBackendIds.length === 0) {
-      return;
-    }
+        return;
+      }
 
     staleBackendIds.forEach((backendId) => {
       unregisterBackend(backendId);
@@ -1016,8 +1025,8 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
     const seen = new Set<string>();
     for (const identityId of identityCandidates) {
       if (!identityId || seen.has(identityId)) {
-        continue;
-      }
+            continue;
+          }
       seen.add(identityId);
 
       try {
@@ -1037,26 +1046,26 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
           }),
         });
 
-        if (!response.ok) {
-          const errorText = await response.text().catch(() => 'Unknown error');
+          if (!response.ok) {
+            const errorText = await response.text().catch(() => 'Unknown error');
           console.warn('⚠️ [StorageCredentials] Failed to persist credentials to API:', {
-            identityId,
-            status: response.status,
-            error: errorText,
-          });
+              identityId,
+              status: response.status,
+              error: errorText,
+            });
         } else {
           console.warn('✅ [StorageCredentials] Credentials persisted to API', {
             identityId,
           });
-        }
-      } catch (error) {
+          }
+        } catch (error) {
         console.warn('⚠️ [StorageCredentials] API persistence failed (non-blocking):', {
           identityId,
-          error,
-        });
+            error,
+          });
       }
-    }
-  }
+        }
+      }
 
   const upsertDriveAccount = React.useCallback(async (
     params: {
@@ -1154,7 +1163,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
           backendId: params.backendId,
           keyPrefix: params.keyPrefix,
           email: resolvedEmail
-        }
+      }
       ];
       persistDriveAccounts(next);
       return next;
@@ -1763,19 +1772,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
   }, [authenticatedUser]);
 
   React.useEffect(() => {
-    if (resolvedAuth?.pnName && resolvedAuth.publicKey && resolvedAuth.authToken) {
-      const payload: DesktopUnlockPayload = {
-        pnName: resolvedAuth.pnName,
-        publicKey: resolvedAuth.publicKey,
-        authToken: resolvedAuth.authToken,
-      };
-
-      console.debug('[FileStorageAggregator] Dispatching pn-auth-session', {
-        hasAuthToken: Boolean(payload.authToken),
-      });
-
-      window.dispatchEvent(new CustomEvent<DesktopUnlockPayload>('pn-auth-session', { detail: payload }));
-    }
+    // No-op: legacy effect retained for backward compatibility
   }, [resolvedAuth]);
 
   const loadFileMetadata = React.useCallback(async (filesToLoad: AggregatedFile[]) => {
@@ -1784,7 +1781,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
       const { backend, backendId, keyPrefix } = resolveActiveBackendEntry();
       if (backend && backend.isConnected() && resolvedAuth?.pnName) {
         try {
-      const { GoogleDriveMetadataService } = await import('../../services/storage/GoogleDriveMetadataService');
+          const { GoogleDriveMetadataService } = await import('../../services/storage/GoogleDriveMetadataService');
           let ensuredToken: string | null = null;
           if (typeof (backend as any).ensureAccessToken === 'function') {
             try {
@@ -2148,7 +2145,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
             currentPnIdentifier = `pn-${hexHash.substring(0, 12)}`;
             console.log(`✅ [loadFiles] Using fallback pN identifier: ${currentPnIdentifier}`);
           }
-        } catch (fallbackError) {
+      } catch (fallbackError) {
           console.warn('⚠️ [loadFiles] Fallback identifier generation failed:', fallbackError);
         }
       }
@@ -2454,7 +2451,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
         scheduleTokenRetry(Array.from(retryBackends));
       }
     } catch (err) {
-      // Don't set error or break unlock - just log it
+        // Don't set error or break unlock - just log it
       console.warn('⚠️ [loadFiles] Error (non-blocking, unlock can proceed):', err);
       setFiles([]); // Show empty list
     } finally {
@@ -2469,9 +2466,9 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
         setError('Metadata service not available');
         return;
       }
-      
+
       await metadataIndexService.initialize();
-      
+
       const existingMetadata =
         fileMetadataMap.get(file.id) ||
         (file.backendFileId ? fileMetadataMap.get(file.backendFileId) : undefined);
@@ -2520,7 +2517,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
         }
         
         // Map file types to schema.org types
-        const schemaType = 
+        const schemaType =
           mimeCategory === 'image' ? 'ImageObject' :
           mimeCategory === 'video' ? 'VideoObject' :
           mimeCategory === 'audio' ? 'AudioObject' :
@@ -2528,10 +2525,10 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
         
         // Generate resource URI (consistent with metadata service)
         const resourceUri = `https://parnoir.com/resource/${file.id}`;
-        const didUri = resolvedAuth.publicKey.startsWith('did:') 
-          ? resolvedAuth.publicKey 
+        const didUri = resolvedAuth.publicKey.startsWith('did:')
+          ? resolvedAuth.publicKey
           : `did:key:${resolvedAuth.publicKey}`;
-        
+
         const publicMetadata: PublicMetadata = {
           "@context": [
             "https://schema.org/",
@@ -2603,10 +2600,10 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
         if (!shareToken) {
           // Fallback to legacy cache keys (pre multi-account)
           shareToken = shareTokenCache.current.get(file.backendFileId) ||
-                       shareTokenCache.current.get(file.id) ||
-                       shareTokenCache.current.get((file as any).backendFile?.id);
+            shareTokenCache.current.get(file.id) ||
+            shareTokenCache.current.get((file as any).backendFile?.id);
         }
-        
+
         if (!shareToken) {
           // If not in cache, generate it now (for files uploaded before this change)
           console.log('🔑 [Phase 3] Share token not in cache, generating now...', {
@@ -2653,7 +2650,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
               const shareTokenKey = makeShareTokenCacheKey(file.backend || activeBackendId || 'google_drive', file.backendFileId);
               shareTokenCache.current.set(shareTokenKey, shareToken);
               console.log('💾 [Phase 3] Share token cached for future use');
-              
+
               // Store token in metadata
               publicMetadata.publicToken = JSON.stringify(shareToken);
               console.log('✅ [Phase 3] Share token generated and stored in metadata:', file.id, {
@@ -2694,7 +2691,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
         } catch (err) {
           console.warn('Failed to generate pN identifier for metadata folder:', err);
         }
-        
+
         // Index the file (will use pN identifier to create metadata folder inside pN folder)
         // Token is included in publicMetadata.publicToken
         console.log('📤 [Phase 3] Submitting metadata to index...', {
@@ -2704,7 +2701,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
         });
         await metadataIndexService.indexFile(file, publicMetadata, metadataPnIdentifier);
         console.log('✅ [Phase 3] Metadata indexed with token');
-        
+
         setFileMetadataMap(prev => {
           const next = new Map(prev);
           next.set(file.id, publicMetadata);
@@ -4338,19 +4335,85 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
 
   React.useEffect(() => {
     if (!isDesktopShell) {
+      lastDesktopAuthStateRef.current = 'locked';
+      lastDesktopPayloadRef.current = null;
       return;
     }
 
-    if (resolvedAuth?.pnName && resolvedAuth.publicKey && resolvedAuth.authToken) {
+    const hasAuth = Boolean(resolvedAuth?.pnName && resolvedAuth?.publicKey && resolvedAuth?.authToken);
+
+    if (!hasAuth) {
+      if (lastDesktopAuthStateRef.current === 'unlocked') {
+        window.dispatchEvent(
+          new CustomEvent<DesktopLockPayload>('pn-auth-locked', {
+            detail: lastDesktopPayloadRef.current ?? undefined,
+          })
+        );
+        lastDesktopAuthStateRef.current = 'locked';
+        lastDesktopPayloadRef.current = null;
+      }
+      return;
+    }
+
+    let disposed = false;
+
+    void (async () => {
+      let pnIdentifier: string | undefined;
+
+      try {
+        const authenticatedId = typeof authenticatedUser?.id === 'string' ? authenticatedUser.id : null;
+        if (authenticatedId && resolvedAuth.publicKey) {
+          const encoder = new TextEncoder();
+          const data = encoder.encode(`${authenticatedId}:${resolvedAuth.publicKey}`);
+          const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+          const hashArray = Array.from(new Uint8Array(hashBuffer));
+          const hexHash = hashArray.map((b) => b.toString(16).padStart(2, '0')).join('');
+          pnIdentifier = `pn-${hexHash.substring(0, 12)}`.toLowerCase();
+        }
+      } catch (err) {
+        console.warn('[FileStorageAggregator] Failed to derive pnIdentifier from identity hash', err);
+      }
+
+      if (!pnIdentifier && resolvedAuth.authToken) {
+        pnIdentifier = `pn-${resolvedAuth.authToken.substring(0, 12).toLowerCase()}`;
+      }
+
+      if (!pnIdentifier && resolvedAuth.publicKey) {
+        pnIdentifier = `pn-${resolvedAuth.publicKey.substring(0, 12).replace(/[^a-f0-9]/gi, '').toLowerCase()}`;
+      }
+
+      if (disposed) {
+        return;
+      }
+
       const payload: DesktopUnlockPayload = {
         pnName: resolvedAuth.pnName,
         publicKey: resolvedAuth.publicKey,
         authToken: resolvedAuth.authToken,
+        pnIdentifier,
       };
 
+      lastDesktopPayloadRef.current = payload;
+      lastDesktopAuthStateRef.current = 'unlocked';
+
+      console.debug('[FileStorageAggregator] Dispatching pn-auth-session', {
+        hasAuthToken: Boolean(payload.authToken),
+        pnIdentifier: payload.pnIdentifier,
+      });
+
       window.dispatchEvent(new CustomEvent<DesktopUnlockPayload>('pn-auth-session', { detail: payload }));
+    })();
+
+    return () => {
+      disposed = true;
+    };
+  }, [isDesktopShell, resolvedAuth, authenticatedUser]);
+
+  React.useEffect(() => {
+    if (!authenticatedUser && resolvedAuth) {
+      setResolvedAuth(null);
     }
-  }, [isDesktopShell, resolvedAuth]);
+  }, [authenticatedUser, resolvedAuth]);
 
   return (
     <div className="space-y-6">

@@ -6,7 +6,8 @@ exports.SECURE_VOLUME_IPC_CHANNEL = {
     unmount: 'secure-volume:unmount',
     status: 'secure-volume:status',
     unlock: 'secure-volume:unlock',
-    lock: 'secure-volume:lock'
+    lock: 'secure-volume:lock',
+    hydrate: 'secure-volume:hydrate'
 };
 exports.NATIVE_IPC_CHANNEL = {
     openPath: 'native:open-path'
