@@ -16,31 +16,56 @@ class VeraCryptDarwinDriver extends VeraCryptDriver_1.VeraCryptDriver {
     }
     findVeraCryptBinary() {
         const candidates = [];
+        const fs = require('fs');
         // Check bundled resources first (electron-builder puts extraResources in Contents/Resources/)
         if (this.appPath) {
-            const appDir = path_1.default.dirname(this.appPath);
+            // Ensure we have an absolute path
+            const appDir = path_1.default.resolve(path_1.default.dirname(this.appPath));
             // For packaged apps: appPath is Contents/MacOS/par Noir Desktop
             // Resources are at Contents/Resources/veracrypt/...
-            const resourcesDir = path_1.default.join(appDir, '..', 'Resources');
+            const resourcesDir = path_1.default.resolve(appDir, '..', 'Resources');
+            const bundledPath = path_1.default.resolve(resourcesDir, 'veracrypt', 'darwin', 'extracted', 'VeraCrypt.app', 'Contents', 'MacOS', 'VeraCrypt');
+            console.log('[VeraCryptDarwinDriver] Looking for bundled VeraCrypt:', {
+                appPath: this.appPath,
+                appDir,
+                resourcesDir,
+                bundledPath,
+                resourcesExists: fs.existsSync(resourcesDir),
+                bundledExists: fs.existsSync(bundledPath)
+            });
+            // List contents of Resources directory for debugging
+            if (fs.existsSync(resourcesDir)) {
+                try {
+                    const resourcesContents = fs.readdirSync(resourcesDir);
+                    console.log('[VeraCryptDarwinDriver] Resources directory contents:', resourcesContents);
+                }
+                catch (e) {
+                    console.warn('[VeraCryptDarwinDriver] Could not read Resources directory:', e);
+                }
+            }
             candidates.push(
             // Bundled VeraCrypt from extraResources
-            path_1.default.join(resourcesDir, 'veracrypt', 'darwin', 'extracted', 'VeraCrypt.app', 'Contents', 'MacOS', 'VeraCrypt'), 
+            bundledPath, 
             // Alternative paths for different packaging scenarios
-            path_1.default.join(appDir, '..', '..', 'Resources', 'veracrypt', 'darwin', 'extracted', 'VeraCrypt.app', 'Contents', 'MacOS', 'VeraCrypt'), path_1.default.join(appDir, 'veracrypt', 'darwin', 'extracted', 'VeraCrypt.app', 'Contents', 'MacOS', 'VeraCrypt'), path_1.default.join(appDir, 'VeraCrypt.app', 'Contents', 'MacOS', 'VeraCrypt'), path_1.default.join(appDir, 'veracrypt'));
+            path_1.default.resolve(appDir, '..', '..', 'Resources', 'veracrypt', 'darwin', 'extracted', 'VeraCrypt.app', 'Contents', 'MacOS', 'VeraCrypt'), path_1.default.resolve(appDir, 'veracrypt', 'darwin', 'extracted', 'VeraCrypt.app', 'Contents', 'MacOS', 'VeraCrypt'), path_1.default.resolve(appDir, 'VeraCrypt.app', 'Contents', 'MacOS', 'VeraCrypt'), path_1.default.resolve(appDir, 'veracrypt'));
         }
         candidates.push('/Applications/VeraCrypt.app/Contents/MacOS/VeraCrypt', '/usr/local/bin/veracrypt', '/opt/homebrew/bin/veracrypt', 'veracrypt');
         for (const candidate of candidates) {
             if (candidate === 'veracrypt') {
+                console.log('[VeraCryptDarwinDriver] Falling back to PATH lookup for veracrypt');
                 return candidate;
             }
             try {
-                require('fs').accessSync(candidate);
+                fs.accessSync(candidate);
+                console.log('[VeraCryptDarwinDriver] Found VeraCrypt at:', candidate);
                 return candidate;
             }
-            catch {
+            catch (error) {
+                // Continue to next candidate
                 continue;
             }
         }
+        console.warn('[VeraCryptDarwinDriver] No VeraCrypt binary found, falling back to PATH');
         return 'veracrypt';
     }
     async verifyVeraCrypt() {
