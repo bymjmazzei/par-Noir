@@ -14,6 +14,7 @@ export interface AuthorizationCode {
   state?: string;
   nonce?: string;
   did: string; // User's DID
+  pnName?: string; // User's pN name
   expiresAt: number; // Timestamp
 }
 
@@ -74,6 +75,7 @@ export class PNOAuthService {
     state?: string;
     nonce?: string;
     did: string;
+    pnName?: string;
   }): string {
     const code = crypto.randomBytes(32).toString('hex');
     
@@ -85,6 +87,7 @@ export class PNOAuthService {
       state: params.state,
       nonce: params.nonce,
       did: params.did,
+      pnName: params.pnName,
       expiresAt: Date.now() + this.CODE_EXPIRY
     });
 
@@ -122,6 +125,7 @@ export class PNOAuthService {
     // Generate access token
     const accessToken = this.generateAccessToken({
       did: authCode.did,
+      pnName: authCode.pnName,
       clientId: params.clientId,
       scope: authCode.scope
     });
@@ -145,9 +149,10 @@ export class PNOAuthService {
   /**
    * Generate access token
    */
-  private static generateAccessToken(params: { did: string; clientId: string; scope: string[] }): string {
+  private static generateAccessToken(params: { did: string; pnName?: string; clientId: string; scope: string[] }): string {
     const payload: TokenPayload = {
       did: params.did,
+      pnName: params.pnName,
       clientId: params.clientId,
       scope: params.scope,
       issuedAt: Date.now(),

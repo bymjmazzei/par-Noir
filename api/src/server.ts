@@ -1747,7 +1747,7 @@ class ProductionServer {
 
     // POST /oauth/authorize/authenticate - Authenticate user with pN identity
     // Client sends encrypted identity file and passcode
-    // Server verifies and generates authorization code
+    // Server decrypts, verifies, and generates authorization code
     this.app.post('/oauth/authorize/authenticate', async (req, res) => {
       try {
         const { 
@@ -1758,24 +1758,63 @@ class ProductionServer {
           nonce,
           encrypted_identity, // Encrypted pN identity file
           passcode,
-          public_key // Public key from identity
+          public_key, // Public key from identity
+          pn_name // pN name (required for verification)
         } = req.body;
 
-        if (!client_id || !redirect_uri || !encrypted_identity || !passcode || !public_key) {
+        if (!client_id || !redirect_uri || !encrypted_identity || !passcode || !public_key || !pn_name) {
           return res.status(400).json({
             error: 'invalid_request',
-            error_description: 'Missing required fields: client_id, redirect_uri, encrypted_identity, passcode, public_key'
+            error_description: 'Missing required fields: client_id, redirect_uri, encrypted_identity, passcode, public_key, pn_name'
           });
         }
 
-        // In production, decrypt and verify identity here
-        // For now, we'll accept a DID directly or verify the identity
-        // Extract DID from encrypted identity or use public_key to derive it
-        // This is a simplified version - in production, decrypt the identity file
-        
-        // For browser app, we'll accept a pre-authenticated DID
-        // The actual decryption happens client-side in the browser
-        const did = req.body.did || `did:key:${public_key.substring(0, 32)}`;
+        // Import crypto utilities
+        const { decryptIdentity, verifyPnName } = await import('./utils/pnCrypto');
+
+        // Decrypt and verify identity file
+        let decryptedIdentity;
+        try {
+          decryptedIdentity = await decryptIdentity(
+            {
+              publicKey: public_key,
+              encryptedData: encrypted_identity.encryptedData || encrypted_identity.encrypted,
+              iv: encrypted_identity.iv,
+              salt: encrypted_identity.salt
+            },
+            passcode
+          );
+        } catch (error: any) {
+          return res.status(401).json({
+            error: 'invalid_credentials',
+            error_description: error.message || 'Failed to decrypt identity. Please check your passcode.'
+          });
+        }
+
+        // Verify pN name matches
+        if (!verifyPnName(decryptedIdentity, pn_name)) {
+          return res.status(401).json({
+            error: 'invalid_credentials',
+            error_description: 'pN name does not match identity file'
+          });
+        }
+
+        // Extract DID from decrypted identity
+        const did = decryptedIdentity.id;
+        if (!did) {
+          return res.status(400).json({
+            error: 'invalid_identity',
+            error_description: 'Identity file missing DID'
+          });
+        }
+
+        // Verify public key matches
+        if (decryptedIdentity.publicKey && decryptedIdentity.publicKey !== public_key) {
+          return res.status(400).json({
+            error: 'invalid_identity',
+            error_description: 'Public key mismatch'
+          });
+        }
 
         // Generate authorization code
         const scopes = scope ? scope.split(' ') : ['openid', 'profile'];
@@ -1785,7 +1824,8 @@ class ProductionServer {
           scope: scopes,
           state,
           nonce,
-          did
+          did,
+          pnName: pn_name // Store verified pN name
         });
 
         // Return authorization code
