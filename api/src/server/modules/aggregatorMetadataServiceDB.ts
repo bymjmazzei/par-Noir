@@ -121,25 +121,32 @@ export class AggregatorMetadataServiceDB {
 
     try {
       let query = `
-        SELECT file_id, metadata, submitted_at, pn_identifier
-        FROM aggregator_metadata
-        WHERE metadata->>'isPublic' = 'true'
+        SELECT 
+          am.file_id, 
+          am.metadata, 
+          am.submitted_at, 
+          am.pn_identifier,
+          COALESCE(ARRAY_AGG(DISTINCT fp.feed_id) FILTER (WHERE fp.feed_id IS NOT NULL), ARRAY[]::uuid[]) as feed_ids
+        FROM aggregator_metadata am
+        LEFT JOIN feed_posts fp ON am.file_id = fp.file_id
+        WHERE am.metadata->>'isPublic' = 'true'
+        GROUP BY am.file_id, am.metadata, am.submitted_at, am.pn_identifier
       `;
       const params: any[] = [];
       let paramIndex = 1;
 
       // Apply filters
       if (filters?.fileType) {
-        query += ` AND metadata->>'fileType' = $${paramIndex}`;
+        query += ` AND am.metadata->>'fileType' = $${paramIndex}`;
         params.push(filters.fileType);
         paramIndex++;
       }
 
       if (filters?.authorDid) {
         query += ` AND (
-          metadata->'creator'->'identifier'->>'value' = $${paramIndex} OR
-          metadata->'creator'->>'@id' = $${paramIndex} OR
-          metadata->'author'->>'did' = $${paramIndex}
+          am.metadata->'creator'->'identifier'->>'value' = $${paramIndex} OR
+          am.metadata->'creator'->>'@id' = $${paramIndex} OR
+          am.metadata->'author'->>'did' = $${paramIndex}
         )`;
         params.push(filters.authorDid);
         paramIndex++;
@@ -148,31 +155,38 @@ export class AggregatorMetadataServiceDB {
       if (filters?.indexerId) {
         const idxParam = `$${paramIndex}`;
         query += ` AND (
-          metadata->'indexingPermissions' IS NULL
-          OR metadata->'indexingPermissions'->>'mode' IS NULL
+          am.metadata->'indexingPermissions' IS NULL
+          OR am.metadata->'indexingPermissions'->>'mode' IS NULL
           OR (
-            metadata->'indexingPermissions'->>'mode' = 'all'
-            AND NOT (COALESCE(metadata->'indexingPermissions'->'blocked', '[]'::jsonb) ? ${idxParam})
+            am.metadata->'indexingPermissions'->>'mode' = 'all'
+            AND NOT (COALESCE(am.metadata->'indexingPermissions'->'blocked', '[]'::jsonb) ? ${idxParam})
           )
           OR (
-            metadata->'indexingPermissions'->>'mode' = 'custom'
-            AND (COALESCE(metadata->'indexingPermissions'->'allowed', '[]'::jsonb) ? ${idxParam})
-            AND NOT (COALESCE(metadata->'indexingPermissions'->'blocked', '[]'::jsonb) ? ${idxParam})
+            am.metadata->'indexingPermissions'->>'mode' = 'custom'
+            AND (COALESCE(am.metadata->'indexingPermissions'->'allowed', '[]'::jsonb) ? ${idxParam})
+            AND NOT (COALESCE(am.metadata->'indexingPermissions'->'blocked', '[]'::jsonb) ? ${idxParam})
           )
         )`;
         params.push(filters.indexerId);
         paramIndex++;
       }
 
-      query += ` ORDER BY updated_at DESC`;
+      query += ` ORDER BY am.updated_at DESC`;
 
       const result = await db.query(query, params);
-      let entries: CentralIndexEntry[] = result.rows.map(row => ({
-        fileId: row.file_id,
-        metadata: row.metadata as PublicMetadata,
-        submittedAt: row.submitted_at.toISOString(),
-        pnIdentifier: row.pn_identifier
-      }));
+      let entries: CentralIndexEntry[] = result.rows.map(row => {
+        const metadata = row.metadata as PublicMetadata;
+        // Add feedIds to metadata if they exist
+        if (row.feed_ids && row.feed_ids.length > 0) {
+          metadata.feedIds = row.feed_ids.map((id: string) => id.toString());
+        }
+        return {
+          fileId: row.file_id,
+          metadata,
+          submittedAt: row.submitted_at.toISOString(),
+          pnIdentifier: row.pn_identifier
+        };
+      });
 
       // Filter by tags (PostgreSQL JSONB array contains is complex, so filter in JS)
       if (filters?.tags && filters.tags.length > 0) {
