@@ -16,12 +16,22 @@ export class VeraCryptLinuxDriver extends VeraCryptDriver {
   }
 
   protected findVeraCryptBinary(): string {
-    const candidates = [
+    const candidates: string[] = [];
+    
+    if (this.appPath) {
+      const appDir = path.dirname(this.appPath);
+      candidates.push(
+        path.join(appDir, 'veracrypt', 'veracrypt'),
+        path.join(appDir, 'veracrypt')
+      );
+    }
+    
+    candidates.push(
       '/usr/bin/veracrypt',
       '/usr/local/bin/veracrypt',
       '/opt/veracrypt/veracrypt',
       'veracrypt'
-    ];
+    );
 
     for (const candidate of candidates) {
       if (candidate === 'veracrypt') {

@@ -14,9 +14,11 @@ class SecureVolumeManager {
     }
     async init() {
         const userDataPath = electron_1.app.getPath('userData');
+        const appPath = electron_1.app.getAppPath();
         const isDarwin = process.platform === 'darwin';
         const config = {
             userDataPath,
+            appPath,
             mountRoot: isDarwin ? '/Volumes' : undefined,
             bundleName: 'par-noir-secure.hc',
             volumeName: 'par Noir Secure'

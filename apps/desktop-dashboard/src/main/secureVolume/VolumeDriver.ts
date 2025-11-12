@@ -13,6 +13,7 @@ export interface VolumeDriver {
 
 export interface SecureVolumeConfig {
   userDataPath: string;
+  appPath?: string;
   mountRoot?: string;
   volumeName?: string;
   bundleName?: string;

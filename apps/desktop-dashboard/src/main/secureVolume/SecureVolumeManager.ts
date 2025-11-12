@@ -15,9 +15,11 @@ export class SecureVolumeManager {
 
   public async init(): Promise<void> {
     const userDataPath = app.getPath('userData');
+    const appPath = app.getAppPath();
     const isDarwin = process.platform === 'darwin';
     const config: SecureVolumeConfig = {
       userDataPath,
+      appPath,
       mountRoot: isDarwin ? '/Volumes' : undefined,
       bundleName: 'par-noir-secure.hc',
       volumeName: 'par Noir Secure'

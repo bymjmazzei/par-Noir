@@ -60,6 +60,7 @@ export abstract class VeraCryptDriver implements VolumeDriver {
   protected readonly containerRoot: string;
   protected readonly mountRoot: string;
   protected readonly defaultVolumeName: string;
+  protected readonly appPath: string | undefined;
   protected containerPath: string;
   protected mountPoint: string;
   protected volumeName: string;
@@ -72,6 +73,7 @@ export abstract class VeraCryptDriver implements VolumeDriver {
     this.containerRoot = path.join(config.userDataPath, 'secure-volumes');
     this.mountRoot = config.mountRoot ?? this.getDefaultMountRoot(config.userDataPath);
     this.defaultVolumeName = config.volumeName ?? 'par Noir Secure';
+    this.appPath = config.appPath;
     this.veracryptPath = veracryptPath ?? this.findVeraCryptBinary();
 
     const defaultDirName = this.sanitiseName(this.defaultVolumeName);
@@ -85,7 +87,13 @@ export abstract class VeraCryptDriver implements VolumeDriver {
     await fs.mkdir(this.mountRoot, { recursive: true });
     
     if (!(await this.verifyVeraCrypt())) {
-      throw new Error(`VeraCrypt not found at ${this.veracryptPath}. Please install VeraCrypt.`);
+      const portableHint = this.appPath 
+        ? `\n\nPortable VeraCrypt should be placed next to the app at: ${path.dirname(this.appPath)}/veracrypt`
+        : '';
+      throw new Error(
+        `VeraCrypt not found at ${this.veracryptPath}. Please install VeraCrypt or place a portable version next to the app.${portableHint}\n\n` +
+        `Visit https://www.veracrypt.fr/en/Downloads.html for downloads.`
+      );
     }
   }
 

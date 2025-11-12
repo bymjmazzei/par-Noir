@@ -17,12 +17,23 @@ export class VeraCryptWindowsDriver extends VeraCryptDriver {
   }
 
   protected findVeraCryptBinary(): string {
-    const candidates = [
+    const candidates: string[] = [];
+    
+    if (this.appPath) {
+      const appDir = path.dirname(this.appPath);
+      candidates.push(
+        path.join(appDir, 'veracrypt', 'VeraCrypt.exe'),
+        path.join(appDir, 'VeraCrypt.exe'),
+        path.join(appDir, 'veracrypt.exe')
+      );
+    }
+    
+    candidates.push(
       'C:\\Program Files\\VeraCrypt\\VeraCrypt.exe',
       'C:\\Program Files (x86)\\VeraCrypt\\VeraCrypt.exe',
       'veracrypt.exe',
       'veracrypt'
-    ];
+    );
 
     for (const candidate of candidates) {
       if (candidate === 'veracrypt.exe' || candidate === 'veracrypt') {

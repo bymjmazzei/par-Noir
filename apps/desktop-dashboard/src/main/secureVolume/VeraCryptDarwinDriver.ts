@@ -16,12 +16,23 @@ export class VeraCryptDarwinDriver extends VeraCryptDriver {
   }
 
   protected findVeraCryptBinary(): string {
-    const candidates = [
+    const candidates: string[] = [];
+    
+    if (this.appPath) {
+      const appDir = path.dirname(this.appPath);
+      candidates.push(
+        path.join(appDir, 'veracrypt', 'VeraCrypt.app', 'Contents', 'MacOS', 'VeraCrypt'),
+        path.join(appDir, 'VeraCrypt.app', 'Contents', 'MacOS', 'VeraCrypt'),
+        path.join(appDir, 'veracrypt')
+      );
+    }
+    
+    candidates.push(
       '/Applications/VeraCrypt.app/Contents/MacOS/VeraCrypt',
       '/usr/local/bin/veracrypt',
       '/opt/homebrew/bin/veracrypt',
       'veracrypt'
-    ];
+    );
 
     for (const candidate of candidates) {
       if (candidate === 'veracrypt') {

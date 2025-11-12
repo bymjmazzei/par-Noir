@@ -55,6 +55,7 @@ class VeraCryptDriver {
         this.containerRoot = path_1.default.join(config.userDataPath, 'secure-volumes');
         this.mountRoot = config.mountRoot ?? this.getDefaultMountRoot(config.userDataPath);
         this.defaultVolumeName = config.volumeName ?? 'par Noir Secure';
+        this.appPath = config.appPath;
         this.veracryptPath = veracryptPath ?? this.findVeraCryptBinary();
         const defaultDirName = this.sanitiseName(this.defaultVolumeName);
         this.containerPath = path_1.default.join(this.containerRoot, `${defaultDirName}.hc`);
@@ -65,7 +66,11 @@ class VeraCryptDriver {
         await fs_1.promises.mkdir(this.containerRoot, { recursive: true });
         await fs_1.promises.mkdir(this.mountRoot, { recursive: true });
         if (!(await this.verifyVeraCrypt())) {
-            throw new Error(`VeraCrypt not found at ${this.veracryptPath}. Please install VeraCrypt.`);
+            const portableHint = this.appPath
+                ? `\n\nPortable VeraCrypt should be placed next to the app at: ${path_1.default.dirname(this.appPath)}/veracrypt`
+                : '';
+            throw new Error(`VeraCrypt not found at ${this.veracryptPath}. Please install VeraCrypt or place a portable version next to the app.${portableHint}\n\n` +
+                `Visit https://www.veracrypt.fr/en/Downloads.html for downloads.`);
         }
     }
     async setUnlockContext(payload) {

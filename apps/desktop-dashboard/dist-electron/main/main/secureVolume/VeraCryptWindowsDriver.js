@@ -1,6 +1,10 @@
 "use strict";
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.VeraCryptWindowsDriver = void 0;
+const path_1 = __importDefault(require("path"));
 const VeraCryptDriver_1 = require("./VeraCryptDriver");
 class VeraCryptWindowsDriver extends VeraCryptDriver_1.VeraCryptDriver {
     constructor(config, veracryptPath) {
@@ -12,12 +16,12 @@ class VeraCryptWindowsDriver extends VeraCryptDriver_1.VeraCryptDriver {
         return 'Z:';
     }
     findVeraCryptBinary() {
-        const candidates = [
-            'C:\\Program Files\\VeraCrypt\\VeraCrypt.exe',
-            'C:\\Program Files (x86)\\VeraCrypt\\VeraCrypt.exe',
-            'veracrypt.exe',
-            'veracrypt'
-        ];
+        const candidates = [];
+        if (this.appPath) {
+            const appDir = path_1.default.dirname(this.appPath);
+            candidates.push(path_1.default.join(appDir, 'veracrypt', 'VeraCrypt.exe'), path_1.default.join(appDir, 'VeraCrypt.exe'), path_1.default.join(appDir, 'veracrypt.exe'));
+        }
+        candidates.push('C:\\Program Files\\VeraCrypt\\VeraCrypt.exe', 'C:\\Program Files (x86)\\VeraCrypt\\VeraCrypt.exe', 'veracrypt.exe', 'veracrypt');
         for (const candidate of candidates) {
             if (candidate === 'veracrypt.exe' || candidate === 'veracrypt') {
                 return candidate;
