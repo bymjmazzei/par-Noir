@@ -123,9 +123,9 @@ export class PNOAuthService {
     authorizationCodes.delete(params.code);
 
     // Generate access token
+    // Note: pN name is NOT included - it's a secret
     const accessToken = this.generateAccessToken({
       did: authCode.did,
-      pnName: authCode.pnName,
       clientId: params.clientId,
       scope: authCode.scope
     });
