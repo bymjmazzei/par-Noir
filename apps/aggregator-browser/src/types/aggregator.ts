@@ -125,6 +125,79 @@ export interface ShareToken {
 }
 
 // ============================================================================
+// Content Rating Types
+// ============================================================================
+
+export type ContentRating = 
+  | 'GA'      // General Audience
+  | 'FF'      // Family Friendly
+  | 'T13+'    // Teen 13+
+  | 'YA16+'   // Young Adult 16+
+  | 'M18+'    // Mature 18+
+  | 'NSFW'    // Not Safe For Work
+  | 'X18+';   // Explicit 18+
+
+export type WarningTag =
+  | 'violence'
+  | 'substance-use'
+  | 'hate-speech'
+  | 'graphic-content'
+  | 'sexual-content'
+  | 'language';
+
+export interface ContentRatingInfo {
+  rating: ContentRating;
+  ageRestriction: number;
+  requiresVerification: boolean;
+  description: string;
+}
+
+// ============================================================================
+// Feed Types
+// ============================================================================
+
+export type FeedCategory =
+  | 'beauty-fashion'
+  | 'sports-fitness'
+  | 'tv-film-entertainment'
+  | 'music-performing-arts'
+  | 'gaming-esports'
+  | 'technology-gadgets'
+  | 'home-interior-design'
+  | 'food-culinary'
+  | 'travel-adventure'
+  | 'wellness-mental-health'
+  | 'business-entrepreneurship'
+  | 'science-education'
+  | 'art-design'
+  | 'diy-maker-culture'
+  | 'parenting-family-life'
+  | 'eco-sustainability'
+  | 'finance-investing'
+  | 'motors-automotive'
+  | 'humor-meme-culture'
+  | 'adults-only';
+
+export interface Feed {
+  feedId: string;
+  feedName: string;
+  feedCategory: FeedCategory;
+  feedDescription?: string;
+  feedRatingRange: ContentRating[]; // Accepted ratings for this feed
+  creatorId: string; // pN identifier of feed host
+  creatorTier: 'feed' | 'self-hosted';
+  branding?: {
+    bannerImage?: string;
+    avatar?: string;
+    bio?: string;
+  };
+  createdAt: string;
+  updatedAt: string;
+  subscriberCount?: number;
+  postCount?: number;
+}
+
+// ============================================================================
 // Metadata Index Types (for discovery)
 // ============================================================================
 
@@ -286,6 +359,19 @@ export interface PublicMetadata {
   sameAs?: string[];
   about?: string[];
   
+  // Content Rating System
+  contentRating?: ContentRating;
+  warningTags?: WarningTag[];
+  ageRestriction?: number;
+  requiresVerification?: boolean;
+  
+  // Feed Membership
+  feedIds?: string[]; // IDs of feeds this content belongs to
+  feedCategories?: FeedCategory[]; // Niche categories
+  
+  // Creator Tier
+  creatorTier?: 'free' | 'feed' | 'self-hosted';
+  
   // Allow any additional semantic web properties
   [key: string]: any;
 }
@@ -298,6 +384,14 @@ export interface MetadataFilters {
     from: string;
     to: string;
   };
+  // Rating filters
+  maxRating?: ContentRating; // Maximum acceptable rating
+  excludeRatings?: ContentRating[]; // Ratings to exclude
+  warningTags?: WarningTag[]; // Required or excluded warning tags
+  // Feed filters
+  feedId?: string; // Filter by specific feed
+  feedCategory?: FeedCategory; // Filter by niche category
+  creatorTier?: 'free' | 'feed' | 'self-hosted'; // Filter by creator tier
 }
 
 export interface IndexedFile {

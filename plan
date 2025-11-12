@@ -1,0 +1,31 @@
+# Browse Par Noir Build Plan
+
+## Phase 1 – Metadata & Taxonomy Foundations
+- **taxonomy-spec:** Update `docs/standards` with the finalized rating scale, warning tags, and 20 starter niches; add schema versioning and governance notes.
+- **metadata-schema:** Extend `apps/aggregator-browser/src/types/aggregator.ts` (and shared metadata contracts in `core/identity-core`) with rating fields, warning tags, niche membership, consent flags, and feed-tier descriptors.
+- **validation-rules:** Define validation logic (age gates, mandatory ratings) within backend DTOs (e.g., `api/src/server/routes/aggregator`) and document self-attestation plus community verification workflow.
+
+## Phase 2 – Backend & API Enhancements
+- **public-index-api:** Expand `api/src/server/routes/aggregator` to return rating-filtered results, support feed IDs, and expose pagination plus engagement summaries; add tests for filter combinations.
+- **feed-management:** Implement endpoints for Tier 2 feed hosts to manage curation rules, branding assets, and contributor submissions; persist definitions (e.g., `api/src/server/services/feedService.ts`).
+- **third-party-api:** Design and stub export APIs that deliver creator-approved manifests (ratings, consent) and unseen-item tracking for partners; secure with app keys and rate limits.
+- **reputation-layer:** Plan data structures for rating attestations, disputes, and trust scores so clients can down-rank mislabelled media.
+
+## Phase 3 – Frontend Experience (browse.parnoir.com)
+- **state-architecture:** Introduce global store (Zustand or context) to track visitor vs unlocked state, subscribed feeds, rating preferences, and unseen third-party items.
+- **feed-rail-ui:** Replace current grid/feed toggle with TikTok-style vertical viewer plus horizontal feed rail; ensure non-connected users see call-to-connect overlays on like/comment controls.
+- **media-index-views:** Build free-tier index page (search-results style) and branded feed shell that overlays host assets, intro, and curation modules; reuse rendered results for both tiers.
+- **engagement-components:** Add like/comment actions gated by unlock status, placeholder analytics, and share options respecting metadata consent.
+
+## Phase 4 – Self-Hosted Platform & Extensibility
+- **export-manifest:** Define JSON manifest and embed script for Tier 3 feeds; include rating schema, consent flags, and webhook/polling endpoints for sync.
+- **plugin-architecture:** Specify WordPress-style extension points, SDK, and security model for self-hosted deployments; document initial core plugins (branding, gated access, analytics).
+- **marketplace-roadmap:** Draft governance, submission, and revenue-sharing guidelines for a curated plugin marketplace.
+- **sync-services:** Plan broadcaster services (webhooks or pub/sub) in `api/src/server/webhooks` to notify self-hosted sites of updates, revocations, and rating changes.
+- **partner-tooling:** Outline CLI or dashboard workflow to generate embed code, manage API keys, and monitor third-party consumption compliance.
+
+## Phase 5 – UX, Compliance, and Rollout
+- **wireframes:** Produce visitor vs unlocked flow, feed navigation, and reporting dialogs; coordinate with design for accessibility and mobile parity.
+- **age-gating:** Specify age verification UX and client-side enforcement for 18+ content, including warnings in third-party exports.
+- **analytics:** Plan dashboard widgets (in `apps/desktop-dashboard`) for creators to view engagement, rating accuracy alerts, and subscription metrics.
+- **rollout-plan:** Sequence feature flags, beta cohorts, documentation updates, and comms for creators/partners before general availability.

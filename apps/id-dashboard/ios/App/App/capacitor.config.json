@@ -1,0 +1,13 @@
+{
+	"appId": "com.parnoir.mobile",
+	"appName": "par Noir",
+	"webDir": "dist",
+	"packageClassList": [
+		"AppPlugin",
+		"CAPCameraPlugin",
+		"FilesystemPlugin",
+		"KeyboardPlugin",
+		"SharePlugin",
+		"StatusBarPlugin"
+	]
+}
