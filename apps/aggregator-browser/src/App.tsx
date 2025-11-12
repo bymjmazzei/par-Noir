@@ -33,6 +33,7 @@ import { useEngagement } from './hooks/useEngagement';
 import { useToast } from './hooks/useToast';
 import { useURLParams } from './hooks/useURLParams';
 import { loadFeedViewedTimestamps, markFeedAsViewed, hasNewContent } from './utils/feedUtils';
+import { FeedService } from './services/feedService';
 
 // Shared types - importing from id-dashboard
 // In production, these would come from a shared package
@@ -81,6 +82,43 @@ function App() {
   useEffect(() => {
     discoverFiles();
   }, []);
+
+  // Fetch feeds from API
+  useEffect(() => {
+    const loadFeeds = async () => {
+      try {
+        const result = await FeedService.listFeeds({ limit: 100 });
+        setFeeds(result.feeds);
+      } catch (error) {
+        console.error('Failed to load feeds:', error);
+        // Continue with empty feeds - UI will show default feeds
+      }
+    };
+
+    loadFeeds();
+  }, []);
+
+  // Load user subscriptions when user connects
+  useEffect(() => {
+    const loadSubscriptions = async () => {
+      if (userState.isUnlocked && userState.pnIdentifier) {
+        try {
+          const subscribedFeeds = await FeedService.getUserSubscriptions(userState.pnIdentifier);
+          // Update user state with subscriptions
+          subscribedFeeds.forEach(feed => {
+            if (!userState.preferences.subscribedFeedIds.includes(feed.feedId)) {
+              // This will be handled by UserStateContext - for now just log
+              console.log('User subscribed to:', feed.feedId);
+            }
+          });
+        } catch (error) {
+          console.error('Failed to load subscriptions:', error);
+        }
+      }
+    };
+
+    loadSubscriptions();
+  }, [userState.isUnlocked, userState.pnIdentifier]);
 
   // Initialize from URL params
   useEffect(() => {

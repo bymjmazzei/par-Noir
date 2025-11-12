@@ -9,6 +9,8 @@ import { Feed, FeedCategory } from '../types/aggregator';
 import { useUserState } from '../contexts/UserStateContext';
 import { FEED_CATEGORIES, getAllFeedCategories } from '../constants/feedCategories';
 import { FeedRailItem } from './FeedRail';
+import { FeedService } from '../services/feedService';
+import { useToast } from '../hooks/useToast';
 
 interface FeedBrowserProps {
   feeds: Feed[];
@@ -18,6 +20,7 @@ interface FeedBrowserProps {
 
 export function FeedBrowser({ feeds, onClose, onFeedClick }: FeedBrowserProps) {
   const { userState, subscribeToFeed, unsubscribeFromFeed, isSubscribedToFeed } = useUserState();
+  const { success, error: showError } = useToast();
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<FeedCategory | 'all'>('all');
   const [availableFeeds, setAvailableFeeds] = useState<Feed[]>([]);
@@ -54,11 +57,24 @@ export function FeedBrowser({ feeds, onClose, onFeedClick }: FeedBrowserProps) {
     return matchesSearch && matchesCategory;
   });
 
-  const handleSubscribe = (feedId: string) => {
-    if (isSubscribedToFeed(feedId)) {
-      unsubscribeFromFeed(feedId);
-    } else {
-      subscribeToFeed(feedId);
+  const handleSubscribe = async (feedId: string) => {
+    if (!userState.isUnlocked || !userState.pnIdentifier) {
+      showError('Connect your pN to subscribe to feeds');
+      return;
+    }
+
+    try {
+      if (isSubscribedToFeed(feedId)) {
+        await FeedService.unsubscribeFromFeed(feedId, userState.pnIdentifier);
+        unsubscribeFromFeed(feedId);
+        success('Unsubscribed from feed');
+      } else {
+        await FeedService.subscribeToFeed(feedId, userState.pnIdentifier);
+        subscribeToFeed(feedId);
+        success('Subscribed to feed');
+      }
+    } catch (err: any) {
+      showError(err.message || 'Failed to update subscription');
     }
   };
 
