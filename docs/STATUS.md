@@ -198,10 +198,14 @@ CREATE TABLE engagement (
 - ✅ Bulk engagement stats API for performance
 - ✅ Automatic engagement stats loading on file discovery
 - ✅ Optimized bulk like checks with single query
+- ✅ Google Drive upload integrated into browser
+- ✅ Upload modal with metadata options (rating, categories, tags)
+- ✅ Public/private visibility selection
+- ✅ Automatic metadata submission to aggregator index
 
 **Next Steps**: 
 1. Real pN authentication (replace dummy connection)
-2. Test end-to-end: create feed → add posts → subscribe → like/comment
-3. Add file upload/creation flow for creators
-4. Add feed creation UI for paid-tier creators
+2. Test end-to-end: upload → create feed → add posts → subscribe → like/comment
+3. Add feed creation UI for paid-tier creators
+4. Add ability to add existing files to feeds from browser
 
