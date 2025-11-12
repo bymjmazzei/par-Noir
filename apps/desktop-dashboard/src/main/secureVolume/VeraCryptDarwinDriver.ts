@@ -18,9 +18,15 @@ export class VeraCryptDarwinDriver extends VeraCryptDriver {
   protected findVeraCryptBinary(): string {
     const candidates: string[] = [];
     
+    // Check bundled resources first (electron-builder puts resources in app.asar.unpacked or Resources)
     if (this.appPath) {
       const appDir = path.dirname(this.appPath);
+      const resourcesDir = path.join(appDir, '..', 'Resources');
+      const unpackedDir = path.join(appDir, '..', '..', 'resources', 'veracrypt', 'darwin', 'extracted');
+      
       candidates.push(
+        path.join(resourcesDir, 'veracrypt', 'darwin', 'extracted', 'VeraCrypt.app', 'Contents', 'MacOS', 'VeraCrypt'),
+        path.join(unpackedDir, 'VeraCrypt.app', 'Contents', 'MacOS', 'VeraCrypt'),
         path.join(appDir, 'veracrypt', 'VeraCrypt.app', 'Contents', 'MacOS', 'VeraCrypt'),
         path.join(appDir, 'VeraCrypt.app', 'Contents', 'MacOS', 'VeraCrypt'),
         path.join(appDir, 'veracrypt')

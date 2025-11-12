@@ -19,9 +19,13 @@ export class VeraCryptWindowsDriver extends VeraCryptDriver {
   protected findVeraCryptBinary(): string {
     const candidates: string[] = [];
     
+    // Check bundled resources first
     if (this.appPath) {
       const appDir = path.dirname(this.appPath);
+      const resourcesDir = path.join(appDir, 'resources', 'veracrypt', 'win32', 'extracted');
+      
       candidates.push(
+        path.join(resourcesDir, 'VeraCrypt.exe'),
         path.join(appDir, 'veracrypt', 'VeraCrypt.exe'),
         path.join(appDir, 'VeraCrypt.exe'),
         path.join(appDir, 'veracrypt.exe')

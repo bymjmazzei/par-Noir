@@ -11,6 +11,7 @@
     "build:preload": "tsc -p tsconfig.preload.json",
     "dist": "npm run build && electron-builder --mac",
     "dist:dir": "npm run build && electron-builder --mac --dir",
+    "bundle:veracrypt": "node scripts/bundle-veracrypt.js",
     "lint": "tsc --noEmit"
   },
   "dependencies": {
@@ -47,7 +48,15 @@
       "dist/**",
       "dist-electron/**",
       "node_modules/**",
-      "package.json"
+      "package.json",
+      "resources/veracrypt/**"
+    ],
+    "extraResources": [
+      {
+        "from": "resources/veracrypt",
+        "to": "veracrypt",
+        "filter": ["**/*"]
+      }
     ]
   }
 }

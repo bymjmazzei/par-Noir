@@ -16,9 +16,11 @@ class VeraCryptLinuxDriver extends VeraCryptDriver_1.VeraCryptDriver {
     }
     findVeraCryptBinary() {
         const candidates = [];
+        // Check bundled resources first
         if (this.appPath) {
             const appDir = path_1.default.dirname(this.appPath);
-            candidates.push(path_1.default.join(appDir, 'veracrypt', 'veracrypt'), path_1.default.join(appDir, 'veracrypt'));
+            const resourcesDir = path_1.default.join(appDir, 'resources', 'veracrypt', 'linux', 'extracted');
+            candidates.push(path_1.default.join(resourcesDir, 'usr', 'bin', 'veracrypt'), path_1.default.join(resourcesDir, 'veracrypt'), path_1.default.join(appDir, 'veracrypt', 'veracrypt'), path_1.default.join(appDir, 'veracrypt'));
         }
         candidates.push('/usr/bin/veracrypt', '/usr/local/bin/veracrypt', '/opt/veracrypt/veracrypt', 'veracrypt');
         for (const candidate of candidates) {
