@@ -2,10 +2,12 @@ import { app } from 'electron';
 import path from 'path';
 
 import type { SecureVolumeIdentity, SecureVolumeMountState, SecureVolumeUnlockPayload } from '../../shared/ipcChannels';
-import { DarwinVolumeDriver } from './DarwinVolumeDriver';
+import { VeraCryptDarwinDriver } from './VeraCryptDarwinDriver';
+import { VeraCryptWindowsDriver } from './VeraCryptWindowsDriver';
+import { VeraCryptLinuxDriver } from './VeraCryptLinuxDriver';
 import { UnsupportedVolumeDriver } from './UnsupportedVolumeDriver';
 import type { SecureVolumeConfig, VolumeDriver } from './VolumeDriver';
-import { KeychainService } from './KeychainService';
+import { TokenStorageService } from './TokenStorageService';
 
 export class SecureVolumeManager {
   private driver: VolumeDriver | null = null;
@@ -16,14 +18,20 @@ export class SecureVolumeManager {
     const isDarwin = process.platform === 'darwin';
     const config: SecureVolumeConfig = {
       userDataPath,
-      mountRoot: isDarwin ? '/Volumes' : path.join(userDataPath, 'Secure Folder'),
-      bundleName: 'par-noir-secure.sparsebundle',
+      mountRoot: isDarwin ? '/Volumes' : undefined,
+      bundleName: 'par-noir-secure.hc',
       volumeName: 'par Noir Secure'
     };
 
     switch (process.platform) {
       case 'darwin':
-        this.driver = new DarwinVolumeDriver(config);
+        this.driver = new VeraCryptDarwinDriver(config);
+        break;
+      case 'win32':
+        this.driver = new VeraCryptWindowsDriver(config);
+        break;
+      case 'linux':
+        this.driver = new VeraCryptLinuxDriver(config);
         break;
       default:
         this.driver = new UnsupportedVolumeDriver(process.platform, config);
@@ -40,7 +48,7 @@ export class SecureVolumeManager {
       pnIdentifier: payload.pnIdentifier
     };
 
-    const persistedToken = await KeychainService.load(this.identity);
+    const persistedToken = await TokenStorageService.load(this.identity);
     const tokenToUse = (persistedToken ?? payload.authToken)?.trim();
 
     if (!tokenToUse) {
@@ -57,7 +65,7 @@ export class SecureVolumeManager {
     await this.getDriver().setUnlockContext(context);
 
     if (!persistedToken) {
-      await KeychainService.save(this.identity, tokenToUse);
+      await TokenStorageService.save(this.identity, tokenToUse);
     }
     this.identity = { ...this.identity, authToken: tokenToUse };
   }
@@ -74,7 +82,7 @@ export class SecureVolumeManager {
   }
 
   public async hydrate(identity: SecureVolumeIdentity): Promise<SecureVolumeMountState> {
-    const cachedToken = await KeychainService.load(identity);
+    const cachedToken = await TokenStorageService.load(identity);
     if (!cachedToken || !cachedToken.trim()) {
       throw new Error('Cached token unavailable for secure volume');
     }
