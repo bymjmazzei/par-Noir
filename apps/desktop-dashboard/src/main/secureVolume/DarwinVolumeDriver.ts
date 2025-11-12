@@ -232,12 +232,12 @@ export class DarwinVolumeDriver implements VolumeDriver {
     }
 
     // hdiutil attach with password from stdin
+    // Note: We don't use -nobrowse so the volume appears in Finder
     await spawnAsync('hdiutil', [
       'attach',
       this.containerPath,
       '-mountpoint', this.mountPoint,
-      '-stdinpass',
-      '-nobrowse'
+      '-stdinpass'
     ], { input: this.unlockContext.authToken });
   }
 

@@ -70,7 +70,20 @@ class VeraCryptDarwinDriver extends VeraCryptDriver_1.VeraCryptDriver {
             await this.spawnVeraCrypt(['--version']);
             return true;
         }
-        catch {
+        catch (error) {
+            const errorMsg = error.message || String(error);
+            console.error('[VeraCryptDarwinDriver] VeraCrypt verification failed:', {
+                path: this.veracryptPath,
+                error: errorMsg
+            });
+            // Check for common macOS FUSE dependency issue
+            if (errorMsg.includes('libfuse') || errorMsg.includes('Library not loaded')) {
+                console.error('[VeraCryptDarwinDriver] VeraCrypt requires macOSFUSE to be installed. Please install it from https://osxfuse.github.io/');
+                throw new Error('VeraCrypt requires macOSFUSE to be installed.\n\n' +
+                    'Please install macOSFUSE from: https://osxfuse.github.io/\n\n' +
+                    'Alternatively, you can install it via Homebrew:\n' +
+                    '  brew install --cask macfuse');
+            }
             return false;
         }
     }
