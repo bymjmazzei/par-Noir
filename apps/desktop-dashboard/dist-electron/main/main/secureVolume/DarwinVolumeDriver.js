@@ -4,38 +4,9 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.DarwinVolumeDriver = void 0;
-const fs_1 = require("fs");
-const fs_2 = __importDefault(require("fs"));
 const path_1 = __importDefault(require("path"));
-const child_process_1 = require("child_process");
-const crypto_1 = require("crypto");
-const spawnAsync = (command, args, options = {}) => {
-    return new Promise((resolve, reject) => {
-        const child = (0, child_process_1.spawn)(command, args, { stdio: ['pipe', 'pipe', 'pipe'] });
-        let stdout = '';
-        let stderr = '';
-        child.stdout.on('data', (chunk) => {
-            stdout += chunk.toString();
-        });
-        child.stderr.on('data', (chunk) => {
-            stderr += chunk.toString();
-        });
-        child.on('error', reject);
-        child.on('close', (code) => {
-            if (code === 0) {
-                resolve({ stdout, stderr });
-            }
-            else {
-                const error = new Error(stderr.trim() || stdout.trim() || `${command} exited with code ${code}`);
-                reject(error);
-            }
-        });
-        if (options.input) {
-            child.stdin.write(options.input);
-        }
-        child.stdin.end();
-    });
-};
+const fs_1 = require("fs");
+const VeraCryptDriver_1 = require("./VeraCryptDriver");
 const pathExists = async (target) => {
     try {
         await fs_1.promises.access(target);
@@ -45,24 +16,28 @@ const pathExists = async (target) => {
         return false;
     }
 };
+/**
+ * macOS-specific volume driver using hdiutil (built-in, no dependencies)
+ * This uses macOS's native disk image encryption, which doesn't require FUSE
+ */
 class DarwinVolumeDriver {
     constructor(config) {
         this.platform = 'darwin';
         this.driver = 'hdiutil';
         this.unlockContext = null;
         this.identityKey = null;
-        this.bundleRoot = path_1.default.join(config.userDataPath, 'secure-volumes');
-        this.mountRoot = config.mountRoot ?? path_1.default.join(config.userDataPath, 'Secure Folder');
-        this.allowMountPointCreation = !this.isSystemMountRoot(this.mountRoot);
+        this.containerRoot = path_1.default.join(config.userDataPath, 'secure-volumes');
+        this.mountRoot = config.mountRoot ?? '/Volumes';
         this.defaultVolumeName = config.volumeName ?? 'par Noir Secure';
         const defaultDirName = this.sanitiseName(this.defaultVolumeName);
-        this.bundlePath = path_1.default.join(this.bundleRoot, `${defaultDirName}.sparsebundle`);
+        this.containerPath = path_1.default.join(this.containerRoot, `${defaultDirName}.sparsebundle`);
         this.mountPoint = path_1.default.join(this.mountRoot, defaultDirName);
         this.volumeName = this.defaultVolumeName;
     }
     async init() {
-        await fs_1.promises.mkdir(this.bundleRoot, { recursive: true });
-        if (this.allowMountPointCreation) {
+        await fs_1.promises.mkdir(this.containerRoot, { recursive: true });
+        // Don't create /Volumes - it's a system directory
+        if (!this.isSystemMountRoot(this.mountRoot)) {
             await fs_1.promises.mkdir(this.mountRoot, { recursive: true });
         }
     }
@@ -72,11 +47,12 @@ class DarwinVolumeDriver {
             this.identityKey = identityKey;
             const dirName = this.sanitiseName(identityKey ?? this.defaultVolumeName);
             this.volumeName = identityKey ?? this.defaultVolumeName;
-            this.bundlePath = path_1.default.join(this.bundleRoot, `${dirName}.sparsebundle`);
+            this.containerPath = path_1.default.join(this.containerRoot, `${dirName}.sparsebundle`);
             this.mountPoint = path_1.default.join(this.mountRoot, dirName);
         }
-        await fs_1.promises.mkdir(path_1.default.dirname(this.bundlePath), { recursive: true });
-        if (this.allowMountPointCreation) {
+        await fs_1.promises.mkdir(path_1.default.dirname(this.containerPath), { recursive: true });
+        // Don't create mount point if it's a system mount root
+        if (!this.isSystemMountRoot(this.mountRoot)) {
             await fs_1.promises.mkdir(this.mountPoint, { recursive: true });
         }
         this.unlockContext = { ...payload, authToken: payload.authToken.trim() };
@@ -91,32 +67,25 @@ class DarwinVolumeDriver {
         await this.ensureVolumeExists();
         if (await this.isMounted()) {
             console.log('[SecureVolume] Volume already mounted', {
-                bundlePath: this.bundlePath,
+                containerPath: this.containerPath,
                 mountPoint: this.mountPoint
             });
             return this.getStatus();
         }
         console.log('[SecureVolume] Mounting secure volume', {
-            bundlePath: this.bundlePath,
+            containerPath: this.containerPath,
             mountPoint: this.mountPoint
         });
         try {
-            await spawnAsync('hdiutil', [
-                'attach',
-                this.bundlePath,
-                '-stdinpass',
-                '-mountpoint',
-                this.mountPoint,
-                '-quiet'
-            ], { input: `${this.unlockContext.authToken}\n` });
+            await this.executeMount();
             console.log('[SecureVolume] Volume mounted successfully', {
-                bundlePath: this.bundlePath,
+                containerPath: this.containerPath,
                 mountPoint: this.mountPoint
             });
         }
         catch (error) {
-            console.error('[SecureVolume] hdiutil attach failed', {
-                bundlePath: this.bundlePath,
+            console.error('[SecureVolume] hdiutil mount failed', {
+                containerPath: this.containerPath,
                 mountPoint: this.mountPoint,
                 message: error.message
             });
@@ -129,25 +98,26 @@ class DarwinVolumeDriver {
         if (!(await this.isMounted())) {
             return this.getStatus();
         }
+        console.log('[SecureVolume] Dismounting secure volume', {
+            mountPoint: this.mountPoint
+        });
         try {
-            await spawnAsync('hdiutil', [
-                'detach',
-                this.mountPoint,
-                '-quiet',
-                '-force'
-            ]);
+            await this.executeUnmount();
+            console.log('[SecureVolume] Volume dismounted successfully.');
         }
         catch (error) {
             const err = error;
-            if (!/not currently mounted/i.test(err.message)) {
+            if (!/not currently mounted/i.test(err.message) && !/no volume mounted/i.test(err.message)) {
+                console.warn(`[SecureVolume] hdiutil dismount failed: ${err.message}`);
                 throw err;
             }
+            console.log('[SecureVolume] Volume was already dismounted or not found, ignoring error.');
         }
         return this.getStatus();
     }
     async getStatus() {
         const mounted = await this.isMounted();
-        const bundleExists = await pathExists(this.bundlePath);
+        const bundleExists = await pathExists(this.containerPath);
         return {
             mounted,
             mountPoint: mounted ? this.mountPoint : null,
@@ -158,56 +128,29 @@ class DarwinVolumeDriver {
         };
     }
     async ensureVolumeExists() {
-        if (await pathExists(this.bundlePath)) {
+        if (await pathExists(this.containerPath)) {
+            console.log(`[SecureVolume] Sparse bundle already exists: ${this.containerPath}`);
             return;
         }
         if (!this.unlockContext) {
             throw new Error('Unlock context required to create secure volume');
         }
-        await fs_1.promises.mkdir(path_1.default.dirname(this.bundlePath), { recursive: true });
-        if (this.allowMountPointCreation) {
-            await fs_1.promises.mkdir(this.mountPoint, { recursive: true });
-        }
+        console.log(`[SecureVolume] Creating new sparse bundle: ${this.containerPath}`);
+        await fs_1.promises.mkdir(path_1.default.dirname(this.containerPath), { recursive: true });
         try {
-            await spawnAsync('hdiutil', [
-                'create',
-                '-type', 'SPARSEBUNDLE',
-                '-fs', 'APFS',
-                '-encryption', 'AES-256',
-                '-stdinpass',
-                '-size', '512m',
-                '-volname', this.volumeName,
-                this.bundlePath
-            ], { input: `${this.unlockContext.authToken}\n` });
+            await this.executeCreate();
+            console.log(`[SecureVolume] Sparse bundle created successfully.`);
         }
         catch (error) {
             console.error('[SecureVolume] hdiutil create failed', {
-                bundlePath: this.bundlePath,
+                containerPath: this.containerPath,
                 message: error.message
             });
             throw error;
         }
     }
-    async isMounted() {
-        try {
-            const { stdout } = await spawnAsync('hdiutil', ['info']);
-            if (stdout.includes(this.bundlePath)) {
-                return true;
-            }
-        }
-        catch (error) {
-            console.warn('[SecureVolume] Failed to query hdiutil info', {
-                bundlePath: this.bundlePath,
-                message: error.message
-            });
-        }
-        return fs_2.default.existsSync(this.mountPoint);
-    }
     sanitiseName(name) {
         return name.replace(/[\/:*?"<>|]+/g, '-').trim() || 'par-noir-secure';
-    }
-    isSystemMountRoot(root) {
-        return path_1.default.resolve(root) === '/Volumes';
     }
     deriveIdentityKey(payload) {
         const identifier = this.resolveIdentifier(payload);
@@ -241,7 +184,58 @@ class DarwinVolumeDriver {
         return sanitised ? `pn-${sanitised}` : 'pn-default';
     }
     shortHash(value) {
-        return (0, crypto_1.createHash)('sha256').update(value).digest('hex').substring(0, 12);
+        const crypto = require('crypto');
+        return crypto.createHash('sha256').update(value).digest('hex').substring(0, 12);
+    }
+    isSystemMountRoot(mountRoot) {
+        return mountRoot === '/Volumes' || mountRoot === '/mnt' || mountRoot.startsWith('/Volumes/');
+    }
+    async executeMount() {
+        if (!this.unlockContext) {
+            throw new Error('Unlock context required');
+        }
+        // hdiutil attach with password from stdin
+        await (0, VeraCryptDriver_1.spawnAsync)('hdiutil', [
+            'attach',
+            this.containerPath,
+            '-mountpoint', this.mountPoint,
+            '-stdinpass',
+            '-nobrowse'
+        ], { input: this.unlockContext.authToken });
+    }
+    async executeUnmount() {
+        await (0, VeraCryptDriver_1.spawnAsync)('hdiutil', [
+            'detach',
+            this.mountPoint,
+            '-force'
+        ]);
+    }
+    async isMounted() {
+        try {
+            const { stdout } = await (0, VeraCryptDriver_1.spawnAsync)('hdiutil', ['info', '-plist']);
+            // Check if our mount point or container path is in the output
+            return stdout.includes(this.mountPoint) || stdout.includes(this.containerPath);
+        }
+        catch {
+            // Fallback: check if mount point exists
+            return await pathExists(this.mountPoint);
+        }
+    }
+    async executeCreate() {
+        if (!this.unlockContext) {
+            throw new Error('Unlock context required');
+        }
+        // Create encrypted sparse bundle using hdiutil
+        // Size: 512MB, encryption: AES-256, filesystem: APFS
+        await (0, VeraCryptDriver_1.spawnAsync)('hdiutil', [
+            'create',
+            '-size', '512m',
+            '-type', 'SPARSEBUNDLE',
+            '-fs', 'APFS',
+            '-encryption', 'AES-256',
+            '-stdinpass',
+            this.containerPath
+        ], { input: this.unlockContext.authToken });
     }
 }
 exports.DarwinVolumeDriver = DarwinVolumeDriver;

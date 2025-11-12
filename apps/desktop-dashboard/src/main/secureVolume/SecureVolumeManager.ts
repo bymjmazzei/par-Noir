@@ -2,7 +2,7 @@ import { app } from 'electron';
 import path from 'path';
 
 import type { SecureVolumeIdentity, SecureVolumeMountState, SecureVolumeUnlockPayload } from '../../shared/ipcChannels';
-import { VeraCryptDarwinDriver } from './VeraCryptDarwinDriver';
+import { DarwinVolumeDriver } from './DarwinVolumeDriver';
 import { VeraCryptWindowsDriver } from './VeraCryptWindowsDriver';
 import { VeraCryptLinuxDriver } from './VeraCryptLinuxDriver';
 import { UnsupportedVolumeDriver } from './UnsupportedVolumeDriver';
@@ -34,7 +34,8 @@ export class SecureVolumeManager {
 
     switch (process.platform) {
       case 'darwin':
-        this.driver = new VeraCryptDarwinDriver(config);
+        // Use macOS native hdiutil (no dependencies) instead of VeraCrypt (requires FUSE)
+        this.driver = new DarwinVolumeDriver(config);
         break;
       case 'win32':
         this.driver = new VeraCryptWindowsDriver(config);
@@ -115,7 +116,7 @@ export class SecureVolumeManager {
         mounted: false,
         mountPoint: null,
         platform: process.platform,
-        driver: 'veracrypt',
+        driver: process.platform === 'darwin' ? 'hdiutil' : 'veracrypt',
         bundleExists: false
       };
     }

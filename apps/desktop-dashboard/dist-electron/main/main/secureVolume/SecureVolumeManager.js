@@ -6,7 +6,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.SecureVolumeManager = void 0;
 const electron_1 = require("electron");
 const path_1 = __importDefault(require("path"));
-const VeraCryptDarwinDriver_1 = require("./VeraCryptDarwinDriver");
+const DarwinVolumeDriver_1 = require("./DarwinVolumeDriver");
 const VeraCryptWindowsDriver_1 = require("./VeraCryptWindowsDriver");
 const VeraCryptLinuxDriver_1 = require("./VeraCryptLinuxDriver");
 const UnsupportedVolumeDriver_1 = require("./UnsupportedVolumeDriver");
@@ -35,7 +35,8 @@ class SecureVolumeManager {
         };
         switch (process.platform) {
             case 'darwin':
-                this.driver = new VeraCryptDarwinDriver_1.VeraCryptDarwinDriver(config);
+                // Use macOS native hdiutil (no dependencies) instead of VeraCrypt (requires FUSE)
+                this.driver = new DarwinVolumeDriver_1.DarwinVolumeDriver(config);
                 break;
             case 'win32':
                 this.driver = new VeraCryptWindowsDriver_1.VeraCryptWindowsDriver(config);
@@ -103,7 +104,7 @@ class SecureVolumeManager {
                 mounted: false,
                 mountPoint: null,
                 platform: process.platform,
-                driver: 'veracrypt',
+                driver: process.platform === 'darwin' ? 'hdiutil' : 'veracrypt',
                 bundleExists: false
             };
         }
