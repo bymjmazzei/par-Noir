@@ -4445,15 +4445,45 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
             </button>
         </div>
 
-        <a
-          href="https://github.com/bymjmazzei/par-Noir/releases"
-          target="_blank"
-          rel="noopener noreferrer"
-            className="inline-flex items-center space-x-2 px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors ml-4"
+        <button
+          onClick={async () => {
+            try {
+              // Detect platform
+              const platform = navigator.platform.toLowerCase();
+              let downloadUrl: string;
+              
+              // Determine file extension based on platform
+              if (platform.includes('mac') || platform.includes('darwin')) {
+                // macOS - download DMG
+                downloadUrl = 'https://github.com/bymjmazzei/par-Noir/releases/latest/download/par-Noir-Desktop-mac.dmg';
+              } else if (platform.includes('win')) {
+                // Windows - download portable exe
+                downloadUrl = 'https://github.com/bymjmazzei/par-Noir/releases/latest/download/par-Noir-Desktop-win.exe';
+              } else {
+                // Linux - download AppImage
+                downloadUrl = 'https://github.com/bymjmazzei/par-Noir/releases/latest/download/par-Noir-Desktop-linux.AppImage';
+              }
+              
+              // Create a temporary anchor element to trigger download
+              const link = document.createElement('a');
+              link.href = downloadUrl;
+              link.download = downloadUrl.split('/').pop() || 'par-Noir-Desktop';
+              link.target = '_blank';
+              link.rel = 'noopener noreferrer';
+              document.body.appendChild(link);
+              link.click();
+              document.body.removeChild(link);
+            } catch (error) {
+              console.error('Failed to download desktop app:', error);
+              // Fallback to GitHub releases page
+              window.open('https://github.com/bymjmazzei/par-Noir/releases/latest', '_blank');
+            }
+          }}
+          className="inline-flex items-center space-x-2 px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors ml-4"
         >
           <Download className="h-4 w-4" />
           <span>Download Desktop App</span>
-        </a>
+        </button>
             </div>
       </div>
 
