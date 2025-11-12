@@ -17,7 +17,10 @@ import { FeedBrowser } from './components/FeedBrowser';
 import { CreatorIndex } from './components/CreatorIndex';
 import { FeedEngagementSidebar } from './components/FeedEngagementSidebar';
 import { SettingsPanel } from './components/SettingsPanel';
+import { KeyboardShortcuts } from './components/KeyboardShortcuts';
+import { LoadingSkeleton } from './components/LoadingSkeleton';
 import { Settings } from 'lucide-react';
+import { useKeyboardNavigation } from './hooks/useKeyboardNavigation';
 
 // Shared types - importing from id-dashboard
 // In production, these would come from a shared package
@@ -40,7 +43,9 @@ function App() {
   const [visibleFileId, setVisibleFileId] = useState<string | null>(null); // Currently visible file in feed mode
   const [showFeedBrowser, setShowFeedBrowser] = useState(false); // Show feed browser modal
   const [showSettings, setShowSettings] = useState(false); // Show settings panel
+  const [showShortcuts, setShowShortcuts] = useState(false); // Show keyboard shortcuts
   const [viewingCreatorId, setViewingCreatorId] = useState<string | null>(null); // Creator ID for index view
+  const feedScrollRef = React.useRef<HTMLDivElement>(null); // Ref for feed scroll container
   const videoRefs = React.useRef<Map<string, HTMLVideoElement>>(new Map()); // Store video element refs
   
   const metadataIndexService = getMetadataIndexService();
@@ -53,6 +58,91 @@ function App() {
   useEffect(() => {
     discoverFiles();
   }, [activeFeedId, userState.preferences.maxRating]);
+
+  // Navigation handlers
+  const handleNextPost = () => {
+    if (!feedScrollRef.current) return;
+    const currentScroll = feedScrollRef.current.scrollTop;
+    const viewportHeight = feedScrollRef.current.clientHeight;
+    feedScrollRef.current.scrollTo({
+      top: currentScroll + viewportHeight,
+      behavior: 'smooth'
+    });
+  };
+
+  const handlePreviousPost = () => {
+    if (!feedScrollRef.current) return;
+    const currentScroll = feedScrollRef.current.scrollTop;
+    const viewportHeight = feedScrollRef.current.clientHeight;
+    feedScrollRef.current.scrollTo({
+      top: currentScroll - viewportHeight,
+      behavior: 'smooth'
+    });
+  };
+
+  const handleNextFeed = () => {
+    const feedRailItems = buildFeedRailItems(
+      feeds,
+      userState.preferences.subscribedFeedIds,
+      activeFeedId,
+      false
+    );
+    const currentIndex = feedRailItems.findIndex(item => item.feedId === activeFeedId);
+    if (currentIndex < feedRailItems.length - 1) {
+      setActiveFeedId(feedRailItems[currentIndex + 1].feedId);
+    }
+  };
+
+  const handlePreviousFeed = () => {
+    const feedRailItems = buildFeedRailItems(
+      feeds,
+      userState.preferences.subscribedFeedIds,
+      activeFeedId,
+      false
+    );
+    const currentIndex = feedRailItems.findIndex(item => item.feedId === activeFeedId);
+    if (currentIndex > 0) {
+      setActiveFeedId(feedRailItems[currentIndex - 1].feedId);
+    }
+  };
+
+  const handleTogglePlayPause = () => {
+    if (!visibleFileId) return;
+    const videoElement = videoRefs.current.get(visibleFileId);
+    if (videoElement) {
+      if (videoElement.paused) {
+        videoElement.play();
+      } else {
+        videoElement.pause();
+      }
+    }
+  };
+
+  // Keyboard navigation
+  useKeyboardNavigation({
+    onNextFeed: viewMode === 'feed' ? handleNextFeed : undefined,
+    onPreviousFeed: viewMode === 'feed' ? handlePreviousFeed : undefined,
+    onNextPost: viewMode === 'feed' ? handleNextPost : undefined,
+    onPreviousPost: viewMode === 'feed' ? handlePreviousPost : undefined,
+    onTogglePlayPause: viewMode === 'feed' ? handleTogglePlayPause : undefined,
+    onOpenSettings: () => setShowSettings(true),
+    onOpenFeedBrowser: () => setShowFeedBrowser(true),
+    enabled: !showFeedBrowser && !showSettings && !showShortcuts && !viewingCreatorId
+  });
+
+  // Show shortcuts on ? key
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === '?' && !showFeedBrowser && !showSettings && !viewingCreatorId) {
+        const target = e.target as HTMLElement;
+        if (target.tagName !== 'INPUT' && target.tagName !== 'TEXTAREA' && !target.isContentEditable) {
+          setShowShortcuts(true);
+        }
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [showFeedBrowser, showSettings, viewingCreatorId]);
 
   // Intersection Observer for auto-playing videos in feed mode
   useEffect(() => {
@@ -595,10 +685,11 @@ function App() {
         )}
         
         {isLoading ? (
-          <div className="text-center py-12">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-400 mx-auto mb-4"></div>
-            <p className="text-text-secondary">Scanning Google Drive for public files...</p>
-          </div>
+          viewMode === 'feed' ? (
+            <LoadingSkeleton type="feed" count={3} />
+          ) : (
+            <LoadingSkeleton type="grid" count={6} />
+          )
         ) : indexedFiles.length === 0 ? (
           <div className="text-center py-12">
             <Globe className="h-12 w-12 text-text-secondary mx-auto mb-4" />
@@ -611,7 +702,7 @@ function App() {
           </div>
         ) : viewMode === 'feed' ? (
           // TikTok-style feed view - takes full viewport
-          <div className="flex-1 overflow-y-scroll snap-y snap-mandatory h-full">
+          <div ref={feedScrollRef} className="flex-1 overflow-y-scroll snap-y snap-mandatory h-full">
             {indexedFiles.map((indexedFile) => {
               const file = indexedFile.metadata;
               const isVideo = file.fileType === 'video' || 
@@ -1033,6 +1124,13 @@ function App() {
         {showSettings && (
           <SettingsPanel
             onClose={() => setShowSettings(false)}
+          />
+        )}
+
+        {/* Keyboard Shortcuts Panel */}
+        {showShortcuts && (
+          <KeyboardShortcuts
+            onClose={() => setShowShortcuts(false)}
           />
         )}
       </div>
