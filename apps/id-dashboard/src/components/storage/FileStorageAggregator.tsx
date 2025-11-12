@@ -4448,31 +4448,56 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
         <button
           onClick={async () => {
             try {
-              // Detect platform
-              const platform = navigator.platform.toLowerCase();
-              let downloadUrl: string;
-              
-              // Determine file extension based on platform
-              if (platform.includes('mac') || platform.includes('darwin')) {
-                // macOS - download DMG
-                downloadUrl = 'https://github.com/bymjmazzei/par-Noir/releases/latest/download/par-Noir-Desktop-mac.dmg';
-              } else if (platform.includes('win')) {
-                // Windows - download portable exe
-                downloadUrl = 'https://github.com/bymjmazzei/par-Noir/releases/latest/download/par-Noir-Desktop-win.exe';
-              } else {
-                // Linux - download AppImage
-                downloadUrl = 'https://github.com/bymjmazzei/par-Noir/releases/latest/download/par-Noir-Desktop-linux.AppImage';
+              // Fetch latest release from GitHub API
+              const response = await fetch('https://api.github.com/repos/bymjmazzei/par-Noir/releases/latest');
+              if (!response.ok) {
+                throw new Error('Failed to fetch release info');
               }
               
-              // Create a temporary anchor element to trigger download
-              const link = document.createElement('a');
-              link.href = downloadUrl;
-              link.download = downloadUrl.split('/').pop() || 'par-Noir-Desktop';
-              link.target = '_blank';
-              link.rel = 'noopener noreferrer';
-              document.body.appendChild(link);
-              link.click();
-              document.body.removeChild(link);
+              const release = await response.json();
+              const assets = release.assets || [];
+              
+              // Detect platform
+              const platform = navigator.platform.toLowerCase();
+              let downloadUrl: string | null = null;
+              
+              // Find appropriate asset based on platform
+              if (platform.includes('mac') || platform.includes('darwin')) {
+                // macOS - look for DMG file
+                const dmgAsset = assets.find((asset: any) => 
+                  asset.name.includes('.dmg') && !asset.name.includes('blockmap')
+                );
+                downloadUrl = dmgAsset?.browser_download_url || null;
+              } else if (platform.includes('win')) {
+                // Windows - look for exe file
+                const exeAsset = assets.find((asset: any) => 
+                  asset.name.includes('.exe') || asset.name.includes('win')
+                );
+                downloadUrl = exeAsset?.browser_download_url || null;
+              } else {
+                // Linux - look for AppImage or tar.gz
+                const linuxAsset = assets.find((asset: any) => 
+                  asset.name.includes('.AppImage') || 
+                  asset.name.includes('.tar.gz') || 
+                  asset.name.includes('linux')
+                );
+                downloadUrl = linuxAsset?.browser_download_url || null;
+              }
+              
+              if (downloadUrl) {
+                // Create a temporary anchor element to trigger download
+                const link = document.createElement('a');
+                link.href = downloadUrl;
+                link.download = downloadUrl.split('/').pop() || 'par-Noir-Desktop';
+                link.target = '_blank';
+                link.rel = 'noopener noreferrer';
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+              } else {
+                // No matching asset found, open releases page
+                window.open(release.html_url, '_blank');
+              }
             } catch (error) {
               console.error('Failed to download desktop app:', error);
               // Fallback to GitHub releases page
