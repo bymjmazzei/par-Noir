@@ -13,9 +13,10 @@ import { FeedRailItem } from './FeedRail';
 interface FeedBrowserProps {
   feeds: Feed[];
   onClose: () => void;
+  onFeedClick?: (feed: Feed) => void;
 }
 
-export function FeedBrowser({ feeds, onClose }: FeedBrowserProps) {
+export function FeedBrowser({ feeds, onClose, onFeedClick }: FeedBrowserProps) {
   const { userState, subscribeToFeed, unsubscribeFromFeed, isSubscribedToFeed } = useUserState();
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<FeedCategory | 'all'>('all');
@@ -121,7 +122,13 @@ export function FeedBrowser({ feeds, onClose }: FeedBrowserProps) {
                 return (
                   <div
                     key={feed.feedId}
-                    className="bg-neutral-800/50 border border-neutral-700 rounded-xl p-4 hover:bg-neutral-800 transition-colors"
+                    className="bg-neutral-800/50 border border-neutral-700 rounded-xl p-4 hover:bg-neutral-800 transition-colors cursor-pointer"
+                    onClick={() => {
+                      // Only navigate to branded feed if it's a paid tier feed
+                      if ((feed.creatorTier === 'feed' || feed.creatorTier === 'self-hosted') && onFeedClick) {
+                        onFeedClick(feed);
+                      }
+                    }}
                   >
                     <div className="flex items-start justify-between mb-3">
                       <div className="flex-1">
@@ -147,7 +154,10 @@ export function FeedBrowser({ feeds, onClose }: FeedBrowserProps) {
                         </div>
                       </div>
                       <button
-                        onClick={() => handleSubscribe(feed.feedId)}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleSubscribe(feed.feedId);
+                        }}
                         className={`ml-4 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
                           isSubscribed
                             ? 'bg-green-600 text-white hover:bg-green-700'

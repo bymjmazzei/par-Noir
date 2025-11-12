@@ -23,6 +23,7 @@ import { ContentRatingBadge } from './components/ContentRatingBadge';
 import { EmptyState } from './components/EmptyState';
 import { WelcomeModal } from './components/WelcomeModal';
 import { CommentModal } from './components/CommentModal';
+import { BrandedFeedPage } from './components/BrandedFeedPage';
 import { Settings } from 'lucide-react';
 import { useKeyboardNavigation } from './hooks/useKeyboardNavigation';
 import { useSwipeGesture } from './hooks/useSwipeGesture';
@@ -52,6 +53,7 @@ function App() {
   const [showSettings, setShowSettings] = useState(false); // Show settings panel
   const [showShortcuts, setShowShortcuts] = useState(false); // Show keyboard shortcuts
   const [commentingFile, setCommentingFile] = useState<IndexedFile | null>(null); // File being commented on
+  const [viewingBrandedFeed, setViewingBrandedFeed] = useState<Feed | null>(null); // Branded feed being viewed
   const [showWelcome, setShowWelcome] = useState(() => {
     // Show welcome on first visit
     try {
@@ -529,6 +531,32 @@ function App() {
       video.src = url;
     });
   };
+
+  // Show branded feed page if viewing a paid-tier feed
+  if (viewingBrandedFeed) {
+    const feedFiles = indexedFiles.filter(file => 
+      file.metadata.feedIds?.includes(viewingBrandedFeed.feedId)
+    );
+    
+    return (
+      <BrandedFeedPage
+        feed={viewingBrandedFeed}
+        files={feedFiles}
+        onBack={() => setViewingBrandedFeed(null)}
+        onFileClick={(file) => {
+          // Switch to feed mode and scroll to file
+          setViewMode('feed');
+          setViewingBrandedFeed(null);
+          setTimeout(() => {
+            const element = document.querySelector(`[data-file-id="${file.metadata.fileId}"]`);
+            if (element && feedScrollRef.current) {
+              element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            }
+          }, 100);
+        }}
+      />
+    );
+  }
 
   // Show creator index if viewing a creator
   if (viewingCreatorId) {
@@ -1175,6 +1203,10 @@ function App() {
           <FeedBrowser
             feeds={feeds}
             onClose={() => setShowFeedBrowser(false)}
+            onFeedClick={(feed) => {
+              setShowFeedBrowser(false);
+              setViewingBrandedFeed(feed);
+            }}
           />
         )}
 
