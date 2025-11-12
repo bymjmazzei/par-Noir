@@ -20,9 +20,11 @@ import { SettingsPanel } from './components/SettingsPanel';
 import { KeyboardShortcuts } from './components/KeyboardShortcuts';
 import { LoadingSkeleton } from './components/LoadingSkeleton';
 import { ContentRatingBadge } from './components/ContentRatingBadge';
+import { EmptyState } from './components/EmptyState';
 import { Settings } from 'lucide-react';
 import { useKeyboardNavigation } from './hooks/useKeyboardNavigation';
 import { useSwipeGesture } from './hooks/useSwipeGesture';
+import { loadFeedViewedTimestamps, markFeedAsViewed, hasNewContent } from './utils/feedUtils';
 
 // Shared types - importing from id-dashboard
 // In production, these would come from a shared package
@@ -47,6 +49,9 @@ function App() {
   const [showSettings, setShowSettings] = useState(false); // Show settings panel
   const [showShortcuts, setShowShortcuts] = useState(false); // Show keyboard shortcuts
   const [viewingCreatorId, setViewingCreatorId] = useState<string | null>(null); // Creator ID for index view
+  const [feedViewedTimestamps, setFeedViewedTimestamps] = useState<Map<string, string>>(
+    () => loadFeedViewedTimestamps()
+  ); // Track when feeds were last viewed
   const feedScrollRef = React.useRef<HTMLDivElement>(null); // Ref for feed scroll container
   const videoRefs = React.useRef<Map<string, HTMLVideoElement>>(new Map()); // Store video element refs
   
@@ -60,6 +65,20 @@ function App() {
   useEffect(() => {
     discoverFiles();
   }, [activeFeedId, userState.preferences.maxRating]);
+
+  // Mark feed as viewed when switching to it
+  useEffect(() => {
+    if (activeFeedId && activeFeedId !== 'new') {
+      setFeedViewedTimestamps(prev => markFeedAsViewed(activeFeedId, prev));
+    }
+  }, [activeFeedId]);
+
+  // Check for new third-party content
+  const hasNewThirdPartyContent = React.useMemo(() => {
+    // TODO: Filter for third-party content and check if it's new
+    // For now, return false - will be implemented when third-party API is ready
+    return false;
+  }, [indexedFiles, feedViewedTimestamps]);
 
   // Navigation handlers
   const handleNextPost = () => {
@@ -540,17 +559,17 @@ function App() {
         {viewMode === 'feed' && (
           <div className="bg-neutral-900/60 border-b border-neutral-700 px-4 py-2 flex items-center justify-between">
             <div className="flex-1">
-              <FeedRail
-                feeds={buildFeedRailItems(
-                  feeds,
-                  userState.preferences.subscribedFeedIds,
-                  activeFeedId,
-                  false // TODO: Track new third-party content
-                )}
-                activeFeedId={activeFeedId}
-                onFeedSelect={setActiveFeedId}
-                onBrowseFeeds={() => setShowFeedBrowser(true)}
-              />
+            <FeedRail
+              feeds={buildFeedRailItems(
+                feeds,
+                userState.preferences.subscribedFeedIds,
+                activeFeedId,
+                hasNewThirdPartyContent
+              )}
+              activeFeedId={activeFeedId}
+              onFeedSelect={setActiveFeedId}
+              onBrowseFeeds={() => setShowFeedBrowser(true)}
+            />
             </div>
             <button
               onClick={() => setShowSettings(true)}
@@ -702,15 +721,14 @@ function App() {
             <LoadingSkeleton type="grid" count={6} />
           )
         ) : indexedFiles.length === 0 ? (
-          <div className="text-center py-12">
-            <Globe className="h-12 w-12 text-text-secondary mx-auto mb-4" />
-            <p className="text-text-secondary">No public files found</p>
-            <p className="text-text-secondary text-sm mt-2">
-              {typeof window !== 'undefined' && localStorage.getItem('google_drive_token') 
+          <EmptyState
+            type="no-content"
+            message={
+              typeof window !== 'undefined' && localStorage.getItem('google_drive_token')
                 ? 'No files have been marked as public yet. Mark files as public in the dashboard to see them here.'
-                : 'Connect Google Drive in the dashboard to scan for public files'}
-            </p>
-          </div>
+                : 'Connect Google Drive in the dashboard to scan for public files'
+            }
+          />
         ) : viewMode === 'feed' ? (
           // TikTok-style feed view - takes full viewport
           <div 
