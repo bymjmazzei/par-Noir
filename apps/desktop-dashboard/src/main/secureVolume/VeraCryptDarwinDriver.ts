@@ -21,17 +21,14 @@ export class VeraCryptDarwinDriver extends VeraCryptDriver {
     
     // Check bundled resources first (electron-builder puts extraResources in Contents/Resources/)
     if (this.appPath) {
-      // Ensure we have an absolute path
-      const appDir = path.resolve(path.dirname(this.appPath));
-      // For packaged apps: appPath is Contents/MacOS/par Noir Desktop
+      // appPath is already the directory containing the executable (Contents/MacOS)
       // Resources are at Contents/Resources/veracrypt/...
-      const resourcesDir = path.resolve(appDir, '..', 'Resources');
+      const resourcesDir = path.resolve(this.appPath, '..', 'Resources');
       
       const bundledPath = path.resolve(resourcesDir, 'veracrypt', 'darwin', 'extracted', 'VeraCrypt.app', 'Contents', 'MacOS', 'VeraCrypt');
       
       console.log('[VeraCryptDarwinDriver] Looking for bundled VeraCrypt:', {
         appPath: this.appPath,
-        appDir,
         resourcesDir,
         bundledPath,
         resourcesExists: fs.existsSync(resourcesDir),
@@ -52,10 +49,10 @@ export class VeraCryptDarwinDriver extends VeraCryptDriver {
         // Bundled VeraCrypt from extraResources
         bundledPath,
         // Alternative paths for different packaging scenarios
-        path.resolve(appDir, '..', '..', 'Resources', 'veracrypt', 'darwin', 'extracted', 'VeraCrypt.app', 'Contents', 'MacOS', 'VeraCrypt'),
-        path.resolve(appDir, 'veracrypt', 'darwin', 'extracted', 'VeraCrypt.app', 'Contents', 'MacOS', 'VeraCrypt'),
-        path.resolve(appDir, 'VeraCrypt.app', 'Contents', 'MacOS', 'VeraCrypt'),
-        path.resolve(appDir, 'veracrypt')
+        path.resolve(this.appPath, '..', '..', 'Resources', 'veracrypt', 'darwin', 'extracted', 'VeraCrypt.app', 'Contents', 'MacOS', 'VeraCrypt'),
+        path.resolve(this.appPath, 'veracrypt', 'darwin', 'extracted', 'VeraCrypt.app', 'Contents', 'MacOS', 'VeraCrypt'),
+        path.resolve(this.appPath, 'VeraCrypt.app', 'Contents', 'MacOS', 'VeraCrypt'),
+        path.resolve(this.appPath, 'veracrypt')
       );
     }
     
