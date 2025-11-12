@@ -195,10 +195,13 @@ CREATE TABLE engagement (
 - ✅ Comments persist to database
 - ✅ Likes sync across devices
 - ✅ Shares tracked in database
+- ✅ Bulk engagement stats API for performance
+- ✅ Automatic engagement stats loading on file discovery
+- ✅ Optimized bulk like checks with single query
 
 **Next Steps**: 
 1. Real pN authentication (replace dummy connection)
 2. Test end-to-end: create feed → add posts → subscribe → like/comment
-3. Add engagement stats loading on file view
-4. Bulk engagement stats API for feed views
+3. Add file upload/creation flow for creators
+4. Add feed creation UI for paid-tier creators
 
