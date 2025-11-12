@@ -16,6 +16,7 @@ interface FeedEngagementSidebarProps {
   onShare?: () => void;
   onBookmark?: () => void;
   onMore?: () => void;
+  isLiked?: boolean;
 }
 
 export function FeedEngagementSidebar({
@@ -24,7 +25,8 @@ export function FeedEngagementSidebar({
   onComment,
   onShare,
   onBookmark,
-  onMore
+  onMore,
+  isLiked = false
 }: FeedEngagementSidebarProps) {
   const { userState } = useUserState();
   const engagement = file.metadata.engagement;
@@ -53,7 +55,9 @@ export function FeedEngagementSidebar({
           )}
           <div className="w-12 h-12 md:w-14 md:h-14 rounded-full bg-black/30 backdrop-blur-sm flex items-center justify-center group-hover:bg-black/50 active:bg-black/70 transition-colors touch-manipulation">
             <Heart className={`h-6 w-6 md:h-7 md:w-7 transition-colors ${
-              userState.isUnlocked
+              isLiked
+                ? 'text-red-500 fill-red-500'
+                : userState.isUnlocked
                 ? 'text-white group-hover:text-red-400'
                 : 'text-white/50'
             }`} />

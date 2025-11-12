@@ -22,9 +22,11 @@ import { LoadingSkeleton } from './components/LoadingSkeleton';
 import { ContentRatingBadge } from './components/ContentRatingBadge';
 import { EmptyState } from './components/EmptyState';
 import { WelcomeModal } from './components/WelcomeModal';
+import { CommentModal } from './components/CommentModal';
 import { Settings } from 'lucide-react';
 import { useKeyboardNavigation } from './hooks/useKeyboardNavigation';
 import { useSwipeGesture } from './hooks/useSwipeGesture';
+import { useEngagement } from './hooks/useEngagement';
 import { loadFeedViewedTimestamps, markFeedAsViewed, hasNewContent } from './utils/feedUtils';
 
 // Shared types - importing from id-dashboard
@@ -49,6 +51,7 @@ function App() {
   const [showFeedBrowser, setShowFeedBrowser] = useState(false); // Show feed browser modal
   const [showSettings, setShowSettings] = useState(false); // Show settings panel
   const [showShortcuts, setShowShortcuts] = useState(false); // Show keyboard shortcuts
+  const [commentingFile, setCommentingFile] = useState<IndexedFile | null>(null); // File being commented on
   const [showWelcome, setShowWelcome] = useState(() => {
     // Show welcome on first visit
     try {
@@ -65,6 +68,7 @@ function App() {
   const videoRefs = React.useRef<Map<string, HTMLVideoElement>>(new Map()); // Store video element refs
   
   const metadataIndexService = getMetadataIndexService();
+  const { toggleLike, share, getLikeCount, isLiked, getComments, getShareCount } = useEngagement();
 
   useEffect(() => {
     discoverFiles();
@@ -804,18 +808,28 @@ function App() {
                   
                   {/* Engagement Sidebar - Right Side */}
                   <FeedEngagementSidebar
-                    file={indexedFile}
-                    onLike={() => {
-                      // TODO: Implement like functionality
-                      console.log('Like:', file.fileId);
+                    file={{
+                      ...indexedFile,
+                      metadata: {
+                        ...indexedFile.metadata,
+                        engagement: {
+                          ...indexedFile.metadata.engagement,
+                          likes: getLikeCount(file.fileId, indexedFile.metadata.engagement?.likes || 0),
+                          comments: getComments(file.fileId).length + (indexedFile.metadata.engagement?.comments || 0),
+                          shares: getShareCount(file.fileId, indexedFile.metadata.engagement?.shares || 0)
+                        }
+                      }
                     }}
-                    onComment={() => {
-                      // TODO: Implement comment functionality
-                      console.log('Comment:', file.fileId);
-                    }}
+                    isLiked={isLiked(file.fileId)}
+                    onLike={() => toggleLike(file.fileId)}
+                    onComment={() => setCommentingFile(indexedFile)}
                     onShare={() => {
-                      // TODO: Implement share functionality
-                      console.log('Share:', file.fileId);
+                      share(file.fileId);
+                      // Copy share link to clipboard
+                      const shareUrl = `${window.location.origin}${window.location.pathname}?file=${file.fileId}`;
+                      navigator.clipboard.writeText(shareUrl).then(() => {
+                        // Could show a toast notification here
+                      });
                     }}
                   />
 
@@ -1058,16 +1072,27 @@ function App() {
                       onClick={(e) => e.stopPropagation()}
                     >
                       <EngagementActions
-                        file={indexedFile}
+                        file={{
+                          ...indexedFile,
+                          metadata: {
+                            ...indexedFile.metadata,
+                            engagement: {
+                              ...indexedFile.metadata.engagement,
+                              likes: getLikeCount(file.fileId, indexedFile.metadata.engagement?.likes || 0),
+                              comments: getComments(file.fileId).length + (indexedFile.metadata.engagement?.comments || 0),
+                              shares: getShareCount(file.fileId, indexedFile.metadata.engagement?.shares || 0)
+                            }
+                          }
+                        }}
                         compact
-                        onLike={() => {
-                          console.log('Like:', file.fileId);
-                        }}
-                        onComment={() => {
-                          console.log('Comment:', file.fileId);
-                        }}
+                        onLike={() => toggleLike(file.fileId)}
+                        onComment={() => setCommentingFile(indexedFile)}
                         onShare={() => {
-                          console.log('Share:', file.fileId);
+                          share(file.fileId);
+                          const shareUrl = `${window.location.origin}${window.location.pathname}?file=${file.fileId}`;
+                          navigator.clipboard.writeText(shareUrl).then(() => {
+                            // Could show a toast notification here
+                          });
                         }}
                       />
                     </div>
@@ -1185,6 +1210,14 @@ function App() {
                 console.warn('Failed to save welcome completion:', e);
               }
             }}
+          />
+        )}
+
+        {/* Comment Modal */}
+        {commentingFile && (
+          <CommentModal
+            file={commentingFile}
+            onClose={() => setCommentingFile(null)}
           />
         )}
       </div>
