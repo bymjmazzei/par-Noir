@@ -28,7 +28,7 @@ export interface AccessToken {
 
 export interface TokenPayload {
   did: string;
-  pnName?: string;
+  // pN name is NOT stored here - it's a secret and should never be stored
   clientId: string;
   scope: string[];
   issuedAt: number;
@@ -149,10 +149,10 @@ export class PNOAuthService {
   /**
    * Generate access token
    */
-  private static generateAccessToken(params: { did: string; pnName?: string; clientId: string; scope: string[] }): string {
+  private static generateAccessToken(params: { did: string; clientId: string; scope: string[] }): string {
     const payload: TokenPayload = {
       did: params.did,
-      pnName: params.pnName,
+      // pN name is NOT stored - it's a secret
       clientId: params.clientId,
       scope: params.scope,
       issuedAt: Date.now(),
