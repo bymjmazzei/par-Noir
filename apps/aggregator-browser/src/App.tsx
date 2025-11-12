@@ -24,12 +24,14 @@ import { EmptyState } from './components/EmptyState';
 import { WelcomeModal } from './components/WelcomeModal';
 import { CommentModal } from './components/CommentModal';
 import { BrandedFeedPage } from './components/BrandedFeedPage';
+import { MediaViewer } from './components/MediaViewer';
 import { ToastContainer } from './components/Toast';
 import { Settings } from 'lucide-react';
 import { useKeyboardNavigation } from './hooks/useKeyboardNavigation';
 import { useSwipeGesture } from './hooks/useSwipeGesture';
 import { useEngagement } from './hooks/useEngagement';
 import { useToast } from './hooks/useToast';
+import { useURLParams } from './hooks/useURLParams';
 import { loadFeedViewedTimestamps, markFeedAsViewed, hasNewContent } from './utils/feedUtils';
 
 // Shared types - importing from id-dashboard
@@ -74,10 +76,67 @@ function App() {
   const metadataIndexService = getMetadataIndexService();
   const { toggleLike, share, getLikeCount, isLiked, getComments, getShareCount } = useEngagement();
   const { toasts, removeToast, success, error } = useToast();
+  const { getParam, setParam } = useURLParams();
 
   useEffect(() => {
     discoverFiles();
   }, []);
+
+  // Initialize from URL params
+  useEffect(() => {
+    const fileParam = getParam('file');
+    const feedParam = getParam('feed');
+    const creatorParam = getParam('creator');
+    const viewParam = getParam('view') as 'grid' | 'feed' | null;
+
+    if (viewParam && (viewParam === 'grid' || viewParam === 'feed')) {
+      setViewMode(viewParam);
+    }
+
+    if (feedParam) {
+      setActiveFeedId(feedParam);
+    }
+
+    if (creatorParam) {
+      setViewingCreatorId(creatorParam);
+    }
+
+    if (fileParam && indexedFiles.length > 0) {
+      const file = indexedFiles.find(f => f.metadata.fileId === fileParam);
+      if (file) {
+        setViewMode('feed');
+        setTimeout(() => {
+          const element = document.querySelector(`[data-file-id="${fileParam}"]`);
+          if (element && feedScrollRef.current) {
+            element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          }
+        }, 500);
+      }
+    }
+  }, [getParam, indexedFiles.length]); // Only run when files are loaded
+
+  // Update URL when state changes
+  useEffect(() => {
+    if (viewingCreatorId) {
+      setParam('creator', viewingCreatorId);
+    } else {
+      setParam('creator', null);
+    }
+  }, [viewingCreatorId, setParam]);
+
+  useEffect(() => {
+    if (viewingBrandedFeed) {
+      setParam('feed', viewingBrandedFeed.feedId);
+    } else if (activeFeedId !== 'public') {
+      setParam('feed', activeFeedId);
+    } else {
+      setParam('feed', null);
+    }
+  }, [viewingBrandedFeed, activeFeedId, setParam]);
+
+  useEffect(() => {
+    setParam('view', viewMode);
+  }, [viewMode, setParam]);
 
   // Re-discover files when active feed or rating preferences change
   useEffect(() => {
@@ -872,11 +931,12 @@ function App() {
                     onComment={() => setCommentingFile(indexedFile)}
                     onShare={async () => {
                       share(file.fileId);
-                      // Copy share link to clipboard
-                      const shareUrl = `${window.location.origin}${window.location.pathname}?file=${file.fileId}`;
+                      // Copy share link to clipboard with deep link
+                      const shareUrl = `${window.location.origin}${window.location.pathname}?file=${file.fileId}&view=feed`;
                       try {
                         await navigator.clipboard.writeText(shareUrl);
                         success('Link copied to clipboard!');
+                        setParam('file', file.fileId);
                       } catch (err) {
                         error('Failed to copy link. Please try again.');
                       }
@@ -1145,10 +1205,11 @@ function App() {
                         onComment={() => setCommentingFile(indexedFile)}
                         onShare={async () => {
                           share(file.fileId);
-                          const shareUrl = `${window.location.origin}${window.location.pathname}?file=${file.fileId}`;
+                          const shareUrl = `${window.location.origin}${window.location.pathname}?file=${file.fileId}&view=feed`;
                           try {
                             await navigator.clipboard.writeText(shareUrl);
                             success('Link copied to clipboard!');
+                            setParam('file', file.fileId);
                           } catch (err) {
                             error('Failed to copy link. Please try again.');
                           }
@@ -1162,71 +1223,17 @@ function App() {
           </div>
         )}
 
-        {/* File Viewer Modal */}
+        {/* Media Viewer */}
         {viewingFile && (
-          <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
-            <div className="bg-neutral-900 rounded-xl max-w-4xl max-h-[90vh] w-full flex flex-col">
-              <div className="flex items-center justify-between p-4 border-b border-neutral-700">
-                <h3 className="text-white font-medium">{viewingFile.file.metadata.name || viewingFile.file.metadata.title || 'Decrypted File'}</h3>
-                <button
-                  onClick={() => {
-                    if (viewingFile.url) URL.revokeObjectURL(viewingFile.url);
-                    setViewingFile(null);
-                  }}
-                  className="text-text-secondary hover:text-white transition-colors"
-                >
-                  <X className="h-5 w-5" />
-                </button>
-              </div>
-              <div className="flex-1 overflow-auto p-4">
-                {viewingFile.blob.type.startsWith('image/') ? (
-                  <img 
-                    src={viewingFile.url} 
-                    alt={viewingFile.file.metadata.name || 'Decrypted image'}
-                    className="max-w-full max-h-[70vh] mx-auto"
-                  />
-                ) : viewingFile.blob.type.startsWith('video/') ? (
-                  <video 
-                    src={viewingFile.url} 
-                    controls
-                    className="max-w-full max-h-[70vh] mx-auto"
-                  />
-                ) : viewingFile.blob.type.startsWith('audio/') ? (
-                  <audio 
-                    src={viewingFile.url} 
-                    controls
-                    className="w-full"
-                  />
-                ) : (
-                  <div className="text-center py-12">
-                    <File className="h-12 w-12 text-text-secondary mx-auto mb-4" />
-                    <p className="text-text-secondary mb-4">File type: {viewingFile.blob.type}</p>
-                    <a
-                      href={viewingFile.url}
-                      download={viewingFile.file.metadata.name || 'file'}
-                      className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors inline-flex items-center space-x-2"
-                    >
-                      <Download className="h-4 w-4" />
-                      <span>Download File</span>
-                    </a>
-                  </div>
-                )}
-              </div>
-              <div className="p-4 border-t border-neutral-700 flex items-center justify-between">
-                <span className="text-xs text-text-secondary">
-                  Decrypted via share token (Phase 3)
-                </span>
-                <a
-                  href={viewingFile.url}
-                  download={viewingFile.file.metadata.name || 'file'}
-                  className="px-4 py-2 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700 transition-colors inline-flex items-center space-x-2"
-                >
-                  <Download className="h-4 w-4" />
-                  <span>Download</span>
-                </a>
-              </div>
-            </div>
-          </div>
+          <MediaViewer
+            file={viewingFile.file}
+            blob={viewingFile.blob}
+            url={viewingFile.url}
+            onClose={() => {
+              if (viewingFile.url) URL.revokeObjectURL(viewingFile.url);
+              setViewingFile(null);
+            }}
+          />
         )}
 
         {/* Feed Browser Modal */}
