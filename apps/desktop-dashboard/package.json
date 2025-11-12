@@ -47,6 +47,20 @@
         "dmg"
       ]
     },
+    "win": {
+      "target": [
+        "portable"
+      ],
+      "icon": "build/icons/icon.ico"
+    },
+    "linux": {
+      "target": [
+        "AppImage",
+        "tar.gz"
+      ],
+      "category": "Utility",
+      "icon": "build/icons/icon.png"
+    },
     "files": [
       "dist/**",
       "dist-electron/**",
