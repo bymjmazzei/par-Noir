@@ -262,11 +262,13 @@ export class DarwinVolumeDriver implements VolumeDriver {
 
     // Create encrypted sparse bundle using hdiutil
     // Size: 512MB, encryption: AES-256, filesystem: APFS
+    // Volume name must match Google Drive folder name
     await spawnAsync('hdiutil', [
       'create',
       '-size', '512m',
       '-type', 'SPARSEBUNDLE',
       '-fs', 'APFS',
+      '-volname', this.volumeName, // Set the volume name to match Google Drive folder
       '-encryption', 'AES-256',
       '-stdinpass',
       this.containerPath
