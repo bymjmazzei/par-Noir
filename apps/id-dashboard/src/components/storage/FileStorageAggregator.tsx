@@ -250,7 +250,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
   const scheduleTokenRetry = React.useCallback((backendIds: string[], options?: { delayMs?: number; resetAttempts?: boolean }) => {
     if (!backendIds.length) {
       return;
-    }
+      }
 
     // Increment retry counts and determine delay (exponential backoff)
     const attempts: number[] = [];
@@ -295,7 +295,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
       pendingRetryTimeoutRef.current = null;
       if (loadFilesRef.current) {
         loadFilesRef.current();
-      }
+          }
     }, delay);
   }, []);
 
@@ -413,7 +413,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
       if (pendingRetryTimeoutRef.current) {
         window.clearTimeout(pendingRetryTimeoutRef.current);
         pendingRetryTimeoutRef.current = null;
-      }
+              }
     };
   }, []);
 
@@ -574,11 +574,11 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
       const filtered = prev.filter((account) => !staleBackendIds.includes(account.backendId));
       if (filtered.length === prev.length) {
         return prev;
-      }
+              }
       persistDriveAccounts(filtered);
       return filtered;
     });
-  }
+      }
   
   function resolveIdentifiersForEmail(email?: string | null) {
     const normalizedEmail = email?.toLowerCase() || null;
@@ -668,7 +668,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
         let baseCredentials: any = {};
 
         if (existingMetadata) {
-          try {
+            try {
             const decrypted = await SecureMetadataCrypto.decryptMetadata(
               existingMetadata,
               metadataPnName,
@@ -677,8 +677,8 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
             baseCredentials = { ...(decrypted.storageCredentials || {}) };
           } catch (decryptError) {
             console.warn('⚠️ [StorageCredentials] Failed to decrypt secure metadata during refresh:', decryptError);
+            }
           }
-        }
 
         const updatedCredentials = {
           ...baseCredentials,
@@ -983,7 +983,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
               refreshedMetadata,
               options?.refreshIndexers ? { force: true } : undefined
             );
-          }
+        }
         } catch (centralSyncError) {
           console.warn('⚠️ [ShareSettings] Central metadata sync failed (non-blocking):', centralSyncError);
         } finally {
@@ -2522,7 +2522,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
           mimeCategory === 'video' ? 'VideoObject' :
           mimeCategory === 'audio' ? 'AudioObject' :
           'CreativeWork';
-        
+
         // Generate resource URI (consistent with metadata service)
         const resourceUri = `https://parnoir.com/resource/${file.id}`;
         const didUri = resolvedAuth.publicKey.startsWith('did:')
@@ -2645,7 +2645,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
                 encryptedPackage,
                 session
               );
-              
+
               // Cache it for future use
               const shareTokenKey = makeShareTokenCacheKey(file.backend || activeBackendId || 'google_drive', file.backendFileId);
               shareTokenCache.current.set(shareTokenKey, shareToken);

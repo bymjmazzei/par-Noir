@@ -169,7 +169,7 @@ export class IdentityCrypto {
       const digestData = encoder.encode(`${resolvedPnName}::${encryptedIdentity.publicKey || identity.id}::${passcode}`);
       const digestBuffer = await window.crypto.subtle.digest('SHA-256', digestData);
       const authToken = Array.from(new Uint8Array(digestBuffer)).map((byte) => byte.toString(16).padStart(2, '0')).join('');
-
+      
       return {
         id: identity.id, // DID comes from decrypted data
         pnName: resolvedPnName,
