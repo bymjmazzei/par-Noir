@@ -25,8 +25,9 @@ import { WelcomeModal } from './components/WelcomeModal';
 import { CommentModal } from './components/CommentModal';
 import { BrandedFeedPage } from './components/BrandedFeedPage';
 import { MediaViewer } from './components/MediaViewer';
+import { UploadModal } from './components/UploadModal';
 import { ToastContainer } from './components/Toast';
-import { Settings } from 'lucide-react';
+import { Settings, Upload } from 'lucide-react';
 import { useKeyboardNavigation } from './hooks/useKeyboardNavigation';
 import { useSwipeGesture } from './hooks/useSwipeGesture';
 import { useEngagement } from './hooks/useEngagement';
@@ -59,6 +60,7 @@ function App() {
   const [showShortcuts, setShowShortcuts] = useState(false); // Show keyboard shortcuts
   const [commentingFile, setCommentingFile] = useState<IndexedFile | null>(null); // File being commented on
   const [viewingBrandedFeed, setViewingBrandedFeed] = useState<Feed | null>(null); // Branded feed being viewed
+  const [showUploadModal, setShowUploadModal] = useState(false); // Show upload modal
   const [showWelcome, setShowWelcome] = useState(() => {
     // Show welcome on first visit
     try {
@@ -735,13 +737,24 @@ function App() {
               onBrowseFeeds={() => setShowFeedBrowser(true)}
             />
             </div>
-            <button
-              onClick={() => setShowSettings(true)}
-              className="ml-4 p-2 text-text-secondary hover:text-white transition-colors"
-              title="Settings"
-            >
-              <Settings className="h-5 w-5" />
-            </button>
+            <div className="flex items-center space-x-2">
+              {userState.isUnlocked && (
+                <button
+                  onClick={() => setShowUploadModal(true)}
+                  className="p-2 text-text-secondary hover:text-white transition-colors"
+                  title="Upload File"
+                >
+                  <Upload className="h-5 w-5" />
+                </button>
+              )}
+              <button
+                onClick={() => setShowSettings(true)}
+                className="p-2 text-text-secondary hover:text-white transition-colors"
+                title="Settings"
+              >
+                <Settings className="h-5 w-5" />
+              </button>
+            </div>
           </div>
         )}
 
@@ -855,6 +868,15 @@ function App() {
                     <RefreshCw className={`h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} />
                     <span>Refresh</span>
                   </button>
+                  {userState.isUnlocked && (
+                    <button
+                      onClick={() => setShowUploadModal(true)}
+                      className="p-2 text-text-secondary hover:text-white transition-colors"
+                      title="Upload File"
+                    >
+                      <Upload className="h-5 w-5" />
+                    </button>
+                  )}
                   <button
                     onClick={() => setShowSettings(true)}
                     className="p-2 text-text-secondary hover:text-white transition-colors"
@@ -1339,6 +1361,17 @@ function App() {
           <CommentModal
             file={commentingFile}
             onClose={() => setCommentingFile(null)}
+          />
+        )}
+
+        {/* Upload Modal */}
+        {showUploadModal && (
+          <UploadModal
+            onClose={() => setShowUploadModal(false)}
+            onUploadComplete={() => {
+              // Refresh files after upload
+              discoverFiles(undefined, true);
+            }}
           />
         )}
 
