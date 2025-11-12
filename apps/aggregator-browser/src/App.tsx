@@ -19,6 +19,7 @@ import { FeedEngagementSidebar } from './components/FeedEngagementSidebar';
 import { SettingsPanel } from './components/SettingsPanel';
 import { KeyboardShortcuts } from './components/KeyboardShortcuts';
 import { LoadingSkeleton } from './components/LoadingSkeleton';
+import { ContentRatingBadge } from './components/ContentRatingBadge';
 import { Settings } from 'lucide-react';
 import { useKeyboardNavigation } from './hooks/useKeyboardNavigation';
 import { useSwipeGesture } from './hooks/useSwipeGesture';
@@ -838,9 +839,7 @@ function App() {
                     
                     {file.contentRating && (
                       <div className="flex items-center space-x-2">
-                        <span className="px-2 py-1 bg-blue-500/20 text-blue-400 text-xs rounded-full">
-                          {file.contentRating}
-                        </span>
+                        <ContentRatingBadge rating={file.contentRating} size="sm" />
                         {file.warningTags && file.warningTags.length > 0 && (
                           <span className="text-white/70 text-xs">
                             {file.warningTags.join(', ')}
@@ -868,7 +867,17 @@ function App() {
               return (
                 <div
                   key={file.fileId}
-                  className="bg-neutral-900/60 border border-neutral-700 rounded-xl overflow-hidden hover:bg-neutral-800 transition-colors"
+                  className="bg-neutral-900/60 border border-neutral-700 rounded-xl overflow-hidden hover:bg-neutral-800 transition-colors cursor-pointer group"
+                  onClick={() => {
+                    // Switch to feed mode and scroll to this post
+                    setViewMode('feed');
+                    setTimeout(() => {
+                      const element = document.querySelector(`[data-file-id="${file.fileId}"]`);
+                      if (element && feedScrollRef.current) {
+                        element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                      }
+                    }, 100);
+                  }}
                 >
                   {/* Image/Video Preview Section */}
                   {(isImage || isVideo) && (
@@ -961,99 +970,80 @@ function App() {
                   )}
                   
                   <div className="p-4">
-                    <div className="flex items-start space-x-3 mb-3">
-                      {!isImage && !isVideo && (
-                        <div className="flex-shrink-0 w-12 h-12 bg-blue-500/20 rounded-lg flex items-center justify-center">
-                          <File className="h-6 w-6 text-blue-400" />
-                        </div>
-                      )}
+                    {/* Header with rating */}
+                    <div className="flex items-start justify-between mb-2">
                       <div className="flex-1 min-w-0">
-                        <h3 className="text-white font-medium truncate">{fileName}</h3>
+                        <h3 className="text-white font-medium truncate group-hover:text-blue-400 transition-colors">
+                          {fileName}
+                        </h3>
                         <p className="text-text-secondary text-xs mt-1">
                           {isVideo ? 'Video' : file.fileType === 'image' ? 'Image' : file.fileType || 'File'} • {new Date(file.uploadDate).toLocaleDateString()}
                         </p>
                       </div>
-                    </div>
-
-                  {file.description && (
-                    <p className="text-text-secondary text-sm mb-3 line-clamp-2">{file.description}</p>
-                  )}
-
-                  <div className="flex items-center space-x-2 text-xs text-text-secondary mb-3">
-                    <User className="h-3 w-3" />
-                    <span className="truncate">
-                      {file.creator?.identifier?.value || file.creator?.["@id"] || file.author?.did || 'Unknown'}
-                    </span>
-                  </div>
-
-                  {(file.keywords || file.tags) && (file.keywords || file.tags || []).length > 0 && (
-                    <div className="flex flex-wrap gap-2 mb-3">
-                      {(file.keywords || file.tags || []).slice(0, 3).map((tag, idx) => (
-                        <span
-                          key={idx}
-                          className="px-2 py-0.5 bg-blue-500/20 text-blue-400 text-xs rounded flex items-center space-x-1"
-                        >
-                          <Tag className="h-3 w-3" />
-                          <span>{tag}</span>
-                        </span>
-                      ))}
-                      {(file.keywords || file.tags || []).length > 3 && (
-                        <span className="px-2 py-0.5 text-text-secondary text-xs">
-                          +{(file.keywords || file.tags || []).length - 3} more
-                        </span>
+                      {file.contentRating && (
+                        <ContentRatingBadge rating={file.contentRating} size="sm" className="ml-2 flex-shrink-0" />
                       )}
                     </div>
-                  )}
 
-                    <div className="flex items-center justify-between pt-3 border-t border-neutral-700">
-                      <span className="text-xs text-text-secondary">
-                        {file.backend}
+                    {file.description && (
+                      <p className="text-text-secondary text-sm mb-3 line-clamp-2">{file.description}</p>
+                    )}
+
+                    {/* Creator */}
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        const creatorId = file.creator?.identifier?.value || file.creator?.["@id"] || file.author?.did;
+                        if (creatorId) {
+                          setViewingCreatorId(creatorId);
+                        }
+                      }}
+                      className="flex items-center space-x-2 text-xs text-text-secondary mb-3 hover:text-blue-400 transition-colors w-full text-left"
+                    >
+                      <User className="h-3 w-3" />
+                      <span className="truncate">
+                        {file.creator?.identifier?.value || file.creator?.["@id"] || file.author?.did || 'Unknown'}
                       </span>
-                      <button
-                        onClick={async () => {
-                          try {
-                            // Extract token from metadata
-                            const tokenString = file.publicToken;
-                            if (!tokenString) {
-                              alert('This file does not have a share token yet. Please make it private and then public again in the dashboard to generate a token (Phase 3).');
-                              return;
-                            }
+                    </button>
 
-                            let token: ShareToken;
-                            try {
-                              token = typeof tokenString === 'string' ? JSON.parse(tokenString) : tokenString;
-                            } catch (e) {
-                              alert('Invalid share token format.');
-                              return;
-                            }
+                    {/* Tags */}
+                    {(file.keywords || file.tags) && (file.keywords || file.tags || []).length > 0 && (
+                      <div className="flex flex-wrap gap-1 mb-3">
+                        {(file.keywords || file.tags || []).slice(0, 3).map((tag, idx) => (
+                          <span
+                            key={idx}
+                            className="px-2 py-0.5 bg-blue-500/20 text-blue-400 text-xs rounded-full"
+                          >
+                            #{tag}
+                          </span>
+                        ))}
+                        {(file.keywords || file.tags || []).length > 3 && (
+                          <span className="px-2 py-0.5 text-text-secondary text-xs">
+                            +{(file.keywords || file.tags || []).length - 3}
+                          </span>
+                        )}
+                      </div>
+                    )}
 
-                            // Decrypt using token
-                            setIsLoading(true);
-                            const decryptedBlob = await decryptWithToken(token);
-                            const url = URL.createObjectURL(decryptedBlob);
-                            
-                            setViewingFile({ file: indexedFile, blob: decryptedBlob, url });
-                            setIsLoading(false);
-                          } catch (err) {
-                            setIsLoading(false);
-                            const errorMessage = err instanceof Error ? err.message : 'Failed to decrypt file';
-                            alert(`Decryption failed: ${errorMessage}`);
-                            console.error('Token decryption error:', err);
-                          }
+                    {/* Engagement Actions */}
+                    <div 
+                      className="pt-3 border-t border-neutral-700"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <EngagementActions
+                        file={indexedFile}
+                        compact
+                        onLike={() => {
+                          console.log('Like:', file.fileId);
                         }}
-                        disabled={isLoading}
-                        className="px-3 py-1.5 bg-blue-600 text-white text-xs font-medium rounded-lg hover:bg-blue-700 transition-colors flex items-center space-x-1 disabled:opacity-50 disabled:cursor-not-allowed"
-                        title={file.publicToken ? "View decrypted file" : "Click to see token status"}
-                      >
-                        <Download className="h-3 w-3" />
-                        <span>{isLoading ? 'Decrypting...' : 'View'}</span>
-                      </button>
+                        onComment={() => {
+                          console.log('Comment:', file.fileId);
+                        }}
+                        onShare={() => {
+                          console.log('Share:', file.fileId);
+                        }}
+                      />
                     </div>
-
-                    {/* Note about decryption */}
-                    <p className="text-xs text-text-secondary mt-2 italic">
-                      {file.publicToken ? '✅ Token available - Click View to decrypt' : '⚠️ No token - Make file private then public again in dashboard'}
-                    </p>
                   </div>
                 </div>
               );
