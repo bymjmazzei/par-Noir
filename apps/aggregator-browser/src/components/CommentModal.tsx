@@ -18,30 +18,42 @@ interface CommentModalProps {
 
 export function CommentModal({ file, onClose }: CommentModalProps) {
   const { userState } = useUserState();
-  const { addComment, getComments } = useEngagement();
+  const { addComment, getComments, loadComments } = useEngagement();
   const { success } = useToast();
   const [newComment, setNewComment] = useState('');
   const [comments, setComments] = useState(getComments(file.metadata.fileId));
+  const [loading, setLoading] = useState(false);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
-    setComments(getComments(file.metadata.fileId));
-  }, [file.metadata.fileId, getComments]);
+    // Load comments from backend when modal opens
+    const load = async () => {
+      setLoading(true);
+      const loadedComments = await loadComments(file.metadata.fileId);
+      setComments(loadedComments.length > 0 ? loadedComments : getComments(file.metadata.fileId));
+      setLoading(false);
+    };
+    load();
+  }, [file.metadata.fileId, loadComments, getComments]);
 
   useEffect(() => {
     inputRef.current?.focus();
   }, []);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newComment.trim() || !userState.isUnlocked) return;
 
     const authorId = userState.pnIdentifier || 'anonymous';
     const authorName = userState.pnIdentifier?.substring(0, 8) || 'Anonymous';
     
-    addComment(file.metadata.fileId, newComment.trim(), authorId, authorName);
+    await addComment(file.metadata.fileId, newComment.trim(), authorId, authorName);
     setNewComment('');
-    setComments(getComments(file.metadata.fileId));
+    
+    // Reload comments from backend
+    const loadedComments = await loadComments(file.metadata.fileId);
+    setComments(loadedComments.length > 0 ? loadedComments : getComments(file.metadata.fileId));
+    
     success('Comment posted!');
   };
 
@@ -61,7 +73,11 @@ export function CommentModal({ file, onClose }: CommentModalProps) {
 
         {/* Comments List */}
         <div className="flex-1 overflow-y-auto p-6 space-y-4">
-          {comments.length === 0 ? (
+          {loading ? (
+            <div className="text-center py-12">
+              <p className="text-text-secondary">Loading comments...</p>
+            </div>
+          ) : comments.length === 0 ? (
             <div className="text-center py-12">
               <p className="text-text-secondary">No comments yet. Be the first to comment!</p>
             </div>

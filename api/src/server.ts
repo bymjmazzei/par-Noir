@@ -686,6 +686,134 @@ class ProductionServer {
       }
     });
 
+    // ============================================================================
+    // Engagement APIs (Enhanced)
+    // ============================================================================
+
+    // POST /api/engagement/:fileId/like - Toggle like
+    this.app.post('/api/engagement/:fileId/like', async (req, res) => {
+      try {
+        const { EngagementService } = await import('./server/modules/engagementService');
+        const { fileId } = req.params;
+        const { userDid } = req.body;
+
+        if (!userDid) {
+          return res.status(400).json({ error: 'userDid is required' });
+        }
+
+        const result = await EngagementService.toggleLike(fileId, userDid);
+
+        return res.json({
+          success: true,
+          liked: result.liked,
+          count: result.count
+        });
+      } catch (error: any) {
+        console.error('Error toggling like:', error);
+        return res.status(500).json({ error: 'Failed to toggle like', message: error.message });
+      }
+    });
+
+    // GET /api/engagement/:fileId/like - Check if liked
+    this.app.get('/api/engagement/:fileId/like', async (req, res) => {
+      try {
+        const { EngagementService } = await import('./server/modules/engagementService');
+        const { fileId } = req.params;
+        const { userDid } = req.query;
+
+        if (!userDid) {
+          return res.status(400).json({ error: 'userDid query parameter is required' });
+        }
+
+        const liked = await EngagementService.isLiked(fileId, userDid as string);
+
+        return res.json({ liked });
+      } catch (error: any) {
+        console.error('Error checking like:', error);
+        return res.status(500).json({ error: 'Failed to check like', message: error.message });
+      }
+    });
+
+    // POST /api/engagement/:fileId/comment - Add comment
+    this.app.post('/api/engagement/:fileId/comment', async (req, res) => {
+      try {
+        const { EngagementService } = await import('./server/modules/engagementService');
+        const { fileId } = req.params;
+        const { userDid, content, authorName } = req.body;
+
+        if (!userDid || !content) {
+          return res.status(400).json({ error: 'userDid and content are required' });
+        }
+
+        const comment = await EngagementService.addComment(fileId, userDid, content, authorName);
+
+        return res.status(201).json(comment);
+      } catch (error: any) {
+        console.error('Error adding comment:', error);
+        return res.status(500).json({ error: 'Failed to add comment', message: error.message });
+      }
+    });
+
+    // GET /api/engagement/:fileId/comments - Get comments
+    this.app.get('/api/engagement/:fileId/comments', async (req, res) => {
+      try {
+        const { EngagementService } = await import('./server/modules/engagementService');
+        const { fileId } = req.params;
+
+        const comments = await EngagementService.getComments(fileId);
+
+        return res.json({
+          fileId,
+          comments,
+          count: comments.length
+        });
+      } catch (error: any) {
+        console.error('Error getting comments:', error);
+        return res.status(500).json({ error: 'Failed to get comments', message: error.message });
+      }
+    });
+
+    // POST /api/engagement/:fileId/share - Record share
+    this.app.post('/api/engagement/:fileId/share', async (req, res) => {
+      try {
+        const { EngagementService } = await import('./server/modules/engagementService');
+        const { fileId } = req.params;
+        const { userDid } = req.body;
+
+        if (!userDid) {
+          return res.status(400).json({ error: 'userDid is required' });
+        }
+
+        const count = await EngagementService.recordShare(fileId, userDid);
+
+        return res.json({
+          success: true,
+          count
+        });
+      } catch (error: any) {
+        console.error('Error recording share:', error);
+        return res.status(500).json({ error: 'Failed to record share', message: error.message });
+      }
+    });
+
+    // GET /api/engagement/:fileId/stats - Get engagement stats
+    this.app.get('/api/engagement/:fileId/stats', async (req, res) => {
+      try {
+        const { EngagementService } = await import('./server/modules/engagementService');
+        const { fileId } = req.params;
+
+        const stats = await EngagementService.getEngagementStats(fileId);
+
+        return res.json({
+          fileId,
+          ...stats
+        });
+      } catch (error: any) {
+        console.error('Error getting engagement stats:', error);
+        return res.status(500).json({ error: 'Failed to get engagement stats', message: error.message });
+      }
+    });
+
     // GET /api/aggregator/curated/:did - Get curated feed for a DID
     // ============================================================================
     // Feed Management APIs
