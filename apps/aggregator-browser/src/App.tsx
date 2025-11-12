@@ -4,7 +4,7 @@
  * Deployed at browse.parnoir.com
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { Search, Filter, File, Globe, Tag, Calendar, User, Download, RefreshCw, Lock, Image as ImageIcon, X } from 'lucide-react';
 import { getMetadataIndexService } from './services/metadata/MetadataIndexService';
 import { PublicMetadata, MetadataFilters, IndexedFile, Feed } from './types/aggregator';
@@ -24,10 +24,12 @@ import { EmptyState } from './components/EmptyState';
 import { WelcomeModal } from './components/WelcomeModal';
 import { CommentModal } from './components/CommentModal';
 import { BrandedFeedPage } from './components/BrandedFeedPage';
+import { ToastContainer } from './components/Toast';
 import { Settings } from 'lucide-react';
 import { useKeyboardNavigation } from './hooks/useKeyboardNavigation';
 import { useSwipeGesture } from './hooks/useSwipeGesture';
 import { useEngagement } from './hooks/useEngagement';
+import { useToast } from './hooks/useToast';
 import { loadFeedViewedTimestamps, markFeedAsViewed, hasNewContent } from './utils/feedUtils';
 
 // Shared types - importing from id-dashboard
@@ -71,6 +73,7 @@ function App() {
   
   const metadataIndexService = getMetadataIndexService();
   const { toggleLike, share, getLikeCount, isLiked, getComments, getShareCount } = useEngagement();
+  const { toasts, removeToast, success, error } = useToast();
 
   useEffect(() => {
     discoverFiles();
@@ -89,14 +92,24 @@ function App() {
   }, [activeFeedId]);
 
   // Check for new third-party content
-  const hasNewThirdPartyContent = React.useMemo(() => {
+  const hasNewThirdPartyContent = useMemo(() => {
     // TODO: Filter for third-party content and check if it's new
     // For now, return false - will be implemented when third-party API is ready
     return false;
   }, [indexedFiles, feedViewedTimestamps]);
 
-  // Navigation handlers
-  const handleNextPost = () => {
+  // Memoize filtered files by active feed
+  const filteredFilesByFeed = useMemo(() => {
+    if (activeFeedId === 'public') {
+      return indexedFiles;
+    }
+    return indexedFiles.filter(file => 
+      file.metadata.feedIds?.includes(activeFeedId)
+    );
+  }, [indexedFiles, activeFeedId]);
+
+  // Navigation handlers (memoized)
+  const handleNextPost = useCallback(() => {
     if (!feedScrollRef.current) return;
     const currentScroll = feedScrollRef.current.scrollTop;
     const viewportHeight = feedScrollRef.current.clientHeight;
@@ -104,9 +117,9 @@ function App() {
       top: currentScroll + viewportHeight,
       behavior: 'smooth'
     });
-  };
+  }, []);
 
-  const handlePreviousPost = () => {
+  const handlePreviousPost = useCallback(() => {
     if (!feedScrollRef.current) return;
     const currentScroll = feedScrollRef.current.scrollTop;
     const viewportHeight = feedScrollRef.current.clientHeight;
@@ -114,9 +127,9 @@ function App() {
       top: currentScroll - viewportHeight,
       behavior: 'smooth'
     });
-  };
+  }, []);
 
-  const handleNextFeed = () => {
+  const handleNextFeed = useCallback(() => {
     const feedRailItems = buildFeedRailItems(
       feeds,
       userState.preferences.subscribedFeedIds,
@@ -127,9 +140,9 @@ function App() {
     if (currentIndex < feedRailItems.length - 1) {
       setActiveFeedId(feedRailItems[currentIndex + 1].feedId);
     }
-  };
+  }, [feeds, userState.preferences.subscribedFeedIds, activeFeedId]);
 
-  const handlePreviousFeed = () => {
+  const handlePreviousFeed = useCallback(() => {
     const feedRailItems = buildFeedRailItems(
       feeds,
       userState.preferences.subscribedFeedIds,
@@ -140,9 +153,9 @@ function App() {
     if (currentIndex > 0) {
       setActiveFeedId(feedRailItems[currentIndex - 1].feedId);
     }
-  };
+  }, [feeds, userState.preferences.subscribedFeedIds, activeFeedId]);
 
-  const handleTogglePlayPause = () => {
+  const handleTogglePlayPause = useCallback(() => {
     if (!visibleFileId) return;
     const videoElement = videoRefs.current.get(visibleFileId);
     if (videoElement) {
@@ -152,7 +165,7 @@ function App() {
         videoElement.pause();
       }
     }
-  };
+  }, [visibleFileId]);
 
   // Keyboard navigation
   useKeyboardNavigation({
@@ -779,7 +792,7 @@ function App() {
             }}
             className="flex-1 overflow-y-scroll snap-y snap-mandatory h-full"
           >
-            {indexedFiles.map((indexedFile) => {
+            {filteredFilesByFeed.map((indexedFile) => {
               const file = indexedFile.metadata;
               const isVideo = file.fileType === 'video' || 
                              (file.name || file.title || '').match(/\.(mp4|mov|avi|webm|mkv|flv|wmv)$/i);
@@ -849,15 +862,24 @@ function App() {
                       }
                     }}
                     isLiked={isLiked(file.fileId)}
-                    onLike={() => toggleLike(file.fileId)}
+                    onLike={() => {
+                      const wasLiked = isLiked(file.fileId);
+                      toggleLike(file.fileId);
+                      if (!wasLiked) {
+                        success('Liked!');
+                      }
+                    }}
                     onComment={() => setCommentingFile(indexedFile)}
-                    onShare={() => {
+                    onShare={async () => {
                       share(file.fileId);
                       // Copy share link to clipboard
                       const shareUrl = `${window.location.origin}${window.location.pathname}?file=${file.fileId}`;
-                      navigator.clipboard.writeText(shareUrl).then(() => {
-                        // Could show a toast notification here
-                      });
+                      try {
+                        await navigator.clipboard.writeText(shareUrl);
+                        success('Link copied to clipboard!');
+                      } catch (err) {
+                        error('Failed to copy link. Please try again.');
+                      }
                     }}
                   />
 
@@ -1113,14 +1135,23 @@ function App() {
                           }
                         }}
                         compact
-                        onLike={() => toggleLike(file.fileId)}
+                        onLike={() => {
+                          const wasLiked = isLiked(file.fileId);
+                          toggleLike(file.fileId);
+                          if (!wasLiked) {
+                            success('Liked!');
+                          }
+                        }}
                         onComment={() => setCommentingFile(indexedFile)}
-                        onShare={() => {
+                        onShare={async () => {
                           share(file.fileId);
                           const shareUrl = `${window.location.origin}${window.location.pathname}?file=${file.fileId}`;
-                          navigator.clipboard.writeText(shareUrl).then(() => {
-                            // Could show a toast notification here
-                          });
+                          try {
+                            await navigator.clipboard.writeText(shareUrl);
+                            success('Link copied to clipboard!');
+                          } catch (err) {
+                            error('Failed to copy link. Please try again.');
+                          }
                         }}
                       />
                     </div>
@@ -1252,6 +1283,9 @@ function App() {
             onClose={() => setCommentingFile(null)}
           />
         )}
+
+        {/* Toast Notifications */}
+        <ToastContainer toasts={toasts} onClose={removeToast} />
       </div>
     </div>
   );

@@ -8,6 +8,7 @@ import { X, Send, Heart, User } from 'lucide-react';
 import { IndexedFile } from '../types/aggregator';
 import { useUserState } from '../contexts/UserStateContext';
 import { useEngagement } from '../hooks/useEngagement';
+import { useToast } from '../hooks/useToast';
 import { PNConnect } from './PNConnect';
 
 interface CommentModalProps {
@@ -18,6 +19,7 @@ interface CommentModalProps {
 export function CommentModal({ file, onClose }: CommentModalProps) {
   const { userState } = useUserState();
   const { addComment, getComments } = useEngagement();
+  const { success } = useToast();
   const [newComment, setNewComment] = useState('');
   const [comments, setComments] = useState(getComments(file.metadata.fileId));
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -40,6 +42,7 @@ export function CommentModal({ file, onClose }: CommentModalProps) {
     addComment(file.metadata.fileId, newComment.trim(), authorId, authorName);
     setNewComment('');
     setComments(getComments(file.metadata.fileId));
+    success('Comment posted!');
   };
 
   return (
