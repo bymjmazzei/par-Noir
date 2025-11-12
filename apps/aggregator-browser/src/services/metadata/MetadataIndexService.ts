@@ -6,8 +6,10 @@
 import {
   PublicMetadata,
   MetadataFilters,
-  IndexedFile
+  IndexedFile,
+  ContentRating
 } from '../../types/aggregator';
+import { isRatingAcceptable, RATING_ORDER } from '../../constants/contentRatings';
 
 export interface MetadataIndexResult {
   success: boolean;
@@ -94,6 +96,51 @@ export class MetadataIndexService {
           files = files.filter(file => {
             const uploadDate = new Date(file.metadata.uploadDate);
             return uploadDate >= from && uploadDate <= to;
+          });
+        }
+        
+        // Rating filters
+        if (filters.maxRating) {
+          files = files.filter(file => {
+            const fileRating = file.metadata.contentRating;
+            if (!fileRating) return false; // No rating = exclude
+            return isRatingAcceptable(fileRating, filters.maxRating!);
+          });
+        }
+        
+        if (filters.excludeRatings && filters.excludeRatings.length > 0) {
+          files = files.filter(file => {
+            const fileRating = file.metadata.contentRating;
+            if (!fileRating) return true; // No rating = include
+            return !filters.excludeRatings!.includes(fileRating);
+          });
+        }
+        
+        if (filters.warningTags && filters.warningTags.length > 0) {
+          files = files.filter(file => {
+            const fileWarnings = file.metadata.warningTags || [];
+            return filters.warningTags!.some(tag => fileWarnings.includes(tag));
+          });
+        }
+        
+        // Feed filters
+        if (filters.feedId) {
+          files = files.filter(file => {
+            const fileFeedIds = file.metadata.feedIds || [];
+            return fileFeedIds.includes(filters.feedId!);
+          });
+        }
+        
+        if (filters.feedCategory) {
+          files = files.filter(file => {
+            const fileCategories = file.metadata.feedCategories || [];
+            return fileCategories.includes(filters.feedCategory!);
+          });
+        }
+        
+        if (filters.creatorTier) {
+          files = files.filter(file => {
+            return file.metadata.creatorTier === filters.creatorTier;
           });
         }
       }

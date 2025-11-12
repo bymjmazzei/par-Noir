@@ -7,13 +7,18 @@
 import React, { useState, useEffect } from 'react';
 import { Search, Filter, File, Globe, Tag, Calendar, User, Download, RefreshCw, Lock, Image as ImageIcon, X } from 'lucide-react';
 import { getMetadataIndexService } from './services/metadata/MetadataIndexService';
-import { PublicMetadata, MetadataFilters, IndexedFile } from './types/aggregator';
+import { PublicMetadata, MetadataFilters, IndexedFile, Feed } from './types/aggregator';
 import { decryptWithToken, ShareToken } from './utils/tokenDecryption';
+import { useUserState } from './contexts/UserStateContext';
+import { FeedRail, buildFeedRailItems } from './components/FeedRail';
+import { EngagementActions } from './components/EngagementActions';
+import { PNConnect } from './components/PNConnect';
 
 // Shared types - importing from id-dashboard
 // In production, these would come from a shared package
 
 function App() {
+  const { userState } = useUserState();
   const [indexedFiles, setIndexedFiles] = useState<IndexedFile[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -24,7 +29,9 @@ function App() {
   const [generatingThumbnails, setGeneratingThumbnails] = useState<Set<string>>(new Set()); // Track which thumbnails are being generated
   const [videoPlaying, setVideoPlaying] = useState<Map<string, boolean>>(new Map()); // Track which videos are playing
   const [videoBlobs, setVideoBlobs] = useState<Map<string, string>>(new Map()); // Store video URLs for playback
-  const [viewMode, setViewMode] = useState<'grid' | 'feed'>('grid'); // Grid or TikTok-style feed
+  const [viewMode, setViewMode] = useState<'grid' | 'feed'>('feed'); // Default to feed mode
+  const [activeFeedId, setActiveFeedId] = useState<string>('public'); // Active feed ID
+  const [feeds, setFeeds] = useState<Feed[]>([]); // Available feeds
   const [visibleFileId, setVisibleFileId] = useState<string | null>(null); // Currently visible file in feed mode
   const videoRefs = React.useRef<Map<string, HTMLVideoElement>>(new Map()); // Store video element refs
   
@@ -33,6 +40,11 @@ function App() {
   useEffect(() => {
     discoverFiles();
   }, []);
+
+  // Re-discover files when active feed or rating preferences change
+  useEffect(() => {
+    discoverFiles();
+  }, [activeFeedId, userState.preferences.maxRating]);
 
   // Intersection Observer for auto-playing videos in feed mode
   useEffect(() => {
@@ -131,11 +143,15 @@ function App() {
       // No Google Drive connection needed - just query central aggregator API
       await metadataIndexService.initialize();
       
-      // Apply search query to filters if provided
+      // Build filters with rating preferences and feed filtering
       const finalFilters: MetadataFilters = {
         ...filters,
         ...searchFilters,
-        ...(searchQuery ? { tags: searchQuery.split(',').map(t => t.trim()).filter(Boolean) } : {})
+        ...(searchQuery ? { tags: searchQuery.split(',').map(t => t.trim()).filter(Boolean) } : {}),
+        // Apply user's rating preferences
+        maxRating: userState.preferences.maxRating,
+        // Filter by active feed
+        ...(activeFeedId === 'public' ? {} : { feedId: activeFeedId })
       };
       
       // Discover public files from all users (with optional force refresh)
@@ -386,6 +402,22 @@ function App() {
           </div>
         )}
 
+        {/* Feed Rail - Only show in feed mode */}
+        {viewMode === 'feed' && (
+          <div className="bg-neutral-900/60 border-b border-neutral-700 px-4 py-2">
+            <FeedRail
+              feeds={buildFeedRailItems(
+                feeds,
+                userState.preferences.subscribedFeedIds,
+                activeFeedId,
+                false // TODO: Track new third-party content
+              )}
+              activeFeedId={activeFeedId}
+              onFeedSelect={setActiveFeedId}
+            />
+          </div>
+        )}
+
         {/* Search and Filters */}
         {viewMode !== 'feed' && (
           <div className="bg-neutral-900/60 border border-neutral-700 rounded-xl p-6 mb-6">
@@ -614,36 +646,54 @@ function App() {
                         </>
                       )}
                     </div>
-                    <button
-                      onClick={async () => {
-                        try {
-                          const tokenString = file.publicToken;
-                          if (!tokenString) {
-                            alert('This file does not have a share token yet.');
-                            return;
-                          }
-                          let token: ShareToken;
+                    <div className="mt-4 flex items-center justify-between">
+                      <EngagementActions
+                        file={indexedFile}
+                        compact
+                        onLike={() => {
+                          // TODO: Implement like functionality
+                          console.log('Like:', file.fileId);
+                        }}
+                        onComment={() => {
+                          // TODO: Implement comment functionality
+                          console.log('Comment:', file.fileId);
+                        }}
+                        onShare={() => {
+                          // TODO: Implement share functionality
+                          console.log('Share:', file.fileId);
+                        }}
+                      />
+                      <button
+                        onClick={async () => {
                           try {
-                            token = typeof tokenString === 'string' ? JSON.parse(tokenString) : tokenString;
-                          } catch (e) {
-                            alert('Invalid share token format.');
-                            return;
+                            const tokenString = file.publicToken;
+                            if (!tokenString) {
+                              alert('This file does not have a share token yet.');
+                              return;
+                            }
+                            let token: ShareToken;
+                            try {
+                              token = typeof tokenString === 'string' ? JSON.parse(tokenString) : tokenString;
+                            } catch (e) {
+                              alert('Invalid share token format.');
+                              return;
+                            }
+                            setIsLoading(true);
+                            const decryptedBlob = await decryptWithToken(token);
+                            const url = URL.createObjectURL(decryptedBlob);
+                            setViewingFile({ file: indexedFile, blob: decryptedBlob, url });
+                            setIsLoading(false);
+                          } catch (err) {
+                            setIsLoading(false);
+                            const errorMessage = err instanceof Error ? err.message : 'Failed to decrypt file';
+                            alert(`Failed to view file: ${errorMessage}`);
                           }
-                          setIsLoading(true);
-                          const decryptedBlob = await decryptWithToken(token);
-                          const url = URL.createObjectURL(decryptedBlob);
-                          setViewingFile({ file: indexedFile, blob: decryptedBlob, url });
-                          setIsLoading(false);
-                        } catch (err) {
-                          setIsLoading(false);
-                          const errorMessage = err instanceof Error ? err.message : 'Failed to decrypt file';
-                          alert(`Failed to view file: ${errorMessage}`);
-                        }
-                      }}
-                      className="mt-4 px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors"
-                    >
-                      View Full
-                    </button>
+                        }}
+                        className="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors"
+                      >
+                        View Full
+                      </button>
+                    </div>
                   </div>
                 </div>
               );
