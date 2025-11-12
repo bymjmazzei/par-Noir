@@ -1,12 +1,22 @@
 "use strict";
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.SecureVolumeManager = void 0;
 const electron_1 = require("electron");
+const path_1 = __importDefault(require("path"));
 const VeraCryptDarwinDriver_1 = require("./VeraCryptDarwinDriver");
 const VeraCryptWindowsDriver_1 = require("./VeraCryptWindowsDriver");
 const VeraCryptLinuxDriver_1 = require("./VeraCryptLinuxDriver");
 const UnsupportedVolumeDriver_1 = require("./UnsupportedVolumeDriver");
 const TokenStorageService_1 = require("./TokenStorageService");
+const getAppDirectory = () => {
+    if (electron_1.app.isPackaged) {
+        return path_1.default.dirname(electron_1.app.getPath('exe'));
+    }
+    return electron_1.app.getAppPath();
+};
 class SecureVolumeManager {
     constructor() {
         this.driver = null;
@@ -14,7 +24,7 @@ class SecureVolumeManager {
     }
     async init() {
         const userDataPath = electron_1.app.getPath('userData');
-        const appPath = electron_1.app.getAppPath();
+        const appPath = getAppDirectory();
         const isDarwin = process.platform === 'darwin';
         const config = {
             userDataPath,

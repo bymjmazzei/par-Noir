@@ -9,13 +9,20 @@ import { UnsupportedVolumeDriver } from './UnsupportedVolumeDriver';
 import type { SecureVolumeConfig, VolumeDriver } from './VolumeDriver';
 import { TokenStorageService } from './TokenStorageService';
 
+const getAppDirectory = (): string => {
+  if (app.isPackaged) {
+    return path.dirname(app.getPath('exe'));
+  }
+  return app.getAppPath();
+};
+
 export class SecureVolumeManager {
   private driver: VolumeDriver | null = null;
   private identity: SecureVolumeIdentity | null = null;
 
   public async init(): Promise<void> {
     const userDataPath = app.getPath('userData');
-    const appPath = app.getAppPath();
+    const appPath = getAppDirectory();
     const isDarwin = process.platform === 'darwin';
     const config: SecureVolumeConfig = {
       userDataPath,
