@@ -33,11 +33,17 @@ import { ToastContainer } from './components/Toast';
 import { Settings, Upload, Plus } from 'lucide-react';
 import { useKeyboardNavigation } from './hooks/useKeyboardNavigation';
 import { useSwipeGesture } from './hooks/useSwipeGesture';
+import { useVerticalSwipe } from './hooks/useVerticalSwipe';
+import { useHorizontalSwipe } from './hooks/useHorizontalSwipe';
+import { useFeedNavigation } from './hooks/useFeedNavigation';
 import { useEngagement } from './hooks/useEngagement';
 import { useToast } from './hooks/useToast';
 import { useURLParams } from './hooks/useURLParams';
 import { loadFeedViewedTimestamps, markFeedAsViewed, hasNewContent } from './utils/feedUtils';
 import { FeedService } from './services/feedService';
+import { FullScreenFeed } from './components/FullScreenFeed';
+import { FeedNavBar } from './components/FeedNavBar';
+import { BottomNav } from './components/BottomNav';
 
 // Shared types - importing from id-dashboard
 // In production, these would come from a shared package
@@ -55,7 +61,9 @@ function App() {
   const [videoPlaying, setVideoPlaying] = useState<Map<string, boolean>>(new Map()); // Track which videos are playing
   const [videoBlobs, setVideoBlobs] = useState<Map<string, string>>(new Map()); // Store video URLs for playback
   const [viewMode, setViewMode] = useState<'grid' | 'feed'>('feed'); // Default to feed mode
-  const [activeFeedId, setActiveFeedId] = useState<string>('public'); // Active feed ID
+  const [activeFeedId, setActiveFeedId] = useState<string>('public');
+  const [currentFeedIndex, setCurrentFeedIndex] = useState(0); // Current file index in feed
+  const [activeBottomTab, setActiveBottomTab] = useState<'home' | 'search' | 'upload' | 'messages'>('home');
   const [feeds, setFeeds] = useState<Feed[]>([]); // Available feeds
   const [visibleFileId, setVisibleFileId] = useState<string | null>(null); // Currently visible file in feed mode
   const [showFeedBrowser, setShowFeedBrowser] = useState(false); // Show feed browser modal
@@ -85,6 +93,21 @@ function App() {
   const { toggleLike, share, getLikeCount, isLiked, getComments, getShareCount, loadBulkEngagementStats } = useEngagement();
   const { toasts, removeToast, success, error: showErrorToast } = useToast();
   const { getParam, setParam } = useURLParams();
+  
+  // Feed navigation hook
+  const { feedHierarchy, getNextFeed, getPreviousFeed, getFeedIndex } = useFeedNavigation(
+    feeds,
+    userState.preferences.subscribedFeedIds
+  );
+
+  // Set default feed based on user state
+  useEffect(() => {
+    if (userState.isUnlocked && activeFeedId === 'public') {
+      setActiveFeedId('curated');
+    } else if (!userState.isUnlocked && activeFeedId === 'curated') {
+      setActiveFeedId('public');
+    }
+  }, [userState.isUnlocked]);
 
   useEffect(() => {
     discoverFiles();
@@ -213,6 +236,11 @@ function App() {
     discoverFiles();
   }, [activeFeedId, userState.preferences.maxRating]);
 
+  // Reset feed index when feed changes
+  useEffect(() => {
+    setCurrentFeedIndex(0);
+  }, [activeFeedId]);
+
   // Mark feed as viewed when switching to it
   useEffect(() => {
     if (activeFeedId && activeFeedId !== 'new') {
@@ -232,10 +260,24 @@ function App() {
     if (activeFeedId === 'public') {
       return indexedFiles;
     }
+    if (activeFeedId === 'curated') {
+      // Curated feed = all files from subscribed feeds
+      const subscribedFeedIds = userState.preferences.subscribedFeedIds;
+      if (subscribedFeedIds.length === 0) {
+        return []; // Empty curated feed if no subscriptions
+      }
+      return indexedFiles.filter(file => 
+        file.metadata.feedIds?.some(feedId => subscribedFeedIds.includes(feedId))
+      );
+    }
+    if (activeFeedId === 'discovery') {
+      // Discovery page - return empty for now (will be implemented in Phase 3)
+      return [];
+    }
     return indexedFiles.filter(file => 
       file.metadata.feedIds?.includes(activeFeedId)
     );
-  }, [indexedFiles, activeFeedId]);
+  }, [indexedFiles, activeFeedId, userState.preferences.subscribedFeedIds]);
 
   // Navigation handlers (memoized)
   const handleNextPost = useCallback(() => {
@@ -259,30 +301,32 @@ function App() {
   }, []);
 
   const handleNextFeed = useCallback(() => {
-    const feedRailItems = buildFeedRailItems(
-      feeds,
-      userState.preferences.subscribedFeedIds,
-      activeFeedId,
-      false
-    );
-    const currentIndex = feedRailItems.findIndex(item => item.feedId === activeFeedId);
-    if (currentIndex < feedRailItems.length - 1) {
-      setActiveFeedId(feedRailItems[currentIndex + 1].feedId);
+    const nextFeedId = getNextFeed(activeFeedId);
+    if (nextFeedId) {
+      setActiveFeedId(nextFeedId);
+      setCurrentFeedIndex(0); // Reset to first item in new feed
     }
-  }, [feeds, userState.preferences.subscribedFeedIds, activeFeedId]);
+  }, [getNextFeed, activeFeedId]);
 
   const handlePreviousFeed = useCallback(() => {
-    const feedRailItems = buildFeedRailItems(
-      feeds,
-      userState.preferences.subscribedFeedIds,
-      activeFeedId,
-      false
-    );
-    const currentIndex = feedRailItems.findIndex(item => item.feedId === activeFeedId);
-    if (currentIndex > 0) {
-      setActiveFeedId(feedRailItems[currentIndex - 1].feedId);
+    const prevFeedId = getPreviousFeed(activeFeedId);
+    if (prevFeedId) {
+      setActiveFeedId(prevFeedId);
+      setCurrentFeedIndex(0); // Reset to first item in new feed
     }
-  }, [feeds, userState.preferences.subscribedFeedIds, activeFeedId]);
+  }, [getPreviousFeed, activeFeedId]);
+  
+  const handleNextPost = useCallback(() => {
+    if (currentFeedIndex < filteredFilesByFeed.length - 1) {
+      setCurrentFeedIndex(currentFeedIndex + 1);
+    }
+  }, [currentFeedIndex, filteredFilesByFeed.length]);
+
+  const handlePreviousPost = useCallback(() => {
+    if (currentFeedIndex > 0) {
+      setCurrentFeedIndex(currentFeedIndex - 1);
+    }
+  }, [currentFeedIndex]);
 
   const handleTogglePlayPause = useCallback(() => {
     if (!visibleFileId) return;
@@ -322,10 +366,8 @@ function App() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [showFeedBrowser, showSettings, viewingCreatorId]);
 
-  // Swipe gestures for mobile
-  const swipeRef = useSwipeGesture({
-    onSwipeUp: viewMode === 'feed' ? handleNextPost : undefined,
-    onSwipeDown: viewMode === 'feed' ? handlePreviousPost : undefined,
+  // Horizontal swipe for feed switching (only in feed mode)
+  const horizontalSwipeRef = useHorizontalSwipe({
     onSwipeLeft: viewMode === 'feed' ? handleNextFeed : undefined,
     onSwipeRight: viewMode === 'feed' ? handlePreviousFeed : undefined,
     enabled: viewMode === 'feed' && !showFeedBrowser && !showSettings && !showShortcuts && !viewingCreatorId
@@ -738,69 +780,16 @@ function App() {
           </div>
         )}
 
-        {/* Feed Rail - Only show in feed mode */}
+        {/* Feed Navigation Bar - Only show in feed mode */}
         {viewMode === 'feed' && (
-          <div className="bg-neutral-900/60 border-b border-neutral-700 px-4 py-2 flex items-center justify-between">
-            <div className="flex-1">
-            <FeedRail
-              feeds={buildFeedRailItems(
-                feeds,
-                userState.preferences.subscribedFeedIds,
-                activeFeedId,
-                hasNewThirdPartyContent
-              )}
-              activeFeedId={activeFeedId}
-              onFeedSelect={setActiveFeedId}
-              onBrowseFeeds={() => setShowFeedBrowser(true)}
-            />
-            </div>
-            <div className="flex items-center space-x-2">
-              {userState.isUnlocked && userState.pnIdentifier && (
-                <>
-                  <NotificationBell
-                    onNotificationClick={(notification) => {
-                      // Navigate to relevant content based on notification type
-                      if (notification.data?.file_id) {
-                        setViewMode('feed');
-                        setTimeout(() => {
-                          const element = document.querySelector(`[data-file-id="${notification.data.file_id}"]`);
-                          if (element && feedScrollRef.current) {
-                            element.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                          }
-                        }, 100);
-                      } else if (notification.data?.feed_id) {
-                        const feed = feeds.find(f => f.feedId === notification.data.feed_id);
-                        if (feed) {
-                          setViewingBrandedFeed(feed);
-                        }
-                      }
-                    }}
-                  />
-                  <button
-                    onClick={() => setShowCreateFeedModal(true)}
-                    className="p-2 text-text-secondary hover:text-white transition-colors"
-                    title="Create Feed"
-                  >
-                    <Plus className="h-5 w-5" />
-                  </button>
-                  <button
-                    onClick={() => setShowUploadModal(true)}
-                    className="p-2 text-text-secondary hover:text-white transition-colors"
-                    title="Upload File"
-                  >
-                    <Upload className="h-5 w-5" />
-                  </button>
-                </>
-              )}
-              <button
-                onClick={() => setShowSettings(true)}
-                className="p-2 text-text-secondary hover:text-white transition-colors"
-                title="Settings"
-              >
-                <Settings className="h-5 w-5" />
-              </button>
-            </div>
-          </div>
+          <FeedNavBar
+            feedHierarchy={feedHierarchy}
+            activeFeedId={activeFeedId}
+            onFeedSelect={(feedId) => {
+              setActiveFeedId(feedId);
+              setCurrentFeedIndex(0);
+            }}
+          />
         )}
 
         {/* Search and Filters */}
@@ -988,173 +977,69 @@ function App() {
             }
           />
         ) : viewMode === 'feed' ? (
-          // TikTok-style feed view - takes full viewport
+          // TikTok-style feed view using FullScreenFeed component
           <div 
             ref={(el) => {
-              feedScrollRef.current = el;
-              (swipeRef as React.MutableRefObject<HTMLElement | null>).current = el;
+              if (horizontalSwipeRef.current !== el) {
+                (horizontalSwipeRef as React.MutableRefObject<HTMLDivElement | null>).current = el;
+              }
             }}
-            className="flex-1 overflow-y-scroll snap-y snap-mandatory h-full"
+            className="flex-1 h-full pt-24 pb-24"
           >
-            {filteredFilesByFeed.map((indexedFile) => {
-              const file = indexedFile.metadata;
-              const isVideo = file.fileType === 'video' || 
-                             (file.name || file.title || '').match(/\.(mp4|mov|avi|webm|mkv|flv|wmv)$/i);
-              const isImage = file.fileType === 'image' || 
-                             (file.name || file.title || '').match(/\.(jpg|jpeg|png|gif|webp|svg|bmp|ico)$/i);
-              const fileName = file.name || file.title || 'Untitled';
-
-              return (
-                <div
-                  key={file.fileId}
-                  data-file-id={file.fileId}
-                  className="h-screen w-full snap-start flex items-center justify-center bg-black relative feed-item"
-                >
-                  {/* Full-screen video */}
-                  {isVideo && videoBlobs.get(file.fileId) && (
-                    <video
-                      ref={(el) => {
-                        if (el) videoRefs.current.set(file.fileId, el);
-                      }}
-                      src={videoBlobs.get(file.fileId)!}
-                      className="w-full h-full object-contain"
-                      controls
-                      muted
-                      loop
-                      playsInline
-                    />
-                  )}
-                  
-                  {/* Full-screen image */}
-                  {isImage && thumbnails.get(file.fileId) && (
-                    <img
-                      src={thumbnails.get(file.fileId)!}
-                      alt={fileName}
-                      className="max-w-full max-h-full object-contain"
-                    />
-                  )}
-
-                  {/* Loading state for images/videos */}
-                  {((isImage || isVideo) && !thumbnails.get(file.fileId) && !videoBlobs.get(file.fileId)) && (
-                    <div className="flex flex-col items-center justify-center text-neutral-500">
-                      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-400 mb-2"></div>
-                      <span className="text-xs">Loading...</span>
-                    </div>
-                  )}
-
-                  {/* Non-image/video file */}
-                  {!isImage && !isVideo && (
-                    <div className="flex flex-col items-center justify-center text-neutral-500">
-                      <File className="h-24 w-24 mb-4" />
-                      <h3 className="text-white text-xl font-medium mb-2">{fileName}</h3>
-                      <p className="text-text-secondary text-sm">{file.fileType || 'File'}</p>
-                    </div>
-                  )}
-                  
-                  {/* Engagement Sidebar - Right Side */}
-                  <FeedEngagementSidebar
-                    file={{
-                      ...indexedFile,
-                      metadata: {
-                        ...indexedFile.metadata,
-                        engagement: {
-                          ...indexedFile.metadata.engagement,
-                          likes: getLikeCount(file.fileId, indexedFile.metadata.engagement?.likes || 0),
-                          comments: getComments(file.fileId).length + (indexedFile.metadata.engagement?.comments || 0),
-                          shares: getShareCount(file.fileId, indexedFile.metadata.engagement?.shares || 0)
-                        }
-                      }
-                    }}
-                    isLiked={isLiked(file.fileId)}
-                    onLike={() => {
-                      const wasLiked = isLiked(file.fileId);
-                      toggleLike(file.fileId);
-                      if (!wasLiked) {
-                        success('Liked!');
-                      }
-                    }}
-                    onComment={() => setCommentingFile(indexedFile)}
-                    onShare={async () => {
-                      share(file.fileId);
-                      // Copy share link to clipboard with deep link
-                      const shareUrl = `${window.location.origin}${window.location.pathname}?file=${file.fileId}&view=feed`;
-                      try {
-                        await navigator.clipboard.writeText(shareUrl);
-                        success('Link copied to clipboard!');
-                        setParam('file', file.fileId);
-                      } catch (err) {
-                        showErrorToast('Failed to copy link. Please try again.');
-                      }
-                    }}
-                    onAddToFeed={() => {
-                      // Check if user owns this file
-                      const creatorId = file.creator?.identifier?.value || file.creator?.["@id"] || file.author?.did;
-                      if (userState.isUnlocked && userState.pnIdentifier === creatorId) {
-                        setAddingToFeedFile(indexedFile);
-                      }
-                    }}
-                    isOwner={userState.isUnlocked && userState.pnIdentifier === (file.creator?.identifier?.value || file.creator?.["@id"] || file.author?.did)}
-                  />
-
-                  {/* Content Info Overlay - Bottom Left */}
-                  <div className="absolute bottom-0 left-0 right-20 bg-gradient-to-t from-black/80 via-black/60 to-transparent p-6">
-                    <div className="flex items-center space-x-3 mb-3">
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          const creatorId = file.creator?.identifier?.value || file.creator?.["@id"] || file.author?.did;
-                          if (creatorId) {
-                            setViewingCreatorId(creatorId);
-                          }
-                        }}
-                        className="flex items-center space-x-2 hover:opacity-80 transition-opacity"
-                      >
-                        <div className="w-10 h-10 bg-blue-500/20 rounded-full flex items-center justify-center">
-                          <User className="h-5 w-5 text-blue-400" />
-                        </div>
-                        <div className="text-left">
-                          <div className="text-white font-semibold text-sm">
-                            {file.creator?.identifier?.value || file.creator?.["@id"] || file.author?.did || 'Unknown'}
-                          </div>
-                          <div className="text-white/70 text-xs">
-                            {new Date(file.uploadDate).toLocaleDateString()}
-                          </div>
-                        </div>
-                      </button>
-                    </div>
-                    
-                    <h3 className="text-white text-lg font-semibold mb-2 line-clamp-1">{fileName}</h3>
-                    {file.description && (
-                      <p className="text-white/90 text-sm mb-3 line-clamp-2">{file.description}</p>
-                    )}
-                    
-                    {(file.keywords || file.tags) && (file.keywords || file.tags || []).length > 0 && (
-                      <div className="flex flex-wrap gap-2 mb-3">
-                        {(file.keywords || file.tags || []).slice(0, 5).map((tag, idx) => (
-                          <span
-                            key={idx}
-                            className="px-2 py-1 bg-white/20 text-white text-xs rounded-full"
-                          >
-                            #{tag}
-                          </span>
-                        ))}
-                      </div>
-                    )}
-                    
-                    {file.contentRating && (
-                      <div className="flex items-center space-x-2">
-                        <ContentRatingBadge rating={file.contentRating} size="sm" />
-                        {file.warningTags && file.warningTags.length > 0 && (
-                          <span className="text-white/70 text-xs">
-                            {file.warningTags.join(', ')}
-                          </span>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                </div>
-              );
-            })}
+            {filteredFilesByFeed.length > 0 ? (
+              <FullScreenFeed
+                files={filteredFilesByFeed}
+                currentIndex={currentFeedIndex}
+                onIndexChange={setCurrentFeedIndex}
+                onLike={(fileId) => {
+                  const wasLiked = isLiked(fileId);
+                  toggleLike(fileId);
+                  if (!wasLiked) {
+                    success('Liked!');
+                  }
+                }}
+                onComment={(file) => setCommentingFile(file)}
+                onShare={async (fileId) => {
+                  share(fileId);
+                  const file = filteredFilesByFeed.find(f => f.metadata.fileId === fileId);
+                  if (file) {
+                    const shareUrl = `${window.location.origin}${window.location.pathname}?file=${fileId}&view=feed`;
+                    try {
+                      await navigator.clipboard.writeText(shareUrl);
+                      success('Link copied to clipboard!');
+                      setParam('file', fileId);
+                    } catch (err) {
+                      showErrorToast('Failed to copy link. Please try again.');
+                    }
+                  }
+                }}
+                onAddToFeed={(file) => {
+                  const creatorId = file.metadata.creator?.identifier?.value || file.metadata.creator?.["@id"] || file.metadata.author?.did;
+                  if (userState.isUnlocked && userState.pnIdentifier === creatorId) {
+                    setAddingToFeedFile(file);
+                  }
+                }}
+                isLiked={isLiked}
+                getLikeCount={getLikeCount}
+                getComments={getComments}
+                getShareCount={getShareCount}
+                userState={userState}
+                onCreatorClick={(creatorId) => setViewingCreatorId(creatorId)}
+              />
+            ) : (
+              <div className="h-full flex items-center justify-center text-white">
+                <EmptyState
+                  type="no-content"
+                  message={
+                    activeFeedId === 'curated'
+                      ? 'No curated content yet. Subscribe to feeds to see content here.'
+                      : activeFeedId === 'discovery'
+                      ? 'Discovery page coming soon'
+                      : 'No content available in this feed'
+                  }
+                />
+              </div>
+            )}
           </div>
         ) : (
           // Grid view
@@ -1487,6 +1372,18 @@ function App() {
             onUploadComplete={() => {
               // Refresh files after upload
               discoverFiles(undefined, true);
+            }}
+          />
+        )}
+
+        {/* Bottom Navigation - Only show in feed mode */}
+        {viewMode === 'feed' && (
+          <BottomNav
+            activeTab={activeBottomTab}
+            onTabChange={setActiveBottomTab}
+            onSearchClick={() => {
+              // TODO: Open search modal/page
+              setViewMode('grid'); // Temporarily switch to grid for search
             }}
           />
         )}
