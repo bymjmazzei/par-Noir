@@ -44,6 +44,9 @@ import { FeedService } from './services/feedService';
 import { FullScreenFeed } from './components/FullScreenFeed';
 import { FeedNavBar } from './components/FeedNavBar';
 import { BottomNav } from './components/BottomNav';
+import { DiscoveryPage } from './components/DiscoveryPage';
+import { SearchResults } from './components/SearchResults';
+import { CreatorFeedPage } from './components/CreatorFeedPage';
 import { saveToFeed } from './services/savedFeedService';
 
 // Shared types - importing from id-dashboard
@@ -65,6 +68,8 @@ function App() {
   const [activeFeedId, setActiveFeedId] = useState<string>('public');
   const [currentFeedIndex, setCurrentFeedIndex] = useState(0); // Current file index in feed
   const [activeBottomTab, setActiveBottomTab] = useState<'home' | 'search' | 'upload' | 'messages'>('home');
+  const [showSearch, setShowSearch] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
   const [feeds, setFeeds] = useState<Feed[]>([]); // Available feeds
   const [visibleFileId, setVisibleFileId] = useState<string | null>(null); // Currently visible file in feed mode
   const [showFeedBrowser, setShowFeedBrowser] = useState(false); // Show feed browser modal
@@ -743,7 +748,28 @@ function App() {
     );
   }
 
-  // Show creator index if viewing a creator
+  // Show search results if search is open
+  if (showSearch) {
+    return (
+      <SearchResults
+        initialQuery={searchQuery}
+        onFileClick={(file) => {
+          setShowSearch(false);
+          setViewMode('feed');
+          const index = filteredFilesByFeed.findIndex(f => f.metadata.fileId === file.metadata.fileId);
+          if (index !== -1) {
+            setCurrentFeedIndex(index);
+          }
+        }}
+        onClose={() => {
+          setShowSearch(false);
+          setSearchQuery('');
+        }}
+      />
+    );
+  }
+
+  // Show creator feed page if viewing a creator
   if (viewingCreatorId) {
     const creatorFiles = indexedFiles.filter(f => {
       const did = f.metadata.creator?.identifier?.value || 
@@ -752,18 +778,56 @@ function App() {
       return did === viewingCreatorId;
     });
     
+    const creatorFeeds = feeds.filter(feed => feed.creatorId === viewingCreatorId);
+    
     return (
-      <CreatorIndex
+      <CreatorFeedPage
         creatorId={viewingCreatorId}
         creatorName={
           creatorFiles[0]?.metadata.creator?.identifier?.value || 
           viewingCreatorId
         }
         files={creatorFiles}
+        feeds={creatorFeeds}
         onFileClick={(file) => {
-          // TODO: Open file viewer
+          // Switch to feed mode and show file
+          setViewMode('feed');
+          setViewingCreatorId(null);
+          const index = indexedFiles.findIndex(f => f.metadata.fileId === file.metadata.fileId);
+          if (index !== -1) {
+            setCurrentFeedIndex(index);
+          }
+        }}
+        onFeedClick={(feed) => {
+          setViewingBrandedFeed(feed);
+          setViewingCreatorId(null);
         }}
         onBack={() => setViewingCreatorId(null)}
+        onLike={(fileId) => {
+          const wasLiked = isLiked(fileId);
+          toggleLike(fileId);
+          if (!wasLiked) {
+            success('Liked!');
+          }
+        }}
+        onComment={(file) => setCommentingFile(file)}
+        onShare={async (fileId) => {
+          share(fileId);
+          const file = creatorFiles.find(f => f.metadata.fileId === fileId);
+          if (file) {
+            const shareUrl = `${window.location.origin}${window.location.pathname}?file=${fileId}&view=feed`;
+            try {
+              await navigator.clipboard.writeText(shareUrl);
+              success('Link copied to clipboard!');
+            } catch (err) {
+              showErrorToast('Failed to copy link. Please try again.');
+            }
+          }
+        }}
+        isLiked={isLiked}
+        getLikeCount={getLikeCount}
+        getComments={getComments}
+        getShareCount={getShareCount}
       />
     );
   }
@@ -977,6 +1041,27 @@ function App() {
                 : 'Connect Google Drive in the dashboard to scan for public files'
             }
           />
+        ) : viewMode === 'feed' && activeFeedId === 'discovery' ? (
+          // Discovery Page
+          <div className="flex-1 h-full pt-20 pb-20">
+            <DiscoveryPage
+              files={indexedFiles}
+              feeds={feeds}
+              onFileClick={(file) => {
+                const index = indexedFiles.findIndex(f => f.metadata.fileId === file.metadata.fileId);
+                if (index !== -1) {
+                  setActiveFeedId('public');
+                  setCurrentFeedIndex(index);
+                }
+              }}
+              onFeedClick={(feed) => {
+                setViewingBrandedFeed(feed);
+              }}
+              onCreatorClick={(creatorId) => {
+                setViewingCreatorId(creatorId);
+              }}
+            />
+          </div>
         ) : viewMode === 'feed' ? (
           // TikTok-style feed view using FullScreenFeed component
           <div 
@@ -1391,8 +1476,7 @@ function App() {
             activeTab={activeBottomTab}
             onTabChange={setActiveBottomTab}
             onSearchClick={() => {
-              // TODO: Open search modal/page
-              setViewMode('grid'); // Temporarily switch to grid for search
+              setShowSearch(true);
             }}
           />
         )}
