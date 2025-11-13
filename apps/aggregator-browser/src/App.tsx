@@ -44,6 +44,7 @@ import { FeedService } from './services/feedService';
 import { FullScreenFeed } from './components/FullScreenFeed';
 import { FeedNavBar } from './components/FeedNavBar';
 import { BottomNav } from './components/BottomNav';
+import { saveToFeed } from './services/savedFeedService';
 
 // Shared types - importing from id-dashboard
 // In production, these would come from a shared package
@@ -1019,6 +1020,14 @@ function App() {
                     setAddingToFeedFile(file);
                   }
                 }}
+                onSave={userState.isUnlocked && userState.pnIdentifier ? async (file) => {
+                  try {
+                    await saveToFeed(userState.pnIdentifier!, file.metadata.fileId);
+                    success('Saved to your private feed!');
+                  } catch (error) {
+                    showErrorToast('Failed to save. Please try again.');
+                  }
+                } : undefined}
                 isLiked={isLiked}
                 getLikeCount={getLikeCount}
                 getComments={getComments}

@@ -6,6 +6,8 @@
 import React, { useRef, useEffect, useState, useCallback } from 'react';
 import { IndexedFile } from '../types/aggregator';
 import { FeedEngagementSidebar } from './FeedEngagementSidebar';
+import { EngagementOverlay } from './EngagementOverlay';
+import { PlaybackControls } from './PlaybackControls';
 import { ContentRatingBadge } from './ContentRatingBadge';
 import { User, File } from 'lucide-react';
 import { useVerticalSwipe } from '../hooks/useVerticalSwipe';
@@ -19,6 +21,7 @@ interface FullScreenFeedProps {
   onComment: (file: IndexedFile) => void;
   onShare: (fileId: string) => void;
   onAddToFeed?: (file: IndexedFile) => void;
+  onSave?: (file: IndexedFile) => void;
   isLiked: (fileId: string) => boolean;
   getLikeCount: (fileId: string, defaultCount: number) => number;
   getComments: (fileId: string) => any[];
@@ -38,6 +41,7 @@ export function FullScreenFeed({
   onComment,
   onShare,
   onAddToFeed,
+  onSave,
   isLiked,
   getLikeCount,
   getComments,
@@ -50,6 +54,8 @@ export function FullScreenFeed({
   const [videoBlobs, setVideoBlobs] = useState<Map<string, string>>(new Map());
   const [thumbnails, setThumbnails] = useState<Map<string, string>>(new Map());
   const [visibleFileId, setVisibleFileId] = useState<string | null>(null);
+  const [showEngagementOverlay, setShowEngagementOverlay] = useState(false);
+  const [videoPlaying, setVideoPlaying] = useState<Map<string, boolean>>(new Map());
 
   // Handle vertical swipe for next/previous media
   const verticalSwipeRef = useVerticalSwipe({
@@ -257,18 +263,56 @@ export function FullScreenFeed({
           >
             {/* Full-screen video */}
             {isVideo && videoBlobs.get(fileId) && (
-              <video
-                ref={(el) => {
-                  if (el) videoRefs.current.set(fileId, el);
-                }}
-                src={videoBlobs.get(fileId)!}
-                className="w-full h-full object-contain"
-                controls={false}
-                muted
-                loop
-                playsInline
-                autoPlay={visibleFileId === fileId}
-              />
+              <>
+                <video
+                  ref={(el) => {
+                    if (el) {
+                      videoRefs.current.set(fileId, el);
+                      // Track playing state
+                      el.addEventListener('play', () => {
+                        setVideoPlaying(prev => {
+                          const newMap = new Map(prev);
+                          newMap.set(fileId, true);
+                          return newMap;
+                        });
+                      });
+                      el.addEventListener('pause', () => {
+                        setVideoPlaying(prev => {
+                          const newMap = new Map(prev);
+                          newMap.set(fileId, false);
+                          return newMap;
+                        });
+                      });
+                    }
+                  }}
+                  src={videoBlobs.get(fileId)!}
+                  className="w-full h-full object-contain"
+                  controls={false}
+                  muted
+                  loop
+                  playsInline
+                  autoPlay={visibleFileId === fileId}
+                />
+                {/* Playback Controls */}
+                {visibleFileId === fileId && (
+                  <div className="absolute top-4 left-4 z-20">
+                    <PlaybackControls
+                      videoElement={videoRefs.current.get(fileId) || null}
+                      isPlaying={videoPlaying.get(fileId) || false}
+                      onPlayPause={() => {
+                        const videoElement = videoRefs.current.get(fileId);
+                        if (videoElement) {
+                          if (videoElement.paused) {
+                            videoElement.play();
+                          } else {
+                            videoElement.pause();
+                          }
+                        }
+                      }}
+                    />
+                  </div>
+                )}
+              </>
             )}
             
             {/* Full-screen image */}
@@ -312,12 +356,48 @@ export function FullScreenFeed({
                 }
               }}
               isLiked={isLiked(fileId)}
-              onLike={() => onLike(fileId)}
-              onComment={() => onComment(indexedFile)}
-              onShare={() => onShare(fileId)}
+              onLike={() => {
+                if (visibleFileId === fileId && showEngagementOverlay) {
+                  setShowEngagementOverlay(false);
+                }
+                onLike(fileId);
+              }}
+              onComment={() => {
+                if (visibleFileId === fileId && showEngagementOverlay) {
+                  setShowEngagementOverlay(false);
+                }
+                onComment(indexedFile);
+              }}
+              onShare={() => {
+                if (visibleFileId === fileId) {
+                  setShowEngagementOverlay(true);
+                } else {
+                  onShare(fileId);
+                }
+              }}
               onAddToFeed={onAddToFeed ? () => onAddToFeed(indexedFile) : undefined}
               isOwner={userState.isUnlocked && userState.pnIdentifier === creatorId}
             />
+
+            {/* Engagement Overlay - Show when share button is clicked */}
+            {visibleFileId === fileId && showEngagementOverlay && (
+              <EngagementOverlay
+                file={indexedFile}
+                isLiked={isLiked(fileId)}
+                likeCount={getLikeCount(fileId, indexedFile.metadata.engagement?.likes || 0)}
+                commentCount={getComments(fileId).length + (indexedFile.metadata.engagement?.comments || 0)}
+                shareCount={getShareCount(fileId, indexedFile.metadata.engagement?.shares || 0)}
+                onLike={() => onLike(fileId)}
+                onComment={() => {
+                  setShowEngagementOverlay(false);
+                  onComment(indexedFile);
+                }}
+                onShare={() => onShare(fileId)}
+                onSave={onSave ? () => onSave(indexedFile) : undefined}
+                onClose={() => setShowEngagementOverlay(false)}
+                isOpen={showEngagementOverlay}
+              />
+            )}
 
             {/* Content Info Overlay - Bottom Left */}
             <div className="absolute bottom-0 left-0 right-20 bg-gradient-to-t from-black/80 via-black/60 to-transparent p-6">

@@ -58,14 +58,27 @@ export function CommentModal({ file, onClose }: CommentModalProps) {
   };
 
   return (
-    <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
-      <div className="bg-neutral-900 rounded-xl max-w-2xl w-full max-h-[90vh] flex flex-col">
+    <>
+      {/* Backdrop */}
+      <div
+        className="fixed inset-0 bg-black/60 z-50 transition-opacity"
+        onClick={onClose}
+      />
+
+      {/* Slide-up modal */}
+      <div className="fixed bottom-0 left-0 right-0 bg-neutral-900 rounded-t-2xl z-50 flex flex-col animate-slide-up" style={{ maxHeight: '90vh' }}>
+        {/* Handle bar */}
+        <div className="flex justify-center pt-3 pb-2">
+          <div className="w-12 h-1 bg-neutral-700 rounded-full" />
+        </div>
+
         {/* Header */}
-        <div className="flex items-center justify-between p-6 border-b border-neutral-700">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-neutral-700">
           <h2 className="text-xl font-bold text-white">Comments</h2>
           <button
             onClick={onClose}
             className="text-text-secondary hover:text-white transition-colors"
+            aria-label="Close"
           >
             <X className="h-5 w-5" />
           </button>
@@ -142,7 +155,7 @@ export function CommentModal({ file, onClose }: CommentModalProps) {
           )}
         </div>
       </div>
-    </div>
+    </>
   );
 }
 
