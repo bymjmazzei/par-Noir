@@ -80,9 +80,16 @@ Complete redesign of the browser app (`browse.parnoir.com`) to match TikTok-styl
 
 ### 7. Messages
 - **Type**: DMs only (no groups for now)
+- **Architecture**: **Decentralized peer-to-peer messaging**
+  - Messages stored in **Google Drive** (secure cloud)
+  - Each user has a `par-noir-messages` folder in their Drive
+  - Messages encrypted with pN encryption standard
+  - Accessible via dashboard and all apps using APIs
+  - Uses metadata triggers for real-time updates
 - **Requests**: Open requests, require authorization to accept
-- **Media Sharing**: Via cloud (not device)
-- **Read Receipts**: Show read status
+- **Media Sharing**: Via cloud (Google Drive, not device storage)
+- **Read Receipts**: Show read status (stored in message metadata)
+- **Decentralized**: No central message server - messages live in users' Google Drive
 
 ### 8. Notifications
 - **Types**: Likes, comments, follows, messages, feed updates
@@ -232,8 +239,14 @@ Complete redesign of the browser app (`browse.parnoir.com`) to match TikTok-styl
     - Tabbed interface (Messages | Notifications)
     - DM list with read receipts
     - Message requests with authorization
-    - Media sharing via cloud
+    - Media sharing via cloud (Google Drive)
+    - **Decentralized Architecture**:
+      - Messages stored in `par-noir-messages` folder in each user's Google Drive
+      - Encrypted with pN encryption standard
+      - API endpoints query Drive folders via metadata
+      - Real-time updates via metadata triggers/WebSocket polling
     - Files: `apps/aggregator-browser/src/components/Inbox.tsx` (new)
+    - Files: `apps/aggregator-browser/src/services/messageService.ts` (new)
 
 **Dependencies**: 
 - Google Drive API integration
