@@ -47,6 +47,7 @@ import { BottomNav } from './components/BottomNav';
 import { DiscoveryPage } from './components/DiscoveryPage';
 import { SearchResults } from './components/SearchResults';
 import { CreatorFeedPage } from './components/CreatorFeedPage';
+import { Inbox } from './components/Inbox';
 import { saveToFeed } from './services/savedFeedService';
 
 // Shared types - importing from id-dashboard
@@ -69,6 +70,7 @@ function App() {
   const [currentFeedIndex, setCurrentFeedIndex] = useState(0); // Current file index in feed
   const [activeBottomTab, setActiveBottomTab] = useState<'home' | 'search' | 'upload' | 'messages'>('home');
   const [showSearch, setShowSearch] = useState(false);
+  const [showInbox, setShowInbox] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [feeds, setFeeds] = useState<Feed[]>([]); // Available feeds
   const [visibleFileId, setVisibleFileId] = useState<string | null>(null); // Currently visible file in feed mode
@@ -745,6 +747,39 @@ function App() {
           }, 100);
         }}
       />
+    );
+  }
+
+  // Show inbox if messages tab is active
+  if (showInbox) {
+    return (
+      <div className="h-screen w-full bg-neutral-900">
+        <Inbox
+          onClose={() => {
+            setShowInbox(false);
+            setActiveBottomTab('home');
+          }}
+          onNotificationClick={(notification) => {
+            setShowInbox(false);
+            setActiveBottomTab('home');
+            // Navigate to relevant content based on notification type
+            if (notification.data?.file_id) {
+              setViewMode('feed');
+              setTimeout(() => {
+                const element = document.querySelector(`[data-file-id="${notification.data.file_id}"]`);
+                if (element && feedScrollRef.current) {
+                  element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                }
+              }, 100);
+            } else if (notification.data?.feed_id) {
+              const feed = feeds.find(f => f.feedId === notification.data.feed_id);
+              if (feed) {
+                setViewingBrandedFeed(feed);
+              }
+            }
+          }}
+        />
+      </div>
     );
   }
 
@@ -1474,7 +1509,19 @@ function App() {
         {viewMode === 'feed' && (
           <BottomNav
             activeTab={activeBottomTab}
-            onTabChange={setActiveBottomTab}
+            onTabChange={(tab) => {
+              setActiveBottomTab(tab);
+              if (tab === 'messages') {
+                setShowInbox(true);
+              } else if (tab === 'upload') {
+                setShowUploadModal(true);
+              } else if (tab === 'search') {
+                setShowSearch(true);
+              } else {
+                setShowInbox(false);
+                setShowSearch(false);
+              }
+            }}
             onSearchClick={() => {
               setShowSearch(true);
             }}

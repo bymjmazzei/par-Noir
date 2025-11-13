@@ -30,14 +30,35 @@ export function UploadModal({ onClose, onUploadComplete }: UploadModalProps) {
   const [description, setDescription] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
+  const handleFileSelect = (file: File) => {
     if (file) {
       setSelectedFile(file);
       // Auto-detect content rating based on file type
       if (file.type.startsWith('image/') || file.type.startsWith('video/')) {
         setContentRating('T13+');
       }
+    }
+  };
+
+  const handleFileInputChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (file) {
+      handleFileSelect(file);
+    }
+  };
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    
+    const file = e.dataTransfer.files?.[0];
+    if (file) {
+      handleFileSelect(file);
     }
   };
 
@@ -219,6 +240,8 @@ export function UploadModal({ onClose, onUploadComplete }: UploadModalProps) {
             {!selectedFile ? (
               <div
                 onClick={() => fileInputRef.current?.click()}
+                onDragOver={handleDragOver}
+                onDrop={handleDrop}
                 className="border-2 border-dashed border-neutral-700 rounded-lg p-8 text-center cursor-pointer hover:border-blue-500 transition-colors"
               >
                 <Upload className="h-12 w-12 text-text-secondary mx-auto mb-4" />
@@ -227,7 +250,7 @@ export function UploadModal({ onClose, onUploadComplete }: UploadModalProps) {
                 <input
                   ref={fileInputRef}
                   type="file"
-                  onChange={handleFileSelect}
+                  onChange={handleFileInputChange}
                   className="hidden"
                 />
               </div>
