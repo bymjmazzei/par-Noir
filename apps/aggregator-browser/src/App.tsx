@@ -867,6 +867,216 @@ function App() {
     );
   }
 
+  // Build feed rail items - Always show DISCOVER, PUBLIC, ARTS, SPORTS, MUSIC (TikTok style)
+  const feedRailItems = buildFeedRailItems(
+    feeds,
+    userState.isUnlocked ? userState.preferences.subscribedFeedIds : [],
+    activeFeedId,
+    hasNewThirdPartyContent
+  );
+  
+  // Debug: Log feed rail items
+  console.log('Feed rail items:', feedRailItems.map(f => f.name));
+
+  const [showAuthModal, setShowAuthModal] = useState(false);
+
+  const handleLockUnlock = async () => {
+    if (userState.isUnlocked) {
+      // Lock the user
+      setLocked();
+      // Clear OAuth session
+      PNOAuthService.clearSession();
+    } else {
+      // Unlock - redirect to OAuth authorization page (external HTML page)
+      try {
+        let authUrl = await PNOAuthService.getAuthorizationUrlAsync();
+        console.log('Opening OAuth popup, original URL:', authUrl);
+        
+        // Add popup parameter to URL so oauth-authorize.html knows it's in a popup
+        // Need to add it to the API endpoint URL before it redirects
+        try {
+          const url = new URL(authUrl);
+          url.searchParams.set('popup', 'true');
+          authUrl = url.toString();
+          console.log('Opening OAuth popup, URL with popup param:', authUrl);
+        } catch (e) {
+          console.error('Failed to add popup parameter:', e);
+        }
+        
+        // Open in popup window (like Google OAuth)
+        const popup = window.open(
+          authUrl,
+          'pn-oauth',
+          'width=500,height=600,scrollbars=yes,resizable=yes'
+        );
+        
+        if (!popup) {
+          console.error('Popup blocked!');
+          showErrorToast('Popup blocked. Please allow popups for this site.');
+          return;
+        }
+        
+        // Handle OAuth callback - listen for both postMessage and localStorage events
+        const handleOAuthCallback = (data: { code?: string; state?: string; error?: string; error_description?: string }) => {
+          console.log('OAuth callback received:', data);
+          
+          if (data.code) {
+            // Handle OAuth callback
+            (async () => {
+              try {
+                const tokenResponse = await PNOAuthService.exchangeCodeForToken(data.code!);
+                const userInfo = await PNOAuthService.getUserInfo(tokenResponse.access_token);
+                
+                const session = {
+                  accessToken: tokenResponse.access_token,
+                  refreshToken: tokenResponse.refresh_token,
+                  expiresAt: Date.now() + (tokenResponse.expires_in * 1000),
+                  did: userInfo.did,
+                  pnName: userInfo.pn_name
+                };
+                
+                PNOAuthService.saveSession(session);
+                setUnlocked(userInfo.did);
+                
+                // Refresh feed if needed
+                if (discoverFilesRef.current) {
+                  discoverFilesRef.current(undefined, true);
+                }
+                
+                console.log('OAuth success! User unlocked.');
+              } catch (err) {
+                console.error('OAuth callback error:', err);
+                showErrorToast('Authentication failed. Please try again.');
+              }
+            })();
+          } else if (data.error) {
+            console.error('OAuth error:', data.error);
+            showErrorToast(data.error_description || 'Authentication denied');
+          }
+          
+          // FORCE CLOSE POPUP - main window must close it (popup can't close itself after navigation)
+          if (popup && !popup.closed) {
+            console.log('Main window FORCING popup close...');
+            try {
+              // Multiple aggressive close attempts
+              popup.close();
+              setTimeout(() => { if (popup && !popup.closed) { popup.close(); } }, 10);
+              setTimeout(() => { if (popup && !popup.closed) { popup.close(); } }, 50);
+              setTimeout(() => { if (popup && !popup.closed) { popup.close(); } }, 100);
+              setTimeout(() => { if (popup && !popup.closed) { popup.close(); } }, 200);
+              setTimeout(() => { if (popup && !popup.closed) { 
+                console.error('Popup still open after all attempts - browser may be blocking close');
+                // Last resort: try to focus main window
+                window.focus();
+              }}, 500);
+            } catch (e) {
+              console.error('Failed to close popup:', e);
+            }
+          }
+          
+          // Clean up listeners
+          window.removeEventListener('message', messageListener);
+          window.removeEventListener('storage', storageListener);
+        };
+        
+        // Listen for postMessage
+        const messageListener = (event: MessageEvent) => {
+          console.log('Message received:', event.origin, event.data);
+          
+          if (event.origin !== window.location.origin) {
+            console.log('Origin mismatch:', event.origin, 'vs', window.location.origin);
+            return;
+          }
+          
+          if (event.data && event.data.type === 'oauth_callback') {
+            handleOAuthCallback(event.data);
+          }
+        };
+        
+        // Listen for localStorage events (works even if window.opener is lost)
+        const storageListener = (event: StorageEvent) => {
+          if (event.key === 'pn_oauth_callback' && event.newValue) {
+            try {
+              const data = JSON.parse(event.newValue);
+              if (data.type === 'oauth_callback') {
+                console.log('OAuth callback received via localStorage:', data);
+                handleOAuthCallback(data);
+                // Clear the storage item
+                localStorage.removeItem('pn_oauth_callback');
+              }
+            } catch (e) {
+              console.error('Failed to parse OAuth callback from localStorage:', e);
+            }
+          }
+        };
+        
+        window.addEventListener('message', messageListener);
+        window.addEventListener('storage', storageListener);
+        
+        // Clean up polling when popup closes
+        const checkPopupInterval = setInterval(() => {
+          if (popup.closed) {
+            clearInterval(checkPopupInterval);
+            clearInterval(pollInterval);
+            window.removeEventListener('message', messageListener);
+            window.removeEventListener('storage', storageListener);
+            console.log('Popup closed by user');
+          }
+        }, 500);
+        
+        // Poll localStorage aggressively - check for pending flag and latest key
+        const pollInterval = setInterval(() => {
+          const pending = localStorage.getItem('pn_oauth_pending');
+          if (pending === 'true') {
+            const latestKey = localStorage.getItem('pn_oauth_latest_key');
+            if (latestKey) {
+              const stored = localStorage.getItem(latestKey);
+              if (stored) {
+                try {
+                  const data = JSON.parse(stored);
+                  // Only process if recent (within last 10 seconds)
+                  if (data.timestamp && Date.now() - data.timestamp < 10000) {
+                    console.log('OAuth callback found via polling:', data);
+                    clearInterval(pollInterval);
+                    clearInterval(checkPopupInterval);
+                    
+                    // Clear the flags
+                    localStorage.removeItem('pn_oauth_pending');
+                    localStorage.removeItem('pn_oauth_latest_key');
+                    localStorage.removeItem(latestKey);
+                    
+                    handleOAuthCallback(data);
+                    
+                    // FORCE CLOSE POPUP - try multiple times
+                    if (popup && !popup.closed) {
+                      console.log('FORCING POPUP CLOSE NOW');
+                      for (let i = 0; i < 10; i++) {
+                        setTimeout(() => {
+                          if (popup && !popup.closed) {
+                            try {
+                              popup.close();
+                            } catch (e) {
+                              console.error('Close attempt failed:', e);
+                            }
+                          }
+                        }, i * 50);
+                      }
+                    }
+                  }
+                } catch (e) {
+                  console.error('Failed to parse OAuth callback:', e);
+                }
+              }
+            }
+          }
+        }, 50); // Poll every 50ms for fastest detection
+      } catch (err) {
+        console.error('OAuth redirect error:', err);
+        showErrorToast('Failed to open authentication window');
+      }
+    }
+  };
+
   return (
     <div className={`min-h-screen bg-gradient-to-br from-neutral-900 via-neutral-800 to-neutral-900 ${viewMode === 'feed' ? 'h-screen overflow-hidden' : ''}`}>
       <div className={`${viewMode === 'feed' ? 'h-full flex flex-col' : 'max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8'}`}>
