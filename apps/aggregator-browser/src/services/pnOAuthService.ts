@@ -34,7 +34,7 @@ export interface AuthSession {
 
 export class PNOAuthService {
   /**
-   * Generate authorization URL
+   * Generate authorization URL (synchronous version for storing params)
    */
   static getAuthorizationUrl(params?: {
     scope?: string[];
@@ -64,6 +64,75 @@ export class PNOAuthService {
   }
 
   /**
+   * Generate authorization URL and get the actual redirect URL (async version)
+   * Returns the authorization URL to redirect to (handles JSON responses)
+   */
+  static async getAuthorizationUrlAsync(params?: {
+    scope?: string[];
+    state?: string;
+    nonce?: string;
+  }): Promise<string> {
+    const scope = params?.scope || ['openid', 'profile'];
+    const state = params?.state || this.generateState();
+    const nonce = params?.nonce || this.generateNonce();
+
+    // Store state and nonce for verification
+    if (typeof window !== 'undefined') {
+      sessionStorage.setItem('pn_oauth_state', state);
+      sessionStorage.setItem('pn_oauth_nonce', nonce);
+    }
+
+    const paramsStr = new URLSearchParams({
+      client_id: CLIENT_ID,
+      redirect_uri: REDIRECT_URI,
+      response_type: 'code',
+      scope: scope.join(' '),
+      state,
+      nonce
+    }).toString();
+
+    const authEndpoint = `${API_ENDPOINT}/oauth/authorize?${paramsStr}`;
+    
+    // Try to fetch - the endpoint may return JSON with authorization_url
+    try {
+      const response = await fetch(authEndpoint, { 
+        method: 'GET',
+        redirect: 'manual' // Don't follow redirects automatically
+      });
+      
+      if (response.ok) {
+        const contentType = response.headers.get('content-type');
+        if (contentType && contentType.includes('application/json')) {
+          // If it returns JSON, extract the authorization_url
+          const data = await response.json();
+          if (data.authorization_url) {
+            // Return the actual authorization URL
+            if (data.authorization_url.startsWith('http')) {
+              return data.authorization_url;
+            } else {
+              // Relative path - try with API_ENDPOINT first, but if it starts with /, use the same origin as API_ENDPOINT
+              const baseUrl = new URL(API_ENDPOINT);
+              return `${baseUrl.protocol}//${baseUrl.host}${data.authorization_url}`;
+            }
+          }
+        }
+      } else if (response.status >= 300 && response.status < 400) {
+        // If it's a redirect, get the Location header
+        const location = response.headers.get('Location');
+        if (location) {
+          return location;
+        }
+      }
+    } catch (err) {
+      // If fetch fails (CORS, etc.), just return the endpoint URL
+      console.warn('Could not fetch authorization URL:', err);
+    }
+    
+    // Fallback: return the endpoint URL directly
+    return authEndpoint;
+  }
+
+  /**
    * Authenticate with pN identity file and passcode
    * Returns authorization code
    */
@@ -75,10 +144,14 @@ export class PNOAuthService {
     scope?: string[];
     state?: string;
     nonce?: string;
+    clientId?: string;
+    redirectUri?: string;
   }): Promise<{ code: string; state?: string }> {
     const scope = params.scope || ['openid', 'profile'];
     const state = params.state || sessionStorage.getItem('pn_oauth_state') || undefined;
     const nonce = params.nonce || sessionStorage.getItem('pn_oauth_nonce') || undefined;
+    const clientId = params.clientId || CLIENT_ID;
+    const redirectUri = params.redirectUri || REDIRECT_URI;
 
     const response = await fetch(`${API_ENDPOINT}/oauth/authorize/authenticate`, {
       method: 'POST',
@@ -86,8 +159,8 @@ export class PNOAuthService {
         'Content-Type': 'application/json'
       },
       body: JSON.stringify({
-        client_id: CLIENT_ID,
-        redirect_uri: REDIRECT_URI,
+        client_id: clientId,
+        redirect_uri: redirectUri,
         scope: scope.join(' '),
         state,
         nonce,

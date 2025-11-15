@@ -13,19 +13,26 @@ import { useToast } from '../hooks/useToast';
 interface PNConnectProps {
   onConnect?: () => void;
   compact?: boolean;
+  showModal?: boolean;
+  onClose?: () => void;
 }
 
-export function PNConnect({ onConnect, compact = false }: PNConnectProps) {
+export function PNConnect({ onConnect, compact = false, showModal: externalShowModal, onClose }: PNConnectProps) {
   const { setUnlocked } = useUserState();
   const { success, error: showError } = useToast();
-  const [showAuthModal, setShowAuthModal] = useState(false);
+  const [internalShowModal, setInternalShowModal] = useState(false);
+  const showAuthModal = externalShowModal !== undefined ? externalShowModal : internalShowModal;
   const [identityFile, setIdentityFile] = useState<File | null>(null);
   const [passcode, setPasscode] = useState('');
   const [authenticating, setAuthenticating] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleConnect = () => {
-    setShowAuthModal(true);
+    if (externalShowModal !== undefined && onClose !== undefined) {
+      // Controlled from outside
+      return; // External control, don't manage state internally
+    }
+    setInternalShowModal(true);
   };
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -72,18 +79,70 @@ export function PNConnect({ onConnect, compact = false }: PNConnectProps) {
         return;
       }
 
-      // Complete OAuth flow
-      const session = await PNOAuthService.completeAuthFlow({
-        encryptedIdentity,
-        passcode,
-        publicKey,
-        did
-      });
+      // Get OAuth params from sessionStorage if available (from lock button click)
+      const oauthClientId = sessionStorage.getItem('pn_oauth_client_id');
+      const oauthRedirectUri = sessionStorage.getItem('pn_oauth_redirect_uri');
+      const oauthScope = sessionStorage.getItem('pn_oauth_scope');
+      const oauthState = sessionStorage.getItem('pn_oauth_state');
+      const oauthNonce = sessionStorage.getItem('pn_oauth_nonce');
 
-      // Update user state
-      setUnlocked(session.did);
-      success('Successfully connected your pN!');
-      setShowAuthModal(false);
+      if (oauthClientId && oauthRedirectUri) {
+        // Complete OAuth flow with stored params
+        const { PNOAuthService } = require('../services/pnOAuthService');
+        const authResult = await PNOAuthService.authenticate({
+          encryptedIdentity,
+          passcode,
+          publicKey,
+          did,
+          scope: oauthScope ? oauthScope.split(' ') : undefined,
+          state: oauthState || undefined,
+          nonce: oauthNonce || undefined
+        });
+
+        // Exchange code for tokens
+        const tokenResponse = await PNOAuthService.exchangeCodeForToken(authResult.code);
+        const userInfo = await PNOAuthService.getUserInfo(tokenResponse.access_token);
+        
+        // Create session
+        const session = {
+          accessToken: tokenResponse.access_token,
+          refreshToken: tokenResponse.refresh_token,
+          expiresAt: Date.now() + (tokenResponse.expires_in * 1000),
+          did: userInfo.did,
+          pnName: userInfo.pn_name
+        };
+        
+        PNOAuthService.saveSession(session);
+        setUnlocked(userInfo.did);
+        
+        // Clean up OAuth params
+        sessionStorage.removeItem('pn_oauth_client_id');
+        sessionStorage.removeItem('pn_oauth_redirect_uri');
+        sessionStorage.removeItem('pn_oauth_scope');
+        sessionStorage.removeItem('pn_oauth_state');
+        sessionStorage.removeItem('pn_oauth_nonce');
+        
+        // Redirect back to app (or stay on current page)
+        success('Successfully connected your pN!');
+      } else {
+        // Regular auth flow (not OAuth)
+        const session = await PNOAuthService.completeAuthFlow({
+          encryptedIdentity,
+          passcode,
+          publicKey,
+          did
+        });
+
+        // Update user state
+        setUnlocked(session.did);
+        success('Successfully connected your pN!');
+      }
+
+      if (externalShowModal !== undefined && onClose) {
+        onClose();
+      } else {
+        setInternalShowModal(false);
+      }
       setIdentityFile(null);
       setPasscode('');
       onConnect?.();
@@ -149,13 +208,25 @@ export function PNConnect({ onConnect, compact = false }: PNConnectProps) {
 
       {/* Authentication Modal */}
       {showAuthModal && (
-        <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
-          <div className="bg-neutral-900 rounded-xl max-w-md w-full p-6">
+        <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4" onClick={(e) => {
+          if (e.target === e.currentTarget) {
+            if (onClose) {
+              onClose();
+            } else {
+              setInternalShowModal(false);
+            }
+          }
+        }}>
+          <div className="bg-neutral-900 rounded-xl max-w-md w-full p-6" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-xl font-bold text-white">Connect Your pN</h2>
               <button
                 onClick={() => {
-                  setShowAuthModal(false);
+                  if (externalShowModal !== undefined && onClose) {
+                    onClose();
+                  } else {
+                    setInternalShowModal(false);
+                  }
                   setIdentityFile(null);
                   setPasscode('');
                 }}
@@ -217,7 +288,11 @@ export function PNConnect({ onConnect, compact = false }: PNConnectProps) {
               <div className="flex items-center space-x-3 pt-2">
                 <button
                   onClick={() => {
-                    setShowAuthModal(false);
+                    if (externalShowModal !== undefined && onClose) {
+                      onClose();
+                    } else {
+                      setInternalShowModal(false);
+                    }
                     setIdentityFile(null);
                     setPasscode('');
                   }}

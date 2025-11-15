@@ -26,42 +26,86 @@ interface FeedRailProps {
 
 export function FeedRail({ feeds, activeFeedId, onFeedSelect, onBrowseFeeds }: FeedRailProps) {
   const scrollContainerRef = useRef<HTMLDivElement>(null);
-  const { userState } = useUserState();
 
-  const scroll = (direction: 'left' | 'right') => {
-    if (!scrollContainerRef.current) return;
-    const scrollAmount = 300;
-    scrollContainerRef.current.scrollBy({
-      left: direction === 'left' ? -scrollAmount : scrollAmount,
-      behavior: 'smooth'
-    });
-  };
-
-  // Auto-scroll to active feed on mount/change
+  // Auto-scroll to active feed on mount/change (TikTok style: ENTIRE BAR scrolls so active title is CENTERED)
   useEffect(() => {
-    if (!scrollContainerRef.current) return;
-    const activeElement = scrollContainerRef.current.querySelector(`[data-feed-id="${activeFeedId}"]`);
-    if (activeElement) {
-      activeElement.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
-    }
-  }, [activeFeedId]);
+    if (!scrollContainerRef.current || !activeFeedId) return;
+    
+    const scrollToActive = () => {
+      const container = scrollContainerRef.current;
+      if (!container) return;
+      
+      const activeElement = container.querySelector(`[data-feed-id="${activeFeedId}"]`) as HTMLElement;
+      if (!activeElement) {
+        console.warn('Could not find active feed element:', activeFeedId);
+        return;
+      }
+      
+      // Get the scrollable parent (the one with overflow-x-auto)
+      const scrollableParent = container.parentElement;
+      if (!scrollableParent) return;
+      
+      // Get positions - element position relative to the inner container
+      const containerWidth = scrollableParent.clientWidth;
+      const elementLeft = activeElement.offsetLeft;
+      const elementWidth = activeElement.offsetWidth;
+      
+      // Calculate scroll position to CENTER the active element
+      // With paddingLeft: 50%, the element's center should align with container center
+      const elementCenter = elementLeft + (elementWidth / 2);
+      const containerCenter = containerWidth / 2;
+      const scrollLeft = elementCenter - containerCenter;
+      
+      // Get max scroll (content width - container width)
+      const maxScroll = container.scrollWidth - containerWidth;
+      
+      console.log('SCROLLING BAR TO CENTER ACTIVE FEED:', {
+        activeFeedId,
+        elementLeft,
+        elementWidth,
+        containerWidth,
+        scrollLeft,
+        maxScroll,
+        currentScroll: scrollableParent.scrollLeft,
+        contentWidth: container.scrollWidth
+      });
+      
+      // Scroll the ENTIRE BAR horizontally so active feed title is CENTERED
+      // Clamp between 0 and maxScroll
+      scrollableParent.scrollTo({ 
+        left: Math.max(0, Math.min(maxScroll, scrollLeft)), 
+        behavior: 'smooth' 
+      });
+    };
+    
+    // Delay to ensure DOM is updated after feed change
+    const timeoutId = setTimeout(scrollToActive, 150);
+    
+    return () => clearTimeout(timeoutId);
+  }, [activeFeedId, feeds]);
 
   return (
-    <div className="relative w-full">
-      {/* Left scroll button */}
-      <button
-        onClick={() => scroll('left')}
-        className="absolute left-0 top-0 bottom-0 z-10 w-12 bg-gradient-to-r from-neutral-900 to-transparent flex items-center justify-center opacity-0 hover:opacity-100 transition-opacity"
-        aria-label="Scroll left"
-      >
-        <ChevronLeft className="h-6 w-6 text-white" />
-      </button>
-
-      {/* Feed rail */}
+    <div 
+      className="w-full h-full flex items-center overflow-x-auto scrollbar-hide bg-transparent" 
+      style={{ 
+        scrollBehavior: 'smooth',
+        scrollbarWidth: 'none',
+        msOverflowStyle: 'none',
+        background: 'transparent'
+      }}
+    >
+      {/* Feed rail - TikTok style: ENTIRE BAR scrolls horizontally, active feed title CENTERED */}
+      {/* Add padding on left/right so we can always center any feed */}
       <div
         ref={scrollContainerRef}
-        className="flex space-x-2 overflow-x-auto scrollbar-hide px-12 py-2"
-        style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
+        className="flex space-x-6 py-2 items-center bg-transparent"
+        style={{ 
+          whiteSpace: 'nowrap',
+          minWidth: 'max-content',
+          paddingLeft: '50%',
+          paddingRight: '50%',
+          background: 'transparent'
+        }}
       >
         {feeds.map((feed) => {
           const isActive = feed.feedId === activeFeedId;
@@ -72,49 +116,22 @@ export function FeedRail({ feeds, activeFeedId, onFeedSelect, onBrowseFeeds }: F
               data-feed-id={feed.feedId}
               onClick={() => onFeedSelect(feed.feedId)}
               className={`
-                flex items-center space-x-2 px-4 py-2 rounded-full whitespace-nowrap transition-all
+                whitespace-nowrap transition-all text-base font-semibold relative
                 ${isActive
-                  ? 'bg-blue-600 text-white shadow-lg'
-                  : 'bg-neutral-800 text-text-secondary hover:bg-neutral-700 hover:text-white'
+                  ? 'text-white/85'
+                  : 'text-white/60 hover:text-white/75'
                 }
               `}
             >
-              {feed.icon || <Globe className="h-4 w-4" />}
-              <span className="font-medium">{feed.name}</span>
-              {feed.isNew && (
-                <span className="px-2 py-0.5 bg-yellow-500 text-black text-xs font-bold rounded-full">
-                  NEW
-                </span>
-              )}
-              {feed.badge && (
-                <span className="px-2 py-0.5 bg-blue-500 text-white text-xs font-bold rounded-full">
-                  {feed.badge}
-                </span>
+              <span>{feed.name}</span>
+              {isActive && (
+                <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-white/85 transition-opacity"></div>
               )}
             </button>
           );
         })}
-        
-        {/* Browse Feeds Button */}
-        {onBrowseFeeds && (
-          <button
-            onClick={onBrowseFeeds}
-            className="flex items-center space-x-2 px-4 py-2 rounded-full whitespace-nowrap bg-neutral-800 text-text-secondary hover:bg-neutral-700 hover:text-white transition-all border-2 border-dashed border-neutral-600"
-          >
-            <Plus className="h-4 w-4" />
-            <span className="font-medium">Browse</span>
-          </button>
-        )}
       </div>
 
-      {/* Right scroll button */}
-      <button
-        onClick={() => scroll('right')}
-        className="absolute right-0 top-0 bottom-0 z-10 w-12 bg-gradient-to-l from-neutral-900 to-transparent flex items-center justify-center opacity-0 hover:opacity-100 transition-opacity"
-        aria-label="Scroll right"
-      >
-        <ChevronRight className="h-6 w-6 text-white" />
-      </button>
     </div>
   );
 }
@@ -130,18 +147,51 @@ export function buildFeedRailItems(
 ): FeedRailItem[] {
   const items: FeedRailItem[] = [
     {
+      feedId: 'discover',
+      name: 'DISCOVER',
+      isActive: activeFeedId === 'discover'
+    },
+    {
       feedId: 'public',
-      name: 'Public',
-      icon: <Globe className="h-4 w-4" />,
+      name: 'PUBLIC',
       isActive: activeFeedId === 'public'
     }
   ];
+
+  // Add popular niche feeds (ARTS, SPORTS, MUSIC) - always show these for swiping
+  const nicheFeeds = [
+    { feedId: 'arts', name: 'ARTS' },
+    { feedId: 'sports', name: 'SPORTS' },
+    { feedId: 'music', name: 'MUSIC' }
+  ];
+  
+  nicheFeeds.forEach(niche => {
+    // Check if there's a matching feed in the feeds array, or add as default
+    const existingFeed = feeds.find(f => 
+      f.feedId.toLowerCase() === niche.feedId || 
+      f.feedName.toLowerCase() === niche.name.toLowerCase()
+    );
+    if (existingFeed) {
+      items.push({
+        feedId: existingFeed.feedId,
+        name: existingFeed.feedName.toUpperCase(),
+        isActive: activeFeedId === existingFeed.feedId
+      });
+    } else {
+      // Add as placeholder feed (will be created/fetched when selected)
+      items.push({
+        feedId: niche.feedId,
+        name: niche.name,
+        isActive: activeFeedId === niche.feedId
+      });
+    }
+  });
 
   // Add subscribed feeds (only if user is unlocked)
   if (subscribedFeedIds.length > 0) {
     subscribedFeedIds.forEach(feedId => {
       const feed = feeds.find(f => f.feedId === feedId);
-      if (feed) {
+      if (feed && !items.find(item => item.feedId === feed.feedId)) {
         items.push({
           feedId: feed.feedId,
           name: feed.feedName,

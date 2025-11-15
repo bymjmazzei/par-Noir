@@ -420,10 +420,10 @@ class ProductionServer {
         }
 
         console.log(`📤 [GET /api/aggregator/metadata-index] Returning ${response.files.length} files`);
-        res.json(response);
+        return res.json(response);
       } catch (error: any) {
         console.error('❌ [GET /api/aggregator/metadata-index] Error:', error);
-        res.status(500).json({ 
+        return res.status(500).json({ 
           error: 'Failed to fetch metadata index',
           message: error.message 
         });
@@ -1735,7 +1735,7 @@ class ProductionServer {
       // For browser app, we'll handle this client-side
       const scopes = scope ? (scope as string).split(' ') : ['openid', 'profile'];
       
-      res.json({
+      return res.json({
         authorization_url: `/oauth/authorize/consent?client_id=${client_id}&redirect_uri=${encodeURIComponent(redirect_uri as string)}&scope=${encodeURIComponent(scope as string || 'openid profile')}&state=${state || ''}&nonce=${nonce || ''}`,
         client_id,
         redirect_uri,
@@ -1743,6 +1743,36 @@ class ProductionServer {
         state: state || undefined,
         nonce: nonce || undefined
       });
+    });
+
+    // GET /oauth/authorize/consent - OAuth consent page
+    // Redirects to the browser app's oauth-authorize.html page
+    // The browser app hosts the full OAuth consent UI
+    this.app.get('/oauth/authorize/consent', (req, res) => {
+      const { client_id, redirect_uri, scope, state, nonce } = req.query;
+
+      // Validate required parameters
+      if (!client_id || !redirect_uri) {
+        return res.status(400).json({
+          error: 'invalid_request',
+          error_description: 'Missing required parameters: client_id, redirect_uri'
+        });
+      }
+
+      // Extract the origin from redirect_uri (should be browse.parnoir.com)
+      const redirectUrl = new URL(redirect_uri as string);
+      const browserAppOrigin = `${redirectUrl.protocol}//${redirectUrl.host}`;
+      
+      // Redirect to the browser app's oauth-authorize.html page with OAuth params
+      const consentUrl = new URL(`${browserAppOrigin}/oauth-authorize.html`);
+      consentUrl.searchParams.set('client_id', client_id as string);
+      consentUrl.searchParams.set('redirect_uri', redirect_uri as string);
+      if (scope) consentUrl.searchParams.set('scope', scope as string);
+      if (state) consentUrl.searchParams.set('state', state as string);
+      if (nonce) consentUrl.searchParams.set('nonce', nonce as string);
+
+      // Redirect to the browser app's consent page
+      return res.redirect(consentUrl.toString());
     });
 
     // POST /oauth/authorize/authenticate - Authenticate user with pN identity
@@ -1789,13 +1819,13 @@ class ProductionServer {
         });
 
         // Return authorization code
-        res.json({
+        return res.json({
           code,
           state: state || undefined
         });
       } catch (error: any) {
         console.error('OAuth authentication error:', error);
-        res.status(500).json({
+        return res.status(500).json({
           error: 'server_error',
           error_description: error.message || 'Authentication failed'
         });
@@ -1835,10 +1865,10 @@ class ProductionServer {
           });
         }
 
-        res.json(tokenResponse);
+        return res.json(tokenResponse);
       } catch (error: any) {
         console.error('Token exchange error:', error);
-        res.status(500).json({
+        return res.status(500).json({
           error: 'server_error',
           error_description: error.message || 'Token exchange failed'
         });
@@ -1866,10 +1896,10 @@ class ProductionServer {
           });
         }
 
-        res.json(tokenResponse);
+        return res.json(tokenResponse);
       } catch (error: any) {
         console.error('Token refresh error:', error);
-        res.status(500).json({
+        return res.status(500).json({
           error: 'server_error',
           error_description: error.message || 'Token refresh failed'
         });
@@ -1899,14 +1929,14 @@ class ProductionServer {
         }
 
         // Return user info based on token payload
-        res.json({
+        return res.json({
           sub: tokenPayload.did,
           did: tokenPayload.did,
           pn_name: tokenPayload.pnName || undefined
         });
       } catch (error: any) {
         console.error('Userinfo error:', error);
-        res.status(500).json({
+        return res.status(500).json({
           error: 'server_error',
           error_description: error.message || 'Failed to retrieve user info'
         });
@@ -1938,10 +1968,10 @@ class ProductionServer {
           revoked = PNOAuthService.revokeRefreshToken(token);
         }
 
-        res.json({ revoked: true });
+        return res.json({ revoked: true });
       } catch (error: any) {
         console.error('Token revocation error:', error);
-        res.status(500).json({
+        return res.status(500).json({
           error: 'server_error',
           error_description: error.message || 'Token revocation failed'
         });
@@ -1978,7 +2008,7 @@ class ProductionServer {
           type: type as any
         });
 
-        res.json({
+        return res.json({
           notifications: result.notifications,
           total: result.total,
           limit,
@@ -1986,7 +2016,7 @@ class ProductionServer {
         });
       } catch (error: any) {
         console.error('Failed to get notifications:', error);
-        res.status(500).json({
+        return res.status(500).json({
           error: 'server_error',
           error_description: error.message || 'Failed to get notifications'
         });
@@ -2008,10 +2038,10 @@ class ProductionServer {
         const { NotificationService } = require('./server/modules/notificationService');
         const count = await NotificationService.getUnreadCount(userDid);
 
-        res.json({ count });
+        return res.json({ count });
       } catch (error: any) {
         console.error('Failed to get unread count:', error);
-        res.status(500).json({
+        return res.status(500).json({
           error: 'server_error',
           error_description: error.message || 'Failed to get unread count'
         });
@@ -2041,10 +2071,10 @@ class ProductionServer {
           });
         }
 
-        res.json({ success: true });
+        return res.json({ success: true });
       } catch (error: any) {
         console.error('Failed to mark notification as read:', error);
-        res.status(500).json({
+        return res.status(500).json({
           error: 'server_error',
           error_description: error.message || 'Failed to mark notification as read'
         });
@@ -2066,10 +2096,10 @@ class ProductionServer {
         const { NotificationService } = require('./server/modules/notificationService');
         const count = await NotificationService.markAllAsRead(userDid);
 
-        res.json({ success: true, markedRead: count });
+        return res.json({ success: true, markedRead: count });
       } catch (error: any) {
         console.error('Failed to mark all notifications as read:', error);
-        res.status(500).json({
+        return res.status(500).json({
           error: 'server_error',
           error_description: error.message || 'Failed to mark all notifications as read'
         });
@@ -2099,10 +2129,10 @@ class ProductionServer {
           });
         }
 
-        res.json({ success: true });
+        return res.json({ success: true });
       } catch (error: any) {
         console.error('Failed to delete notification:', error);
-        res.status(500).json({
+        return res.status(500).json({
           error: 'server_error',
           error_description: error.message || 'Failed to delete notification'
         });
@@ -2124,10 +2154,10 @@ class ProductionServer {
         const { NotificationService } = require('./server/modules/notificationService');
         const preferences = await NotificationService.getPreferences(userDid);
 
-        res.json(preferences);
+        return res.json(preferences);
       } catch (error: any) {
         console.error('Failed to get notification preferences:', error);
-        res.status(500).json({
+        return res.status(500).json({
           error: 'server_error',
           error_description: error.message || 'Failed to get notification preferences'
         });
@@ -2149,10 +2179,10 @@ class ProductionServer {
         const { NotificationService } = require('./server/modules/notificationService');
         const preferences = await NotificationService.updatePreferences(userDid, req.body);
 
-        res.json(preferences);
+        return res.json(preferences);
       } catch (error: any) {
         console.error('Failed to update notification preferences:', error);
-        res.status(500).json({
+        return res.status(500).json({
           error: 'server_error',
           error_description: error.message || 'Failed to update notification preferences'
         });

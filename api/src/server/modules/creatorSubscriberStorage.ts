@@ -4,7 +4,7 @@
  * Creator hosts subscriber list, subscriber stores local reference
  */
 
-import { google } from 'googleapis';
+// import { google } from 'googleapis'; // Optional dependency - only needed if Google Drive sync is enabled
 
 export interface SubscriberInfo {
   subscriberDid: string;
@@ -37,6 +37,9 @@ export class CreatorSubscriberStorage {
         return { success: true }; // Not an error, just deferred
       }
 
+      // Dynamic import of googleapis (optional dependency)
+      const { google } = await import('googleapis');
+      
       const oauth2Client = new google.auth.OAuth2(
         process.env.GOOGLE_DRIVE_CLIENT_ID,
         process.env.GOOGLE_DRIVE_CLIENT_SECRET
@@ -109,6 +112,9 @@ export class CreatorSubscriberStorage {
         return { success: true }; // Skip if creator doesn't have Drive connected
       }
 
+      // Dynamic import of googleapis (optional dependency)
+      const { google } = await import('googleapis');
+      
       const oauth2Client = new google.auth.OAuth2(
         process.env.GOOGLE_DRIVE_CLIENT_ID,
         process.env.GOOGLE_DRIVE_CLIENT_SECRET

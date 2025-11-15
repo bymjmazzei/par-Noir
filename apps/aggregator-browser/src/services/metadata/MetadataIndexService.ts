@@ -103,7 +103,7 @@ export class MetadataIndexService {
         if (filters.maxRating) {
           files = files.filter(file => {
             const fileRating = file.metadata.contentRating;
-            if (!fileRating) return false; // No rating = exclude
+            if (!fileRating) return true; // No rating = include (assume safe)
             return isRatingAcceptable(fileRating, filters.maxRating!);
           });
         }
