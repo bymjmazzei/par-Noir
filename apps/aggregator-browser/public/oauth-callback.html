@@ -48,15 +48,16 @@
   
   <script>
     // This page handles OAuth callback redirects
-    // Extract code from URL and send to parent window
+    // Extract code from URL
     const urlParams = new URLSearchParams(window.location.search);
     const code = urlParams.get('code');
     const state = urlParams.get('state');
     const error = urlParams.get('error');
     
-    console.log('oauth-callback.html loaded', { code, state, error, hasOpener: !!window.opener });
+    console.log('oauth-callback.html loaded', { code, state, error });
     
-    // Use localStorage event to communicate with main window (works even if window.opener is lost)
+    // Store in localStorage with unique key to avoid conflicts
+    const callbackKey = `pn_oauth_callback_${Date.now()}`;
     const oauthData = {
       type: 'oauth_callback',
       code: code,
@@ -65,20 +66,15 @@
       timestamp: Date.now()
     };
     
-    console.log('Storing OAuth data in localStorage:', oauthData);
-    localStorage.setItem('pn_oauth_callback', JSON.stringify(oauthData));
+    console.log('Storing OAuth callback:', callbackKey, oauthData);
+    localStorage.setItem(callbackKey, JSON.stringify(oauthData));
     
-    // Trigger storage event manually (some browsers don't fire it for same-tab writes)
-    // The main window will listen for this
-    window.dispatchEvent(new StorageEvent('storage', {
-      key: 'pn_oauth_callback',
-      newValue: JSON.stringify(oauthData),
-      oldValue: null
-    }));
+    // Also set a flag that main window is polling for
+    localStorage.setItem('pn_oauth_pending', 'true');
+    localStorage.setItem('pn_oauth_latest_key', callbackKey);
     
-    // Also try postMessage as fallback
+    // Try postMessage if opener exists
     if (window.opener && !window.opener.closed) {
-      console.log('Sending message via postMessage...');
       try {
         window.opener.postMessage(oauthData, window.location.origin);
         console.log('Message sent via postMessage');
@@ -87,38 +83,25 @@
       }
     }
     
-    // Try to close popup
-    console.log('Attempting to close popup...');
+    // Show success message and try to close
+    document.body.innerHTML = `
+      <div style="padding: 40px; text-align: center;">
+        <div style="color: #10b981; font-size: 24px; margin-bottom: 16px;">✓ Authorization Complete</div>
+        <p style="color: #9ca3af;">You can close this window.</p>
+      </div>
+    `;
+    
+    // Try to close immediately
     window.close();
     
     // Multiple close attempts
-    setTimeout(() => {
-      if (!window.closed) {
-        console.log('Close attempt 1');
-        window.close();
-      }
-    }, 50);
-    
-    setTimeout(() => {
-      if (!window.closed) {
-        console.log('Close attempt 2');
-        window.close();
-      }
-    }, 100);
-    
-    setTimeout(() => {
-      if (!window.closed) {
-        console.log('Close attempt 3');
-        window.close();
-      }
-    }, 200);
-    
-    setTimeout(() => {
-      if (!window.closed) {
-        console.log('Popup still open - showing close message');
-        document.body.innerHTML = '<div style="padding: 20px; text-align: center;"><p style="color: white;">Authorization complete! You can close this window.</p></div>';
-      }
-    }, 500);
+    for (let i = 1; i <= 10; i++) {
+      setTimeout(() => {
+        if (!window.closed) {
+          window.close();
+        }
+      }, i * 100);
+    }
   </script>
 </body>
 </html>

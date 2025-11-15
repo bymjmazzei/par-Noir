@@ -1102,35 +1102,52 @@ function App() {
           }
         }, 500);
         
-        // Poll localStorage aggressively (storage events don't fire in same window)
+        // Poll localStorage aggressively - check for pending flag and latest key
         const pollInterval = setInterval(() => {
-          const stored = localStorage.getItem('pn_oauth_callback');
-          if (stored) {
-            try {
-              const data = JSON.parse(stored);
-              // Only process if recent (within last 10 seconds)
-              if (data.timestamp && Date.now() - data.timestamp < 10000) {
-                console.log('OAuth callback found via polling:', data);
-                clearInterval(pollInterval);
-                clearInterval(checkPopupInterval);
-                handleOAuthCallback(data);
-                localStorage.removeItem('pn_oauth_callback');
-                // Force close popup immediately
-                if (popup && !popup.closed) {
-                  console.log('FORCING POPUP CLOSE NOW');
-                  popup.close();
-                  setTimeout(() => {
+          const pending = localStorage.getItem('pn_oauth_pending');
+          if (pending === 'true') {
+            const latestKey = localStorage.getItem('pn_oauth_latest_key');
+            if (latestKey) {
+              const stored = localStorage.getItem(latestKey);
+              if (stored) {
+                try {
+                  const data = JSON.parse(stored);
+                  // Only process if recent (within last 10 seconds)
+                  if (data.timestamp && Date.now() - data.timestamp < 10000) {
+                    console.log('OAuth callback found via polling:', data);
+                    clearInterval(pollInterval);
+                    clearInterval(checkPopupInterval);
+                    
+                    // Clear the flags
+                    localStorage.removeItem('pn_oauth_pending');
+                    localStorage.removeItem('pn_oauth_latest_key');
+                    localStorage.removeItem(latestKey);
+                    
+                    handleOAuthCallback(data);
+                    
+                    // FORCE CLOSE POPUP - try multiple times
                     if (popup && !popup.closed) {
-                      popup.close();
+                      console.log('FORCING POPUP CLOSE NOW');
+                      for (let i = 0; i < 10; i++) {
+                        setTimeout(() => {
+                          if (popup && !popup.closed) {
+                            try {
+                              popup.close();
+                            } catch (e) {
+                              console.error('Close attempt failed:', e);
+                            }
+                          }
+                        }, i * 50);
+                      }
                     }
-                  }, 50);
+                  }
+                } catch (e) {
+                  console.error('Failed to parse OAuth callback:', e);
                 }
               }
-            } catch (e) {
-              // Ignore parse errors
             }
           }
-        }, 100); // Poll every 100ms for faster detection
+        }, 50); // Poll every 50ms for fastest detection
       } catch (err) {
         console.error('OAuth redirect error:', err);
         showErrorToast('Failed to open authentication window');
