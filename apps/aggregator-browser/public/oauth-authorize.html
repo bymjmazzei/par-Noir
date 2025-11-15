@@ -467,12 +467,12 @@
     
     // Log for debugging
     console.log('OAuth params:', { clientId, redirectUri, state, scope });
-    console.log('window.opener on page load:', window.opener);
-    console.log('window.opener.closed on page load:', window.opener ? window.opener.closed : 'N/A');
     
-    // Store if we're in a popup (check at page load before any redirects)
-    const isInPopup = !!(window.opener && !window.opener.closed);
-    console.log('isInPopup:', isInPopup);
+    // Check if we're in a popup - use URL parameter since window.opener can be lost on redirect
+    const isInPopup = urlParams.get('popup') === 'true' || !!(window.opener && !window.opener.closed);
+    console.log('isInPopup (from URL param):', urlParams.get('popup') === 'true');
+    console.log('isInPopup (from window.opener):', !!(window.opener && !window.opener.closed));
+    console.log('isInPopup (final):', isInPopup);
     
     // Determine API endpoint
     const apiEndpoint = window.location.origin.includes('localhost') 
@@ -643,11 +643,7 @@
         return;
       }
       
-      // ALWAYS check if we're in a popup (use stored value OR current check)
-      const currentlyInPopup = isInPopup || (window.opener && !window.opener.closed);
-      console.log('currentlyInPopup:', currentlyInPopup);
-      
-      if (currentlyInPopup) {
+      if (isInPopup) {
         console.log('IN POPUP - Sending message and closing...');
         try {
           const message = {
@@ -656,8 +652,23 @@
             state: state
           };
           console.log('Posting message to opener:', message);
-          window.opener.postMessage(message, window.location.origin);
-          console.log('Message posted, closing popup NOW');
+          
+          // Try to get opener - if lost, use window.parent or try to find it
+          let openerWindow = window.opener;
+          if (!openerWindow || openerWindow.closed) {
+            // Try window.parent as fallback
+            openerWindow = window.parent !== window ? window.parent : null;
+          }
+          
+          if (openerWindow && !openerWindow.closed) {
+            openerWindow.postMessage(message, window.location.origin);
+            console.log('Message posted, closing popup NOW');
+          } else {
+            console.warn('No valid opener window found, but in popup mode - will redirect');
+            // Fallback: redirect to callback page which will handle it
+            window.location.href = `${redirectUri}?code=${authorizationCode}&state=${state}`;
+            return;
+          }
           
           // Close immediately
           window.close();
@@ -668,7 +679,8 @@
           setTimeout(() => { if (!window.closed) { console.log('Close attempt 3'); window.close(); } }, 200);
         } catch (e) {
           console.error('Error sending message:', e);
-          window.close();
+          // Fallback to redirect
+          window.location.href = `${redirectUri}?code=${authorizationCode}&state=${state}`;
         }
       } else {
         console.log('NOT IN POPUP - Redirecting to:', redirectUri);
