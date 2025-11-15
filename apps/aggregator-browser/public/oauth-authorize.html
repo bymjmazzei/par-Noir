@@ -627,7 +627,7 @@
     // Consent handlers
     document.getElementById('approveBtn').addEventListener('click', () => {
       if (authorizationCode) {
-        // Always try to send code back to parent window and close popup
+        // If we're in a popup (window.opener exists), ALWAYS send message and close - NEVER redirect
         if (window.opener && !window.opener.closed) {
           try {
             window.opener.postMessage({
@@ -636,22 +636,21 @@
               state: state
             }, window.location.origin);
             // Close popup immediately after sending message
-            setTimeout(() => {
-              window.close();
-            }, 100);
+            window.close();
           } catch (e) {
-            // If postMessage fails, redirect in popup (fallback)
-            window.location.href = `${redirectUri}?code=${authorizationCode}&state=${state}`;
+            console.error('Failed to send OAuth message:', e);
+            // Still close popup even if message fails
+            window.close();
           }
         } else {
-          // No opener or opener closed - redirect in popup (fallback)
+          // Not in popup - redirect to callback page (normal OAuth flow)
           window.location.href = `${redirectUri}?code=${authorizationCode}&state=${state}`;
         }
       }
     });
     
     document.getElementById('denyBtn').addEventListener('click', () => {
-      // Always try to send error back to parent window and close popup
+      // If we're in a popup (window.opener exists), ALWAYS send message and close - NEVER redirect
       if (window.opener && !window.opener.closed) {
         try {
           window.opener.postMessage({
@@ -659,13 +658,14 @@
             error: 'access_denied',
             error_description: 'User denied access'
           }, window.location.origin);
-          setTimeout(() => {
-            window.close();
-          }, 100);
+          window.close();
         } catch (e) {
-          window.location.href = `${redirectUri}?error=access_denied`;
+          console.error('Failed to send OAuth denial message:', e);
+          // Still close popup even if message fails
+          window.close();
         }
       } else {
+        // Not in popup - redirect to callback page (normal OAuth flow)
         window.location.href = `${redirectUri}?error=access_denied`;
       }
     });
