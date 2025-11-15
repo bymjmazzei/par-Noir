@@ -54,7 +54,7 @@ import { saveToFeed } from './services/savedFeedService';
 // In production, these would come from a shared package
 
 function App() {
-  const { userState, setLocked, setUnlocked } = useUserState();
+  const { userState } = useUserState();
   const [indexedFiles, setIndexedFiles] = useState<IndexedFile[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -1016,23 +1016,35 @@ function App() {
         // Poll localStorage aggressively - check for pending flag and latest key
         // Keep polling even after popup closes (callback might arrive after popup closes)
         let callbackFound = false;
+        let pollCount = 0;
         const pollInterval = setInterval(() => {
           if (callbackFound) {
             clearInterval(pollInterval);
             return;
           }
           
+          pollCount++;
+          if (pollCount % 20 === 0) { // Log every second (20 * 50ms)
+            console.log(`[OAuth Polling] Check #${pollCount}, popup closed: ${popup.closed}`);
+          }
+          
           const pending = localStorage.getItem('pn_oauth_pending');
+          const latestKey = localStorage.getItem('pn_oauth_latest_key');
+          
+          if (pollCount % 20 === 0) {
+            console.log(`[OAuth Polling] pending=${pending}, latestKey=${latestKey}`);
+          }
+          
           if (pending === 'true') {
-            const latestKey = localStorage.getItem('pn_oauth_latest_key');
             if (latestKey) {
               const stored = localStorage.getItem(latestKey);
               if (stored) {
                 try {
                   const data = JSON.parse(stored);
+                  const age = Date.now() - data.timestamp;
                   // Only process if recent (within last 30 seconds - give more time)
-                  if (data.timestamp && Date.now() - data.timestamp < 30000) {
-                    console.log('OAuth callback found via polling:', data);
+                  if (data.timestamp && age < 30000) {
+                    console.log('✅ OAuth callback found via polling:', data, `age: ${age}ms`);
                     callbackFound = true;
                     clearInterval(pollInterval);
                     
@@ -1063,11 +1075,17 @@ function App() {
                     window.removeEventListener('message', messageListener);
                     window.removeEventListener('storage', storageListener);
                     return;
+                  } else if (pollCount % 20 === 0) {
+                    console.log(`[OAuth Polling] Callback data too old: ${age}ms`);
                   }
                 } catch (e) {
                   console.error('Failed to parse OAuth callback:', e);
                 }
+              } else if (pollCount % 20 === 0) {
+                console.log(`[OAuth Polling] No data found for key: ${latestKey}`);
               }
+            } else if (pollCount % 20 === 0) {
+              console.log('[OAuth Polling] Pending=true but no latestKey');
             }
           }
         }, 50); // Poll every 50ms for fastest detection
