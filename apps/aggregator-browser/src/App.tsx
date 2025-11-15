@@ -1107,20 +1107,12 @@ function App() {
         }, 200);
         
         // Clean up polling when popup closes
-        const checkPopup = setInterval(() => {
+        const checkPopupInterval = setInterval(() => {
           if (popup.closed) {
-            clearInterval(checkPopup);
+            clearInterval(checkPopupInterval);
             clearInterval(pollInterval);
             window.removeEventListener('message', messageListener);
             window.removeEventListener('storage', storageListener);
-          }
-        }, 500);
-        
-        // Also check if popup is closed manually
-        const checkPopup = setInterval(() => {
-          if (popup.closed) {
-            clearInterval(checkPopup);
-            window.removeEventListener('message', messageListener);
             console.log('Popup closed by user');
           }
         }, 500);
