@@ -56,52 +56,38 @@
     
     console.log('oauth-callback.html loaded', { code, state, error, hasOpener: !!window.opener });
     
-    // Try multiple methods to find the opener window
-    let openerWindow = window.opener;
+    // Use localStorage event to communicate with main window (works even if window.opener is lost)
+    const oauthData = {
+      type: 'oauth_callback',
+      code: code,
+      state: state,
+      error: error,
+      timestamp: Date.now()
+    };
     
-    // If opener is null, try window.parent (for iframes)
-    if (!openerWindow || openerWindow.closed) {
-      openerWindow = window.parent !== window ? window.parent : null;
-    }
+    console.log('Storing OAuth data in localStorage:', oauthData);
+    localStorage.setItem('pn_oauth_callback', JSON.stringify(oauthData));
     
-    // If still no opener, try to find it via window.name or other methods
-    if (!openerWindow || openerWindow.closed) {
-      // Try to access via window.top if we're in a frame
-      if (window.top !== window) {
-        openerWindow = window.top.opener || null;
-      }
-    }
+    // Trigger storage event manually (some browsers don't fire it for same-tab writes)
+    // The main window will listen for this
+    window.dispatchEvent(new StorageEvent('storage', {
+      key: 'pn_oauth_callback',
+      newValue: JSON.stringify(oauthData),
+      oldValue: null
+    }));
     
-    console.log('Found opener window:', !!openerWindow, openerWindow ? !openerWindow.closed : 'N/A');
-    
-    if (openerWindow && !openerWindow.closed) {
-      console.log('Sending message to opener...');
+    // Also try postMessage as fallback
+    if (window.opener && !window.opener.closed) {
+      console.log('Sending message via postMessage...');
       try {
-        const message = {
-          type: 'oauth_callback',
-          code: code,
-          state: state,
-          error: error
-        };
-        console.log('Posting message:', message, 'to origin:', window.location.origin);
-        openerWindow.postMessage(message, window.location.origin);
-        console.log('Message sent successfully!');
+        window.opener.postMessage(oauthData, window.location.origin);
+        console.log('Message sent via postMessage');
       } catch (e) {
-        console.error('Failed to send message:', e);
-      }
-    } else {
-      console.warn('No opener found - this should not happen in popup mode');
-      // Fallback: try to redirect opener if we can access it
-      try {
-        if (window.opener) {
-          window.opener.location.href = `/?code=${code || ''}&state=${state || ''}&error=${error || ''}`;
-        }
-      } catch (e) {
-        console.error('Cannot redirect opener:', e);
+        console.error('postMessage failed:', e);
       }
     }
     
-    // ALWAYS try to close the popup, regardless of whether message was sent
+    // Try to close popup
     console.log('Attempting to close popup...');
     window.close();
     
@@ -122,9 +108,15 @@
     
     setTimeout(() => {
       if (!window.closed) {
-        console.log('Close attempt 3 - popup may be blocked by browser');
-        // Last resort: show message to user
-        document.body.innerHTML = '<div style="padding: 20px; text-align: center;"><p>Authorization complete! You can close this window.</p></div>';
+        console.log('Close attempt 3');
+        window.close();
+      }
+    }, 200);
+    
+    setTimeout(() => {
+      if (!window.closed) {
+        console.log('Popup still open - showing close message');
+        document.body.innerHTML = '<div style="padding: 20px; text-align: center;"><p style="color: white;">Authorization complete! You can close this window.</p></div>';
       }
     }, 500);
   </script>

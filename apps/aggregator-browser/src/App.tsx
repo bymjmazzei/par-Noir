@@ -994,74 +994,127 @@ function App() {
           return;
         }
         
-        // Listen for OAuth callback message from popup
+        // Handle OAuth callback - listen for both postMessage and localStorage events
+        const handleOAuthCallback = (data: { code?: string; state?: string; error?: string; error_description?: string }) => {
+          console.log('OAuth callback received:', data);
+          
+          if (data.code) {
+            // Handle OAuth callback
+            (async () => {
+              try {
+                const tokenResponse = await PNOAuthService.exchangeCodeForToken(data.code!);
+                const userInfo = await PNOAuthService.getUserInfo(tokenResponse.access_token);
+                
+                const session = {
+                  accessToken: tokenResponse.access_token,
+                  refreshToken: tokenResponse.refresh_token,
+                  expiresAt: Date.now() + (tokenResponse.expires_in * 1000),
+                  did: userInfo.did,
+                  pnName: userInfo.pn_name
+                };
+                
+                PNOAuthService.saveSession(session);
+                setUnlocked(userInfo.did);
+                
+                // Refresh feed if needed
+                if (discoverFilesRef.current) {
+                  discoverFilesRef.current(undefined, true);
+                }
+                
+                console.log('OAuth success! User unlocked.');
+              } catch (err) {
+                console.error('OAuth callback error:', err);
+                showErrorToast('Authentication failed. Please try again.');
+              }
+            })();
+          } else if (data.error) {
+            console.error('OAuth error:', data.error);
+            showErrorToast(data.error_description || 'Authentication denied');
+          }
+          
+          // Clean up - main window closes the popup
+          if (popup && !popup.closed) {
+            console.log('Main window closing popup...');
+            try {
+              popup.close();
+              setTimeout(() => {
+                if (popup && !popup.closed) {
+                  console.log('Popup still open, forcing close from main window...');
+                  popup.close();
+                }
+              }, 100);
+            } catch (e) {
+              console.error('Failed to close popup:', e);
+            }
+          }
+          
+          // Clean up listeners
+          window.removeEventListener('message', messageListener);
+          window.removeEventListener('storage', storageListener);
+        };
+        
+        // Listen for postMessage
         const messageListener = (event: MessageEvent) => {
           console.log('Message received:', event.origin, event.data);
           
-          // Check origin - must match current window origin
           if (event.origin !== window.location.origin) {
             console.log('Origin mismatch:', event.origin, 'vs', window.location.origin);
             return;
           }
           
           if (event.data && event.data.type === 'oauth_callback') {
-            console.log('OAuth callback received:', event.data);
-            
-            if (event.data.code) {
-              // Handle OAuth callback
-              (async () => {
-                try {
-                  const tokenResponse = await PNOAuthService.exchangeCodeForToken(event.data.code);
-                  const userInfo = await PNOAuthService.getUserInfo(tokenResponse.access_token);
-                  
-                  const session = {
-                    accessToken: tokenResponse.access_token,
-                    refreshToken: tokenResponse.refresh_token,
-                    expiresAt: Date.now() + (tokenResponse.expires_in * 1000),
-                    did: userInfo.did,
-                    pnName: userInfo.pn_name
-                  };
-                  
-                  PNOAuthService.saveSession(session);
-                  setUnlocked(userInfo.did);
-                  
-                  // Refresh feed if needed
-                  if (discoverFilesRef.current) {
-                    discoverFilesRef.current(undefined, true);
-                  }
-                  
-                  console.log('OAuth success! User unlocked.');
-                } catch (err) {
-                  console.error('OAuth callback error:', err);
-                  showErrorToast('Authentication failed. Please try again.');
-                }
-              })();
-            } else if (event.data.error) {
-              console.error('OAuth error:', event.data.error);
-              showErrorToast(event.data.error_description || 'Authentication denied');
-            }
-            
-            // Clean up - main window closes the popup (more reliable than popup closing itself)
-            if (popup && !popup.closed) {
-              console.log('Main window closing popup...');
-              try {
-                popup.close();
-                // Force close if still open
-                setTimeout(() => {
-                  if (popup && !popup.closed) {
-                    console.log('Popup still open, forcing close from main window...');
-                    popup.close();
-                  }
-                }, 100);
-              } catch (e) {
-                console.error('Failed to close popup:', e);
+            handleOAuthCallback(event.data);
+          }
+        };
+        
+        // Listen for localStorage events (works even if window.opener is lost)
+        const storageListener = (event: StorageEvent) => {
+          if (event.key === 'pn_oauth_callback' && event.newValue) {
+            try {
+              const data = JSON.parse(event.newValue);
+              if (data.type === 'oauth_callback') {
+                console.log('OAuth callback received via localStorage:', data);
+                handleOAuthCallback(data);
+                // Clear the storage item
+                localStorage.removeItem('pn_oauth_callback');
               }
+            } catch (e) {
+              console.error('Failed to parse OAuth callback from localStorage:', e);
             }
-            window.removeEventListener('message', messageListener);
           }
         };
         
         window.addEventListener('message', messageListener);
+        window.addEventListener('storage', storageListener);
+        
+        // Also poll localStorage as fallback (in case storage event doesn't fire)
+        const pollInterval = setInterval(() => {
+          const stored = localStorage.getItem('pn_oauth_callback');
+          if (stored) {
+            try {
+              const data = JSON.parse(stored);
+              // Only process if recent (within last 5 seconds)
+              if (data.timestamp && Date.now() - data.timestamp < 5000) {
+                console.log('OAuth callback found via polling:', data);
+                clearInterval(pollInterval);
+                handleOAuthCallback(data);
+                localStorage.removeItem('pn_oauth_callback');
+              }
+            } catch (e) {
+              // Ignore parse errors
+            }
+          }
+        }, 200);
+        
+        // Clean up polling when popup closes
+        const checkPopup = setInterval(() => {
+          if (popup.closed) {
+            clearInterval(checkPopup);
+            clearInterval(pollInterval);
+            window.removeEventListener('message', messageListener);
+            window.removeEventListener('storage', storageListener);
+          }
+        }, 500);
         
         // Also check if popup is closed manually
         const checkPopup = setInterval(() => {
