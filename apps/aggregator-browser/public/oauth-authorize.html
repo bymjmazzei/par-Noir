@@ -467,6 +467,8 @@
     
     // Log for debugging
     console.log('OAuth params:', { clientId, redirectUri, state, scope });
+    console.log('window.opener on page load:', window.opener);
+    console.log('window.opener.closed on page load:', window.opener ? window.opener.closed : 'N/A');
     
     // Determine API endpoint
     const apiEndpoint = window.location.origin.includes('localhost') 
@@ -626,15 +628,25 @@
     
     // Consent handlers
     document.getElementById('approveBtn').addEventListener('click', () => {
+      console.log('Approve button clicked');
+      console.log('window.opener:', window.opener);
+      console.log('window.opener.closed:', window.opener ? window.opener.closed : 'N/A');
+      console.log('authorizationCode:', authorizationCode);
+      console.log('redirectUri:', redirectUri);
+      
       if (authorizationCode) {
         // If we're in a popup (window.opener exists), ALWAYS send message and close - NEVER redirect
         if (window.opener && !window.opener.closed) {
+          console.log('Sending message to opener...');
           try {
-            window.opener.postMessage({
+            const message = {
               type: 'oauth_callback',
               code: authorizationCode,
               state: state
-            }, window.location.origin);
+            };
+            console.log('Posting message:', message, 'to origin:', window.location.origin);
+            window.opener.postMessage(message, window.location.origin);
+            console.log('Message sent, closing popup...');
             // Close popup immediately after sending message
             window.close();
           } catch (e) {
@@ -643,9 +655,12 @@
             window.close();
           }
         } else {
+          console.log('No window.opener or opener closed, redirecting to:', redirectUri);
           // Not in popup - redirect to callback page (normal OAuth flow)
           window.location.href = `${redirectUri}?code=${authorizationCode}&state=${state}`;
         }
+      } else {
+        console.error('No authorization code!');
       }
     });
     

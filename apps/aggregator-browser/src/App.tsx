@@ -974,6 +974,8 @@ function App() {
       // Unlock - redirect to OAuth authorization page (external HTML page)
       try {
         const authUrl = await PNOAuthService.getAuthorizationUrlAsync();
+        console.log('Opening OAuth popup:', authUrl);
+        
         // Open in popup window (like Google OAuth)
         const popup = window.open(
           authUrl,
@@ -981,11 +983,25 @@ function App() {
           'width=500,height=600,scrollbars=yes,resizable=yes'
         );
         
+        if (!popup) {
+          console.error('Popup blocked!');
+          showErrorToast('Popup blocked. Please allow popups for this site.');
+          return;
+        }
+        
         // Listen for OAuth callback message from popup
         const messageListener = (event: MessageEvent) => {
-          if (event.origin !== window.location.origin) return;
+          console.log('Message received:', event.origin, event.data);
           
-          if (event.data.type === 'oauth_callback') {
+          // Check origin - must match current window origin
+          if (event.origin !== window.location.origin) {
+            console.log('Origin mismatch:', event.origin, 'vs', window.location.origin);
+            return;
+          }
+          
+          if (event.data && event.data.type === 'oauth_callback') {
+            console.log('OAuth callback received:', event.data);
+            
             if (event.data.code) {
               // Handle OAuth callback
               (async () => {
@@ -1008,19 +1024,39 @@ function App() {
                   if (discoverFilesRef.current) {
                     discoverFilesRef.current(undefined, true);
                   }
+                  
+                  console.log('OAuth success! User unlocked.');
                 } catch (err) {
                   console.error('OAuth callback error:', err);
+                  showErrorToast('Authentication failed. Please try again.');
                 }
               })();
+            } else if (event.data.error) {
+              console.error('OAuth error:', event.data.error);
+              showErrorToast(event.data.error_description || 'Authentication denied');
             }
+            
+            // Clean up
             window.removeEventListener('message', messageListener);
-            if (popup) popup.close();
+            if (popup && !popup.closed) {
+              popup.close();
+            }
           }
         };
         
         window.addEventListener('message', messageListener);
+        
+        // Also check if popup is closed manually
+        const checkPopup = setInterval(() => {
+          if (popup.closed) {
+            clearInterval(checkPopup);
+            window.removeEventListener('message', messageListener);
+            console.log('Popup closed by user');
+          }
+        }, 500);
       } catch (err) {
         console.error('OAuth redirect error:', err);
+        showErrorToast('Failed to open authentication window');
       }
     }
   };
