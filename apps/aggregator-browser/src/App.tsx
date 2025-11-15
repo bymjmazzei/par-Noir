@@ -899,9 +899,10 @@ function App() {
         
         // Handle OAuth callback - listen for both postMessage and localStorage events
         const handleOAuthCallback = (data: { code?: string; state?: string; error?: string; error_description?: string }) => {
-          console.log('OAuth callback received:', data);
+          console.log('🔐 OAuth callback received:', data);
           
           if (data.code) {
+            console.log('🔐 Processing OAuth code:', data.code.substring(0, 20) + '...');
             // Handle OAuth callback
             (async () => {
               try {
@@ -917,14 +918,16 @@ function App() {
                 };
                 
                 PNOAuthService.saveSession(session);
+                console.log('🔐 Calling setUnlocked with DID:', userInfo.did);
                 setUnlocked(userInfo.did);
+                console.log('🔐 setUnlocked called, checking state...');
                 
                 // Refresh feed if needed
                 if (discoverFilesRef.current) {
                   discoverFilesRef.current(undefined, true);
                 }
                 
-                console.log('OAuth success! User unlocked.');
+                console.log('✅ OAuth success! User should be unlocked now.');
               } catch (err) {
                 console.error('OAuth callback error:', err);
                 showErrorToast('Authentication failed. Please try again.');
