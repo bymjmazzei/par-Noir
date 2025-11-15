@@ -649,6 +649,14 @@
             console.log('Message sent, closing popup...');
             // Close popup immediately after sending message
             window.close();
+            
+            // Force close after a short delay if still open (some browsers block immediate close)
+            setTimeout(() => {
+              if (!window.closed) {
+                console.log('Popup still open, forcing close...');
+                window.close();
+              }
+            }, 100);
           } catch (e) {
             console.error('Failed to send OAuth message:', e);
             // Still close popup even if message fails

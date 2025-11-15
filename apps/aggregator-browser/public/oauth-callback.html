@@ -54,30 +54,44 @@
     const state = urlParams.get('state');
     const error = urlParams.get('error');
     
+    console.log('oauth-callback.html loaded', { code, state, error, hasOpener: !!window.opener });
+    
     // Always try to send message to opener and close popup
     if (window.opener && !window.opener.closed) {
+      console.log('Sending message to opener...');
       try {
-        window.opener.postMessage({
+        const message = {
           type: 'oauth_callback',
           code: code,
           state: state,
           error: error
-        }, window.location.origin);
+        };
+        console.log('Posting message:', message);
+        window.opener.postMessage(message, window.location.origin);
+        console.log('Message sent, closing popup...');
         
-        // Close popup immediately after sending message
+        // Close popup immediately - don't wait
+        window.close();
+        
+        // Force close after a short delay if still open
         setTimeout(() => {
-          window.close();
+          if (!window.closed) {
+            console.log('Popup still open, forcing close...');
+            window.close();
+          }
         }, 100);
       } catch (e) {
-        // If postMessage fails, try to redirect opener
-        if (window.opener && !window.opener.closed) {
-          window.opener.location.href = `/?code=${code || ''}&state=${state || ''}&error=${error || ''}`;
-        }
+        console.error('Failed to send message:', e);
+        // Still try to close
+        window.close();
         setTimeout(() => {
-          window.close();
+          if (!window.closed) {
+            window.close();
+          }
         }, 100);
       }
     } else {
+      console.log('No opener, redirecting to main app');
       // If no opener, redirect to main app (not in popup)
       window.location.href = '/';
     }
