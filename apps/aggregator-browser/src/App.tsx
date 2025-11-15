@@ -292,6 +292,25 @@ function App() {
   }, [indexedFiles, activeFeedId, userState.preferences.subscribedFeedIds]);
 
   // Navigation handlers (memoized)
+  const handleNextPost = useCallback(() => {
+    if (!feedScrollRef.current) return;
+    const currentScroll = feedScrollRef.current.scrollTop;
+    const viewportHeight = feedScrollRef.current.clientHeight;
+    feedScrollRef.current.scrollTo({
+      top: currentScroll + viewportHeight,
+      behavior: 'smooth'
+    });
+  }, []);
+
+  const handlePreviousPost = useCallback(() => {
+    if (!feedScrollRef.current) return;
+    const currentScroll = feedScrollRef.current.scrollTop;
+    const viewportHeight = feedScrollRef.current.clientHeight;
+    feedScrollRef.current.scrollTo({
+      top: currentScroll - viewportHeight,
+      behavior: 'smooth'
+    });
+  }, []);
 
   const handleNextFeed = useCallback(() => {
     const nextFeedId = getNextFeed(activeFeedId);
@@ -308,19 +327,6 @@ function App() {
       setCurrentFeedIndex(0); // Reset to first item in new feed
     }
   }, [getPreviousFeed, activeFeedId]);
-  
-  // Feed post navigation (for keyboard shortcuts)
-  const handleNextPost = useCallback(() => {
-    if (currentFeedIndex < filteredFilesByFeed.length - 1) {
-      setCurrentFeedIndex(currentFeedIndex + 1);
-    }
-  }, [currentFeedIndex, filteredFilesByFeed.length]);
-
-  const handlePreviousPost = useCallback(() => {
-    if (currentFeedIndex > 0) {
-      setCurrentFeedIndex(currentFeedIndex - 1);
-    }
-  }, [currentFeedIndex]);
 
   const handleTogglePlayPause = useCallback(() => {
     if (!visibleFileId) return;
