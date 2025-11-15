@@ -920,12 +920,23 @@ function App() {
         const handleOAuthCallback = (data: { code?: string; state?: string; error?: string; error_description?: string }) => {
           console.log('OAuth callback received:', data);
           
+          // Verify state matches stored state
+          const storedState = sessionStorage.getItem('pn_oauth_state');
+          if (data.state && storedState && data.state !== storedState) {
+            console.error('OAuth state mismatch!', { received: data.state, stored: storedState });
+            showErrorToast('Security error: State mismatch. Please try again.');
+            return;
+          }
+          
           if (data.code) {
             // Handle OAuth callback
             (async () => {
               try {
+                console.log('Exchanging code for token...');
                 const tokenResponse = await PNOAuthService.exchangeCodeForToken(data.code!);
+                console.log('Token received, getting user info...');
                 const userInfo = await PNOAuthService.getUserInfo(tokenResponse.access_token);
+                console.log('User info:', userInfo);
                 
                 const session = {
                   accessToken: tokenResponse.access_token,
@@ -935,8 +946,16 @@ function App() {
                   pnName: userInfo.pn_name
                 };
                 
+                console.log('Saving session...');
                 PNOAuthService.saveSession(session);
+                
+                console.log('Calling setUnlocked with DID:', userInfo.did);
                 setUnlocked(userInfo.did);
+                
+                // Verify unlock worked
+                setTimeout(() => {
+                  console.log('Checking unlock state after 100ms...', userState.isUnlocked);
+                }, 100);
                 
                 // Refresh feed if needed
                 if (discoverFilesRef.current) {
@@ -944,6 +963,7 @@ function App() {
                 }
                 
                 console.log('OAuth success! User unlocked.');
+                success('Successfully authenticated!');
               } catch (err) {
                 console.error('OAuth callback error:', err);
                 showErrorToast('Authentication failed. Please try again.');
