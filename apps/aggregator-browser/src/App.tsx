@@ -1032,17 +1032,21 @@ function App() {
             showErrorToast(data.error_description || 'Authentication denied');
           }
           
-          // Clean up - main window closes the popup
+          // FORCE CLOSE POPUP - main window must close it (popup can't close itself after navigation)
           if (popup && !popup.closed) {
-            console.log('Main window closing popup...');
+            console.log('Main window FORCING popup close...');
             try {
+              // Multiple aggressive close attempts
               popup.close();
-              setTimeout(() => {
-                if (popup && !popup.closed) {
-                  console.log('Popup still open, forcing close from main window...');
-                  popup.close();
-                }
-              }, 100);
+              setTimeout(() => { if (popup && !popup.closed) { popup.close(); } }, 10);
+              setTimeout(() => { if (popup && !popup.closed) { popup.close(); } }, 50);
+              setTimeout(() => { if (popup && !popup.closed) { popup.close(); } }, 100);
+              setTimeout(() => { if (popup && !popup.closed) { popup.close(); } }, 200);
+              setTimeout(() => { if (popup && !popup.closed) { 
+                console.error('Popup still open after all attempts - browser may be blocking close');
+                // Last resort: try to focus main window
+                window.focus();
+              }}, 500);
             } catch (e) {
               console.error('Failed to close popup:', e);
             }
@@ -1087,24 +1091,35 @@ function App() {
         window.addEventListener('message', messageListener);
         window.addEventListener('storage', storageListener);
         
-        // Also poll localStorage as fallback (in case storage event doesn't fire)
+        // Poll localStorage aggressively (storage events don't fire in same window)
         const pollInterval = setInterval(() => {
           const stored = localStorage.getItem('pn_oauth_callback');
           if (stored) {
             try {
               const data = JSON.parse(stored);
-              // Only process if recent (within last 5 seconds)
-              if (data.timestamp && Date.now() - data.timestamp < 5000) {
+              // Only process if recent (within last 10 seconds)
+              if (data.timestamp && Date.now() - data.timestamp < 10000) {
                 console.log('OAuth callback found via polling:', data);
                 clearInterval(pollInterval);
+                clearInterval(checkPopupInterval);
                 handleOAuthCallback(data);
                 localStorage.removeItem('pn_oauth_callback');
+                // Force close popup immediately
+                if (popup && !popup.closed) {
+                  console.log('FORCING POPUP CLOSE NOW');
+                  popup.close();
+                  setTimeout(() => {
+                    if (popup && !popup.closed) {
+                      popup.close();
+                    }
+                  }, 50);
+                }
               }
             } catch (e) {
               // Ignore parse errors
             }
           }
-        }, 200);
+        }, 100); // Poll every 100ms for faster detection
         
         // Clean up polling when popup closes
         const checkPopupInterval = setInterval(() => {
