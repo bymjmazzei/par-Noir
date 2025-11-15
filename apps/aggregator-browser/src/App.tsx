@@ -1091,6 +1091,17 @@ function App() {
         window.addEventListener('message', messageListener);
         window.addEventListener('storage', storageListener);
         
+        // Clean up polling when popup closes
+        const checkPopupInterval = setInterval(() => {
+          if (popup.closed) {
+            clearInterval(checkPopupInterval);
+            clearInterval(pollInterval);
+            window.removeEventListener('message', messageListener);
+            window.removeEventListener('storage', storageListener);
+            console.log('Popup closed by user');
+          }
+        }, 500);
+        
         // Poll localStorage aggressively (storage events don't fire in same window)
         const pollInterval = setInterval(() => {
           const stored = localStorage.getItem('pn_oauth_callback');
@@ -1120,17 +1131,6 @@ function App() {
             }
           }
         }, 100); // Poll every 100ms for faster detection
-        
-        // Clean up polling when popup closes
-        const checkPopupInterval = setInterval(() => {
-          if (popup.closed) {
-            clearInterval(checkPopupInterval);
-            clearInterval(pollInterval);
-            window.removeEventListener('message', messageListener);
-            window.removeEventListener('storage', storageListener);
-            console.log('Popup closed by user');
-          }
-        }, 500);
       } catch (err) {
         console.error('OAuth redirect error:', err);
         showErrorToast('Failed to open authentication window');
