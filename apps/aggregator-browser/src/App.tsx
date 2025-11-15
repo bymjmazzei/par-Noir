@@ -71,7 +71,6 @@ function App() {
   const [activeBottomTab, setActiveBottomTab] = useState<'home' | 'search' | 'upload' | 'messages'>('home');
   const [showSearch, setShowSearch] = useState(false);
   const [showInbox, setShowInbox] = useState(false);
-  const [searchQuery, setSearchQuery] = useState('');
   const [feeds, setFeeds] = useState<Feed[]>([]); // Available feeds
   const [visibleFileId, setVisibleFileId] = useState<string | null>(null); // Currently visible file in feed mode
   const [showFeedBrowser, setShowFeedBrowser] = useState(false); // Show feed browser modal
