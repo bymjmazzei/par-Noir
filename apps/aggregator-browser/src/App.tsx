@@ -5,7 +5,7 @@
  */
 
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { Search, Filter, File, Globe, Tag, Calendar, User, Download, RefreshCw, Lock, Image as ImageIcon, X } from 'lucide-react';
+import { Search, Filter, File, Globe, Tag, Calendar, User, Download, RefreshCw, Lock, Unlock, Image as ImageIcon, X, Grid } from 'lucide-react';
 import { getMetadataIndexService } from './services/metadata/MetadataIndexService';
 import { PublicMetadata, MetadataFilters, IndexedFile, Feed } from './types/aggregator';
 import { decryptWithToken, ShareToken } from './utils/tokenDecryption';
@@ -30,7 +30,7 @@ import { CreateFeedModal } from './components/CreateFeedModal';
 import { AddToFeedModal } from './components/AddToFeedModal';
 import { NotificationBell } from './components/NotificationBell';
 import { ToastContainer } from './components/Toast';
-import { Settings, Upload, Plus } from 'lucide-react';
+import { Settings, Upload, Plus, Home, MessageSquare, Grid } from 'lucide-react';
 import { useKeyboardNavigation } from './hooks/useKeyboardNavigation';
 import { useSwipeGesture } from './hooks/useSwipeGesture';
 import { useVerticalSwipe } from './hooks/useVerticalSwipe';
@@ -68,7 +68,7 @@ function App() {
   const [viewMode, setViewMode] = useState<'grid' | 'feed'>('feed'); // Default to feed mode
   const [activeFeedId, setActiveFeedId] = useState<string>('public');
   const [currentFeedIndex, setCurrentFeedIndex] = useState(0); // Current file index in feed
-  const [activeBottomTab, setActiveBottomTab] = useState<'home' | 'search' | 'upload' | 'messages'>('home');
+  const [activeBottomTab, setActiveBottomTab] = useState<'home' | 'search' | 'upload' | 'index' | 'messages'>('home');
   const [showSearch, setShowSearch] = useState(false);
   const [showInbox, setShowInbox] = useState(false);
   const [feeds, setFeeds] = useState<Feed[]>([]); // Available feeds
@@ -1113,16 +1113,33 @@ function App() {
           </div>
         )}
 
-        {/* Feed Navigation Bar - Only show in feed mode */}
+        {/* Lock/Unlock Button - Top right corner, always visible */}
+        <button
+          onClick={handleLockUnlock}
+          className="fixed top-3 right-3 z-[110] w-10 h-10 flex items-center justify-center text-white/85 hover:text-white transition-colors pointer-events-auto"
+          title={userState.isUnlocked ? 'Lock pN' : 'Unlock pN'}
+        >
+          {userState.isUnlocked ? (
+            <Unlock className="h-5 w-5" />
+          ) : (
+            <Lock className="h-5 w-5" />
+          )}
+        </button>
+
+        {/* Top Navigation Bar - TikTok Style: Text-only overlay, ONLY on home/feed screen */}
         {viewMode === 'feed' && (
-          <FeedNavBar
-            feedHierarchy={feedHierarchy}
-            activeFeedId={activeFeedId}
-            onFeedSelect={(feedId) => {
-              setActiveFeedId(feedId);
-              setCurrentFeedIndex(0);
-            }}
-          />
+          <div 
+            className="fixed top-0 left-0 right-0 h-12 flex items-center justify-center z-[100] pointer-events-none bg-transparent"
+            style={{ background: 'transparent' }}
+          >
+            {/* Feed Rail - Scrollable horizontally, centers active feed (TikTok style) */}
+            <FeedRail
+              feeds={feedRailItems}
+              activeFeedId={activeFeedId}
+              onFeedSelect={setActiveFeedId}
+              onBrowseFeeds={undefined}
+            />
+          </div>
         )}
 
         {/* Search and Filters */}
@@ -1738,28 +1755,66 @@ function App() {
           />
         )}
 
-        {/* Bottom Navigation - Only show in feed mode */}
-        {viewMode === 'feed' && (
-          <BottomNav
-            activeTab={activeBottomTab}
-            onTabChange={(tab) => {
-              setActiveBottomTab(tab);
-              if (tab === 'messages') {
-                setShowInbox(true);
-              } else if (tab === 'upload') {
-                setShowUploadModal(true);
-              } else if (tab === 'search') {
-                setShowSearch(true);
-              } else {
-                setShowInbox(false);
-                setShowSearch(false);
-              }
+        {/* Bottom Navigation Bar - Static on ALL screens: HOME, SEARCH, UPLOAD, INDEX, INBOX (5 buttons evenly spaced) */}
+        <div className="fixed bottom-0 left-0 right-0 bg-neutral-900 border-t border-neutral-700 h-16 flex items-center justify-around z-[100]">
+          <button
+            onClick={() => {
+              setActiveBottomTab('home');
+              setShowInbox(false);
+              setShowSearch(false);
             }}
-            onSearchClick={() => {
+            className={`flex flex-col items-center justify-center h-full text-white hover:text-blue-400 transition-colors ${activeBottomTab === 'home' ? 'text-blue-400' : ''}`}
+            title="Home"
+          >
+            <Home className="h-6 w-6 mb-1" />
+            <span className="text-xs font-medium">HOME</span>
+          </button>
+          <button
+            onClick={() => {
               setShowSearch(true);
+              setActiveBottomTab('search');
             }}
-          />
-        )}
+            className={`flex flex-col items-center justify-center h-full text-white hover:text-blue-400 transition-colors ${activeBottomTab === 'search' ? 'text-blue-400' : ''}`}
+            title="Search"
+          >
+            <Search className="h-6 w-6 mb-1" />
+            <span className="text-xs font-medium">SEARCH</span>
+          </button>
+          <button
+            onClick={() => {
+              setShowUploadModal(true);
+              setActiveBottomTab('upload');
+            }}
+            className={`flex flex-col items-center justify-center h-full text-white hover:text-blue-400 transition-colors ${activeBottomTab === 'upload' ? 'text-blue-400' : ''}`}
+            title="Upload"
+          >
+            <Upload className="h-6 w-6 mb-1" />
+            <span className="text-xs font-medium">UPLOAD</span>
+          </button>
+          <button
+            onClick={() => {
+              // TODO: Implement index/browse view
+              showErrorToast('Index feature coming soon');
+              setActiveBottomTab('index');
+            }}
+            className={`flex flex-col items-center justify-center h-full text-white hover:text-blue-400 transition-colors ${activeBottomTab === 'index' ? 'text-blue-400' : ''}`}
+            title="Index"
+          >
+            <Grid className="h-6 w-6 mb-1" />
+            <span className="text-xs font-medium">INDEX</span>
+          </button>
+          <button
+            onClick={() => {
+              setShowInbox(true);
+              setActiveBottomTab('messages');
+            }}
+            className={`flex flex-col items-center justify-center h-full text-white hover:text-blue-400 transition-colors ${activeBottomTab === 'messages' ? 'text-blue-400' : ''}`}
+            title="Inbox"
+          >
+            <MessageSquare className="h-6 w-6 mb-1" />
+            <span className="text-xs font-medium">INBOX</span>
+          </button>
+        </div>
 
         {/* Toast Notifications */}
         <ToastContainer toasts={toasts} onClose={removeToast} />
