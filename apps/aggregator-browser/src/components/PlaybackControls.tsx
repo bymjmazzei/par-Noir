@@ -4,7 +4,7 @@
  */
 
 import React, { useState, useRef, useEffect } from 'react';
-import { Pause, Play, Volume2, VolumeX, Gauge, ClosedCaptioning } from 'lucide-react';
+import { Pause, Play, Volume2, VolumeX, Gauge, Subtitles } from 'lucide-react';
 
 interface PlaybackControlsProps {
   videoElement: HTMLVideoElement | null;
@@ -214,7 +214,7 @@ export function PlaybackControls({
           }`}
           aria-label={showCaptions ? 'Hide Captions' : 'Show Captions'}
         >
-          <ClosedCaptioning className="h-5 w-5 text-white" />
+          <Subtitles className="h-5 w-5 text-white" />
         </button>
       )}
     </div>
