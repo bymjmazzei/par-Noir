@@ -1770,6 +1770,12 @@ class ProductionServer {
       if (scope) consentUrl.searchParams.set('scope', scope as string);
       if (state) consentUrl.searchParams.set('state', state as string);
       if (nonce) consentUrl.searchParams.set('nonce', nonce as string);
+      
+      // Preserve popup parameter if present (for popup detection)
+      const popupParam = req.query.popup;
+      if (popupParam) {
+        consentUrl.searchParams.set('popup', popupParam as string);
+      }
 
       // Redirect to the browser app's consent page
       return res.redirect(consentUrl.toString());
