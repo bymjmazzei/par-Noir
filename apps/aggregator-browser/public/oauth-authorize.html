@@ -644,44 +644,13 @@
       }
       
       if (isInPopup) {
-        console.log('IN POPUP - Sending message and closing...');
-        try {
-          const message = {
-            type: 'oauth_callback',
-            code: authorizationCode,
-            state: state
-          };
-          console.log('Posting message to opener:', message);
-          
-          // Try to get opener - if lost, use window.parent or try to find it
-          let openerWindow = window.opener;
-          if (!openerWindow || openerWindow.closed) {
-            // Try window.parent as fallback
-            openerWindow = window.parent !== window ? window.parent : null;
-          }
-          
-          if (openerWindow && !openerWindow.closed) {
-            openerWindow.postMessage(message, window.location.origin);
-            console.log('Message posted, closing popup NOW');
-          } else {
-            console.warn('No valid opener window found, but in popup mode - will redirect');
-            // Fallback: redirect to callback page which will handle it
-            window.location.href = `${redirectUri}?code=${authorizationCode}&state=${state}`;
-            return;
-          }
-          
-          // Close immediately
-          window.close();
-          
-          // Backup close attempts
-          setTimeout(() => { if (!window.closed) { console.log('Close attempt 1'); window.close(); } }, 50);
-          setTimeout(() => { if (!window.closed) { console.log('Close attempt 2'); window.close(); } }, 100);
-          setTimeout(() => { if (!window.closed) { console.log('Close attempt 3'); window.close(); } }, 200);
-        } catch (e) {
-          console.error('Error sending message:', e);
-          // Fallback to redirect
-          window.location.href = `${redirectUri}?code=${authorizationCode}&state=${state}`;
-        }
+        console.log('IN POPUP - Handling popup flow...');
+        
+        // Always redirect to oauth-callback.html when in popup mode
+        // oauth-callback.html will send the message and close the popup
+        const callbackUrl = `${window.location.origin}/oauth-callback.html?code=${authorizationCode}&state=${state}`;
+        console.log('Redirecting popup to callback page:', callbackUrl);
+        window.location.href = callbackUrl;
       } else {
         console.log('NOT IN POPUP - Redirecting to:', redirectUri);
         window.location.href = `${redirectUri}?code=${authorizationCode}&state=${state}`;

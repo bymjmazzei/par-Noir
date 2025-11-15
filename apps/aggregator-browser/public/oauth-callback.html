@@ -56,8 +56,25 @@
     
     console.log('oauth-callback.html loaded', { code, state, error, hasOpener: !!window.opener });
     
-    // Always try to send message to opener and close popup
-    if (window.opener && !window.opener.closed) {
+    // Try multiple methods to find the opener window
+    let openerWindow = window.opener;
+    
+    // If opener is null, try window.parent (for iframes)
+    if (!openerWindow || openerWindow.closed) {
+      openerWindow = window.parent !== window ? window.parent : null;
+    }
+    
+    // If still no opener, try to find it via window.name or other methods
+    if (!openerWindow || openerWindow.closed) {
+      // Try to access via window.top if we're in a frame
+      if (window.top !== window) {
+        openerWindow = window.top.opener || null;
+      }
+    }
+    
+    console.log('Found opener window:', !!openerWindow, openerWindow ? !openerWindow.closed : 'N/A');
+    
+    if (openerWindow && !openerWindow.closed) {
       console.log('Sending message to opener...');
       try {
         const message = {
@@ -66,35 +83,50 @@
           state: state,
           error: error
         };
-        console.log('Posting message:', message);
-        window.opener.postMessage(message, window.location.origin);
-        console.log('Message sent, closing popup...');
-        
-        // Close popup immediately - don't wait
-        window.close();
-        
-        // Force close after a short delay if still open
-        setTimeout(() => {
-          if (!window.closed) {
-            console.log('Popup still open, forcing close...');
-            window.close();
-          }
-        }, 100);
+        console.log('Posting message:', message, 'to origin:', window.location.origin);
+        openerWindow.postMessage(message, window.location.origin);
+        console.log('Message sent successfully!');
       } catch (e) {
         console.error('Failed to send message:', e);
-        // Still try to close
-        window.close();
-        setTimeout(() => {
-          if (!window.closed) {
-            window.close();
-          }
-        }, 100);
       }
     } else {
-      console.log('No opener, redirecting to main app');
-      // If no opener, redirect to main app (not in popup)
-      window.location.href = '/';
+      console.warn('No opener found - this should not happen in popup mode');
+      // Fallback: try to redirect opener if we can access it
+      try {
+        if (window.opener) {
+          window.opener.location.href = `/?code=${code || ''}&state=${state || ''}&error=${error || ''}`;
+        }
+      } catch (e) {
+        console.error('Cannot redirect opener:', e);
+      }
     }
+    
+    // ALWAYS try to close the popup, regardless of whether message was sent
+    console.log('Attempting to close popup...');
+    window.close();
+    
+    // Multiple close attempts
+    setTimeout(() => {
+      if (!window.closed) {
+        console.log('Close attempt 1');
+        window.close();
+      }
+    }, 50);
+    
+    setTimeout(() => {
+      if (!window.closed) {
+        console.log('Close attempt 2');
+        window.close();
+      }
+    }, 100);
+    
+    setTimeout(() => {
+      if (!window.closed) {
+        console.log('Close attempt 3 - popup may be blocked by browser');
+        // Last resort: show message to user
+        document.body.innerHTML = '<div style="padding: 20px; text-align: center;"><p>Authorization complete! You can close this window.</p></div>';
+      }
+    }, 500);
   </script>
 </body>
 </html>
