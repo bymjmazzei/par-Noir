@@ -1013,19 +1013,15 @@ function App() {
         window.addEventListener('message', messageListener);
         window.addEventListener('storage', storageListener);
         
-        // Clean up polling when popup closes
-        const checkPopupInterval = setInterval(() => {
-          if (popup.closed) {
-            clearInterval(checkPopupInterval);
-            clearInterval(pollInterval);
-            window.removeEventListener('message', messageListener);
-            window.removeEventListener('storage', storageListener);
-            console.log('Popup closed by user');
-          }
-        }, 500);
-        
         // Poll localStorage aggressively - check for pending flag and latest key
+        // Keep polling even after popup closes (callback might arrive after popup closes)
+        let callbackFound = false;
         const pollInterval = setInterval(() => {
+          if (callbackFound) {
+            clearInterval(pollInterval);
+            return;
+          }
+          
           const pending = localStorage.getItem('pn_oauth_pending');
           if (pending === 'true') {
             const latestKey = localStorage.getItem('pn_oauth_latest_key');
@@ -1034,11 +1030,11 @@ function App() {
               if (stored) {
                 try {
                   const data = JSON.parse(stored);
-                  // Only process if recent (within last 10 seconds)
-                  if (data.timestamp && Date.now() - data.timestamp < 10000) {
+                  // Only process if recent (within last 30 seconds - give more time)
+                  if (data.timestamp && Date.now() - data.timestamp < 30000) {
                     console.log('OAuth callback found via polling:', data);
+                    callbackFound = true;
                     clearInterval(pollInterval);
-                    clearInterval(checkPopupInterval);
                     
                     // Clear the flags
                     localStorage.removeItem('pn_oauth_pending');
@@ -1062,6 +1058,11 @@ function App() {
                         }, i * 50);
                       }
                     }
+                    
+                    // Clean up listeners
+                    window.removeEventListener('message', messageListener);
+                    window.removeEventListener('storage', storageListener);
+                    return;
                   }
                 } catch (e) {
                   console.error('Failed to parse OAuth callback:', e);
@@ -1070,6 +1071,26 @@ function App() {
             }
           }
         }, 50); // Poll every 50ms for fastest detection
+        
+        // Stop polling after 30 seconds (timeout)
+        setTimeout(() => {
+          if (!callbackFound) {
+            console.log('OAuth polling timeout - no callback received');
+            clearInterval(pollInterval);
+            window.removeEventListener('message', messageListener);
+            window.removeEventListener('storage', storageListener);
+          }
+        }, 30000);
+        
+        // Clean up when popup closes (but keep polling for callback)
+        const checkPopupInterval = setInterval(() => {
+          if (popup.closed && callbackFound) {
+            clearInterval(checkPopupInterval);
+            console.log('Popup closed and callback processed');
+          } else if (popup.closed && !callbackFound) {
+            console.log('Popup closed, but still polling for callback...');
+          }
+        }, 500);
       } catch (err) {
         console.error('OAuth redirect error:', err);
         showErrorToast('Failed to open authentication window');
