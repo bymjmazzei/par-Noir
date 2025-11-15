@@ -1036,11 +1036,23 @@ function App() {
               showErrorToast(event.data.error_description || 'Authentication denied');
             }
             
-            // Clean up
-            window.removeEventListener('message', messageListener);
+            // Clean up - main window closes the popup (more reliable than popup closing itself)
             if (popup && !popup.closed) {
-              popup.close();
+              console.log('Main window closing popup...');
+              try {
+                popup.close();
+                // Force close if still open
+                setTimeout(() => {
+                  if (popup && !popup.closed) {
+                    console.log('Popup still open, forcing close from main window...');
+                    popup.close();
+                  }
+                }, 100);
+              } catch (e) {
+                console.error('Failed to close popup:', e);
+              }
             }
+            window.removeEventListener('message', messageListener);
           }
         };
         
