@@ -54,7 +54,12 @@ import { saveToFeed } from './services/savedFeedService';
 // In production, these would come from a shared package
 
 function App() {
-  const { userState } = useUserState();
+  const { userState, setLocked, setUnlocked } = useUserState();
+  
+  // Debug: Log unlock state changes
+  useEffect(() => {
+    console.log('🔓 User unlock state changed:', { isUnlocked: userState.isUnlocked, pnIdentifier: userState.pnIdentifier });
+  }, [userState.isUnlocked, userState.pnIdentifier]);
   const [indexedFiles, setIndexedFiles] = useState<IndexedFile[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -287,25 +292,6 @@ function App() {
   }, [indexedFiles, activeFeedId, userState.preferences.subscribedFeedIds]);
 
   // Navigation handlers (memoized)
-  const handleNextPost = useCallback(() => {
-    if (!feedScrollRef.current) return;
-    const currentScroll = feedScrollRef.current.scrollTop;
-    const viewportHeight = feedScrollRef.current.clientHeight;
-    feedScrollRef.current.scrollTo({
-      top: currentScroll + viewportHeight,
-      behavior: 'smooth'
-    });
-  }, []);
-
-  const handlePreviousPost = useCallback(() => {
-    if (!feedScrollRef.current) return;
-    const currentScroll = feedScrollRef.current.scrollTop;
-    const viewportHeight = feedScrollRef.current.clientHeight;
-    feedScrollRef.current.scrollTo({
-      top: currentScroll - viewportHeight,
-      behavior: 'smooth'
-    });
-  }, []);
 
   const handleNextFeed = useCallback(() => {
     const nextFeedId = getNextFeed(activeFeedId);
