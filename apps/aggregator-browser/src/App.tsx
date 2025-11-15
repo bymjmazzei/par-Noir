@@ -322,18 +322,6 @@ function App() {
       setCurrentFeedIndex(0); // Reset to first item in new feed
     }
   }, [getPreviousFeed, activeFeedId]);
-  
-  const handleNextPost = useCallback(() => {
-    if (currentFeedIndex < filteredFilesByFeed.length - 1) {
-      setCurrentFeedIndex(currentFeedIndex + 1);
-    }
-  }, [currentFeedIndex, filteredFilesByFeed.length]);
-
-  const handlePreviousPost = useCallback(() => {
-    if (currentFeedIndex > 0) {
-      setCurrentFeedIndex(currentFeedIndex - 1);
-    }
-  }, [currentFeedIndex]);
 
   const handleTogglePlayPause = useCallback(() => {
     if (!visibleFileId) return;
