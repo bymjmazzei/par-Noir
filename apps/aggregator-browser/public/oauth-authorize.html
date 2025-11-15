@@ -1,0 +1,674 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Authorize - par Noir Browser</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+      background: #000 url('/branding/Par-Noir-Background-Dark.png') center/cover no-repeat fixed;
+      color: #fff;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+      position: relative;
+    }
+    
+    body::before {
+      content: '';
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(0, 0, 0, 0.7);
+      z-index: 0;
+    }
+    
+    .container {
+      width: 100%;
+      max-width: 420px;
+      position: relative;
+      z-index: 1;
+    }
+    
+    .header {
+      text-align: center;
+      margin-bottom: 40px;
+    }
+    
+    .logo-container {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      margin-bottom: 16px;
+      width: 120px;
+      height: 120px;
+      margin-left: auto;
+      margin-right: auto;
+      overflow: hidden;
+    }
+    
+    .logo-container img {
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+      clip-path: inset(15% 0 15% 0);
+    }
+    
+    /* Text logo and subtitle removed - using PNG logo only */
+    
+    .form-container {
+      background: rgba(26, 26, 26, 0.95);
+      border: 1px solid #333;
+      border-radius: 12px;
+      padding: 32px;
+      backdrop-filter: blur(10px);
+    }
+    
+    .step-indicator {
+      text-align: center;
+      color: #fff;
+      font-size: 12px;
+      margin-bottom: 24px;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+    }
+    
+    .step-indicator.active {
+      color: #fff;
+    }
+    
+    .form-group {
+      margin-bottom: 24px;
+      position: relative;
+    }
+    
+    label {
+      display: block;
+      color: #e5e7eb;
+      font-size: 14px;
+      font-weight: 500;
+      margin-bottom: 8px;
+    }
+    
+    .file-upload-area {
+      border: 2px dashed #4b5563;
+      border-radius: 8px;
+      padding: 16px;
+      text-align: center;
+      cursor: pointer;
+      transition: all 0.2s;
+      background: rgba(26, 26, 26, 0.95);
+    }
+    
+    .file-upload-area:hover {
+      border-color: #6b7280;
+      background: rgba(31, 31, 31, 0.95);
+    }
+    
+    .file-upload-area.has-file {
+      border-color: #3b82f6;
+      background: rgba(26, 26, 26, 0.95);
+    }
+    
+    .upload-icon {
+      font-size: 32px;
+      margin-bottom: 8px;
+      color: #6b7280;
+    }
+    
+    .file-upload-area.has-file .upload-icon {
+      color: #3b82f6;
+    }
+    
+    .file-name {
+      color: #e5e7eb;
+      font-weight: 500;
+      margin-bottom: 4px;
+    }
+    
+    .file-hint {
+      color: #6b7280;
+      font-size: 12px;
+    }
+    
+    input[type="file"] {
+      display: none;
+    }
+    
+    .input-wrapper {
+      position: relative;
+    }
+    
+    input[type="text"],
+    input[type="password"] {
+      width: 100%;
+      padding: 12px 40px 12px 16px;
+      background: rgba(26, 26, 26, 0.95);
+      border: 1px solid #333;
+      border-radius: 8px;
+      color: #fff;
+      font-size: 14px;
+      transition: all 0.2s;
+    }
+    
+    input[type="text"]:focus,
+    input[type="password"]:focus {
+      outline: none;
+      border-color: #3b82f6;
+      box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+    }
+    
+    input::placeholder {
+      color: #6b7280;
+    }
+    
+    .eye-toggle {
+      position: absolute;
+      right: 12px;
+      top: 50%;
+      transform: translateY(-50%);
+      background: none;
+      border: none;
+      color: #6b7280;
+      cursor: pointer;
+      padding: 4px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: color 0.2s;
+    }
+    
+    .eye-toggle:hover {
+      color: #9ca3af;
+    }
+    
+    .eye-toggle svg {
+      width: 20px;
+      height: 20px;
+    }
+    
+    .error {
+      background: #7f1d1d;
+      border: 1px solid #991b1b;
+      color: #fca5a5;
+      padding: 12px;
+      border-radius: 8px;
+      font-size: 14px;
+      margin-bottom: 16px;
+    }
+    
+    .button-group {
+      display: flex;
+      gap: 12px;
+      margin-top: 32px;
+    }
+    
+    button {
+      flex: 1;
+      padding: 12px 24px;
+      border: none;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    
+    button:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+    
+    .btn-cancel {
+      background: rgba(26, 26, 26, 0.95);
+      border: 1px solid #4b5563;
+      color: #fff;
+    }
+    
+    .btn-cancel:hover:not(:disabled) {
+      background: rgba(31, 31, 31, 0.95);
+      border-color: #6b7280;
+    }
+    
+    .btn-primary {
+      background: rgba(26, 26, 26, 0.95);
+      border: 1px solid #4b5563;
+      color: #fff;
+    }
+    
+    .btn-primary:hover:not(:disabled) {
+      background: rgba(31, 31, 31, 0.95);
+      border-color: #6b7280;
+    }
+    
+    .btn-full {
+      width: 100%;
+    }
+    
+    .loading {
+      display: inline-block;
+      width: 16px;
+      height: 16px;
+      border: 2px solid rgba(255, 255, 255, 0.3);
+      border-top-color: #fff;
+      border-radius: 50%;
+      animation: spin 0.6s linear infinite;
+      margin-right: 8px;
+      vertical-align: middle;
+    }
+    
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+    
+    .permissions-list {
+      background: rgba(26, 26, 26, 0.95);
+      border: 1px solid #333;
+      border-radius: 8px;
+      padding: 16px;
+      margin-bottom: 24px;
+    }
+    
+    .permission-item {
+      display: flex;
+      align-items: center;
+      padding: 12px 0;
+      border-bottom: 1px solid #1f2937;
+    }
+    
+    .permission-item:last-child {
+      border-bottom: none;
+    }
+    
+    /* Permission icon removed - no placeholder needed */
+    
+    .permission-text {
+      flex: 1;
+    }
+    
+    .permission-title {
+      color: #e5e7eb;
+      font-weight: 500;
+      font-size: 14px;
+      margin-bottom: 2px;
+    }
+    
+    .permission-desc {
+      color: #6b7280;
+      font-size: 12px;
+    }
+    
+    .app-info {
+      background: rgba(26, 26, 26, 0.95);
+      border: 1px solid #333;
+      border-radius: 8px;
+      padding: 16px;
+      margin-bottom: 24px;
+      display: flex;
+      align-items: center;
+    }
+    
+    .app-icon {
+      width: 48px;
+      height: 48px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-right: 12px;
+    }
+    
+    .app-icon img {
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+    }
+    
+    .app-details {
+      flex: 1;
+    }
+    
+    .app-name {
+      color: #e5e7eb;
+      font-weight: 500;
+      font-size: 16px;
+      margin-bottom: 2px;
+    }
+    
+    .app-url {
+      color: #6b7280;
+      font-size: 12px;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <div class="logo-container">
+        <img src="/branding/Par-Noir-Logo-White.png" alt="par Noir" />
+      </div>
+    </div>
+    
+    <div class="form-container" id="unlockStep">
+      <div class="step-indicator active">Step 1: Unlock Your pN</div>
+      
+      <form id="unlockForm">
+        <div class="form-group">
+          <label>pN Identity File</label>
+          <div class="file-upload-area" id="fileUploadArea">
+            <div class="upload-icon">↑</div>
+            <div class="file-name" id="fileName">Tap to upload pN file</div>
+            <div class="file-hint">(.did or .json files)</div>
+            <input type="file" id="identityFile" accept=".did,.json,.pn,.id,.identity,application/json" />
+          </div>
+        </div>
+        
+        <div class="form-group">
+          <label>pN Name (Secret)</label>
+          <div class="input-wrapper">
+            <input type="password" id="pnName" placeholder="Enter your secret pN name" required autocomplete="off" />
+            <button type="button" class="eye-toggle" id="togglePnName" aria-label="Toggle pN name visibility">
+              <svg id="eyeIconPnName" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+              </svg>
+            </button>
+          </div>
+        </div>
+        
+        <div class="form-group">
+          <label>Passcode</label>
+          <div class="input-wrapper">
+            <input type="password" id="passcode" placeholder="Enter your passcode" required />
+            <button type="button" class="eye-toggle" id="togglePasscode" aria-label="Toggle passcode visibility">
+              <svg id="eyeIconPasscode" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+              </svg>
+            </button>
+          </div>
+        </div>
+        
+        <div id="errorMessage" class="error" style="display: none;"></div>
+        
+        <button type="submit" class="btn-primary btn-full" id="unlockBtn">
+          Unlock pN
+        </button>
+      </form>
+    </div>
+    
+    <div class="form-container" id="consentStep" style="display: none;">
+      <div class="step-indicator active">Step 2: Authorize Application</div>
+      
+      <div class="app-info">
+        <div class="app-icon">
+          <img src="/branding/Par-Noir-Logo-White.png" alt="par Noir" />
+        </div>
+        <div class="app-details">
+          <div class="app-name" id="appName">par Noir Browser</div>
+          <div class="app-url" id="appUrl">browse.parnoir.com</div>
+        </div>
+      </div>
+      
+      <div class="permissions-list">
+        <div class="permission-item">
+          <div class="permission-text">
+            <div class="permission-title">Access your DID (Decentralized Identifier)</div>
+            <div class="permission-desc">View your unique pN identifier for authentication</div>
+          </div>
+        </div>
+        <div class="permission-item">
+          <div class="permission-text">
+            <div class="permission-title">Access your nickname</div>
+            <div class="permission-desc">View your nickname for profile display (if available)</div>
+          </div>
+        </div>
+        <div class="permission-item">
+          <div class="permission-text">
+            <div class="permission-title">Engage with content</div>
+            <div class="permission-desc">Like, comment, and share content using your identity</div>
+          </div>
+        </div>
+        <div class="permission-item">
+          <div class="permission-text">
+            <div class="permission-title">Create and manage feeds</div>
+            <div class="permission-desc">Create feeds and manage your content collections</div>
+          </div>
+        </div>
+      </div>
+      
+      <div class="button-group">
+        <button type="button" class="btn-cancel" id="denyBtn">Deny</button>
+        <button type="button" class="btn-primary" id="approveBtn">Approve</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // Get OAuth parameters from URL
+    const urlParams = new URLSearchParams(window.location.search);
+    const clientId = urlParams.get('client_id') || 'browser-app';
+    // Use redirect_uri from URL params (set by frontend), fallback to oauth-callback.html
+    const redirectUri = urlParams.get('redirect_uri') || `${window.location.origin}/oauth-callback.html`;
+    const state = urlParams.get('state') || '';
+    const scope = urlParams.get('scope') || 'openid profile';
+    const nonce = urlParams.get('nonce') || '';
+    
+    // Log for debugging
+    console.log('OAuth params:', { clientId, redirectUri, state, scope });
+    
+    // Determine API endpoint
+    const apiEndpoint = window.location.origin.includes('localhost') 
+      ? 'http://localhost:3001' 
+      : 'https://api.parnoir.com';
+    
+    // Log for debugging
+    console.log('OAuth API Endpoint:', apiEndpoint);
+    
+    let identityData = null;
+    let authorizationCode = null;
+    
+    // Show/hide toggle for pN name
+    let showPnName = false;
+    const togglePnNameBtn = document.getElementById('togglePnName');
+    const pnNameInput = document.getElementById('pnName');
+    const eyeIconPnName = document.getElementById('eyeIconPnName');
+    
+    togglePnNameBtn.addEventListener('click', () => {
+      showPnName = !showPnName;
+      pnNameInput.type = showPnName ? 'text' : 'password';
+      // Update icon (eye open/closed)
+      if (showPnName) {
+        eyeIconPnName.innerHTML = '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.29 3.29m0 0L3 6.29m3.29 0L6.29 3m13.42 13.42L21 21M6.29 3L3 6.29m13.42 13.42L21 21" />';
+      } else {
+        eyeIconPnName.innerHTML = '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />';
+      }
+    });
+    
+    // Show/hide toggle for passcode
+    let showPasscode = false;
+    const togglePasscodeBtn = document.getElementById('togglePasscode');
+    const passcodeInput = document.getElementById('passcode');
+    const eyeIconPasscode = document.getElementById('eyeIconPasscode');
+    
+    togglePasscodeBtn.addEventListener('click', () => {
+      showPasscode = !showPasscode;
+      passcodeInput.type = showPasscode ? 'text' : 'password';
+      // Update icon (eye open/closed)
+      if (showPasscode) {
+        eyeIconPasscode.innerHTML = '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.29 3.29m0 0L3 6.29m3.29 0L6.29 3m13.42 13.42L21 21M6.29 3L3 6.29m13.42 13.42L21 21" />';
+      } else {
+        eyeIconPasscode.innerHTML = '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />';
+      }
+    });
+    
+    // File upload handler
+    const fileUploadArea = document.getElementById('fileUploadArea');
+    const identityFileInput = document.getElementById('identityFile');
+    const fileName = document.getElementById('fileName');
+    
+    fileUploadArea.addEventListener('click', () => {
+      identityFileInput.click();
+    });
+    
+    identityFileInput.addEventListener('change', (e) => {
+      const file = e.target.files?.[0];
+      if (file) {
+        fileName.textContent = file.name;
+        fileUploadArea.classList.add('has-file');
+      }
+    });
+    
+    // Unlock form handler
+    document.getElementById('unlockForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      
+      const file = identityFileInput.files?.[0];
+      const pnName = pnNameInput.value;
+      const passcode = passcodeInput.value;
+      const errorDiv = document.getElementById('errorMessage');
+      const unlockBtn = document.getElementById('unlockBtn');
+      
+      if (!file || !pnName || !passcode) {
+        errorDiv.textContent = 'Please fill in all fields';
+        errorDiv.style.display = 'block';
+        return;
+      }
+      
+      unlockBtn.disabled = true;
+      unlockBtn.innerHTML = '<span class="loading"></span> Unlocking...';
+      errorDiv.style.display = 'none';
+      
+      try {
+        // Read identity file
+        const fileText = await file.text();
+        identityData = JSON.parse(fileText);
+        
+        // Extract identity information - handle backup files with identities array
+        let encryptedIdentity;
+        let publicKey;
+        let did;
+        
+        // Check if it's a backup file with identities array
+        if (identityData.identities && Array.isArray(identityData.identities)) {
+          if (identityData.identities.length === 0) {
+            throw new Error('Invalid pN file: No identities found in backup file');
+          }
+          if (identityData.identities.length > 1) {
+            throw new Error('Invalid pN file: Multiple identities found. Please use a single identity file.');
+          }
+          // Extract the single identity from the backup
+          encryptedIdentity = identityData.identities[0];
+          publicKey = encryptedIdentity.publicKey;
+          // DID is encrypted inside, we'll extract it after decryption
+          did = null; // Will be extracted after authentication
+        } else if (identityData.publicKey && identityData.encryptedData) {
+          // Standard single identity file
+          encryptedIdentity = identityData;
+          publicKey = identityData.publicKey;
+          did = identityData.id || identityData.did || null;
+        } else {
+          throw new Error('Invalid identity file: missing public key or encrypted data');
+        }
+        
+        if (!publicKey) {
+          throw new Error('Invalid identity file: missing public key');
+        }
+        
+        // Authenticate with OAuth endpoint
+        const authResponse = await fetch(`${apiEndpoint}/oauth/authorize/authenticate`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            client_id: clientId,
+            redirect_uri: redirectUri,
+            scope: scope,
+            state: state,
+            nonce: nonce,
+            encrypted_identity: encryptedIdentity,
+            passcode: passcode,
+            public_key: publicKey,
+            did: did || '', // Empty string if not available, backend will extract it
+            pn_name: pnName
+          })
+        });
+        
+        if (!authResponse.ok) {
+          const error = await authResponse.json().catch(() => ({ error: 'Authentication failed' }));
+          throw new Error(error.error_description || error.error || 'Authentication failed');
+        }
+        
+        const authResult = await authResponse.json();
+        authorizationCode = authResult.code;
+        
+        // Show consent screen
+        document.getElementById('unlockStep').style.display = 'none';
+        document.getElementById('consentStep').style.display = 'block';
+        
+      } catch (error) {
+        errorDiv.textContent = error.message || 'Failed to unlock. Please check your passcode and try again.';
+        errorDiv.style.display = 'block';
+        unlockBtn.disabled = false;
+        unlockBtn.textContent = 'Unlock pN';
+      }
+    });
+    
+    // Consent handlers
+    document.getElementById('approveBtn').addEventListener('click', () => {
+      if (authorizationCode) {
+        // Always try to send code back to parent window and close popup
+        if (window.opener && !window.opener.closed) {
+          try {
+            window.opener.postMessage({
+              type: 'oauth_callback',
+              code: authorizationCode,
+              state: state
+            }, window.location.origin);
+            // Close popup immediately after sending message
+            setTimeout(() => {
+              window.close();
+            }, 100);
+          } catch (e) {
+            // If postMessage fails, redirect in popup (fallback)
+            window.location.href = `${redirectUri}?code=${authorizationCode}&state=${state}`;
+          }
+        } else {
+          // No opener or opener closed - redirect in popup (fallback)
+          window.location.href = `${redirectUri}?code=${authorizationCode}&state=${state}`;
+        }
+      }
+    });
+    
+    document.getElementById('denyBtn').addEventListener('click', () => {
+      // Always try to send error back to parent window and close popup
+      if (window.opener && !window.opener.closed) {
+        try {
+          window.opener.postMessage({
+            type: 'oauth_callback',
+            error: 'access_denied',
+            error_description: 'User denied access'
+          }, window.location.origin);
+          setTimeout(() => {
+            window.close();
+          }, 100);
+        } catch (e) {
+          window.location.href = `${redirectUri}?error=access_denied`;
+        }
+      } else {
+        window.location.href = `${redirectUri}?error=access_denied`;
+      }
+    });
+  </script>
+</body>
+</html>
