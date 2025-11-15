@@ -287,25 +287,6 @@ function App() {
   }, [indexedFiles, activeFeedId, userState.preferences.subscribedFeedIds]);
 
   // Navigation handlers (memoized)
-  const handleNextPost = useCallback(() => {
-    if (!feedScrollRef.current) return;
-    const currentScroll = feedScrollRef.current.scrollTop;
-    const viewportHeight = feedScrollRef.current.clientHeight;
-    feedScrollRef.current.scrollTo({
-      top: currentScroll + viewportHeight,
-      behavior: 'smooth'
-    });
-  }, []);
-
-  const handlePreviousPost = useCallback(() => {
-    if (!feedScrollRef.current) return;
-    const currentScroll = feedScrollRef.current.scrollTop;
-    const viewportHeight = feedScrollRef.current.clientHeight;
-    feedScrollRef.current.scrollTo({
-      top: currentScroll - viewportHeight,
-      behavior: 'smooth'
-    });
-  }, []);
 
   const handleNextFeed = useCallback(() => {
     const nextFeedId = getNextFeed(activeFeedId);
