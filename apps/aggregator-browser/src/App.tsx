@@ -974,12 +974,18 @@ function App() {
       // Unlock - redirect to OAuth authorization page (external HTML page)
       try {
         let authUrl = await PNOAuthService.getAuthorizationUrlAsync();
-        console.log('Opening OAuth popup:', authUrl);
+        console.log('Opening OAuth popup, original URL:', authUrl);
         
         // Add popup parameter to URL so oauth-authorize.html knows it's in a popup
-        const url = new URL(authUrl);
-        url.searchParams.set('popup', 'true');
-        authUrl = url.toString();
+        // Need to add it to the API endpoint URL before it redirects
+        try {
+          const url = new URL(authUrl);
+          url.searchParams.set('popup', 'true');
+          authUrl = url.toString();
+          console.log('Opening OAuth popup, URL with popup param:', authUrl);
+        } catch (e) {
+          console.error('Failed to add popup parameter:', e);
+        }
         
         // Open in popup window (like Google OAuth)
         const popup = window.open(

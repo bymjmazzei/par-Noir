@@ -1772,9 +1772,10 @@ class ProductionServer {
       if (nonce) consentUrl.searchParams.set('nonce', nonce as string);
       
       // Preserve popup parameter if present (for popup detection)
-      const popupParam = req.query.popup;
+      // Check both query params and the original redirect_uri for popup param
+      const popupParam = req.query.popup || (redirect_uri as string).includes('popup=true') ? 'true' : undefined;
       if (popupParam) {
-        consentUrl.searchParams.set('popup', popupParam as string);
+        consentUrl.searchParams.set('popup', 'true');
       }
 
       // Redirect to the browser app's consent page
