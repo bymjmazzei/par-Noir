@@ -470,6 +470,10 @@
     console.log('window.opener on page load:', window.opener);
     console.log('window.opener.closed on page load:', window.opener ? window.opener.closed : 'N/A');
     
+    // Store if we're in a popup (check at page load before any redirects)
+    const isInPopup = !!(window.opener && !window.opener.closed);
+    console.log('isInPopup:', isInPopup);
+    
     // Determine API endpoint
     const apiEndpoint = window.location.origin.includes('localhost') 
       ? 'http://localhost:3001' 
@@ -628,47 +632,47 @@
     
     // Consent handlers
     document.getElementById('approveBtn').addEventListener('click', () => {
-      console.log('Approve button clicked');
-      console.log('window.opener:', window.opener);
-      console.log('window.opener.closed:', window.opener ? window.opener.closed : 'N/A');
+      console.log('=== APPROVE BUTTON CLICKED ===');
       console.log('authorizationCode:', authorizationCode);
-      console.log('redirectUri:', redirectUri);
+      console.log('isInPopup (from page load):', isInPopup);
+      console.log('window.opener (current):', window.opener);
+      console.log('window.opener.closed (current):', window.opener ? window.opener.closed : 'N/A');
       
-      if (authorizationCode) {
-        // If we're in a popup (window.opener exists), ALWAYS send message and close - NEVER redirect
-        if (window.opener && !window.opener.closed) {
-          console.log('Sending message to opener...');
-          try {
-            const message = {
-              type: 'oauth_callback',
-              code: authorizationCode,
-              state: state
-            };
-            console.log('Posting message:', message, 'to origin:', window.location.origin);
-            window.opener.postMessage(message, window.location.origin);
-            console.log('Message sent, closing popup...');
-            // Close popup immediately after sending message
-            window.close();
-            
-            // Force close after a short delay if still open (some browsers block immediate close)
-            setTimeout(() => {
-              if (!window.closed) {
-                console.log('Popup still open, forcing close...');
-                window.close();
-              }
-            }, 100);
-          } catch (e) {
-            console.error('Failed to send OAuth message:', e);
-            // Still close popup even if message fails
-            window.close();
-          }
-        } else {
-          console.log('No window.opener or opener closed, redirecting to:', redirectUri);
-          // Not in popup - redirect to callback page (normal OAuth flow)
-          window.location.href = `${redirectUri}?code=${authorizationCode}&state=${state}`;
+      if (!authorizationCode) {
+        console.error('No authorization code!');
+        return;
+      }
+      
+      // ALWAYS check if we're in a popup (use stored value OR current check)
+      const currentlyInPopup = isInPopup || (window.opener && !window.opener.closed);
+      console.log('currentlyInPopup:', currentlyInPopup);
+      
+      if (currentlyInPopup) {
+        console.log('IN POPUP - Sending message and closing...');
+        try {
+          const message = {
+            type: 'oauth_callback',
+            code: authorizationCode,
+            state: state
+          };
+          console.log('Posting message to opener:', message);
+          window.opener.postMessage(message, window.location.origin);
+          console.log('Message posted, closing popup NOW');
+          
+          // Close immediately
+          window.close();
+          
+          // Backup close attempts
+          setTimeout(() => { if (!window.closed) { console.log('Close attempt 1'); window.close(); } }, 50);
+          setTimeout(() => { if (!window.closed) { console.log('Close attempt 2'); window.close(); } }, 100);
+          setTimeout(() => { if (!window.closed) { console.log('Close attempt 3'); window.close(); } }, 200);
+        } catch (e) {
+          console.error('Error sending message:', e);
+          window.close();
         }
       } else {
-        console.error('No authorization code!');
+        console.log('NOT IN POPUP - Redirecting to:', redirectUri);
+        window.location.href = `${redirectUri}?code=${authorizationCode}&state=${state}`;
       }
     });
     
