@@ -1748,6 +1748,36 @@ class ProductionServer {
         return;
     });
 
+    // GET /oauth/authorize/consent - OAuth consent page
+    // Redirects to the browser app's oauth-authorize.html page
+    // The browser app hosts the full OAuth consent UI
+    this.app.get('/oauth/authorize/consent', (req, res) => {
+      const { client_id, redirect_uri, scope, state, nonce } = req.query;
+
+      // Validate required parameters
+      if (!client_id || !redirect_uri) {
+        return res.status(400).json({
+          error: 'invalid_request',
+          error_description: 'Missing required parameters: client_id, redirect_uri'
+        });
+      }
+
+      // Extract the origin from redirect_uri (should be browse.parnoir.com)
+      const redirectUrl = new URL(redirect_uri as string);
+      const browserAppOrigin = `${redirectUrl.protocol}//${redirectUrl.host}`;
+      
+      // Redirect to the browser app's oauth-authorize.html page with OAuth params
+      const consentUrl = new URL(`${browserAppOrigin}/oauth-authorize.html`);
+      consentUrl.searchParams.set('client_id', client_id as string);
+      consentUrl.searchParams.set('redirect_uri', redirect_uri as string);
+      if (scope) consentUrl.searchParams.set('scope', scope as string);
+      if (state) consentUrl.searchParams.set('state', state as string);
+      if (nonce) consentUrl.searchParams.set('nonce', nonce as string);
+
+      // Redirect to the browser app's consent page
+      return res.redirect(consentUrl.toString());
+    });
+
     // POST /oauth/authorize/authenticate - Authenticate user with pN identity
     // Client sends encrypted identity file and passcode
     // Server decrypts, verifies, and generates authorization code
