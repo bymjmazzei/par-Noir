@@ -1737,14 +1737,14 @@ class ProductionServer {
       // For browser app, we'll handle this client-side
       const scopes = scope ? (scope as string).split(' ') : ['openid', 'profile'];
       
-        res.json({
-          authorization_url: `/oauth/authorize/consent?client_id=${client_id}&redirect_uri=${encodeURIComponent(redirect_uri as string)}&scope=${encodeURIComponent(scope as string || 'openid profile')}&state=${state || ''}&nonce=${nonce || ''}`,
-          client_id,
-          redirect_uri,
-          scope: scopes,
-          state: state || undefined,
-          nonce: nonce || undefined
-        });
+      res.json({
+        authorization_url: `/oauth/authorize/consent?client_id=${client_id}&redirect_uri=${encodeURIComponent(redirect_uri as string)}&scope=${encodeURIComponent(scope as string || 'openid profile')}&state=${state || ''}&nonce=${nonce || ''}`,
+        client_id,
+        redirect_uri,
+        scope: scopes,
+        state: state || undefined,
+        nonce: nonce || undefined
+      });
         return;
     });
 
