@@ -29,6 +29,7 @@ import { CreateFeedModal } from './components/CreateFeedModal';
 import { AddToFeedModal } from './components/AddToFeedModal';
 import { NotificationBell } from './components/NotificationBell';
 import { ToastContainer } from './components/Toast';
+import { EditFileModal } from './components/EditFileModal';
 import { Settings, Upload, Plus, Home, MessageSquare, Grid } from 'lucide-react';
 import { useKeyboardNavigation } from './hooks/useKeyboardNavigation';
 import { useSwipeGesture } from './hooks/useSwipeGesture';
@@ -282,6 +283,13 @@ function App() {
   useEffect(() => {
     setCurrentFeedIndex(0);
   }, [activeFeedId]);
+
+  // Reset feed index when opening own profile
+  useEffect(() => {
+    if (viewingCreatorId === userState.pnIdentifier && userState.isUnlocked) {
+      setCurrentFeedIndex(0);
+    }
+  }, [viewingCreatorId, userState.pnIdentifier, userState.isUnlocked]);
 
   // Mark feed as viewed when switching to it
   useEffect(() => {
@@ -1017,12 +1025,16 @@ function App() {
     };
   }
 
-  // Show creator feed page if viewing a creator
+  // State for editing file metadata
+  const [editingFile, setEditingFile] = useState<IndexedFile | null>(null);
+
+  // Show creator feed page if viewing a creator (other than self)
+  // For own profile, show simple feed view
   if (viewingCreatorId) {
     const creatorFiles = creatorFilesState;
+    const isOwnIndex = viewingCreatorId === userState.pnIdentifier && userState.isUnlocked;
     
     // If viewing own index, combine media, shares, and comments
-    const isOwnIndex = viewingCreatorId === userState.pnIdentifier && userState.isUnlocked;
     const allUserFiles = isOwnIndex 
       ? [...creatorFiles, ...userSharedFiles, ...userCommentedFiles]
       : creatorFiles;
@@ -1034,6 +1046,150 @@ function App() {
     
     console.log(`📊 Creator index: Found ${uniqueFiles.length} files for creator ${viewingCreatorId}${isOwnIndex ? ` (${creatorFiles.length} media, ${userSharedFiles.length} shared, ${userCommentedFiles.length} commented)` : ''}`);
     
+    // If viewing own profile, show simple feed view
+    if (isOwnIndex) {
+      return (
+        <div className="h-screen flex flex-col bg-black pb-20">
+          {/* Simple feed view for own profile */}
+          <div className="flex-1 overflow-hidden">
+            {uniqueFiles.length > 0 ? (
+              <FullScreenFeed
+                files={uniqueFiles}
+                currentIndex={currentFeedIndex}
+                onIndexChange={setCurrentFeedIndex}
+                onLike={(fileId) => {
+                  const wasLiked = isLiked(fileId);
+                  toggleLike(fileId);
+                  if (!wasLiked) {
+                    success('Liked!');
+                  }
+                }}
+                onComment={(file) => setCommentingFile(file)}
+                onShare={async (fileId) => {
+                  share(fileId);
+                  const file = uniqueFiles.find(f => f.metadata.fileId === fileId);
+                  if (file) {
+                    const shareUrl = `${window.location.origin}${window.location.pathname}?file=${fileId}&view=feed`;
+                    try {
+                      await navigator.clipboard.writeText(shareUrl);
+                      success('Link copied to clipboard!');
+                    } catch (err) {
+                      showErrorToast('Failed to copy link. Please try again.');
+                    }
+                  }
+                }}
+                isLiked={isLiked}
+                getLikeCount={getLikeCount}
+                getComments={getComments}
+                getShareCount={getShareCount}
+                userState={userState}
+                onCreatorClick={() => {}}
+                onEdit={(file) => setEditingFile(file)}
+              />
+            ) : (
+              <div className="h-full flex items-center justify-center text-white">
+                <EmptyState
+                  type="no-content"
+                  message="No files yet. Upload your first file to get started!"
+                />
+              </div>
+            )}
+          </div>
+          
+          {/* Bottom Navigation Bar - Always visible */}
+          <div className="fixed bottom-0 left-0 right-0 bg-neutral-900 border-t border-neutral-700 h-16 flex items-center justify-around z-[100]">
+            <button
+              onClick={() => {
+                setActiveBottomTab('home');
+                setShowInbox(false);
+                setShowSearch(false);
+                setViewingCreatorId(null);
+              }}
+              className={`flex flex-col items-center justify-center h-full text-white hover:text-blue-400 transition-colors ${activeBottomTab === 'home' ? 'text-blue-400' : ''}`}
+              title="Home"
+            >
+              <Home className="h-6 w-6 mb-1" />
+              <span className="text-xs font-medium">HOME</span>
+            </button>
+            <button
+              onClick={() => {
+                setShowSearch(true);
+                setActiveBottomTab('search');
+                setViewingCreatorId(null);
+              }}
+              className={`flex flex-col items-center justify-center h-full text-white hover:text-blue-400 transition-colors ${activeBottomTab === 'search' ? 'text-blue-400' : ''}`}
+              title="Search"
+            >
+              <Search className="h-6 w-6 mb-1" />
+              <span className="text-xs font-medium">SEARCH</span>
+            </button>
+            <button
+              onClick={() => {
+                setShowUploadModal(true);
+                setActiveBottomTab('upload');
+              }}
+              className={`flex flex-col items-center justify-center h-full text-white hover:text-blue-400 transition-colors ${activeBottomTab === 'upload' ? 'text-blue-400' : ''}`}
+              title="Upload"
+            >
+              <Upload className="h-6 w-6 mb-1" />
+              <span className="text-xs font-medium">UPLOAD</span>
+            </button>
+            <button
+              onClick={async () => {
+                if (userState.isUnlocked) {
+                  const session = PNOAuthService.loadSession();
+                  let pnIdentifier = session?.pnIdentifier || userState.pnIdentifier;
+                  
+                  if (pnIdentifier && pnIdentifier.startsWith('did:key:')) {
+                    try {
+                      if (session?.accessToken) {
+                        const userInfo = await PNOAuthService.getUserInfo(session.accessToken);
+                        if (userInfo.pn_identifier) {
+                          pnIdentifier = userInfo.pn_identifier;
+                          const updatedSession = { ...session, pnIdentifier };
+                          PNOAuthService.saveSession(updatedSession);
+                          setUnlocked(pnIdentifier);
+                        }
+                      }
+                    } catch (error) {
+                      console.warn('Failed to fetch pN identifier from userinfo:', error);
+                    }
+                  }
+                  
+                  if (pnIdentifier && !pnIdentifier.startsWith('did:key:')) {
+                    setViewingCreatorId(pnIdentifier);
+                    setActiveBottomTab('index');
+                  } else {
+                    showErrorToast('Unable to load your pN identifier');
+                  }
+                } else {
+                  showErrorToast('Unlock your pN to view your profile');
+                }
+              }}
+              className={`flex flex-col items-center justify-center h-full text-white hover:text-blue-400 transition-colors ${activeBottomTab === 'index' ? 'text-blue-400' : ''}`}
+              title="Me"
+            >
+              <Grid className="h-6 w-6 mb-1" />
+              <span className="text-xs font-medium">ME</span>
+            </button>
+            <button
+              onClick={() => {
+                setShowInbox(true);
+                setActiveBottomTab('messages');
+                setViewingCreatorId(null);
+              }}
+              className={`flex flex-col items-center justify-center h-full text-white hover:text-blue-400 transition-colors ${activeBottomTab === 'messages' ? 'text-blue-400' : ''}`}
+              title="Inbox"
+            >
+              <MessageSquare className="h-6 w-6 mb-1" />
+              <span className="text-xs font-medium">INBOX</span>
+            </button>
+          </div>
+        </div>
+      );
+    }
+    
+    // For other creators, show CreatorFeedPage
     const creatorFeeds = feeds.filter(feed => feed.creatorId === viewingCreatorId);
     
     return (
@@ -1047,7 +1203,6 @@ function App() {
           files={uniqueFiles}
           feeds={creatorFeeds}
           onFileClick={(file) => {
-            // Switch to feed mode and show file
             setViewMode('feed');
             setViewingCreatorId(null);
             const index = indexedFiles.findIndex(f => f.metadata.fileId === file.metadata.fileId);
@@ -1128,18 +1283,15 @@ function App() {
           <button
             onClick={async () => {
               if (userState.isUnlocked) {
-                // Get pN identifier from session if available, otherwise use userState.pnIdentifier
                 const session = PNOAuthService.loadSession();
                 let pnIdentifier = session?.pnIdentifier || userState.pnIdentifier;
                 
-                // If still a DID, try to fetch pN identifier from userinfo
                 if (pnIdentifier && pnIdentifier.startsWith('did:key:')) {
                   try {
                     if (session?.accessToken) {
                       const userInfo = await PNOAuthService.getUserInfo(session.accessToken);
                       if (userInfo.pn_identifier) {
                         pnIdentifier = userInfo.pn_identifier;
-                        // Update session and userState with the pN identifier
                         const updatedSession = { ...session, pnIdentifier };
                         PNOAuthService.saveSession(updatedSession);
                         setUnlocked(pnIdentifier);
@@ -1151,32 +1303,10 @@ function App() {
                 }
                 
                 if (pnIdentifier && !pnIdentifier.startsWith('did:key:')) {
-                  // Show user's own index using pN identifier (must not be a DID)
                   setViewingCreatorId(pnIdentifier);
                   setActiveBottomTab('index');
                 } else {
-                  // Still a DID - try one more time to get it from the API
-                  console.warn('⚠️ Still have DID instead of pN identifier, fetching from API...');
-                  try {
-                    const session = PNOAuthService.loadSession();
-                    if (session?.accessToken) {
-                      const userInfo = await PNOAuthService.getUserInfo(session.accessToken);
-                      if (userInfo.pn_identifier && !userInfo.pn_identifier.startsWith('did:key:')) {
-                        const updatedSession = { ...session, pnIdentifier: userInfo.pn_identifier };
-                        PNOAuthService.saveSession(updatedSession);
-                        setUnlocked(userInfo.pn_identifier);
-                        setViewingCreatorId(userInfo.pn_identifier);
-                        setActiveBottomTab('index');
-                      } else {
-                        showErrorToast('Unable to load your pN identifier from API');
-                      }
-                    } else {
-                      showErrorToast('No active session found');
-                    }
-                  } catch (error) {
-                    console.error('Failed to fetch pN identifier:', error);
-                    showErrorToast('Unable to load your pN identifier');
-                  }
+                  showErrorToast('Unable to load your pN identifier');
                 }
               } else {
                 showErrorToast('Unlock your pN to view your profile');
@@ -2077,6 +2207,34 @@ function App() {
           <CommentModal
             file={commentingFile}
             onClose={() => setCommentingFile(null)}
+          />
+        )}
+
+        {/* Edit File Modal */}
+        {editingFile && (
+          <EditFileModal
+            file={editingFile}
+            onClose={() => setEditingFile(null)}
+            onSave={(updatedFile) => {
+              // Update the file in creatorFilesState
+              setCreatorFilesState(prev => 
+                prev.map(f => 
+                  f.metadata.fileId === updatedFile.metadata.fileId ? updatedFile : f
+                )
+              );
+              // Also update in indexedFiles if it exists there
+              setIndexedFiles(prev =>
+                prev.map(f =>
+                  f.metadata.fileId === updatedFile.metadata.fileId ? updatedFile : f
+                )
+              );
+              setEditingFile(null);
+              success('File updated successfully!');
+              // Refresh files from Google Drive if needed
+              if (discoverFilesRef.current) {
+                discoverFilesRef.current(undefined, true);
+              }
+            }}
           />
         )}
 

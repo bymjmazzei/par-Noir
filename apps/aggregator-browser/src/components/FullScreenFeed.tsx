@@ -22,6 +22,7 @@ interface FullScreenFeedProps {
   onShare: (fileId: string) => void;
   onAddToFeed?: (file: IndexedFile) => void;
   onSave?: (file: IndexedFile) => void;
+  onEdit?: (file: IndexedFile) => void;
   isLiked: (fileId: string) => boolean;
   getLikeCount: (fileId: string, defaultCount: number) => number;
   getComments: (fileId: string) => any[];
@@ -42,6 +43,7 @@ export function FullScreenFeed({
   onShare,
   onAddToFeed,
   onSave,
+  onEdit,
   isLiked,
   getLikeCount,
   getComments,
@@ -376,6 +378,7 @@ export function FullScreenFeed({
                 }
               }}
               onAddToFeed={onAddToFeed ? () => onAddToFeed(indexedFile) : undefined}
+              onEdit={onEdit ? () => onEdit(indexedFile) : undefined}
               isOwner={userState.isUnlocked && userState.pnIdentifier === creatorId}
             />
 
