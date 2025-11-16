@@ -147,10 +147,11 @@ export class AggregatorMetadataServiceDB {
       }
 
       if (filters?.authorDid) {
+        // Use explicit boolean casting to ensure AND clause receives boolean values
         query += ` AND (
-          (am.metadata->'creator'->'identifier'->>'value' IS NOT NULL AND am.metadata->'creator'->'identifier'->>'value' = $${paramIndex}) OR
-          (am.metadata->'creator'->>'@id' IS NOT NULL AND am.metadata->'creator'->>'@id' = $${paramIndex}) OR
-          (am.metadata->'author'->>'did' IS NOT NULL AND am.metadata->'author'->>'did' = $${paramIndex})
+          COALESCE((am.metadata->'creator'->'identifier'->>'value')::text = $${paramIndex}::text, false) OR
+          COALESCE((am.metadata->'creator'->>'@id')::text = $${paramIndex}::text, false) OR
+          COALESCE((am.metadata->'author'->>'did')::text = $${paramIndex}::text, false)
         )`;
         params.push(filters.authorDid);
         paramIndex++;

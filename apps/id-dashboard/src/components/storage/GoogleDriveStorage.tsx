@@ -406,9 +406,23 @@ export const GoogleDriveStorage: React.FC = () => {
   };
 
   const handleDelete = async (fileId: string) => {
+    if (!confirm('Are you sure you want to delete this file? This will remove it from Google Drive and the public index.')) {
+      return;
+    }
+
     try {
       if (isDemoMode) {
         await googleDriveDemoService.deleteFile(fileId);
+        // Remove from API metadata index
+        try {
+          const apiEndpoint = process.env.REACT_APP_API_ENDPOINT || 'https://api.parnoir.com';
+          await fetch(`${apiEndpoint}/api/aggregator/metadata-index/${fileId}`, {
+            method: 'DELETE'
+          });
+        } catch (apiErr) {
+          console.warn('Failed to remove from metadata index:', apiErr);
+          // Non-critical - file is deleted from Drive, sync service will clean up
+        }
         await loadFiles();
       } else {
       const token = localStorage.getItem('google_drive_token');
@@ -416,6 +430,7 @@ export const GoogleDriveStorage: React.FC = () => {
         throw new Error('No access token found');
       }
       
+      // Delete from Google Drive
       const response = await fetch(
         `https://www.googleapis.com/drive/v3/files/${fileId}`,
         {
@@ -427,7 +442,19 @@ export const GoogleDriveStorage: React.FC = () => {
       );
       
       if (!response.ok) {
-        throw new Error('Failed to delete file');
+        throw new Error('Failed to delete file from Google Drive');
+      }
+
+      // Remove from API metadata index
+      try {
+        const apiEndpoint = process.env.REACT_APP_API_ENDPOINT || 'https://api.parnoir.com';
+        await fetch(`${apiEndpoint}/api/aggregator/metadata-index/${fileId}`, {
+          method: 'DELETE'
+        });
+        console.log('✅ Removed file from metadata index');
+      } catch (apiErr) {
+        console.warn('Failed to remove from metadata index:', apiErr);
+        // Non-critical - file is deleted from Drive, sync service will clean up
       }
       
       await loadFiles();
@@ -1078,8 +1105,8 @@ export const GoogleDriveStorage: React.FC = () => {
                       </div>
                     </div>
                     
-                    {/* Action Buttons */}
-                    <div className="flex items-center justify-between mt-3 opacity-0 group-hover:opacity-100 transition-opacity">
+                    {/* Action Buttons - Always visible for easier access */}
+                    <div className="flex items-center justify-between mt-3">
                       <div className="flex items-center space-x-1">
                         <button
                           onClick={(e) => {
