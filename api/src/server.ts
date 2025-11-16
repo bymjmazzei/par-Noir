@@ -1500,6 +1500,45 @@ class ProductionServer {
       }
     });
 
+    // POST /api/aggregator/metadata-index/refresh - Clear and rebuild index from Google Drive
+    this.app.post('/api/aggregator/metadata-index/refresh', async (req, res) => {
+      try {
+        const { AggregatorMetadataServiceDB } = await import('./server/modules/aggregatorMetadataServiceDB');
+        const { GoogleDriveSyncService } = await import('./server/modules/googleDriveSyncService');
+        const metadataService = AggregatorMetadataServiceDB.getInstance();
+        const syncService = GoogleDriveSyncService.getInstance();
+
+        console.log('🔄 Index refresh triggered via API');
+        
+        // Clear all Google Drive files from database
+        const db = (await import('./server/utils/database')).getDatabasePool();
+        const deleteResult = await db.query(
+          `DELETE FROM aggregator_metadata WHERE metadata->>'backend' LIKE 'google_drive%'`
+        );
+        
+        const deletedCount = deleteResult.rowCount || 0;
+        console.log(`🗑️ Cleared ${deletedCount} files from database`);
+
+        // Trigger fresh sync from Google Drive
+        syncService.syncFromGoogleDrive().catch(error => {
+          console.error('❌ Sync failed during refresh:', error);
+        });
+
+        return res.json({
+          success: true,
+          message: 'Index refresh started',
+          cleared: deletedCount,
+          note: 'Sync runs in background. Check logs for progress.'
+        });
+      } catch (error: any) {
+        console.error('Error refreshing index:', error);
+        return res.status(500).json({ 
+          error: 'Failed to refresh index',
+          message: error.message 
+        });
+      }
+    });
+
     // POST /api/auth/google-oauth/token - Exchange authorization code for tokens
     this.app.post('/api/auth/google-oauth/token', async (req, res) => {
       try {
