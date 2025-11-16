@@ -908,8 +908,89 @@ function App() {
           }
 
           const { loadUserFilesFromGoogleDrive } = await import('./services/googleDriveUserFilesService');
-          const driveFiles = await loadUserFilesFromGoogleDrive(token, viewingCreatorId);
-          setCreatorFilesState(driveFiles);
+          
+          // Try to load from all connected Google Drive accounts
+          let allDriveFiles: IndexedFile[] = [];
+          
+          // First, try the main token
+          try {
+            const driveFiles = await loadUserFilesFromGoogleDrive(token, viewingCreatorId);
+            allDriveFiles.push(...driveFiles);
+            console.log(`📊 Loaded ${driveFiles.length} files from primary Google Drive account`);
+          } catch (error) {
+            console.warn('Failed to load from primary Google Drive account:', error);
+          }
+          
+          // Check for multiple Google Drive accounts (from dashboard)
+          // Tokens are stored in encrypted metadata, but we can try to find them in localStorage
+          // The dashboard stores credentials with keys like: `pn_storage_credentials_${backendId}`
+          try {
+            const driveAccountsJson = localStorage.getItem('pn_google_drive_accounts');
+            if (driveAccountsJson) {
+              const driveAccounts = JSON.parse(driveAccountsJson);
+              if (Array.isArray(driveAccounts) && driveAccounts.length > 0) {
+                // Try to get tokens for all accounts
+                for (const account of driveAccounts) {
+                  if (account.backendId) {
+                    // Try multiple possible token storage keys
+                    // Based on dashboard code, tokens are stored as: `${keyPrefix}_token`
+                    const possibleKeys = [
+                      account.keyPrefix ? `${account.keyPrefix}_token` : null,
+                      account.backendId ? `${account.backendId}_token` : null,
+                      'google_drive_token' // fallback to main token
+                    ].filter(Boolean) as string[];
+                    
+                    let accountToken: string | null = null;
+                    for (const key of possibleKeys) {
+                      const stored = localStorage.getItem(key);
+                      if (stored) {
+                        // If it's JSON (encrypted credentials), try to parse
+                        try {
+                          const parsed = JSON.parse(stored);
+                          accountToken = parsed.accessToken || parsed.access_token || stored;
+                        } catch {
+                          accountToken = stored;
+                        }
+                        if (accountToken) break;
+                      }
+                    }
+                    
+                    if (accountToken && accountToken !== token) {
+                      try {
+                        const accountFiles = await loadUserFilesFromGoogleDrive(accountToken, viewingCreatorId);
+                        allDriveFiles.push(...accountFiles);
+                        console.log(`📊 Loaded ${accountFiles.length} files from additional Google Drive account: ${account.email || account.backendId}`);
+                      } catch (error) {
+                        console.warn(`Failed to load from account ${account.email || account.backendId}:`, error);
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          } catch (error) {
+            console.warn('Failed to check for multiple Google Drive accounts:', error);
+          }
+          
+          // Also get files from public index to ensure we have everything
+          const publicIndexFiles = indexedFiles.filter(f => {
+            const fileOwnerId = f.metadata.creator?.identifier?.value || 
+                                f.metadata.creator?.["@id"] || 
+                                f.metadata.author?.did ||
+                                f.metadata.creatorId;
+            const normalizedOwnerId = fileOwnerId?.trim().toLowerCase() || '';
+            const normalizedViewingId = viewingCreatorId.trim().toLowerCase();
+            return normalizedOwnerId === normalizedViewingId;
+          });
+          
+          // Combine and deduplicate by fileId
+          const combinedFiles = Array.from(
+            new Map([...allDriveFiles, ...publicIndexFiles]
+              .map(f => [f.metadata.fileId, f])).values()
+          );
+          
+          console.log(`📊 Loaded ${allDriveFiles.length} files from Google Drive (${new Set(allDriveFiles.map(f => f.metadata.fileId)).size} unique), ${publicIndexFiles.length} from public index, ${combinedFiles.length} total (deduplicated)`);
+          setCreatorFilesState(combinedFiles);
         } catch (error) {
           console.error('Failed to load files from Google Drive, falling back to public index:', error);
           // Fallback to public index
@@ -1073,12 +1154,28 @@ function App() {
           filteredMeFiles = creatorFiles;
           break;
         case 'likes':
-          // Only liked files
-          filteredMeFiles = userLikedFiles;
+          // Only liked files (exclude owned media - only show files owned by others that user liked)
+          filteredMeFiles = userLikedFiles.filter(f => {
+            const fileOwnerId = f.metadata.creator?.identifier?.value || 
+                                f.metadata.creator?.["@id"] || 
+                                f.metadata.author?.did ||
+                                f.metadata.creatorId;
+            const normalizedOwnerId = fileOwnerId?.trim().toLowerCase() || '';
+            const normalizedViewingId = viewingCreatorId.trim().toLowerCase();
+            return normalizedOwnerId !== normalizedViewingId;
+          });
           break;
         case 'comments':
-          // Only commented files
-          filteredMeFiles = userCommentedFiles;
+          // Only commented files (exclude owned media - only show files owned by others that user commented on)
+          filteredMeFiles = userCommentedFiles.filter(f => {
+            const fileOwnerId = f.metadata.creator?.identifier?.value || 
+                                f.metadata.creator?.["@id"] || 
+                                f.metadata.author?.did ||
+                                f.metadata.creatorId;
+            const normalizedOwnerId = fileOwnerId?.trim().toLowerCase() || '';
+            const normalizedViewingId = viewingCreatorId.trim().toLowerCase();
+            return normalizedOwnerId !== normalizedViewingId;
+          });
           break;
         case 'saved':
           // Only saved files (private collection)
