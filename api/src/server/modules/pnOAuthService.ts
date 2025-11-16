@@ -79,10 +79,18 @@ export class PNOAuthService {
   }): string {
     const code = crypto.randomBytes(32).toString('hex');
     
+    // Normalize redirect URI (remove trailing slash) for consistent comparison
+    const normalizedRedirectUri = params.redirectUri.replace(/\/$/, '');
+    
+    console.log('[OAuth] Generating authorization code:');
+    console.log('  Client ID:', params.clientId);
+    console.log('  Redirect URI (normalized):', normalizedRedirectUri);
+    console.log('  DID:', params.did);
+    
     authorizationCodes.set(code, {
       code,
       clientId: params.clientId,
-      redirectUri: params.redirectUri,
+      redirectUri: normalizedRedirectUri,
       scope: params.scope,
       state: params.state,
       nonce: params.nonce,
@@ -105,17 +113,30 @@ export class PNOAuthService {
     const authCode = authorizationCodes.get(params.code);
     
     if (!authCode) {
+      console.error('[OAuth] Code not found:', params.code.substring(0, 20) + '...');
       return null;
     }
 
     // Verify code hasn't expired
     if (authCode.expiresAt < Date.now()) {
+      console.error('[OAuth] Code expired. ExpiresAt:', new Date(authCode.expiresAt).toISOString(), 'Now:', new Date().toISOString());
       authorizationCodes.delete(params.code);
       return null;
     }
 
+    // Normalize redirect URIs for comparison (remove trailing slashes)
+    const storedRedirectUri = authCode.redirectUri.replace(/\/$/, '');
+    const providedRedirectUri = params.redirectUri.replace(/\/$/, '');
+    
+    console.log('[OAuth] Comparing redirect URIs:');
+    console.log('  Stored:', storedRedirectUri);
+    console.log('  Provided:', providedRedirectUri);
+    console.log('  Match:', storedRedirectUri === providedRedirectUri);
+    console.log('  Client ID match:', authCode.clientId === params.clientId);
+
     // Verify client ID and redirect URI match
-    if (authCode.clientId !== params.clientId || authCode.redirectUri !== params.redirectUri) {
+    if (authCode.clientId !== params.clientId || storedRedirectUri !== providedRedirectUri) {
+      console.error('[OAuth] Redirect URI or Client ID mismatch');
       return null;
     }
 

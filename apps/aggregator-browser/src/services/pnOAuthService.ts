@@ -128,8 +128,12 @@ export class PNOAuthService {
    */
   static async exchangeCodeForToken(code: string, redirectUri?: string): Promise<OAuthTokenResponse> {
     // Use provided redirect_uri or default to REDIRECT_URI
-    // Must match the redirect_uri used in the authorization request
-    const finalRedirectUri = redirectUri || REDIRECT_URI;
+    // Must match the redirect_uri used in the authorization request exactly
+    // Normalize to ensure exact match (remove trailing slashes, ensure consistent encoding)
+    const finalRedirectUri = (redirectUri || REDIRECT_URI).replace(/\/$/, ''); // Remove trailing slash
+    
+    console.log('🔐 [Token Exchange] Using redirect_uri:', finalRedirectUri);
+    console.log('🔐 [Token Exchange] Code (first 20 chars):', code.substring(0, 20));
     
     const response = await fetch(`${API_ENDPOINT}/oauth/token`, {
       method: 'POST',
@@ -145,7 +149,15 @@ export class PNOAuthService {
     });
 
     if (!response.ok) {
-      const error = await response.json().catch(() => ({ error: 'Token exchange failed' }));
+      const errorText = await response.text();
+      let error;
+      try {
+        error = JSON.parse(errorText);
+      } catch {
+        error = { error: 'Token exchange failed', error_description: errorText };
+      }
+      console.error('🔐 [Token Exchange] Error response:', error);
+      console.error('🔐 [Token Exchange] Status:', response.status);
       throw new Error(error.error_description || error.error || 'Token exchange failed');
     }
 
