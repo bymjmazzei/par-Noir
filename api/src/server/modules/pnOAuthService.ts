@@ -194,22 +194,29 @@ export class PNOAuthService {
         return undefined;
       }
       
-      // Combine DID + publicKey (same as dashboard: authenticatedUser.id + resolvedAuth.publicKey)
+      // EXACT DASHBOARD METHOD:
+      // Dashboard: `${authenticatedUser.id}:${resolvedAuth.publicKey}`
+      // Then: TextEncoder.encode() → crypto.subtle.digest('SHA-256') → hex → first 12 chars
       const combined = `${did}:${publicKeyToUse}`;
-      console.log('[OAuth] Deriving pN identifier (EXACT DASHBOARD METHOD):');
-      console.log('  Full DID:', did);
-      console.log('  Full PublicKey:', publicKeyToUse);
-      console.log('  Combined string:', combined);
-      console.log('  Combined length:', combined.length);
-      console.log('  Combined bytes (first 100):', Buffer.from(combined, 'utf8').toString('hex').substring(0, 100));
       
-      // Generate SHA-256 hash using UTF-8 encoding (same as dashboard's TextEncoder.encode)
-      // Dashboard: new TextEncoder().encode(combined) → Uint8Array → crypto.subtle.digest('SHA-256', data)
-      // Node.js: Buffer.from(combined, 'utf8') → Buffer → crypto.createHash('sha256').update(buffer)
-      const hash = crypto.createHash('sha256').update(combined, 'utf8').digest('hex');
+      // TextEncoder.encode() in browser = UTF-8 encoding
+      // Buffer.from(string, 'utf8') in Node.js = UTF-8 encoding (same thing)
+      const utf8Bytes = Buffer.from(combined, 'utf8');
+      
+      // crypto.subtle.digest('SHA-256', data) in browser
+      // crypto.createHash('sha256').update(buffer).digest('hex') in Node.js (same thing)
+      const hash = crypto.createHash('sha256').update(utf8Bytes).digest('hex');
+      
+      // Take first 12 hex characters (same as dashboard)
       const pnIdentifier = hash.substring(0, 12);
-      console.log('  Full hash:', hash);
-      console.log('  Derived pN identifier (first 12 chars):', pnIdentifier);
+      
+      console.log('[OAuth] pN identifier derivation:');
+      console.log('  DID:', did);
+      console.log('  PublicKey:', publicKeyToUse);
+      console.log('  Combined:', combined);
+      console.log('  Hash:', hash);
+      console.log('  pN Identifier:', pnIdentifier);
+      
       return pnIdentifier;
     } catch (error) {
       console.error('[OAuth] Failed to derive pN identifier:', error);
