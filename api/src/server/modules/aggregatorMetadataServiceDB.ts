@@ -290,14 +290,31 @@ export class AggregatorMetadataServiceDB {
     const db = getDatabasePool();
 
     try {
-      // Get all file IDs from database
+      // Get all file IDs from database (both fileId and backendFileId for Google Drive files)
       const result = await db.query(
-        'SELECT file_id FROM aggregator_metadata WHERE metadata->>\'backend\' = $1',
+        `SELECT file_id, metadata->>'fileId' as file_id_from_metadata, metadata->>'backendFileId' as backend_file_id
+         FROM aggregator_metadata 
+         WHERE metadata->>'backend' = $1`,
         ['google_drive']
       );
 
-      const dbFileIds = result.rows.map(row => row.file_id);
-      const orphanedFileIds = dbFileIds.filter(fileId => !validFileIds.has(fileId));
+      const orphanedFileIds: string[] = [];
+      
+      for (const row of result.rows) {
+        const dbFileId = row.file_id;
+        const metadataFileId = row.file_id_from_metadata;
+        const backendFileId = row.backend_file_id;
+        
+        // Check if any of the IDs (file_id, fileId, or backendFileId) match valid files
+        // If none match, this file is orphaned
+        const isOrphaned = !validFileIds.has(dbFileId) && 
+                           !validFileIds.has(metadataFileId) && 
+                           !(backendFileId && validFileIds.has(backendFileId));
+        
+        if (isOrphaned) {
+          orphanedFileIds.push(dbFileId);
+        }
+      }
 
       if (orphanedFileIds.length === 0) {
         return 0;
