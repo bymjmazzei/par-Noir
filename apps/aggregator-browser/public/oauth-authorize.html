@@ -583,6 +583,7 @@
           // Standard single identity file
           encryptedIdentity = identityData;
           publicKey = identityData.publicKey;
+          // DID might be in unencrypted part, but we'll decrypt to get the real one
           did = identityData.id || identityData.did || null;
         } else {
           throw new Error('Invalid identity file: missing public key or encrypted data');
@@ -592,9 +593,9 @@
           throw new Error('Invalid identity file: missing public key');
         }
         
-        // Decrypt identity to get DID (same as dashboard)
-        // This ensures we use the exact same DID that the dashboard uses
-        if (!did && encryptedIdentity.encryptedData && encryptedIdentity.iv && encryptedIdentity.salt) {
+        // ALWAYS decrypt identity to get DID (same as dashboard)
+        // The DID from the decrypted identity is the authoritative source
+        if (encryptedIdentity.encryptedData && encryptedIdentity.iv && encryptedIdentity.salt) {
           try {
             // Decrypt using the same method as dashboard
             const key = await crypto.subtle.importKey(
@@ -629,11 +630,23 @@
             
             const decryptedData = new TextDecoder().decode(decryptedBuffer);
             const identity = JSON.parse(decryptedData);
-            did = identity.id; // Extract DID from decrypted identity (same as dashboard)
-            console.log('✅ Decrypted identity, extracted DID:', did.substring(0, 30) + '...');
+            // Extract DID from decrypted identity (same as dashboard)
+            // This is the authoritative DID that matches what dashboard uses
+            did = identity.id || identity.did;
+            if (did) {
+              console.log('✅ Decrypted identity, extracted DID:', did.substring(0, 30) + '...');
+            } else {
+              console.error('❌ Decrypted identity but no DID found:', Object.keys(identity));
+              throw new Error('Identity file does not contain a DID');
+            }
           } catch (decryptError) {
             console.error('❌ Failed to decrypt identity:', decryptError);
             throw new Error('Failed to decrypt identity file. Please check your passcode.');
+          }
+        } else {
+          // If no encrypted data, use the DID from unencrypted part (shouldn't happen normally)
+          if (!did) {
+            throw new Error('Identity file has no encrypted data and no DID found');
           }
         }
         
