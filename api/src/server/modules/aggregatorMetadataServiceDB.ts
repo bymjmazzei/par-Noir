@@ -149,12 +149,12 @@ export class AggregatorMetadataServiceDB {
       if (filters?.authorDid) {
         // Match against pn_identifier column (from Google Drive folder name) OR full DID in metadata
         // pn_identifier is the shortened identifier like "83c1db813607" from folder names
-        // Wrap each comparison in a boolean expression to ensure type safety
+        // Use COALESCE to ensure boolean return type (NULL becomes false)
         query += ` AND (
-          (am.pn_identifier = $${paramIndex}::text) OR
-          ((am.metadata->'creator'->>'@id')::text = $${paramIndex}::text) OR
-          ((am.metadata->'creator'->'identifier'->>'value')::text = $${paramIndex}::text) OR
-          ((am.metadata->'author'->>'did')::text = $${paramIndex}::text)
+          COALESCE(am.pn_identifier = $${paramIndex}::text, false) OR
+          COALESCE((am.metadata->'creator'->>'@id')::text = $${paramIndex}::text, false) OR
+          COALESCE((am.metadata->'creator'->'identifier'->>'value')::text = $${paramIndex}::text, false) OR
+          COALESCE((am.metadata->'author'->>'did')::text = $${paramIndex}::text, false)
         )`;
         params.push(filters.authorDid);
         paramIndex++;
