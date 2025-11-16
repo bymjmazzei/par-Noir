@@ -1613,6 +1613,154 @@ class ProductionServer {
       }
     });
 
+    // Google Drive API Proxy Endpoints
+    // These endpoints require pN OAuth authentication and proxy Google Drive operations
+    this.app.get('/api/drive/files', async (req, res) => {
+      try {
+        // Extract pN OAuth token from Authorization header
+        const authHeader = req.headers.authorization;
+        if (!authHeader || !authHeader.startsWith('Bearer ')) {
+          return res.status(401).json({
+            error: 'unauthorized',
+            error_description: 'Missing or invalid Authorization header'
+          });
+        }
+
+        const token = authHeader.substring(7);
+        const { PNOAuthService } = await import('./server/modules/pnOAuthService');
+        const tokenPayload = PNOAuthService.validateAccessToken(token);
+        
+        if (!tokenPayload) {
+          return res.status(401).json({
+            error: 'unauthorized',
+            error_description: 'Invalid or expired access token'
+          });
+        }
+
+        const userDid = tokenPayload.did;
+        const { googleDriveProxyService } = await import('./server/modules/googleDriveProxy');
+        
+        const query = req.query.q as string | undefined;
+        const pageSize = req.query.pageSize ? parseInt(req.query.pageSize as string, 10) : 50;
+        
+        const files = await googleDriveProxyService.listFiles(userDid, query, pageSize);
+        
+        return res.json({ files });
+      } catch (error: any) {
+        console.error('Error listing Google Drive files:', error);
+        return res.status(500).json({
+          error: 'Failed to list files',
+          error_description: error.message || 'Failed to list Google Drive files'
+        });
+      }
+    });
+
+    this.app.post('/api/drive/files', async (req, res) => {
+      try {
+        // Extract pN OAuth token from Authorization header
+        const authHeader = req.headers.authorization;
+        if (!authHeader || !authHeader.startsWith('Bearer ')) {
+          return res.status(401).json({
+            error: 'unauthorized',
+            error_description: 'Missing or invalid Authorization header'
+          });
+        }
+
+        const token = authHeader.substring(7);
+        const { PNOAuthService } = await import('./server/modules/pnOAuthService');
+        const tokenPayload = PNOAuthService.validateAccessToken(token);
+        
+        if (!tokenPayload) {
+          return res.status(401).json({
+            error: 'unauthorized',
+            error_description: 'Invalid or expired access token'
+          });
+        }
+
+        const userDid = tokenPayload.did;
+        const { googleDriveProxyService } = await import('./server/modules/googleDriveProxy');
+        
+        // Expect multipart/form-data with 'file' and optional 'fileName', 'mimeType', 'parents'
+        // For now, accept JSON with base64 file data (simpler for initial implementation)
+        const { fileData, fileName, mimeType, parents } = req.body;
+        
+        if (!fileData || !fileName) {
+          return res.status(400).json({
+            error: 'Missing required fields',
+            error_description: 'fileData and fileName are required'
+          });
+        }
+
+        // Convert base64 to Buffer
+        const fileBuffer = Buffer.from(fileData, 'base64');
+        const file = await googleDriveProxyService.uploadFile(
+          userDid,
+          fileBuffer,
+          fileName,
+          mimeType || 'application/octet-stream',
+          parents
+        );
+        
+        return res.json({ file });
+      } catch (error: any) {
+        console.error('Error uploading file to Google Drive:', error);
+        return res.status(500).json({
+          error: 'Failed to upload file',
+          error_description: error.message || 'Failed to upload file to Google Drive'
+        });
+      }
+    });
+
+    this.app.get('/api/drive/files/:fileId', async (req, res) => {
+      try {
+        // Extract pN OAuth token from Authorization header
+        const authHeader = req.headers.authorization;
+        if (!authHeader || !authHeader.startsWith('Bearer ')) {
+          return res.status(401).json({
+            error: 'unauthorized',
+            error_description: 'Missing or invalid Authorization header'
+          });
+        }
+
+        const token = authHeader.substring(7);
+        const { PNOAuthService } = await import('./server/modules/pnOAuthService');
+        const tokenPayload = PNOAuthService.validateAccessToken(token);
+        
+        if (!tokenPayload) {
+          return res.status(401).json({
+            error: 'unauthorized',
+            error_description: 'Invalid or expired access token'
+          });
+        }
+
+        const userDid = tokenPayload.did;
+        const { fileId } = req.params;
+        const { googleDriveProxyService } = await import('./server/modules/googleDriveProxy');
+        
+        // Check if requesting metadata or file content
+        const download = req.query.download === 'true';
+        
+        if (download) {
+          const blob = await googleDriveProxyService.downloadFile(userDid, fileId);
+          const arrayBuffer = await blob.arrayBuffer();
+          const buffer = Buffer.from(arrayBuffer);
+          
+          res.setHeader('Content-Type', blob.type || 'application/octet-stream');
+          res.setHeader('Content-Disposition', `attachment; filename="${fileId}"`);
+          return res.send(buffer);
+        } else {
+          const metadata = await googleDriveProxyService.getFileMetadata(userDid, fileId);
+          return res.json({ file: metadata });
+        }
+      } catch (error: any) {
+        console.error('Error accessing Google Drive file:', error);
+        return res.status(500).json({
+          error: 'Failed to access file',
+          error_description: error.message || 'Failed to access Google Drive file'
+        });
+      }
+    });
+
     this.app.get('/api/did/:did', (req, res) => {
       // Resolve DID document
       const { did } = req.params;
