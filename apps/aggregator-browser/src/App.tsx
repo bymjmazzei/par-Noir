@@ -310,6 +310,10 @@ function App() {
 
   // Auth modal state - MUST be before early returns to satisfy Rules of Hooks
   const [showAuthModal, setShowAuthModal] = useState(false);
+  
+  // Creator files state for INDEX view - MUST be before early returns to satisfy Rules of Hooks
+  const [creatorFilesState, setCreatorFilesState] = useState<IndexedFile[]>([]);
+  const [isLoadingCreatorFiles, setIsLoadingCreatorFiles] = useState(false);
 
   // Memoize filtered files by active feed
   const filteredFilesByFeed = useMemo(() => {
@@ -864,36 +868,60 @@ function App() {
     );
   }
 
+  // Load creator files when viewing a creator (especially own index)
+  useEffect(() => {
+    if (!viewingCreatorId) {
+      setCreatorFilesState([]);
+      return;
+    }
+    
+    if (viewingCreatorId === userState.pnIdentifier && userState.isUnlocked) {
+      // Fetch user's own files from API using authorDid filter
+      setIsLoadingCreatorFiles(true);
+      (async () => {
+        try {
+          const userFiles = await metadataIndexService.discoverFiles({
+            authorDid: viewingCreatorId
+          });
+          setCreatorFilesState(userFiles);
+          console.log(`✅ Loaded ${userFiles.length} files for user's own index from API`);
+        } catch (error) {
+          console.error('Failed to load user files from API:', error);
+          // Fallback to filtering indexedFiles
+          const filtered = indexedFiles.filter(f => {
+            const did = f.metadata.creator?.identifier?.value || 
+                       f.metadata.creator?.["@id"] || 
+                       f.metadata.author?.did ||
+                       f.metadata.creatorId;
+            const normalizedDid = did?.trim().toLowerCase();
+            const normalizedViewingId = viewingCreatorId.trim().toLowerCase();
+            return normalizedDid === normalizedViewingId;
+          });
+          setCreatorFilesState(filtered);
+        } finally {
+          setIsLoadingCreatorFiles(false);
+        }
+      })();
+    } else {
+      // Filter from indexedFiles for other creators
+      const filtered = indexedFiles.filter(f => {
+        const did = f.metadata.creator?.identifier?.value || 
+                   f.metadata.creator?.["@id"] || 
+                   f.metadata.author?.did ||
+                   f.metadata.creatorId;
+        const normalizedDid = did?.trim().toLowerCase();
+        const normalizedViewingId = viewingCreatorId.trim().toLowerCase();
+        return normalizedDid === normalizedViewingId;
+      });
+      setCreatorFilesState(filtered);
+    }
+  }, [viewingCreatorId, userState.pnIdentifier, userState.isUnlocked, indexedFiles]);
+
   // Show creator feed page if viewing a creator
   if (viewingCreatorId) {
-    const creatorFiles = indexedFiles.filter(f => {
-      const did = f.metadata.creator?.identifier?.value || 
-                 f.metadata.creator?.["@id"] || 
-                 f.metadata.author?.did ||
-                 f.metadata.creatorId; // Also check creatorId field
-      
-      // Normalize DIDs for comparison (remove any whitespace, convert to lowercase)
-      const normalizedDid = did?.trim().toLowerCase();
-      const normalizedViewingId = viewingCreatorId.trim().toLowerCase();
-      
-      const matches = normalizedDid === normalizedViewingId;
-      
-      // Debug logging
-      if (matches || (did && normalizedDid?.includes(normalizedViewingId.substring(0, 20)))) {
-        console.log('🔍 Creator file match:', {
-          fileId: f.metadata.fileId,
-          did,
-          viewingCreatorId,
-          normalizedDid,
-          normalizedViewingId,
-          matches
-        });
-      }
-      
-      return matches;
-    });
+    const creatorFiles = creatorFilesState;
     
-    console.log(`📊 Creator index: Found ${creatorFiles.length} files for creator ${viewingCreatorId} out of ${indexedFiles.length} total indexed files`);
+    console.log(`📊 Creator index: Found ${creatorFiles.length} files for creator ${viewingCreatorId}`);
     
     const creatorFeeds = feeds.filter(feed => feed.creatorId === viewingCreatorId);
     
