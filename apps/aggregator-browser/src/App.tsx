@@ -880,20 +880,24 @@ function App() {
       setIsLoadingCreatorFiles(true);
       (async () => {
         try {
-          // Extract pN identifier from DID (first 16 hex chars of SHA-256 hash of public key)
-          // This matches the identifier used in Google Drive folder names (e.g., "pn-83c1db813607")
+          // Extract pN identifier using the SAME method as dashboard/desktop app
+          // Standard: Combine DID + publicKey, SHA-256 hash, take first 12 hex chars
+          // This matches Google Drive folder names like "pn-83c1db813607"
           const extractPnIdentifier = async (did: string): Promise<string> => {
             if (!did || !did.startsWith('did:key:')) {
               return did; // Fallback to full DID if format is unexpected
             }
             // Extract public key part (after did:key:)
             const publicKeyPart = did.substring(8); // Remove "did:key:" prefix
-            // Generate SHA-256 hash and take first 16 hex characters
+            // Combine DID + publicKey (same as dashboard does)
+            const combined = `${did}:${publicKeyPart}`;
+            // Generate SHA-256 hash and take first 12 hex characters (not 16!)
             const encoder = new TextEncoder();
-            const keyBuffer = encoder.encode(publicKeyPart);
+            const keyBuffer = encoder.encode(combined);
             const hashBuffer = await crypto.subtle.digest('SHA-256', keyBuffer);
             const hashArray = Array.from(new Uint8Array(hashBuffer));
-            return hashArray.map(b => b.toString(16).padStart(2, '0')).join('').substring(0, 16);
+            const hexHash = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+            return hexHash.substring(0, 12); // First 12 chars, matching dashboard standard
           };
           
           const pnIdentifier = await extractPnIdentifier(viewingCreatorId);
