@@ -477,15 +477,21 @@ function App() {
       await metadataIndexService.initialize();
       
       // Build filters with rating preferences and feed filtering
+      // NOTE: 'curated' and 'discovery' are virtual feeds - don't filter by feedId for these
+      // They are filtered client-side in filteredFilesByFeed
       const finalFilters: MetadataFilters = {
         ...filters,
         ...searchFilters,
         ...(searchQuery ? { tags: searchQuery.split(',').map(t => t.trim()).filter(Boolean) } : {}),
         // DON'T apply rating filter to public feed - public feed shows all public files
-        // Only apply rating filter to non-public feeds
-        ...(activeFeedId === 'public' ? {} : { maxRating: userState.preferences.maxRating }),
-        // Filter by active feed
-        ...(activeFeedId === 'public' ? {} : { feedId: activeFeedId })
+        // Only apply rating filter to non-public feeds (but not virtual feeds like 'curated' or 'discovery')
+        ...(activeFeedId === 'public' || activeFeedId === 'curated' || activeFeedId === 'discovery' 
+          ? {} 
+          : { maxRating: userState.preferences.maxRating }),
+        // Filter by active feed (but not for virtual feeds)
+        ...(activeFeedId === 'public' || activeFeedId === 'curated' || activeFeedId === 'discovery' 
+          ? {} 
+          : { feedId: activeFeedId })
       };
       
       // Discover public files from all users (with optional force refresh)
