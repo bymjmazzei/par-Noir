@@ -147,20 +147,20 @@ export class AggregatorMetadataServiceDB {
       }
 
       if (filters?.authorDid) {
-        // Use CASE to explicitly return boolean - handle NULL JSONB paths
+        // Cast each CASE expression to boolean explicitly to satisfy PostgreSQL type requirements
         query += ` AND (
-          CASE 
+          (CASE 
             WHEN (am.metadata->'creator'->>'@id') IS NULL THEN false
             ELSE (am.metadata->'creator'->>'@id') = $${paramIndex}
-          END OR
-          CASE 
+          END)::boolean OR
+          (CASE 
             WHEN (am.metadata->'creator'->'identifier'->>'value') IS NULL THEN false
             ELSE (am.metadata->'creator'->'identifier'->>'value') = $${paramIndex}
-          END OR
-          CASE 
+          END)::boolean OR
+          (CASE 
             WHEN (am.metadata->'author'->>'did') IS NULL THEN false
             ELSE (am.metadata->'author'->>'did') = $${paramIndex}
-          END
+          END)::boolean
         )`;
         params.push(filters.authorDid);
         paramIndex++;
