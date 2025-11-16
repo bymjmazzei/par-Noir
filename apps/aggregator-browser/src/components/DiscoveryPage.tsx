@@ -12,6 +12,7 @@ import { useUserState } from '../contexts/UserStateContext';
 interface DiscoveryPageProps {
   files: IndexedFile[];
   feeds: Feed[];
+  thumbnails?: Map<string, string>; // Thumbnail URLs by fileId
   onFileClick: (file: IndexedFile) => void;
   onFeedClick: (feed: Feed) => void;
   onCreatorClick: (creatorId: string) => void;
@@ -22,6 +23,7 @@ type DiscoveryCategory = 'trending' | 'new-creators' | 'featured' | 'classics' |
 export function DiscoveryPage({
   files,
   feeds,
+  thumbnails,
   onFileClick,
   onFeedClick,
   onCreatorClick
@@ -119,6 +121,14 @@ export function DiscoveryPage({
     );
   }, [files, feeds, selectedNiche]);
 
+  // Helper to get thumbnail URL for a file
+  const getThumbnail = (file: IndexedFile): string => {
+    if (thumbnails && thumbnails.has(file.metadata.fileId)) {
+      return thumbnails.get(file.metadata.fileId)!;
+    }
+    return file.thumbnail || '/placeholder-thumbnail.png';
+  };
+
   const getDisplayItems = () => {
     switch (activeCategory) {
       case 'trending':
@@ -126,7 +136,7 @@ export function DiscoveryPage({
           type: 'file' as const,
           id: file.metadata.fileId,
           item: file,
-          thumbnail: file.thumbnail || '/placeholder-thumbnail.png',
+          thumbnail: getThumbnail(file),
           title: file.metadata.name || file.metadata.title || 'Untitled',
           subtitle: file.metadata.creator?.identifier?.value || 'Unknown',
           metadata: `${(file.metadata.engagement?.likes || 0).toLocaleString()} likes`
@@ -137,7 +147,7 @@ export function DiscoveryPage({
           type: 'creator' as const,
           id: creator.creatorId,
           item: creator.file,
-          thumbnail: creator.file.thumbnail || '/placeholder-thumbnail.png',
+          thumbnail: getThumbnail(creator.file),
           title: creator.creatorId.substring(0, 16) + '...',
           subtitle: `${creator.fileCount} posts`,
           metadata: 'New Creator'
@@ -159,7 +169,7 @@ export function DiscoveryPage({
           type: 'file' as const,
           id: file.metadata.fileId,
           item: file,
-          thumbnail: file.thumbnail || '/placeholder-thumbnail.png',
+          thumbnail: getThumbnail(file),
           title: file.metadata.name || file.metadata.title || 'Untitled',
           subtitle: file.metadata.creator?.identifier?.value || 'Unknown',
           metadata: new Date(file.metadata.uploadDate).toLocaleDateString()
@@ -170,7 +180,7 @@ export function DiscoveryPage({
           type: 'file' as const,
           id: file.metadata.fileId,
           item: file,
-          thumbnail: file.thumbnail || '/placeholder-thumbnail.png',
+          thumbnail: getThumbnail(file),
           title: file.metadata.name || file.metadata.title || 'Untitled',
           subtitle: file.metadata.creator?.identifier?.value || 'Unknown',
           metadata: ''

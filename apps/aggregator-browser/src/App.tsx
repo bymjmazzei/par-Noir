@@ -260,7 +260,13 @@ function App() {
 
   // Re-discover files when active feed or rating preferences change
   // Debounce to prevent rapid-fire calls when switching feeds quickly
+  // NOTE: Don't call discoverFiles for virtual feeds (discovery, curated) - they use all files
   useEffect(() => {
+    // Skip discovery feed - it's a virtual feed that uses all indexedFiles
+    if (activeFeedId === 'discovery') {
+      return;
+    }
+    
     const timeoutId = setTimeout(() => {
       if (discoverFilesRef.current) {
         discoverFilesRef.current();
@@ -1387,11 +1393,12 @@ function App() {
             }
           />
         ) : viewMode === 'feed' && activeFeedId === 'discovery' ? (
-          // Discovery Page
+          // Discovery Page - uses all indexedFiles (virtual feed)
           <div className="flex-1 h-full pt-20 pb-20">
             <DiscoveryPage
               files={indexedFiles}
               feeds={feeds}
+              thumbnails={thumbnails}
               onFileClick={(file) => {
                 const index = indexedFiles.findIndex(f => f.metadata.fileId === file.metadata.fileId);
                 if (index !== -1) {
