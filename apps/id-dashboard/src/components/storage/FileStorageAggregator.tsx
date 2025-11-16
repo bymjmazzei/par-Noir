@@ -1322,8 +1322,8 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
 
         if (!response.ok) {
           const errorText = await response.text().catch(() => 'Unknown error');
+          // candidateId (identityId) is secret - not logged
           console.warn('⚠️ [StorageCredentials] Failed to fetch credentials from API:', {
-            candidateId,
             status: response.status,
             error: errorText,
           });
