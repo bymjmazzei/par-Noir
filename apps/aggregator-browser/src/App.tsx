@@ -869,9 +869,31 @@ function App() {
     const creatorFiles = indexedFiles.filter(f => {
       const did = f.metadata.creator?.identifier?.value || 
                  f.metadata.creator?.["@id"] || 
-                 f.metadata.author?.did;
-      return did === viewingCreatorId;
+                 f.metadata.author?.did ||
+                 f.metadata.creatorId; // Also check creatorId field
+      
+      // Normalize DIDs for comparison (remove any whitespace, convert to lowercase)
+      const normalizedDid = did?.trim().toLowerCase();
+      const normalizedViewingId = viewingCreatorId.trim().toLowerCase();
+      
+      const matches = normalizedDid === normalizedViewingId;
+      
+      // Debug logging
+      if (matches || (did && normalizedDid?.includes(normalizedViewingId.substring(0, 20)))) {
+        console.log('🔍 Creator file match:', {
+          fileId: f.metadata.fileId,
+          did,
+          viewingCreatorId,
+          normalizedDid,
+          normalizedViewingId,
+          matches
+        });
+      }
+      
+      return matches;
     });
+    
+    console.log(`📊 Creator index: Found ${creatorFiles.length} files for creator ${viewingCreatorId} out of ${indexedFiles.length} total indexed files`);
     
     const creatorFeeds = feeds.filter(feed => feed.creatorId === viewingCreatorId);
     
