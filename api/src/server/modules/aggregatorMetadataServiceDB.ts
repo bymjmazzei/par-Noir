@@ -148,9 +148,9 @@ export class AggregatorMetadataServiceDB {
 
       if (filters?.authorDid) {
         query += ` AND (
-          COALESCE(am.metadata->'creator'->'identifier'->>'value', '') = $${paramIndex} OR
-          COALESCE(am.metadata->'creator'->>'@id', '') = $${paramIndex} OR
-          COALESCE(am.metadata->'author'->>'did', '') = $${paramIndex}
+          (am.metadata->'creator'->'identifier'->>'value') IS NOT DISTINCT FROM $${paramIndex} OR
+          (am.metadata->'creator'->>'@id') IS NOT DISTINCT FROM $${paramIndex} OR
+          (am.metadata->'author'->>'did') IS NOT DISTINCT FROM $${paramIndex}
         )`;
         params.push(filters.authorDid);
         paramIndex++;
