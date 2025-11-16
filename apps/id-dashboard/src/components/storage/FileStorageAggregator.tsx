@@ -940,10 +940,9 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
                   ? authenticatedUser.id
                   : undefined;
 
-            await metadataIndexService.syncFromCentralAggregator({
-              authorDid: preferredDid,
-              force: options?.forceSync,
-            });
+            // Dashboard reads metadata directly from Google Drive, not from aggregator API
+            // The aggregator API is for browser app and third-party consumers
+            // Skip syncFromCentralAggregator - dashboard should read companion metadata from Google Drive files
             metadataRefreshStateRef.current.lastSyncAt = Date.now();
           }
 
@@ -1912,9 +1911,9 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
               ? authenticatedUser.id
               : undefined;
 
-        await metadataIndexService.syncFromCentralAggregator({
-          authorDid: preferredDid,
-        });
+        // Dashboard reads metadata directly from Google Drive, not from aggregator API
+        // The aggregator API is for browser app and third-party consumers
+        // Skip syncFromCentralAggregator - dashboard should read companion metadata from Google Drive files
       } catch (centralSyncError) {
         console.warn('⚠️ [Metadata] Central aggregator sync failed (non-blocking):', centralSyncError);
       }
