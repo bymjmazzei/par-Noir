@@ -113,7 +113,7 @@ export class GoogleDriveProxyService {
       throw new Error(`Token refresh failed: ${errorText}`);
     }
 
-    return response.json();
+    return response.json() as Promise<GoogleDriveToken>;
   }
 
   /**
@@ -143,7 +143,7 @@ export class GoogleDriveProxyService {
       throw new Error(`Failed to list files: ${errorText}`);
     }
 
-    const data = await response.json();
+    const data = await response.json() as { files?: GoogleDriveFile[] };
     return data.files || [];
   }
 
@@ -192,7 +192,7 @@ export class GoogleDriveProxyService {
       throw new Error(`Failed to upload file: ${errorText}`);
     }
 
-    return response.json();
+    return response.json() as Promise<GoogleDriveFile>;
   }
 
   /**
@@ -235,7 +235,7 @@ export class GoogleDriveProxyService {
       throw new Error(`Failed to get file metadata: ${errorText}`);
     }
 
-    return response.json();
+    return response.json() as Promise<GoogleDriveFile>;
   }
 }
 
