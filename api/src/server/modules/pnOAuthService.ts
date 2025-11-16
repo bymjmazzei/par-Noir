@@ -14,6 +14,7 @@ export interface AuthorizationCode {
   state?: string;
   nonce?: string;
   did: string; // User's DID
+  publicKey?: string; // Public key from identity file (needed to derive pN identifier)
   // pN name is NOT stored here - it's a secret and should never be stored
   expiresAt: number; // Timestamp
 }
@@ -76,6 +77,7 @@ export class PNOAuthService {
     state?: string;
     nonce?: string;
     did: string;
+    publicKey?: string; // Public key from identity file (needed to derive pN identifier)
     // Note: pN name is NOT accepted here - it's a secret and should never be stored
   }): string {
     const code = crypto.randomBytes(32).toString('hex');
@@ -96,6 +98,7 @@ export class PNOAuthService {
       state: params.state,
       nonce: params.nonce,
       did: params.did,
+      publicKey: params.publicKey, // Store public key for pN identifier derivation
       // pN name is NOT stored - it's a secret
       expiresAt: Date.now() + this.CODE_EXPIRY
     });
@@ -148,6 +151,7 @@ export class PNOAuthService {
     // Note: pN name is NOT included - it's a secret
     const accessToken = await this.generateAccessToken({
       did: authCode.did,
+      publicKey: authCode.publicKey, // Pass publicKey for pN identifier derivation
       clientId: params.clientId,
       scope: authCode.scope
     });
@@ -169,18 +173,24 @@ export class PNOAuthService {
   }
 
   /**
-   * Derive pN identifier from DID (same method as dashboard)
+   * Derive pN identifier from DID + publicKey (same method as dashboard)
    * Standard: Combine DID + publicKey, SHA-256 hash, take first 12 hex chars
+   * This matches: authenticatedUser.id + resolvedAuth.publicKey
    */
-  private static async derivePnIdentifier(did: string): Promise<string | undefined> {
+  private static async derivePnIdentifier(did: string, publicKey?: string): Promise<string | undefined> {
     try {
-      if (!did || !did.startsWith('did:key:')) {
+      if (!did) {
         return undefined;
       }
-      // Extract public key part (after did:key:)
-      const publicKeyPart = did.substring(8); // Remove "did:key:" prefix
-      // Combine DID + publicKey (same as dashboard does)
-      const combined = `${did}:${publicKeyPart}`;
+      // Use provided publicKey if available, otherwise extract from DID
+      const publicKeyToUse = publicKey || (did.startsWith('did:key:') ? did.substring(8) : undefined);
+      
+      if (!publicKeyToUse) {
+        return undefined;
+      }
+      
+      // Combine DID + publicKey (same as dashboard: authenticatedUser.id + resolvedAuth.publicKey)
+      const combined = `${did}:${publicKeyToUse}`;
       // Generate SHA-256 hash and take first 12 hex characters
       const hash = crypto.createHash('sha256').update(combined).digest('hex');
       return hash.substring(0, 12);
@@ -193,9 +203,9 @@ export class PNOAuthService {
   /**
    * Generate access token
    */
-  private static async generateAccessToken(params: { did: string; clientId: string; scope: string[] }): Promise<string> {
-    // Derive pN identifier from DID
-    const pnIdentifier = await this.derivePnIdentifier(params.did);
+  private static async generateAccessToken(params: { did: string; publicKey?: string; clientId: string; scope: string[] }): Promise<string> {
+    // Derive pN identifier from DID + publicKey (same as dashboard)
+    const pnIdentifier = await this.derivePnIdentifier(params.did, params.publicKey);
     
     const payload: TokenPayload = {
       did: params.did,
@@ -254,8 +264,11 @@ export class PNOAuthService {
     }
 
     // Generate new access token
+    // Note: refresh token doesn't store publicKey, so pN identifier won't be in refreshed tokens
+    // This is acceptable - user can re-authenticate to get a new token with pN identifier
     const accessToken = await this.generateAccessToken({
       did: tokenData.did,
+      publicKey: undefined, // Refresh tokens don't have publicKey
       clientId: clientId,
       scope: tokenData.scope
     });

@@ -2157,6 +2157,7 @@ class ProductionServer {
         const did = req.body.did || `did:key:${public_key.substring(0, 32)}`;
 
         // Generate authorization code
+        // Store public_key so we can derive pN identifier correctly (same as dashboard)
         const scopes = scope ? scope.split(' ') : ['openid', 'profile'];
         const code = PNOAuthService.generateAuthorizationCode({
           clientId: client_id,
@@ -2164,7 +2165,8 @@ class ProductionServer {
           scope: scopes,
           state,
           nonce,
-          did
+          did,
+          publicKey: public_key // Store publicKey for pN identifier derivation
         });
 
         // Return authorization code
