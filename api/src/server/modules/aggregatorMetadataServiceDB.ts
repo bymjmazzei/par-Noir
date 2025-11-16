@@ -150,12 +150,12 @@ export class AggregatorMetadataServiceDB {
         // Match against pn_identifier column (from Google Drive folder name) OR full DID in metadata
         // pn_identifier is the shortened identifier like "83c1db813607" from folder names
         const authorDidParam = `$${paramIndex}`;
-        // Use simple text comparison - PostgreSQL will handle NULLs correctly
+        // Use NULL-safe comparison: (column IS NOT NULL AND column = value) returns boolean
         query += ` AND (
-          am.pn_identifier::text = ${authorDidParam}::text OR
-          (am.metadata->'creator'->>'@id')::text = ${authorDidParam}::text OR
-          (am.metadata->'creator'->'identifier'->>'value')::text = ${authorDidParam}::text OR
-          (am.metadata->'author'->>'did')::text = ${authorDidParam}::text
+          (am.pn_identifier IS NOT NULL AND am.pn_identifier = ${authorDidParam}) OR
+          (am.metadata->'creator'->>'@id' IS NOT NULL AND am.metadata->'creator'->>'@id' = ${authorDidParam}) OR
+          (am.metadata->'creator'->'identifier'->>'value' IS NOT NULL AND am.metadata->'creator'->'identifier'->>'value' = ${authorDidParam}) OR
+          (am.metadata->'author'->>'did' IS NOT NULL AND am.metadata->'author'->>'did' = ${authorDidParam})
         )`;
         params.push(filters.authorDid);
         paramIndex++;
