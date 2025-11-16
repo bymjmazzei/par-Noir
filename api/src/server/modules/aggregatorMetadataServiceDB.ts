@@ -147,13 +147,13 @@ export class AggregatorMetadataServiceDB {
       }
 
       if (filters?.authorDid) {
-        // Use boolean expressions that always return boolean (never NULL)
-        // Wrap each comparison to ensure boolean return type
+        // Cast entire expression to boolean to ensure PostgreSQL accepts it in AND clause
+        // Use COALESCE to convert NULL comparisons to false
         query += ` AND (
-          ((am.metadata->'creator'->'identifier'->>'value') IS NOT NULL AND (am.metadata->'creator'->'identifier'->>'value')::text = $${paramIndex}::text) OR
-          ((am.metadata->'creator'->>'@id') IS NOT NULL AND (am.metadata->'creator'->>'@id')::text = $${paramIndex}::text) OR
-          ((am.metadata->'author'->>'did') IS NOT NULL AND (am.metadata->'author'->>'did')::text = $${paramIndex}::text)
-        )`;
+          COALESCE((am.metadata->'creator'->'identifier'->>'value') = $${paramIndex}, false) OR
+          COALESCE((am.metadata->'creator'->>'@id') = $${paramIndex}, false) OR
+          COALESCE((am.metadata->'author'->>'did') = $${paramIndex}, false)
+        )::boolean`;
         params.push(filters.authorDid);
         paramIndex++;
       }
