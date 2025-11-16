@@ -146,20 +146,8 @@ export class AggregatorMetadataServiceDB {
         paramIndex++;
       }
 
-      if (filters?.authorDid) {
-        // Match against pn_identifier column (from Google Drive folder name) OR full DID in metadata
-        // pn_identifier is the shortened identifier like "83c1db813607" from folder names
-        const authorDidParam = `$${paramIndex}`;
-        // Use COALESCE to ensure text comparison, then cast result to boolean
-        query += ` AND (
-          COALESCE(am.pn_identifier::text, '') = ${authorDidParam}::text OR
-          COALESCE(am.metadata->'creator'->>'@id', '') = ${authorDidParam}::text OR
-          COALESCE(am.metadata->'creator'->'identifier'->>'value', '') = ${authorDidParam}::text OR
-          COALESCE(am.metadata->'author'->>'did', '') = ${authorDidParam}::text
-        )`;
-        params.push(filters.authorDid);
-        paramIndex++;
-      }
+      // Note: authorDid filter is applied in JavaScript (same pattern as tags)
+      // This avoids SQL type issues with NULL comparisons
 
       if (filters?.indexerId) {
         const idxParam = `$${paramIndex}`;
@@ -202,6 +190,19 @@ export class AggregatorMetadataServiceDB {
         entries = entries.filter(entry => {
           const keywords = entry.metadata.keywords || [];
           return keywords.some((tag: string) => filters.tags!.includes(tag));
+        });
+      }
+
+      // Filter by authorDid (same pattern as tags - filter in JS to avoid SQL type issues)
+      if (filters?.authorDid) {
+        entries = entries.filter(entry => {
+          const pnId = entry.pnIdentifier;
+          const creatorId = entry.metadata.creator?.identifier?.value || entry.metadata.creator?.["@id"];
+          const authorDid = entry.metadata.author?.did;
+          
+          return pnId === filters.authorDid || 
+                 creatorId === filters.authorDid || 
+                 authorDid === filters.authorDid;
         });
       }
 
