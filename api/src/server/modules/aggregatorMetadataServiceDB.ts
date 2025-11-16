@@ -148,9 +148,9 @@ export class AggregatorMetadataServiceDB {
 
       if (filters?.authorDid) {
         query += ` AND (
-          (am.metadata->'creator'->'identifier'->>'value')::text = $${paramIndex} OR
-          (am.metadata->'creator'->>'@id')::text = $${paramIndex} OR
-          (am.metadata->'author'->>'did')::text = $${paramIndex}
+          COALESCE(am.metadata->'creator'->'identifier'->>'value', '') = $${paramIndex} OR
+          COALESCE(am.metadata->'creator'->>'@id', '') = $${paramIndex} OR
+          COALESCE(am.metadata->'author'->>'did', '') = $${paramIndex}
         )`;
         params.push(filters.authorDid);
         paramIndex++;
