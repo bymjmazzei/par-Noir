@@ -890,10 +890,11 @@ function App() {
     if (viewingCreatorId === userState.pnIdentifier && userState.isUnlocked) {
       const loadUserFiles = async () => {
         try {
-          // Query API directly for user's files - this gets ALL files regardless of Google Drive account
+          // Query API for ALL files, then filter client-side by pnIdentifier
+          // This ensures we get files from all Google Drive accounts
           const apiEndpoint = process.env.REACT_APP_API_ENDPOINT || 'https://api.parnoir.com';
           const response = await fetch(
-            `${apiEndpoint}/api/aggregator/metadata-index?authorDid=${encodeURIComponent(viewingCreatorId)}`,
+            `${apiEndpoint}/api/aggregator/metadata-index`,
             {
               method: 'GET',
               headers: {
@@ -906,10 +907,27 @@ function App() {
           if (response.ok) {
             const data = await response.json();
             if (data.files && Array.isArray(data.files)) {
-              // Convert API response to IndexedFile format
-              // The API returns CentralIndexEntry format: { fileId, metadata, pnIdentifier, submittedAt }
-              apiFiles = data.files.map((entry: any) => {
-                // Ensure owner info is preserved in metadata
+              // Filter by pnIdentifier (which is the same as the user's identifier)
+              const userFiles = data.files.filter((entry: any) => {
+                // Check pnIdentifier field (top-level in entry)
+                const entryPnId = entry.pnIdentifier?.trim().toLowerCase();
+                // Also check metadata creator/author fields
+                const metadata = entry.metadata || {};
+                const creatorId = metadata.creator?.identifier?.value?.trim().toLowerCase() ||
+                                 metadata.creator?.["@id"]?.trim().toLowerCase() ||
+                                 metadata.author?.did?.trim().toLowerCase() ||
+                                 metadata.creatorId?.trim().toLowerCase();
+                const userIdentifier = viewingCreatorId.trim().toLowerCase();
+                
+                const matches = entryPnId === userIdentifier || creatorId === userIdentifier;
+                if (matches) {
+                  console.log(`✅ Found owned file: ${entry.fileId}, pnIdentifier: ${entry.pnIdentifier}, creatorId: ${creatorId}`);
+                }
+                return matches;
+              });
+
+              // Convert filtered entries to IndexedFile format
+              apiFiles = userFiles.map((entry: any) => {
                 const metadata = entry.metadata || {};
                 return {
                   metadata: {
@@ -927,7 +945,7 @@ function App() {
                   }
                 } as IndexedFile;
               });
-              console.log(`📊 Loaded ${apiFiles.length} files from API for user ${viewingCreatorId}`);
+              console.log(`📊 Loaded ${apiFiles.length} files from API for user ${viewingCreatorId} (filtered from ${data.files.length} total files)`);
             }
           } else {
             const errorText = await response.text().catch(() => 'Unknown error');
