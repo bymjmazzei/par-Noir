@@ -186,16 +186,24 @@ export class PNOAuthService {
       const publicKeyToUse = publicKey || (did.startsWith('did:key:') ? did.substring(8) : undefined);
       
       if (!publicKeyToUse) {
+        console.warn('[OAuth] No publicKey available for pN identifier derivation');
         return undefined;
       }
       
       // Combine DID + publicKey (same as dashboard: authenticatedUser.id + resolvedAuth.publicKey)
       const combined = `${did}:${publicKeyToUse}`;
+      console.log('[OAuth] Deriving pN identifier:');
+      console.log('  DID:', did.substring(0, 30) + '...');
+      console.log('  PublicKey (first 30 chars):', publicKeyToUse.substring(0, 30) + '...');
+      console.log('  Combined (first 60 chars):', combined.substring(0, 60) + '...');
+      
       // Generate SHA-256 hash and take first 12 hex characters
       const hash = crypto.createHash('sha256').update(combined).digest('hex');
-      return hash.substring(0, 12);
+      const pnIdentifier = hash.substring(0, 12);
+      console.log('  Derived pN identifier:', pnIdentifier);
+      return pnIdentifier;
     } catch (error) {
-      console.warn('[OAuth] Failed to derive pN identifier:', error);
+      console.error('[OAuth] Failed to derive pN identifier:', error);
       return undefined;
     }
   }
