@@ -888,96 +888,59 @@ function App() {
     
     // If viewing own profile and unlocked, load directly from Google Drive
     if (viewingCreatorId === userState.pnIdentifier && userState.isUnlocked) {
-      const loadFromDrive = async () => {
+      const loadUserFiles = async () => {
         try {
-          const token = localStorage.getItem('google_drive_token');
-          if (!token) {
-            console.warn('⚠️ No Google Drive token - falling back to public index');
-            // Fallback to public index
-            const filtered = indexedFiles.filter(f => {
-              const fileOwnerId = f.metadata.creator?.identifier?.value || 
-                                  f.metadata.creator?.["@id"] || 
-                                  f.metadata.author?.did ||
-                                  f.metadata.creatorId;
-              const normalizedOwnerId = fileOwnerId?.trim().toLowerCase() || '';
-              const normalizedViewingId = viewingCreatorId.trim().toLowerCase();
-              return normalizedOwnerId === normalizedViewingId;
-            });
-            setCreatorFilesState(filtered);
-            return;
-          }
-
-          const { loadUserFilesFromGoogleDrive } = await import('./services/googleDriveUserFilesService');
-          
-          // Try to load from all connected Google Drive accounts
-          let allDriveFiles: IndexedFile[] = [];
-          
-          // First, try the main token
-          try {
-            const driveFiles = await loadUserFilesFromGoogleDrive(token, viewingCreatorId);
-            allDriveFiles.push(...driveFiles);
-            console.log(`📊 Loaded ${driveFiles.length} files from primary Google Drive account`);
-          } catch (error) {
-            console.warn('Failed to load from primary Google Drive account:', error);
-          }
-          
-          // Check for multiple Google Drive accounts (from dashboard)
-          // Tokens are stored in encrypted metadata, but we can try to find them in localStorage
-          // The dashboard stores credentials with keys like: `pn_storage_credentials_${backendId}`
-          try {
-            const driveAccountsJson = localStorage.getItem('pn_google_drive_accounts');
-            if (driveAccountsJson) {
-              const driveAccounts = JSON.parse(driveAccountsJson);
-              if (Array.isArray(driveAccounts) && driveAccounts.length > 0) {
-                // Try to get tokens for all accounts
-                for (const account of driveAccounts) {
-                  if (account.backendId) {
-                    // Try multiple possible token storage keys
-                    // Based on dashboard code, tokens are stored as: `${keyPrefix}_token`
-                    const possibleKeys = [
-                      account.keyPrefix ? `${account.keyPrefix}_token` : null,
-                      account.backendId ? `${account.backendId}_token` : null,
-                      'google_drive_token' // fallback to main token
-                    ].filter(Boolean) as string[];
-                    
-                    let accountToken: string | null = null;
-                    for (const key of possibleKeys) {
-                      const stored = localStorage.getItem(key);
-                      if (stored) {
-                        // If it's JSON (encrypted credentials), try to parse
-                        try {
-                          const parsed = JSON.parse(stored);
-                          accountToken = parsed.accessToken || parsed.access_token || stored;
-                        } catch {
-                          accountToken = stored;
-                        }
-                        if (accountToken) break;
-                      }
-                    }
-                    
-                    if (accountToken && accountToken !== token) {
-                      try {
-                        const accountFiles = await loadUserFilesFromGoogleDrive(accountToken, viewingCreatorId);
-                        allDriveFiles.push(...accountFiles);
-                        console.log(`📊 Loaded ${accountFiles.length} files from additional Google Drive account: ${account.email || account.backendId}`);
-                      } catch (error) {
-                        console.warn(`Failed to load from account ${account.email || account.backendId}:`, error);
-                      }
-                    }
-                  }
-                }
+          // Query API directly for user's files - this gets ALL files regardless of Google Drive account
+          const apiEndpoint = process.env.REACT_APP_API_ENDPOINT || 'https://api.parnoir.com';
+          const response = await fetch(
+            `${apiEndpoint}/api/aggregator/metadata-index?authorDid=${encodeURIComponent(viewingCreatorId)}`,
+            {
+              method: 'GET',
+              headers: {
+                'Content-Type': 'application/json'
               }
             }
-          } catch (error) {
-            console.warn('Failed to check for multiple Google Drive accounts:', error);
+          );
+
+          let apiFiles: IndexedFile[] = [];
+          if (response.ok) {
+            const data = await response.json();
+            if (data.files && Array.isArray(data.files)) {
+              // Convert API response to IndexedFile format
+              // The API returns CentralIndexEntry format: { fileId, metadata, pnIdentifier, submittedAt }
+              apiFiles = data.files.map((entry: any) => {
+                // Ensure owner info is preserved in metadata
+                const metadata = entry.metadata || {};
+                return {
+                  metadata: {
+                    ...metadata,
+                    fileId: entry.fileId || metadata.fileId,
+                    // Ensure owner info is preserved
+                    creator: metadata.creator || {
+                      identifier: { value: entry.pnIdentifier || viewingCreatorId }
+                    },
+                    creatorId: entry.pnIdentifier || metadata.creatorId || viewingCreatorId,
+                    // Also check author field for legacy compatibility
+                    author: metadata.author || {
+                      did: entry.pnIdentifier || viewingCreatorId
+                    }
+                  }
+                } as IndexedFile;
+              });
+              console.log(`📊 Loaded ${apiFiles.length} files from API for user ${viewingCreatorId}`);
+            }
+          } else {
+            const errorText = await response.text().catch(() => 'Unknown error');
+            console.warn(`⚠️ API returned ${response.status} for user files: ${errorText}, falling back to public index`);
           }
-          
-          // Also get files from public index to ensure we have everything
+
+          // Also get files from already-loaded public index (in case API missed some)
           const publicIndexFiles = indexedFiles.filter(f => {
             const fileOwnerId = f.metadata.creator?.identifier?.value || 
                                 f.metadata.creator?.["@id"] || 
                                 f.metadata.author?.did ||
-                                f.metadata.creatorId;
+                                f.metadata.creatorId ||
+                                (f as any).pnIdentifier;
             const normalizedOwnerId = fileOwnerId?.trim().toLowerCase() || '';
             const normalizedViewingId = viewingCreatorId.trim().toLowerCase();
             return normalizedOwnerId === normalizedViewingId;
@@ -985,20 +948,21 @@ function App() {
           
           // Combine and deduplicate by fileId
           const combinedFiles = Array.from(
-            new Map([...allDriveFiles, ...publicIndexFiles]
+            new Map([...apiFiles, ...publicIndexFiles]
               .map(f => [f.metadata.fileId, f])).values()
           );
           
-          console.log(`📊 Loaded ${allDriveFiles.length} files from Google Drive (${new Set(allDriveFiles.map(f => f.metadata.fileId)).size} unique), ${publicIndexFiles.length} from public index, ${combinedFiles.length} total (deduplicated)`);
+          console.log(`📊 Combined: ${apiFiles.length} from API, ${publicIndexFiles.length} from public index, ${combinedFiles.length} total (deduplicated)`);
           setCreatorFilesState(combinedFiles);
         } catch (error) {
-          console.error('Failed to load files from Google Drive, falling back to public index:', error);
+          console.error('Failed to load user files from API, falling back to public index:', error);
           // Fallback to public index
           const filtered = indexedFiles.filter(f => {
             const fileOwnerId = f.metadata.creator?.identifier?.value || 
                                 f.metadata.creator?.["@id"] || 
                                 f.metadata.author?.did ||
-                                f.metadata.creatorId;
+                                f.metadata.creatorId ||
+                                (f as any).pnIdentifier;
             const normalizedOwnerId = fileOwnerId?.trim().toLowerCase() || '';
             const normalizedViewingId = viewingCreatorId.trim().toLowerCase();
             return normalizedOwnerId === normalizedViewingId;
@@ -1007,7 +971,7 @@ function App() {
         }
       };
 
-      loadFromDrive();
+      loadUserFiles();
     } else {
       // For other creators, filter from public index
       const filtered = indexedFiles.filter(f => {
