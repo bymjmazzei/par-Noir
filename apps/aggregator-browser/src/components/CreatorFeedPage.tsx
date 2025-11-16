@@ -3,7 +3,7 @@
  * Profile-like page for creators with feed view toggle and statistics
  */
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { IndexedFile, Feed } from '../types/aggregator';
 import { Grid, List, TrendingUp, Eye, Heart, MessageCircle, Share2, Users } from 'lucide-react';
 import { FullScreenFeed } from './FullScreenFeed';
@@ -122,18 +122,22 @@ export function CreatorFeedPage({
     };
   }, [creatorFiles, creatorFeeds]);
 
-  // Extract pN identifier from DID if it's a full DID, otherwise use as-is
-  const extractPnIdentifier = (id: string): string => {
-    if (id && id.startsWith('did:key:')) {
-      // It's a full DID - extract pN identifier (first 16 hex chars of SHA-256 hash)
-      // For display purposes, show shortened version
-      return id.substring(8, 24) || id.substring(0, 16) + '...';
+  // Display pN identifier - if creatorId is already a pN identifier (not a DID), use it directly
+  // Otherwise, if it's a DID, we should have gotten the pN identifier from the API
+  // For display purposes, just show the pN identifier (first 12 chars if longer)
+  const getDisplayIdentifier = (id: string): string => {
+    if (!id) return 'Unknown';
+    // If it's already a pN identifier (doesn't start with did:key:), use it directly
+    if (!id.startsWith('did:key:')) {
+      return id.length > 12 ? id.substring(0, 12) : id;
     }
-    // Already a pN identifier or other format
-    return id.length > 16 ? id.substring(0, 16) + '...' : id;
+    // If it's a DID, we shouldn't be here (should have pN identifier from API)
+    // But as fallback, show first 12 chars
+    return id.length > 12 ? id.substring(0, 12) : id;
   };
   
-  const displayName = creatorName || extractPnIdentifier(creatorId);
+  const displayIdentifier = getDisplayIdentifier(creatorId);
+  const displayName = creatorName || displayIdentifier;
 
   return (
     <div className="h-full flex flex-col bg-neutral-900">
