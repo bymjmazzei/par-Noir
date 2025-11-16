@@ -2354,6 +2354,186 @@ class ProductionServer {
    */
   private setupNotificationEndpoints(): void {
     // GET /api/notifications - Get user's notifications
+    // Message endpoints (placeholder - returns empty arrays for now)
+    this.app.get('/api/messages/threads', async (req, res) => {
+      try {
+        const userDid = req.query.userDid as string;
+        if (!userDid) {
+          return res.status(400).json({ error: 'userDid is required' });
+        }
+        // TODO: Implement message threads retrieval from Google Drive
+        return res.json({ threads: [] });
+      } catch (error: any) {
+        console.error('Error getting message threads:', error);
+        return res.status(500).json({
+          error: 'Failed to get message threads',
+          error_description: error.message || 'Failed to get message threads'
+        });
+      }
+    });
+
+    this.app.get('/api/messages/requests', async (req, res) => {
+      try {
+        const userDid = req.query.userDid as string;
+        if (!userDid) {
+          return res.status(400).json({ error: 'userDid is required' });
+        }
+        // TODO: Implement message requests retrieval from Google Drive
+        return res.json({ requests: [] });
+      } catch (error: any) {
+        console.error('Error getting message requests:', error);
+        return res.status(500).json({
+          error: 'Failed to get message requests',
+          error_description: error.message || 'Failed to get message requests'
+        });
+      }
+    });
+
+    this.app.get('/api/messages/inbox', async (req, res) => {
+      try {
+        const userDid = req.query.userDid as string;
+        if (!userDid) {
+          return res.status(400).json({ error: 'userDid is required' });
+        }
+        // TODO: Implement inbox messages retrieval from Google Drive
+        return res.json({ messages: [] });
+      } catch (error: any) {
+        console.error('Error getting inbox messages:', error);
+        return res.status(500).json({
+          error: 'Failed to get inbox messages',
+          error_description: error.message || 'Failed to get inbox messages'
+        });
+      }
+    });
+
+    this.app.get('/api/messages/thread', async (req, res) => {
+      try {
+        const userDid = req.query.userDid as string;
+        const participantDid = req.query.participantDid as string;
+        if (!userDid || !participantDid) {
+          return res.status(400).json({ error: 'userDid and participantDid are required' });
+        }
+        // TODO: Implement thread messages retrieval from Google Drive
+        return res.json({ messages: [] });
+      } catch (error: any) {
+        console.error('Error getting thread messages:', error);
+        return res.status(500).json({
+          error: 'Failed to get thread messages',
+          error_description: error.message || 'Failed to get thread messages'
+        });
+      }
+    });
+
+    this.app.post('/api/messages/send', async (req, res) => {
+      try {
+        const { fromDid, toDid, content, mediaFileId } = req.body;
+        if (!fromDid || !toDid || !content) {
+          return res.status(400).json({ error: 'fromDid, toDid, and content are required' });
+        }
+        // TODO: Implement message sending to Google Drive
+        return res.json({
+          success: true,
+          message: {
+            messageId: `msg_${Date.now()}`,
+            fromDid,
+            toDid,
+            content,
+            mediaFileId,
+            timestamp: new Date().toISOString(),
+            read: false,
+            encrypted: true
+          }
+        });
+      } catch (error: any) {
+        console.error('Error sending message:', error);
+        return res.status(500).json({
+          error: 'Failed to send message',
+          error_description: error.message || 'Failed to send message'
+        });
+      }
+    });
+
+    this.app.post('/api/messages/requests', async (req, res) => {
+      try {
+        const { fromDid, toDid, content } = req.body;
+        if (!fromDid || !toDid || !content) {
+          return res.status(400).json({ error: 'fromDid, toDid, and content are required' });
+        }
+        // TODO: Implement message request creation in Google Drive
+        return res.json({
+          success: true,
+          request: {
+            requestId: `req_${Date.now()}`,
+            fromDid,
+            toDid,
+            content,
+            timestamp: new Date().toISOString(),
+            status: 'pending'
+          }
+        });
+      } catch (error: any) {
+        console.error('Error sending message request:', error);
+        return res.status(500).json({
+          error: 'Failed to send message request',
+          error_description: error.message || 'Failed to send message request'
+        });
+      }
+    });
+
+    this.app.post('/api/messages/requests/:requestId/respond', async (req, res) => {
+      try {
+        const { requestId } = req.params;
+        const { userDid, accept } = req.body;
+        if (!requestId || !userDid || typeof accept !== 'boolean') {
+          return res.status(400).json({ error: 'requestId, userDid, and accept are required' });
+        }
+        // TODO: Implement message request response in Google Drive
+        return res.json({ success: true });
+      } catch (error: any) {
+        console.error('Error responding to message request:', error);
+        return res.status(500).json({
+          error: 'Failed to respond to message request',
+          error_description: error.message || 'Failed to respond to message request'
+        });
+      }
+    });
+
+    this.app.post('/api/messages/:messageId/read', async (req, res) => {
+      try {
+        const { messageId } = req.params;
+        const { userDid } = req.body;
+        if (!messageId || !userDid) {
+          return res.status(400).json({ error: 'messageId and userDid are required' });
+        }
+        // TODO: Implement marking message as read in Google Drive
+        return res.json({ success: true });
+      } catch (error: any) {
+        console.error('Error marking message as read:', error);
+        return res.status(500).json({
+          error: 'Failed to mark message as read',
+          error_description: error.message || 'Failed to mark message as read'
+        });
+      }
+    });
+
+    this.app.delete('/api/messages/:messageId', async (req, res) => {
+      try {
+        const { messageId } = req.params;
+        const { userDid } = req.body;
+        if (!messageId || !userDid) {
+          return res.status(400).json({ error: 'messageId and userDid are required' });
+        }
+        // TODO: Implement message deletion from Google Drive
+        return res.json({ success: true });
+      } catch (error: any) {
+        console.error('Error deleting message:', error);
+        return res.status(500).json({
+          error: 'Failed to delete message',
+          error_description: error.message || 'Failed to delete message'
+        });
+      }
+    });
+
     this.app.get('/api/notifications', async (req, res) => {
       try {
         const userDid = req.headers['x-user-did'] as string || req.query.userDid as string;
