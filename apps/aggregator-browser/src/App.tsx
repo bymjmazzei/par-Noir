@@ -882,27 +882,53 @@ function App() {
       setIsLoadingCreatorFiles(true);
       (async () => {
         try {
-          // Use pN identifier from userState if available (from OAuth userinfo)
-          // Otherwise fall back to deriving it from DID (for other creators)
+          // Use pN identifier directly if it's already a pN identifier (not a DID)
+          // Otherwise, get it from the session
           let pnIdentifier: string;
-          if (viewingCreatorId === userState.pnIdentifier && userState.pnIdentifier && !userState.pnIdentifier.startsWith('did:key:')) {
-            // User's own index - use pN identifier from OAuth session
-            pnIdentifier = userState.pnIdentifier;
+          if (viewingCreatorId && !viewingCreatorId.startsWith('did:key:')) {
+            // Already a pN identifier
+            pnIdentifier = viewingCreatorId;
           } else {
-            // Other creator or fallback - try to extract from DID
-            // This should rarely be needed since pN identifier should come from API
-            if (viewingCreatorId && viewingCreatorId.startsWith('did:key:')) {
-              // Extract public key part (after did:key:)
-              const publicKeyPart = viewingCreatorId.substring(8);
-              // Combine DID + publicKey (same as dashboard does)
-              const combined = `${viewingCreatorId}:${publicKeyPart}`;
-              // Generate SHA-256 hash and take first 12 hex characters
-              const encoder = new TextEncoder();
-              const keyBuffer = encoder.encode(combined);
-              const hashBuffer = await crypto.subtle.digest('SHA-256', keyBuffer);
-              const hashArray = Array.from(new Uint8Array(hashBuffer));
-              const hexHash = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
-              pnIdentifier = hexHash.substring(0, 12);
+            // It's a DID - get pN identifier from session
+            const session = PNOAuthService.loadSession();
+            if (session?.pnIdentifier && !session.pnIdentifier.startsWith('did:key:')) {
+              pnIdentifier = session.pnIdentifier;
+            } else if (viewingCreatorId && viewingCreatorId.startsWith('did:key:')) {
+              // Fallback: try to fetch from userinfo if session doesn't have it
+              try {
+                if (session?.accessToken) {
+                  const userInfo = await PNOAuthService.getUserInfo(session.accessToken);
+                  if (userInfo.pn_identifier) {
+                    pnIdentifier = userInfo.pn_identifier;
+                    // Update session with the pN identifier
+                    const updatedSession = { ...session, pnIdentifier };
+                    PNOAuthService.saveSession(updatedSession);
+                  } else {
+                    // Last resort: derive from DID (shouldn't happen)
+                    const publicKeyPart = viewingCreatorId.substring(8);
+                    const combined = `${viewingCreatorId}:${publicKeyPart}`;
+                    const encoder = new TextEncoder();
+                    const keyBuffer = encoder.encode(combined);
+                    const hashBuffer = await crypto.subtle.digest('SHA-256', keyBuffer);
+                    const hashArray = Array.from(new Uint8Array(hashBuffer));
+                    const hexHash = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+                    pnIdentifier = hexHash.substring(0, 12);
+                  }
+                } else {
+                  throw new Error('No access token');
+                }
+              } catch (error) {
+                console.warn('Failed to get pN identifier, deriving from DID:', error);
+                // Last resort: derive from DID
+                const publicKeyPart = viewingCreatorId.substring(8);
+                const combined = `${viewingCreatorId}:${publicKeyPart}`;
+                const encoder = new TextEncoder();
+                const keyBuffer = encoder.encode(combined);
+                const hashBuffer = await crypto.subtle.digest('SHA-256', keyBuffer);
+                const hashArray = Array.from(new Uint8Array(hashBuffer));
+                const hexHash = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+                pnIdentifier = hexHash.substring(0, 12);
+              }
             } else {
               // Already a pN identifier or other format
               pnIdentifier = viewingCreatorId;
@@ -1921,11 +1947,37 @@ function App() {
             <span className="text-xs font-medium">UPLOAD</span>
           </button>
           <button
-            onClick={() => {
-              if (userState.isUnlocked && userState.pnIdentifier) {
-                // Show user's own index
-                setViewingCreatorId(userState.pnIdentifier);
-                setActiveBottomTab('index');
+            onClick={async () => {
+              if (userState.isUnlocked) {
+                // Get pN identifier from session if available, otherwise use userState.pnIdentifier
+                const session = PNOAuthService.loadSession();
+                let pnIdentifier = session?.pnIdentifier || userState.pnIdentifier;
+                
+                // If still a DID, try to fetch pN identifier from userinfo
+                if (pnIdentifier && pnIdentifier.startsWith('did:key:')) {
+                  try {
+                    if (session?.accessToken) {
+                      const userInfo = await PNOAuthService.getUserInfo(session.accessToken);
+                      if (userInfo.pn_identifier) {
+                        pnIdentifier = userInfo.pn_identifier;
+                        // Update session and userState with the pN identifier
+                        const updatedSession = { ...session, pnIdentifier };
+                        PNOAuthService.saveSession(updatedSession);
+                        setUnlocked(pnIdentifier);
+                      }
+                    }
+                  } catch (error) {
+                    console.warn('Failed to fetch pN identifier from userinfo:', error);
+                  }
+                }
+                
+                if (pnIdentifier) {
+                  // Show user's own index using pN identifier
+                  setViewingCreatorId(pnIdentifier);
+                  setActiveBottomTab('index');
+                } else {
+                  showErrorToast('Unable to load your pN identifier');
+                }
               } else {
                 showErrorToast('Unlock your pN to view your index');
               }
