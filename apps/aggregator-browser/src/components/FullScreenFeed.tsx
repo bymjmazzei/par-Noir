@@ -371,11 +371,14 @@ export function FullScreenFeed({
                 }
                 onComment(indexedFile);
               }}
-              onShare={() => {
-                if (visibleFileId === fileId) {
-                  setShowEngagementOverlay(true);
-                } else {
-                  onShare(fileId);
+              onShare={async () => {
+                // Directly copy link to clipboard
+                const shareUrl = `${window.location.origin}${window.location.pathname}?file=${fileId}&view=feed`;
+                try {
+                  await navigator.clipboard.writeText(shareUrl);
+                  // Could show a toast here if needed
+                } catch (err) {
+                  console.error('Failed to copy link:', err);
                 }
               }}
               onAddToFeed={onAddToFeed ? () => onAddToFeed(indexedFile) : undefined}
@@ -383,7 +386,7 @@ export function FullScreenFeed({
               isOwner={userState.isUnlocked && userState.pnIdentifier === creatorId}
             />
 
-            {/* Engagement Overlay - Show when share button is clicked */}
+            {/* Engagement Overlay - Show when like/comment/save is clicked (share now directly copies) */}
             {visibleFileId === fileId && showEngagementOverlay && (
               <EngagementOverlay
                 file={indexedFile}
@@ -396,7 +399,16 @@ export function FullScreenFeed({
                   setShowEngagementOverlay(false);
                   onComment(indexedFile);
                 }}
-                onShare={() => onShare(fileId)}
+                onShare={async () => {
+                  // Copy link to clipboard
+                  const shareUrl = `${window.location.origin}${window.location.pathname}?file=${fileId}&view=feed`;
+                  try {
+                    await navigator.clipboard.writeText(shareUrl);
+                    setShowEngagementOverlay(false);
+                  } catch (err) {
+                    console.error('Failed to copy link:', err);
+                  }
+                }}
                 onSave={onSave ? () => onSave(indexedFile) : undefined}
                 onClose={() => setShowEngagementOverlay(false)}
                 isOpen={showEngagementOverlay}

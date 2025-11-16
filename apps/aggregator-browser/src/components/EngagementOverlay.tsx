@@ -103,17 +103,17 @@ export function EngagementOverlay({
     <>
       {/* Backdrop */}
       <div
-        className="fixed inset-0 bg-black/60 z-40 transition-opacity"
+        className="fixed inset-0 bg-black/60 z-[150] transition-opacity"
         onClick={onClose}
       />
 
-      {/* Slide-up overlay */}
+      {/* Slide-up overlay - Higher z-index than bottom nav (z-[100]) */}
       <div
         data-engagement-overlay
-        className={`fixed bottom-0 left-0 right-0 bg-neutral-900 rounded-t-2xl z-50 transform transition-transform duration-300 ease-out ${
+        className={`fixed bottom-0 left-0 right-0 bg-neutral-900 rounded-t-2xl z-[150] transform transition-transform duration-300 ease-out ${
           isOpen ? 'translate-y-0' : 'translate-y-full'
         }`}
-        style={{ maxHeight: '80vh' }}
+        style={{ maxHeight: '80vh', paddingBottom: '64px' }}
       >
         {/* Handle bar */}
         <div className="flex justify-center pt-3 pb-2">

@@ -61,12 +61,12 @@ export function CommentModal({ file, onClose }: CommentModalProps) {
     <>
       {/* Backdrop */}
       <div
-        className="fixed inset-0 bg-black/60 z-50 transition-opacity"
+        className="fixed inset-0 bg-black/60 z-[150] transition-opacity"
         onClick={onClose}
       />
 
-      {/* Slide-up modal */}
-      <div className="fixed bottom-0 left-0 right-0 bg-neutral-900 rounded-t-2xl z-50 flex flex-col animate-slide-up" style={{ maxHeight: '90vh' }}>
+      {/* Slide-up modal - Higher z-index than bottom nav (z-[100]) */}
+      <div className="fixed bottom-0 left-0 right-0 bg-neutral-900 rounded-t-2xl z-[150] flex flex-col animate-slide-up" style={{ maxHeight: '90vh', paddingBottom: '64px' }}>
         {/* Handle bar */}
         <div className="flex justify-center pt-3 pb-2">
           <div className="w-12 h-1 bg-neutral-700 rounded-full" />
