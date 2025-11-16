@@ -229,15 +229,51 @@ function App() {
       const file = indexedFiles.find(f => f.metadata.fileId === fileParam);
       if (file) {
         setViewMode('feed');
+        setActiveBottomTab('home');
+        // Determine which feed the file belongs to
+        const fileFeedIds = file.metadata.feedIds || [];
+        let targetFeedId = feedParam || 'public';
+        if (!feedParam && fileFeedIds.length > 0) {
+          // If file has feed IDs and no feed param, use the first feed
+          targetFeedId = fileFeedIds[0];
+        }
+        if (targetFeedId !== activeFeedId) {
+          setActiveFeedId(targetFeedId);
+        }
+        // Wait for feed to be set and files to be filtered, then find the file index
         setTimeout(() => {
-          const element = document.querySelector(`[data-file-id="${fileParam}"]`);
-          if (element && feedScrollRef.current) {
-            element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          // Find file in filteredFilesByFeed (which depends on activeFeedId)
+          // Recalculate filtered files based on current activeFeedId
+          let filesToSearch = indexedFiles;
+          if (targetFeedId === 'public') {
+            filesToSearch = indexedFiles;
+          } else if (targetFeedId === 'curated') {
+            const subscribedFeedIds = userState.preferences.subscribedFeedIds;
+            filesToSearch = indexedFiles.filter(f => 
+              f.metadata.feedIds?.some(feedId => subscribedFeedIds.includes(feedId))
+            );
+          } else {
+            filesToSearch = indexedFiles.filter(f => 
+              f.metadata.feedIds?.includes(targetFeedId)
+            );
           }
+          
+          const fileIndex = filesToSearch.findIndex(f => f.metadata.fileId === fileParam);
+          if (fileIndex !== -1) {
+            setCurrentFeedIndex(fileIndex);
+            setVisibleFileId(fileParam);
+          }
+          // Also try to scroll to it after a short delay
+          setTimeout(() => {
+            const element = document.querySelector(`[data-file-id="${fileParam}"]`);
+            if (element) {
+              element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            }
+          }, 300);
         }, 500);
       }
     }
-  }, [getParam, indexedFiles.length]); // Only run when files are loaded
+  }, [getParam, indexedFiles.length, activeFeedId, userState.preferences.subscribedFeedIds]); // Include activeFeedId and subscribedFeedIds
 
   // Update URL when state changes
   useEffect(() => {

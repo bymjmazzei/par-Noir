@@ -4,7 +4,7 @@
  */
 
 import React from 'react';
-import { Search, Home, Upload, MessageSquare, Grid } from 'lucide-react';
+import { Search, Home, Plus, MessageSquare, Grid } from 'lucide-react';
 import { useUserState } from '../contexts/UserStateContext';
 
 interface BottomNavProps {
@@ -31,66 +31,61 @@ export function BottomNav({ activeTab, onTabChange, onSearchClick }: BottomNavPr
       <button
         onClick={() => handleTabClick('home')}
         className={`
-          flex flex-col items-center justify-center h-full text-white hover:text-blue-400 transition-colors
+          flex items-center justify-center h-full text-white hover:text-blue-400 transition-colors
           ${activeTab === 'home' ? 'text-blue-400' : ''}
         `}
         title="Home"
       >
-        <Home className="h-6 w-6 mb-1" />
-        <span className="text-xs font-medium">HOME</span>
+        <Home className="h-6 w-6" />
       </button>
 
       {/* SEARCH - Always visible */}
-        <button
-          onClick={() => handleTabClick('search')}
-          className={`
-          flex flex-col items-center justify-center h-full text-white hover:text-blue-400 transition-colors
+      <button
+        onClick={() => handleTabClick('search')}
+        className={`
+          flex items-center justify-center h-full text-white hover:text-blue-400 transition-colors
           ${activeTab === 'search' ? 'text-blue-400' : ''}
-          `}
+        `}
         title="Search"
-        >
-        <Search className="h-6 w-6 mb-1" />
-        <span className="text-xs font-medium">SEARCH</span>
-        </button>
+      >
+        <Search className="h-6 w-6" />
+      </button>
 
       {/* UPLOAD - Always visible */}
-        <button
+      <button
         onClick={() => handleTabClick('upload')}
-          className={`
-          flex flex-col items-center justify-center h-full text-white hover:text-blue-400 transition-colors
+        className={`
+          flex items-center justify-center h-full text-white hover:text-blue-400 transition-colors
           ${activeTab === 'upload' ? 'text-blue-400' : ''}
-          `}
+        `}
         title="Upload"
-        >
-        <Upload className="h-6 w-6 mb-1" />
-        <span className="text-xs font-medium">UPLOAD</span>
-        </button>
+      >
+        <Plus className="h-6 w-6" />
+      </button>
 
       {/* ME - Always visible */}
-          <button
+      <button
         onClick={() => handleTabClick('index')}
-            className={`
-          flex flex-col items-center justify-center h-full text-white hover:text-blue-400 transition-colors
+        className={`
+          flex items-center justify-center h-full text-white hover:text-blue-400 transition-colors
           ${activeTab === 'index' ? 'text-blue-400' : ''}
-            `}
+        `}
         title="Me"
-          >
-        <Grid className="h-6 w-6 mb-1" />
-        <span className="text-xs font-medium">ME</span>
-          </button>
+      >
+        <Grid className="h-6 w-6" />
+      </button>
 
       {/* INBOX - Always visible */}
-          <button
-            onClick={() => handleTabClick('messages')}
-            className={`
-          flex flex-col items-center justify-center h-full text-white hover:text-blue-400 transition-colors
+      <button
+        onClick={() => handleTabClick('messages')}
+        className={`
+          flex items-center justify-center h-full text-white hover:text-blue-400 transition-colors
           ${activeTab === 'messages' ? 'text-blue-400' : ''}
-            `}
+        `}
         title="Inbox"
-          >
-        <MessageSquare className="h-6 w-6 mb-1" />
-        <span className="text-xs font-medium">INBOX</span>
-          </button>
+      >
+        <MessageSquare className="h-6 w-6" />
+      </button>
     </div>
   );
 }
