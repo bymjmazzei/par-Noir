@@ -2225,7 +2225,7 @@ class ProductionServer {
     });
 
     // POST /oauth/refresh - Refresh token endpoint
-    this.app.post('/oauth/refresh', (req, res) => {
+    this.app.post('/oauth/refresh', async (req, res) => {
       try {
         const { refresh_token, client_id } = req.body;
 
