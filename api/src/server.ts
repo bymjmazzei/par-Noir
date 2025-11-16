@@ -2156,6 +2156,11 @@ class ProductionServer {
         // The actual decryption happens client-side in the browser
         const did = req.body.did || `did:key:${public_key.substring(0, 32)}`;
 
+        console.log('[OAuth Auth] Received authentication request:');
+        console.log('  DID:', did.substring(0, 30) + '...');
+        console.log('  PublicKey (first 30 chars):', public_key.substring(0, 30) + '...');
+        console.log('  PublicKey length:', public_key.length);
+
         // Generate authorization code
         // Store public_key so we can derive pN identifier correctly (same as dashboard)
         const scopes = scope ? scope.split(' ') : ['openid', 'profile'];
