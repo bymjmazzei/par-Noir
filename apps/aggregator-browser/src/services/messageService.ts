@@ -3,7 +3,23 @@
  * Decentralized peer-to-peer messaging via Google Drive
  */
 
+import { PNOAuthService } from './pnOAuthService';
+
 const API_ENDPOINT = process.env.REACT_APP_API_ENDPOINT || 'https://api.parnoir.com';
+
+// Helper function to get auth headers
+function getAuthHeaders(): HeadersInit {
+  const session = PNOAuthService.loadSession();
+  const headers: HeadersInit = {
+    'Content-Type': 'application/json'
+  };
+  
+  if (session?.accessToken) {
+    headers['Authorization'] = `Bearer ${session.accessToken}`;
+  }
+  
+  return headers;
+}
 
 export interface Message {
   messageId: string;
@@ -40,9 +56,7 @@ export interface MessageThread {
 export async function getMessages(userDid: string): Promise<Message[]> {
   try {
     const response = await fetch(`${API_ENDPOINT}/api/messages/inbox?userDid=${userDid}`, {
-      headers: {
-        'Content-Type': 'application/json'
-      }
+      headers: getAuthHeaders()
     });
 
     if (!response.ok) {
@@ -63,9 +77,7 @@ export async function getMessages(userDid: string): Promise<Message[]> {
 export async function getMessageThreads(userDid: string): Promise<MessageThread[]> {
   try {
     const response = await fetch(`${API_ENDPOINT}/api/messages/threads?userDid=${userDid}`, {
-      headers: {
-        'Content-Type': 'application/json'
-      }
+      headers: getAuthHeaders()
     });
 
     if (!response.ok) {
@@ -91,9 +103,7 @@ export async function getThreadMessages(
     const response = await fetch(
       `${API_ENDPOINT}/api/messages/thread?userDid=${userDid}&participantDid=${participantDid}`,
       {
-        headers: {
-          'Content-Type': 'application/json'
-        }
+        headers: getAuthHeaders()
       }
     );
 
@@ -121,9 +131,7 @@ export async function sendMessage(
   try {
     const response = await fetch(`${API_ENDPOINT}/api/messages/send`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
+      headers: getAuthHeaders(),
       body: JSON.stringify({
         fromDid,
         toDid,
@@ -155,9 +163,7 @@ export async function sendMessageRequest(
   try {
     const response = await fetch(`${API_ENDPOINT}/api/messages/requests`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
+      headers: getAuthHeaders(),
       body: JSON.stringify({
         fromDid,
         toDid,
@@ -183,9 +189,7 @@ export async function sendMessageRequest(
 export async function getMessageRequests(userDid: string): Promise<MessageRequest[]> {
   try {
     const response = await fetch(`${API_ENDPOINT}/api/messages/requests?userDid=${userDid}`, {
-      headers: {
-        'Content-Type': 'application/json'
-      }
+      headers: getAuthHeaders()
     });
 
     if (!response.ok) {
@@ -211,9 +215,7 @@ export async function respondToRequest(
   try {
     const response = await fetch(`${API_ENDPOINT}/api/messages/requests/${requestId}/respond`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
+      headers: getAuthHeaders(),
       body: JSON.stringify({
         userDid,
         accept
@@ -236,9 +238,7 @@ export async function markAsRead(messageId: string, userDid: string): Promise<vo
   try {
     const response = await fetch(`${API_ENDPOINT}/api/messages/${messageId}/read`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
+      headers: getAuthHeaders(),
       body: JSON.stringify({
         userDid
       })
@@ -260,9 +260,7 @@ export async function deleteMessage(messageId: string, userDid: string): Promise
   try {
     const response = await fetch(`${API_ENDPOINT}/api/messages/${messageId}`, {
       method: 'DELETE',
-      headers: {
-        'Content-Type': 'application/json'
-      },
+      headers: getAuthHeaders(),
       body: JSON.stringify({
         userDid
       })

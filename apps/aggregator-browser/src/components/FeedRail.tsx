@@ -6,7 +6,7 @@
 import React, { useRef, useEffect } from 'react';
 import { Feed } from '../types/aggregator';
 import { useUserState } from '../contexts/UserStateContext';
-import { Globe, Sparkles, ChevronLeft, ChevronRight, Plus } from 'lucide-react';
+import { Globe, Sparkles } from 'lucide-react';
 
 export interface FeedRailItem {
   feedId: string;
@@ -26,42 +26,45 @@ interface FeedRailProps {
 
 export function FeedRail({ feeds, activeFeedId, onFeedSelect, onBrowseFeeds }: FeedRailProps) {
   const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const innerContainerRef = useRef<HTMLDivElement>(null);
   const { userState } = useUserState();
 
-  const scroll = (direction: 'left' | 'right') => {
-    if (!scrollContainerRef.current) return;
-    const scrollAmount = 300;
-    scrollContainerRef.current.scrollBy({
-      left: direction === 'left' ? -scrollAmount : scrollAmount,
-      behavior: 'smooth'
-    });
-  };
-
-  // Auto-scroll to active feed on mount/change
+  // Auto-scroll to center active feed on mount/change (TikTok style)
   useEffect(() => {
-    if (!scrollContainerRef.current) return;
-    const activeElement = scrollContainerRef.current.querySelector(`[data-feed-id="${activeFeedId}"]`);
-    if (activeElement) {
-      activeElement.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+    if (!scrollContainerRef.current || !innerContainerRef.current) return;
+    const activeElement = innerContainerRef.current.querySelector(`[data-feed-id="${activeFeedId}"]`) as HTMLElement;
+    if (activeElement && scrollContainerRef.current) {
+      const container = scrollContainerRef.current;
+      
+      // Calculate scroll position to center the element
+      const elementLeft = activeElement.offsetLeft;
+      const elementWidth = activeElement.offsetWidth;
+      const containerWidth = container.clientWidth;
+      
+      // Center the element: scroll to position where element is centered
+      const scrollLeft = elementLeft - (containerWidth / 2) + (elementWidth / 2);
+      
+      container.scrollTo({
+        left: Math.max(0, scrollLeft),
+        behavior: 'smooth'
+      });
     }
   }, [activeFeedId]);
 
   return (
-    <div className="relative w-full">
-      {/* Left scroll button */}
-      <button
-        onClick={() => scroll('left')}
-        className="absolute left-0 top-0 bottom-0 z-10 w-12 bg-gradient-to-r from-neutral-900 to-transparent flex items-center justify-center opacity-0 hover:opacity-100 transition-opacity"
-        aria-label="Scroll left"
-      >
-        <ChevronLeft className="h-6 w-6 text-white" />
-      </button>
-
-      {/* Feed rail */}
+    <div 
+      ref={scrollContainerRef}
+      className="w-full overflow-x-auto scrollbar-hide pointer-events-auto" 
+      style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
+    >
       <div
-        ref={scrollContainerRef}
-        className="flex space-x-2 overflow-x-auto scrollbar-hide px-12 py-2"
-        style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
+        ref={innerContainerRef}
+        className="flex items-center justify-center space-x-8 py-2"
+        style={{ 
+          minWidth: 'max-content',
+          paddingLeft: '50%',
+          paddingRight: '50%'
+        }}
       >
         {feeds.map((feed) => {
           const isActive = feed.feedId === activeFeedId;
@@ -71,50 +74,17 @@ export function FeedRail({ feeds, activeFeedId, onFeedSelect, onBrowseFeeds }: F
               key={feed.feedId}
               data-feed-id={feed.feedId}
               onClick={() => onFeedSelect(feed.feedId)}
-              className={`
-                flex items-center space-x-2 px-4 py-2 rounded-full whitespace-nowrap transition-all
-                ${isActive
-                  ? 'bg-blue-600 text-white shadow-lg'
-                  : 'bg-neutral-800 text-text-secondary hover:bg-neutral-700 hover:text-white'
-                }
-              `}
+              className="relative whitespace-nowrap text-white/85 hover:text-white transition-colors"
+              style={{ opacity: isActive ? 1 : 0.85 }}
             >
-              {feed.icon || <Globe className="h-4 w-4" />}
-              <span className="font-medium">{feed.name}</span>
-              {feed.isNew && (
-                <span className="px-2 py-0.5 bg-yellow-500 text-black text-xs font-bold rounded-full">
-                  NEW
-                </span>
-              )}
-              {feed.badge && (
-                <span className="px-2 py-0.5 bg-blue-500 text-white text-xs font-bold rounded-full">
-                  {feed.badge}
-                </span>
+              <span className="text-base font-medium uppercase tracking-wide">{feed.name}</span>
+              {isActive && (
+                <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-white" />
               )}
             </button>
           );
         })}
-        
-        {/* Browse Feeds Button */}
-        {onBrowseFeeds && (
-          <button
-            onClick={onBrowseFeeds}
-            className="flex items-center space-x-2 px-4 py-2 rounded-full whitespace-nowrap bg-neutral-800 text-text-secondary hover:bg-neutral-700 hover:text-white transition-all border-2 border-dashed border-neutral-600"
-          >
-            <Plus className="h-4 w-4" />
-            <span className="font-medium">Browse</span>
-          </button>
-        )}
       </div>
-
-      {/* Right scroll button */}
-      <button
-        onClick={() => scroll('right')}
-        className="absolute right-0 top-0 bottom-0 z-10 w-12 bg-gradient-to-l from-neutral-900 to-transparent flex items-center justify-center opacity-0 hover:opacity-100 transition-opacity"
-        aria-label="Scroll right"
-      >
-        <ChevronRight className="h-6 w-6 text-white" />
-      </button>
     </div>
   );
 }
@@ -126,19 +96,53 @@ export function buildFeedRailItems(
   feeds: Feed[],
   subscribedFeedIds: string[],
   activeFeedId: string,
+  isUnlocked: boolean,
   hasNewThirdPartyContent: boolean = false
 ): FeedRailItem[] {
+  // Always show DISCOVER, PUBLIC
   const items: FeedRailItem[] = [
     {
+      feedId: 'discovery',
+      name: 'DISCOVER',
+      isActive: activeFeedId === 'discovery'
+    },
+    {
       feedId: 'public',
-      name: 'Public',
-      icon: <Globe className="h-4 w-4" />,
+      name: 'PUBLIC',
       isActive: activeFeedId === 'public'
     }
   ];
 
+  // Add CURATED feed right after PUBLIC if user is unlocked
+  if (isUnlocked) {
+    items.push({
+      feedId: 'curated',
+      name: 'CURATED',
+      isActive: activeFeedId === 'curated'
+    });
+  }
+
+  // Then add ARTS, SPORTS, MUSIC
+  items.push(
+    {
+      feedId: 'arts',
+      name: 'ARTS',
+      isActive: activeFeedId === 'arts'
+    },
+    {
+      feedId: 'sports',
+      name: 'SPORTS',
+      isActive: activeFeedId === 'sports'
+    },
+    {
+      feedId: 'music',
+      name: 'MUSIC',
+      isActive: activeFeedId === 'music'
+    }
+  );
+
   // Add subscribed feeds (only if user is unlocked)
-  if (subscribedFeedIds.length > 0) {
+  if (isUnlocked && subscribedFeedIds.length > 0) {
     subscribedFeedIds.forEach(feedId => {
       const feed = feeds.find(f => f.feedId === feedId);
       if (feed) {
@@ -148,17 +152,6 @@ export function buildFeedRailItems(
           isActive: activeFeedId === feed.feedId
         });
       }
-    });
-  }
-
-  // Add "New" feed for third-party content (only if user is unlocked and has new content)
-  if (hasNewThirdPartyContent) {
-    items.push({
-      feedId: 'new',
-      name: 'New',
-      icon: <Sparkles className="h-4 w-4" />,
-      isActive: activeFeedId === 'new',
-      isNew: true
     });
   }
 

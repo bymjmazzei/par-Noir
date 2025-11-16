@@ -651,9 +651,9 @@
         const callbackUrl = `${window.location.origin}/oauth-callback.html?code=${authorizationCode}&state=${state}`;
         console.log('Redirecting popup to callback page:', callbackUrl);
         window.location.href = callbackUrl;
-      } else {
+        } else {
         console.log('NOT IN POPUP - Redirecting to:', redirectUri);
-        window.location.href = `${redirectUri}?code=${authorizationCode}&state=${state}`;
+          window.location.href = `${redirectUri}?code=${authorizationCode}&state=${state}`;
       }
     });
     
@@ -661,12 +661,12 @@
       // If we're in a popup (window.opener exists), ALWAYS send message and close - NEVER redirect
       if (window.opener && !window.opener.closed) {
         try {
-          window.opener.postMessage({
-            type: 'oauth_callback',
-            error: 'access_denied',
-            error_description: 'User denied access'
-          }, window.location.origin);
-          window.close();
+        window.opener.postMessage({
+          type: 'oauth_callback',
+          error: 'access_denied',
+          error_description: 'User denied access'
+        }, window.location.origin);
+        window.close();
         } catch (e) {
           console.error('Failed to send OAuth denial message:', e);
           // Still close popup even if message fails

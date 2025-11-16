@@ -41,56 +41,56 @@ export function BottomNav({ activeTab, onTabChange, onSearchClick }: BottomNavPr
       </button>
 
       {/* SEARCH - Always visible */}
-      <button
-        onClick={() => handleTabClick('search')}
-        className={`
+        <button
+          onClick={() => handleTabClick('search')}
+          className={`
           flex flex-col items-center justify-center h-full text-white hover:text-blue-400 transition-colors
           ${activeTab === 'search' ? 'text-blue-400' : ''}
-        `}
+          `}
         title="Search"
-      >
+        >
         <Search className="h-6 w-6 mb-1" />
         <span className="text-xs font-medium">SEARCH</span>
-      </button>
+        </button>
 
       {/* UPLOAD - Always visible */}
-      <button
+        <button
         onClick={() => handleTabClick('upload')}
-        className={`
+          className={`
           flex flex-col items-center justify-center h-full text-white hover:text-blue-400 transition-colors
           ${activeTab === 'upload' ? 'text-blue-400' : ''}
-        `}
+          `}
         title="Upload"
-      >
+        >
         <Upload className="h-6 w-6 mb-1" />
         <span className="text-xs font-medium">UPLOAD</span>
-      </button>
+        </button>
 
       {/* INDEX - Always visible */}
-      <button
+          <button
         onClick={() => handleTabClick('index')}
-        className={`
+            className={`
           flex flex-col items-center justify-center h-full text-white hover:text-blue-400 transition-colors
           ${activeTab === 'index' ? 'text-blue-400' : ''}
-        `}
+            `}
         title="Index"
-      >
+          >
         <Grid className="h-6 w-6 mb-1" />
         <span className="text-xs font-medium">INDEX</span>
-      </button>
+          </button>
 
       {/* INBOX - Always visible */}
-      <button
-        onClick={() => handleTabClick('messages')}
-        className={`
+          <button
+            onClick={() => handleTabClick('messages')}
+            className={`
           flex flex-col items-center justify-center h-full text-white hover:text-blue-400 transition-colors
           ${activeTab === 'messages' ? 'text-blue-400' : ''}
-        `}
+            `}
         title="Inbox"
-      >
+          >
         <MessageSquare className="h-6 w-6 mb-1" />
         <span className="text-xs font-medium">INBOX</span>
-      </button>
+          </button>
     </div>
   );
 }

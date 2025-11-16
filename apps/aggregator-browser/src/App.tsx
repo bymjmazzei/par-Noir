@@ -4,7 +4,7 @@
  * Deployed at browse.parnoir.com
  */
 
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { Search, Filter, File, Globe, Tag, Calendar, User, Download, RefreshCw, Lock, Unlock, Image as ImageIcon, X, Grid } from 'lucide-react';
 import { getMetadataIndexService } from './services/metadata/MetadataIndexService';
 import { PublicMetadata, MetadataFilters, IndexedFile, Feed } from './types/aggregator';
@@ -21,7 +21,6 @@ import { KeyboardShortcuts } from './components/KeyboardShortcuts';
 import { LoadingSkeleton } from './components/LoadingSkeleton';
 import { ContentRatingBadge } from './components/ContentRatingBadge';
 import { EmptyState } from './components/EmptyState';
-import { WelcomeModal } from './components/WelcomeModal';
 import { CommentModal } from './components/CommentModal';
 import { BrandedFeedPage } from './components/BrandedFeedPage';
 import { MediaViewer } from './components/MediaViewer';
@@ -41,6 +40,7 @@ import { useToast } from './hooks/useToast';
 import { useURLParams } from './hooks/useURLParams';
 import { loadFeedViewedTimestamps, markFeedAsViewed, hasNewContent } from './utils/feedUtils';
 import { FeedService } from './services/feedService';
+import { PNOAuthService } from './services/pnOAuthService';
 import { FullScreenFeed } from './components/FullScreenFeed';
 import { FeedNavBar } from './components/FeedNavBar';
 import { BottomNav } from './components/BottomNav';
@@ -54,7 +54,7 @@ import { saveToFeed } from './services/savedFeedService';
 // In production, these would come from a shared package
 
 function App() {
-  const { userState } = useUserState();
+  const { userState, setLocked, setUnlocked } = useUserState();
   const [indexedFiles, setIndexedFiles] = useState<IndexedFile[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -81,20 +81,14 @@ function App() {
   const [showUploadModal, setShowUploadModal] = useState(false); // Show upload modal
   const [showCreateFeedModal, setShowCreateFeedModal] = useState(false); // Show create feed modal
   const [addingToFeedFile, setAddingToFeedFile] = useState<IndexedFile | null>(null); // File being added to feed
-  const [showWelcome, setShowWelcome] = useState(() => {
-    // Show welcome on first visit
-    try {
-      return !localStorage.getItem('pn_welcome_completed');
-    } catch {
-      return false;
-    }
-  });
   const [viewingCreatorId, setViewingCreatorId] = useState<string | null>(null); // Creator ID for index view
   const [feedViewedTimestamps, setFeedViewedTimestamps] = useState<Map<string, string>>(
     () => loadFeedViewedTimestamps()
   ); // Track when feeds were last viewed
   const feedScrollRef = React.useRef<HTMLDivElement>(null); // Ref for feed scroll container
   const videoRefs = React.useRef<Map<string, HTMLVideoElement>>(new Map()); // Store video element refs
+  const discoverFilesRef = useRef<((filters?: MetadataFilters, forceRefresh?: boolean) => Promise<void>) | null>(null); // Ref for discoverFiles function
+  const generateThumbnailsForImagesRef = useRef<((files: IndexedFile[]) => Promise<void>) | null>(null); // Ref for generateThumbnailsForImages function
   
   const metadataIndexService = getMetadataIndexService();
   const { toggleLike, share, getLikeCount, isLiked, getComments, getShareCount, loadBulkEngagementStats } = useEngagement();
@@ -107,6 +101,27 @@ function App() {
     userState.preferences.subscribedFeedIds
   );
 
+  // Validate OAuth session on mount and sync with user state
+  useEffect(() => {
+    const session = PNOAuthService.loadSession();
+    if (userState.isUnlocked) {
+      // If UI says unlocked but no valid session, lock the user
+      if (!session || !PNOAuthService.isSessionValid(session)) {
+        console.log('🔐 No valid OAuth session found, locking user');
+        setLocked();
+        PNOAuthService.clearSession();
+      } else if (session.did && session.did !== userState.pnIdentifier) {
+        // Session exists but DID doesn't match, sync it
+        console.log('🔐 Syncing user state with OAuth session');
+        setUnlocked(session.did);
+      }
+    } else if (session && PNOAuthService.isSessionValid(session) && session.did) {
+      // If UI says locked but valid session exists, unlock the user
+      console.log('🔐 Valid OAuth session found, unlocking user');
+      setUnlocked(session.did);
+    }
+  }, []); // Only run on mount
+
   // Set default feed based on user state
   useEffect(() => {
     if (userState.isUnlocked && activeFeedId === 'public') {
@@ -114,11 +129,7 @@ function App() {
     } else if (!userState.isUnlocked && activeFeedId === 'curated') {
       setActiveFeedId('public');
     }
-  }, [userState.isUnlocked]);
-
-  useEffect(() => {
-    discoverFiles();
-  }, []);
+  }, [userState.isUnlocked, activeFeedId]);
 
   // Fetch feeds from API
   useEffect(() => {
@@ -240,7 +251,9 @@ function App() {
 
   // Re-discover files when active feed or rating preferences change
   useEffect(() => {
-    discoverFiles();
+    if (discoverFilesRef.current) {
+      discoverFilesRef.current();
+    }
   }, [activeFeedId, userState.preferences.maxRating]);
 
   // Reset feed index when feed changes
@@ -431,7 +444,9 @@ function App() {
       const token = localStorage.getItem('google_drive_token');
       if (token) {
         console.log('✅ Google Drive token found - will scan pN folders');
-        discoverFiles();
+        if (discoverFilesRef.current) {
+          discoverFilesRef.current();
+        }
       }
     };
 
@@ -442,7 +457,9 @@ function App() {
     window.addEventListener('storage', (e) => {
       if (e.key === 'google_drive_token' && e.newValue) {
         console.log('✅ Google Drive token updated - refreshing metadata');
-        discoverFiles();
+        if (discoverFilesRef.current) {
+          discoverFilesRef.current();
+        }
       }
     });
 
@@ -451,7 +468,7 @@ function App() {
     };
   }, []);
 
-  const discoverFiles = async (searchFilters?: MetadataFilters, forceRefresh: boolean = false) => {
+  const discoverFiles = useCallback(async (searchFilters?: MetadataFilters, forceRefresh: boolean = false) => {
     try {
       setIsLoading(true);
       setError(null);
@@ -464,8 +481,9 @@ function App() {
         ...filters,
         ...searchFilters,
         ...(searchQuery ? { tags: searchQuery.split(',').map(t => t.trim()).filter(Boolean) } : {}),
-        // Apply user's rating preferences
-        maxRating: userState.preferences.maxRating,
+        // DON'T apply rating filter to public feed - public feed shows all public files
+        // Only apply rating filter to non-public feeds
+        ...(activeFeedId === 'public' ? {} : { maxRating: userState.preferences.maxRating }),
         // Filter by active feed
         ...(activeFeedId === 'public' ? {} : { feedId: activeFeedId })
       };
@@ -476,8 +494,10 @@ function App() {
       setIndexedFiles(discoveredFiles);
       console.log(`✅ Discovered ${discoveredFiles.length} public files`);
       
-      // Generate thumbnails for image files
-      generateThumbnailsForImages(discoveredFiles);
+      // Generate thumbnails for image files (called separately to avoid TDZ)
+      if (generateThumbnailsForImagesRef.current) {
+        generateThumbnailsForImagesRef.current(discoveredFiles);
+      }
       
       // Pre-load video blobs for feed mode (if in feed mode)
       const currentViewMode = viewMode || 'grid';
@@ -516,7 +536,19 @@ function App() {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [filters, searchQuery, userState.preferences.maxRating, activeFeedId, viewMode, videoBlobs]);
+  
+  // Store discoverFiles in ref so it can be called from OAuth callback
+  useEffect(() => {
+    discoverFilesRef.current = discoverFiles;
+  }, [discoverFiles]);
+  
+  // Initial file discovery on mount (after discoverFiles is defined)
+  useEffect(() => {
+    if (discoverFilesRef.current) {
+      discoverFilesRef.current();
+    }
+  }, []);
 
 
   const handleSearch = () => {
@@ -588,6 +620,11 @@ function App() {
       }
     }
   };
+  
+  // Store generateThumbnailsForImages in ref so it can be called from discoverFiles
+  useEffect(() => {
+    generateThumbnailsForImagesRef.current = generateThumbnailsForImages;
+  }, []);
 
   // Create a thumbnail from a blob (resize image to max dimensions)
   const createThumbnailFromBlob = (blob: Blob, maxWidth: number, maxHeight: number): Promise<string> => {
@@ -849,15 +886,21 @@ function App() {
   }
 
   // Build feed rail items - Always show DISCOVER, PUBLIC, ARTS, SPORTS, MUSIC (TikTok style)
-  const feedRailItems = buildFeedRailItems(
-    feeds,
-    userState.isUnlocked ? userState.preferences.subscribedFeedIds : [],
-    activeFeedId,
-    hasNewThirdPartyContent
-  );
+  // Only show subscribed feeds and CURATED feed when user is unlocked
+  const feedRailItems = useMemo(() => {
+    return buildFeedRailItems(
+      feeds,
+      userState.isUnlocked ? userState.preferences.subscribedFeedIds : [],
+      activeFeedId,
+      userState.isUnlocked,
+      hasNewThirdPartyContent
+    );
+  }, [feeds, userState.isUnlocked, userState.preferences.subscribedFeedIds, activeFeedId, hasNewThirdPartyContent]);
   
   // Debug: Log feed rail items
-  console.log('Feed rail items:', feedRailItems.map(f => f.name));
+  useEffect(() => {
+    console.log('Feed rail items:', feedRailItems.map(f => f.name));
+  }, [feedRailItems]);
 
   const [showAuthModal, setShowAuthModal] = useState(false);
 
@@ -869,10 +912,19 @@ function App() {
       PNOAuthService.clearSession();
     } else {
       // Unlock - redirect to OAuth authorization page (external HTML page)
+      // Get the redirect URI that will be used (must match in token exchange)
+      // This must match what getAuthorizationUrl uses internally
+      const redirectUri = `${window.location.origin}/oauth-callback.html`;
+      
+      // Parse the auth URL to extract the redirect_uri that was used
+      let authUrl = PNOAuthService.getAuthorizationUrl({ usePopup: true });
+      const authUrlObj = new URL(authUrl);
+      const actualRedirectUri = authUrlObj.searchParams.get('redirect_uri') || redirectUri;
+      
+      console.log('Opening OAuth popup, original URL:', authUrl);
+      console.log('Using redirect_uri:', actualRedirectUri);
+      
       try {
-        let authUrl = await PNOAuthService.getAuthorizationUrlAsync();
-        console.log('Opening OAuth popup, original URL:', authUrl);
-        
         // Add popup parameter to URL so oauth-authorize.html knows it's in a popup
         // Need to add it to the API endpoint URL before it redirects
         try {
@@ -897,16 +949,28 @@ function App() {
           return;
         }
         
+        // Track processed codes to prevent duplicate processing
+        const processedCodes = new Set<string>();
+        
         // Handle OAuth callback - listen for both postMessage and localStorage events
         const handleOAuthCallback = (data: { code?: string; state?: string; error?: string; error_description?: string }) => {
           console.log('🔐 OAuth callback received:', data);
           
           if (data.code) {
+            // Prevent processing the same code multiple times
+            if (processedCodes.has(data.code)) {
+              console.warn('🔐 OAuth code already processed, ignoring duplicate callback');
+              return;
+            }
+            processedCodes.add(data.code);
+            
             console.log('🔐 Processing OAuth code:', data.code.substring(0, 20) + '...');
             // Handle OAuth callback
             (async () => {
               try {
-                const tokenResponse = await PNOAuthService.exchangeCodeForToken(data.code!);
+                // Use the same redirect_uri that was used in the authorization request
+                // Extract it from the auth URL to ensure exact match
+                const tokenResponse = await PNOAuthService.exchangeCodeForToken(data.code!, actualRedirectUri);
                 const userInfo = await PNOAuthService.getUserInfo(tokenResponse.access_token);
                 
                 const session = {
@@ -930,11 +994,19 @@ function App() {
                 console.log('✅ OAuth success! User should be unlocked now.');
               } catch (err) {
                 console.error('OAuth callback error:', err);
+                // Remove code from processed set so user can retry
+                processedCodes.delete(data.code!);
+                // Ensure user is locked if authentication failed
+                setLocked();
+                PNOAuthService.clearSession();
                 showErrorToast('Authentication failed. Please try again.');
               }
             })();
           } else if (data.error) {
             console.error('OAuth error:', data.error);
+            // Ensure user is locked if authentication was denied
+            setLocked();
+            PNOAuthService.clearSession();
             showErrorToast(data.error_description || 'Authentication denied');
           }
           
@@ -1101,7 +1173,7 @@ function App() {
   };
 
   return (
-    <div className={`min-h-screen bg-gradient-to-br from-neutral-900 via-neutral-800 to-neutral-900 ${viewMode === 'feed' ? 'h-screen overflow-hidden' : ''}`}>
+    <div className={`min-h-screen ${viewMode === 'feed' ? 'h-screen overflow-hidden bg-black' : 'bg-gradient-to-br from-neutral-900 via-neutral-800 to-neutral-900'}`}>
       <div className={`${viewMode === 'feed' ? 'h-full flex flex-col' : 'max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8'}`}>
         {/* Header */}
         {viewMode !== 'feed' && (
@@ -1209,42 +1281,16 @@ function App() {
           </div>
         )}
 
-        {/* Stats and View Mode Toggle */}
-        <div className={`bg-neutral-900/60 border border-neutral-700 rounded-xl p-4 ${viewMode === 'feed' ? 'mb-2' : 'mb-6'}`}>
-          <div className="flex items-center justify-between">
-            {viewMode !== 'feed' && (
+        {/* Stats and View Mode Toggle - ONLY show when NOT in feed mode */}
+        {viewMode !== 'feed' && (
+          <div className="bg-neutral-900/60 border border-neutral-700 rounded-xl p-4 mb-6">
+            <div className="flex items-center justify-between">
               <div>
                 <p className="text-text-secondary text-sm">Public Files Discovered</p>
                 <p className="text-white text-2xl font-bold">{indexedFiles.length}</p>
               </div>
-            )}
-            <div className={`flex items-center space-x-4 ${viewMode === 'feed' ? 'w-full justify-center' : ''}`}>
-              {/* View Mode Toggle */}
-              <div className="flex items-center space-x-2 bg-neutral-800 rounded-lg p-1">
+              <div className="flex items-center space-x-4">
                 <button
-                  onClick={() => setViewMode('grid')}
-                  className={`px-3 py-1.5 text-sm font-medium rounded transition-colors ${
-                    viewMode === 'grid' 
-                      ? 'bg-blue-600 text-white' 
-                      : 'text-text-secondary hover:text-white'
-                  }`}
-                >
-                  Grid
-                </button>
-                <button
-                  onClick={() => setViewMode('feed')}
-                  className={`px-3 py-1.5 text-sm font-medium rounded transition-colors ${
-                    viewMode === 'feed' 
-                      ? 'bg-blue-600 text-white' 
-                      : 'text-text-secondary hover:text-white'
-                  }`}
-                >
-                  Feed
-                </button>
-              </div>
-              {viewMode !== 'feed' && (
-                <>
-                  <button
                     onClick={() => discoverFiles(undefined, true)}
                     disabled={isLoading}
                     className="px-4 py-2 bg-neutral-700 text-white text-sm font-medium rounded-lg hover:bg-neutral-600 transition-colors disabled:opacity-50 flex items-center space-x-2"
@@ -1295,11 +1341,10 @@ function App() {
                   >
                     <Settings className="h-5 w-5" />
                   </button>
-                </>
-              )}
+              </div>
             </div>
           </div>
-        </div>
+        )}
 
         {/* Files Grid */}
         {error && !isLoading && (
@@ -1355,7 +1400,7 @@ function App() {
                 (horizontalSwipeRef as React.MutableRefObject<HTMLDivElement | null>).current = el;
               }
             }}
-            className="flex-1 h-full pt-24 pb-24"
+            className="flex-1 h-full"
           >
             {filteredFilesByFeed.length > 0 ? (
               <FullScreenFeed
@@ -1715,27 +1760,6 @@ function App() {
           />
         )}
 
-        {/* Welcome Modal */}
-        {showWelcome && (
-          <WelcomeModal
-            onClose={() => {
-              setShowWelcome(false);
-              try {
-                localStorage.setItem('pn_welcome_completed', 'true');
-              } catch (e) {
-                console.warn('Failed to save welcome completion:', e);
-              }
-            }}
-            onComplete={() => {
-              try {
-                localStorage.setItem('pn_welcome_completed', 'true');
-              } catch (e) {
-                console.warn('Failed to save welcome completion:', e);
-              }
-            }}
-          />
-        )}
-
         {/* Comment Modal */}
         {commentingFile && (
           <CommentModal
@@ -1793,9 +1817,13 @@ function App() {
           </button>
           <button
             onClick={() => {
-              // TODO: Implement index/browse view
-              showErrorToast('Index feature coming soon');
-              setActiveBottomTab('index');
+              if (userState.isUnlocked && userState.pnIdentifier) {
+                // Show user's own index
+                setViewingCreatorId(userState.pnIdentifier);
+                setActiveBottomTab('index');
+              } else {
+                showErrorToast('Unlock your pN to view your index');
+              }
             }}
             className={`flex flex-col items-center justify-center h-full text-white hover:text-blue-400 transition-colors ${activeBottomTab === 'index' ? 'text-blue-400' : ''}`}
             title="Index"

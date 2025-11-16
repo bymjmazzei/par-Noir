@@ -5,6 +5,21 @@
 
 const API_ENDPOINT = process.env.REACT_APP_API_ENDPOINT || 'https://api.parnoir.com';
 import { IndexedFile, MetadataFilters, ContentRating } from '../types/aggregator';
+import { PNOAuthService } from './pnOAuthService';
+
+// Helper function to get auth headers
+function getAuthHeaders(): HeadersInit {
+  const session = PNOAuthService.loadSession();
+  const headers: HeadersInit = {
+    'Content-Type': 'application/json'
+  };
+  
+  if (session?.accessToken) {
+    headers['Authorization'] = `Bearer ${session.accessToken}`;
+  }
+  
+  return headers;
+}
 
 export interface SearchOptions {
   query?: string;
@@ -77,9 +92,7 @@ export async function searchFiles(
     }
 
     const response = await fetch(`${API_ENDPOINT}/api/search?${params.toString()}`, {
-      headers: {
-        'Content-Type': 'application/json'
-      }
+      headers: getAuthHeaders()
     });
 
     if (!response.ok) {
@@ -139,9 +152,7 @@ export async function searchPersonalHistory(
     }
 
     const response = await fetch(`${API_ENDPOINT}/api/search/personal?userDid=${userDid}&${params.toString()}`, {
-      headers: {
-        'Content-Type': 'application/json'
-      }
+      headers: getAuthHeaders()
     });
 
     if (!response.ok) {

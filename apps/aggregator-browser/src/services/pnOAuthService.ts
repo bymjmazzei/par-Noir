@@ -126,7 +126,11 @@ export class PNOAuthService {
   /**
    * Exchange authorization code for access token
    */
-  static async exchangeCodeForToken(code: string): Promise<OAuthTokenResponse> {
+  static async exchangeCodeForToken(code: string, redirectUri?: string): Promise<OAuthTokenResponse> {
+    // Use provided redirect_uri or default to REDIRECT_URI
+    // Must match the redirect_uri used in the authorization request
+    const finalRedirectUri = redirectUri || REDIRECT_URI;
+    
     const response = await fetch(`${API_ENDPOINT}/oauth/token`, {
       method: 'POST',
       headers: {
@@ -135,7 +139,7 @@ export class PNOAuthService {
       body: JSON.stringify({
         code,
         client_id: CLIENT_ID,
-        redirect_uri: REDIRECT_URI,
+        redirect_uri: finalRedirectUri,
         grant_type: 'authorization_code'
       })
     });
