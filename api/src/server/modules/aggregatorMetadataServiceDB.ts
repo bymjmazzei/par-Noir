@@ -147,20 +147,12 @@ export class AggregatorMetadataServiceDB {
       }
 
       if (filters?.authorDid) {
-        // Use CASE to ensure boolean return type - matches pattern from line 604
+        // Match exact pattern from getFilesForDid (line 604) - simple equality checks
+        // Wrap in parentheses to ensure boolean result
         query += ` AND (
-          CASE WHEN (am.metadata->'creator'->'identifier'->>'value') IS NOT NULL 
-            THEN (am.metadata->'creator'->'identifier'->>'value') = $${paramIndex}
-            ELSE false
-          END OR
-          CASE WHEN (am.metadata->'creator'->>'@id') IS NOT NULL 
-            THEN (am.metadata->'creator'->>'@id') = $${paramIndex}
-            ELSE false
-          END OR
-          CASE WHEN (am.metadata->'author'->>'did') IS NOT NULL 
-            THEN (am.metadata->'author'->>'did') = $${paramIndex}
-            ELSE false
-          END
+          (am.metadata->'creator'->>'@id' = $${paramIndex}) OR
+          (am.metadata->'creator'->'identifier'->>'value' = $${paramIndex}) OR
+          (am.metadata->'author'->>'did' = $${paramIndex})
         )`;
         params.push(filters.authorDid);
         paramIndex++;
