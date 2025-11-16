@@ -30,6 +30,7 @@ import { AddToFeedModal } from './components/AddToFeedModal';
 import { NotificationBell } from './components/NotificationBell';
 import { ToastContainer } from './components/Toast';
 import { EditFileModal } from './components/EditFileModal';
+import { ShareToFeedModal } from './components/ShareToFeedModal';
 import { Settings, Upload, Plus, Home, MessageSquare, Grid } from 'lucide-react';
 import { useKeyboardNavigation } from './hooks/useKeyboardNavigation';
 import { useSwipeGesture } from './hooks/useSwipeGesture';
@@ -81,6 +82,7 @@ function App() {
   const [viewingBrandedFeed, setViewingBrandedFeed] = useState<Feed | null>(null); // Branded feed being viewed
   const [showUploadModal, setShowUploadModal] = useState(false); // Show upload modal
   const [showCreateFeedModal, setShowCreateFeedModal] = useState(false); // Show create feed modal
+  const [sharingToFeedFile, setSharingToFeedFile] = useState<IndexedFile | null>(null); // File to share to feed
   const [addingToFeedFile, setAddingToFeedFile] = useState<IndexedFile | null>(null); // File being added to feed
   const [viewingCreatorId, setViewingCreatorId] = useState<string | null>(null); // Creator ID for index view
   const [feedViewedTimestamps, setFeedViewedTimestamps] = useState<Map<string, string>>(
@@ -1067,16 +1069,9 @@ function App() {
                 onComment={(file) => setCommentingFile(file)}
                 onShare={async (fileId) => {
                   share(fileId);
-                  const file = uniqueFiles.find(f => f.metadata.fileId === fileId);
-                  if (file) {
-                    const shareUrl = `${window.location.origin}${window.location.pathname}?file=${fileId}&view=feed`;
-                    try {
-                      await navigator.clipboard.writeText(shareUrl);
-                      success('Link copied to clipboard!');
-                    } catch (err) {
-                      showErrorToast('Failed to copy link. Please try again.');
-                    }
-                  }
+                }}
+                onShareToFeed={(file) => {
+                  setSharingToFeedFile(file);
                 }}
                 isLiked={isLiked}
                 getLikeCount={getLikeCount}
@@ -1225,16 +1220,9 @@ function App() {
           onComment={(file) => setCommentingFile(file)}
           onShare={async (fileId) => {
             share(fileId);
-            const file = uniqueFiles.find(f => f.metadata.fileId === fileId);
-            if (file) {
-              const shareUrl = `${window.location.origin}${window.location.pathname}?file=${fileId}&view=feed`;
-              try {
-                await navigator.clipboard.writeText(shareUrl);
-                success('Link copied to clipboard!');
-              } catch (err) {
-                showErrorToast('Failed to copy link. Please try again.');
-              }
-            }
+          }}
+          onShareToFeed={(file) => {
+            setSharingToFeedFile(file);
           }}
           isLiked={isLiked}
           getLikeCount={getLikeCount}
@@ -1859,18 +1847,10 @@ function App() {
                 onComment={(file) => setCommentingFile(file)}
                 onShare={async (fileId) => {
                   share(fileId);
-                  const file = filteredFilesByFeed.find(f => f.metadata.fileId === fileId);
-                  if (file) {
-                    const shareUrl = `${window.location.origin}${window.location.pathname}?file=${fileId}&view=feed`;
-                      try {
-                        await navigator.clipboard.writeText(shareUrl);
-                        success('Link copied to clipboard!');
-                      setParam('file', fileId);
-                      } catch (err) {
-                        showErrorToast('Failed to copy link. Please try again.');
-                    }
-                      }
-                    }}
+                }}
+                onShareToFeed={(file) => {
+                  setSharingToFeedFile(file);
+                }}
                 onAddToFeed={(file) => {
                   const creatorId = file.metadata.creator?.identifier?.value || file.metadata.creator?.["@id"] || file.metadata.author?.did;
                       if (userState.isUnlocked && userState.pnIdentifier === creatorId) {
@@ -2207,6 +2187,19 @@ function App() {
           <CommentModal
             file={commentingFile}
             onClose={() => setCommentingFile(null)}
+          />
+        )}
+
+        {/* Share to Feed Modal */}
+        {sharingToFeedFile && (
+          <ShareToFeedModal
+            file={sharingToFeedFile}
+            feeds={feeds}
+            onClose={() => setSharingToFeedFile(null)}
+            onShared={(feedId) => {
+              setSharingToFeedFile(null);
+              success('Shared to feed!');
+            }}
           />
         )}
 

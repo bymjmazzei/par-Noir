@@ -17,6 +17,7 @@ interface EngagementOverlayProps {
   onLike: () => void;
   onComment: () => void;
   onShare: () => void;
+  onShareToFeed?: () => void;
   onSave?: () => void;
   onClose: () => void;
   isOpen: boolean;
@@ -31,6 +32,7 @@ export function EngagementOverlay({
   onLike,
   onComment,
   onShare,
+  onShareToFeed,
   onSave,
   onClose,
   isOpen
@@ -190,6 +192,19 @@ export function EngagementOverlay({
             {/* Share submenu */}
             {shareMenuOpen && (
               <div className="ml-16 space-y-2">
+                {onShareToFeed && userState.isUnlocked && (
+                  <button
+                    onClick={() => {
+                      onShareToFeed();
+                      setShareMenuOpen(false);
+                      onClose();
+                    }}
+                    className="w-full flex items-center space-x-3 p-3 bg-neutral-800 rounded-lg hover:bg-neutral-700 transition-colors text-left"
+                  >
+                    <Share2 className="h-5 w-5 text-neutral-400" />
+                    <span className="text-white text-sm">Share to Feed</span>
+                  </button>
+                )}
                 <button
                   onClick={handleCopyLink}
                   className="w-full flex items-center space-x-3 p-3 bg-neutral-800 rounded-lg hover:bg-neutral-700 transition-colors text-left"
@@ -197,28 +212,6 @@ export function EngagementOverlay({
                   <Copy className="h-5 w-5 text-neutral-400" />
                   <span className="text-white text-sm">Copy Link</span>
                 </button>
-                {navigator.share && (
-                  <button
-                    onClick={handleExternalShare}
-                    className="w-full flex items-center space-x-3 p-3 bg-neutral-800 rounded-lg hover:bg-neutral-700 transition-colors text-left"
-                  >
-                    <ExternalLink className="h-5 w-5 text-neutral-400" />
-                    <span className="text-white text-sm">Share Externally</span>
-                  </button>
-                )}
-                {onSave && userState.isUnlocked && (
-                  <button
-                    onClick={() => {
-                      onSave();
-                      setShareMenuOpen(false);
-                      onClose();
-                    }}
-                    className="w-full flex items-center space-x-3 p-3 bg-neutral-800 rounded-lg hover:bg-neutral-700 transition-colors text-left"
-                  >
-                    <Bookmark className="h-5 w-5 text-neutral-400" />
-                    <span className="text-white text-sm">Share to Feed</span>
-                  </button>
-                )}
               </div>
             )}
           </div>
