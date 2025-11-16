@@ -2257,7 +2257,7 @@ class ProductionServer {
 
     // GET /oauth/userinfo - User info endpoint
     // Returns user information based on access token
-    this.app.get('/oauth/userinfo', (req, res) => {
+    this.app.get('/oauth/userinfo', async (req, res) => {
       try {
         const authHeader = req.headers.authorization;
         if (!authHeader || !authHeader.startsWith('Bearer ')) {
@@ -2277,11 +2277,41 @@ class ProductionServer {
           });
         }
 
+        // Look up pN identifier from database
+        // Query aggregator_metadata to find the pN identifier for this DID
+        let pnIdentifier: string | undefined;
+        try {
+          const db = (await import('./server/utils/database')).getDatabasePool();
+          const did = tokenPayload.did;
+          
+          // Query for pN identifier - check both pn_identifier column and metadata fields
+          const result = await db.query(
+            `SELECT DISTINCT pn_identifier 
+             FROM aggregator_metadata 
+             WHERE pn_identifier IS NOT NULL 
+               AND (
+                 (metadata->'creator'->>'@id') = $1 OR
+                 (metadata->'creator'->'identifier'->>'value') = $1 OR
+                 (metadata->'author'->>'did') = $1
+               )
+             LIMIT 1`,
+            [did]
+          );
+          
+          if (result.rows.length > 0 && result.rows[0].pn_identifier) {
+            pnIdentifier = result.rows[0].pn_identifier;
+          }
+        } catch (dbError) {
+          console.warn('Failed to look up pN identifier from database:', dbError);
+          // Non-critical - continue without pnIdentifier
+        }
+
         // Return user info based on token payload
         return res.json({
           sub: tokenPayload.did,
           did: tokenPayload.did,
-          pn_name: tokenPayload.pnName || undefined
+          pn_name: tokenPayload.pnName || undefined,
+          pn_identifier: pnIdentifier // Add pN identifier from database
         });
       } catch (error: any) {
         console.error('Userinfo error:', error);
