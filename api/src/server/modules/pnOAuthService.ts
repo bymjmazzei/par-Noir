@@ -176,31 +176,40 @@ export class PNOAuthService {
    * Derive pN identifier from DID + publicKey (same method as dashboard)
    * Standard: Combine DID + publicKey, SHA-256 hash, take first 12 hex chars
    * This matches: authenticatedUser.id + resolvedAuth.publicKey
+   * 
+   * IMPORTANT: Dashboard uses Web Crypto API (crypto.subtle.digest) which uses UTF-8 encoding
+   * We need to match this exactly using Node.js crypto with UTF-8 encoding
    */
   private static async derivePnIdentifier(did: string, publicKey?: string): Promise<string | undefined> {
     try {
       if (!did) {
+        console.error('[OAuth] No DID provided for pN identifier derivation');
         return undefined;
       }
       // Use provided publicKey if available, otherwise extract from DID
       const publicKeyToUse = publicKey || (did.startsWith('did:key:') ? did.substring(8) : undefined);
       
       if (!publicKeyToUse) {
-        console.warn('[OAuth] No publicKey available for pN identifier derivation');
+        console.error('[OAuth] No publicKey available for pN identifier derivation');
         return undefined;
       }
       
       // Combine DID + publicKey (same as dashboard: authenticatedUser.id + resolvedAuth.publicKey)
       const combined = `${did}:${publicKeyToUse}`;
-      console.log('[OAuth] Deriving pN identifier:');
-      console.log('  DID:', did.substring(0, 30) + '...');
-      console.log('  PublicKey (first 30 chars):', publicKeyToUse.substring(0, 30) + '...');
-      console.log('  Combined (first 60 chars):', combined.substring(0, 60) + '...');
+      console.log('[OAuth] Deriving pN identifier (EXACT DASHBOARD METHOD):');
+      console.log('  Full DID:', did);
+      console.log('  Full PublicKey:', publicKeyToUse);
+      console.log('  Combined string:', combined);
+      console.log('  Combined length:', combined.length);
+      console.log('  Combined bytes (first 100):', Buffer.from(combined, 'utf8').toString('hex').substring(0, 100));
       
-      // Generate SHA-256 hash and take first 12 hex characters
-      const hash = crypto.createHash('sha256').update(combined).digest('hex');
+      // Generate SHA-256 hash using UTF-8 encoding (same as dashboard's TextEncoder.encode)
+      // Dashboard: new TextEncoder().encode(combined) → Uint8Array → crypto.subtle.digest('SHA-256', data)
+      // Node.js: Buffer.from(combined, 'utf8') → Buffer → crypto.createHash('sha256').update(buffer)
+      const hash = crypto.createHash('sha256').update(combined, 'utf8').digest('hex');
       const pnIdentifier = hash.substring(0, 12);
-      console.log('  Derived pN identifier:', pnIdentifier);
+      console.log('  Full hash:', hash);
+      console.log('  Derived pN identifier (first 12 chars):', pnIdentifier);
       return pnIdentifier;
     } catch (error) {
       console.error('[OAuth] Failed to derive pN identifier:', error);
