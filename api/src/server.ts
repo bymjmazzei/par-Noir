@@ -2236,7 +2236,7 @@ class ProductionServer {
           });
         }
 
-        const tokenResponse = PNOAuthService.refreshAccessToken(refresh_token, client_id);
+        const tokenResponse = await PNOAuthService.refreshAccessToken(refresh_token, client_id);
 
         if (!tokenResponse) {
           return res.status(400).json({
