@@ -1385,6 +1385,114 @@ class ProductionServer {
         });
       }
     });
+
+    // POST /api/aggregator/metadata-index/cleanup - Aggressively clean up orphaned files by verifying they exist in Google Drive
+    this.app.post('/api/aggregator/metadata-index/cleanup', async (req, res) => {
+      try {
+        const { AggregatorMetadataServiceDB } = await import('./server/modules/aggregatorMetadataServiceDB');
+        const { GoogleDriveSyncService } = await import('./server/modules/googleDriveSyncService');
+        const metadataService = AggregatorMetadataServiceDB.getInstance();
+        const syncService = GoogleDriveSyncService.getInstance();
+
+        console.log('🧹 Aggressive cleanup triggered via API');
+        
+        // First, run a normal sync to get current file list
+        await syncService.syncFromGoogleDrive();
+        
+        // Then get all Google Drive files from database
+        const db = await import('../utils/database').then(m => m.getDatabasePool());
+        const result = await db.query(
+          `SELECT file_id, metadata->>'fileId' as file_id_from_metadata, metadata->>'backendFileId' as backend_file_id, metadata->>'backend' as backend
+           FROM aggregator_metadata 
+           WHERE metadata->>'backend' = 'google_drive'`
+        );
+
+        console.log(`🔍 Found ${result.rows.length} Google Drive files in database`);
+        
+        // Get access token for Google Drive API
+        const { GoogleAuth } = await import('google-auth-library');
+        const serviceAccountKey = process.env.GOOGLE_SERVICE_ACCOUNT_KEY;
+        if (!serviceAccountKey) {
+          return res.status(500).json({ error: 'Google service account not configured' });
+        }
+
+        const credentials = JSON.parse(serviceAccountKey);
+        const auth = new GoogleAuth({
+          credentials,
+          scopes: ['https://www.googleapis.com/auth/drive.readonly']
+        });
+        const client = await auth.getClient();
+        const accessToken = await (client as any).getAccessToken();
+        const token = accessToken.token;
+
+        const orphanedFileIds: string[] = [];
+        let checked = 0;
+
+        // Check each file to see if it actually exists in Google Drive
+        for (const row of result.rows) {
+          checked++;
+          const backendFileId = row.backend_file_id || row.file_id_from_metadata || row.file_id;
+          
+          try {
+            // Try to get file metadata from Google Drive
+            const fileResponse = await fetch(
+              `https://www.googleapis.com/drive/v3/files/${backendFileId}?fields=id,name,trashed`,
+              {
+                headers: {
+                  'Authorization': `Bearer ${token}`
+                }
+              }
+            );
+
+            if (!fileResponse.ok || fileResponse.status === 404) {
+              // File doesn't exist in Google Drive - mark as orphaned
+              orphanedFileIds.push(row.file_id);
+              console.log(`🗑️ File ${row.file_id} (Drive ID: ${backendFileId}) not found in Google Drive`);
+            } else {
+              const fileData = await fileResponse.json();
+              if (fileData.trashed) {
+                // File is in trash - mark as orphaned
+                orphanedFileIds.push(row.file_id);
+                console.log(`🗑️ File ${row.file_id} (Drive ID: ${backendFileId}) is trashed`);
+              }
+            }
+          } catch (checkError) {
+            // If we can't check, assume it's orphaned (safer to remove than keep invalid data)
+            console.warn(`⚠️ Could not verify file ${row.file_id} (Drive ID: ${backendFileId}):`, checkError);
+            orphanedFileIds.push(row.file_id);
+          }
+
+          // Log progress every 10 files
+          if (checked % 10 === 0) {
+            console.log(`🔍 Checked ${checked}/${result.rows.length} files...`);
+          }
+        }
+
+        // Delete orphaned files
+        if (orphanedFileIds.length > 0) {
+          await db.query(
+            `DELETE FROM aggregator_metadata WHERE file_id = ANY($1::text[])`,
+            [orphanedFileIds]
+          );
+          console.log(`✅ Removed ${orphanedFileIds.length} orphaned file(s) from database`);
+        }
+
+        return res.json({
+          success: true,
+          message: 'Cleanup completed',
+          checked: checked,
+          removed: orphanedFileIds.length,
+          orphanedFileIds: orphanedFileIds.slice(0, 10) // Return first 10 for debugging
+        });
+      } catch (error: any) {
+        console.error('Error during aggressive cleanup:', error);
+        return res.status(500).json({ 
+          error: 'Failed to cleanup',
+          message: error.message 
+        });
+      }
+    });
+
     // POST /api/auth/google-oauth/token - Exchange authorization code for tokens
     this.app.post('/api/auth/google-oauth/token', async (req, res) => {
       try {
