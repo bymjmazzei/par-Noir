@@ -147,8 +147,10 @@ export class AggregatorMetadataServiceDB {
       }
 
       if (filters?.authorDid) {
-        // Cast each CASE expression to boolean explicitly to satisfy PostgreSQL type requirements
+        // Match against pn_identifier column (from Google Drive folder name) OR full DID in metadata
+        // pn_identifier is the shortened identifier like "83c1db813607" from folder names
         query += ` AND (
+          am.pn_identifier = $${paramIndex} OR
           (CASE 
             WHEN (am.metadata->'creator'->>'@id') IS NULL THEN false
             ELSE (am.metadata->'creator'->>'@id') = $${paramIndex}
