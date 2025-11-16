@@ -1623,21 +1623,27 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
     const resolveAuth = async () => {
       // Always log - this is critical debugging
       console.log('🔍 [FileStorageAggregator] Resolving auth...');
-      console.log('🔍 [FileStorageAggregator] authenticatedUser prop:', authenticatedUser);
+      // pnName is secret - not logged
+      console.log('🔍 [FileStorageAggregator] authenticatedUser prop received');
       
       // Try prop first
       if (authenticatedUser) {
         // Safely get keys without breaking if object has getters
         try {
-          console.log('🔍 [FileStorageAggregator] authenticatedUser keys:', Object.keys(authenticatedUser));
+          // pnName is secret - not logged
+          console.log('🔍 [FileStorageAggregator] authenticatedUser keys:', Object.keys(authenticatedUser).filter(k => k !== 'pnName' && k !== 'passcode'));
+          // pnName and passcode are secrets - not logged
+          const sanitizedUser = { ...authenticatedUser };
+          delete (sanitizedUser as any).pnName;
+          delete (sanitizedUser as any).passcode;
           console.log('🔍 [FileStorageAggregator] authenticatedUser structure:', {
             id: authenticatedUser.id,
-            pnName: authenticatedUser.pnName,
+            hasPnName: !!authenticatedUser.pnName,
             publicKey: authenticatedUser.publicKey,
             nickname: authenticatedUser.nickname,
             username: (authenticatedUser as any).username,
             name: (authenticatedUser as any).name,
-            fullObject: JSON.stringify(authenticatedUser, null, 2)
+            sanitizedObject: JSON.stringify(sanitizedUser, null, 2)
           });
         } catch (e) {
           console.warn('🔍 [FileStorageAggregator] Could not inspect authenticatedUser:', e);

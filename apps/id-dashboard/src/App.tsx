@@ -1293,7 +1293,8 @@ function App() {
       });
 
       // Set the unlocked identity for notifications
-      notificationsService.setUnlockedIdentity(session.id, session.nickname || session.pnName, session.pnName, session.passcode);
+      // pnName and passcode are secrets - passed to service but not logged
+      notificationsService.setUnlockedIdentity(session.id, session.pnName, session.passcode, session.nickname || 'User');
 
       // Reload stored identities into the selector
       try {
@@ -1333,7 +1334,8 @@ function App() {
 
       // Show success
     setError(null);
-            showSuccessMessage(`Successfully unlocked identity: ${session.nickname || session.pnName}`, 5000);
+            // pnName is secret - use nickname or generic message
+            showSuccessMessage(`Successfully unlocked identity: ${session.nickname || 'Your pN'}`, 5000);
     } catch (error: any) {
               logError('Failed to store session:', error);
       setError('Authentication succeeded but failed to store session. Please try again.');
@@ -1996,7 +1998,8 @@ function App() {
         
         if (identityToUnlock.encryptedData && identityToUnlock.iv && identityToUnlock.salt) {
           logDebug('Processing encrypted identity');
-          logDebug('Attempting authentication with pnName:', mainForm.pnName);
+          // pnName is secret - not logged
+          logDebug('Attempting authentication');
           logDebug('Identity to unlock publicKey:', identityToUnlock.publicKey);
           
           // This is an encrypted identity, try to authenticate it
@@ -2189,7 +2192,8 @@ function App() {
       let decryptedIdentity = null;
       
       for (const identity of identities) {
-        logDebug('Checking identity with pnName:', identity.pnName);
+        // pnName is secret - not logged
+        logDebug('Checking identity');
         try {
           // Try to decrypt and verify the identity
           decryptedIdentity = await IdentityCrypto.authenticateIdentity(
@@ -2197,7 +2201,8 @@ function App() {
             mainForm.passcode, 
             mainForm.pnName
           );
-          logDebug('Decrypted identity pnName:', decryptedIdentity.pnName);
+          // pnName is secret - not logged
+          logDebug('Decrypted identity');
           if (decryptedIdentity.pnName === mainForm.pnName) {
             logDebug('Found matching identity!');
             foundIdentity = identity;
