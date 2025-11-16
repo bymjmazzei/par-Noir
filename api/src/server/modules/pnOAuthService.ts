@@ -182,7 +182,6 @@ export class PNOAuthService {
       // Combine DID + publicKey (same as dashboard does)
       const combined = `${did}:${publicKeyPart}`;
       // Generate SHA-256 hash and take first 12 hex characters
-      const crypto = await import('crypto');
       const hash = crypto.createHash('sha256').update(combined).digest('hex');
       return hash.substring(0, 12);
     } catch (error) {
