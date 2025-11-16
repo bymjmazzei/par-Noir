@@ -49,7 +49,7 @@ import { DiscoveryPage } from './components/DiscoveryPage';
 import { SearchResults } from './components/SearchResults';
 import { CreatorFeedPage } from './components/CreatorFeedPage';
 import { Inbox } from './components/Inbox';
-import { saveToFeed } from './services/savedFeedService';
+import { saveToFeed, getSavedFeed } from './services/savedFeedService';
 
 // Shared types - importing from id-dashboard
 // In production, these would come from a shared package
@@ -284,10 +284,11 @@ function App() {
     setCurrentFeedIndex(0);
   }, [activeFeedId]);
 
-  // Reset feed index when opening own profile
+  // Reset feed index and tab when opening own profile
   useEffect(() => {
     if (viewingCreatorId === userState.pnIdentifier && userState.isUnlocked) {
       setCurrentFeedIndex(0);
+      setMePageTab('all');
     }
   }, [viewingCreatorId, userState.pnIdentifier, userState.isUnlocked]);
 
@@ -949,6 +950,35 @@ function App() {
   const [userLikedFiles, setUserLikedFiles] = useState<IndexedFile[]>([]);
   const [userCommentedFiles, setUserCommentedFiles] = useState<IndexedFile[]>([]);
   const [isLoadingUserEngagement, setIsLoadingUserEngagement] = useState(false);
+  
+  // Load saved files from private collection
+  useEffect(() => {
+    if (viewingCreatorId === userState.pnIdentifier && userState.isUnlocked && userState.pnIdentifier) {
+      setIsLoadingSavedFiles(true);
+      (async () => {
+        try {
+          const savedFeed = await getSavedFeed(userState.pnIdentifier);
+          if (savedFeed && savedFeed.fileIds.length > 0) {
+            // Find saved files from indexed files
+            const savedFromIndexed = indexedFiles.filter(f => 
+              savedFeed.fileIds.includes(f.metadata.fileId)
+            );
+            setSavedFiles(savedFromIndexed);
+            console.log(`📊 Saved files: ${savedFromIndexed.length} files loaded`);
+          } else {
+            setSavedFiles([]);
+          }
+        } catch (error) {
+          console.error('Failed to load saved files:', error);
+          setSavedFiles([]);
+        } finally {
+          setIsLoadingSavedFiles(false);
+        }
+      })();
+    } else {
+      setSavedFiles([]);
+    }
+  }, [viewingCreatorId, userState.pnIdentifier, userState.isUnlocked, indexedFiles]);
 
   useEffect(() => {
     if (viewingCreatorId === userState.pnIdentifier && userState.isUnlocked && userState.pnIdentifier) {
@@ -1014,6 +1044,11 @@ function App() {
 
   // State for editing file metadata
   const [editingFile, setEditingFile] = useState<IndexedFile | null>(null);
+  
+  // State for Me page tabs
+  const [mePageTab, setMePageTab] = useState<'all' | 'media' | 'likes' | 'comments' | 'saved'>('all');
+  const [savedFiles, setSavedFiles] = useState<IndexedFile[]>([]);
+  const [isLoadingSavedFiles, setIsLoadingSavedFiles] = useState(false);
 
   // Show creator feed page if viewing a creator (other than self)
   // For own profile, show simple feed view
@@ -1021,27 +1056,76 @@ function App() {
     const creatorFiles = creatorFilesState;
     const isOwnIndex = viewingCreatorId === userState.pnIdentifier && userState.isUnlocked;
     
-    // If viewing own index, combine owned media, liked files, and commented files
-    const allUserFiles = isOwnIndex 
-      ? [...creatorFiles, ...userLikedFiles, ...userCommentedFiles]
-      : creatorFiles;
+    // If viewing own index, filter files based on active tab
+    let filteredMeFiles: IndexedFile[] = [];
+    if (isOwnIndex) {
+      switch (mePageTab) {
+        case 'all':
+          // Combine all: owned media, liked files, and commented files
+          filteredMeFiles = Array.from(
+            new Map([...creatorFiles, ...userLikedFiles, ...userCommentedFiles]
+              .map(f => [f.metadata.fileId, f])).values()
+          );
+          break;
+        case 'media':
+          // Only owned media
+          filteredMeFiles = creatorFiles;
+          break;
+        case 'likes':
+          // Only liked files
+          filteredMeFiles = userLikedFiles;
+          break;
+        case 'comments':
+          // Only commented files
+          filteredMeFiles = userCommentedFiles;
+          break;
+        case 'saved':
+          // Only saved files (private collection)
+          filteredMeFiles = savedFiles;
+          break;
+      }
+    } else {
+      filteredMeFiles = creatorFiles;
+    }
     
-    // Remove duplicates by fileId, keeping the first occurrence
-    const uniqueFiles = Array.from(
-      new Map(allUserFiles.map(f => [f.metadata.fileId, f])).values()
-    );
+    console.log(`📊 Creator index: Found ${filteredMeFiles.length} files for creator ${viewingCreatorId}${isOwnIndex ? ` (tab: ${mePageTab}, ${creatorFiles.length} owned, ${userLikedFiles.length} liked, ${userCommentedFiles.length} commented, ${savedFiles.length} saved)` : ''}`);
     
-    console.log(`📊 Creator index: Found ${uniqueFiles.length} files for creator ${viewingCreatorId}${isOwnIndex ? ` (${creatorFiles.length} owned, ${userLikedFiles.length} liked, ${userCommentedFiles.length} commented)` : ''}`);
-    
-    // If viewing own profile, show simple feed view
+    // If viewing own profile, show simple feed view with tabs
     if (isOwnIndex) {
       return (
         <div className="h-screen flex flex-col bg-black relative">
+          {/* Header Railway with Tabs */}
+          <div className="absolute top-0 left-0 right-0 z-50 bg-black/80 backdrop-blur-sm border-b border-neutral-800" style={{ top: 0, height: '48px' }}>
+            <div className="flex items-center h-full overflow-x-auto scrollbar-hide" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
+              <div className="flex items-center space-x-6 px-4 h-full">
+                {(['all', 'media', 'likes', 'comments', 'saved'] as const).map((tab) => (
+                  <button
+                    key={tab}
+                    onClick={() => {
+                      setMePageTab(tab);
+                      setCurrentFeedIndex(0);
+                    }}
+                    className={`relative whitespace-nowrap text-sm font-medium uppercase tracking-wide transition-colors ${
+                      mePageTab === tab
+                        ? 'text-white'
+                        : 'text-neutral-400 hover:text-neutral-300'
+                    }`}
+                  >
+                    {tab === 'all' ? 'ALL' : tab === 'media' ? 'MEDIA' : tab === 'likes' ? 'LIKES' : tab === 'comments' ? 'COMMENTS' : 'SAVED'}
+                    {mePageTab === tab && (
+                      <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-white" />
+                    )}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+          
           {/* Simple feed view for own profile */}
-          {uniqueFiles.length > 0 ? (
-            <div className="absolute inset-0" style={{ bottom: '64px' }}>
+          {filteredMeFiles.length > 0 ? (
+            <div className="absolute inset-0" style={{ bottom: '64px', top: '48px' }}>
               <FullScreenFeed
-                files={uniqueFiles}
+                files={filteredMeFiles}
                 currentIndex={currentFeedIndex}
                 onIndexChange={setCurrentFeedIndex}
                 onLike={(fileId) => {
@@ -1062,13 +1146,41 @@ function App() {
                 userState={userState}
                 onCreatorClick={() => {}}
                 onEdit={(file) => setEditingFile(file)}
+                onSave={userState.isUnlocked && userState.pnIdentifier ? async (file) => {
+                  try {
+                    await saveToFeed(userState.pnIdentifier!, file.metadata.fileId);
+                    success('Saved to your private collection!');
+                    // Refresh saved files
+                    const savedFeed = await getSavedFeed(userState.pnIdentifier);
+                    if (savedFeed && savedFeed.fileIds.length > 0) {
+                      const savedFromIndexed = indexedFiles.filter(f => 
+                        savedFeed.fileIds.includes(f.metadata.fileId)
+                      );
+                      setSavedFiles(savedFromIndexed);
+                    } else {
+                      setSavedFiles([]);
+                    }
+                  } catch (error) {
+                    showErrorToast('Failed to save. Please try again.');
+                  }
+                } : undefined}
               />
             </div>
           ) : (
-            <div className="h-full flex items-center justify-center text-white" style={{ paddingBottom: '64px' }}>
+            <div className="h-full flex items-center justify-center text-white" style={{ paddingBottom: '64px', paddingTop: '48px' }}>
               <EmptyState
                 type="no-content"
-                message="No files yet. Upload your first file to get started!"
+                message={
+                  mePageTab === 'media' 
+                    ? 'No media yet. Upload your first file to get started!'
+                    : mePageTab === 'likes'
+                    ? 'No liked posts yet. Like posts to see them here!'
+                    : mePageTab === 'comments'
+                    ? 'No commented posts yet. Comment on posts to see them here!'
+                    : mePageTab === 'saved'
+                    ? 'No saved posts yet. Save posts to your private collection!'
+                    : 'No files yet. Upload your first file to get started!'
+                }
               />
             </div>
           )}

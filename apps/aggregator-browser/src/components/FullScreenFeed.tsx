@@ -244,8 +244,8 @@ export function FullScreenFeed({
           (verticalSwipeRef as React.MutableRefObject<HTMLDivElement | null>).current = el;
         }
       }}
-      className="h-screen w-full overflow-y-scroll snap-y snap-mandatory bg-black"
-      style={{ scrollbarWidth: 'none', msOverflowStyle: 'none', WebkitOverflowScrolling: 'touch', height: 'calc(100vh - 64px)' }}
+      className="h-full w-full overflow-y-scroll snap-y snap-mandatory bg-black"
+      style={{ scrollbarWidth: 'none', msOverflowStyle: 'none', WebkitOverflowScrolling: 'touch' }}
     >
       {files.map((indexedFile, idx) => {
         const file = indexedFile.metadata;
@@ -261,8 +261,8 @@ export function FullScreenFeed({
           <div
             key={fileId}
             data-file-id={fileId}
-            className="h-screen w-full snap-start flex items-center justify-center bg-black relative"
-            style={{ height: 'calc(100vh - 64px)' }}
+            className="h-full w-full snap-start flex items-center justify-center bg-black relative"
+            style={{ minHeight: '100%' }}
           >
             {/* Full-screen video */}
             {isVideo && videoBlobs.get(fileId) && (
