@@ -122,14 +122,23 @@ function App() {
     }
   }, []); // Only run on mount
 
-  // Set default feed based on user state
+  // Set default feed based on user state (only when unlock state changes, not on manual feed switches)
+  const prevUnlockedRef = useRef<boolean>(userState.isUnlocked);
   useEffect(() => {
-    if (userState.isUnlocked && activeFeedId === 'public') {
-      setActiveFeedId('curated');
-    } else if (!userState.isUnlocked && activeFeedId === 'curated') {
-      setActiveFeedId('public');
+    // Only switch feeds if unlock state actually changed (not just activeFeedId)
+    const unlockStateChanged = prevUnlockedRef.current !== userState.isUnlocked;
+    prevUnlockedRef.current = userState.isUnlocked;
+    
+    if (unlockStateChanged) {
+      if (userState.isUnlocked && activeFeedId === 'public') {
+        // User just unlocked - switch to curated
+        setActiveFeedId('curated');
+      } else if (!userState.isUnlocked && activeFeedId === 'curated') {
+        // User just locked - switch to public
+        setActiveFeedId('public');
+      }
     }
-  }, [userState.isUnlocked, activeFeedId]);
+  }, [userState.isUnlocked]); // Only depend on isUnlocked, not activeFeedId
 
   // Fetch feeds from API
   useEffect(() => {
@@ -250,10 +259,15 @@ function App() {
   }, [viewMode, setParam]);
 
   // Re-discover files when active feed or rating preferences change
+  // Debounce to prevent rapid-fire calls when switching feeds quickly
   useEffect(() => {
-    if (discoverFilesRef.current) {
-      discoverFilesRef.current();
-    }
+    const timeoutId = setTimeout(() => {
+      if (discoverFilesRef.current) {
+        discoverFilesRef.current();
+      }
+    }, 100); // Small delay to batch rapid feed switches
+    
+    return () => clearTimeout(timeoutId);
   }, [activeFeedId, userState.preferences.maxRating]);
 
   // Reset feed index when feed changes
@@ -902,11 +916,6 @@ function App() {
       hasNewThirdPartyContent
     );
   }, [feeds, userState.isUnlocked, userState.preferences.subscribedFeedIds, activeFeedId, hasNewThirdPartyContent]);
-  
-  // Debug: Log feed rail items
-  useEffect(() => {
-    console.log('Feed rail items:', feedRailItems.map(f => f.name));
-  }, [feedRailItems]);
 
   const [showAuthModal, setShowAuthModal] = useState(false);
 
