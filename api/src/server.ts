@@ -2201,7 +2201,7 @@ class ProductionServer {
           });
         }
 
-        const tokenResponse = PNOAuthService.exchangeCodeForToken({
+        const tokenResponse = await PNOAuthService.exchangeCodeForToken({
           code,
           clientId: client_id,
           redirectUri: redirect_uri
@@ -2277,41 +2277,40 @@ class ProductionServer {
           });
         }
 
-        // Look up pN identifier from database
-        // Query aggregator_metadata to find the pN identifier for this DID
-        let pnIdentifier: string | undefined;
-        try {
-          const db = (await import('./server/utils/database')).getDatabasePool();
-          const did = tokenPayload.did;
-          
-          console.log(`🔍 [Userinfo] Looking up pN identifier for DID: ${did.substring(0, 20)}...`);
-          
-          // Query for pN identifier - check both pn_identifier column and metadata fields
-          // Use explicit text casting to ensure proper comparison
-          const result = await db.query(
-            `SELECT DISTINCT pn_identifier 
-             FROM aggregator_metadata 
-             WHERE pn_identifier IS NOT NULL 
-               AND (
-                 ((metadata->'creator'->>'@id')::text = $1::text) OR
-                 ((metadata->'creator'->'identifier'->>'value')::text = $1::text) OR
-                 ((metadata->'author'->>'did')::text = $1::text)
-               )
-             LIMIT 1`,
-            [did]
-          );
-          
-          console.log(`🔍 [Userinfo] Query returned ${result.rows.length} row(s)`);
-          
-          if (result.rows.length > 0 && result.rows[0].pn_identifier) {
-            pnIdentifier = result.rows[0].pn_identifier;
-            console.log(`✅ [Userinfo] Found pN identifier: ${pnIdentifier}`);
-          } else {
-            console.warn(`⚠️ [Userinfo] No pN identifier found in database for DID: ${did.substring(0, 20)}...`);
+        // Get pN identifier from token payload (derived during token generation)
+        // Fallback to database lookup if not in token
+        let pnIdentifier: string | undefined = tokenPayload.pnIdentifier;
+        
+        // If not in token, try database lookup
+        if (!pnIdentifier) {
+          try {
+            const db = (await import('./server/utils/database')).getDatabasePool();
+            const did = tokenPayload.did;
+            
+            console.log(`🔍 [Userinfo] pN identifier not in token, looking up in database for DID: ${did.substring(0, 20)}...`);
+            
+            const result = await db.query(
+              `SELECT DISTINCT pn_identifier 
+               FROM aggregator_metadata 
+               WHERE pn_identifier IS NOT NULL 
+                 AND (
+                   ((metadata->'creator'->>'@id')::text = $1::text) OR
+                   ((metadata->'creator'->'identifier'->>'value')::text = $1::text) OR
+                   ((metadata->'author'->>'did')::text = $1::text)
+                 )
+               LIMIT 1`,
+              [did]
+            );
+            
+            if (result.rows.length > 0 && result.rows[0].pn_identifier) {
+              pnIdentifier = result.rows[0].pn_identifier;
+              console.log(`✅ [Userinfo] Found pN identifier in database: ${pnIdentifier}`);
+            }
+          } catch (dbError) {
+            console.warn('⚠️ [Userinfo] Failed to look up pN identifier from database:', dbError);
           }
-        } catch (dbError) {
-          console.error('❌ [Userinfo] Failed to look up pN identifier from database:', dbError);
-          // Non-critical - continue without pnIdentifier
+        } else {
+          console.log(`✅ [Userinfo] Using pN identifier from token: ${pnIdentifier}`);
         }
 
         // Return user info based on token payload

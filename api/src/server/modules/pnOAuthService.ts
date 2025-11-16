@@ -29,6 +29,7 @@ export interface AccessToken {
 export interface TokenPayload {
   did: string;
   // pN name is NOT stored here - it's a secret and should never be stored
+  pnIdentifier?: string; // pN identifier (e.g., "83c1db813607") derived from DID + publicKey
   clientId: string;
   scope: string[];
   issuedAt: number;
@@ -105,11 +106,11 @@ export class PNOAuthService {
   /**
    * Exchange authorization code for access token
    */
-  static exchangeCodeForToken(params: {
+  static async exchangeCodeForToken(params: {
     code: string;
     clientId: string;
     redirectUri: string;
-  }): AccessToken | null {
+  }): Promise<AccessToken | null> {
     const authCode = authorizationCodes.get(params.code);
     
     if (!authCode) {
@@ -145,7 +146,7 @@ export class PNOAuthService {
 
     // Generate access token
     // Note: pN name is NOT included - it's a secret
-    const accessToken = this.generateAccessToken({
+    const accessToken = await this.generateAccessToken({
       did: authCode.did,
       clientId: params.clientId,
       scope: authCode.scope
@@ -168,12 +169,39 @@ export class PNOAuthService {
   }
 
   /**
+   * Derive pN identifier from DID (same method as dashboard)
+   * Standard: Combine DID + publicKey, SHA-256 hash, take first 12 hex chars
+   */
+  private static async derivePnIdentifier(did: string): Promise<string | undefined> {
+    try {
+      if (!did || !did.startsWith('did:key:')) {
+        return undefined;
+      }
+      // Extract public key part (after did:key:)
+      const publicKeyPart = did.substring(8); // Remove "did:key:" prefix
+      // Combine DID + publicKey (same as dashboard does)
+      const combined = `${did}:${publicKeyPart}`;
+      // Generate SHA-256 hash and take first 12 hex characters
+      const crypto = await import('crypto');
+      const hash = crypto.createHash('sha256').update(combined).digest('hex');
+      return hash.substring(0, 12);
+    } catch (error) {
+      console.warn('[OAuth] Failed to derive pN identifier:', error);
+      return undefined;
+    }
+  }
+
+  /**
    * Generate access token
    */
-  private static generateAccessToken(params: { did: string; clientId: string; scope: string[] }): string {
+  private static async generateAccessToken(params: { did: string; clientId: string; scope: string[] }): Promise<string> {
+    // Derive pN identifier from DID
+    const pnIdentifier = await this.derivePnIdentifier(params.did);
+    
     const payload: TokenPayload = {
       did: params.did,
       // pN name is NOT stored - it's a secret
+      pnIdentifier, // Store derived pN identifier
       clientId: params.clientId,
       scope: params.scope,
       issuedAt: Date.now(),
