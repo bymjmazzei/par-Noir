@@ -32,6 +32,66 @@ export const GoogleDriveStorage: React.FC = () => {
 
   useEffect(() => {
     console.log('useEffect called, isDemoMode:', isDemoMode);
+    
+    // Migration: If Google Drive tokens exist in localStorage but not server-side, store them server-side
+    // This allows existing users to use the browser app without reconnecting
+    const migrateTokensToServer = async () => {
+      try {
+        const token = localStorage.getItem('google_drive_token');
+        const refreshToken = localStorage.getItem('google_drive_refresh_token');
+        const authenticatedUserStr = localStorage.getItem('authenticated_user');
+        
+        if (token && authenticatedUserStr) {
+          const authenticatedUser = JSON.parse(authenticatedUserStr);
+          const userDid = authenticatedUser.id || authenticatedUser.did || authenticatedUser.publicKey;
+          
+          if (userDid) {
+            // Check if credentials already exist server-side
+            try {
+              const response = await fetch(`${process.env.REACT_APP_API_ENDPOINT || 'https://api.parnoir.com'}/api/storage/credentials/${userDid}`);
+              if (response.ok) {
+                const data = await response.json();
+                // If credentials exist and have googleDrive tokens, skip migration
+                if (data.credentials?.googleDrive?.access_token) {
+                  console.log('✅ Google Drive tokens already stored server-side');
+                  return;
+                }
+              }
+            } catch (err) {
+              // If check fails, proceed with migration attempt
+            }
+            
+            // Store tokens server-side
+            const credentials = {
+              googleDrive: {
+                access_token: token,
+                refresh_token: refreshToken || undefined,
+                token_type: 'Bearer',
+                expires_in: 3600,
+                expires_at: Date.now() + (3600 * 1000)
+              }
+            };
+            
+            await fetch(`${process.env.REACT_APP_API_ENDPOINT || 'https://api.parnoir.com'}/api/storage/credentials/${userDid}`, {
+              method: 'PUT',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({ credentials }),
+            });
+            
+            console.log('✅ Migrated Google Drive tokens to server-side storage');
+          }
+        }
+      } catch (err) {
+        console.warn('Failed to migrate Google Drive tokens to server-side:', err);
+        // Non-critical - user can reconnect if needed
+      }
+    };
+    
+    // Run migration once on mount
+    migrateTokensToServer();
+    
     if (isDemoMode) {
       // Setup demo service listeners
       const unsubscribe = googleDriveDemoService.onAuthStateChange((authState) => {
