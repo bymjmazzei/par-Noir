@@ -800,9 +800,8 @@ export class GoogleDriveMetadataService {
       console.log('Creating companion metadata file for:', fileMetadata.googleDriveFileId);
       
       // Get or create folder structure
-      console.log('Getting/creating pN folder for:', pnIdentifier);
+      // Get or create pN folder (pN identifier is secret - not logged)
       const pnFolderId = await this.getOrCreatePNFolder(accessToken, pnIdentifier);
-      console.log('pN folder ID:', pnFolderId);
       
       console.log('Getting/creating metadata folder');
       const metadataFolderId = await this.getOrCreateMetadataFolder(accessToken, pnFolderId);
@@ -1191,7 +1190,7 @@ export class GoogleDriveMetadataService {
         }
       }
 
-      console.log(`✅ Updated owner file index for ${pnIdentifier}`);
+      console.log(`✅ Updated owner file index`);
     } catch (error) {
       console.error('Error updating owner file index:', error);
       throw error;

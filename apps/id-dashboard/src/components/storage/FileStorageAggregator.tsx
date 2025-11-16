@@ -1030,8 +1030,8 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
       seen.add(identityId);
 
       try {
+        // identityId is secret - not logged
         console.warn('📤 [StorageCredentials] Persisting credentials to API...', {
-          identityId,
           hasCid: !!cid,
         });
 
@@ -1048,21 +1048,19 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
 
           if (!response.ok) {
             const errorText = await response.text().catch(() => 'Unknown error');
+          // identityId is secret - not logged
           console.warn('⚠️ [StorageCredentials] Failed to persist credentials to API:', {
-              identityId,
               status: response.status,
               error: errorText,
             });
         } else {
-          console.warn('✅ [StorageCredentials] Credentials persisted to API', {
-            identityId,
-          });
+          console.warn('✅ [StorageCredentials] Credentials persisted to API');
           }
         } catch (error) {
+        // identityId is secret - not logged
         console.warn('⚠️ [StorageCredentials] API persistence failed (non-blocking):', {
-          identityId,
-            error,
-          });
+          error: error?.message || error,
+        });
       }
         }
       }
@@ -1287,17 +1285,16 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
       }
 
       try {
+        // candidateId (identityId) is secret - not logged
         console.debug('📥 [StorageCredentials] Fetching credentials from API...', {
-          candidateId,
           endpoint: apiEndpoint,
         });
 
         const response = await fetch(`${apiEndpoint}/api/storage/credentials/${encodeURIComponent(candidateId)}`);
         if (response.status === 404) {
           hydrationMissingCandidatesRef.current.add(candidateId);
-          console.debug('ℹ️ [StorageCredentials] No stored credentials found for identity (404)', {
-            candidateId,
-          });
+          // candidateId (identityId) is secret - not logged
+          console.debug('ℹ️ [StorageCredentials] No stored credentials found for identity (404)');
           continue;
         }
 
@@ -1307,8 +1304,8 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
           const retryAfterMs = Number.isFinite(retryAfterSeconds) ? retryAfterSeconds * 1000 : 30000;
           hydrationRateLimitUntilRef.current = Date.now() + retryAfterMs;
           hydrationRateLimitLoggedRef.current = false;
+          // candidateId (identityId) is secret - not logged
           console.warn('⚠️ [StorageCredentials] API rate limited hydration; backing off', {
-            candidateId,
             retryAfterMs,
           });
           if (hydrationRetryTimeoutRef.current !== null) {
@@ -1336,9 +1333,9 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
         const result = await response.json();
         const payload = result?.credentials;
         if (!payload) {
+          // candidateId (identityId) is secret - not logged
           console.warn('⚠️ [StorageCredentials] API returned no credentials payload', {
-            candidateId,
-            endpoint: `${apiEndpoint}/api/storage/credentials/${candidateId}`,
+            endpoint: `${apiEndpoint}/api/storage/credentials/[REDACTED]`,
           });
           continue;
         }
@@ -1354,9 +1351,8 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
             : [];
 
         if (accountsArray.length === 0) {
-          console.warn('ℹ️ [StorageCredentials] Credentials payload contained no Google Drive accounts', {
-            candidateId,
-          });
+          // candidateId (identityId) is secret - not logged
+          console.warn('ℹ️ [StorageCredentials] Credentials payload contained no Google Drive accounts');
           continue;
         }
 
@@ -1403,9 +1399,9 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
         break;
       } catch (error) {
         lastError = error;
+        // candidateId (identityId) is secret - not logged
         console.warn('⚠️ [StorageCredentials] Candidate fetch failed (non-blocking):', {
-          candidateId,
-          error,
+          error: error?.message || error,
         });
       }
     }
@@ -2143,7 +2139,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
             const hashArray = Array.from(new Uint8Array(hashBuffer));
             const hexHash = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
             currentPnIdentifier = `pn-${hexHash.substring(0, 12)}`;
-            console.log(`✅ [loadFiles] Using fallback pN identifier: ${currentPnIdentifier}`);
+            console.log(`✅ [loadFiles] Using fallback pN identifier`);
           }
       } catch (fallbackError) {
           console.warn('⚠️ [loadFiles] Fallback identifier generation failed:', fallbackError);
@@ -2686,7 +2682,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
             const hexHash = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
             const shortHash = hexHash.substring(0, 12);
             metadataPnIdentifier = `pn-${shortHash}`;
-            console.log('📁 [Phase 3] Generated pN identifier for metadata folder:', metadataPnIdentifier);
+            console.log('📁 [Phase 3] Generated pN identifier for metadata folder');
           }
         } catch (err) {
           console.warn('Failed to generate pN identifier for metadata folder:', err);

@@ -877,7 +877,7 @@ export class GoogleDriveBackend extends AbstractStorageBackend {
     if (metadata?.pnIdentifier && this.token) {
       try {
         console.log('📝 [uploadFile] Creating companion metadata file...');
-        console.log('📝 [uploadFile] pnIdentifier:', metadata.pnIdentifier);
+        // pN identifier is secret - not logged
         console.log('📝 [uploadFile] Uploaded file ID:', uploadedFile.id);
         console.log('📝 [uploadFile] File name:', fileName);
         const { GoogleDriveMetadataService } = await import('./GoogleDriveMetadataService');
