@@ -1113,7 +1113,14 @@ function App() {
                 PNOAuthService.saveSession(session);
                 console.log('🔐 Calling setUnlocked with pN identifier:', userInfo.pn_identifier || userInfo.did);
                 // Use pN identifier from API if available, otherwise fall back to DID
-                setUnlocked(userInfo.pn_identifier || userInfo.did);
+                // But only set unlocked if we have a pN identifier (not a DID)
+                if (userInfo.pn_identifier && !userInfo.pn_identifier.startsWith('did:key:')) {
+                  setUnlocked(userInfo.pn_identifier);
+                } else {
+                  // No pN identifier yet - this shouldn't happen but handle gracefully
+                  console.warn('⚠️ OAuth userinfo did not return pN identifier, using DID as fallback');
+                  setUnlocked(userInfo.did);
+                }
                 console.log('🔐 setUnlocked called, checking state...');
                 
                 // Refresh feed if needed
@@ -1971,12 +1978,33 @@ function App() {
                   }
                 }
                 
-                if (pnIdentifier) {
-                  // Show user's own index using pN identifier
+                if (pnIdentifier && !pnIdentifier.startsWith('did:key:')) {
+                  // Show user's own index using pN identifier (must not be a DID)
                   setViewingCreatorId(pnIdentifier);
                   setActiveBottomTab('index');
                 } else {
-                  showErrorToast('Unable to load your pN identifier');
+                  // Still a DID - try one more time to get it from the API
+                  console.warn('⚠️ Still have DID instead of pN identifier, fetching from API...');
+                  try {
+                    const session = PNOAuthService.loadSession();
+                    if (session?.accessToken) {
+                      const userInfo = await PNOAuthService.getUserInfo(session.accessToken);
+                      if (userInfo.pn_identifier && !userInfo.pn_identifier.startsWith('did:key:')) {
+                        const updatedSession = { ...session, pnIdentifier: userInfo.pn_identifier };
+                        PNOAuthService.saveSession(updatedSession);
+                        setUnlocked(userInfo.pn_identifier);
+                        setViewingCreatorId(userInfo.pn_identifier);
+                        setActiveBottomTab('index');
+                      } else {
+                        showErrorToast('Unable to load your pN identifier from API');
+                      }
+                    } else {
+                      showErrorToast('No active session found');
+                    }
+                  } catch (error) {
+                    console.error('Failed to fetch pN identifier:', error);
+                    showErrorToast('Unable to load your pN identifier');
+                  }
                 }
               } else {
                 showErrorToast('Unlock your pN to view your index');
