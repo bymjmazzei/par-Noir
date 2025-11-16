@@ -593,15 +593,29 @@
           throw new Error('Invalid identity file: missing public key');
         }
         
-        // ALWAYS decrypt identity to get DID (same as dashboard)
-        // The DID from the decrypted identity is the authoritative source
+        // ALWAYS decrypt identity to get DID - EXACT COPY FROM DASHBOARD
+        // This is the EXACT same code from apps/id-dashboard/src/utils/crypto.ts
         if (encryptedIdentity.encryptedData && encryptedIdentity.iv && encryptedIdentity.salt) {
           try {
-            // Decrypt using the same method as dashboard
-            const key = await crypto.subtle.importKey(
+            // Helper function - EXACT COPY from dashboard
+            const base64ToArrayBuffer = (base64) => {
+              const binary = atob(base64);
+              const bytes = new Uint8Array(binary.length);
+              for (let i = 0; i < binary.length; i++) {
+                bytes[i] = binary.charCodeAt(i);
+              }
+              return bytes.buffer;
+            };
+            
+            // EXACT COPY of dashboard's deriveKey method
+            const encoder = new TextEncoder();
+            const passcodeBuffer = encoder.encode(passcode);
+            const saltBuffer = base64ToArrayBuffer(encryptedIdentity.salt);
+            
+            const keyMaterial = await crypto.subtle.importKey(
               'raw',
-              new TextEncoder().encode(passcode),
-              { name: 'PBKDF2' },
+              passcodeBuffer,
+              'PBKDF2',
               false,
               ['deriveBits', 'deriveKey']
             );
@@ -609,30 +623,32 @@
             const derivedKey = await crypto.subtle.deriveKey(
               {
                 name: 'PBKDF2',
-                salt: Uint8Array.from(atob(encryptedIdentity.salt), c => c.charCodeAt(0)),
-                iterations: 1000000, // Same as dashboard: 1M iterations
-                hash: 'SHA-512' // Same as dashboard: SHA-512
+                salt: saltBuffer,
+                iterations: 1000000, // Military-grade: 1M iterations
+                hash: 'SHA-512', // Military-grade: SHA-512
               },
-              key,
+              keyMaterial,
               { name: 'AES-GCM', length: 256 },
               false,
-              ['decrypt']
+              ['encrypt', 'decrypt']
             );
             
-            const iv = Uint8Array.from(atob(encryptedIdentity.iv), c => c.charCodeAt(0));
-            const encrypted = Uint8Array.from(atob(encryptedIdentity.encryptedData), c => c.charCodeAt(0));
+            // EXACT COPY of dashboard's decrypt method
+            const iv = base64ToArrayBuffer(encryptedIdentity.iv);
+            const data = base64ToArrayBuffer(encryptedIdentity.encryptedData);
             
             const decryptedBuffer = await crypto.subtle.decrypt(
               { name: 'AES-GCM', iv },
               derivedKey,
-              encrypted
+              data
             );
             
-            const decryptedData = new TextDecoder().decode(decryptedBuffer);
+            const decoder = new TextDecoder();
+            const decryptedData = decoder.decode(decryptedBuffer);
             const identity = JSON.parse(decryptedData);
+            
             // Extract DID from decrypted identity (same as dashboard)
-            // This is the authoritative DID that matches what dashboard uses
-            did = identity.id || identity.did;
+            did = identity.id; // DID comes from decrypted data (EXACT as dashboard)
             if (did) {
               console.log('✅ Decrypted identity, extracted DID:', did.substring(0, 30) + '...');
             } else {
