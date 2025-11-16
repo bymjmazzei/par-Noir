@@ -122,7 +122,18 @@ export function CreatorFeedPage({
     };
   }, [creatorFiles, creatorFeeds]);
 
-  const displayName = creatorName || creatorId.substring(0, 16) + '...';
+  // Extract pN identifier from DID if it's a full DID, otherwise use as-is
+  const extractPnIdentifier = (id: string): string => {
+    if (id && id.startsWith('did:key:')) {
+      // It's a full DID - extract pN identifier (first 16 hex chars of SHA-256 hash)
+      // For display purposes, show shortened version
+      return id.substring(8, 24) || id.substring(0, 16) + '...';
+    }
+    // Already a pN identifier or other format
+    return id.length > 16 ? id.substring(0, 16) + '...' : id;
+  };
+  
+  const displayName = creatorName || extractPnIdentifier(creatorId);
 
   return (
     <div className="h-full flex flex-col bg-neutral-900">
