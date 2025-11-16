@@ -315,7 +315,6 @@ function App() {
   
   // Creator files state for INDEX view - MUST be before early returns to satisfy Rules of Hooks
   const [creatorFilesState, setCreatorFilesState] = useState<IndexedFile[]>([]);
-  const [isLoadingCreatorFiles, setIsLoadingCreatorFiles] = useState(false);
 
   // Memoize filtered files by active feed
   const filteredFilesByFeed = useMemo(() => {
@@ -877,99 +876,24 @@ function App() {
       return;
     }
     
-    if (viewingCreatorId === userState.pnIdentifier && userState.isUnlocked) {
-      // Fetch user's own files from API using pN identifier from Google Drive folder name
-      setIsLoadingCreatorFiles(true);
-      (async () => {
-        try {
-          // Use pN identifier directly if it's already a pN identifier (not a DID)
-          // Otherwise, get it from the session
-          let pnIdentifier: string;
-          if (viewingCreatorId && !viewingCreatorId.startsWith('did:key:')) {
-            // Already a pN identifier
-            pnIdentifier = viewingCreatorId;
-          } else {
-            // It's a DID - get pN identifier from session
-            const session = PNOAuthService.loadSession();
-            if (session?.pnIdentifier && !session.pnIdentifier.startsWith('did:key:')) {
-              pnIdentifier = session.pnIdentifier;
-            } else if (viewingCreatorId && viewingCreatorId.startsWith('did:key:')) {
-              // Fallback: try to fetch from userinfo if session doesn't have it
-              try {
-                if (session?.accessToken) {
-                  const userInfo = await PNOAuthService.getUserInfo(session.accessToken);
-                  if (userInfo.pn_identifier) {
-                    pnIdentifier = userInfo.pn_identifier;
-                    // Update session with the pN identifier
-                    const updatedSession = { ...session, pnIdentifier };
-                    PNOAuthService.saveSession(updatedSession);
-                  } else {
-                    // Last resort: derive from DID (shouldn't happen)
-                    const publicKeyPart = viewingCreatorId.substring(8);
-                    const combined = `${viewingCreatorId}:${publicKeyPart}`;
-                    const encoder = new TextEncoder();
-                    const keyBuffer = encoder.encode(combined);
-                    const hashBuffer = await crypto.subtle.digest('SHA-256', keyBuffer);
-                    const hashArray = Array.from(new Uint8Array(hashBuffer));
-                    const hexHash = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
-                    pnIdentifier = hexHash.substring(0, 12);
-                  }
-                } else {
-                  throw new Error('No access token');
-                }
-              } catch (error) {
-                console.warn('Failed to get pN identifier, deriving from DID:', error);
-                // Last resort: derive from DID
-                const publicKeyPart = viewingCreatorId.substring(8);
-                const combined = `${viewingCreatorId}:${publicKeyPart}`;
-                const encoder = new TextEncoder();
-                const keyBuffer = encoder.encode(combined);
-                const hashBuffer = await crypto.subtle.digest('SHA-256', keyBuffer);
-                const hashArray = Array.from(new Uint8Array(hashBuffer));
-                const hexHash = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
-                pnIdentifier = hexHash.substring(0, 12);
-              }
-            } else {
-              // Already a pN identifier or other format
-              pnIdentifier = viewingCreatorId;
-            }
-          }
-          const userFiles = await metadataIndexService.discoverFiles({
-            authorDid: pnIdentifier
-          });
-          setCreatorFilesState(userFiles);
-          console.log(`✅ Loaded ${userFiles.length} files for user's own index from API`);
-        } catch (error) {
-          console.error('Failed to load user files from API:', error);
-          // Fallback to filtering indexedFiles
-          const filtered = indexedFiles.filter(f => {
-      const did = f.metadata.creator?.identifier?.value || 
-                 f.metadata.creator?.["@id"] || 
-                       f.metadata.author?.did ||
-                       f.metadata.creatorId;
-            const normalizedDid = did?.trim().toLowerCase();
-            const normalizedViewingId = viewingCreatorId.trim().toLowerCase();
-            return normalizedDid === normalizedViewingId;
-          });
-          setCreatorFilesState(filtered);
-        } finally {
-          setIsLoadingCreatorFiles(false);
-        }
-      })();
-    } else {
-      // Filter from indexedFiles for other creators
-      const filtered = indexedFiles.filter(f => {
-        const did = f.metadata.creator?.identifier?.value || 
-                   f.metadata.creator?.["@id"] || 
-                   f.metadata.author?.did ||
-                   f.metadata.creatorId;
-        const normalizedDid = did?.trim().toLowerCase();
-        const normalizedViewingId = viewingCreatorId.trim().toLowerCase();
-        return normalizedDid === normalizedViewingId;
+    // Simple logic: filter indexedFiles where creator identifier matches viewingCreatorId
+    // This works for both own profile and other creators' profiles
+    const filtered = indexedFiles.filter(f => {
+      const fileOwnerId = f.metadata.creator?.identifier?.value || 
+                          f.metadata.creator?.["@id"] || 
+                          f.metadata.author?.did ||
+                          f.metadata.creatorId;
+      
+      // Compare normalized (case-insensitive, trimmed) identifiers
+      const normalizedOwnerId = fileOwnerId?.trim().toLowerCase() || '';
+      const normalizedViewingId = viewingCreatorId.trim().toLowerCase();
+      
+      return normalizedOwnerId === normalizedViewingId;
     });
-      setCreatorFilesState(filtered);
-    }
-  }, [viewingCreatorId, userState.pnIdentifier, userState.isUnlocked, indexedFiles]);
+    
+    setCreatorFilesState(filtered);
+    console.log(`📊 Loaded ${filtered.length} files for ${viewingCreatorId === userState.pnIdentifier ? 'your' : 'creator'} index`);
+  }, [viewingCreatorId, userState.pnIdentifier, indexedFiles]);
 
   // Load user's shares and comments when viewing own index
   const [userSharedFiles, setUserSharedFiles] = useState<IndexedFile[]>([]);
