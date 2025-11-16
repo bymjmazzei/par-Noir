@@ -908,6 +908,22 @@ function App() {
             const data = await response.json();
             if (data.files && Array.isArray(data.files)) {
               // Filter by pnIdentifier (which is the same as the user's identifier)
+              const userIdentifier = viewingCreatorId.trim().toLowerCase();
+              console.log(`🔍 Filtering files for user: ${viewingCreatorId} (normalized: ${userIdentifier})`);
+              console.log(`🔍 Total files from API: ${data.files.length}`);
+              
+              // Log first few files to debug
+              data.files.slice(0, 3).forEach((entry: any, idx: number) => {
+                const metadata = entry.metadata || {};
+                console.log(`📄 File ${idx + 1}:`, {
+                  fileId: entry.fileId,
+                  pnIdentifier: entry.pnIdentifier,
+                  creator: metadata.creator,
+                  author: metadata.author,
+                  creatorId: metadata.creatorId
+                });
+              });
+              
               const userFiles = data.files.filter((entry: any) => {
                 // Check pnIdentifier field (top-level in entry)
                 const entryPnId = entry.pnIdentifier?.trim().toLowerCase();
@@ -917,11 +933,12 @@ function App() {
                                  metadata.creator?.["@id"]?.trim().toLowerCase() ||
                                  metadata.author?.did?.trim().toLowerCase() ||
                                  metadata.creatorId?.trim().toLowerCase();
-                const userIdentifier = viewingCreatorId.trim().toLowerCase();
                 
                 const matches = entryPnId === userIdentifier || creatorId === userIdentifier;
                 if (matches) {
                   console.log(`✅ Found owned file: ${entry.fileId}, pnIdentifier: ${entry.pnIdentifier}, creatorId: ${creatorId}`);
+                } else {
+                  console.log(`❌ File ${entry.fileId} doesn't match: entryPnId="${entryPnId}", creatorId="${creatorId}", user="${userIdentifier}"`);
                 }
                 return matches;
               });
