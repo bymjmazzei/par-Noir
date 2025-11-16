@@ -2152,13 +2152,20 @@ class ProductionServer {
         // Extract DID from encrypted identity or use public_key to derive it
         // This is a simplified version - in production, decrypt the identity file
         
-        // For browser app, we'll accept a pre-authenticated DID
-        // The actual decryption happens client-side in the browser
-        const did = req.body.did || `did:key:${public_key.substring(0, 32)}`;
+        // DID should come from decrypted identity (client-side decryption)
+        // If not provided, we can't proceed - need the actual DID from the identity
+        const did = req.body.did;
+        
+        if (!did) {
+          return res.status(400).json({
+            error: 'invalid_request',
+            error_description: 'DID is required. Identity file must be decrypted client-side to extract DID.'
+          });
+        }
 
         console.log('[OAuth Auth] Received authentication request:');
-        console.log('  DID:', did.substring(0, 30) + '...');
-        console.log('  PublicKey (first 30 chars):', public_key.substring(0, 30) + '...');
+        console.log('  Full DID:', did);
+        console.log('  Full PublicKey:', public_key);
         console.log('  PublicKey length:', public_key.length);
 
         // Generate authorization code
