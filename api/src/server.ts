@@ -2183,7 +2183,7 @@ class ProductionServer {
 
     // POST /oauth/token - Token endpoint
     // Exchange authorization code for access token
-    this.app.post('/oauth/token', (req, res) => {
+    this.app.post('/oauth/token', async (req, res) => {
       try {
         const { code, client_id, redirect_uri, grant_type } = req.body;
 

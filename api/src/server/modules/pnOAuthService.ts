@@ -241,7 +241,7 @@ export class PNOAuthService {
   /**
    * Refresh access token using refresh token
    */
-  static refreshAccessToken(refreshToken: string, clientId: string): AccessToken | null {
+  static async refreshAccessToken(refreshToken: string, clientId: string): Promise<AccessToken | null> {
     const tokenData = refreshTokens.get(refreshToken);
     
     if (!tokenData) {
@@ -254,7 +254,7 @@ export class PNOAuthService {
     }
 
     // Generate new access token
-    const accessToken = this.generateAccessToken({
+    const accessToken = await this.generateAccessToken({
       did: tokenData.did,
       clientId: clientId,
       scope: tokenData.scope
