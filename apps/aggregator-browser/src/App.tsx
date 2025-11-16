@@ -1052,7 +1052,7 @@ function App() {
         <div className="h-screen flex flex-col bg-black relative">
           {/* Simple feed view for own profile */}
           {uniqueFiles.length > 0 ? (
-            <div className="absolute inset-0" style={{ bottom: '64px', height: 'calc(100vh - 64px)' }}>
+            <div className="absolute inset-0" style={{ bottom: '64px' }}>
               <FullScreenFeed
                 files={uniqueFiles}
                 currentIndex={currentFeedIndex}
