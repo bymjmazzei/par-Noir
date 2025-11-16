@@ -295,6 +295,22 @@ function App() {
     return false;
   }, [indexedFiles, feedViewedTimestamps]);
 
+  // Build feed rail items - Always show DISCOVER, PUBLIC, ARTS, SPORTS, MUSIC (TikTok style)
+  // Only show subscribed feeds and CURATED feed when user is unlocked
+  // MUST be before early returns to satisfy Rules of Hooks
+  const feedRailItems = useMemo(() => {
+    return buildFeedRailItems(
+      feeds,
+      userState.isUnlocked ? userState.preferences.subscribedFeedIds : [],
+      activeFeedId,
+      userState.isUnlocked,
+      hasNewThirdPartyContent
+    );
+  }, [feeds, userState.isUnlocked, userState.preferences.subscribedFeedIds, activeFeedId, hasNewThirdPartyContent]);
+
+  // Auth modal state - MUST be before early returns to satisfy Rules of Hooks
+  const [showAuthModal, setShowAuthModal] = useState(false);
+
   // Memoize filtered files by active feed
   const filteredFilesByFeed = useMemo(() => {
     if (activeFeedId === 'public') {
@@ -911,19 +927,6 @@ function App() {
     );
   }
 
-  // Build feed rail items - Always show DISCOVER, PUBLIC, ARTS, SPORTS, MUSIC (TikTok style)
-  // Only show subscribed feeds and CURATED feed when user is unlocked
-  const feedRailItems = useMemo(() => {
-    return buildFeedRailItems(
-      feeds,
-      userState.isUnlocked ? userState.preferences.subscribedFeedIds : [],
-      activeFeedId,
-      userState.isUnlocked,
-      hasNewThirdPartyContent
-    );
-  }, [feeds, userState.isUnlocked, userState.preferences.subscribedFeedIds, activeFeedId, hasNewThirdPartyContent]);
-
-  const [showAuthModal, setShowAuthModal] = useState(false);
 
   const handleLockUnlock = async () => {
     if (userState.isUnlocked) {
