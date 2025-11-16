@@ -147,12 +147,11 @@ export class AggregatorMetadataServiceDB {
       }
 
       if (filters?.authorDid) {
-        // Match exact pattern from getFilesForDid (line 604) - simple equality checks
-        // Wrap in parentheses to ensure boolean result
+        // Convert NULL comparisons to false to ensure boolean type for GROUP BY queries
         query += ` AND (
-          (am.metadata->'creator'->>'@id' = $${paramIndex}) OR
-          (am.metadata->'creator'->'identifier'->>'value' = $${paramIndex}) OR
-          (am.metadata->'author'->>'did' = $${paramIndex})
+          COALESCE((am.metadata->'creator'->>'@id') = $${paramIndex}, false) OR
+          COALESCE((am.metadata->'creator'->'identifier'->>'value') = $${paramIndex}, false) OR
+          COALESCE((am.metadata->'author'->>'did') = $${paramIndex}, false)
         )`;
         params.push(filters.authorDid);
         paramIndex++;
