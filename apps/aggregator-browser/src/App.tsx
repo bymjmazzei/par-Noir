@@ -30,6 +30,7 @@ import { AddToFeedModal } from './components/AddToFeedModal';
 import { NotificationBell } from './components/NotificationBell';
 import { ToastContainer } from './components/Toast';
 import { EditFileModal } from './components/EditFileModal';
+import { MePageTabsRail } from './components/MePageTabsRail';
 import { Settings, Upload, Plus, Home, MessageSquare, Grid } from 'lucide-react';
 import { useKeyboardNavigation } from './hooks/useKeyboardNavigation';
 import { useSwipeGesture } from './hooks/useSwipeGesture';
@@ -288,7 +289,7 @@ function App() {
   useEffect(() => {
     if (viewingCreatorId === userState.pnIdentifier && userState.isUnlocked) {
       setCurrentFeedIndex(0);
-      setMePageTab('all');
+      setMePageTab('media');
     }
   }, [viewingCreatorId, userState.pnIdentifier, userState.isUnlocked]);
 
@@ -1046,7 +1047,7 @@ function App() {
   const [editingFile, setEditingFile] = useState<IndexedFile | null>(null);
   
   // State for Me page tabs
-  const [mePageTab, setMePageTab] = useState<'all' | 'media' | 'likes' | 'comments' | 'saved'>('all');
+  const [mePageTab, setMePageTab] = useState<'all' | 'media' | 'likes' | 'comments' | 'saved'>('media');
   const [savedFiles, setSavedFiles] = useState<IndexedFile[]>([]);
   const [isLoadingSavedFiles, setIsLoadingSavedFiles] = useState(false);
 
@@ -1095,31 +1096,13 @@ function App() {
       return (
         <div className="h-screen flex flex-col bg-black relative">
           {/* Header Railway with Tabs */}
-          <div className="absolute top-0 left-0 right-0 z-50 bg-black/80 backdrop-blur-sm border-b border-neutral-800" style={{ top: 0, height: '48px' }}>
-            <div className="flex items-center h-full overflow-x-auto scrollbar-hide" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
-              <div className="flex items-center space-x-6 px-4 h-full">
-                {(['all', 'media', 'likes', 'comments', 'saved'] as const).map((tab) => (
-                  <button
-                    key={tab}
-                    onClick={() => {
-                      setMePageTab(tab);
-                      setCurrentFeedIndex(0);
-                    }}
-                    className={`relative whitespace-nowrap text-sm font-medium uppercase tracking-wide transition-colors ${
-                      mePageTab === tab
-                        ? 'text-white'
-                        : 'text-neutral-400 hover:text-neutral-300'
-                    }`}
-                  >
-                    {tab === 'all' ? 'ALL' : tab === 'media' ? 'MEDIA' : tab === 'likes' ? 'LIKES' : tab === 'comments' ? 'COMMENTS' : 'SAVED'}
-                    {mePageTab === tab && (
-                      <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-white" />
-                    )}
-                  </button>
-                ))}
-              </div>
-            </div>
-          </div>
+          <MePageTabsRail
+            activeTab={mePageTab}
+            onTabSelect={(tab) => {
+              setMePageTab(tab);
+              setCurrentFeedIndex(0);
+            }}
+          />
           
           {/* Simple feed view for own profile */}
           {filteredMeFiles.length > 0 ? (
