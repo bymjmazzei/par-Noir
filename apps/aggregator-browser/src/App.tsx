@@ -94,7 +94,7 @@ function App() {
   const { toggleLike, share, getLikeCount, isLiked, getComments, getShareCount, loadBulkEngagementStats } = useEngagement();
   const { toasts, removeToast, success, error: showErrorToast } = useToast();
   const { getParam, setParam } = useURLParams();
-  
+
   // Feed navigation hook
   const { feedHierarchy, getNextFeed, getPreviousFeed, getFeedIndex } = useFeedNavigation(
     feeds,
@@ -889,8 +889,8 @@ function App() {
           console.error('Failed to load user files from API:', error);
           // Fallback to filtering indexedFiles
           const filtered = indexedFiles.filter(f => {
-            const did = f.metadata.creator?.identifier?.value || 
-                       f.metadata.creator?.["@id"] || 
+      const did = f.metadata.creator?.identifier?.value || 
+                 f.metadata.creator?.["@id"] || 
                        f.metadata.author?.did ||
                        f.metadata.creatorId;
             const normalizedDid = did?.trim().toLowerCase();
@@ -912,7 +912,7 @@ function App() {
         const normalizedDid = did?.trim().toLowerCase();
         const normalizedViewingId = viewingCreatorId.trim().toLowerCase();
         return normalizedDid === normalizedViewingId;
-      });
+    });
       setCreatorFilesState(filtered);
     }
   }, [viewingCreatorId, userState.pnIdentifier, userState.isUnlocked, indexedFiles]);
@@ -1284,7 +1284,7 @@ function App() {
               activeFeedId={activeFeedId}
               onFeedSelect={setActiveFeedId}
               onBrowseFeeds={undefined}
-            />
+                  />
           </div>
         )}
 
@@ -1356,7 +1356,7 @@ function App() {
         )}
 
         {/* Stats and View Mode Toggle - ONLY show when NOT in feed mode */}
-        {viewMode !== 'feed' && (
+            {viewMode !== 'feed' && (
           <div className="bg-neutral-900/60 border border-neutral-700 rounded-xl p-4 mb-6">
             <div className="flex items-center justify-between">
               <div>
@@ -1364,7 +1364,7 @@ function App() {
                 <p className="text-white text-2xl font-bold">{indexedFiles.length}</p>
               </div>
               <div className="flex items-center space-x-4">
-                <button
+                  <button
                     onClick={() => discoverFiles(undefined, true)}
                     disabled={isLoading}
                     className="px-4 py-2 bg-neutral-700 text-white text-sm font-medium rounded-lg hover:bg-neutral-600 transition-colors disabled:opacity-50 flex items-center space-x-2"
@@ -1415,9 +1415,9 @@ function App() {
                   >
                     <Settings className="h-5 w-5" />
                   </button>
-              </div>
             </div>
           </div>
+        </div>
         )}
 
         {/* Files Grid */}
@@ -1466,7 +1466,7 @@ function App() {
                 setViewingCreatorId(creatorId);
               }}
             />
-          </div>
+                    </div>
         ) : viewMode === 'feed' ? (
           // TikTok-style feed view using FullScreenFeed component
           <div 
@@ -1485,31 +1485,31 @@ function App() {
                 onLike={(fileId) => {
                   const wasLiked = isLiked(fileId);
                   toggleLike(fileId);
-                  if (!wasLiked) {
-                    success('Liked!');
-                  }
-                }}
+                      if (!wasLiked) {
+                        success('Liked!');
+                      }
+                    }}
                 onComment={(file) => setCommentingFile(file)}
                 onShare={async (fileId) => {
                   share(fileId);
                   const file = filteredFilesByFeed.find(f => f.metadata.fileId === fileId);
                   if (file) {
                     const shareUrl = `${window.location.origin}${window.location.pathname}?file=${fileId}&view=feed`;
-                    try {
-                      await navigator.clipboard.writeText(shareUrl);
-                      success('Link copied to clipboard!');
+                      try {
+                        await navigator.clipboard.writeText(shareUrl);
+                        success('Link copied to clipboard!');
                       setParam('file', fileId);
-                    } catch (err) {
-                      showErrorToast('Failed to copy link. Please try again.');
+                      } catch (err) {
+                        showErrorToast('Failed to copy link. Please try again.');
                     }
-                  }
-                }}
+                      }
+                    }}
                 onAddToFeed={(file) => {
                   const creatorId = file.metadata.creator?.identifier?.value || file.metadata.creator?.["@id"] || file.metadata.author?.did;
-                  if (userState.isUnlocked && userState.pnIdentifier === creatorId) {
+                      if (userState.isUnlocked && userState.pnIdentifier === creatorId) {
                     setAddingToFeedFile(file);
-                  }
-                }}
+                      }
+                    }}
                 onSave={userState.isUnlocked && userState.pnIdentifier ? async (file) => {
                   try {
                     await saveToFeed(userState.pnIdentifier!, file.metadata.fileId);
@@ -1537,7 +1537,7 @@ function App() {
                       : 'No content available in this feed'
                   }
                 />
-              </div>
+                        </div>
             )}
           </div>
         ) : (
