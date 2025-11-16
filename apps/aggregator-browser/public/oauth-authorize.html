@@ -578,7 +578,7 @@
           encryptedIdentity = identityData.identities[0];
           publicKey = encryptedIdentity.publicKey;
           // DID is encrypted inside, we'll extract it after decryption
-          did = null; // Will be extracted after authentication
+          did = null; // Will be extracted after decryption
         } else if (identityData.publicKey && identityData.encryptedData) {
           // Standard single identity file
           encryptedIdentity = identityData;
@@ -590,6 +590,55 @@
         
         if (!publicKey) {
           throw new Error('Invalid identity file: missing public key');
+        }
+        
+        // Decrypt identity to get DID (same as dashboard)
+        // This ensures we use the exact same DID that the dashboard uses
+        if (!did && encryptedIdentity.encryptedData && encryptedIdentity.iv && encryptedIdentity.salt) {
+          try {
+            // Decrypt using the same method as dashboard
+            const key = await crypto.subtle.importKey(
+              'raw',
+              new TextEncoder().encode(passcode),
+              { name: 'PBKDF2' },
+              false,
+              ['deriveBits', 'deriveKey']
+            );
+            
+            const derivedKey = await crypto.subtle.deriveKey(
+              {
+                name: 'PBKDF2',
+                salt: Uint8Array.from(atob(encryptedIdentity.salt), c => c.charCodeAt(0)),
+                iterations: 100000,
+                hash: 'SHA-256'
+              },
+              key,
+              { name: 'AES-GCM', length: 256 },
+              false,
+              ['decrypt']
+            );
+            
+            const iv = Uint8Array.from(atob(encryptedIdentity.iv), c => c.charCodeAt(0));
+            const encrypted = Uint8Array.from(atob(encryptedIdentity.encryptedData), c => c.charCodeAt(0));
+            
+            const decryptedBuffer = await crypto.subtle.decrypt(
+              { name: 'AES-GCM', iv },
+              derivedKey,
+              encrypted
+            );
+            
+            const decryptedData = new TextDecoder().decode(decryptedBuffer);
+            const identity = JSON.parse(decryptedData);
+            did = identity.id; // Extract DID from decrypted identity (same as dashboard)
+            console.log('✅ Decrypted identity, extracted DID:', did.substring(0, 30) + '...');
+          } catch (decryptError) {
+            console.error('❌ Failed to decrypt identity:', decryptError);
+            throw new Error('Failed to decrypt identity file. Please check your passcode.');
+          }
+        }
+        
+        if (!did) {
+          throw new Error('Failed to extract DID from identity file');
         }
         
         // Authenticate with OAuth endpoint
@@ -605,7 +654,7 @@
             encrypted_identity: encryptedIdentity,
             passcode: passcode,
             public_key: publicKey,
-            did: did || '', // Empty string if not available, backend will extract it
+            did: did, // DID from decrypted identity (same as dashboard)
             pn_name: pnName
           })
         });
