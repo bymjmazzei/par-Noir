@@ -876,12 +876,29 @@ function App() {
     }
     
     if (viewingCreatorId === userState.pnIdentifier && userState.isUnlocked) {
-      // Fetch user's own files from API using authorDid filter
+      // Fetch user's own files from API using pN identifier from Google Drive folder name
       setIsLoadingCreatorFiles(true);
       (async () => {
         try {
+          // Extract pN identifier from DID (first 16 hex chars of SHA-256 hash of public key)
+          // This matches the identifier used in Google Drive folder names (e.g., "pn-83c1db813607")
+          const extractPnIdentifier = async (did: string): Promise<string> => {
+            if (!did || !did.startsWith('did:key:')) {
+              return did; // Fallback to full DID if format is unexpected
+            }
+            // Extract public key part (after did:key:)
+            const publicKeyPart = did.substring(8); // Remove "did:key:" prefix
+            // Generate SHA-256 hash and take first 16 hex characters
+            const encoder = new TextEncoder();
+            const keyBuffer = encoder.encode(publicKeyPart);
+            const hashBuffer = await crypto.subtle.digest('SHA-256', keyBuffer);
+            const hashArray = Array.from(new Uint8Array(hashBuffer));
+            return hashArray.map(b => b.toString(16).padStart(2, '0')).join('').substring(0, 16);
+          };
+          
+          const pnIdentifier = await extractPnIdentifier(viewingCreatorId);
           const userFiles = await metadataIndexService.discoverFiles({
-            authorDid: viewingCreatorId
+            authorDid: pnIdentifier
           });
           setCreatorFilesState(userFiles);
           console.log(`✅ Loaded ${userFiles.length} files for user's own index from API`);
