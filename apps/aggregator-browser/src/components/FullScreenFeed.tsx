@@ -20,7 +20,6 @@ interface FullScreenFeedProps {
   onLike: (fileId: string) => void;
   onComment: (file: IndexedFile) => void;
   onShare: (fileId: string) => void;
-  onShareToFeed?: (file: IndexedFile) => void;
   onAddToFeed?: (file: IndexedFile) => void;
   onSave?: (file: IndexedFile) => void;
   onEdit?: (file: IndexedFile) => void;
@@ -42,7 +41,6 @@ export function FullScreenFeed({
   onLike,
   onComment,
   onShare,
-  onShareToFeed,
   onAddToFeed,
   onSave,
   onEdit,
@@ -399,10 +397,6 @@ export function FullScreenFeed({
                   onComment(indexedFile);
                 }}
                 onShare={() => onShare(fileId)}
-                onShareToFeed={onShareToFeed ? () => {
-                  setShowEngagementOverlay(false);
-                  onShareToFeed(indexedFile);
-                } : undefined}
                 onSave={onSave ? () => onSave(indexedFile) : undefined}
                 onClose={() => setShowEngagementOverlay(false)}
                 isOpen={showEngagementOverlay}

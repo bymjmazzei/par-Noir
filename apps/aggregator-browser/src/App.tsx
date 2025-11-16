@@ -30,7 +30,6 @@ import { AddToFeedModal } from './components/AddToFeedModal';
 import { NotificationBell } from './components/NotificationBell';
 import { ToastContainer } from './components/Toast';
 import { EditFileModal } from './components/EditFileModal';
-import { ShareToFeedModal } from './components/ShareToFeedModal';
 import { Settings, Upload, Plus, Home, MessageSquare, Grid } from 'lucide-react';
 import { useKeyboardNavigation } from './hooks/useKeyboardNavigation';
 import { useSwipeGesture } from './hooks/useSwipeGesture';
@@ -82,7 +81,6 @@ function App() {
   const [viewingBrandedFeed, setViewingBrandedFeed] = useState<Feed | null>(null); // Branded feed being viewed
   const [showUploadModal, setShowUploadModal] = useState(false); // Show upload modal
   const [showCreateFeedModal, setShowCreateFeedModal] = useState(false); // Show create feed modal
-  const [sharingToFeedFile, setSharingToFeedFile] = useState<IndexedFile | null>(null); // File to share to feed
   const [addingToFeedFile, setAddingToFeedFile] = useState<IndexedFile | null>(null); // File being added to feed
   const [viewingCreatorId, setViewingCreatorId] = useState<string | null>(null); // Creator ID for index view
   const [feedViewedTimestamps, setFeedViewedTimestamps] = useState<Map<string, string>>(
@@ -947,8 +945,8 @@ function App() {
     }
   }, [viewingCreatorId, userState.pnIdentifier, userState.isUnlocked, indexedFiles]);
 
-  // Load user's shares and comments when viewing own index
-  const [userSharedFiles, setUserSharedFiles] = useState<IndexedFile[]>([]);
+  // Load user's liked and commented files when viewing own index
+  const [userLikedFiles, setUserLikedFiles] = useState<IndexedFile[]>([]);
   const [userCommentedFiles, setUserCommentedFiles] = useState<IndexedFile[]>([]);
   const [isLoadingUserEngagement, setIsLoadingUserEngagement] = useState(false);
 
@@ -957,50 +955,37 @@ function App() {
       setIsLoadingUserEngagement(true);
       (async () => {
         try {
-          // Get file IDs from engagement data (shares and comments)
+          // Get file IDs from engagement data (likes and comments)
           const engagementData = loadEngagementData();
           
-          // Get file IDs that user has shared
-          const sharedFileIds = Array.from(engagementData.shares.keys());
+          // Get file IDs that user has liked
+          const likedFileIds = Array.from(engagementData.likes);
           
           // Get file IDs that user has commented on
           const commentedFileIds = Array.from(engagementData.comments.keys());
           
-          // First, try to find files from already indexed files
-          const sharedFromIndexed = indexedFiles.filter(f => 
-            sharedFileIds.includes(f.metadata.fileId)
+          // Find files from already indexed files
+          const likedFromIndexed = indexedFiles.filter(f => 
+            likedFileIds.includes(f.metadata.fileId)
           );
           const commentedFromIndexed = indexedFiles.filter(f => 
             commentedFileIds.includes(f.metadata.fileId)
           );
           
-          // Find file IDs that aren't in indexedFiles yet
-          const missingSharedIds = sharedFileIds.filter(id => 
-            !indexedFiles.some(f => f.metadata.fileId === id)
-          );
-          const missingCommentedIds = commentedFileIds.filter(id => 
-            !indexedFiles.some(f => f.metadata.fileId === id)
-          );
-          const allMissingIds = [...new Set([...missingSharedIds, ...missingCommentedIds])];
-          
-          // Try to fetch missing files from API (if API supports it)
-          // For now, we'll just use what's in indexedFiles
-          // In the future, we could add an API endpoint to fetch files by IDs
-          
-          setUserSharedFiles(sharedFromIndexed);
+          setUserLikedFiles(likedFromIndexed);
           setUserCommentedFiles(commentedFromIndexed);
           
-          console.log(`📊 User engagement: ${sharedFromIndexed.length} shared files, ${commentedFromIndexed.length} commented files${allMissingIds.length > 0 ? ` (${allMissingIds.length} not yet indexed)` : ''}`);
+          console.log(`📊 User engagement: ${likedFromIndexed.length} liked files, ${commentedFromIndexed.length} commented files`);
         } catch (error) {
           console.error('Failed to load user engagement files:', error);
-          setUserSharedFiles([]);
+          setUserLikedFiles([]);
           setUserCommentedFiles([]);
         } finally {
           setIsLoadingUserEngagement(false);
         }
       })();
     } else {
-      setUserSharedFiles([]);
+      setUserLikedFiles([]);
       setUserCommentedFiles([]);
     }
   }, [viewingCreatorId, userState.pnIdentifier, userState.isUnlocked, indexedFiles]);
@@ -1036,9 +1021,9 @@ function App() {
     const creatorFiles = creatorFilesState;
     const isOwnIndex = viewingCreatorId === userState.pnIdentifier && userState.isUnlocked;
     
-    // If viewing own index, combine media, shares, and comments
+    // If viewing own index, combine owned media, liked files, and commented files
     const allUserFiles = isOwnIndex 
-      ? [...creatorFiles, ...userSharedFiles, ...userCommentedFiles]
+      ? [...creatorFiles, ...userLikedFiles, ...userCommentedFiles]
       : creatorFiles;
     
     // Remove duplicates by fileId, keeping the first occurrence
@@ -1046,7 +1031,7 @@ function App() {
       new Map(allUserFiles.map(f => [f.metadata.fileId, f])).values()
     );
     
-    console.log(`📊 Creator index: Found ${uniqueFiles.length} files for creator ${viewingCreatorId}${isOwnIndex ? ` (${creatorFiles.length} media, ${userSharedFiles.length} shared, ${userCommentedFiles.length} commented)` : ''}`);
+    console.log(`📊 Creator index: Found ${uniqueFiles.length} files for creator ${viewingCreatorId}${isOwnIndex ? ` (${creatorFiles.length} owned, ${userLikedFiles.length} liked, ${userCommentedFiles.length} commented)` : ''}`);
     
     // If viewing own profile, show simple feed view
     if (isOwnIndex) {
@@ -1069,9 +1054,6 @@ function App() {
                 onComment={(file) => setCommentingFile(file)}
                 onShare={async (fileId) => {
                   share(fileId);
-                }}
-                onShareToFeed={(file) => {
-                  setSharingToFeedFile(file);
                 }}
                 isLiked={isLiked}
                 getLikeCount={getLikeCount}
@@ -1220,9 +1202,6 @@ function App() {
           onComment={(file) => setCommentingFile(file)}
           onShare={async (fileId) => {
             share(fileId);
-          }}
-          onShareToFeed={(file) => {
-            setSharingToFeedFile(file);
           }}
           isLiked={isLiked}
           getLikeCount={getLikeCount}
@@ -1848,9 +1827,6 @@ function App() {
                 onShare={async (fileId) => {
                   share(fileId);
                 }}
-                onShareToFeed={(file) => {
-                  setSharingToFeedFile(file);
-                }}
                 onAddToFeed={(file) => {
                   const creatorId = file.metadata.creator?.identifier?.value || file.metadata.creator?.["@id"] || file.metadata.author?.did;
                       if (userState.isUnlocked && userState.pnIdentifier === creatorId) {
@@ -1860,7 +1836,7 @@ function App() {
                 onSave={userState.isUnlocked && userState.pnIdentifier ? async (file) => {
                   try {
                     await saveToFeed(userState.pnIdentifier!, file.metadata.fileId);
-                    success('Saved to your private feed!');
+                    success('Saved to your private collection!');
                   } catch (error) {
                     showErrorToast('Failed to save. Please try again.');
                   }
@@ -2187,19 +2163,6 @@ function App() {
           <CommentModal
             file={commentingFile}
             onClose={() => setCommentingFile(null)}
-          />
-        )}
-
-        {/* Share to Feed Modal */}
-        {sharingToFeedFile && (
-          <ShareToFeedModal
-            file={sharingToFeedFile}
-            feeds={feeds}
-            onClose={() => setSharingToFeedFile(null)}
-            onShared={(feedId) => {
-              setSharingToFeedFile(null);
-              success('Shared to feed!');
-            }}
           />
         )}
 
