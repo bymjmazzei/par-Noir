@@ -908,7 +908,16 @@ function App() {
             const data = await response.json();
             if (data.files && Array.isArray(data.files)) {
               // Filter by pnIdentifier (which is the same as the user's identifier)
-              const userIdentifier = viewingCreatorId.trim().toLowerCase();
+              // Note: Dashboard stores pnIdentifier as "pn-{hash}" but browser uses just "{hash}"
+              // So we need to normalize both formats for comparison
+              const normalizeIdentifier = (id: string | undefined | null): string => {
+                if (!id) return '';
+                // Remove "pn-" prefix if present, then normalize
+                const cleaned = id.startsWith('pn-') ? id.substring(3) : id;
+                return cleaned.trim().toLowerCase();
+              };
+              
+              const userIdentifier = normalizeIdentifier(viewingCreatorId);
               console.log(`🔍 Filtering files for user: ${viewingCreatorId} (normalized: ${userIdentifier})`);
               console.log(`🔍 Total files from API: ${data.files.length}`);
               
@@ -918,6 +927,7 @@ function App() {
                 console.log(`📄 File ${idx + 1}:`, {
                   fileId: entry.fileId,
                   pnIdentifier: entry.pnIdentifier,
+                  normalizedPnId: normalizeIdentifier(entry.pnIdentifier),
                   creator: metadata.creator,
                   author: metadata.author,
                   creatorId: metadata.creatorId
@@ -925,20 +935,21 @@ function App() {
               });
               
               const userFiles = data.files.filter((entry: any) => {
-                // Check pnIdentifier field (top-level in entry)
-                const entryPnId = entry.pnIdentifier?.trim().toLowerCase();
-                // Also check metadata creator/author fields
+                // Check pnIdentifier field (top-level in entry) - normalize it
+                const entryPnId = normalizeIdentifier(entry.pnIdentifier);
+                // Also check metadata creator/author fields - normalize them too
                 const metadata = entry.metadata || {};
-                const creatorId = metadata.creator?.identifier?.value?.trim().toLowerCase() ||
-                                 metadata.creator?.["@id"]?.trim().toLowerCase() ||
-                                 metadata.author?.did?.trim().toLowerCase() ||
-                                 metadata.creatorId?.trim().toLowerCase();
+                const creatorIdRaw = metadata.creator?.identifier?.value ||
+                                    metadata.creator?.["@id"] ||
+                                    metadata.author?.did ||
+                                    metadata.creatorId;
+                const creatorId = normalizeIdentifier(creatorIdRaw);
                 
                 const matches = entryPnId === userIdentifier || creatorId === userIdentifier;
                 if (matches) {
-                  console.log(`✅ Found owned file: ${entry.fileId}, pnIdentifier: ${entry.pnIdentifier}, creatorId: ${creatorId}`);
+                  console.log(`✅ Found owned file: ${entry.fileId}, pnIdentifier: ${entry.pnIdentifier} (normalized: ${entryPnId}), creatorId: ${creatorIdRaw} (normalized: ${creatorId})`);
                 } else {
-                  console.log(`❌ File ${entry.fileId} doesn't match: entryPnId="${entryPnId}", creatorId="${creatorId}", user="${userIdentifier}"`);
+                  console.log(`❌ File ${entry.fileId} doesn't match: entryPnId="${entry.pnIdentifier}" (normalized: "${entryPnId}"), creatorId="${creatorIdRaw}" (normalized: "${creatorId}"), user="${viewingCreatorId}" (normalized: "${userIdentifier}")`);
                 }
                 return matches;
               });
