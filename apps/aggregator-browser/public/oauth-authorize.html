@@ -609,8 +609,8 @@
               {
                 name: 'PBKDF2',
                 salt: Uint8Array.from(atob(encryptedIdentity.salt), c => c.charCodeAt(0)),
-                iterations: 100000,
-                hash: 'SHA-256'
+                iterations: 1000000, // Same as dashboard: 1M iterations
+                hash: 'SHA-512' // Same as dashboard: SHA-512
               },
               key,
               { name: 'AES-GCM', length: 256 },
