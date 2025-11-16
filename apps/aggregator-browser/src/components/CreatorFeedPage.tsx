@@ -48,6 +48,9 @@ export function CreatorFeedPage({
   const [viewMode, setViewMode] = useState<ViewMode>('fullscreen');
   const [currentIndex, setCurrentIndex] = useState(0);
 
+  // Check if this is the user's own profile
+  const isOwnProfile = userState.isUnlocked && userState.pnIdentifier === creatorId;
+
   // Filter files by creator
   const creatorFiles = useMemo(() => {
     return files.filter(file => {
@@ -144,13 +147,16 @@ export function CreatorFeedPage({
       {/* Header */}
       <div className="sticky top-0 z-10 bg-neutral-900 border-b border-neutral-700 px-4 py-4">
         <div className="flex items-center justify-between mb-4">
-          <button
-            onClick={onBack}
-            className="text-neutral-400 hover:text-white transition-colors"
-            aria-label="Back"
-          >
-            ← Back
-          </button>
+          {!isOwnProfile && (
+            <button
+              onClick={onBack}
+              className="text-neutral-400 hover:text-white transition-colors"
+              aria-label="Back"
+            >
+              ← Back
+            </button>
+          )}
+          {isOwnProfile && <div />} {/* Spacer when back button is hidden */}
 
           {/* View Toggle */}
           <div className="flex items-center space-x-2 bg-neutral-800 rounded-lg p-1">
