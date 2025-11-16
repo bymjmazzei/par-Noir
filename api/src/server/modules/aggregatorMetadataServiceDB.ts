@@ -147,11 +147,20 @@ export class AggregatorMetadataServiceDB {
       }
 
       if (filters?.authorDid) {
-        // Convert NULL comparisons to false to ensure boolean type for GROUP BY queries
+        // Use CASE to explicitly return boolean - handle NULL JSONB paths
         query += ` AND (
-          COALESCE((am.metadata->'creator'->>'@id') = $${paramIndex}, false) OR
-          COALESCE((am.metadata->'creator'->'identifier'->>'value') = $${paramIndex}, false) OR
-          COALESCE((am.metadata->'author'->>'did') = $${paramIndex}, false)
+          CASE 
+            WHEN (am.metadata->'creator'->>'@id') IS NULL THEN false
+            ELSE (am.metadata->'creator'->>'@id') = $${paramIndex}
+          END OR
+          CASE 
+            WHEN (am.metadata->'creator'->'identifier'->>'value') IS NULL THEN false
+            ELSE (am.metadata->'creator'->'identifier'->>'value') = $${paramIndex}
+          END OR
+          CASE 
+            WHEN (am.metadata->'author'->>'did') IS NULL THEN false
+            ELSE (am.metadata->'author'->>'did') = $${paramIndex}
+          END
         )`;
         params.push(filters.authorDid);
         paramIndex++;
