@@ -1404,7 +1404,7 @@ class ProductionServer {
         const result = await db.query(
           `SELECT file_id, metadata->>'fileId' as file_id_from_metadata, metadata->>'backendFileId' as backend_file_id, metadata->>'backend' as backend
            FROM aggregator_metadata 
-           WHERE metadata->>'backend' = 'google_drive'`
+           WHERE metadata->>'backend' LIKE 'google_drive%'`
         );
 
         console.log(`🔍 Found ${result.rows.length} Google Drive files in database`);
