@@ -2284,25 +2284,33 @@ class ProductionServer {
           const db = (await import('./server/utils/database')).getDatabasePool();
           const did = tokenPayload.did;
           
+          console.log(`🔍 [Userinfo] Looking up pN identifier for DID: ${did.substring(0, 20)}...`);
+          
           // Query for pN identifier - check both pn_identifier column and metadata fields
+          // Use explicit text casting to ensure proper comparison
           const result = await db.query(
             `SELECT DISTINCT pn_identifier 
              FROM aggregator_metadata 
              WHERE pn_identifier IS NOT NULL 
                AND (
-                 (metadata->'creator'->>'@id') = $1 OR
-                 (metadata->'creator'->'identifier'->>'value') = $1 OR
-                 (metadata->'author'->>'did') = $1
+                 ((metadata->'creator'->>'@id')::text = $1::text) OR
+                 ((metadata->'creator'->'identifier'->>'value')::text = $1::text) OR
+                 ((metadata->'author'->>'did')::text = $1::text)
                )
              LIMIT 1`,
             [did]
           );
           
+          console.log(`🔍 [Userinfo] Query returned ${result.rows.length} row(s)`);
+          
           if (result.rows.length > 0 && result.rows[0].pn_identifier) {
             pnIdentifier = result.rows[0].pn_identifier;
+            console.log(`✅ [Userinfo] Found pN identifier: ${pnIdentifier}`);
+          } else {
+            console.warn(`⚠️ [Userinfo] No pN identifier found in database for DID: ${did.substring(0, 20)}...`);
           }
         } catch (dbError) {
-          console.warn('Failed to look up pN identifier from database:', dbError);
+          console.error('❌ [Userinfo] Failed to look up pN identifier from database:', dbError);
           // Non-critical - continue without pnIdentifier
         }
 
