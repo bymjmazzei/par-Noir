@@ -149,13 +149,13 @@ export class AggregatorMetadataServiceDB {
       if (filters?.authorDid) {
         // Match against pn_identifier column (from Google Drive folder name) OR full DID in metadata
         // pn_identifier is the shortened identifier like "83c1db813607" from folder names
-        // Use CASE to ensure boolean return type even when values are NULL
         const authorDidParam = `$${paramIndex}`;
+        // Use COALESCE to handle NULLs and ensure text comparison
         query += ` AND (
-          (CASE WHEN am.pn_identifier IS NULL THEN false ELSE (am.pn_identifier::text = ${authorDidParam}::text) END)::boolean OR
-          (CASE WHEN (am.metadata->'creator'->>'@id') IS NULL THEN false ELSE ((am.metadata->'creator'->>'@id')::text = ${authorDidParam}::text) END)::boolean OR
-          (CASE WHEN (am.metadata->'creator'->'identifier'->>'value') IS NULL THEN false ELSE ((am.metadata->'creator'->'identifier'->>'value')::text = ${authorDidParam}::text) END)::boolean OR
-          (CASE WHEN (am.metadata->'author'->>'did') IS NULL THEN false ELSE ((am.metadata->'author'->>'did')::text = ${authorDidParam}::text) END)::boolean
+          COALESCE(am.pn_identifier::text, '') = ${authorDidParam}::text OR
+          COALESCE(am.metadata->'creator'->>'@id', '')::text = ${authorDidParam}::text OR
+          COALESCE(am.metadata->'creator'->'identifier'->>'value', '')::text = ${authorDidParam}::text OR
+          COALESCE(am.metadata->'author'->>'did', '')::text = ${authorDidParam}::text
         )`;
         params.push(filters.authorDid);
         paramIndex++;
