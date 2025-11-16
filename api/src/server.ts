@@ -1396,10 +1396,7 @@ class ProductionServer {
 
         console.log('🧹 Aggressive cleanup triggered via API');
         
-        // First, run a normal sync to get current file list
-        await syncService.syncFromGoogleDrive();
-        
-        // Then get all Google Drive files from database
+        // Get all Google Drive files from database first (don't wait for sync)
         const db = (await import('./server/utils/database')).getDatabasePool();
         const result = await db.query(
           `SELECT file_id, metadata->>'fileId' as file_id_from_metadata, metadata->>'backendFileId' as backend_file_id, metadata->>'backend' as backend
@@ -1408,6 +1405,16 @@ class ProductionServer {
         );
 
         console.log(`🔍 Found ${result.rows.length} Google Drive files in database`);
+        
+        if (result.rows.length === 0) {
+          return res.json({
+            success: true,
+            message: 'No Google Drive files found in database',
+            checked: 0,
+            removed: 0,
+            orphanedFileIds: []
+          });
+        }
         
         // Get access token for Google Drive API
         const { GoogleAuth } = await import('google-auth-library');
