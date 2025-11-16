@@ -66,17 +66,17 @@ export function BottomNav({ activeTab, onTabChange, onSearchClick }: BottomNavPr
         <span className="text-xs font-medium">UPLOAD</span>
         </button>
 
-      {/* INDEX - Always visible */}
+      {/* ME - Always visible */}
           <button
         onClick={() => handleTabClick('index')}
             className={`
           flex flex-col items-center justify-center h-full text-white hover:text-blue-400 transition-colors
           ${activeTab === 'index' ? 'text-blue-400' : ''}
             `}
-        title="Index"
+        title="Me"
           >
         <Grid className="h-6 w-6 mb-1" />
-        <span className="text-xs font-medium">INDEX</span>
+        <span className="text-xs font-medium">ME</span>
           </button>
 
       {/* INBOX - Always visible */}

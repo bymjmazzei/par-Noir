@@ -1213,14 +1213,14 @@ function App() {
                   }
                 }
               } else {
-                showErrorToast('Unlock your pN to view your index');
+                showErrorToast('Unlock your pN to view your profile');
               }
             }}
             className={`flex flex-col items-center justify-center h-full text-white hover:text-blue-400 transition-colors ${activeBottomTab === 'index' ? 'text-blue-400' : ''}`}
-            title="Index"
+            title="Me"
           >
             <Grid className="h-6 w-6 mb-1" />
-            <span className="text-xs font-medium">INDEX</span>
+            <span className="text-xs font-medium">ME</span>
           </button>
           <button
             onClick={() => {
@@ -2125,7 +2125,7 @@ function App() {
           />
         )}
 
-        {/* Bottom Navigation Bar - Static on ALL screens: HOME, SEARCH, UPLOAD, INDEX, INBOX (5 buttons evenly spaced) */}
+        {/* Bottom Navigation Bar - Static on ALL screens: HOME, SEARCH, UPLOAD, ME, INBOX (5 buttons evenly spaced) */}
         <div className="fixed bottom-0 left-0 right-0 bg-neutral-900 border-t border-neutral-700 h-16 flex items-center justify-around z-[100]">
           <button
             onClick={() => {
@@ -2215,14 +2215,14 @@ function App() {
                   }
                 }
               } else {
-                showErrorToast('Unlock your pN to view your index');
+                showErrorToast('Unlock your pN to view your profile');
               }
             }}
             className={`flex flex-col items-center justify-center h-full text-white hover:text-blue-400 transition-colors ${activeBottomTab === 'index' ? 'text-blue-400' : ''}`}
-            title="Index"
+            title="Me"
           >
             <Grid className="h-6 w-6 mb-1" />
-            <span className="text-xs font-medium">INDEX</span>
+            <span className="text-xs font-medium">ME</span>
           </button>
           <button
             onClick={() => {
