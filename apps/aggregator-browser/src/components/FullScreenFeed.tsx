@@ -245,7 +245,7 @@ export function FullScreenFeed({
         }
       }}
       className="h-screen w-full overflow-y-scroll snap-y snap-mandatory bg-black"
-      style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
+      style={{ scrollbarWidth: 'none', msOverflowStyle: 'none', WebkitOverflowScrolling: 'touch', height: 'calc(100vh - 64px)' }}
     >
       {files.map((indexedFile, idx) => {
         const file = indexedFile.metadata;
@@ -262,6 +262,7 @@ export function FullScreenFeed({
             key={fileId}
             data-file-id={fileId}
             className="h-screen w-full snap-start flex items-center justify-center bg-black relative"
+            style={{ height: 'calc(100vh - 64px)' }}
           >
             {/* Full-screen video */}
             {isVideo && videoBlobs.get(fileId) && (

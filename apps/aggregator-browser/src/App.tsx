@@ -1049,10 +1049,10 @@ function App() {
     // If viewing own profile, show simple feed view
     if (isOwnIndex) {
       return (
-        <div className="h-screen flex flex-col bg-black pb-20">
+        <div className="h-screen flex flex-col bg-black relative">
           {/* Simple feed view for own profile */}
-          <div className="flex-1 overflow-hidden">
-            {uniqueFiles.length > 0 ? (
+          {uniqueFiles.length > 0 ? (
+            <div className="absolute inset-0" style={{ bottom: '64px', height: 'calc(100vh - 64px)' }}>
               <FullScreenFeed
                 files={uniqueFiles}
                 currentIndex={currentFeedIndex}
@@ -1086,15 +1086,15 @@ function App() {
                 onCreatorClick={() => {}}
                 onEdit={(file) => setEditingFile(file)}
               />
-            ) : (
-              <div className="h-full flex items-center justify-center text-white">
-                <EmptyState
-                  type="no-content"
-                  message="No files yet. Upload your first file to get started!"
-                />
-              </div>
-            )}
-          </div>
+            </div>
+          ) : (
+            <div className="h-full flex items-center justify-center text-white" style={{ paddingBottom: '64px' }}>
+              <EmptyState
+                type="no-content"
+                message="No files yet. Upload your first file to get started!"
+              />
+            </div>
+          )}
           
           {/* Bottom Navigation Bar - Always visible */}
           <div className="fixed bottom-0 left-0 right-0 bg-neutral-900 border-t border-neutral-700 h-16 flex items-center justify-around z-[100]">
