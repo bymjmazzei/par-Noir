@@ -876,24 +876,66 @@ function App() {
       return;
     }
     
-    // Simple logic: filter indexedFiles where creator identifier matches viewingCreatorId
-    // This works for both own profile and other creators' profiles
-    const filtered = indexedFiles.filter(f => {
-      const fileOwnerId = f.metadata.creator?.identifier?.value || 
-                          f.metadata.creator?.["@id"] || 
-                          f.metadata.author?.did ||
-                          f.metadata.creatorId;
+    // If viewing own profile and unlocked, load directly from Google Drive
+    if (viewingCreatorId === userState.pnIdentifier && userState.isUnlocked) {
+      const loadFromDrive = async () => {
+        try {
+          const token = localStorage.getItem('google_drive_token');
+          if (!token) {
+            console.warn('⚠️ No Google Drive token - falling back to public index');
+            // Fallback to public index
+            const filtered = indexedFiles.filter(f => {
+              const fileOwnerId = f.metadata.creator?.identifier?.value || 
+                                  f.metadata.creator?.["@id"] || 
+                                  f.metadata.author?.did ||
+                                  f.metadata.creatorId;
+              const normalizedOwnerId = fileOwnerId?.trim().toLowerCase() || '';
+              const normalizedViewingId = viewingCreatorId.trim().toLowerCase();
+              return normalizedOwnerId === normalizedViewingId;
+            });
+            setCreatorFilesState(filtered);
+            return;
+          }
+
+          const { loadUserFilesFromGoogleDrive } = await import('./services/googleDriveUserFilesService');
+          const driveFiles = await loadUserFilesFromGoogleDrive(token, viewingCreatorId);
+          setCreatorFilesState(driveFiles);
+        } catch (error) {
+          console.error('Failed to load files from Google Drive, falling back to public index:', error);
+          // Fallback to public index
+          const filtered = indexedFiles.filter(f => {
+            const fileOwnerId = f.metadata.creator?.identifier?.value || 
+                                f.metadata.creator?.["@id"] || 
+                                f.metadata.author?.did ||
+                                f.metadata.creatorId;
+            const normalizedOwnerId = fileOwnerId?.trim().toLowerCase() || '';
+            const normalizedViewingId = viewingCreatorId.trim().toLowerCase();
+            return normalizedOwnerId === normalizedViewingId;
+          });
+          setCreatorFilesState(filtered);
+        }
+      };
+
+      loadFromDrive();
+    } else {
+      // For other creators, filter from public index
+      const filtered = indexedFiles.filter(f => {
+        const fileOwnerId = f.metadata.creator?.identifier?.value || 
+                            f.metadata.creator?.["@id"] || 
+                            f.metadata.author?.did ||
+                            f.metadata.creatorId;
+        
+        // Compare normalized (case-insensitive, trimmed) identifiers
+        const normalizedOwnerId = fileOwnerId?.trim().toLowerCase() || '';
+        const normalizedViewingId = viewingCreatorId.trim().toLowerCase();
+        
+        return normalizedOwnerId === normalizedViewingId;
+      });
       
-      // Compare normalized (case-insensitive, trimmed) identifiers
-      const normalizedOwnerId = fileOwnerId?.trim().toLowerCase() || '';
-      const normalizedViewingId = viewingCreatorId.trim().toLowerCase();
-      
-      return normalizedOwnerId === normalizedViewingId;
-    });
-    
-    setCreatorFilesState(filtered);
-    console.log(`📊 Loaded ${filtered.length} files for ${viewingCreatorId === userState.pnIdentifier ? 'your' : 'creator'} index`);
-  }, [viewingCreatorId, userState.pnIdentifier, indexedFiles]);
+      setCreatorFilesState(filtered);
+      console.log(`📊 Loaded ${filtered.length} files for creator index`);
+    }
+  }, [viewingCreatorId, userState.pnIdentifier, userState.isUnlocked, indexedFiles]);
 
   // Load user's shares and comments when viewing own index
   const [userSharedFiles, setUserSharedFiles] = useState<IndexedFile[]>([]);

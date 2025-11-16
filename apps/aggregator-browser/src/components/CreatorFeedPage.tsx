@@ -327,6 +327,11 @@ export function CreatorFeedPage({
                         e.currentTarget.src = '/placeholder-thumbnail.png';
                       }}
                     />
+                    {file.metadata.isArchived && (
+                      <div className="absolute top-2 right-2 px-2 py-1 bg-gray-600/90 text-gray-300 text-xs rounded backdrop-blur-sm">
+                        Archived
+                      </div>
+                    )}
                   </div>
                   <h3 className="text-white text-sm line-clamp-2 group-hover:text-blue-400 transition-colors">
                     {file.metadata.name || file.metadata.title || 'Untitled'}
