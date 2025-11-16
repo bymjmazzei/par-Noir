@@ -1400,7 +1400,7 @@ class ProductionServer {
         await syncService.syncFromGoogleDrive();
         
         // Then get all Google Drive files from database
-        const db = await import('../utils/database').then(m => m.getDatabasePool());
+        const db = (await import('./server/utils/database')).getDatabasePool();
         const result = await db.query(
           `SELECT file_id, metadata->>'fileId' as file_id_from_metadata, metadata->>'backendFileId' as backend_file_id, metadata->>'backend' as backend
            FROM aggregator_metadata 
@@ -1449,7 +1449,7 @@ class ProductionServer {
               orphanedFileIds.push(row.file_id);
               console.log(`🗑️ File ${row.file_id} (Drive ID: ${backendFileId}) not found in Google Drive`);
             } else {
-              const fileData = await fileResponse.json();
+              const fileData = await fileResponse.json() as { id?: string; name?: string; trashed?: boolean };
               if (fileData.trashed) {
                 // File is in trash - mark as orphaned
                 orphanedFileIds.push(row.file_id);
