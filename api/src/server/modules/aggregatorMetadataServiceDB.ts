@@ -152,10 +152,10 @@ export class AggregatorMetadataServiceDB {
         // Use CASE to ensure boolean return type even when values are NULL
         const authorDidParam = `$${paramIndex}`;
         query += ` AND (
-          CASE WHEN am.pn_identifier IS NULL THEN false ELSE (am.pn_identifier::text = ${authorDidParam}::text) END OR
-          CASE WHEN (am.metadata->'creator'->>'@id') IS NULL THEN false ELSE ((am.metadata->'creator'->>'@id')::text = ${authorDidParam}::text) END OR
-          CASE WHEN (am.metadata->'creator'->'identifier'->>'value') IS NULL THEN false ELSE ((am.metadata->'creator'->'identifier'->>'value')::text = ${authorDidParam}::text) END OR
-          CASE WHEN (am.metadata->'author'->>'did') IS NULL THEN false ELSE ((am.metadata->'author'->>'did')::text = ${authorDidParam}::text) END
+          (CASE WHEN am.pn_identifier IS NULL THEN false ELSE (am.pn_identifier::text = ${authorDidParam}::text) END)::boolean OR
+          (CASE WHEN (am.metadata->'creator'->>'@id') IS NULL THEN false ELSE ((am.metadata->'creator'->>'@id')::text = ${authorDidParam}::text) END)::boolean OR
+          (CASE WHEN (am.metadata->'creator'->'identifier'->>'value') IS NULL THEN false ELSE ((am.metadata->'creator'->'identifier'->>'value')::text = ${authorDidParam}::text) END)::boolean OR
+          (CASE WHEN (am.metadata->'author'->>'did') IS NULL THEN false ELSE ((am.metadata->'author'->>'did')::text = ${authorDidParam}::text) END)::boolean
         )`;
         params.push(filters.authorDid);
         paramIndex++;
