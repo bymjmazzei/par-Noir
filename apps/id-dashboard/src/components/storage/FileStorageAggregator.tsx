@@ -214,14 +214,34 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
     const candidates: string[] = [];
     
     // Add derived pN identifier (most important - this is what browser app uses)
-    const did = typeof authenticatedUser?.id === 'string' ? authenticatedUser.id : resolvedAuth?.publicKey;
+    const did = typeof authenticatedUser?.id === 'string' ? authenticatedUser.id : undefined;
     const publicKey = resolvedAuth?.publicKey || authenticatedUser?.publicKey;
+    
+    console.log('[StorageCredentials] Getting identity candidates:', {
+      hasDid: !!did,
+      didType: typeof did,
+      didStartsWithDidKey: did?.startsWith('did:key:'),
+      hasPublicKey: !!publicKey,
+      publicKeyLength: publicKey?.length
+    });
+    
     if (did && publicKey) {
-      const pnIdentifier = await derivePnIdentifier(did, publicKey);
-      if (pnIdentifier) {
-        candidates.push(pnIdentifier);
-        console.log('[StorageCredentials] Derived pN identifier:', pnIdentifier);
+      try {
+        const pnIdentifier = await derivePnIdentifier(did, publicKey);
+        if (pnIdentifier) {
+          candidates.push(pnIdentifier);
+          console.log('[StorageCredentials] Derived pN identifier:', pnIdentifier);
+        } else {
+          console.warn('[StorageCredentials] Failed to derive pN identifier - returned null');
+        }
+      } catch (error) {
+        console.error('[StorageCredentials] Error deriving pN identifier:', error);
       }
+    } else {
+      console.warn('[StorageCredentials] Cannot derive pN identifier - missing did or publicKey', {
+        hasDid: !!did,
+        hasPublicKey: !!publicKey
+      });
     }
     
     // Also include other candidates for backward compatibility
