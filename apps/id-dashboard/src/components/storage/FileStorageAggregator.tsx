@@ -1076,8 +1076,10 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
       seen.add(identityId);
 
       try {
-        // identityId is secret - not logged
-        console.warn('📤 [StorageCredentials] Persisting credentials to API...', {
+        // Log identityId for debugging (normally secret)
+        console.log('📤 [StorageCredentials] Persisting credentials to API...', {
+          identityId: identityId,
+          identityIdLength: identityId?.length,
           hasCid: !!cid,
         });
 
