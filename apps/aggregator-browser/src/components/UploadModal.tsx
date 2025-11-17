@@ -56,8 +56,12 @@ export function UploadModal({ onClose, onUploadComplete }: UploadModalProps) {
         if (response.ok) {
           const data = await response.json();
           console.log(`[UploadModal] API response data:`, data);
+          console.log(`[UploadModal] API response data (stringified):`, JSON.stringify(data, null, 2));
           const accounts = data.accounts || [];
           console.log(`[UploadModal] Found ${accounts.length} cloud account(s):`, accounts);
+          if (accounts.length === 0) {
+            console.warn(`[UploadModal] No accounts returned! Check Railway logs for [StorageAccounts] entries`);
+          }
           setCloudAccounts(accounts);
           // Auto-select first account if available
           if (accounts.length > 0 && !selectedAccountId) {

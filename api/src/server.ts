@@ -746,15 +746,19 @@ class ProductionServer {
 
     // GET /api/storage/accounts/:identityId - List available cloud storage accounts (without exposing tokens)
     this.app.get('/api/storage/accounts/:identityId', async (req, res) => {
+      console.log(`[StorageAccounts] Endpoint called for identityId: ${req.params.identityId}`);
       try {
         const { identityId } = req.params;
 
         if (!identityId) {
+          console.log(`[StorageAccounts] Missing identityId parameter`);
           return res.status(400).json({ error: 'Missing identityId parameter' });
         }
 
+        console.log(`[StorageAccounts] Fetching credentials for: ${identityId}`);
         const { storageCredentialsService } = await import('./server/modules/storageCredentialsService');
         const record = await storageCredentialsService.getCredentials(identityId);
+        console.log(`[StorageAccounts] Credentials service returned:`, record ? 'record found' : 'null');
 
         if (!record) {
           console.log(`[StorageAccounts] No credentials record found for identityId: ${identityId}`);
