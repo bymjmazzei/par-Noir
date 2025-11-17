@@ -65,8 +65,8 @@ export class GoogleDriveProxyService {
     }
 
     const token: GoogleDriveToken = {
-      access_token: account.access_token || account.accessToken,
-      refresh_token: account.refresh_token || account.refreshToken,
+      access_token: (account as any).access_token || (account as any).accessToken || account.access_token,
+      refresh_token: (account as any).refresh_token || (account as any).refreshToken || account.refresh_token,
       expires_in: account.expires_in,
       token_type: account.token_type,
       expires_at: account.expires_at

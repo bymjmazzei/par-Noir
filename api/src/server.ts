@@ -788,7 +788,7 @@ class ProductionServer {
               });
 
               if (userInfoResponse.ok) {
-                const userInfo = await userInfoResponse.json();
+                const userInfo = await userInfoResponse.json() as { email?: string; name?: string };
                 accounts.push({
                   provider: 'google_drive',
                   accountId: accountId,
@@ -1993,9 +1993,9 @@ class ProductionServer {
         const userDid = tokenPayload.did;
         const { googleDriveProxyService } = await import('./server/modules/googleDriveProxy');
         
-        // Expect multipart/form-data with 'file' and optional 'fileName', 'mimeType', 'parents'
+        // Expect multipart/form-data with 'file' and optional 'fileName', 'mimeType', 'parents', 'accountId'
         // For now, accept JSON with base64 file data (simpler for initial implementation)
-        const { fileData, fileName, mimeType, parents } = req.body;
+        const { fileData, fileName, mimeType, parents, accountId } = req.body;
         
         if (!fileData || !fileName) {
           return res.status(400).json({
@@ -2011,7 +2011,8 @@ class ProductionServer {
           fileBuffer,
           fileName,
           mimeType || 'application/octet-stream',
-          parents
+          parents,
+          accountId // Pass accountId to select specific Google Drive account
         );
         
         return res.json({ file });
