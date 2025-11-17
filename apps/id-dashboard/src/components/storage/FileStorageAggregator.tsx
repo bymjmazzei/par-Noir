@@ -188,8 +188,43 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
   const rateLimitedBackendsRef = React.useRef<Set<string>>(new Set());
   const pendingRetryTimeoutRef = React.useRef<number | null>(null);
 
-  const getStorageIdentityCandidates = React.useCallback(() => {
+  // Derive pN identifier from DID + publicKey (same method as API server)
+  const derivePnIdentifier = React.useCallback(async (did: string, publicKey?: string): Promise<string | null> => {
+    try {
+      if (!did) return null;
+      const publicKeyToUse = publicKey || (did.startsWith('did:key:') ? did.substring(8) : undefined);
+      if (!publicKeyToUse) return null;
+      
+      // Same method as API server: SHA256(did + ":" + publicKey).substring(0, 12)
+      const combined = `${did}:${publicKeyToUse}`;
+      const encoder = new TextEncoder();
+      const utf8Bytes = encoder.encode(combined);
+      const hashBuffer = await crypto.subtle.digest('SHA-256', utf8Bytes);
+      const hashArray = Array.from(new Uint8Array(hashBuffer));
+      const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+      const pnIdentifier = hashHex.substring(0, 12);
+      return pnIdentifier;
+    } catch (error) {
+      console.warn('[StorageCredentials] Failed to derive pN identifier:', error);
+      return null;
+    }
+  }, []);
+
+  const getStorageIdentityCandidates = React.useCallback(async () => {
     const candidates: string[] = [];
+    
+    // Add derived pN identifier (most important - this is what browser app uses)
+    const did = typeof authenticatedUser?.id === 'string' ? authenticatedUser.id : resolvedAuth?.publicKey;
+    const publicKey = resolvedAuth?.publicKey || authenticatedUser?.publicKey;
+    if (did && publicKey) {
+      const pnIdentifier = await derivePnIdentifier(did, publicKey);
+      if (pnIdentifier) {
+        candidates.push(pnIdentifier);
+        console.log('[StorageCredentials] Derived pN identifier:', pnIdentifier);
+      }
+    }
+    
+    // Also include other candidates for backward compatibility
     if (resolvedAuth?.publicKey) {
       candidates.push(resolvedAuth.publicKey);
     }
@@ -209,10 +244,10 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
       candidates.push((authenticatedUser as any).username);
     }
     return Array.from(new Set(candidates.filter((value) => value && value.trim().length > 0)));
-  }, [authenticatedUser?.id, authenticatedUser?.pnName, authenticatedUser?.publicKey, resolvedAuth?.pnName, resolvedAuth?.publicKey]);
+  }, [authenticatedUser?.id, authenticatedUser?.pnName, authenticatedUser?.publicKey, resolvedAuth?.pnName, resolvedAuth?.publicKey, derivePnIdentifier]);
 
-  const deriveIdentityKey = React.useCallback(() => {
-    const candidates = getStorageIdentityCandidates();
+  const deriveIdentityKey = React.useCallback(async () => {
+    const candidates = await getStorageIdentityCandidates();
     const identityKey = candidates.length > 0 ? candidates[0] : null;
     if (identityKey) {
       if (lastIdentityLogRef.current !== identityKey) {
@@ -880,7 +915,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
 
   const loadThirdPartyIndexers = React.useCallback(
     async (metadata?: PublicMetadata | null, options?: { force?: boolean }) => {
-      const identity = deriveIdentityKey();
+      const identity = await deriveIdentityKey();
       const cacheEntry = thirdPartyIndexersCacheRef.current;
       const shouldUseCache =
         !options?.force &&
@@ -1060,7 +1095,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
 
     await persistCredentialsToSecureMetadata(payload);
 
-    const identityCandidates = getStorageIdentityCandidates();
+    const identityCandidates = await getStorageIdentityCandidates();
     console.log('[StorageCredentials] Identity candidates:', identityCandidates);
 
     if (identityCandidates.length === 0) {
@@ -1306,7 +1341,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
     }
     hydrationRateLimitLoggedRef.current = false;
 
-    const identityCandidates = getStorageIdentityCandidates();
+    const identityCandidates = await getStorageIdentityCandidates();
 
     if (identityCandidates.length === 0) {
       console.warn('⚠️ [StorageCredentials] No identity candidates available for hydration');
@@ -1556,7 +1591,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
   // Load Google Drive token from encrypted metadata when user unlocks
   useEffect(() => {
     const loadTokenFromMetadata = async () => {
-      const identityId = deriveIdentityKey();
+      const identityId = await deriveIdentityKey();
       if (!authenticatedUser?.id || !identityId) {
         console.warn('⚠️ [loadTokenFromMetadata] Missing authenticated identity details', {
           hasAuthenticatedUser: !!authenticatedUser,
