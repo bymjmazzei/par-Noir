@@ -25,6 +25,7 @@ import { CommentModal } from './components/CommentModal';
 import { BrandedFeedPage } from './components/BrandedFeedPage';
 import { MediaViewer } from './components/MediaViewer';
 import { UploadModal } from './components/UploadModal';
+import { BrowseCloud } from './components/BrowseCloud';
 import { CreateFeedModal } from './components/CreateFeedModal';
 import { AddToFeedModal } from './components/AddToFeedModal';
 import { NotificationBell } from './components/NotificationBell';
@@ -81,6 +82,7 @@ function App() {
   const [commentingFile, setCommentingFile] = useState<IndexedFile | null>(null); // File being commented on
   const [viewingBrandedFeed, setViewingBrandedFeed] = useState<Feed | null>(null); // Branded feed being viewed
   const [showUploadModal, setShowUploadModal] = useState(false); // Show upload modal
+  const [uploadMode, setUploadMode] = useState<'upload' | 'browse'>('upload'); // Upload section mode
   const [showCreateFeedModal, setShowCreateFeedModal] = useState(false); // Show create feed modal
   const [addingToFeedFile, setAddingToFeedFile] = useState<IndexedFile | null>(null); // File being added to feed
   const [viewingCreatorId, setViewingCreatorId] = useState<string | null>(null); // Creator ID for index view
@@ -1954,16 +1956,27 @@ function App() {
         </div>
       ) : showUploadModal ? (
         <div className="h-screen w-full bg-neutral-900" style={{ paddingBottom: '64px' }}>
-          <UploadModal
-            onClose={() => {
-              setShowUploadModal(false);
-              setActiveBottomTab('home');
-            }}
-            onUploadComplete={() => {
-              // Refresh files after upload
-              discoverFiles(undefined, true);
-            }}
-          />
+          {uploadMode === 'upload' ? (
+            <UploadModal
+              onClose={() => {
+                setShowUploadModal(false);
+                setActiveBottomTab('home');
+              }}
+              onUploadComplete={() => {
+                // Refresh files after upload
+                discoverFiles(undefined, true);
+              }}
+              onBrowseCloudClick={() => setUploadMode('browse')}
+            />
+          ) : (
+            <BrowseCloud
+              onClose={() => {
+                setShowUploadModal(false);
+                setActiveBottomTab('home');
+              }}
+              onUploadClick={() => setUploadMode('upload')}
+            />
+          )}
         </div>
       ) : (
       <div className={`${viewMode === 'feed' ? 'h-full flex flex-col' : 'max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8'}`}>

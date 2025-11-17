@@ -14,9 +14,10 @@ import { FEED_CATEGORIES } from '../constants/feedCategories';
 interface UploadModalProps {
   onClose: () => void;
   onUploadComplete?: () => void;
+  onBrowseCloudClick?: () => void;
 }
 
-export function UploadModal({ onClose, onUploadComplete }: UploadModalProps) {
+export function UploadModal({ onClose, onUploadComplete, onBrowseCloudClick }: UploadModalProps) {
   const { userState } = useUserState();
   const { success, error: showError } = useToast();
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
@@ -295,9 +296,34 @@ export function UploadModal({ onClose, onUploadComplete }: UploadModalProps) {
 
   return (
     <div className="h-full w-full bg-neutral-900 flex flex-col">
-        {/* Header */}
-        <div className="flex items-center justify-between p-6 border-b border-neutral-700">
-          <h2 className="text-xl font-bold text-white">Upload File</h2>
+        {/* Header with Railway Toggle */}
+        <div className="border-b border-neutral-700">
+          <div className="flex items-center justify-between p-6">
+            <h2 className="text-xl font-bold text-white">Upload File</h2>
+          </div>
+          {/* Railway Navigation */}
+          <div className="flex items-center space-x-1 px-6 pb-3 overflow-x-auto scrollbar-hide">
+            <button
+              onClick={() => {}}
+              className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors whitespace-nowrap ${
+                true
+                  ? 'bg-blue-600 text-white'
+                  : 'bg-neutral-800 text-text-secondary hover:bg-neutral-700'
+              }`}
+            >
+              Upload
+            </button>
+            <button
+              onClick={onBrowseCloudClick}
+              className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors whitespace-nowrap ${
+                false
+                  ? 'bg-blue-600 text-white'
+                  : 'bg-neutral-800 text-text-secondary hover:bg-neutral-700'
+              }`}
+            >
+              Browse Cloud
+            </button>
+          </div>
         </div>
 
         {/* Content */}

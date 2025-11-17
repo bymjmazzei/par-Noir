@@ -23,6 +23,7 @@ export interface GoogleDriveFile {
   modifiedTime?: string;
   webViewLink?: string;
   webContentLink?: string;
+  thumbnailLink?: string;
   parents?: string[];
   description?: string;
 }
@@ -169,7 +170,7 @@ export class GoogleDriveProxyService {
     const accessToken = await this.getAccessToken(userDid);
 
     const params = new URLSearchParams({
-      fields: 'nextPageToken, files(id, name, mimeType, size, createdTime, modifiedTime, webViewLink, webContentLink, parents, description)',
+      fields: 'nextPageToken, files(id, name, mimeType, size, createdTime, modifiedTime, webViewLink, webContentLink, thumbnailLink, parents, description)',
       pageSize: pageSize.toString(),
       orderBy: 'modifiedTime desc',
     });
