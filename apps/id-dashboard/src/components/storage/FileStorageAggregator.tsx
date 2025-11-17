@@ -1479,8 +1479,21 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
           console.warn('⚠️ [StorageCredentials] Failed to load storage quota after hydration', quotaErr);
         }
       }
+    } else {
+      // If hydration didn't find accounts in API, check if we have local accounts to persist
+      console.log('[StorageCredentials] Hydration complete but no accounts found in API, checking local cache...');
+      const cacheEntries = Array.from(driveCredentialCacheRef.current.values());
+      if (cacheEntries.length > 0) {
+        console.log(`[StorageCredentials] Found ${cacheEntries.length} account(s) in local cache, attempting to persist to API...`);
+        // Wait a bit for driveAccounts state to update, then persist
+        setTimeout(() => {
+          persistStorageCredentialsToAPI(undefined).catch((error) => {
+            console.error('⚠️ [StorageCredentials] Failed to persist local accounts to API:', error);
+          });
+        }, 1000);
+      }
     }
-  }, [apiEndpoint, getStorageIdentityCandidates, upsertDriveAccount]);
+  }, [apiEndpoint, getStorageIdentityCandidates, upsertDriveAccount, persistStorageCredentialsToAPI]);
 
   const fetchDriveUserInfo = React.useCallback(async (accessToken: string) => {
     try {
