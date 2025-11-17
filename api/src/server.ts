@@ -757,27 +757,42 @@ class ProductionServer {
         const record = await storageCredentialsService.getCredentials(identityId);
 
         if (!record) {
+          console.log(`[StorageAccounts] No credentials record found for identityId: ${identityId}`);
           return res.json({
             success: true,
             accounts: []
           });
         }
 
+        const credentials = record.credentials;
+        console.log(`[StorageAccounts] Found credentials record for ${identityId}, keys:`, Object.keys(credentials || {}));
+        
         const accounts: Array<{ provider: string; accountId: string; email?: string; displayName?: string }> = [];
 
         // Extract Google Drive accounts (support both single googleDrive and googleDriveAccounts array)
-        const googleDriveAccounts = record.credentials?.googleDriveAccounts || 
-          (record.credentials?.googleDrive ? [record.credentials.googleDrive] : []);
+        const googleDriveAccounts = credentials?.googleDriveAccounts || 
+          (credentials?.googleDrive ? [credentials.googleDrive] : []);
+        
+        console.log(`[StorageAccounts] Found ${googleDriveAccounts.length} Google Drive account(s)`);
 
         // Process each Google Drive account
         for (let i = 0; i < googleDriveAccounts.length; i++) {
           const account = googleDriveAccounts[i];
           const accountId = account?.backendId || account?.keyPrefix || `${identityId}_${i}`;
           
+          console.log(`[StorageAccounts] Processing account ${i + 1}:`, {
+            accountId,
+            hasBackendId: !!account?.backendId,
+            hasKeyPrefix: !!account?.keyPrefix,
+            hasAccessToken: !!((account as any)?.access_token || (account as any)?.accessToken),
+            hasEmail: !!(account as any)?.email,
+            accountKeys: Object.keys(account || {})
+          });
+          
           // Try to get user info from Google Drive API to get email
           try {
-            // Get access token for this specific account
-            const accessToken = account?.access_token || account?.accessToken;
+            // Get access token for this specific account (support both camelCase and snake_case)
+            const accessToken = (account as any)?.access_token || (account as any)?.accessToken;
             
             if (accessToken) {
               // Fetch user info from Google
@@ -797,29 +812,38 @@ class ProductionServer {
                 });
               } else {
                 // Fallback: use account identifier or index
+                const displayName = (account as any)?.email || (account as any)?.keyPrefix || `Google Drive ${i + 1}`;
                 accounts.push({
                   provider: 'google_drive',
                   accountId: accountId,
-                  displayName: account?.email || account?.keyPrefix || `Google Drive ${i + 1}`
+                  email: (account as any)?.email,
+                  displayName: displayName
                 });
               }
             } else {
-              // No access token, but account exists
+              // No access token, but account exists - still include it
+              const displayName = (account as any)?.email || (account as any)?.keyPrefix || `Google Drive ${i + 1}`;
               accounts.push({
                 provider: 'google_drive',
                 accountId: accountId,
-                displayName: account?.email || account?.keyPrefix || `Google Drive ${i + 1}`
+                email: (account as any)?.email,
+                displayName: displayName
               });
             }
-          } catch (error) {
+          } catch (error: any) {
+            console.error(`[StorageAccounts] Error processing account ${i + 1}:`, error);
             // If we can't fetch user info, still include the account
+            const displayName = (account as any)?.email || (account as any)?.keyPrefix || `Google Drive ${i + 1}`;
             accounts.push({
               provider: 'google_drive',
               accountId: accountId,
-              displayName: account?.email || account?.keyPrefix || `Google Drive ${i + 1}`
+              email: (account as any)?.email,
+              displayName: displayName
             });
           }
         }
+        
+        console.log(`[StorageAccounts] Returning ${accounts.length} account(s) for ${identityId}`);
 
         // Add other cloud providers here as they're added (Cloudflare R2, etc.)
 
