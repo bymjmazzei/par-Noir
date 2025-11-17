@@ -199,9 +199,41 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
     authenticatedUserRef.current = authenticatedUser;
   }, [resolvedAuth, authenticatedUser]);
 
-  // TEMPORARILY REMOVED: pN identifier derivation to fix initialization issue
-  // TODO: Add back pN identifier derivation in a way that doesn't break initialization
-  // For now, credentials will be saved with other identity candidates (DID, publicKey, etc.)
+  // Derive pN identifier asynchronously and store in ref (must be declared before getStorageIdentityCandidates)
+  const pnIdentifierRef = React.useRef<string | null>(null);
+  
+  React.useEffect(() => {
+    const derivePnIdentifier = async () => {
+      const currentResolvedAuth = resolvedAuthRef.current;
+      const currentAuthenticatedUser = authenticatedUserRef.current;
+      
+      const did = typeof currentAuthenticatedUser?.id === 'string' ? currentAuthenticatedUser.id : undefined;
+      const publicKey = currentResolvedAuth?.publicKey || currentAuthenticatedUser?.publicKey;
+      
+      if (!did || !publicKey) {
+        pnIdentifierRef.current = null;
+        return;
+      }
+      
+      try {
+        // Same method as API server: SHA256(did + ":" + publicKey).substring(0, 12)
+        const combined = `${did}:${publicKey}`;
+        const encoder = new TextEncoder();
+        const utf8Bytes = encoder.encode(combined);
+        const hashBuffer = await crypto.subtle.digest('SHA-256', utf8Bytes);
+        const hashArray = Array.from(new Uint8Array(hashBuffer));
+        const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+        const identifier = hashHex.substring(0, 12);
+        pnIdentifierRef.current = identifier;
+        console.log('[StorageCredentials] Derived pN identifier:', identifier);
+      } catch (error) {
+        console.error('[StorageCredentials] Error deriving pN identifier:', error);
+        pnIdentifierRef.current = null;
+      }
+    };
+    
+    derivePnIdentifier();
+  }, [resolvedAuth, authenticatedUser]);
   
   // Use a function declaration (not const arrow function) so it's hoisted and available during initialization
   // This function reads from refs to avoid circular dependency issues
@@ -210,8 +242,10 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
     const currentResolvedAuth = resolvedAuthRef.current;
     const currentAuthenticatedUser = authenticatedUserRef.current;
     
-    // TODO: Add pN identifier derivation back here once initialization issue is fixed
-    // For now, use other identity candidates
+    // Add derived pN identifier FIRST (this is what browser app uses)
+    if (pnIdentifierRef.current) {
+      candidates.push(pnIdentifierRef.current);
+    }
     
     // Include other candidates for backward compatibility
     if (currentResolvedAuth?.publicKey) {
