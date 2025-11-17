@@ -187,125 +187,56 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
   const ownerIndexRetryCountsRef = React.useRef<Map<string, number>>(new Map());
   const rateLimitedBackendsRef = React.useRef<Set<string>>(new Set());
   const pendingRetryTimeoutRef = React.useRef<number | null>(null);
-
-  // Derive pN identifier from DID + publicKey (same method as API server)
-  // Use useMemo to derive it synchronously when dependencies change
-  const derivedPnIdentifier = React.useMemo(() => {
-    const did = typeof authenticatedUser?.id === 'string' ? authenticatedUser.id : undefined;
-    const publicKey = resolvedAuth?.publicKey || authenticatedUser?.publicKey;
-    
-    if (!did || !publicKey) {
-      return null;
-    }
-    
-    try {
-      // We'll derive it asynchronously in a separate effect, but store the inputs here
-      return { did, publicKey };
-    } catch (error) {
-      console.warn('[StorageCredentials] Failed to prepare pN identifier derivation:', error);
-      return null;
-    }
-  }, [authenticatedUser?.id, resolvedAuth?.publicKey, authenticatedUser?.publicKey]);
-
-  // Derive pN identifier asynchronously and store in state
-  const [pnIdentifier, setPnIdentifier] = React.useState<string | null>(null);
   
+  // Use refs to avoid accessing state/props during initialization
+  // Initialize with null to completely avoid any initialization order issues
+  const resolvedAuthRef = React.useRef<any>(null);
+  const authenticatedUserRef = React.useRef<any>(null);
+  
+  // Keep refs in sync with state/props - update whenever they change
   React.useEffect(() => {
-    if (!derivedPnIdentifier) {
-      setPnIdentifier(null);
-      return;
-    }
-    
-    const derive = async () => {
-      try {
-        const { did, publicKey } = derivedPnIdentifier;
-        const publicKeyToUse = publicKey || (did.startsWith('did:key:') ? did.substring(8) : undefined);
-        if (!publicKeyToUse) {
-          setPnIdentifier(null);
-          return;
-        }
-        
-        // Same method as API server: SHA256(did + ":" + publicKey).substring(0, 12)
-        const combined = `${did}:${publicKeyToUse}`;
-        const encoder = new TextEncoder();
-        const utf8Bytes = encoder.encode(combined);
-        const hashBuffer = await crypto.subtle.digest('SHA-256', utf8Bytes);
-        const hashArray = Array.from(new Uint8Array(hashBuffer));
-        const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
-        const identifier = hashHex.substring(0, 12);
-        setPnIdentifier(identifier);
-        console.log('[StorageCredentials] Derived pN identifier:', identifier);
-      } catch (error) {
-        console.error('[StorageCredentials] Error deriving pN identifier:', error);
-        setPnIdentifier(null);
-      }
-    };
-    
-    derive();
-  }, [derivedPnIdentifier]);
+    resolvedAuthRef.current = resolvedAuth;
+    authenticatedUserRef.current = authenticatedUser;
+  }, [resolvedAuth, authenticatedUser]);
 
-  // Use a regular function instead of useCallback to avoid circular dependency
-  const getStorageIdentityCandidates = (): string[] => {
+  // TEMPORARILY REMOVED: pN identifier derivation to fix initialization issue
+  // TODO: Add back pN identifier derivation in a way that doesn't break initialization
+  // For now, credentials will be saved with other identity candidates (DID, publicKey, etc.)
+  
+  // Use a function declaration (not const arrow function) so it's hoisted and available during initialization
+  // This function reads from refs to avoid circular dependency issues
+  function getStorageIdentityCandidates(): string[] {
     const candidates: string[] = [];
+    const currentResolvedAuth = resolvedAuthRef.current;
+    const currentAuthenticatedUser = authenticatedUserRef.current;
     
-    // Add derived pN identifier (most important - this is what browser app uses)
-    if (pnIdentifier) {
-      candidates.push(pnIdentifier);
-    }
+    // TODO: Add pN identifier derivation back here once initialization issue is fixed
+    // For now, use other identity candidates
     
-    // Also include other candidates for backward compatibility
-    if (resolvedAuth?.publicKey) {
-      candidates.push(resolvedAuth.publicKey);
+    // Include other candidates for backward compatibility
+    if (currentResolvedAuth?.publicKey) {
+      candidates.push(currentResolvedAuth.publicKey);
     }
-    if (typeof authenticatedUser?.publicKey === 'string') {
-      candidates.push(authenticatedUser.publicKey);
+    if (typeof currentAuthenticatedUser?.publicKey === 'string') {
+      candidates.push(currentAuthenticatedUser.publicKey);
     }
-    if (typeof authenticatedUser?.id === 'string') {
-      candidates.push(authenticatedUser.id);
+    if (typeof currentAuthenticatedUser?.id === 'string') {
+      candidates.push(currentAuthenticatedUser.id);
     }
-    if (typeof resolvedAuth?.pnName === 'string') {
-      candidates.push(resolvedAuth.pnName);
+    if (typeof currentResolvedAuth?.pnName === 'string') {
+      candidates.push(currentResolvedAuth.pnName);
     }
-    if (typeof authenticatedUser?.pnName === 'string') {
-      candidates.push(authenticatedUser.pnName);
+    if (typeof currentAuthenticatedUser?.pnName === 'string') {
+      candidates.push(currentAuthenticatedUser.pnName);
     }
-    if (typeof (authenticatedUser as any)?.username === 'string') {
-      candidates.push((authenticatedUser as any).username);
+    if (typeof (currentAuthenticatedUser as any)?.username === 'string') {
+      candidates.push((currentAuthenticatedUser as any).username);
     }
     return Array.from(new Set(candidates.filter((value) => value && value.trim().length > 0)));
-  };
+  }
 
-  // Use a regular function instead of useCallback to avoid circular dependency
-  const deriveIdentityKey = (): string | null => {
-    try {
-      const candidates = getStorageIdentityCandidates();
-      const identityKey = candidates.length > 0 ? candidates[0] : null;
-      if (identityKey) {
-        if (lastIdentityLogRef.current !== identityKey) {
-          lastIdentityLogRef.current = identityKey;
-          missingIdentityLogRef.current = false;
-          console.debug('🆔 [StorageCredentials] Identity resolved', {
-            candidates,
-            chosen: identityKey,
-          });
-        }
-        return identityKey;
-      }
-      if (!missingIdentityLogRef.current) {
-        missingIdentityLogRef.current = true;
-        console.warn('⚠️ [StorageCredentials] Unable to derive identity key', {
-          hasAuthenticatedUserId: !!authenticatedUser?.id,
-          hasAuthenticatedUserPublicKey: !!authenticatedUser?.publicKey,
-          hasResolvedAuth: !!resolvedAuth,
-          pnIdentifierReady: pnIdentifier !== null,
-        });
-      }
-      return null;
-    } catch (error) {
-      console.error('[StorageCredentials] Error in deriveIdentityKey:', error);
-      return null;
-    }
-  };
+  // Don't use useCallback here - just inline the logic where needed to avoid circular dependencies
+  // This function is only used in a few places, so inlining is fine
 
   // Initialize services - useMemo to avoid re-initializing on every render
   const aggregatorService = React.useMemo(() => {
@@ -369,143 +300,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
     }, delay);
   }, []);
 
-  React.useEffect(() => {
-    const handleTokenRefreshed = (event: Event) => {
-      const detail = (event as CustomEvent<{ backendId?: string; accessToken?: string; refreshToken?: string | null; email?: string | null }>).detail;
-      const backendId = detail?.backendId;
-
-      if (!backendId) {
-        ownerIndexRetryCountsRef.current.clear();
-        rateLimitedBackendsRef.current.clear();
-        if (loadFilesRef.current) {
-          loadFilesRef.current();
-        }
-        return;
-      }
-
-      const existingCredential = driveCredentialCacheRef.current.get(backendId);
-      const account =
-        driveAccounts.find((entry) => entry.backendId === backendId) || null;
-      const keyPrefix =
-        account?.keyPrefix ||
-        existingCredential?.keyPrefix ||
-        `google_drive_${backendId.replace(/[^a-z0-9]+/gi, '-')}`;
-      const resolvedEmail =
-        detail?.email ??
-        existingCredential?.email ??
-        account?.email ??
-        userEmailsRef.current.get(backendId) ??
-        null;
-      const connectedAt = existingCredential?.connectedAt || new Date().toISOString();
-      const nowIso = new Date().toISOString();
-      const nextAccessToken = detail?.accessToken ?? existingCredential?.accessToken ?? null;
-      const nextRefreshToken = detail?.refreshToken ?? existingCredential?.refreshToken ?? null;
-
-      if (nextAccessToken) {
-        driveCredentialCacheRef.current.set(backendId, {
-          backendId,
-          keyPrefix,
-          accessToken: nextAccessToken,
-          refreshToken: nextRefreshToken,
-          email: resolvedEmail,
-          connectedAt,
-          updatedAt: nowIso,
-        });
-
-        purgeDuplicateBackendsForEmail(backendId, resolvedEmail ?? existingCredential?.email ?? null);
-      }
-
-      const backendInstance =
-        aggregatorService && typeof aggregatorService.getBackend === 'function'
-          ? (aggregatorService.getBackend(backendId) as GoogleDriveBackend | null)
-          : null;
-      if (backendInstance && nextAccessToken) {
-        void backendInstance
-          .connect({
-            token: nextAccessToken,
-            refreshToken: nextRefreshToken ?? undefined,
-            email: resolvedEmail ?? undefined,
-          })
-          .catch((connectError) => {
-            console.warn('⚠️ [StorageCredentials] Failed to apply refreshed token to backend', connectError);
-          });
-      }
-
-      if (resolvedEmail && nextAccessToken) {
-        setDriveAccounts((prev) => {
-          const normalized = resolvedEmail.toLowerCase();
-          const filtered = prev.filter((entry) => {
-            if (entry.backendId === backendId) {
-              return false;
-            }
-            if (entry.email && entry.email.toLowerCase() === normalized) {
-              return false;
-            }
-            return true;
-          });
-
-          const next = [...filtered, { backendId, keyPrefix, email: resolvedEmail }];
-          persistDriveAccounts(next);
-          return next;
-        });
-
-        setUserEmails((prev) => {
-          const next = new Map(prev);
-          next.set(backendId, resolvedEmail);
-          return next;
-        });
-      }
-
-      persistStorageCredentialsToAPI(undefined).catch((persistError) => {
-        console.warn('⚠️ [StorageCredentials] Failed to persist refreshed token snapshot:', persistError);
-      });
-
-      ownerIndexRetryCountsRef.current.delete(backendId);
-      ownerIndexWarningLoggedRef.current.delete(backendId);
-      rateLimitedBackendsRef.current.delete(backendId);
-
-      if (loadFilesRef.current) {
-        loadFilesRef.current();
-      }
-    };
-
-    window.addEventListener('google-drive-token-refreshed', handleTokenRefreshed as EventListener);
-    return () => {
-      window.removeEventListener('google-drive-token-refreshed', handleTokenRefreshed as EventListener);
-    };
-  }, [aggregatorService, driveAccounts, persistStorageCredentialsToAPI]);
-
-  // Auto-persist credentials to API when driveAccounts are available
-  React.useEffect(() => {
-    console.log(`[StorageCredentials] Auto-persist effect triggered`, {
-      driveAccountsLength: driveAccounts.length,
-      cacheSize: driveCredentialCacheRef.current.size,
-      hydrationSuccess: hydrationSuccessRef.current
-    });
-    
-    // Check both driveAccounts state and cache
-    const cacheEntries = Array.from(driveCredentialCacheRef.current.values());
-    const hasAccounts = driveAccounts.length > 0 || cacheEntries.length > 0;
-    
-    if (hasAccounts) {
-      // Delay to ensure everything is initialized
-      const timeoutId = setTimeout(() => {
-        const payload = buildStorageCredentialPayload();
-        console.log(`[StorageCredentials] Auto-persisting accounts to API...`, {
-          driveAccountsLength: driveAccounts.length,
-          cacheEntriesLength: cacheEntries.length,
-          payloadHasAccounts: !!(payload?.googleDriveAccounts?.length),
-          payloadAccountsCount: payload?.googleDriveAccounts?.length || 0
-        });
-        persistStorageCredentialsToAPI(undefined).catch((error) => {
-          console.error('⚠️ [StorageCredentials] Auto-persist failed:', error);
-        });
-      }, 3000); // 3 second delay to ensure hydration completes
-      return () => clearTimeout(timeoutId);
-    } else {
-      console.log(`[StorageCredentials] Skipping auto-persist: no accounts found in state or cache`);
-    }
-  }, [driveAccounts.length, persistStorageCredentialsToAPI, buildStorageCredentialPayload]);
+  // These useEffects are moved below persistStorageCredentialsToAPI declaration to avoid initialization order issues
 
   React.useEffect(() => {
     return () => {
@@ -801,6 +596,229 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
     [authenticatedUser?.id, authenticatedUser?.pnName, getResolvedAuthCredentials]
   );
 
+  const persistStorageCredentialsToAPI = React.useCallback(async (credentialsPayload?: any, cid?: string | null) => {
+    console.log('[StorageCredentials] persistStorageCredentialsToAPI called', {
+      hasPayload: !!credentialsPayload,
+      driveAccountsLength: driveAccounts.length,
+      cacheSize: driveCredentialCacheRef.current.size
+    });
+    
+    let payload = credentialsPayload;
+    if (!payload) {
+      payload = buildStorageCredentialPayload();
+      console.log('[StorageCredentials] Built payload from cache', {
+        hasPayload: !!payload,
+        accountsCount: payload?.googleDriveAccounts?.length || 0
+      });
+    }
+
+    if (
+      !payload ||
+      !Array.isArray(payload.googleDriveAccounts) ||
+      payload.googleDriveAccounts.length === 0
+    ) {
+      console.warn('⚠️ [StorageCredentials] No Google Drive accounts available; skipping API persistence', {
+        payloadExists: !!payload,
+        isArray: Array.isArray(payload?.googleDriveAccounts),
+        accountsLength: payload?.googleDriveAccounts?.length || 0
+      });
+      return;
+    }
+
+    await persistCredentialsToSecureMetadata(payload);
+
+    const identityCandidates = getStorageIdentityCandidates();
+    console.log('[StorageCredentials] Identity candidates:', identityCandidates);
+
+    if (identityCandidates.length === 0) {
+      console.warn('⚠️ [StorageCredentials] No identity candidates available for persistence');
+      return;
+    }
+
+    const seen = new Set<string>();
+    for (const identityId of identityCandidates) {
+      if (!identityId || seen.has(identityId)) {
+        continue;
+      }
+      seen.add(identityId);
+
+      try {
+        // Log identityId for debugging (normally secret)
+        console.log('📤 [StorageCredentials] Persisting credentials to API...', {
+          identityId: identityId,
+          identityIdLength: identityId?.length,
+          hasCid: !!cid,
+        });
+
+        const response = await fetch(`${apiEndpoint}/api/storage/credentials/${encodeURIComponent(identityId)}`, {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            credentials: payload,
+            cid: cid ?? null,
+          }),
+        });
+
+        if (!response.ok) {
+          const errorText = await response.text().catch(() => 'Unknown error');
+          // identityId is secret - not logged
+          console.warn('⚠️ [StorageCredentials] Failed to persist credentials to API:', {
+            status: response.status,
+            error: errorText,
+          });
+        } else {
+          console.warn('✅ [StorageCredentials] Credentials persisted to API');
+        }
+      } catch (error) {
+        // identityId is secret - not logged
+        console.warn('⚠️ [StorageCredentials] API persistence failed (non-blocking):', {
+          error: error?.message || error,
+        });
+      }
+    }
+  }, [buildStorageCredentialPayload, persistCredentialsToSecureMetadata, apiEndpoint, driveAccounts.length]);
+
+  // Token refresh handler - moved here after persistStorageCredentialsToAPI is declared
+  React.useEffect(() => {
+    const handleTokenRefreshed = (event: Event) => {
+      const detail = (event as CustomEvent<{ backendId?: string; accessToken?: string; refreshToken?: string | null; email?: string | null }>).detail;
+      const backendId = detail?.backendId;
+
+      if (!backendId) {
+        ownerIndexRetryCountsRef.current.clear();
+        rateLimitedBackendsRef.current.clear();
+        if (loadFilesRef.current) {
+          loadFilesRef.current();
+        }
+        return;
+      }
+
+      const existingCredential = driveCredentialCacheRef.current.get(backendId);
+      const account =
+        driveAccounts.find((entry) => entry.backendId === backendId) || null;
+      const keyPrefix =
+        account?.keyPrefix ||
+        existingCredential?.keyPrefix ||
+        `google_drive_${backendId.replace(/[^a-z0-9]+/gi, '-')}`;
+      const resolvedEmail =
+        detail?.email ??
+        existingCredential?.email ??
+        account?.email ??
+        userEmailsRef.current.get(backendId) ??
+        null;
+      const connectedAt = existingCredential?.connectedAt || new Date().toISOString();
+      const nowIso = new Date().toISOString();
+      const nextAccessToken = detail?.accessToken ?? existingCredential?.accessToken ?? null;
+      const nextRefreshToken = detail?.refreshToken ?? existingCredential?.refreshToken ?? null;
+
+      if (nextAccessToken) {
+        driveCredentialCacheRef.current.set(backendId, {
+          backendId,
+          keyPrefix,
+          accessToken: nextAccessToken,
+          refreshToken: nextRefreshToken,
+          email: resolvedEmail,
+          connectedAt,
+          updatedAt: nowIso,
+        });
+
+        purgeDuplicateBackendsForEmail(backendId, resolvedEmail ?? existingCredential?.email ?? null);
+      }
+
+      const backendInstance =
+        aggregatorService && typeof aggregatorService.getBackend === 'function'
+          ? (aggregatorService.getBackend(backendId) as GoogleDriveBackend | null)
+          : null;
+      if (backendInstance && nextAccessToken) {
+        void backendInstance
+          .connect({
+            token: nextAccessToken,
+            refreshToken: nextRefreshToken ?? undefined,
+            email: resolvedEmail ?? undefined,
+          })
+          .catch((connectError) => {
+            console.warn('⚠️ [StorageCredentials] Failed to apply refreshed token to backend', connectError);
+          });
+      }
+
+      if (resolvedEmail && nextAccessToken) {
+        setDriveAccounts((prev) => {
+          const normalized = resolvedEmail.toLowerCase();
+          const filtered = prev.filter((entry) => {
+            if (entry.backendId === backendId) {
+              return false;
+            }
+            if (entry.email && entry.email.toLowerCase() === normalized) {
+              return false;
+            }
+            return true;
+          });
+
+          const next = [...filtered, { backendId, keyPrefix, email: resolvedEmail }];
+          persistDriveAccounts(next);
+          return next;
+        });
+
+        setUserEmails((prev) => {
+          const next = new Map(prev);
+          next.set(backendId, resolvedEmail);
+          return next;
+        });
+      }
+
+      persistStorageCredentialsToAPI(undefined).catch((persistError) => {
+        console.warn('⚠️ [StorageCredentials] Failed to persist refreshed token snapshot:', persistError);
+      });
+
+      ownerIndexRetryCountsRef.current.delete(backendId);
+      ownerIndexWarningLoggedRef.current.delete(backendId);
+      rateLimitedBackendsRef.current.delete(backendId);
+
+      if (loadFilesRef.current) {
+        loadFilesRef.current();
+      }
+    };
+
+    window.addEventListener('google-drive-token-refreshed', handleTokenRefreshed as EventListener);
+    return () => {
+      window.removeEventListener('google-drive-token-refreshed', handleTokenRefreshed as EventListener);
+    };
+  }, [aggregatorService, driveAccounts, persistStorageCredentialsToAPI]);
+
+  // Auto-persist credentials to API when driveAccounts are available - moved here after persistStorageCredentialsToAPI is declared
+  React.useEffect(() => {
+    console.log(`[StorageCredentials] Auto-persist effect triggered`, {
+      driveAccountsLength: driveAccounts.length,
+      cacheSize: driveCredentialCacheRef.current.size,
+      hydrationSuccess: hydrationSuccessRef.current
+    });
+    
+    // Check both driveAccounts state and cache
+    const cacheEntries = Array.from(driveCredentialCacheRef.current.values());
+    const hasAccounts = driveAccounts.length > 0 || cacheEntries.length > 0;
+    
+    if (hasAccounts) {
+      // Delay to ensure everything is initialized
+      const timeoutId = setTimeout(() => {
+        const payload = buildStorageCredentialPayload();
+        console.log(`[StorageCredentials] Auto-persisting accounts to API...`, {
+          driveAccountsLength: driveAccounts.length,
+          cacheEntriesLength: cacheEntries.length,
+          payloadHasAccounts: !!(payload?.googleDriveAccounts?.length),
+          payloadAccountsCount: payload?.googleDriveAccounts?.length || 0
+        });
+        persistStorageCredentialsToAPI(undefined).catch((error) => {
+          console.error('⚠️ [StorageCredentials] Auto-persist failed:', error);
+        });
+      }, 3000); // 3 second delay to ensure hydration completes
+      return () => clearTimeout(timeoutId);
+    } else {
+      console.log(`[StorageCredentials] Skipping auto-persist: no accounts found in state or cache`);
+    }
+  }, [driveAccounts.length, persistStorageCredentialsToAPI, buildStorageCredentialPayload]);
+
   const resolveShareVisibility = React.useCallback(
     (file: AggregatedFile): 'public' | 'private' => {
       const metadata =
@@ -1005,7 +1023,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
         setIsLoadingIndexers(false);
       }
     },
-    [apiEndpoint, applyIndexersState, pnIdentifier, authenticatedUser?.id, authenticatedUser?.publicKey, resolvedAuth?.publicKey]
+    [apiEndpoint, applyIndexersState, resolvedAuth?.publicKey, resolvedAuth?.pnName, authenticatedUser?.id, authenticatedUser?.pnName, authenticatedUser?.publicKey]
   );
 
   const refreshMetadataInBackground = React.useCallback(
@@ -1100,90 +1118,6 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
     },
     [authenticatedUser?.id, loadThirdPartyIndexers, metadataIndexService, resolvedAuth?.publicKey]
   );
-
-  async function persistStorageCredentialsToAPI(credentialsPayload?: any, cid?: string | null) {
-    console.log('[StorageCredentials] persistStorageCredentialsToAPI called', {
-      hasPayload: !!credentialsPayload,
-      driveAccountsLength: driveAccounts.length,
-      cacheSize: driveCredentialCacheRef.current.size
-    });
-    
-    let payload = credentialsPayload;
-    if (!payload) {
-      payload = buildStorageCredentialPayload();
-      console.log('[StorageCredentials] Built payload from cache', {
-        hasPayload: !!payload,
-        accountsCount: payload?.googleDriveAccounts?.length || 0
-      });
-    }
-
-    if (
-      !payload ||
-      !Array.isArray(payload.googleDriveAccounts) ||
-      payload.googleDriveAccounts.length === 0
-    ) {
-      console.warn('⚠️ [StorageCredentials] No Google Drive accounts available; skipping API persistence', {
-        payloadExists: !!payload,
-        isArray: Array.isArray(payload?.googleDriveAccounts),
-        accountsLength: payload?.googleDriveAccounts?.length || 0
-      });
-      return;
-    }
-
-    await persistCredentialsToSecureMetadata(payload);
-
-    const identityCandidates = getStorageIdentityCandidates();
-    console.log('[StorageCredentials] Identity candidates:', identityCandidates);
-
-    if (identityCandidates.length === 0) {
-      console.warn('⚠️ [StorageCredentials] No identity candidates available for persistence');
-      return;
-    }
-
-    const seen = new Set<string>();
-    for (const identityId of identityCandidates) {
-      if (!identityId || seen.has(identityId)) {
-            continue;
-          }
-      seen.add(identityId);
-
-      try {
-        // Log identityId for debugging (normally secret)
-        console.log('📤 [StorageCredentials] Persisting credentials to API...', {
-          identityId: identityId,
-          identityIdLength: identityId?.length,
-          hasCid: !!cid,
-        });
-
-        const response = await fetch(`${apiEndpoint}/api/storage/credentials/${encodeURIComponent(identityId)}`, {
-          method: 'PUT',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            credentials: payload,
-            cid: cid ?? null,
-          }),
-        });
-
-          if (!response.ok) {
-            const errorText = await response.text().catch(() => 'Unknown error');
-          // identityId is secret - not logged
-          console.warn('⚠️ [StorageCredentials] Failed to persist credentials to API:', {
-              status: response.status,
-              error: errorText,
-            });
-        } else {
-          console.warn('✅ [StorageCredentials] Credentials persisted to API');
-          }
-        } catch (error) {
-        // identityId is secret - not logged
-        console.warn('⚠️ [StorageCredentials] API persistence failed (non-blocking):', {
-          error: error?.message || error,
-          });
-      }
-        }
-      }
 
   const upsertDriveAccount = React.useCallback(async (
     params: {
@@ -1577,7 +1511,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
         }, 1000);
       }
     }
-  }, [apiEndpoint, getStorageIdentityCandidates, upsertDriveAccount, persistStorageCredentialsToAPI]);
+  }, [apiEndpoint, resolvedAuth?.publicKey, resolvedAuth?.pnName, authenticatedUser?.id, authenticatedUser?.pnName, authenticatedUser?.publicKey, upsertDriveAccount, persistStorageCredentialsToAPI]);
 
   const fetchDriveUserInfo = React.useCallback(async (accessToken: string) => {
     try {
@@ -1627,18 +1561,15 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
 
   // Load Google Drive token from encrypted metadata when user unlocks
   useEffect(() => {
-    // Wait for pN identifier to be derived before loading tokens
-    if (pnIdentifier === null && derivedPnIdentifier !== null) {
-      // Still deriving, wait
-      return;
-    }
-    
     if (!authenticatedUser?.id) {
       return;
     }
     
+    // Wait for getStorageIdentityCandidates to be ready (it depends on pnIdentifier)
+    // Don't call it during useEffect initialization - call it inside the async function
     const loadTokenFromMetadata = async () => {
-      // Inline identity derivation to avoid circular dependency
+      // Call getStorageIdentityCandidates here, not during useEffect initialization
+      // This ensures pnIdentifier is ready when accessed
       const candidates = getStorageIdentityCandidates();
       const identityId = candidates.length > 0 ? candidates[0] : null;
       if (!authenticatedUser?.id || !identityId) {
@@ -1762,7 +1693,6 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
     };
 
     loadTokenFromMetadata();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     authenticatedUser?.id,
     authenticatedUser?.pnName,
