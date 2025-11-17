@@ -772,12 +772,33 @@ class ProductionServer {
         const accounts: Array<{ provider: string; accountId: string; email?: string; displayName?: string }> = [];
 
         // Extract Google Drive accounts (support both single googleDrive and googleDriveAccounts array)
-        const googleDriveAccounts = credentials?.googleDriveAccounts || 
-          (credentials?.googleDrive ? [credentials.googleDrive] : []);
+        let googleDriveAccounts = credentials?.googleDriveAccounts;
+        
+        // If googleDriveAccounts doesn't exist, try single googleDrive object
+        if (!googleDriveAccounts) {
+          if (credentials?.googleDrive) {
+            googleDriveAccounts = [credentials.googleDrive];
+          } else {
+            googleDriveAccounts = [];
+          }
+        }
+        
+        // Ensure it's an array
+        if (!Array.isArray(googleDriveAccounts)) {
+          console.warn(`[StorageAccounts] googleDriveAccounts is not an array, type: ${typeof googleDriveAccounts}`);
+          googleDriveAccounts = [];
+        }
         
         console.log(`[StorageAccounts] Found ${googleDriveAccounts.length} Google Drive account(s)`);
         if (googleDriveAccounts.length > 0) {
           console.log(`[StorageAccounts] First account structure:`, JSON.stringify(googleDriveAccounts[0], null, 2));
+        } else {
+          console.warn(`[StorageAccounts] No Google Drive accounts found. Credentials structure:`, {
+            hasGoogleDriveAccounts: !!credentials?.googleDriveAccounts,
+            hasGoogleDrive: !!credentials?.googleDrive,
+            credentialsType: typeof credentials,
+            allKeys: Object.keys(credentials || {})
+          });
         }
 
         // Process each Google Drive account
