@@ -187,7 +187,8 @@ export function UploadModal({ onClose, onUploadComplete }: UploadModalProps) {
         body: JSON.stringify({
           fileData: base64File,
           fileName: selectedFile.name,
-          mimeType: selectedFile.type || 'application/octet-stream'
+          mimeType: selectedFile.type || 'application/octet-stream',
+          accountId: selectedAccountId // Pass selected account ID to use specific Google Drive account
         })
       });
 

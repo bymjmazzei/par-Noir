@@ -30,9 +30,10 @@ export interface GoogleDriveFile {
 export class GoogleDriveProxyService {
   /**
    * Get Google Drive access token for a user
+   * Supports multiple accounts - if accountId is provided, uses that specific account
    * Handles token refresh if needed
    */
-  async getAccessToken(userDid: string): Promise<string> {
+  async getAccessToken(userDid: string, accountId?: string): Promise<string> {
     const credentialsRecord = await storageCredentialsService.getCredentials(userDid);
     
     if (!credentialsRecord) {
@@ -40,7 +41,36 @@ export class GoogleDriveProxyService {
     }
 
     const credentials = credentialsRecord.credentials;
-    const token: GoogleDriveToken = credentials.googleDrive || credentials;
+    
+    // Support both googleDriveAccounts array and single googleDrive object
+    let account: GoogleDriveToken | null = null;
+    
+    if (accountId && credentials.googleDriveAccounts) {
+      // Find specific account by accountId (backendId or keyPrefix)
+      account = credentials.googleDriveAccounts.find(
+        (acc: any) => acc.backendId === accountId || acc.keyPrefix === accountId
+      ) || null;
+    } else if (credentials.googleDriveAccounts && credentials.googleDriveAccounts.length > 0) {
+      // Use first account if no accountId specified
+      account = credentials.googleDriveAccounts[0];
+    } else if (credentials.googleDrive) {
+      // Fallback to single googleDrive object
+      account = credentials.googleDrive;
+    } else {
+      account = credentials as GoogleDriveToken;
+    }
+
+    if (!account) {
+      throw new Error('Google Drive account not found');
+    }
+
+    const token: GoogleDriveToken = {
+      access_token: account.access_token || account.accessToken,
+      refresh_token: account.refresh_token || account.refreshToken,
+      expires_in: account.expires_in,
+      token_type: account.token_type,
+      expires_at: account.expires_at
+    };
 
     if (!token.access_token) {
       throw new Error('Google Drive access token not found');
@@ -58,21 +88,37 @@ export class GoogleDriveProxyService {
       try {
         const refreshedToken = await this.refreshAccessToken(token.refresh_token);
         
-        // Update stored credentials
-        const updatedCredentials = {
-          ...credentials,
-          googleDrive: {
-            ...token,
+        // Update stored credentials for the specific account
+        if (accountId && credentials.googleDriveAccounts) {
+          const accountIndex = credentials.googleDriveAccounts.findIndex(
+            (acc: any) => acc.backendId === accountId || acc.keyPrefix === accountId
+          );
+          if (accountIndex >= 0) {
+            credentials.googleDriveAccounts[accountIndex] = {
+              ...credentials.googleDriveAccounts[accountIndex],
+              access_token: refreshedToken.access_token,
+              accessToken: refreshedToken.access_token,
+              expires_at: refreshedToken.expires_in 
+                ? Date.now() + (refreshedToken.expires_in * 1000)
+                : undefined,
+              expires_in: refreshedToken.expires_in,
+              refresh_token: refreshedToken.refresh_token || token.refresh_token,
+              refreshToken: refreshedToken.refresh_token || token.refresh_token
+            };
+          }
+        } else if (credentials.googleDrive) {
+          credentials.googleDrive = {
+            ...credentials.googleDrive,
             access_token: refreshedToken.access_token,
             expires_at: refreshedToken.expires_in 
               ? Date.now() + (refreshedToken.expires_in * 1000)
               : undefined,
             expires_in: refreshedToken.expires_in,
             refresh_token: refreshedToken.refresh_token || token.refresh_token
-          }
-        };
+          };
+        }
         
-        await storageCredentialsService.upsertCredentials(userDid, updatedCredentials);
+        await storageCredentialsService.upsertCredentials(userDid, credentials);
         
         return refreshedToken.access_token;
       } catch (error) {
@@ -155,9 +201,10 @@ export class GoogleDriveProxyService {
     file: Buffer,
     fileName: string,
     mimeType: string,
-    parents?: string[]
+    parents?: string[],
+    accountId?: string
   ): Promise<GoogleDriveFile> {
-    const accessToken = await this.getAccessToken(userDid);
+    const accessToken = await this.getAccessToken(userDid, accountId);
 
     const metadata = {
       name: fileName,

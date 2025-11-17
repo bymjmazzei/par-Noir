@@ -765,43 +765,58 @@ class ProductionServer {
 
         const accounts: Array<{ provider: string; accountId: string; email?: string; displayName?: string }> = [];
 
-        // Extract Google Drive account info (if available)
-        if (record.credentials?.googleDrive) {
-          const googleDrive = record.credentials.googleDrive;
+        // Extract Google Drive accounts (support both single googleDrive and googleDriveAccounts array)
+        const googleDriveAccounts = record.credentials?.googleDriveAccounts || 
+          (record.credentials?.googleDrive ? [record.credentials.googleDrive] : []);
+
+        // Process each Google Drive account
+        for (let i = 0; i < googleDriveAccounts.length; i++) {
+          const account = googleDriveAccounts[i];
+          const accountId = account?.backendId || account?.keyPrefix || `${identityId}_${i}`;
+          
           // Try to get user info from Google Drive API to get email
           try {
-            const { googleDriveProxyService } = await import('./server/modules/googleDriveProxy');
-            const accessToken = await googleDriveProxyService.getAccessToken(identityId);
+            // Get access token for this specific account
+            const accessToken = account?.access_token || account?.accessToken;
             
-            // Fetch user info from Google
-            const userInfoResponse = await fetch('https://www.googleapis.com/oauth2/v2/userinfo', {
-              headers: {
-                'Authorization': `Bearer ${accessToken}`
-              }
-            });
-
-            if (userInfoResponse.ok) {
-              const userInfo = await userInfoResponse.json();
-              accounts.push({
-                provider: 'google_drive',
-                accountId: identityId, // Use identityId as account identifier
-                email: userInfo.email,
-                displayName: userInfo.name || userInfo.email
+            if (accessToken) {
+              // Fetch user info from Google
+              const userInfoResponse = await fetch('https://www.googleapis.com/oauth2/v2/userinfo', {
+                headers: {
+                  'Authorization': `Bearer ${accessToken}`
+                }
               });
+
+              if (userInfoResponse.ok) {
+                const userInfo = await userInfoResponse.json();
+                accounts.push({
+                  provider: 'google_drive',
+                  accountId: accountId,
+                  email: userInfo.email,
+                  displayName: userInfo.name || userInfo.email || `Google Drive ${i + 1}`
+                });
+              } else {
+                // Fallback: use account identifier or index
+                accounts.push({
+                  provider: 'google_drive',
+                  accountId: accountId,
+                  displayName: account?.email || account?.keyPrefix || `Google Drive ${i + 1}`
+                });
+              }
             } else {
-              // Fallback: just indicate Google Drive is connected
+              // No access token, but account exists
               accounts.push({
                 provider: 'google_drive',
-                accountId: identityId,
-                displayName: 'Google Drive'
+                accountId: accountId,
+                displayName: account?.email || account?.keyPrefix || `Google Drive ${i + 1}`
               });
             }
           } catch (error) {
             // If we can't fetch user info, still include the account
             accounts.push({
               provider: 'google_drive',
-              accountId: identityId,
-              displayName: 'Google Drive'
+              accountId: accountId,
+              displayName: account?.email || account?.keyPrefix || `Google Drive ${i + 1}`
             });
           }
         }
