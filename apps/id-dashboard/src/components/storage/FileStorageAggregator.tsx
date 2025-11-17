@@ -244,7 +244,8 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
     derive();
   }, [derivedPnIdentifier]);
 
-  const getStorageIdentityCandidates = React.useCallback(() => {
+  // Use a regular function instead of useCallback to avoid circular dependency
+  const getStorageIdentityCandidates = (): string[] => {
     const candidates: string[] = [];
     
     // Add derived pN identifier (most important - this is what browser app uses)
@@ -272,33 +273,39 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
       candidates.push((authenticatedUser as any).username);
     }
     return Array.from(new Set(candidates.filter((value) => value && value.trim().length > 0)));
-  }, [pnIdentifier, authenticatedUser?.id, authenticatedUser?.pnName, authenticatedUser?.publicKey, resolvedAuth?.pnName, resolvedAuth?.publicKey]);
+  };
 
-  const deriveIdentityKey = React.useCallback(() => {
-    const candidates = getStorageIdentityCandidates();
-    const identityKey = candidates.length > 0 ? candidates[0] : null;
-    if (identityKey) {
-      if (lastIdentityLogRef.current !== identityKey) {
-        lastIdentityLogRef.current = identityKey;
-        missingIdentityLogRef.current = false;
-        console.debug('🆔 [StorageCredentials] Identity resolved', {
-          candidates,
-          chosen: identityKey,
+  // Use a regular function instead of useCallback to avoid circular dependency
+  const deriveIdentityKey = (): string | null => {
+    try {
+      const candidates = getStorageIdentityCandidates();
+      const identityKey = candidates.length > 0 ? candidates[0] : null;
+      if (identityKey) {
+        if (lastIdentityLogRef.current !== identityKey) {
+          lastIdentityLogRef.current = identityKey;
+          missingIdentityLogRef.current = false;
+          console.debug('🆔 [StorageCredentials] Identity resolved', {
+            candidates,
+            chosen: identityKey,
+          });
+        }
+        return identityKey;
+      }
+      if (!missingIdentityLogRef.current) {
+        missingIdentityLogRef.current = true;
+        console.warn('⚠️ [StorageCredentials] Unable to derive identity key', {
+          hasAuthenticatedUserId: !!authenticatedUser?.id,
+          hasAuthenticatedUserPublicKey: !!authenticatedUser?.publicKey,
+          hasResolvedAuth: !!resolvedAuth,
+          pnIdentifierReady: pnIdentifier !== null,
         });
       }
-      return identityKey;
+      return null;
+    } catch (error) {
+      console.error('[StorageCredentials] Error in deriveIdentityKey:', error);
+      return null;
     }
-    if (!missingIdentityLogRef.current) {
-      missingIdentityLogRef.current = true;
-      console.warn('⚠️ [StorageCredentials] Unable to derive identity key', {
-        hasAuthenticatedUserId: !!authenticatedUser?.id,
-        hasAuthenticatedUserPublicKey: !!authenticatedUser?.publicKey,
-        hasResolvedAuth: !!resolvedAuth,
-        candidates,
-      });
-    }
-    return null;
-  }, [authenticatedUser?.id, authenticatedUser?.publicKey, getStorageIdentityCandidates, resolvedAuth]);
+  };
 
   // Initialize services - useMemo to avoid re-initializing on every render
   const aggregatorService = React.useMemo(() => {
@@ -943,7 +950,9 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
 
   const loadThirdPartyIndexers = React.useCallback(
     async (metadata?: PublicMetadata | null, options?: { force?: boolean }) => {
-      const identity = deriveIdentityKey();
+      // Inline identity derivation to avoid circular dependency
+      const candidates = getStorageIdentityCandidates();
+      const identity = candidates.length > 0 ? candidates[0] : null;
       const cacheEntry = thirdPartyIndexersCacheRef.current;
       const shouldUseCache =
         !options?.force &&
@@ -996,7 +1005,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
         setIsLoadingIndexers(false);
       }
     },
-    [apiEndpoint, applyIndexersState, deriveIdentityKey]
+    [apiEndpoint, applyIndexersState, pnIdentifier, authenticatedUser?.id, authenticatedUser?.publicKey, resolvedAuth?.publicKey]
   );
 
   const refreshMetadataInBackground = React.useCallback(
@@ -1618,13 +1627,26 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
 
   // Load Google Drive token from encrypted metadata when user unlocks
   useEffect(() => {
+    // Wait for pN identifier to be derived before loading tokens
+    if (pnIdentifier === null && derivedPnIdentifier !== null) {
+      // Still deriving, wait
+      return;
+    }
+    
+    if (!authenticatedUser?.id) {
+      return;
+    }
+    
     const loadTokenFromMetadata = async () => {
-      const identityId = deriveIdentityKey();
+      // Inline identity derivation to avoid circular dependency
+      const candidates = getStorageIdentityCandidates();
+      const identityId = candidates.length > 0 ? candidates[0] : null;
       if (!authenticatedUser?.id || !identityId) {
         console.warn('⚠️ [loadTokenFromMetadata] Missing authenticated identity details', {
           hasAuthenticatedUser: !!authenticatedUser,
           hasId: !!authenticatedUser?.id,
           identityId,
+          pnIdentifierReady: pnIdentifier !== null,
         });
         return;
       }
