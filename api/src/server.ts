@@ -767,7 +767,7 @@ class ProductionServer {
         const credentials = record.credentials;
         console.log(`[StorageAccounts] Found credentials record for ${identityId}`);
         console.log(`[StorageAccounts] Credentials keys:`, Object.keys(credentials || {}));
-        console.log(`[StorageAccounts] Credentials structure:`, JSON.stringify(credentials, null, 2).substring(0, 1000)); // First 1000 chars
+        console.log(`[StorageAccounts] Credentials structure (full):`, JSON.stringify(credentials, null, 2));
         
         const accounts: Array<{ provider: string; accountId: string; email?: string; displayName?: string }> = [];
 
