@@ -405,6 +405,20 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
     };
   }, [aggregatorService, driveAccounts, persistStorageCredentialsToAPI]);
 
+  // Auto-persist credentials to API when driveAccounts are available
+  React.useEffect(() => {
+    if (driveAccounts.length > 0) {
+      // Delay to ensure cache is populated
+      const timeoutId = setTimeout(() => {
+        console.log(`[StorageCredentials] Auto-persisting ${driveAccounts.length} Google Drive account(s) to API...`);
+        persistStorageCredentialsToAPI(undefined).catch((error) => {
+          console.warn('⚠️ [StorageCredentials] Auto-persist failed (non-blocking):', error);
+        });
+      }, 2000); // 2 second delay to ensure everything is initialized
+      return () => clearTimeout(timeoutId);
+    }
+  }, [driveAccounts.length, persistStorageCredentialsToAPI]);
+
   React.useEffect(() => {
     return () => {
       ownerIndexWarningLoggedRef.current.clear();
