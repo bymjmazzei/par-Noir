@@ -685,6 +685,14 @@ class ProductionServer {
         const { identityId } = req.params;
         const { credentials, cid } = req.body;
 
+        console.log(`[StorageCredentials PUT] Received request for identityId: ${identityId}`);
+        console.log(`[StorageCredentials PUT] Credentials structure:`, {
+          hasGoogleDriveAccounts: !!credentials?.googleDriveAccounts,
+          googleDriveAccountsLength: Array.isArray(credentials?.googleDriveAccounts) ? credentials.googleDriveAccounts.length : 0,
+          hasGoogleDrive: !!credentials?.googleDrive,
+          allKeys: Object.keys(credentials || {})
+        });
+
         if (!identityId) {
           return res.status(400).json({ error: 'Missing identityId parameter' });
         }
@@ -695,6 +703,8 @@ class ProductionServer {
 
         const { storageCredentialsService } = await import('./server/modules/storageCredentialsService');
         const record = await storageCredentialsService.upsertCredentials(identityId, credentials, cid);
+        
+        console.log(`[StorageCredentials PUT] Successfully saved credentials for identityId: ${identityId}`);
 
         return res.json({
           success: true,
