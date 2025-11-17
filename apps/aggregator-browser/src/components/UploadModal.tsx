@@ -165,9 +165,18 @@ export function UploadModal({ onClose, onUploadComplete }: UploadModalProps) {
 
       setUploadProgress(10);
 
-      // Convert file to base64 for API
-      const fileBuffer = await selectedFile.arrayBuffer();
-      const base64File = btoa(String.fromCharCode(...new Uint8Array(fileBuffer)));
+      // Convert file to base64 for API using FileReader (avoids stack overflow)
+      const base64File = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => {
+          const result = reader.result as string;
+          // FileReader returns "data:type;base64,base64data" - extract just the base64 part
+          const base64 = result.includes(',') ? result.split(',')[1] : result;
+          resolve(base64);
+        };
+        reader.onerror = () => reject(new Error('Failed to read file'));
+        reader.readAsDataURL(selectedFile);
+      });
 
       setUploadProgress(25);
 
