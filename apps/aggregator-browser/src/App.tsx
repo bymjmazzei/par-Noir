@@ -91,11 +91,75 @@ function App() {
   const videoRefs = React.useRef<Map<string, HTMLVideoElement>>(new Map()); // Store video element refs
   const discoverFilesRef = useRef<((filters?: MetadataFilters, forceRefresh?: boolean) => Promise<void>) | null>(null); // Ref for discoverFiles function
   const generateThumbnailsForImagesRef = useRef<((files: IndexedFile[]) => Promise<void>) | null>(null); // Ref for generateThumbnailsForImages function
+  const isDiscoveringRef = useRef<boolean>(false); // Track if discoverFiles is currently running
+  const discoverFilesTimeoutRef = useRef<NodeJS.Timeout | null>(null); // Track debounce timeout
+  const isNavigatingToFileRef = useRef<boolean>(false); // Track if we're navigating to a specific file
+  const lastNavigatedFileIdRef = useRef<string | null>(null); // Track the last file we navigated to
+  const lastNavigatedFileIndexRef = useRef<number | null>(null); // Track the index we navigated to
   
   const metadataIndexService = getMetadataIndexService();
   const { toggleLike, share, getLikeCount, isLiked, getComments, getShareCount, loadBulkEngagementStats } = useEngagement();
   const { toasts, removeToast, success, error: showErrorToast } = useToast();
   const { getParam, setParam } = useURLParams();
+
+  // Helper function for "Me" button click
+  const handleMeClick = async () => {
+    // Clear other page states
+    setShowInbox(false);
+    setShowSearch(false);
+    setShowUploadModal(false);
+    setViewingBrandedFeed(null);
+    if (userState.isUnlocked) {
+      const session = PNOAuthService.loadSession();
+      let pnIdentifier = session?.pnIdentifier || userState.pnIdentifier;
+      
+      if (pnIdentifier && pnIdentifier.startsWith('did:key:')) {
+        try {
+          if (session?.accessToken) {
+            const userInfo = await PNOAuthService.getUserInfo(session.accessToken);
+            if (userInfo.pn_identifier) {
+              pnIdentifier = userInfo.pn_identifier;
+              const updatedSession = { ...session, pnIdentifier };
+              PNOAuthService.saveSession(updatedSession);
+              setUnlocked(pnIdentifier);
+            }
+          }
+        } catch (error) {
+          console.warn('Failed to fetch pN identifier from userinfo:', error);
+        }
+      }
+      
+      if (pnIdentifier && !pnIdentifier.startsWith('did:key:')) {
+        setViewingCreatorId(pnIdentifier);
+        setActiveBottomTab('index');
+      } else {
+        // Try one more time to get it from the API
+        console.warn('⚠️ Still have DID instead of pN identifier, fetching from API...');
+        try {
+          const session = PNOAuthService.loadSession();
+          if (session?.accessToken) {
+            const userInfo = await PNOAuthService.getUserInfo(session.accessToken);
+            if (userInfo.pn_identifier && !userInfo.pn_identifier.startsWith('did:key:')) {
+              const updatedSession = { ...session, pnIdentifier: userInfo.pn_identifier };
+              PNOAuthService.saveSession(updatedSession);
+              setUnlocked(userInfo.pn_identifier);
+              setViewingCreatorId(userInfo.pn_identifier);
+              setActiveBottomTab('index');
+            } else {
+              showErrorToast('Unable to load your pN identifier from API');
+            }
+          } else {
+            showErrorToast('No active session found');
+          }
+        } catch (error) {
+          console.error('Failed to fetch pN identifier:', error);
+          showErrorToast('Unable to load your pN identifier');
+        }
+      }
+    } else {
+      showErrorToast('Unlock your pN to view your profile');
+    }
+  };
 
   // Feed navigation hook
   const { feedHierarchy, getNextFeed, getPreviousFeed, getFeedIndex } = useFeedNavigation(
@@ -128,10 +192,17 @@ function App() {
 
   // Set default feed based on user state (only when unlock state changes, not on manual feed switches)
   const prevUnlockedRef = useRef<boolean>(userState.isUnlocked);
+  const isManualFeedChangeRef = useRef<boolean>(false); // Track manual feed changes
   useEffect(() => {
     // Only switch feeds if unlock state actually changed (not just activeFeedId)
     const unlockStateChanged = prevUnlockedRef.current !== userState.isUnlocked;
     prevUnlockedRef.current = userState.isUnlocked;
+    
+    // Don't auto-switch if user manually changed the feed
+    if (isManualFeedChangeRef.current) {
+      isManualFeedChangeRef.current = false;
+      return;
+    }
     
     if (unlockStateChanged) {
       if (userState.isUnlocked && activeFeedId === 'public') {
@@ -142,21 +213,25 @@ function App() {
         setActiveFeedId('public');
       }
     }
-  }, [userState.isUnlocked]); // Only depend on isUnlocked, not activeFeedId
+  }, [userState.isUnlocked]); // Only depend on isUnlocked, not activeFeedId (to avoid interference with manual clicks)
 
-  // Fetch feeds from API
+  // Fetch feeds from API - only once on mount
+  const hasLoadedFeedsRef = useRef<boolean>(false);
   useEffect(() => {
-    const loadFeeds = async () => {
-      try {
-        const result = await FeedService.listFeeds({ limit: 100 });
-        setFeeds(result.feeds);
-      } catch (error) {
-        console.error('Failed to load feeds:', error);
-        // Continue with empty feeds - UI will show default feeds
-      }
-    };
+    if (!hasLoadedFeedsRef.current) {
+      hasLoadedFeedsRef.current = true;
+      const loadFeeds = async () => {
+        try {
+          const result = await FeedService.listFeeds({ limit: 100 });
+          setFeeds(result.feeds);
+        } catch (error) {
+          console.error('Failed to load feeds:', error);
+          // Continue with empty feeds - UI will show default feeds
+        }
+      };
 
-    loadFeeds();
+      loadFeeds();
+    }
   }, []);
 
   // Reload feeds when a new feed is created
@@ -206,25 +281,32 @@ function App() {
     }
   }, [indexedFiles.length, loadBulkEngagementStats]); // Only reload when count changes
 
-  // Initialize from URL params
+  // Initialize from URL params - only on mount and when file param changes
+  const hasInitializedFromURLRef = useRef<boolean>(false);
   useEffect(() => {
     const fileParam = getParam('file');
     const feedParam = getParam('feed');
     const creatorParam = getParam('creator');
     const viewParam = getParam('view') as 'grid' | 'feed' | null;
 
-    if (viewParam && (viewParam === 'grid' || viewParam === 'feed')) {
-      setViewMode(viewParam);
+    // Only read feed/creator/view params on initial mount
+    if (!hasInitializedFromURLRef.current) {
+      hasInitializedFromURLRef.current = true;
+      
+      if (viewParam && (viewParam === 'grid' || viewParam === 'feed')) {
+        setViewMode(viewParam);
+      }
+
+      if (feedParam) {
+        setActiveFeedId(feedParam);
+      }
+
+      if (creatorParam) {
+        setViewingCreatorId(creatorParam);
+      }
     }
 
-    if (feedParam) {
-      setActiveFeedId(feedParam);
-    }
-
-    if (creatorParam) {
-      setViewingCreatorId(creatorParam);
-    }
-
+    // Handle file param separately - can change dynamically
     if (fileParam && indexedFiles.length > 0) {
       const file = indexedFiles.find(f => f.metadata.fileId === fileParam);
       if (file) {
@@ -238,6 +320,7 @@ function App() {
           targetFeedId = fileFeedIds[0];
         }
         if (targetFeedId !== activeFeedId) {
+          isManualFeedChangeRef.current = true; // Mark as manual change
           setActiveFeedId(targetFeedId);
         }
         // Wait for feed to be set and files to be filtered, then find the file index
@@ -273,7 +356,7 @@ function App() {
         }, 500);
       }
     }
-  }, [getParam, indexedFiles.length, activeFeedId, userState.preferences.subscribedFeedIds]); // Include activeFeedId and subscribedFeedIds
+  }, [getParam, indexedFiles.length, userState.preferences.subscribedFeedIds]); // Removed activeFeedId to prevent interference
 
   // Update URL when state changes
   useEffect(() => {
@@ -307,27 +390,46 @@ function App() {
       return;
     }
     
-    const timeoutId = setTimeout(() => {
-      if (discoverFilesRef.current) {
+    // Clear any pending timeout
+    if (discoverFilesTimeoutRef.current) {
+      clearTimeout(discoverFilesTimeoutRef.current);
+    }
+    
+    // Debounce with longer delay to prevent rate limiting
+    discoverFilesTimeoutRef.current = setTimeout(() => {
+      if (discoverFilesRef.current && !isDiscoveringRef.current) {
         discoverFilesRef.current();
       }
-    }, 100); // Small delay to batch rapid feed switches
+    }, 500); // Increased delay to 500ms to reduce API calls
     
-    return () => clearTimeout(timeoutId);
+    return () => {
+      if (discoverFilesTimeoutRef.current) {
+        clearTimeout(discoverFilesTimeoutRef.current);
+      }
+    };
   }, [activeFeedId, userState.preferences.maxRating]);
 
-  // Reset feed index when feed changes
+  // Reset feed index when feed changes (unless navigating to a specific file)
   useEffect(() => {
+    // Don't reset if we're navigating to a specific file or if we just navigated to a file
+    if (visibleFileId || isNavigatingToFileRef.current || lastNavigatedFileIdRef.current) return;
     setCurrentFeedIndex(0);
-  }, [activeFeedId]);
+  }, [activeFeedId, visibleFileId]);
 
-  // Reset feed index and tab when opening own profile
+  // Reset feed index and tab when opening own profile (unless navigating to a specific file)
   useEffect(() => {
+    // Don't reset if we're navigating to a specific file or if we just navigated to a file
+    if (visibleFileId || isNavigatingToFileRef.current || lastNavigatedFileIdRef.current) return;
+    
     if (viewingCreatorId === userState.pnIdentifier && userState.isUnlocked) {
       setCurrentFeedIndex(0);
       setMePageTab('media');
+    } else if (viewingCreatorId && viewingCreatorId !== userState.pnIdentifier) {
+      // When viewing another user's profile, set to media tab
+      setMePageTab('media');
+      setCurrentFeedIndex(0);
     }
-  }, [viewingCreatorId, userState.pnIdentifier, userState.isUnlocked]);
+  }, [viewingCreatorId, userState.pnIdentifier, userState.isUnlocked, visibleFileId]);
 
   // Mark feed as viewed when switching to it
   useEffect(() => {
@@ -456,10 +558,13 @@ function App() {
   }, [showFeedBrowser, showSettings, viewingCreatorId]);
 
   // Horizontal swipe for feed switching (only in feed mode)
+  // Swipe right = previous feed (discover), Swipe left = next feed (arts)
   const horizontalSwipeRef = useHorizontalSwipe({
-    onSwipeLeft: viewMode === 'feed' ? handleNextFeed : undefined,
-    onSwipeRight: viewMode === 'feed' ? handlePreviousFeed : undefined,
-    enabled: viewMode === 'feed' && !showFeedBrowser && !showSettings && !showShortcuts && !viewingCreatorId
+    onSwipeLeft: viewMode === 'feed' ? handleNextFeed : undefined, // Swipe left = next feed (arts)
+    onSwipeRight: viewMode === 'feed' ? handlePreviousFeed : undefined, // Swipe right = previous feed (discover)
+    enabled: viewMode === 'feed' && !showFeedBrowser && !showSettings && !showShortcuts && !viewingCreatorId,
+    threshold: 40, // Slightly lower threshold for easier detection
+    snapThreshold: 0.2 // 20% of screen width to trigger
   });
 
   // Intersection Observer for auto-playing videos in feed mode
@@ -556,7 +661,14 @@ function App() {
   }, []);
 
   const discoverFiles = useCallback(async (searchFilters?: MetadataFilters, forceRefresh: boolean = false) => {
+    // Prevent duplicate simultaneous calls
+    if (isDiscoveringRef.current && !forceRefresh) {
+      console.log('⏸️ Discover files already in progress, skipping duplicate call');
+      return;
+    }
+    
     try {
+      isDiscoveringRef.current = true;
       setIsLoading(true);
       setError(null);
       
@@ -628,6 +740,7 @@ function App() {
       console.error('Failed to discover files:', err);
     } finally {
       setIsLoading(false);
+      isDiscoveringRef.current = false;
     }
   }, [filters, searchQuery, userState.preferences.maxRating, activeFeedId, viewMode, videoBlobs]);
   
@@ -637,8 +750,11 @@ function App() {
   }, [discoverFiles]);
   
   // Initial file discovery on mount (after discoverFiles is defined)
+  // Only call once on initial mount, not on every render
+  const hasInitializedRef = useRef<boolean>(false);
   useEffect(() => {
-    if (discoverFilesRef.current) {
+    if (!hasInitializedRef.current && discoverFilesRef.current) {
+      hasInitializedRef.current = true;
       discoverFilesRef.current();
     }
   }, []);
@@ -835,86 +951,6 @@ function App() {
     });
   };
 
-  // Show branded feed page if viewing a paid-tier feed
-  if (viewingBrandedFeed) {
-    const feedFiles = indexedFiles.filter(file => 
-      file.metadata.feedIds?.includes(viewingBrandedFeed.feedId)
-    );
-    
-    return (
-      <BrandedFeedPage
-        feed={viewingBrandedFeed}
-        files={feedFiles}
-        onBack={() => setViewingBrandedFeed(null)}
-        onFileClick={(file) => {
-          // Switch to feed mode and scroll to file
-          setViewMode('feed');
-          setViewingBrandedFeed(null);
-          setTimeout(() => {
-            const element = document.querySelector(`[data-file-id="${file.metadata.fileId}"]`);
-            if (element && feedScrollRef.current) {
-              element.scrollIntoView({ behavior: 'smooth', block: 'center' });
-            }
-          }, 100);
-        }}
-      />
-    );
-  }
-
-  // Show inbox if messages tab is active
-  if (showInbox) {
-    return (
-      <div className="h-screen w-full bg-neutral-900">
-        <Inbox
-          onClose={() => {
-            setShowInbox(false);
-            setActiveBottomTab('home');
-          }}
-          onNotificationClick={(notification) => {
-            setShowInbox(false);
-            setActiveBottomTab('home');
-            // Navigate to relevant content based on notification type
-            if (notification.data?.file_id) {
-              setViewMode('feed');
-              setTimeout(() => {
-                const element = document.querySelector(`[data-file-id="${notification.data.file_id}"]`);
-                if (element && feedScrollRef.current) {
-                  element.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                }
-              }, 100);
-            } else if (notification.data?.feed_id) {
-              const feed = feeds.find(f => f.feedId === notification.data.feed_id);
-              if (feed) {
-                setViewingBrandedFeed(feed);
-              }
-            }
-          }}
-        />
-      </div>
-    );
-  }
-
-  // Show search results if search is open
-  if (showSearch) {
-    return (
-      <SearchResults
-        initialQuery={searchQuery}
-        onFileClick={(file) => {
-          setShowSearch(false);
-          setViewMode('feed');
-          const index = filteredFilesByFeed.findIndex(f => f.metadata.fileId === file.metadata.fileId);
-          if (index !== -1) {
-            setCurrentFeedIndex(index);
-          }
-        }}
-        onClose={() => {
-          setShowSearch(false);
-          setSearchQuery('');
-        }}
-      />
-    );
-  }
-
   // Load creator files when viewing a creator (especially own index)
   useEffect(() => {
     if (!viewingCreatorId) {
@@ -1079,6 +1115,10 @@ function App() {
   const [userCommentedFiles, setUserCommentedFiles] = useState<IndexedFile[]>([]);
   const [isLoadingUserEngagement, setIsLoadingUserEngagement] = useState(false);
   
+  // Load other user's liked and commented files when viewing their profile
+  const [viewedUserLikedFiles, setViewedUserLikedFiles] = useState<IndexedFile[]>([]);
+  const [viewedUserCommentedFiles, setViewedUserCommentedFiles] = useState<IndexedFile[]>([]);
+  
   // Load saved files from private collection
   useEffect(() => {
     if (viewingCreatorId === userState.pnIdentifier && userState.isUnlocked && userState.pnIdentifier) {
@@ -1148,6 +1188,21 @@ function App() {
     }
   }, [viewingCreatorId, userState.pnIdentifier, userState.isUnlocked, indexedFiles]);
 
+  // Load other user's liked and commented files when viewing their profile
+  useEffect(() => {
+    if (viewingCreatorId && viewingCreatorId !== userState.pnIdentifier) {
+      // TODO: Fetch other user's likes/comments from API
+      // For now, we'll need to query engagement data from the backend
+      // This would require an API endpoint like GET /api/engagement/user/{userId}
+      // For now, set empty arrays - will be populated when API is available
+      setViewedUserLikedFiles([]);
+      setViewedUserCommentedFiles([]);
+    } else {
+      setViewedUserLikedFiles([]);
+      setViewedUserCommentedFiles([]);
+    }
+  }, [viewingCreatorId, userState.pnIdentifier, indexedFiles]);
+
   // Helper function to load engagement data (same as in useEngagement hook)
   function loadEngagementData() {
     try {
@@ -1178,367 +1233,263 @@ function App() {
   const [savedFiles, setSavedFiles] = useState<IndexedFile[]>([]);
   const [isLoadingSavedFiles, setIsLoadingSavedFiles] = useState(false);
 
-  // Show creator feed page if viewing a creator (other than self)
-  // For own profile, show simple feed view
-  if (viewingCreatorId) {
-    const creatorFiles = creatorFilesState;
-    const isOwnIndex = viewingCreatorId === userState.pnIdentifier && userState.isUnlocked;
+  // Find file index when navigating to a specific file in creator's profile
+  useEffect(() => {
+    if (!visibleFileId || !viewingCreatorId) {
+      isNavigatingToFileRef.current = false;
+      return;
+    }
     
-    // If viewing own index, filter files based on active tab
-    let filteredMeFiles: IndexedFile[] = [];
-    if (isOwnIndex) {
-      switch (mePageTab) {
-        case 'all':
-          // Combine all: owned media, liked files, and commented files
-          filteredMeFiles = Array.from(
-            new Map([...creatorFiles, ...userLikedFiles, ...userCommentedFiles]
-              .map(f => [f.metadata.fileId, f])).values()
-          );
-          break;
-        case 'media':
-          // Only owned media
-          filteredMeFiles = creatorFiles;
-          break;
-        case 'likes':
-          // Only liked files (exclude owned media - only show files owned by others that user liked)
-          filteredMeFiles = userLikedFiles.filter(f => {
-            const fileOwnerId = f.metadata.creator?.identifier?.value || 
-                                f.metadata.creator?.["@id"] || 
-                                f.metadata.author?.did ||
-                                f.metadata.creatorId;
-            const normalizedOwnerId = fileOwnerId?.trim().toLowerCase() || '';
-            const normalizedViewingId = viewingCreatorId.trim().toLowerCase();
-            return normalizedOwnerId !== normalizedViewingId;
-          });
-          break;
-        case 'comments':
-          // Only commented files (exclude owned media - only show files owned by others that user commented on)
-          filteredMeFiles = userCommentedFiles.filter(f => {
-            const fileOwnerId = f.metadata.creator?.identifier?.value || 
-                                f.metadata.creator?.["@id"] || 
-                                f.metadata.author?.did ||
-                                f.metadata.creatorId;
-            const normalizedOwnerId = fileOwnerId?.trim().toLowerCase() || '';
-            const normalizedViewingId = viewingCreatorId.trim().toLowerCase();
-            return normalizedOwnerId !== normalizedViewingId;
-          });
-          break;
-        case 'saved':
-          // Only saved files (private collection)
-          filteredMeFiles = savedFiles;
-          break;
+    // Mark that we're navigating to a file
+    isNavigatingToFileRef.current = true;
+    
+    // Helper function to find and set file index
+    const findAndSetFileIndex = () => {
+      // Use creatorFilesState directly instead of computed creatorFiles to avoid initialization issues
+      const currentCreatorFiles = viewingCreatorId ? creatorFilesState : [];
+      const currentIsOwnIndex = viewingCreatorId === userState.pnIdentifier && userState.isUnlocked;
+      let currentFilteredMeFiles: IndexedFile[] = [];
+      
+      if (currentIsOwnIndex) {
+        switch (mePageTab) {
+          case 'all':
+            currentFilteredMeFiles = Array.from(
+              new Map([...currentCreatorFiles, ...userLikedFiles, ...userCommentedFiles]
+                .map(f => [f.metadata.fileId, f])).values()
+            );
+            break;
+          case 'media':
+            currentFilteredMeFiles = currentCreatorFiles;
+            break;
+          case 'likes':
+            currentFilteredMeFiles = userLikedFiles.filter(f => {
+              const fileOwnerId = f.metadata.creator?.identifier?.value || 
+                                  f.metadata.creator?.["@id"] || 
+                                  f.metadata.author?.did ||
+                                  f.metadata.creatorId;
+              const normalizedOwnerId = fileOwnerId?.trim().toLowerCase() || '';
+              const normalizedViewingId = viewingCreatorId.trim().toLowerCase();
+              return normalizedOwnerId !== normalizedViewingId;
+            });
+            break;
+          case 'comments':
+            currentFilteredMeFiles = userCommentedFiles.filter(f => {
+              const fileOwnerId = f.metadata.creator?.identifier?.value || 
+                                  f.metadata.creator?.["@id"] || 
+                                  f.metadata.author?.did ||
+                                  f.metadata.creatorId;
+              const normalizedOwnerId = fileOwnerId?.trim().toLowerCase() || '';
+              const normalizedViewingId = viewingCreatorId.trim().toLowerCase();
+              return normalizedOwnerId !== normalizedViewingId;
+            });
+            break;
+          case 'saved':
+            currentFilteredMeFiles = savedFiles;
+            break;
+        }
+      } else if (viewingCreatorId) {
+        switch (mePageTab) {
+          case 'all':
+            currentFilteredMeFiles = Array.from(
+              new Map([...currentCreatorFiles, ...viewedUserLikedFiles, ...viewedUserCommentedFiles]
+                .map(f => [f.metadata.fileId, f])).values()
+            );
+            break;
+          case 'media':
+            currentFilteredMeFiles = currentCreatorFiles;
+            break;
+          case 'likes':
+            currentFilteredMeFiles = viewedUserLikedFiles;
+            break;
+          case 'comments':
+            currentFilteredMeFiles = viewedUserCommentedFiles;
+            break;
+          default:
+            currentFilteredMeFiles = currentCreatorFiles;
+        }
       }
-    } else {
-      filteredMeFiles = creatorFiles;
+      
+      // First, check if file is in current filteredMeFiles
+      if (currentFilteredMeFiles.length > 0) {
+        const fileIndex = currentFilteredMeFiles.findIndex(f => f.metadata.fileId === visibleFileId);
+        if (fileIndex !== -1) {
+          setCurrentFeedIndex(fileIndex);
+          // Track that we navigated to this file
+          lastNavigatedFileIdRef.current = visibleFileId;
+          lastNavigatedFileIndexRef.current = fileIndex;
+          // FullScreenFeed will handle scrolling automatically
+          // Clear flags after scroll completes, but keep lastNavigatedFileIdRef to prevent resets
+          setTimeout(() => {
+            isNavigatingToFileRef.current = false;
+            setVisibleFileId(null);
+            // Clear the last navigated file ref after a longer delay to prevent resets
+            setTimeout(() => {
+              lastNavigatedFileIdRef.current = null;
+              lastNavigatedFileIndexRef.current = null;
+            }, 1000);
+          }, 1000);
+          return true;
+        }
+      }
+      
+      // If not found in current tab, check other tabs
+      // Check media tab (currentCreatorFiles)
+      if (currentCreatorFiles.length > 0) {
+        const mediaIndex = currentCreatorFiles.findIndex(f => f.metadata.fileId === visibleFileId);
+        if (mediaIndex !== -1) {
+          setMePageTab('media');
+          setCurrentFeedIndex(mediaIndex);
+          // Track that we navigated to this file
+          lastNavigatedFileIdRef.current = visibleFileId;
+          lastNavigatedFileIndexRef.current = mediaIndex;
+          // FullScreenFeed will handle scrolling automatically
+          setTimeout(() => {
+            isNavigatingToFileRef.current = false;
+            setVisibleFileId(null);
+            setTimeout(() => {
+              lastNavigatedFileIdRef.current = null;
+              lastNavigatedFileIndexRef.current = null;
+            }, 1000);
+          }, 1000);
+          return true;
+        }
+      }
+      
+      // Check 'all' tab (combines media, likes, comments)
+      const allFiles = currentIsOwnIndex
+        ? Array.from(new Map([...currentCreatorFiles, ...userLikedFiles, ...userCommentedFiles].map(f => [f.metadata.fileId, f])).values())
+        : Array.from(new Map([...currentCreatorFiles, ...viewedUserLikedFiles, ...viewedUserCommentedFiles].map(f => [f.metadata.fileId, f])).values());
+      
+      if (allFiles.length > 0) {
+        const allIndex = allFiles.findIndex(f => f.metadata.fileId === visibleFileId);
+        if (allIndex !== -1) {
+          setMePageTab('all');
+          setCurrentFeedIndex(allIndex);
+          // Track that we navigated to this file
+          lastNavigatedFileIdRef.current = visibleFileId;
+          lastNavigatedFileIndexRef.current = allIndex;
+          // FullScreenFeed will handle scrolling automatically
+          setTimeout(() => {
+            isNavigatingToFileRef.current = false;
+            setVisibleFileId(null);
+            setTimeout(() => {
+              lastNavigatedFileIdRef.current = null;
+              lastNavigatedFileIndexRef.current = null;
+            }, 1000);
+          }, 1000);
+          return true;
+        }
+      }
+      
+      return false;
+    };
+    
+    // Try to find the file immediately
+    if (findAndSetFileIndex()) {
+      return;
     }
     
-    console.log(`📊 Creator index: Found ${filteredMeFiles.length} files for creator ${viewingCreatorId}${isOwnIndex ? ` (tab: ${mePageTab}, ${creatorFiles.length} owned, ${userLikedFiles.length} liked, ${userCommentedFiles.length} commented, ${savedFiles.length} saved)` : ''}`);
+    // If files haven't loaded yet, retry with increasing delays
+    let retryCount = 0;
+    const maxRetries = 10;
+    const retryInterval = 200; // 200ms between retries
     
-    // If viewing own profile, show simple feed view with tabs
-    if (isOwnIndex) {
-      return (
-        <div className="h-screen flex flex-col bg-black relative">
-          {/* Header Railway with Tabs */}
-          <MePageTabsRail
-            activeTab={mePageTab}
-            onTabSelect={(tab) => {
-              setMePageTab(tab);
-              setCurrentFeedIndex(0);
-            }}
-          />
-          
-          {/* Simple feed view for own profile */}
-          {filteredMeFiles.length > 0 ? (
-            <div className="absolute inset-0" style={{ bottom: '64px', top: '48px' }}>
-              <FullScreenFeed
-                files={filteredMeFiles}
-                currentIndex={currentFeedIndex}
-                onIndexChange={setCurrentFeedIndex}
-                onLike={(fileId) => {
-                  const wasLiked = isLiked(fileId);
-                  toggleLike(fileId);
-                  if (!wasLiked) {
-                    success('Liked!');
-                  }
-                }}
-                onComment={(file) => setCommentingFile(file)}
-                onShare={async (fileId) => {
-                  share(fileId);
-                }}
-                isLiked={isLiked}
-                getLikeCount={getLikeCount}
-                getComments={getComments}
-                getShareCount={getShareCount}
-                userState={userState}
-                onCreatorClick={() => {}}
-                onEdit={(file) => setEditingFile(file)}
-                onSave={userState.isUnlocked && userState.pnIdentifier ? async (file) => {
-                  try {
-                    await saveToFeed(userState.pnIdentifier!, file.metadata.fileId);
-                    success('Saved to your private collection!');
-                    // Refresh saved files
-                    const savedFeed = await getSavedFeed(userState.pnIdentifier);
-                    if (savedFeed && savedFeed.fileIds.length > 0) {
-                      const savedFromIndexed = indexedFiles.filter(f => 
-                        savedFeed.fileIds.includes(f.metadata.fileId)
-                      );
-                      setSavedFiles(savedFromIndexed);
-                    } else {
-                      setSavedFiles([]);
-                    }
-                  } catch (error) {
-                    showErrorToast('Failed to save. Please try again.');
-                  }
-                } : undefined}
-              />
-            </div>
-          ) : (
-            <div className="h-full flex items-center justify-center text-white" style={{ paddingBottom: '64px', paddingTop: '48px' }}>
-              <EmptyState
-                type="no-content"
-                message={
-                  mePageTab === 'media' 
-                    ? 'No media yet. Upload your first file to get started!'
-                    : mePageTab === 'likes'
-                    ? 'No liked posts yet. Like posts to see them here!'
-                    : mePageTab === 'comments'
-                    ? 'No commented posts yet. Comment on posts to see them here!'
-                    : mePageTab === 'saved'
-                    ? 'No saved posts yet. Save posts to your private collection!'
-                    : 'No files yet. Upload your first file to get started!'
-                }
-              />
-            </div>
-          )}
-          
-          {/* Bottom Navigation Bar - Always visible */}
-          <div className="fixed bottom-0 left-0 right-0 bg-neutral-900 border-t border-neutral-700 h-16 flex items-center justify-around z-[100]">
-            <button
-              onClick={() => {
-                setActiveBottomTab('home');
-                setShowInbox(false);
-                setShowSearch(false);
-                setViewingCreatorId(null);
-              }}
-              className={`flex flex-col items-center justify-center h-full text-white hover:text-blue-400 transition-colors ${activeBottomTab === 'home' ? 'text-blue-400' : ''}`}
-              title="Home"
-            >
-              <Home className="h-6 w-6 mb-1" />
-              <span className="text-xs font-medium">HOME</span>
-            </button>
-            <button
-              onClick={() => {
-                setShowSearch(true);
-                setActiveBottomTab('search');
-                setViewingCreatorId(null);
-              }}
-              className={`flex flex-col items-center justify-center h-full text-white hover:text-blue-400 transition-colors ${activeBottomTab === 'search' ? 'text-blue-400' : ''}`}
-              title="Search"
-            >
-              <Search className="h-6 w-6 mb-1" />
-              <span className="text-xs font-medium">SEARCH</span>
-            </button>
-            <button
-              onClick={() => {
-                setShowUploadModal(true);
-                setActiveBottomTab('upload');
-              }}
-              className={`flex flex-col items-center justify-center h-full text-white hover:text-blue-400 transition-colors ${activeBottomTab === 'upload' ? 'text-blue-400' : ''}`}
-              title="Upload"
-            >
-              <Upload className="h-6 w-6 mb-1" />
-              <span className="text-xs font-medium">UPLOAD</span>
-            </button>
-            <button
-              onClick={async () => {
-                if (userState.isUnlocked) {
-                  const session = PNOAuthService.loadSession();
-                  let pnIdentifier = session?.pnIdentifier || userState.pnIdentifier;
-                  
-                  if (pnIdentifier && pnIdentifier.startsWith('did:key:')) {
-                    try {
-                      if (session?.accessToken) {
-                        const userInfo = await PNOAuthService.getUserInfo(session.accessToken);
-                        if (userInfo.pn_identifier) {
-                          pnIdentifier = userInfo.pn_identifier;
-                          const updatedSession = { ...session, pnIdentifier };
-                          PNOAuthService.saveSession(updatedSession);
-                          setUnlocked(pnIdentifier);
-                        }
-                      }
-                    } catch (error) {
-                      console.warn('Failed to fetch pN identifier from userinfo:', error);
-                    }
-                  }
-                  
-                  if (pnIdentifier && !pnIdentifier.startsWith('did:key:')) {
-                    setViewingCreatorId(pnIdentifier);
-                    setActiveBottomTab('index');
-                  } else {
-                    showErrorToast('Unable to load your pN identifier');
-                  }
-                } else {
-                  showErrorToast('Unlock your pN to view your profile');
-                }
-              }}
-              className={`flex flex-col items-center justify-center h-full text-white hover:text-blue-400 transition-colors ${activeBottomTab === 'index' ? 'text-blue-400' : ''}`}
-              title="Me"
-            >
-              <Grid className="h-6 w-6 mb-1" />
-              <span className="text-xs font-medium">ME</span>
-            </button>
-            <button
-              onClick={() => {
-                setShowInbox(true);
-                setActiveBottomTab('messages');
-                setViewingCreatorId(null);
-              }}
-              className={`flex flex-col items-center justify-center h-full text-white hover:text-blue-400 transition-colors ${activeBottomTab === 'messages' ? 'text-blue-400' : ''}`}
-              title="Inbox"
-            >
-              <MessageSquare className="h-6 w-6 mb-1" />
-              <span className="text-xs font-medium">INBOX</span>
-            </button>
-          </div>
-        </div>
-      );
+    const retryTimer = setInterval(() => {
+      retryCount++;
+      if (findAndSetFileIndex() || retryCount >= maxRetries) {
+        clearInterval(retryTimer);
+        if (retryCount >= maxRetries) {
+          // File not found after retries - clear flag and visibleFileId
+          isNavigatingToFileRef.current = false;
+          setTimeout(() => setVisibleFileId(null), 100);
+        }
+      }
+    }, retryInterval);
+    
+    return () => {
+      clearInterval(retryTimer);
+      isNavigatingToFileRef.current = false;
+    };
+  }, [visibleFileId, viewingCreatorId, mePageTab, creatorFilesState, userState.pnIdentifier, userState.isUnlocked, userLikedFiles, userCommentedFiles, viewedUserLikedFiles, viewedUserCommentedFiles, savedFiles]);
+
+  // Prepare data for conditional rendering
+  const creatorFiles = viewingCreatorId ? creatorFilesState : [];
+  const isOwnIndex = viewingCreatorId === userState.pnIdentifier && userState.isUnlocked;
+  
+  // If viewing own index, filter files based on active tab
+  let filteredMeFiles: IndexedFile[] = [];
+  if (isOwnIndex) {
+    switch (mePageTab) {
+      case 'all':
+        // Combine all: owned media, liked files, and commented files
+        filteredMeFiles = Array.from(
+          new Map([...creatorFiles, ...userLikedFiles, ...userCommentedFiles]
+            .map(f => [f.metadata.fileId, f])).values()
+        );
+        break;
+      case 'media':
+        // Only owned media
+        filteredMeFiles = creatorFiles;
+        break;
+      case 'likes':
+        // Only liked files (exclude owned media - only show files owned by others that user liked)
+        filteredMeFiles = userLikedFiles.filter(f => {
+          const fileOwnerId = f.metadata.creator?.identifier?.value || 
+                              f.metadata.creator?.["@id"] || 
+                              f.metadata.author?.did ||
+                              f.metadata.creatorId;
+          const normalizedOwnerId = fileOwnerId?.trim().toLowerCase() || '';
+          const normalizedViewingId = viewingCreatorId!.trim().toLowerCase();
+          return normalizedOwnerId !== normalizedViewingId;
+        });
+        break;
+      case 'comments':
+        // Only commented files (exclude owned media - only show files owned by others that user commented on)
+        filteredMeFiles = userCommentedFiles.filter(f => {
+          const fileOwnerId = f.metadata.creator?.identifier?.value || 
+                              f.metadata.creator?.["@id"] || 
+                              f.metadata.author?.did ||
+                              f.metadata.creatorId;
+          const normalizedOwnerId = fileOwnerId?.trim().toLowerCase() || '';
+          const normalizedViewingId = viewingCreatorId!.trim().toLowerCase();
+          return normalizedOwnerId !== normalizedViewingId;
+        });
+        break;
+      case 'saved':
+        // Only saved files (private collection)
+        filteredMeFiles = savedFiles;
+        break;
     }
-    
-    // For other creators, show CreatorFeedPage
-    const creatorFeeds = feeds.filter(feed => feed.creatorId === viewingCreatorId);
-    
-    return (
-      <div className="min-h-screen bg-neutral-900 pb-20">
-        <CreatorFeedPage
-          creatorId={viewingCreatorId}
-          creatorName={
-            creatorFiles[0]?.metadata.creator?.identifier?.value || 
-            viewingCreatorId
-          }
-          files={uniqueFiles}
-          feeds={creatorFeeds}
-          onFileClick={(file) => {
-            setViewMode('feed');
-            setViewingCreatorId(null);
-            const index = indexedFiles.findIndex(f => f.metadata.fileId === file.metadata.fileId);
-            if (index !== -1) {
-              setCurrentFeedIndex(index);
-            }
-          }}
-          onFeedClick={(feed) => {
-            setViewingBrandedFeed(feed);
-            setViewingCreatorId(null);
-          }}
-          onBack={() => setViewingCreatorId(null)}
-          onLike={(fileId) => {
-            const wasLiked = isLiked(fileId);
-            toggleLike(fileId);
-            if (!wasLiked) {
-              success('Liked!');
-            }
-          }}
-          onComment={(file) => setCommentingFile(file)}
-          onShare={async (fileId) => {
-            share(fileId);
-          }}
-          isLiked={isLiked}
-          getLikeCount={getLikeCount}
-          getComments={getComments}
-          getShareCount={getShareCount}
-        />
-        
-        {/* Bottom Navigation Bar - Always visible */}
-        <div className="fixed bottom-0 left-0 right-0 bg-neutral-900 border-t border-neutral-700 h-16 flex items-center justify-around z-[100]">
-          <button
-            onClick={() => {
-              setActiveBottomTab('home');
-              setShowInbox(false);
-              setShowSearch(false);
-              setViewingCreatorId(null);
-            }}
-            className={`flex flex-col items-center justify-center h-full text-white hover:text-blue-400 transition-colors ${activeBottomTab === 'home' ? 'text-blue-400' : ''}`}
-            title="Home"
-          >
-            <Home className="h-6 w-6 mb-1" />
-            <span className="text-xs font-medium">HOME</span>
-          </button>
-          <button
-            onClick={() => {
-              setShowSearch(true);
-              setActiveBottomTab('search');
-              setViewingCreatorId(null);
-            }}
-            className={`flex flex-col items-center justify-center h-full text-white hover:text-blue-400 transition-colors ${activeBottomTab === 'search' ? 'text-blue-400' : ''}`}
-            title="Search"
-          >
-            <Search className="h-6 w-6 mb-1" />
-            <span className="text-xs font-medium">SEARCH</span>
-          </button>
-          <button
-            onClick={() => {
-              setShowUploadModal(true);
-              setActiveBottomTab('upload');
-            }}
-            className={`flex flex-col items-center justify-center h-full text-white hover:text-blue-400 transition-colors ${activeBottomTab === 'upload' ? 'text-blue-400' : ''}`}
-            title="Upload"
-          >
-            <Upload className="h-6 w-6 mb-1" />
-            <span className="text-xs font-medium">UPLOAD</span>
-          </button>
-          <button
-            onClick={async () => {
-              if (userState.isUnlocked) {
-                const session = PNOAuthService.loadSession();
-                let pnIdentifier = session?.pnIdentifier || userState.pnIdentifier;
-                
-                if (pnIdentifier && pnIdentifier.startsWith('did:key:')) {
-                  try {
-                    if (session?.accessToken) {
-                      const userInfo = await PNOAuthService.getUserInfo(session.accessToken);
-                      if (userInfo.pn_identifier) {
-                        pnIdentifier = userInfo.pn_identifier;
-                        const updatedSession = { ...session, pnIdentifier };
-                        PNOAuthService.saveSession(updatedSession);
-                        setUnlocked(pnIdentifier);
-                      }
-                    }
-                  } catch (error) {
-                    console.warn('Failed to fetch pN identifier from userinfo:', error);
-                  }
-                }
-                
-                if (pnIdentifier && !pnIdentifier.startsWith('did:key:')) {
-                  setViewingCreatorId(pnIdentifier);
-                  setActiveBottomTab('index');
-                } else {
-                  showErrorToast('Unable to load your pN identifier');
-                }
-              } else {
-                showErrorToast('Unlock your pN to view your profile');
-              }
-            }}
-            className={`flex flex-col items-center justify-center h-full text-white hover:text-blue-400 transition-colors ${activeBottomTab === 'index' ? 'text-blue-400' : ''}`}
-            title="Me"
-          >
-            <Grid className="h-6 w-6 mb-1" />
-            <span className="text-xs font-medium">ME</span>
-          </button>
-          <button
-            onClick={() => {
-              setShowInbox(true);
-              setActiveBottomTab('messages');
-              setViewingCreatorId(null);
-            }}
-            className={`flex flex-col items-center justify-center h-full text-white hover:text-blue-400 transition-colors ${activeBottomTab === 'messages' ? 'text-blue-400' : ''}`}
-            title="Inbox"
-          >
-            <MessageSquare className="h-6 w-6 mb-1" />
-            <span className="text-xs font-medium">INBOX</span>
-          </button>
-        </div>
-      </div>
-    );
+  } else if (viewingCreatorId) {
+    // For other users' profiles, filter based on active tab
+    switch (mePageTab) {
+      case 'all':
+        // Combine all: owned media, liked files, and commented files
+        filteredMeFiles = Array.from(
+          new Map([...creatorFiles, ...viewedUserLikedFiles, ...viewedUserCommentedFiles]
+            .map(f => [f.metadata.fileId, f])).values()
+        );
+        break;
+      case 'media':
+        filteredMeFiles = creatorFiles;
+        break;
+      case 'likes':
+        filteredMeFiles = viewedUserLikedFiles;
+        break;
+      case 'comments':
+        filteredMeFiles = viewedUserCommentedFiles;
+        break;
+      default:
+        filteredMeFiles = creatorFiles;
+    }
   }
+  
+  if (viewingCreatorId) {
+    console.log(`📊 Creator index: Found ${filteredMeFiles.length} files for creator ${viewingCreatorId}${isOwnIndex ? ` (tab: ${mePageTab}, ${creatorFiles.length} owned, ${userLikedFiles.length} liked, ${userCommentedFiles.length} commented, ${savedFiles.length} saved)` : ''}`);
+  }
+  
+  const creatorFeeds = viewingCreatorId ? feeds.filter(feed => feed.creatorId === viewingCreatorId) : [];
+  const uniqueFiles = viewingCreatorId ? Array.from(new Map(creatorFiles.map(f => [f.metadata.fileId, f])).values()) : [];
 
 
   const handleLockUnlock = async () => {
@@ -1820,6 +1771,201 @@ function App() {
 
   return (
     <div className={`min-h-screen ${viewMode === 'feed' ? 'h-screen overflow-hidden bg-black' : 'bg-gradient-to-br from-neutral-900 via-neutral-800 to-neutral-900'}`}>
+      {/* Lock/Unlock Button - Top right corner, always visible on ALL screens */}
+      <button
+        onClick={handleLockUnlock}
+        className="fixed top-3 right-3 z-[110] w-10 h-10 flex items-center justify-center text-white/85 hover:text-white transition-colors pointer-events-auto bg-black/50 rounded-full backdrop-blur-sm"
+        title={userState.isUnlocked ? 'Lock pN' : 'Unlock pN'}
+      >
+        {userState.isUnlocked ? (
+          <Unlock className="h-5 w-5" />
+        ) : (
+          <Lock className="h-5 w-5" />
+        )}
+      </button>
+
+      {/* Conditional rendering for different views */}
+      {viewingBrandedFeed ? (
+        <BrandedFeedPage
+          feed={viewingBrandedFeed}
+          files={indexedFiles.filter(file => 
+            file.metadata.feedIds?.includes(viewingBrandedFeed.feedId)
+          )}
+          onBack={() => setViewingBrandedFeed(null)}
+          onFileClick={(file) => {
+            // Switch to feed mode and scroll to file
+            setViewMode('feed');
+            setViewingBrandedFeed(null);
+            setTimeout(() => {
+              const element = document.querySelector(`[data-file-id="${file.metadata.fileId}"]`);
+              if (element && feedScrollRef.current) {
+                element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+              }
+            }, 100);
+          }}
+        />
+      ) : showInbox ? (
+        <div className="h-screen w-full bg-neutral-900">
+          <Inbox
+            onNotificationClick={(notification) => {
+              setShowInbox(false);
+              setActiveBottomTab('home');
+              // Navigate to relevant content based on notification type
+              if (notification.data?.file_id) {
+                setViewMode('feed');
+                setTimeout(() => {
+                  const element = document.querySelector(`[data-file-id="${notification.data.file_id}"]`);
+                  if (element && feedScrollRef.current) {
+                    element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                  }
+                }, 100);
+              } else if (notification.data?.feed_id) {
+                const feed = feeds.find(f => f.feedId === notification.data.feed_id);
+                if (feed) {
+                  setViewingBrandedFeed(feed);
+                }
+              }
+            }}
+          />
+        </div>
+      ) : showSearch ? (
+        <SearchResults
+          initialQuery={searchQuery}
+          indexedFiles={indexedFiles}
+          thumbnails={thumbnails}
+          onFileClick={(file) => {
+            setShowSearch(false);
+            
+            // Extract creator ID from the file
+            const normalizeIdentifier = (id: string | undefined | null): string => {
+              if (!id) return '';
+              // Remove "pn-" prefix if present, then normalize
+              const cleaned = id.startsWith('pn-') ? id.substring(3) : id;
+              return cleaned.trim().toLowerCase();
+            };
+            
+            const creatorIdRaw = file.metadata.creator?.identifier?.value ||
+                                file.metadata.creator?.["@id"] ||
+                                file.metadata.author?.did ||
+                                file.metadata.creatorId ||
+                                (file as any).pnIdentifier;
+            
+            if (!creatorIdRaw) {
+              console.error('No creator ID found for file:', file.metadata.fileId);
+              return;
+            }
+            
+            const creatorId = creatorIdRaw.trim();
+            
+            // Set navigation flag BEFORE changing viewingCreatorId to prevent reset effect
+            isNavigatingToFileRef.current = true;
+            setVisibleFileId(file.metadata.fileId);
+            
+            // Navigate to creator's profile
+            // The useEffect will handle finding the file index in filteredMeFiles
+            setViewingCreatorId(creatorId);
+            setViewMode('profile');
+            setMePageTab('media'); // Default to media tab - useEffect will adjust if needed
+          }}
+        />
+      ) : viewingCreatorId ? (
+        <div className="h-screen flex flex-col bg-black relative">
+          {/* Header Railway with Tabs - Show saved tab only if owner */}
+          <MePageTabsRail
+            activeTab={mePageTab}
+            onTabSelect={(tab) => {
+              // If not owner, don't allow saved tab
+              if (!isOwnIndex && tab === 'saved') return;
+              setMePageTab(tab);
+              setCurrentFeedIndex(0);
+            }}
+            availableTabs={isOwnIndex ? ['all', 'media', 'likes', 'comments', 'saved'] : ['all', 'media', 'likes', 'comments']}
+          />
+          
+          {/* Unified feed view for all profiles */}
+          {filteredMeFiles.length > 0 ? (
+            <div className="flex-1 h-full" style={{ marginTop: '48px' }}>
+              <FullScreenFeed
+                files={filteredMeFiles}
+                currentIndex={currentFeedIndex}
+                onIndexChange={setCurrentFeedIndex}
+                onLike={(fileId) => {
+                  const wasLiked = isLiked(fileId);
+                  toggleLike(fileId);
+                  if (!wasLiked) {
+                    success('Liked!');
+                  }
+                }}
+                onComment={(file) => setCommentingFile(file)}
+                onShare={async (fileId) => {
+                  share(fileId);
+                }}
+                isLiked={isLiked}
+                getLikeCount={getLikeCount}
+                getComments={getComments}
+                getShareCount={getShareCount}
+                userState={userState}
+                onCreatorClick={(creatorId) => {
+                  if (creatorId !== viewingCreatorId) {
+                    setViewingCreatorId(creatorId);
+                    setMePageTab('media');
+                    setCurrentFeedIndex(0);
+                  }
+                }}
+                onEdit={isOwnIndex ? (file) => setEditingFile(file) : undefined}
+                onSave={userState.isUnlocked && userState.pnIdentifier ? async (file) => {
+                  try {
+                    await saveToFeed(userState.pnIdentifier!, file.metadata.fileId);
+                    success('Saved to your private collection!');
+                    // Refresh saved files
+                    const savedFeed = await getSavedFeed(userState.pnIdentifier);
+                    if (savedFeed && savedFeed.fileIds.length > 0) {
+                      const savedFromIndexed = indexedFiles.filter(f => 
+                        savedFeed.fileIds.includes(f.metadata.fileId)
+                      );
+                      setSavedFiles(savedFromIndexed);
+                    } else {
+                      setSavedFiles([]);
+                    }
+                  } catch (error) {
+                    showErrorToast('Failed to save. Please try again.');
+                  }
+                } : undefined}
+              />
+            </div>
+          ) : (
+            <div className="h-full flex items-center justify-center text-white" style={{ paddingBottom: '64px' }}>
+              <EmptyState
+                type="no-content"
+                message={
+                  mePageTab === 'media' 
+                    ? 'No media yet.'
+                    : mePageTab === 'likes'
+                    ? 'No liked posts yet.'
+                    : mePageTab === 'comments'
+                    ? 'No commented posts yet.'
+                    : mePageTab === 'saved'
+                    ? 'No saved posts yet. Save posts to your private collection!'
+                    : 'No content yet.'
+                }
+              />
+            </div>
+          )}
+        </div>
+      ) : showUploadModal ? (
+        <div className="h-screen w-full bg-neutral-900" style={{ paddingBottom: '64px' }}>
+          <UploadModal
+            onClose={() => {
+              setShowUploadModal(false);
+              setActiveBottomTab('home');
+            }}
+            onUploadComplete={() => {
+              // Refresh files after upload
+              discoverFiles(undefined, true);
+            }}
+          />
+        </div>
+      ) : (
       <div className={`${viewMode === 'feed' ? 'h-full flex flex-col' : 'max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8'}`}>
         {/* Header */}
         {viewMode !== 'feed' && (
@@ -1831,32 +1977,26 @@ function App() {
           </div>
         )}
 
-        {/* Lock/Unlock Button - Top right corner, always visible */}
-        <button
-          onClick={handleLockUnlock}
-          className="fixed top-3 right-3 z-[110] w-10 h-10 flex items-center justify-center text-white/85 hover:text-white transition-colors pointer-events-auto"
-          title={userState.isUnlocked ? 'Lock pN' : 'Unlock pN'}
-        >
-          {userState.isUnlocked ? (
-            <Unlock className="h-5 w-5" />
-          ) : (
-            <Lock className="h-5 w-5" />
-          )}
-        </button>
 
         {/* Top Navigation Bar - TikTok Style: Text-only overlay, ONLY on home/feed screen */}
         {viewMode === 'feed' && (
           <div 
-            className="fixed top-0 left-0 right-0 h-12 flex items-center justify-center z-[100] pointer-events-none bg-transparent"
-            style={{ background: 'transparent' }}
+            className="fixed top-0 left-0 h-12 flex items-center z-[100] bg-transparent"
+            style={{ 
+              right: '56px', // Space for lock button (40px button + 12px right-3 + 4px gap)
+              background: 'transparent'
+            }}
           >
             {/* Feed Rail - Scrollable horizontally, centers active feed (TikTok style) */}
             <FeedRail
               feeds={feedRailItems}
               activeFeedId={activeFeedId}
-              onFeedSelect={setActiveFeedId}
+              onFeedSelect={(feedId) => {
+                isManualFeedChangeRef.current = true;
+                setActiveFeedId(feedId);
+              }}
               onBrowseFeeds={undefined}
-                  />
+            />
           </div>
         )}
 
@@ -2054,6 +2194,8 @@ function App() {
                 files={filteredFilesByFeed}
                 currentIndex={currentFeedIndex}
                 onIndexChange={setCurrentFeedIndex}
+                onSwipeLeft={handleNextFeed}
+                onSwipeRight={handlePreviousFeed}
                 onLike={(fileId) => {
                   const wasLiked = isLiked(fileId);
                   toggleLike(fileId);
@@ -2443,121 +2585,50 @@ function App() {
           />
         )}
 
-        {/* Bottom Navigation Bar - Static on ALL screens: HOME, SEARCH, UPLOAD, ME, INBOX (5 buttons evenly spaced) */}
-        <div className="fixed bottom-0 left-0 right-0 bg-neutral-900 border-t border-neutral-700 h-16 flex items-center justify-around z-[100]">
-          <button
-            onClick={() => {
-              setActiveBottomTab('home');
-              setShowInbox(false);
-              setShowSearch(false);
-            }}
-            className={`flex flex-col items-center justify-center h-full text-white hover:text-blue-400 transition-colors ${activeBottomTab === 'home' ? 'text-blue-400' : ''}`}
-            title="Home"
-          >
-            <Home className="h-6 w-6 mb-1" />
-            <span className="text-xs font-medium">HOME</span>
-          </button>
-          <button
-            onClick={() => {
-              setShowSearch(true);
-              setActiveBottomTab('search');
-            }}
-            className={`flex flex-col items-center justify-center h-full text-white hover:text-blue-400 transition-colors ${activeBottomTab === 'search' ? 'text-blue-400' : ''}`}
-            title="Search"
-          >
-            <Search className="h-6 w-6 mb-1" />
-            <span className="text-xs font-medium">SEARCH</span>
-          </button>
-          <button
-            onClick={() => {
-              setShowUploadModal(true);
-              setActiveBottomTab('upload');
-            }}
-            className={`flex flex-col items-center justify-center h-full text-white hover:text-blue-400 transition-colors ${activeBottomTab === 'upload' ? 'text-blue-400' : ''}`}
-            title="Upload"
-          >
-            <Upload className="h-6 w-6 mb-1" />
-            <span className="text-xs font-medium">UPLOAD</span>
-          </button>
-          <button
-            onClick={async () => {
-              if (userState.isUnlocked) {
-                // Get pN identifier from session if available, otherwise use userState.pnIdentifier
-                const session = PNOAuthService.loadSession();
-                let pnIdentifier = session?.pnIdentifier || userState.pnIdentifier;
-                
-                // If still a DID, try to fetch pN identifier from userinfo
-                if (pnIdentifier && pnIdentifier.startsWith('did:key:')) {
-                  try {
-                    if (session?.accessToken) {
-                      const userInfo = await PNOAuthService.getUserInfo(session.accessToken);
-                      if (userInfo.pn_identifier) {
-                        pnIdentifier = userInfo.pn_identifier;
-                        // Update session and userState with the pN identifier
-                        const updatedSession = { ...session, pnIdentifier };
-                        PNOAuthService.saveSession(updatedSession);
-                        setUnlocked(pnIdentifier);
-                      }
-                    }
-                  } catch (error) {
-                    console.warn('Failed to fetch pN identifier from userinfo:', error);
-                  }
-                }
-                
-                if (pnIdentifier && !pnIdentifier.startsWith('did:key:')) {
-                  // Show user's own index using pN identifier (must not be a DID)
-                  setViewingCreatorId(pnIdentifier);
-                  setActiveBottomTab('index');
-                } else {
-                  // Still a DID - try one more time to get it from the API
-                  console.warn('⚠️ Still have DID instead of pN identifier, fetching from API...');
-                  try {
-                    const session = PNOAuthService.loadSession();
-                    if (session?.accessToken) {
-                      const userInfo = await PNOAuthService.getUserInfo(session.accessToken);
-                      if (userInfo.pn_identifier && !userInfo.pn_identifier.startsWith('did:key:')) {
-                        const updatedSession = { ...session, pnIdentifier: userInfo.pn_identifier };
-                        PNOAuthService.saveSession(updatedSession);
-                        setUnlocked(userInfo.pn_identifier);
-                        setViewingCreatorId(userInfo.pn_identifier);
-                        setActiveBottomTab('index');
-                      } else {
-                        showErrorToast('Unable to load your pN identifier from API');
-                      }
-                    } else {
-                      showErrorToast('No active session found');
-                    }
-                  } catch (error) {
-                    console.error('Failed to fetch pN identifier:', error);
-                    showErrorToast('Unable to load your pN identifier');
-                  }
-                }
-              } else {
-                showErrorToast('Unlock your pN to view your profile');
-              }
-            }}
-            className={`flex flex-col items-center justify-center h-full text-white hover:text-blue-400 transition-colors ${activeBottomTab === 'index' ? 'text-blue-400' : ''}`}
-            title="Me"
-          >
-            <Grid className="h-6 w-6 mb-1" />
-            <span className="text-xs font-medium">ME</span>
-          </button>
-          <button
-            onClick={() => {
-              setShowInbox(true);
-              setActiveBottomTab('messages');
-            }}
-            className={`flex flex-col items-center justify-center h-full text-white hover:text-blue-400 transition-colors ${activeBottomTab === 'messages' ? 'text-blue-400' : ''}`}
-            title="Inbox"
-          >
-            <MessageSquare className="h-6 w-6 mb-1" />
-            <span className="text-xs font-medium">INBOX</span>
-          </button>
-        </div>
-
         {/* Toast Notifications */}
         <ToastContainer toasts={toasts} onClose={removeToast} />
       </div>
+      )}
+
+      {/* Bottom Navigation Bar - Single instance, always visible on ALL screens */}
+      <BottomNav
+        activeTab={activeBottomTab}
+        onTabChange={setActiveBottomTab}
+        onHomeClick={() => {
+          setActiveBottomTab('home');
+          setViewMode('feed');
+          setShowInbox(false);
+          setShowSearch(false);
+          setShowUploadModal(false);
+          setViewingCreatorId(null);
+          setViewingBrandedFeed(null);
+        }}
+        onSearchClick={() => {
+          setShowSearch(true);
+          setShowInbox(false);
+          setShowUploadModal(false);
+          setActiveBottomTab('search');
+          setViewingCreatorId(null);
+          setViewingBrandedFeed(null);
+        }}
+        onUploadClick={() => {
+          setShowUploadModal(true);
+          setShowInbox(false);
+          setShowSearch(false);
+          setViewingCreatorId(null);
+          setViewingBrandedFeed(null);
+          setActiveBottomTab('upload');
+        }}
+        onIndexClick={handleMeClick}
+        onInboxClick={() => {
+          setShowInbox(true);
+          setShowSearch(false);
+          setShowUploadModal(false);
+          setActiveBottomTab('messages');
+          setViewingCreatorId(null);
+          setViewingBrandedFeed(null);
+        }}
+      />
     </div>
   );
 }

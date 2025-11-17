@@ -4,22 +4,42 @@
  */
 
 import React from 'react';
-import { Search, Home, Plus, MessageSquare, Grid } from 'lucide-react';
+import { Search, Home, Plus, MessageSquare, User } from 'lucide-react';
 import { useUserState } from '../contexts/UserStateContext';
 
 interface BottomNavProps {
   activeTab: 'home' | 'search' | 'upload' | 'index' | 'messages';
   onTabChange: (tab: 'home' | 'search' | 'upload' | 'index' | 'messages') => void;
   onSearchClick?: () => void;
+  onUploadClick?: () => void;
+  onIndexClick?: () => void;
+  onInboxClick?: () => void;
+  onHomeClick?: () => void;
 }
 
-export function BottomNav({ activeTab, onTabChange, onSearchClick }: BottomNavProps) {
+export function BottomNav({ 
+  activeTab, 
+  onTabChange, 
+  onSearchClick,
+  onUploadClick,
+  onIndexClick,
+  onInboxClick,
+  onHomeClick
+}: BottomNavProps) {
   const { userState } = useUserState();
   const isUnlocked = userState.isUnlocked;
 
   const handleTabClick = (tab: 'home' | 'search' | 'upload' | 'index' | 'messages') => {
     if (tab === 'search' && onSearchClick) {
       onSearchClick();
+    } else if (tab === 'upload' && onUploadClick) {
+      onUploadClick();
+    } else if (tab === 'index' && onIndexClick) {
+      onIndexClick();
+    } else if (tab === 'messages' && onInboxClick) {
+      onInboxClick();
+    } else if (tab === 'home' && onHomeClick) {
+      onHomeClick();
     } else {
       onTabChange(tab);
     }
@@ -40,52 +60,52 @@ export function BottomNav({ activeTab, onTabChange, onSearchClick }: BottomNavPr
       </button>
 
       {/* SEARCH - Always visible */}
-      <button
-        onClick={() => handleTabClick('search')}
-        className={`
+        <button
+          onClick={() => handleTabClick('search')}
+          className={`
           flex items-center justify-center h-full text-white hover:text-blue-400 transition-colors
           ${activeTab === 'search' ? 'text-blue-400' : ''}
-        `}
+          `}
         title="Search"
-      >
+        >
         <Search className="h-6 w-6" />
-      </button>
+        </button>
 
       {/* UPLOAD - Always visible */}
-      <button
+        <button
         onClick={() => handleTabClick('upload')}
-        className={`
+          className={`
           flex items-center justify-center h-full text-white hover:text-blue-400 transition-colors
           ${activeTab === 'upload' ? 'text-blue-400' : ''}
-        `}
+          `}
         title="Upload"
-      >
+        >
         <Plus className="h-6 w-6" />
-      </button>
+        </button>
 
       {/* ME - Always visible */}
-      <button
+          <button
         onClick={() => handleTabClick('index')}
-        className={`
+            className={`
           flex items-center justify-center h-full text-white hover:text-blue-400 transition-colors
           ${activeTab === 'index' ? 'text-blue-400' : ''}
-        `}
+            `}
         title="Me"
-      >
-        <Grid className="h-6 w-6" />
-      </button>
+          >
+        <User className="h-6 w-6" />
+          </button>
 
       {/* INBOX - Always visible */}
-      <button
-        onClick={() => handleTabClick('messages')}
-        className={`
+          <button
+            onClick={() => handleTabClick('messages')}
+            className={`
           flex items-center justify-center h-full text-white hover:text-blue-400 transition-colors
           ${activeTab === 'messages' ? 'text-blue-400' : ''}
-        `}
+            `}
         title="Inbox"
-      >
+          >
         <MessageSquare className="h-6 w-6" />
-      </button>
+          </button>
     </div>
   );
 }

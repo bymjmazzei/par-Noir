@@ -8,6 +8,7 @@ import React, { useRef, useEffect } from 'react';
 interface MePageTabsRailProps {
   activeTab: 'all' | 'media' | 'likes' | 'comments' | 'saved';
   onTabSelect: (tab: 'all' | 'media' | 'likes' | 'comments' | 'saved') => void;
+  availableTabs?: ('all' | 'media' | 'likes' | 'comments' | 'saved')[];
 }
 
 const TABS = ['all', 'media', 'likes', 'comments', 'saved'] as const;
@@ -19,48 +20,63 @@ const TAB_LABELS: Record<typeof TABS[number], string> = {
   saved: 'SAVED'
 };
 
-export function MePageTabsRail({ activeTab, onTabSelect }: MePageTabsRailProps) {
-  const scrollContainerRef = useRef<HTMLDivElement>(null);
+export function MePageTabsRail({ activeTab, onTabSelect, availableTabs }: MePageTabsRailProps) {
+  const containerRef = useRef<HTMLDivElement>(null);
   const innerContainerRef = useRef<HTMLDivElement>(null);
 
-  // Auto-scroll to center active tab (TikTok style)
+  // Filter tabs based on availableTabs prop
+  const visibleTabs = availableTabs ? TABS.filter(tab => availableTabs.includes(tab)) : TABS;
+
+  // Center active tab using transform (no scrolling)
   useEffect(() => {
-    if (!scrollContainerRef.current || !innerContainerRef.current) return;
+    if (!containerRef.current || !innerContainerRef.current) return;
     const activeElement = innerContainerRef.current.querySelector(`[data-tab="${activeTab}"]`) as HTMLElement;
-    if (activeElement && scrollContainerRef.current) {
-      const container = scrollContainerRef.current;
-      
-      // Calculate scroll position to center the element
-      const elementLeft = activeElement.offsetLeft;
+    if (activeElement && containerRef.current) {
+      // Get element position relative to inner container (before any transform)
+      const elementLeftRelative = activeElement.offsetLeft;
       const elementWidth = activeElement.offsetWidth;
-      const containerWidth = container.clientWidth;
+      const elementCenterRelative = elementLeftRelative + (elementWidth / 2);
       
-      // Center the element: scroll to position where element is centered
-      const scrollLeft = elementLeft - (containerWidth / 2) + (elementWidth / 2);
+      // Get inner container's current position (before transform)
+      const innerContainerWidth = innerContainerRef.current.offsetWidth;
+      const innerContainerLeft = innerContainerRef.current.offsetLeft;
       
-      container.scrollTo({
-        left: Math.max(0, scrollLeft),
-        behavior: 'smooth'
-      });
+      // Calculate screen midpoint (full screen width)
+      const screenWidth = window.innerWidth;
+      const screenMidpoint = screenWidth / 2;
+      
+      // Calculate where the element center would be if inner container starts at its natural position
+      // The inner container is centered initially, so we need to account for that
+      const containerRect = containerRef.current.getBoundingClientRect();
+      const containerLeft = containerRect.left;
+      
+      // Calculate the transform needed:
+      // We want: containerLeft + elementCenterRelative + translateX = screenMidpoint
+      // So: translateX = screenMidpoint - containerLeft - elementCenterRelative
+      const translateX = screenMidpoint - containerLeft - elementCenterRelative;
+      
+      innerContainerRef.current.style.transform = `translateX(${translateX}px)`;
+      innerContainerRef.current.style.transition = 'transform 0.3s ease';
     }
   }, [activeTab]);
 
   return (
     <div 
-      ref={scrollContainerRef}
-      className="absolute top-0 left-0 right-0 z-50 bg-black/80 backdrop-blur-sm border-b border-neutral-800 h-12 overflow-x-auto scrollbar-hide" 
-      style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
+      ref={containerRef}
+      className="fixed top-0 left-0 h-12 flex items-center z-[100] bg-transparent overflow-hidden" 
+      style={{ 
+        right: '56px', // Space for lock button (40px button + 12px right-3 + 4px gap)
+        background: 'transparent'
+      }}
     >
       <div
         ref={innerContainerRef}
         className="flex items-center justify-center space-x-6 py-2 h-full"
         style={{ 
-          minWidth: 'max-content',
-          paddingLeft: '50%',
-          paddingRight: '50%'
+          minWidth: 'max-content'
         }}
       >
-        {TABS.map((tab) => {
+        {visibleTabs.map((tab) => {
           const isActive = tab === activeTab;
           
           return (

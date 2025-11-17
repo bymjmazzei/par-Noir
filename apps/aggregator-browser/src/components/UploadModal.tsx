@@ -28,7 +28,44 @@ export function UploadModal({ onClose, onUploadComplete }: UploadModalProps) {
   const [tags, setTags] = useState<string[]>([]);
   const [tagInput, setTagInput] = useState('');
   const [description, setDescription] = useState('');
+  const [isGoogleDriveConnected, setIsGoogleDriveConnected] = useState<boolean | null>(null);
+  const [isCheckingConnection, setIsCheckingConnection] = useState(true);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Check Google Drive connection via API
+  React.useEffect(() => {
+    const checkGoogleDriveConnection = async () => {
+      if (!userState.isUnlocked || !userState.pnIdentifier) {
+        setIsGoogleDriveConnected(false);
+        setIsCheckingConnection(false);
+        return;
+      }
+
+      try {
+        const apiEndpoint = process.env.REACT_APP_API_ENDPOINT || 'https://api.parnoir.com';
+        const response = await fetch(`${apiEndpoint}/api/storage/credentials/${userState.pnIdentifier}`, {
+          headers: {
+            'Authorization': `Bearer ${localStorage.getItem('oauth_access_token') || ''}`
+          }
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          const hasGoogleDrive = !!(data.credentials?.googleDrive?.access_token || data.credentials?.googleDrive?.refresh_token);
+          setIsGoogleDriveConnected(hasGoogleDrive);
+        } else {
+          setIsGoogleDriveConnected(false);
+        }
+      } catch (error) {
+        console.error('Failed to check Google Drive connection:', error);
+        setIsGoogleDriveConnected(false);
+      } finally {
+        setIsCheckingConnection(false);
+      }
+    };
+
+    checkGoogleDriveConnection();
+  }, [userState.isUnlocked, userState.pnIdentifier]);
 
   const handleFileSelect = (file: File) => {
     if (file) {
@@ -88,10 +125,7 @@ export function UploadModal({ onClose, onUploadComplete }: UploadModalProps) {
       return;
     }
 
-    const token = localStorage.getItem('google_drive_token');
-    const email = localStorage.getItem('google_drive_email');
-    
-    if (!token || !email) {
+    if (!isGoogleDriveConnected) {
       showError('Google Drive not connected. Please connect in the dashboard.');
       return;
     }
@@ -105,51 +139,62 @@ export function UploadModal({ onClose, onUploadComplete }: UploadModalProps) {
     setUploadProgress(0);
 
     try {
-      // Get pnIdentifier and ownerDid
       const pnIdentifier = userState.pnIdentifier;
-      const ownerDid = userState.pnIdentifier; // In production, get from authenticated user
+      const apiEndpoint = process.env.REACT_APP_API_ENDPOINT || 'https://api.parnoir.com';
 
-      // Generate file ID
-      const fileId = `pn-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-      const fileName = `pn-encrypted-${fileId}`;
+      setUploadProgress(10);
 
-      // Upload to Google Drive
-      const metadata = {
-        name: fileName,
-        parents: [] // Upload to root
-      };
-
-      const uploadFormData = new FormData();
-      uploadFormData.append('metadata', new Blob([JSON.stringify(metadata)], { type: 'application/json' }));
-      uploadFormData.append('file', selectedFile);
-
+      // Convert file to base64 for API
+      const fileBuffer = await selectedFile.arrayBuffer();
+      const base64File = btoa(String.fromCharCode(...new Uint8Array(fileBuffer)));
+      
       setUploadProgress(25);
 
-      const uploadResponse = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart', {
+      // Upload via API endpoint (uses server-side Google Drive credentials)
+      const uploadPayload = {
+        fileData: base64File,
+        fileName: selectedFile.name,
+        mimeType: selectedFile.type || 'application/octet-stream',
+        visibility: visibility,
+        pnIdentifier: pnIdentifier,
+        ownerDid: pnIdentifier,
+        ...(visibility === 'public' && {
+          contentRating: contentRating,
+          tags: tags.length > 0 ? tags.join(',') : undefined,
+          description: description || undefined,
+          feedCategories: feedCategories.length > 0 ? feedCategories.join(',') : undefined
+        })
+      };
+
+      setUploadProgress(40);
+
+      const uploadResponse = await fetch(`${apiEndpoint}/api/drive/files`, {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${token}`
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('oauth_access_token') || ''}`
         },
-        body: uploadFormData
+        body: JSON.stringify({
+          fileData: base64File,
+          fileName: selectedFile.name,
+          mimeType: selectedFile.type || 'application/octet-stream'
+        })
       });
 
       if (!uploadResponse.ok) {
-        throw new Error(`Upload failed: ${uploadResponse.statusText}`);
+        const errorText = await uploadResponse.text().catch(() => 'Unknown error');
+        throw new Error(`Upload failed: ${uploadResponse.statusText} - ${errorText}`);
       }
 
-      const uploadedFile = await uploadResponse.json();
-      setUploadProgress(50);
-
+      const uploadResult = await uploadResponse.json();
       setUploadProgress(75);
 
-      // Note: Companion metadata file creation is handled by the Google Drive sync service
-      // The sync service will detect the new file and create the metadata automatically
-      
-      setUploadProgress(100);
-
+      // The API uploads to Google Drive (encrypted cloud folder via googleDriveProxyService)
+      // Companion metadata file creation is handled by the Google Drive sync service
       // If public, submit to aggregator index
-      if (visibility === 'public') {
+      if (visibility === 'public' && uploadResult.file?.id) {
         try {
+          const fileId = uploadResult.file.id;
           const metadataPayload = {
             fileId: fileId,
             metadata: {
@@ -163,11 +208,11 @@ export function UploadModal({ onClose, onUploadComplete }: UploadModalProps) {
               isPublic: true,
               contentRating: contentRating,
               feedCategories: feedCategories.length > 0 ? feedCategories : undefined,
-              feedIds: [], // Will be populated when added to feeds
+              feedIds: [],
               keywords: tags,
               description: description || undefined,
               backend: 'google_drive',
-              backendFileId: uploadedFile.id,
+              backendFileId: uploadResult.file.id,
               creator: {
                 identifier: {
                   value: pnIdentifier
@@ -177,7 +222,6 @@ export function UploadModal({ onClose, onUploadComplete }: UploadModalProps) {
             pnIdentifier: pnIdentifier
           };
 
-          const apiEndpoint = process.env.REACT_APP_API_ENDPOINT || 'https://api.parnoir.com';
           const indexResponse = await fetch(`${apiEndpoint}/api/aggregator/metadata-index`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -187,16 +231,17 @@ export function UploadModal({ onClose, onUploadComplete }: UploadModalProps) {
           if (!indexResponse.ok) {
             const errorText = await indexResponse.text().catch(() => 'Unknown error');
             console.error('Failed to submit to aggregator index:', indexResponse.status, errorText);
-            showError(`Metadata indexing failed: ${indexResponse.status}. File uploaded but may not appear in browse.`);
+            // Don't fail the upload, just log the error
           } else {
             console.log('✅ Metadata submitted to aggregator index successfully');
           }
         } catch (indexError: any) {
           console.error('Failed to submit to aggregator index:', indexError);
-          showError(`Metadata indexing error: ${indexError.message}. File uploaded but may not appear in browse.`);
           // Don't fail the upload
         }
       }
+
+      setUploadProgress(100);
 
       success('File uploaded successfully!');
       onUploadComplete?.();
@@ -218,22 +263,14 @@ export function UploadModal({ onClose, onUploadComplete }: UploadModalProps) {
   };
 
   return (
-    <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
-      <div className="bg-neutral-900 rounded-xl max-w-2xl w-full max-h-[90vh] flex flex-col">
-        {/* Header */}
-        <div className="flex items-center justify-between p-6 border-b border-neutral-700">
-          <h2 className="text-xl font-bold text-white">Upload File</h2>
-          <button
-            onClick={onClose}
-            disabled={uploading}
-            className="text-text-secondary hover:text-white transition-colors disabled:opacity-50"
-          >
-            <X className="h-5 w-5" />
-          </button>
-        </div>
+    <div className="h-full w-full bg-neutral-900 flex flex-col">
+      {/* Header */}
+      <div className="flex items-center justify-between p-6 border-b border-neutral-700">
+        <h2 className="text-xl font-bold text-white">Upload File</h2>
+      </div>
 
-        {/* Content */}
-        <div className="flex-1 overflow-y-auto p-6 space-y-6">
+      {/* Content */}
+      <div className="flex-1 overflow-y-auto p-6 space-y-6">
           {/* File Selection */}
           <div>
             <label className="block text-sm font-medium text-white mb-2">Select File</label>
@@ -270,9 +307,9 @@ export function UploadModal({ onClose, onUploadComplete }: UploadModalProps) {
                     setSelectedFile(null);
                     if (fileInputRef.current) fileInputRef.current.value = '';
                   }}
-                  className="text-text-secondary hover:text-white"
+                  className="text-text-secondary hover:text-white text-lg"
                 >
-                  <X className="h-5 w-5" />
+                  ×
                 </button>
               </div>
             )}
@@ -389,7 +426,7 @@ export function UploadModal({ onClose, onUploadComplete }: UploadModalProps) {
                           onClick={() => handleTagRemove(tag)}
                           className="hover:text-blue-300"
                         >
-                          <X className="h-3 w-3" />
+                          <span className="text-xs">×</span>
                         </button>
                       </span>
                     ))}
@@ -414,7 +451,14 @@ export function UploadModal({ onClose, onUploadComplete }: UploadModalProps) {
           )}
 
           {/* Google Drive Connection Warning */}
-          {!localStorage.getItem('google_drive_token') && (
+          {isCheckingConnection ? (
+            <div className="bg-neutral-800/50 border border-neutral-700 rounded-lg p-4 flex items-start space-x-3">
+              <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin flex-shrink-0 mt-0.5" />
+              <div>
+                <p className="text-white font-medium">Checking Google Drive connection...</p>
+              </div>
+            </div>
+          ) : !isGoogleDriveConnected && (
             <div className="bg-yellow-500/10 border border-yellow-500/20 rounded-lg p-4 flex items-start space-x-3">
               <AlertCircle className="h-5 w-5 text-yellow-400 flex-shrink-0 mt-0.5" />
               <div>
@@ -425,35 +469,34 @@ export function UploadModal({ onClose, onUploadComplete }: UploadModalProps) {
               </div>
             </div>
           )}
-        </div>
+      </div>
 
-        {/* Footer */}
-        <div className="p-6 border-t border-neutral-700 flex items-center justify-between">
-          <button
-            onClick={onClose}
-            disabled={uploading}
-            className="px-4 py-2 bg-neutral-800 text-white rounded-lg hover:bg-neutral-700 transition-colors disabled:opacity-50"
-          >
-            Cancel
-          </button>
-          <button
-            onClick={handleUpload}
-            disabled={!selectedFile || uploading || !localStorage.getItem('google_drive_token')}
-            className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center space-x-2"
-          >
-            {uploading ? (
-              <>
-                <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                <span>Uploading... {uploadProgress}%</span>
-              </>
-            ) : (
-              <>
-                <Upload className="h-4 w-4" />
-                <span>Upload</span>
-              </>
-            )}
-          </button>
-        </div>
+      {/* Footer */}
+      <div className="p-6 border-t border-neutral-700 flex items-center justify-between">
+        <button
+          onClick={onClose}
+          disabled={uploading}
+          className="px-4 py-2 bg-neutral-800 text-white rounded-lg hover:bg-neutral-700 transition-colors disabled:opacity-50"
+        >
+          Cancel
+        </button>
+        <button
+          onClick={handleUpload}
+          disabled={!selectedFile || uploading || !isGoogleDriveConnected || isCheckingConnection}
+          className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center space-x-2"
+        >
+          {uploading ? (
+            <>
+              <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+              <span>Uploading... {uploadProgress}%</span>
+            </>
+          ) : (
+            <>
+              <Upload className="h-4 w-4" />
+              <span>Upload</span>
+            </>
+          )}
+        </button>
       </div>
     </div>
   );

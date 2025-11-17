@@ -201,7 +201,7 @@ export function SearchResults({ initialQuery = '', onFileClick, indexedFiles = [
   return (
     <div className="h-full flex flex-col bg-neutral-900" style={{ paddingBottom: '64px' }}>
       {/* Search Bar */}
-      <div className="sticky top-0 z-10 bg-neutral-900 border-b border-neutral-700 px-4 py-3">
+      <div className="sticky top-0 z-10 bg-neutral-900 border-b border-neutral-700 px-4 py-3" style={{ paddingRight: '56px' }}>
         <div className="flex items-center space-x-3">
           <div className="flex-1 relative">
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-neutral-400" />

@@ -4,7 +4,7 @@
  */
 
 import React from 'react';
-import { Heart, MessageCircle, Share2, Bookmark, MoreVertical, Plus, Edit } from 'lucide-react';
+import { Heart, MessageCircle, Share2, Bookmark, MoreVertical, Plus, Edit, User } from 'lucide-react';
 import { IndexedFile } from '../types/aggregator';
 import { useUserState } from '../contexts/UserStateContext';
 import { Lock } from 'lucide-react';
@@ -20,6 +20,7 @@ interface FeedEngagementSidebarProps {
   onEdit?: () => void;
   isLiked?: boolean;
   isOwner?: boolean;
+  onCreatorClick?: (creatorId: string) => void;
 }
 
 export function FeedEngagementSidebar({
@@ -32,12 +33,14 @@ export function FeedEngagementSidebar({
   onAddToFeed,
   onEdit,
   isLiked = false,
-  isOwner = false
+  isOwner = false,
+  onCreatorClick
 }: FeedEngagementSidebarProps) {
   const { userState } = useUserState();
   const engagement = file.metadata.engagement;
   const likes = engagement?.likes || 0;
   const comments = engagement?.comments || 0;
+  const creatorId = file.metadata.creator?.identifier?.value || file.metadata.creator?.["@id"] || file.metadata.author?.did;
 
   const handleAction = (action: 'like' | 'comment' | 'share' | 'bookmark', callback?: () => void) => {
     if (!userState.isUnlocked && (action === 'like' || action === 'comment')) {
@@ -48,7 +51,23 @@ export function FeedEngagementSidebar({
   };
 
   return (
-    <div className="absolute right-2 md:right-4 bottom-20 md:bottom-24 flex flex-col items-center space-y-4 md:space-y-6 z-10">
+    <div className="absolute right-2 md:right-4 bottom-20 md:bottom-24 flex flex-col items-center space-y-4 md:space-y-6 z-10" style={{ bottom: '80px' }}>
+      {/* Creator Profile Icon - Above Like Button */}
+      {creatorId && onCreatorClick && (
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            onCreatorClick(creatorId);
+          }}
+          className="flex flex-col items-center space-y-1 group"
+          title="View profile"
+        >
+          <div className="w-12 h-12 md:w-14 md:h-14 rounded-full bg-black/30 backdrop-blur-sm flex items-center justify-center group-hover:bg-black/50 active:bg-black/70 transition-colors touch-manipulation">
+            <User className="h-6 w-6 md:h-7 md:w-7 text-white group-hover:text-blue-400 transition-colors" />
+          </div>
+        </button>
+      )}
+
       {/* Like Button */}
       <button
         onClick={() => handleAction('like', onLike)}

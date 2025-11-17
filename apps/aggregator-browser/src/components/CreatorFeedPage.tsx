@@ -148,13 +148,13 @@ export function CreatorFeedPage({
       <div className="sticky top-0 z-10 bg-neutral-900 border-b border-neutral-700 px-4 py-4">
         <div className="flex items-center justify-between mb-4">
           {!isOwnProfile && (
-            <button
-              onClick={onBack}
-              className="text-neutral-400 hover:text-white transition-colors"
-              aria-label="Back"
-            >
-              ← Back
-            </button>
+          <button
+            onClick={onBack}
+            className="text-neutral-400 hover:text-white transition-colors"
+            aria-label="Back"
+          >
+            ← Back
+          </button>
           )}
           {isOwnProfile && <div />} {/* Spacer when back button is hidden */}
 

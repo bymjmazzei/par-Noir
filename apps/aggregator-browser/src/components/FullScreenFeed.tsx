@@ -9,9 +9,11 @@ import { FeedEngagementSidebar } from './FeedEngagementSidebar';
 import { EngagementOverlay } from './EngagementOverlay';
 import { PlaybackControls } from './PlaybackControls';
 import { ContentRatingBadge } from './ContentRatingBadge';
-import { User, File } from 'lucide-react';
+import { File } from 'lucide-react';
 import { useVerticalSwipe } from '../hooks/useVerticalSwipe';
+import { useHorizontalSwipe } from '../hooks/useHorizontalSwipe';
 import { decryptWithToken, ShareToken } from '../utils/tokenDecryption';
+import { formatTimestamp } from '../utils/formatTimestamp';
 
 interface FullScreenFeedProps {
   files: IndexedFile[];
@@ -32,6 +34,8 @@ interface FullScreenFeedProps {
     pnIdentifier?: string;
   };
   onCreatorClick?: (creatorId: string) => void;
+  onSwipeLeft?: () => void; // Horizontal swipe left handler
+  onSwipeRight?: () => void; // Horizontal swipe right handler
 }
 
 export function FullScreenFeed({
@@ -49,7 +53,9 @@ export function FullScreenFeed({
   getComments,
   getShareCount,
   userState,
-  onCreatorClick
+  onCreatorClick,
+  onSwipeLeft,
+  onSwipeRight
 }: FullScreenFeedProps) {
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const videoRefs = useRef<Map<string, HTMLVideoElement>>(new Map());
@@ -58,6 +64,7 @@ export function FullScreenFeed({
   const [visibleFileId, setVisibleFileId] = useState<string | null>(null);
   const [showEngagementOverlay, setShowEngagementOverlay] = useState(false);
   const [videoPlaying, setVideoPlaying] = useState<Map<string, boolean>>(new Map());
+  const [expandedCaptions, setExpandedCaptions] = useState<Set<string>>(new Set());
 
   // Handle vertical swipe for next/previous media
   const verticalSwipeRef = useVerticalSwipe({
@@ -76,17 +83,31 @@ export function FullScreenFeed({
     snapThreshold: 0.2
   });
 
+  // Handle horizontal swipe for feed switching
+  const horizontalSwipeRef = useHorizontalSwipe({
+    onSwipeLeft,
+    onSwipeRight,
+    enabled: !!(onSwipeLeft || onSwipeRight),
+    threshold: 40,
+    snapThreshold: 0.2
+  });
+
   // Scroll to current index when it changes
   useEffect(() => {
     if (!scrollContainerRef.current) return;
     const currentFile = files[currentIndex];
     if (!currentFile) return;
 
-    const element = scrollContainerRef.current.querySelector(`[data-file-id="${currentFile.metadata.fileId}"]`);
-    if (element) {
-      element.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      setVisibleFileId(currentFile.metadata.fileId);
-    }
+    // Add a small delay to ensure DOM is ready, especially when navigating from search
+    const scrollTimer = setTimeout(() => {
+      const element = scrollContainerRef.current?.querySelector(`[data-file-id="${currentFile.metadata.fileId}"]`);
+      if (element) {
+        element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        setVisibleFileId(currentFile.metadata.fileId);
+      }
+    }, 100);
+
+    return () => clearTimeout(scrollTimer);
   }, [currentIndex, files]);
 
   // Load video blobs and thumbnails for visible files
@@ -243,6 +264,9 @@ export function FullScreenFeed({
         if (verticalSwipeRef.current !== el) {
           (verticalSwipeRef as React.MutableRefObject<HTMLDivElement | null>).current = el;
         }
+        if (horizontalSwipeRef.current !== el) {
+          (horizontalSwipeRef as React.MutableRefObject<HTMLDivElement | null>).current = el;
+        }
       }}
       className="h-full w-full overflow-y-scroll snap-y snap-mandatory bg-black"
       style={{ scrollbarWidth: 'none', msOverflowStyle: 'none', WebkitOverflowScrolling: 'touch' }}
@@ -262,7 +286,7 @@ export function FullScreenFeed({
             key={fileId}
             data-file-id={fileId}
             className="h-full w-full snap-start flex items-center justify-center bg-black relative"
-            style={{ minHeight: '100%' }}
+            style={{ height: '100%', minHeight: '100%' }}
           >
             {/* Full-screen video */}
             {isVideo && videoBlobs.get(fileId) && (
@@ -384,6 +408,7 @@ export function FullScreenFeed({
               onAddToFeed={onAddToFeed ? () => onAddToFeed(indexedFile) : undefined}
               onEdit={onEdit ? () => onEdit(indexedFile) : undefined}
               isOwner={userState.isUnlocked && userState.pnIdentifier === creatorId}
+              onCreatorClick={onCreatorClick}
             />
 
             {/* Engagement Overlay - Show when like/comment/save is clicked (share now directly copies) */}
@@ -416,38 +441,69 @@ export function FullScreenFeed({
             )}
 
             {/* Content Info Overlay - Bottom Left */}
-            <div className="absolute bottom-0 left-0 right-20 bg-gradient-to-t from-black/80 via-black/60 to-transparent p-6">
-              <div className="flex items-center space-x-3 mb-3">
-                {creatorId && (
+            <div 
+              className={`absolute left-0 right-20 p-4 md:p-6 transition-all duration-300 ${
+                expandedCaptions.has(fileId) 
+                  ? 'bottom-0' 
+                  : 'bottom-0'
+              }`}
+              style={{ 
+                maxHeight: expandedCaptions.has(fileId) ? '70%' : 'auto',
+                overflowY: expandedCaptions.has(fileId) ? 'auto' : 'hidden',
+                overflowX: 'hidden',
+                bottom: '64px' // Account for bottom nav bar
+              }}
+            >
+              {/* Title */}
+              <h3 className="text-white text-base md:text-lg font-semibold mb-1 line-clamp-1">
+                {file.title || file.name || 'Untitled'}
+              </h3>
+              
+              {/* Caption with expand/collapse */}
+              {file.description && (
+                <div className="mb-2">
                   <button
                     onClick={(e) => {
                       e.stopPropagation();
-                      onCreatorClick?.(creatorId);
+                      setExpandedCaptions(prev => {
+                        const newSet = new Set(prev);
+                        if (newSet.has(fileId)) {
+                          newSet.delete(fileId);
+                        } else {
+                          newSet.add(fileId);
+                        }
+                        return newSet;
+                      });
                     }}
-                    className="flex items-center space-x-2 hover:opacity-80 transition-opacity"
+                    className="text-left w-full"
                   >
-                    <div className="w-10 h-10 bg-blue-500/20 rounded-full flex items-center justify-center">
-                      <User className="h-5 w-5 text-blue-400" />
-                    </div>
-                    <div className="text-left">
-                      <div className="text-white font-semibold text-sm">
-                        {creatorId}
-                      </div>
-                      <div className="text-white/70 text-xs">
-                        {new Date(file.uploadDate).toLocaleDateString()}
-                      </div>
-                    </div>
+                    <p 
+                      className={`text-white/90 text-sm leading-relaxed ${
+                        expandedCaptions.has(fileId) 
+                          ? '' 
+                          : 'line-clamp-2'
+                      }`}
+                    >
+                      {file.description}
+                    </p>
+                    {/* Show expand/collapse if description is long enough to potentially need more than 2 lines */}
+                    {(file.description.length > 100 || file.description.split('\n').length > 2) && (
+                      <span className="text-white/70 text-xs mt-1 inline-block hover:text-white transition-colors">
+                        {expandedCaptions.has(fileId) ? 'Show less' : 'Tap to expand'}
+                      </span>
+                    )}
                   </button>
-                )}
               </div>
-              
-              <h3 className="text-white text-lg font-semibold mb-2 line-clamp-1">{fileName}</h3>
-              {file.description && (
-                <p className="text-white/90 text-sm mb-3 line-clamp-2">{file.description}</p>
               )}
               
-              {(file.keywords || file.tags) && (file.keywords || file.tags || []).length > 0 && (
-                <div className="flex flex-wrap gap-2 mb-3">
+              {/* Metadata Tags/Category */}
+              {(file.keywords || file.tags || file.category) && (
+                <div className="flex flex-wrap gap-2 mb-2">
+                  {file.category && (
+                    <span className="px-2 py-1 bg-blue-500/30 text-blue-200 text-xs rounded-full border border-blue-400/50">
+                      {file.category}
+                    </span>
+                  )}
                   {(file.keywords || file.tags || []).slice(0, 5).map((tag, tagIdx) => (
                     <span
                       key={tagIdx}
@@ -459,6 +515,14 @@ export function FullScreenFeed({
                 </div>
               )}
               
+              {/* Timestamp */}
+              {file.uploadDate && (
+                <div className="text-white/70 text-xs mb-2">
+                  {formatTimestamp(file.uploadDate)}
+                </div>
+              )}
+              
+              {/* Content Rating */}
               {file.contentRating && (
                 <div className="flex items-center space-x-2">
                   <ContentRatingBadge rating={file.contentRating} size="sm" />

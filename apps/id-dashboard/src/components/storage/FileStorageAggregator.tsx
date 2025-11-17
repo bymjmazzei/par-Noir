@@ -1059,7 +1059,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
         // identityId is secret - not logged
         console.warn('⚠️ [StorageCredentials] API persistence failed (non-blocking):', {
           error: error?.message || error,
-        });
+          });
       }
         }
       }

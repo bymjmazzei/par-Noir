@@ -4,18 +4,17 @@
  */
 
 import React, { useState } from 'react';
-import { MessageCircle, Bell, X } from 'lucide-react';
+import { MessageCircle, Bell } from 'lucide-react';
 import { MessageList } from './MessageList';
 import { MessageThread } from './MessageThread';
 import { NotificationBell } from './NotificationBell';
 import { Notification } from '../services/notificationService';
 
 interface InboxProps {
-  onClose: () => void;
   onNotificationClick?: (notification: Notification) => void;
 }
 
-export function Inbox({ onClose, onNotificationClick }: InboxProps) {
+export function Inbox({ onNotificationClick }: InboxProps) {
   const [activeTab, setActiveTab] = useState<'messages' | 'notifications'>('messages');
   const [selectedThread, setSelectedThread] = useState<{
     participantDid: string;
@@ -33,17 +32,10 @@ export function Inbox({ onClose, onNotificationClick }: InboxProps) {
   }
 
   return (
-    <div className="h-full flex flex-col bg-neutral-900">
+    <div className="h-full flex flex-col bg-neutral-900" style={{ paddingBottom: '64px' }}>
       {/* Header */}
       <div className="flex items-center justify-between p-4 border-b border-neutral-700">
         <h2 className="text-white text-lg font-semibold">Inbox</h2>
-        <button
-          onClick={onClose}
-          className="text-neutral-400 hover:text-white transition-colors"
-          aria-label="Close"
-        >
-          <X className="h-5 w-5" />
-        </button>
       </div>
 
       {/* Tabs */}

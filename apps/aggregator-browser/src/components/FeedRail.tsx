@@ -3,7 +3,7 @@
  * Horizontal scrolling feed selector for TikTok-style navigation
  */
 
-import React, { useRef, useEffect } from 'react';
+import React, { useRef, useEffect, useCallback } from 'react';
 import { Feed } from '../types/aggregator';
 import { useUserState } from '../contexts/UserStateContext';
 import { Globe, Sparkles } from 'lucide-react';
@@ -28,6 +28,51 @@ export function FeedRail({ feeds, activeFeedId, onFeedSelect, onBrowseFeeds }: F
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const innerContainerRef = useRef<HTMLDivElement>(null);
   const { userState } = useUserState();
+  
+
+  // Calculate max scroll position based on last feed at midpoint
+  const calculateMaxScroll = useCallback(() => {
+    if (!scrollContainerRef.current || !innerContainerRef.current) return null;
+    
+    const container = scrollContainerRef.current;
+    const containerWidth = container.clientWidth;
+    const scrollWidth = container.scrollWidth;
+    const screenWidth = window.innerWidth;
+    const midpoint = screenWidth / 2;
+    
+    // Get the last feed element
+    const allFeedElements = innerContainerRef.current.querySelectorAll('[data-feed-id]');
+    const lastFeedElement = allFeedElements[allFeedElements.length - 1] as HTMLElement;
+    
+    if (!lastFeedElement) return null;
+    
+    const lastElementLeft = lastFeedElement.offsetLeft;
+    const lastElementWidth = lastFeedElement.offsetWidth;
+    // Calculate scroll position to center last element at screen midpoint
+    const lastElementScrollLeft = lastElementLeft - midpoint + (lastElementWidth / 2);
+    
+    // Return the maximum allowed scroll (don't allow scrolling beyond midpoint for last feed)
+    return Math.min(scrollWidth - containerWidth, lastElementScrollLeft);
+  }, []);
+
+  // Enforce scroll limit on manual scrolling
+  useEffect(() => {
+    const container = scrollContainerRef.current;
+    if (!container) return;
+
+    const handleScroll = () => {
+      const maxScroll = calculateMaxScroll();
+      if (maxScroll !== null && container.scrollLeft > maxScroll) {
+        container.scrollTo({
+          left: maxScroll,
+          behavior: 'auto' // Instant correction
+        });
+      }
+    };
+
+    container.addEventListener('scroll', handleScroll, { passive: true });
+    return () => container.removeEventListener('scroll', handleScroll);
+  }, [calculateMaxScroll]);
 
   // Auto-scroll to center active feed on mount/change (TikTok style)
   useEffect(() => {
@@ -41,21 +86,34 @@ export function FeedRail({ feeds, activeFeedId, onFeedSelect, onBrowseFeeds }: F
       const elementWidth = activeElement.offsetWidth;
       const containerWidth = container.clientWidth;
       
-      // Center the element: scroll to position where element is centered
-      const scrollLeft = elementLeft - (containerWidth / 2) + (elementWidth / 2);
+      // Use screen width for midpoint calculation, not container width
+      const screenWidth = window.innerWidth;
+      const midpoint = screenWidth / 2;
+      
+      // Center the element: scroll to position where element is centered at the screen midpoint
+      const scrollLeft = elementLeft - midpoint + (elementWidth / 2);
+      
+      // Get max scroll limit
+      const maxScroll = calculateMaxScroll();
+      
+      // Clamp scroll position between 0 and maxScroll
+      const clampedScrollLeft = Math.max(0, Math.min(scrollLeft, maxScroll ?? scrollLeft));
       
       container.scrollTo({
-        left: Math.max(0, scrollLeft),
+        left: clampedScrollLeft,
         behavior: 'smooth'
       });
     }
-  }, [activeFeedId]);
+  }, [activeFeedId, calculateMaxScroll]);
 
   return (
     <div 
       ref={scrollContainerRef}
       className="w-full overflow-x-auto scrollbar-hide pointer-events-auto" 
-      style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
+      style={{ 
+        scrollbarWidth: 'none', 
+        msOverflowStyle: 'none'
+      }}
     >
       <div
         ref={innerContainerRef}

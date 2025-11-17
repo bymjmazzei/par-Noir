@@ -62,8 +62,8 @@ export function useHorizontalSwipe({
         const absDeltaX = Math.abs(deltaX);
         const absDeltaY = Math.abs(deltaY);
         
-        // Only prevent default if horizontal movement is dominant
-        if (absDeltaX > absDeltaY && absDeltaX > threshold * 0.5) {
+        // Only prevent default if horizontal movement is clearly dominant (1.5x vertical)
+        if (absDeltaX > absDeltaY * 1.5 && absDeltaX > threshold * 0.5) {
           e.preventDefault();
         }
       }
@@ -91,7 +91,9 @@ export function useHorizontalSwipe({
       const absDeltaX = Math.abs(deltaX);
       const absDeltaY = Math.abs(deltaY);
       
-      if (absDeltaX <= absDeltaY) {
+      // Require horizontal movement to be at least 1.5x the vertical movement
+      // This allows horizontal swipes even when there's some vertical scrolling
+      if (absDeltaX <= absDeltaY * 1.5) {
         // Vertical movement is dominant, ignore
         return;
       }

@@ -25,6 +25,7 @@ export class CentralMetadataAggregator {
   private static readonly CACHE_KEY = 'pn_central_metadata_index';
   private static readonly CACHE_VERSION_KEY = 'pn_central_metadata_index_version';
   private static readonly CACHE_VERSION = '1.0'; // Increment when cache format changes
+  private static pendingRequests = new Map<string, Promise<CentralIndexEntry[]>>(); // Request deduplication
 
   /**
    * Clear the localStorage cache
@@ -62,11 +63,45 @@ export class CentralMetadataAggregator {
    * Fetch aggregated public metadata from central service
    * Called by aggregator browsers - queries the central API
    * NO CACHE - always fetches fresh data
+   * Includes request deduplication to prevent duplicate simultaneous calls
    */
   static async fetchAggregatedIndex(
     filters?: { tags?: string[]; fileType?: string; authorDid?: string },
     forceRefresh: boolean = false
   ): Promise<CentralIndexEntry[]> {
+    // Create a unique key for this request to deduplicate
+    const requestKey = JSON.stringify(filters || {});
+    
+    // If there's already a pending request with the same filters, return it
+    if (!forceRefresh && this.pendingRequests.has(requestKey)) {
+      console.log('⏸️ [CentralMetadataAggregator] Request already in progress, reusing promise');
+      return this.pendingRequests.get(requestKey)!;
+    }
+    
+    // Create the request promise
+    const requestPromise = this._fetchWithRetry(filters);
+    
+    // Store it for deduplication
+    this.pendingRequests.set(requestKey, requestPromise);
+    
+    // Clean up after request completes
+    requestPromise.finally(() => {
+      this.pendingRequests.delete(requestKey);
+    });
+    
+    return requestPromise;
+  }
+  
+  /**
+   * Internal method to fetch with exponential backoff retry for 429 errors
+   */
+  private static async _fetchWithRetry(
+    filters?: { tags?: string[]; fileType?: string; authorDid?: string },
+    retryCount: number = 0
+  ): Promise<CentralIndexEntry[]> {
+    const maxRetries = 3;
+    const baseDelay = 1000; // 1 second
+    
     try {
       // Query par Noir API backend
       const params = new URLSearchParams();
@@ -90,6 +125,12 @@ export class CentralMetadataAggregator {
         const data: CentralIndexResponse = await response.json();
         console.log(`✅ [CentralMetadataAggregator] Received ${data.files?.length || 0} files from API`);
         return data.files || [];
+      } else if (response.status === 429 && retryCount < maxRetries) {
+        // Rate limited - retry with exponential backoff
+        const delay = baseDelay * Math.pow(2, retryCount);
+        console.warn(`⏳ [CentralMetadataAggregator] Rate limited (429), retrying in ${delay}ms (attempt ${retryCount + 1}/${maxRetries})`);
+        await new Promise(resolve => setTimeout(resolve, delay));
+        return this._fetchWithRetry(filters, retryCount + 1);
       } else {
         const errorText = await response.text().catch(() => 'Unknown error');
         console.error(`❌ [CentralMetadataAggregator] API returned ${response.status}:`, errorText);
