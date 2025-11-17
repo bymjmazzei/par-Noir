@@ -407,17 +407,25 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
 
   // Auto-persist credentials to API when driveAccounts are available
   React.useEffect(() => {
+    console.log(`[StorageCredentials] Auto-persist effect triggered, driveAccounts.length: ${driveAccounts.length}`);
     if (driveAccounts.length > 0) {
       // Delay to ensure cache is populated
       const timeoutId = setTimeout(() => {
-        console.log(`[StorageCredentials] Auto-persisting ${driveAccounts.length} Google Drive account(s) to API...`);
+        const payload = buildStorageCredentialPayload();
+        console.log(`[StorageCredentials] Auto-persisting ${driveAccounts.length} Google Drive account(s) to API...`, {
+          driveAccountsLength: driveAccounts.length,
+          payloadHasAccounts: !!(payload?.googleDriveAccounts?.length),
+          payloadAccountsCount: payload?.googleDriveAccounts?.length || 0
+        });
         persistStorageCredentialsToAPI(undefined).catch((error) => {
-          console.warn('⚠️ [StorageCredentials] Auto-persist failed (non-blocking):', error);
+          console.error('⚠️ [StorageCredentials] Auto-persist failed:', error);
         });
       }, 2000); // 2 second delay to ensure everything is initialized
       return () => clearTimeout(timeoutId);
+    } else {
+      console.log(`[StorageCredentials] Skipping auto-persist: no drive accounts found`);
     }
-  }, [driveAccounts.length, persistStorageCredentialsToAPI]);
+  }, [driveAccounts.length, persistStorageCredentialsToAPI, buildStorageCredentialPayload]);
 
   React.useEffect(() => {
     return () => {
@@ -1012,9 +1020,19 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
   );
 
   async function persistStorageCredentialsToAPI(credentialsPayload?: any, cid?: string | null) {
+    console.log('[StorageCredentials] persistStorageCredentialsToAPI called', {
+      hasPayload: !!credentialsPayload,
+      driveAccountsLength: driveAccounts.length,
+      cacheSize: driveCredentialCacheRef.current.size
+    });
+    
     let payload = credentialsPayload;
     if (!payload) {
       payload = buildStorageCredentialPayload();
+      console.log('[StorageCredentials] Built payload from cache', {
+        hasPayload: !!payload,
+        accountsCount: payload?.googleDriveAccounts?.length || 0
+      });
     }
 
     if (
@@ -1022,13 +1040,18 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
       !Array.isArray(payload.googleDriveAccounts) ||
       payload.googleDriveAccounts.length === 0
     ) {
-      console.warn('⚠️ [StorageCredentials] No Google Drive accounts available; skipping API persistence');
+      console.warn('⚠️ [StorageCredentials] No Google Drive accounts available; skipping API persistence', {
+        payloadExists: !!payload,
+        isArray: Array.isArray(payload?.googleDriveAccounts),
+        accountsLength: payload?.googleDriveAccounts?.length || 0
+      });
       return;
     }
 
     await persistCredentialsToSecureMetadata(payload);
 
     const identityCandidates = getStorageIdentityCandidates();
+    console.log('[StorageCredentials] Identity candidates:', identityCandidates);
 
     if (identityCandidates.length === 0) {
       console.warn('⚠️ [StorageCredentials] No identity candidates available for persistence');
