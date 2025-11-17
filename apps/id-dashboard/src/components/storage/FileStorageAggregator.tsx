@@ -407,23 +407,33 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
 
   // Auto-persist credentials to API when driveAccounts are available
   React.useEffect(() => {
-    console.log(`[StorageCredentials] Auto-persist effect triggered, driveAccounts.length: ${driveAccounts.length}`);
-    if (driveAccounts.length > 0) {
-      // Delay to ensure cache is populated
+    console.log(`[StorageCredentials] Auto-persist effect triggered`, {
+      driveAccountsLength: driveAccounts.length,
+      cacheSize: driveCredentialCacheRef.current.size,
+      hydrationSuccess: hydrationSuccessRef.current
+    });
+    
+    // Check both driveAccounts state and cache
+    const cacheEntries = Array.from(driveCredentialCacheRef.current.values());
+    const hasAccounts = driveAccounts.length > 0 || cacheEntries.length > 0;
+    
+    if (hasAccounts) {
+      // Delay to ensure everything is initialized
       const timeoutId = setTimeout(() => {
         const payload = buildStorageCredentialPayload();
-        console.log(`[StorageCredentials] Auto-persisting ${driveAccounts.length} Google Drive account(s) to API...`, {
+        console.log(`[StorageCredentials] Auto-persisting accounts to API...`, {
           driveAccountsLength: driveAccounts.length,
+          cacheEntriesLength: cacheEntries.length,
           payloadHasAccounts: !!(payload?.googleDriveAccounts?.length),
           payloadAccountsCount: payload?.googleDriveAccounts?.length || 0
         });
         persistStorageCredentialsToAPI(undefined).catch((error) => {
           console.error('⚠️ [StorageCredentials] Auto-persist failed:', error);
         });
-      }, 2000); // 2 second delay to ensure everything is initialized
+      }, 3000); // 3 second delay to ensure hydration completes
       return () => clearTimeout(timeoutId);
     } else {
-      console.log(`[StorageCredentials] Skipping auto-persist: no drive accounts found`);
+      console.log(`[StorageCredentials] Skipping auto-persist: no accounts found in state or cache`);
     }
   }, [driveAccounts.length, persistStorageCredentialsToAPI, buildStorageCredentialPayload]);
 
