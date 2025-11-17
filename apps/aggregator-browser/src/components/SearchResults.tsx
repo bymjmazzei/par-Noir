@@ -84,17 +84,17 @@ export function SearchResults({ initialQuery = '', onFileClick, indexedFiles = [
 
     isSearchingRef.current = true;
     currentSearchRef.current = trimmedQuery;
-    setLoading(true);
-    setError(null);
+      setLoading(true);
+      setError(null);
     setHasSearched(true);
     saveRecentSearch(trimmedQuery);
 
-    try {
-      const searchOptions: SearchOptions = {
+      try {
+        const searchOptions: SearchOptions = {
         query: trimmedQuery,
         sortBy: 'relevance',
-        limit: 50
-      };
+          limit: 50
+        };
 
       // Try API first, fallback to client-side search if it fails
       let apiResult = null;
@@ -125,12 +125,12 @@ export function SearchResults({ initialQuery = '', onFileClick, indexedFiles = [
       }
     } catch (fallbackErr) {
       console.error('Fallback search error:', fallbackErr);
-      setResults([]);
+        setResults([]);
       setError('Search failed');
-    } finally {
-      setLoading(false);
+      } finally {
+        setLoading(false);
       isSearchingRef.current = false;
-    }
+      }
   }, [indexedFiles, userState.pnIdentifier]);
 
   // Client-side fallback search
@@ -219,16 +219,16 @@ export function SearchResults({ initialQuery = '', onFileClick, indexedFiles = [
               autoFocus
             />
             {query && (
-              <button
+          <button
                 onClick={() => {
                   setQuery('');
                   setResults([]);
                   setHasSearched(false);
                 }}
                 className="absolute right-3 top-1/2 transform -translate-y-1/2 text-neutral-400 hover:text-white"
-              >
+          >
                 <X className="h-4 w-4" />
-              </button>
+          </button>
             )}
           </div>
         </div>
@@ -260,21 +260,21 @@ export function SearchResults({ initialQuery = '', onFileClick, indexedFiles = [
           // Search Results
           <div className="p-4">
             {filteredResults.length === 0 ? (
-              <div className="text-center py-12">
-                <p className="text-neutral-400">No results found</p>
-              </div>
-            ) : (
-              <div className="grid grid-cols-3 gap-2">
+          <div className="text-center py-12">
+            <p className="text-neutral-400">No results found</p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-3 gap-2">
                 {filteredResults.map((file) => (
-                  <div
-                    key={file.metadata.fileId}
-                    onClick={() => onFileClick(file)}
-                    className="group relative cursor-pointer"
-                  >
-                    {/* Thumbnail */}
-                    <div className="relative aspect-video bg-neutral-800 rounded overflow-hidden mb-1">
+              <div
+                key={file.metadata.fileId}
+                onClick={() => onFileClick(file)}
+                className="group relative cursor-pointer"
+              >
+                {/* Thumbnail */}
+                <div className="relative aspect-video bg-neutral-800 rounded overflow-hidden mb-1">
                       {(file.thumbnail || (thumbnails && thumbnails.get(file.metadata.fileId))) ? (
-                        <img
+                  <img
                           src={file.thumbnail || (thumbnails?.get(file.metadata.fileId) || '')}
                           alt={file.metadata.name || file.metadata.title || 'Untitled'}
                           className="w-full h-full object-cover group-hover:scale-105 transition-transform"
@@ -296,30 +296,30 @@ export function SearchResults({ initialQuery = '', onFileClick, indexedFiles = [
                       ) : file.metadata.fileId ? (
                         <img
                           src={`https://drive.google.com/uc?export=view&id=${file.metadata.fileId}`}
-                          alt={file.metadata.name || file.metadata.title || 'Untitled'}
-                          className="w-full h-full object-cover group-hover:scale-105 transition-transform"
+                    alt={file.metadata.name || file.metadata.title || 'Untitled'}
+                    className="w-full h-full object-cover group-hover:scale-105 transition-transform"
                           loading="lazy"
-                          onError={(e) => {
+                    onError={(e) => {
                             e.currentTarget.style.display = 'none';
                             const placeholder = document.createElement('div');
                             placeholder.className = 'w-full h-full flex items-center justify-center text-neutral-500 text-xs';
                             placeholder.textContent = 'No preview';
                             e.currentTarget.parentElement?.appendChild(placeholder);
-                          }}
-                        />
+                    }}
+                  />
                       ) : (
                         <div className="w-full h-full flex items-center justify-center text-neutral-500 text-xs">
                           No preview
                         </div>
                       )}
-                    </div>
+                </div>
 
-                    {/* Title */}
-                    <p className="text-white text-xs line-clamp-2 group-hover:text-blue-400 transition-colors">
-                      {file.metadata.name || file.metadata.title || 'Untitled'}
-                    </p>
-                  </div>
-                ))}
+                {/* Title */}
+                <p className="text-white text-xs line-clamp-2 group-hover:text-blue-400 transition-colors">
+                  {file.metadata.name || file.metadata.title || 'Untitled'}
+                </p>
+              </div>
+            ))}
               </div>
             )}
           </div>

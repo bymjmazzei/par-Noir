@@ -101,10 +101,10 @@ export function FullScreenFeed({
     // Add a small delay to ensure DOM is ready, especially when navigating from search
     const scrollTimer = setTimeout(() => {
       const element = scrollContainerRef.current?.querySelector(`[data-file-id="${currentFile.metadata.fileId}"]`);
-      if (element) {
-        element.scrollIntoView({ behavior: 'smooth', block: 'center' });
-        setVisibleFileId(currentFile.metadata.fileId);
-      }
+    if (element) {
+      element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      setVisibleFileId(currentFile.metadata.fileId);
+    }
     }, 100);
 
     return () => clearTimeout(scrollTimer);

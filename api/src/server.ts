@@ -744,6 +744,83 @@ class ProductionServer {
       }
     });
 
+    // GET /api/storage/accounts/:identityId - List available cloud storage accounts (without exposing tokens)
+    this.app.get('/api/storage/accounts/:identityId', async (req, res) => {
+      try {
+        const { identityId } = req.params;
+
+        if (!identityId) {
+          return res.status(400).json({ error: 'Missing identityId parameter' });
+        }
+
+        const { storageCredentialsService } = await import('./server/modules/storageCredentialsService');
+        const record = await storageCredentialsService.getCredentials(identityId);
+
+        if (!record) {
+          return res.json({
+            success: true,
+            accounts: []
+          });
+        }
+
+        const accounts: Array<{ provider: string; accountId: string; email?: string; displayName?: string }> = [];
+
+        // Extract Google Drive account info (if available)
+        if (record.credentials?.googleDrive) {
+          const googleDrive = record.credentials.googleDrive;
+          // Try to get user info from Google Drive API to get email
+          try {
+            const { googleDriveProxyService } = await import('./server/modules/googleDriveProxy');
+            const accessToken = await googleDriveProxyService.getAccessToken(identityId);
+            
+            // Fetch user info from Google
+            const userInfoResponse = await fetch('https://www.googleapis.com/oauth2/v2/userinfo', {
+              headers: {
+                'Authorization': `Bearer ${accessToken}`
+              }
+            });
+
+            if (userInfoResponse.ok) {
+              const userInfo = await userInfoResponse.json();
+              accounts.push({
+                provider: 'google_drive',
+                accountId: identityId, // Use identityId as account identifier
+                email: userInfo.email,
+                displayName: userInfo.name || userInfo.email
+              });
+            } else {
+              // Fallback: just indicate Google Drive is connected
+              accounts.push({
+                provider: 'google_drive',
+                accountId: identityId,
+                displayName: 'Google Drive'
+              });
+            }
+          } catch (error) {
+            // If we can't fetch user info, still include the account
+            accounts.push({
+              provider: 'google_drive',
+              accountId: identityId,
+              displayName: 'Google Drive'
+            });
+          }
+        }
+
+        // Add other cloud providers here as they're added (Cloudflare R2, etc.)
+
+        return res.json({
+          success: true,
+          accounts
+        });
+      } catch (error: any) {
+        console.error('Error listing storage accounts:', error);
+        return res.status(500).json({
+          error: 'Failed to list storage accounts',
+          message: error.message
+        });
+      }
+    });
+
     // POST /api/aggregator/engagement/:fileId/:type - Update engagement metrics
     this.app.post('/api/aggregator/engagement/:fileId/:type', async (req, res) => {
       try {

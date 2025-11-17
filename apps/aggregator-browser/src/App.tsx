@@ -220,17 +220,17 @@ function App() {
   useEffect(() => {
     if (!hasLoadedFeedsRef.current) {
       hasLoadedFeedsRef.current = true;
-      const loadFeeds = async () => {
-        try {
-          const result = await FeedService.listFeeds({ limit: 100 });
-          setFeeds(result.feeds);
-        } catch (error) {
-          console.error('Failed to load feeds:', error);
-          // Continue with empty feeds - UI will show default feeds
-        }
-      };
+    const loadFeeds = async () => {
+      try {
+        const result = await FeedService.listFeeds({ limit: 100 });
+        setFeeds(result.feeds);
+      } catch (error) {
+        console.error('Failed to load feeds:', error);
+        // Continue with empty feeds - UI will show default feeds
+      }
+    };
 
-      loadFeeds();
+    loadFeeds();
     }
   }, []);
 
@@ -292,17 +292,17 @@ function App() {
     // Only read feed/creator/view params on initial mount
     if (!hasInitializedFromURLRef.current) {
       hasInitializedFromURLRef.current = true;
-      
-      if (viewParam && (viewParam === 'grid' || viewParam === 'feed')) {
-        setViewMode(viewParam);
-      }
 
-      if (feedParam) {
-        setActiveFeedId(feedParam);
-      }
+    if (viewParam && (viewParam === 'grid' || viewParam === 'feed')) {
+      setViewMode(viewParam);
+    }
 
-      if (creatorParam) {
-        setViewingCreatorId(creatorParam);
+    if (feedParam) {
+      setActiveFeedId(feedParam);
+    }
+
+    if (creatorParam) {
+      setViewingCreatorId(creatorParam);
       }
     }
 
@@ -347,11 +347,11 @@ function App() {
             setVisibleFileId(fileParam);
           }
           // Also try to scroll to it after a short delay
-          setTimeout(() => {
-            const element = document.querySelector(`[data-file-id="${fileParam}"]`);
+        setTimeout(() => {
+          const element = document.querySelector(`[data-file-id="${fileParam}"]`);
             if (element) {
-              element.scrollIntoView({ behavior: 'smooth', block: 'center' });
-            }
+            element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          }
           }, 300);
         }, 500);
       }
@@ -1042,7 +1042,7 @@ function App() {
                     author: metadata.author || {
                       did: entry.pnIdentifier || viewingCreatorId
                     }
-                  }
+                }
                 } as IndexedFile;
               });
               console.log(`📊 Loaded ${apiFiles.length} files from API for user ${viewingCreatorId} (filtered from ${data.files.length} total files)`);
@@ -1143,7 +1143,7 @@ function App() {
           setIsLoadingSavedFiles(false);
         }
       })();
-    } else {
+                } else {
       setSavedFiles([]);
     }
   }, [viewingCreatorId, userState.pnIdentifier, userState.isUnlocked, indexedFiles]);
@@ -1174,7 +1174,7 @@ function App() {
           setUserCommentedFiles(commentedFromIndexed);
           
           console.log(`📊 User engagement: ${likedFromIndexed.length} liked files, ${commentedFromIndexed.length} commented files`);
-        } catch (error) {
+              } catch (error) {
           console.error('Failed to load user engagement files:', error);
           setUserLikedFiles([]);
           setUserCommentedFiles([]);
@@ -1182,7 +1182,7 @@ function App() {
           setIsLoadingUserEngagement(false);
         }
       })();
-    } else {
+            } else {
       setUserLikedFiles([]);
       setUserCommentedFiles([]);
     }
@@ -1264,29 +1264,29 @@ function App() {
           case 'likes':
             currentFilteredMeFiles = userLikedFiles.filter(f => {
               const fileOwnerId = f.metadata.creator?.identifier?.value || 
-                                  f.metadata.creator?.["@id"] || 
-                                  f.metadata.author?.did ||
-                                  f.metadata.creatorId;
+                 f.metadata.creator?.["@id"] || 
+                       f.metadata.author?.did ||
+                       f.metadata.creatorId;
               const normalizedOwnerId = fileOwnerId?.trim().toLowerCase() || '';
-              const normalizedViewingId = viewingCreatorId.trim().toLowerCase();
+            const normalizedViewingId = viewingCreatorId.trim().toLowerCase();
               return normalizedOwnerId !== normalizedViewingId;
-            });
+          });
             break;
           case 'comments':
             currentFilteredMeFiles = userCommentedFiles.filter(f => {
               const fileOwnerId = f.metadata.creator?.identifier?.value || 
-                                  f.metadata.creator?.["@id"] || 
-                                  f.metadata.author?.did ||
-                                  f.metadata.creatorId;
+                   f.metadata.creator?.["@id"] || 
+                   f.metadata.author?.did ||
+                   f.metadata.creatorId;
               const normalizedOwnerId = fileOwnerId?.trim().toLowerCase() || '';
-              const normalizedViewingId = viewingCreatorId.trim().toLowerCase();
+        const normalizedViewingId = viewingCreatorId.trim().toLowerCase();
               return normalizedOwnerId !== normalizedViewingId;
-            });
+    });
             break;
           case 'saved':
             currentFilteredMeFiles = savedFiles;
             break;
-        }
+    }
       } else if (viewingCreatorId) {
         switch (mePageTab) {
           case 'all':
@@ -1402,7 +1402,7 @@ function App() {
           // File not found after retries - clear flag and visibleFileId
           isNavigatingToFileRef.current = false;
           setTimeout(() => setVisibleFileId(null), 100);
-        }
+          }
       }
     }, retryInterval);
     
@@ -1996,7 +1996,7 @@ function App() {
                 setActiveFeedId(feedId);
               }}
               onBrowseFeeds={undefined}
-            />
+                  />
           </div>
         )}
 
@@ -2206,7 +2206,7 @@ function App() {
                 onComment={(file) => setCommentingFile(file)}
                 onShare={async (fileId) => {
                   share(fileId);
-                }}
+                    }}
                 onAddToFeed={(file) => {
                   const creatorId = file.metadata.creator?.identifier?.value || file.metadata.creator?.["@id"] || file.metadata.author?.did;
                       if (userState.isUnlocked && userState.pnIdentifier === creatorId) {
@@ -2595,36 +2595,36 @@ function App() {
         activeTab={activeBottomTab}
         onTabChange={setActiveBottomTab}
         onHomeClick={() => {
-          setActiveBottomTab('home');
+              setActiveBottomTab('home');
           setViewMode('feed');
-          setShowInbox(false);
-          setShowSearch(false);
+              setShowInbox(false);
+              setShowSearch(false);
           setShowUploadModal(false);
           setViewingCreatorId(null);
           setViewingBrandedFeed(null);
         }}
         onSearchClick={() => {
-          setShowSearch(true);
+              setShowSearch(true);
           setShowInbox(false);
           setShowUploadModal(false);
-          setActiveBottomTab('search');
+              setActiveBottomTab('search');
           setViewingCreatorId(null);
           setViewingBrandedFeed(null);
         }}
         onUploadClick={() => {
-          setShowUploadModal(true);
+              setShowUploadModal(true);
           setShowInbox(false);
           setShowSearch(false);
           setViewingCreatorId(null);
           setViewingBrandedFeed(null);
-          setActiveBottomTab('upload');
-        }}
+              setActiveBottomTab('upload');
+            }}
         onIndexClick={handleMeClick}
         onInboxClick={() => {
-          setShowInbox(true);
+              setShowInbox(true);
           setShowSearch(false);
           setShowUploadModal(false);
-          setActiveBottomTab('messages');
+              setActiveBottomTab('messages');
           setViewingCreatorId(null);
           setViewingBrandedFeed(null);
         }}

@@ -28,22 +28,23 @@ export function UploadModal({ onClose, onUploadComplete }: UploadModalProps) {
   const [tags, setTags] = useState<string[]>([]);
   const [tagInput, setTagInput] = useState('');
   const [description, setDescription] = useState('');
-  const [isGoogleDriveConnected, setIsGoogleDriveConnected] = useState<boolean | null>(null);
-  const [isCheckingConnection, setIsCheckingConnection] = useState(true);
+  const [cloudAccounts, setCloudAccounts] = useState<Array<{ provider: string; accountId: string; email?: string; displayName?: string }>>([]);
+  const [selectedAccountId, setSelectedAccountId] = useState<string | null>(null);
+  const [isLoadingAccounts, setIsLoadingAccounts] = useState(true);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Check Google Drive connection via API
+  // Load available cloud storage accounts via API
   React.useEffect(() => {
-    const checkGoogleDriveConnection = async () => {
+    const loadCloudAccounts = async () => {
       if (!userState.isUnlocked || !userState.pnIdentifier) {
-        setIsGoogleDriveConnected(false);
-        setIsCheckingConnection(false);
+        setCloudAccounts([]);
+        setIsLoadingAccounts(false);
         return;
       }
 
       try {
         const apiEndpoint = process.env.REACT_APP_API_ENDPOINT || 'https://api.parnoir.com';
-        const response = await fetch(`${apiEndpoint}/api/storage/credentials/${userState.pnIdentifier}`, {
+        const response = await fetch(`${apiEndpoint}/api/storage/accounts/${userState.pnIdentifier}`, {
           headers: {
             'Authorization': `Bearer ${localStorage.getItem('oauth_access_token') || ''}`
           }
@@ -51,20 +52,24 @@ export function UploadModal({ onClose, onUploadComplete }: UploadModalProps) {
 
         if (response.ok) {
           const data = await response.json();
-          const hasGoogleDrive = !!(data.credentials?.googleDrive?.access_token || data.credentials?.googleDrive?.refresh_token);
-          setIsGoogleDriveConnected(hasGoogleDrive);
+          const accounts = data.accounts || [];
+          setCloudAccounts(accounts);
+          // Auto-select first account if available
+          if (accounts.length > 0 && !selectedAccountId) {
+            setSelectedAccountId(accounts[0].accountId);
+          }
         } else {
-          setIsGoogleDriveConnected(false);
+          setCloudAccounts([]);
         }
       } catch (error) {
-        console.error('Failed to check Google Drive connection:', error);
-        setIsGoogleDriveConnected(false);
+        console.error('Failed to load cloud accounts:', error);
+        setCloudAccounts([]);
       } finally {
-        setIsCheckingConnection(false);
+        setIsLoadingAccounts(false);
       }
     };
 
-    checkGoogleDriveConnection();
+    loadCloudAccounts();
   }, [userState.isUnlocked, userState.pnIdentifier]);
 
   const handleFileSelect = (file: File) => {
@@ -125,8 +130,13 @@ export function UploadModal({ onClose, onUploadComplete }: UploadModalProps) {
       return;
     }
 
-    if (!isGoogleDriveConnected) {
-      showError('Google Drive not connected. Please connect in the dashboard.');
+    if (cloudAccounts.length === 0) {
+      showError('No cloud storage accounts connected. Please connect in the dashboard.');
+      return;
+    }
+
+    if (!selectedAccountId) {
+      showError('Please select a cloud storage account');
       return;
     }
 
@@ -147,7 +157,7 @@ export function UploadModal({ onClose, onUploadComplete }: UploadModalProps) {
       // Convert file to base64 for API
       const fileBuffer = await selectedFile.arrayBuffer();
       const base64File = btoa(String.fromCharCode(...new Uint8Array(fileBuffer)));
-      
+
       setUploadProgress(25);
 
       // Upload via API endpoint (uses server-side Google Drive credentials)
@@ -264,13 +274,13 @@ export function UploadModal({ onClose, onUploadComplete }: UploadModalProps) {
 
   return (
     <div className="h-full w-full bg-neutral-900 flex flex-col">
-      {/* Header */}
-      <div className="flex items-center justify-between p-6 border-b border-neutral-700">
-        <h2 className="text-xl font-bold text-white">Upload File</h2>
-      </div>
+        {/* Header */}
+        <div className="flex items-center justify-between p-6 border-b border-neutral-700">
+          <h2 className="text-xl font-bold text-white">Upload File</h2>
+        </div>
 
-      {/* Content */}
-      <div className="flex-1 overflow-y-auto p-6 space-y-6">
+        {/* Content */}
+        <div className="flex-1 overflow-y-auto p-6 space-y-6">
           {/* File Selection */}
           <div>
             <label className="block text-sm font-medium text-white mb-2">Select File</label>
@@ -450,53 +460,68 @@ export function UploadModal({ onClose, onUploadComplete }: UploadModalProps) {
             </>
           )}
 
-          {/* Google Drive Connection Warning */}
-          {isCheckingConnection ? (
+          {/* Cloud Storage Account Selection */}
+          {isLoadingAccounts ? (
             <div className="bg-neutral-800/50 border border-neutral-700 rounded-lg p-4 flex items-start space-x-3">
               <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin flex-shrink-0 mt-0.5" />
               <div>
-                <p className="text-white font-medium">Checking Google Drive connection...</p>
+                <p className="text-white font-medium">Loading cloud storage accounts...</p>
               </div>
             </div>
-          ) : !isGoogleDriveConnected && (
+          ) : cloudAccounts.length === 0 ? (
             <div className="bg-yellow-500/10 border border-yellow-500/20 rounded-lg p-4 flex items-start space-x-3">
               <AlertCircle className="h-5 w-5 text-yellow-400 flex-shrink-0 mt-0.5" />
               <div>
-                <p className="text-yellow-400 font-medium">Google Drive Not Connected</p>
+                <p className="text-yellow-400 font-medium">No Cloud Storage Connected</p>
                 <p className="text-text-secondary text-sm mt-1">
-                  Connect Google Drive in the dashboard to upload files.
+                  Connect cloud storage in the dashboard to upload files.
                 </p>
               </div>
             </div>
+          ) : (
+            <div>
+              <label className="block text-sm font-medium text-white mb-2">Cloud Storage Account</label>
+              <select
+                value={selectedAccountId || ''}
+                onChange={(e) => setSelectedAccountId(e.target.value)}
+                className="w-full px-4 py-2 bg-neutral-800 border border-neutral-700 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                {cloudAccounts.map((account) => (
+                  <option key={account.accountId} value={account.accountId}>
+                    {account.displayName || account.email || `${account.provider} (${account.accountId})`}
+                  </option>
+                ))}
+              </select>
+            </div>
           )}
-      </div>
+        </div>
 
-      {/* Footer */}
-      <div className="p-6 border-t border-neutral-700 flex items-center justify-between">
-        <button
-          onClick={onClose}
-          disabled={uploading}
-          className="px-4 py-2 bg-neutral-800 text-white rounded-lg hover:bg-neutral-700 transition-colors disabled:opacity-50"
-        >
-          Cancel
-        </button>
+        {/* Footer */}
+        <div className="p-6 border-t border-neutral-700 flex items-center justify-between">
+          <button
+            onClick={onClose}
+            disabled={uploading}
+            className="px-4 py-2 bg-neutral-800 text-white rounded-lg hover:bg-neutral-700 transition-colors disabled:opacity-50"
+          >
+            Cancel
+          </button>
         <button
           onClick={handleUpload}
-          disabled={!selectedFile || uploading || !isGoogleDriveConnected || isCheckingConnection}
+          disabled={!selectedFile || uploading || cloudAccounts.length === 0 || !selectedAccountId || isLoadingAccounts}
           className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center space-x-2"
         >
-          {uploading ? (
-            <>
-              <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-              <span>Uploading... {uploadProgress}%</span>
-            </>
-          ) : (
-            <>
-              <Upload className="h-4 w-4" />
-              <span>Upload</span>
-            </>
-          )}
-        </button>
+            {uploading ? (
+              <>
+                <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                <span>Uploading... {uploadProgress}%</span>
+              </>
+            ) : (
+              <>
+                <Upload className="h-4 w-4" />
+                <span>Upload</span>
+              </>
+            )}
+          </button>
       </div>
     </div>
   );
