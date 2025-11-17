@@ -1442,6 +1442,16 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
           window.clearTimeout(hydrationRetryTimeoutRef.current);
           hydrationRetryTimeoutRef.current = null;
         }
+        
+        // After successfully hydrating accounts, ensure they're persisted back to API
+        // This handles the case where accounts exist locally but weren't in API
+        setTimeout(() => {
+          console.log('[StorageCredentials] Accounts hydrated, ensuring persistence to API...');
+          persistStorageCredentialsToAPI(undefined).catch((error) => {
+            console.error('⚠️ [StorageCredentials] Failed to persist after hydration:', error);
+          });
+        }, 2000);
+        
         break;
       } catch (error) {
         lastError = error;
