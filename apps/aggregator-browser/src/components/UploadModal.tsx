@@ -44,25 +44,32 @@ export function UploadModal({ onClose, onUploadComplete }: UploadModalProps) {
 
       try {
         const apiEndpoint = process.env.REACT_APP_API_ENDPOINT || 'https://api.parnoir.com';
+        console.log(`[UploadModal] Loading cloud accounts for pN: ${userState.pnIdentifier}`);
         const response = await fetch(`${apiEndpoint}/api/storage/accounts/${userState.pnIdentifier}`, {
           headers: {
             'Authorization': `Bearer ${localStorage.getItem('oauth_access_token') || ''}`
           }
         });
 
+        console.log(`[UploadModal] API response status: ${response.status} ${response.statusText}`);
+        
         if (response.ok) {
           const data = await response.json();
+          console.log(`[UploadModal] API response data:`, data);
           const accounts = data.accounts || [];
+          console.log(`[UploadModal] Found ${accounts.length} cloud account(s):`, accounts);
           setCloudAccounts(accounts);
           // Auto-select first account if available
           if (accounts.length > 0 && !selectedAccountId) {
             setSelectedAccountId(accounts[0].accountId);
           }
         } else {
+          const errorText = await response.text().catch(() => 'Unknown error');
+          console.error(`[UploadModal] API error (${response.status}):`, errorText);
           setCloudAccounts([]);
         }
       } catch (error) {
-        console.error('Failed to load cloud accounts:', error);
+        console.error('[UploadModal] Failed to load cloud accounts:', error);
         setCloudAccounts([]);
       } finally {
         setIsLoadingAccounts(false);

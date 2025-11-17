@@ -765,7 +765,9 @@ class ProductionServer {
         }
 
         const credentials = record.credentials;
-        console.log(`[StorageAccounts] Found credentials record for ${identityId}, keys:`, Object.keys(credentials || {}));
+        console.log(`[StorageAccounts] Found credentials record for ${identityId}`);
+        console.log(`[StorageAccounts] Credentials keys:`, Object.keys(credentials || {}));
+        console.log(`[StorageAccounts] Credentials structure:`, JSON.stringify(credentials, null, 2).substring(0, 1000)); // First 1000 chars
         
         const accounts: Array<{ provider: string; accountId: string; email?: string; displayName?: string }> = [];
 
@@ -774,6 +776,9 @@ class ProductionServer {
           (credentials?.googleDrive ? [credentials.googleDrive] : []);
         
         console.log(`[StorageAccounts] Found ${googleDriveAccounts.length} Google Drive account(s)`);
+        if (googleDriveAccounts.length > 0) {
+          console.log(`[StorageAccounts] First account structure:`, JSON.stringify(googleDriveAccounts[0], null, 2));
+        }
 
         // Process each Google Drive account
         for (let i = 0; i < googleDriveAccounts.length; i++) {
