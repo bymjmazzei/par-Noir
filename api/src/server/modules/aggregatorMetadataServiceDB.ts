@@ -269,6 +269,212 @@ export class AggregatorMetadataServiceDB {
   }
 
   /**
+   * Search metadata by query string
+   */
+  async searchMetadata(query: string, options?: {
+    sortBy?: 'relevance' | 'date' | 'popularity';
+    limit?: number;
+    offset?: number;
+    fileType?: string;
+    tags?: string[];
+    authorDid?: string;
+    feedId?: string;
+    feedCategory?: string;
+    dateFrom?: string;
+    dateTo?: string;
+    maxRating?: string;
+  }): Promise<{ files: CentralIndexEntry[]; total: number; hasMore: boolean }> {
+    const db = getDatabasePool();
+    const searchQuery = query.toLowerCase().trim();
+    const limit = options?.limit || 50;
+    const offset = options?.offset || 0;
+
+    try {
+      // Build base query
+      let sqlQuery = `
+        SELECT 
+          am.file_id, 
+          am.metadata, 
+          am.submitted_at, 
+          am.pn_identifier,
+          COALESCE(ARRAY_AGG(DISTINCT fp.feed_id) FILTER (WHERE fp.feed_id IS NOT NULL), ARRAY[]::uuid[]) as feed_ids
+        FROM aggregator_metadata am
+        LEFT JOIN feed_posts fp ON am.file_id = fp.file_id
+        WHERE (
+          am.metadata->>'isPublic' = 'true' 
+          OR am.metadata->>'isPublic' IS NULL
+          OR (am.metadata->>'isPublic' = 'false' AND am.metadata->>'publicToken' IS NOT NULL)
+        )
+      `;
+      const params: any[] = [];
+      let paramIndex = 1;
+
+      // Add search conditions
+      if (searchQuery) {
+        sqlQuery += ` AND (
+          LOWER(am.metadata->>'name') LIKE $${paramIndex}
+          OR LOWER(am.metadata->>'title') LIKE $${paramIndex}
+          OR LOWER(am.metadata->>'description') LIKE $${paramIndex}
+          OR EXISTS (
+            SELECT 1 FROM jsonb_array_elements_text(COALESCE(am.metadata->'keywords', am.metadata->'tags', '[]'::jsonb)) AS keyword
+            WHERE LOWER(keyword) LIKE $${paramIndex}
+          )
+          OR LOWER(am.metadata->>'category') LIKE $${paramIndex}
+        )`;
+        params.push(`%${searchQuery}%`);
+        paramIndex++;
+      }
+
+      // Apply filters
+      if (options?.fileType) {
+        sqlQuery += ` AND am.metadata->>'fileType' = $${paramIndex}`;
+        params.push(options.fileType);
+        paramIndex++;
+      }
+
+      if (options?.feedId) {
+        sqlQuery += ` AND EXISTS (
+          SELECT 1 FROM feed_posts fp2 
+          WHERE fp2.file_id = am.file_id 
+          AND fp2.feed_id::text = $${paramIndex}
+        )`;
+        params.push(options.feedId);
+        paramIndex++;
+      }
+
+      if (options?.feedCategory) {
+        sqlQuery += ` AND EXISTS (
+          SELECT 1 FROM feed_posts fp3
+          JOIN feeds f ON fp3.feed_id = f.feed_id
+          WHERE fp3.file_id = am.file_id
+          AND LOWER(f.feed_category) = LOWER($${paramIndex})
+        )`;
+        params.push(options.feedCategory);
+        paramIndex++;
+      }
+
+      if (options?.dateFrom) {
+        sqlQuery += ` AND am.metadata->>'uploadDate' >= $${paramIndex}`;
+        params.push(options.dateFrom);
+        paramIndex++;
+      }
+
+      if (options?.dateTo) {
+        sqlQuery += ` AND am.metadata->>'uploadDate' <= $${paramIndex}`;
+        params.push(options.dateTo);
+        paramIndex++;
+      }
+
+      // Group by for feed_ids aggregation
+      sqlQuery += ` GROUP BY am.file_id, am.metadata, am.submitted_at, am.pn_identifier`;
+
+      // Sorting
+      if (options?.sortBy === 'date') {
+        sqlQuery += ` ORDER BY am.metadata->>'uploadDate' DESC NULLS LAST, am.updated_at DESC`;
+      } else if (options?.sortBy === 'popularity') {
+        sqlQuery += ` ORDER BY 
+          COALESCE((am.metadata->'engagement'->>'likes')::int, 0) DESC,
+          COALESCE((am.metadata->'engagement'->>'views')::int, 0) DESC,
+          am.updated_at DESC`;
+      } else {
+        // Relevance: prioritize exact matches, then partial matches
+        if (searchQuery) {
+          sqlQuery += ` ORDER BY 
+            CASE 
+              WHEN LOWER(am.metadata->>'name') = $${paramIndex} THEN 1
+              WHEN LOWER(am.metadata->>'name') LIKE $${paramIndex + 1} THEN 2
+              WHEN LOWER(am.metadata->>'description') LIKE $${paramIndex + 1} THEN 3
+              ELSE 4
+            END,
+            am.updated_at DESC`;
+          params.push(searchQuery);
+          params.push(`${searchQuery}%`);
+          paramIndex += 2;
+        } else {
+          sqlQuery += ` ORDER BY am.updated_at DESC`;
+        }
+      }
+
+      // Pagination
+      sqlQuery += ` LIMIT $${paramIndex} OFFSET $${paramIndex + 1}`;
+      params.push(limit + 1); // Fetch one extra to check if there are more
+      params.push(offset);
+      paramIndex += 2;
+
+      const result = await db.query(sqlQuery, params);
+      
+      // Check if there are more results
+      const hasMore = result.rows.length > limit;
+      const files = result.rows.slice(0, limit).map(row => {
+        const metadata = row.metadata as PublicMetadata & { feedIds?: string[] };
+        if (row.feed_ids && row.feed_ids.length > 0) {
+          metadata.feedIds = row.feed_ids.map((id: string) => id.toString());
+        }
+        return {
+          fileId: row.file_id,
+          metadata,
+          submittedAt: row.submitted_at.toISOString(),
+          pnIdentifier: row.pn_identifier
+        };
+      });
+
+      // Apply additional filters that need to be done in JavaScript
+      let filteredFiles = files;
+
+      if (options?.tags && options.tags.length > 0) {
+        filteredFiles = filteredFiles.filter(entry => {
+          const keywords = entry.metadata.keywords || entry.metadata.tags || [];
+          return keywords.some((tag: string) => options.tags!.includes(tag));
+        });
+      }
+
+      if (options?.authorDid) {
+        filteredFiles = filteredFiles.filter(entry => {
+          const pnId = entry.pnIdentifier;
+          const creatorId = entry.metadata.creator?.identifier?.value || entry.metadata.creator?.["@id"];
+          const authorDid = entry.metadata.author?.did;
+          
+          return pnId === options.authorDid || 
+                 creatorId === options.authorDid || 
+                 authorDid === options.authorDid;
+        });
+      }
+
+      // Get total count (simplified - could be optimized)
+      const countResult = await db.query(`
+        SELECT COUNT(*) as total
+        FROM aggregator_metadata am
+        WHERE (
+          am.metadata->>'isPublic' = 'true' 
+          OR am.metadata->>'isPublic' IS NULL
+          OR (am.metadata->>'isPublic' = 'false' AND am.metadata->>'publicToken' IS NOT NULL)
+        )
+        ${searchQuery ? `AND (
+          LOWER(am.metadata->>'name') LIKE $1
+          OR LOWER(am.metadata->>'title') LIKE $1
+          OR LOWER(am.metadata->>'description') LIKE $1
+          OR EXISTS (
+            SELECT 1 FROM jsonb_array_elements_text(COALESCE(am.metadata->'keywords', am.metadata->'tags', '[]'::jsonb)) AS keyword
+            WHERE LOWER(keyword) LIKE $1
+          )
+          OR LOWER(am.metadata->>'category') LIKE $1
+        )` : ''}
+      `, searchQuery ? [`%${searchQuery}%`] : []);
+      
+      const total = parseInt(countResult.rows[0].total, 10);
+
+      return {
+        files: filteredFiles,
+        total,
+        hasMore
+      };
+    } catch (error) {
+      console.error('❌ Failed to search metadata:', error);
+      throw error;
+    }
+  }
+
+  /**
    * Get full index response
    */
   async getIndexResponse(filters?: {

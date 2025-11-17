@@ -96,6 +96,7 @@ export async function searchFiles(
     });
 
     if (!response.ok) {
+      // Throw error to trigger fallback in SearchResults component
       throw new Error('Search failed');
     }
 
@@ -106,7 +107,8 @@ export async function searchFiles(
       hasMore: result.hasMore || false
     };
   } catch (error) {
-    console.error('Search error:', error);
+    // Silently fallback to client-side search (don't log as error since we have fallback)
+    // console.error('Search error:', error);
     // Fallback to client-side search
     return fallbackSearch(options);
   }
