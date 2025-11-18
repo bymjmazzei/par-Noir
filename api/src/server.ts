@@ -2242,6 +2242,22 @@ class ProductionServer {
 
         // Use pN identifier from token if available, otherwise fall back to DID
         const userIdentifier = tokenPayload.pnIdentifier || tokenPayload.did;
+        
+        // Build list of identifier candidates to try (matching dashboard's getStorageIdentityCandidates logic)
+        const identifierCandidates: string[] = [];
+        if (tokenPayload.pnIdentifier) {
+          identifierCandidates.push(tokenPayload.pnIdentifier);
+        }
+        if (tokenPayload.did) {
+          identifierCandidates.push(tokenPayload.did);
+          if (tokenPayload.did.startsWith('did:key:')) {
+            const keyPart = tokenPayload.did.substring(8);
+            if (keyPart) {
+              identifierCandidates.push(keyPart);
+            }
+          }
+        }
+        
         const { fileId } = req.params;
         const { googleDriveProxyService } = await import('./server/modules/googleDriveProxy');
         
@@ -2251,28 +2267,42 @@ class ProductionServer {
         const accountId = req.query.accountId as string | undefined;
         
         if (thumbnail) {
-          // Proxy thumbnail request through API server with authentication
-          const accessToken = await googleDriveProxyService.getAccessToken(userIdentifier, accountId);
-          const thumbnailUrl = `https://www.googleapis.com/drive/v3/files/${fileId}/thumbnail?alt=media`;
-          
-          const thumbnailResponse = await fetch(thumbnailUrl, {
-            headers: {
-              'Authorization': `Bearer ${accessToken}`
-            }
-          });
-          
-          if (thumbnailResponse.ok) {
-            const thumbnailBlob = await thumbnailResponse.blob();
-            const arrayBuffer = await thumbnailBlob.arrayBuffer();
-            const buffer = Buffer.from(arrayBuffer);
+          try {
+            // Proxy thumbnail request through API server with authentication
+            const accessToken = await googleDriveProxyService.getAccessToken(userIdentifier, accountId, identifierCandidates);
+            const thumbnailUrl = `https://www.googleapis.com/drive/v3/files/${fileId}/thumbnail?alt=media`;
             
-            res.setHeader('Content-Type', thumbnailBlob.type || 'image/jpeg');
-            res.setHeader('Cache-Control', 'public, max-age=3600'); // Cache thumbnails for 1 hour
-            return res.send(buffer);
-          } else {
-            return res.status(thumbnailResponse.status).json({
+            console.log(`[DriveFiles] Fetching thumbnail for file ${fileId} with accountId ${accountId}`);
+            
+            const thumbnailResponse = await fetch(thumbnailUrl, {
+              headers: {
+                'Authorization': `Bearer ${accessToken}`
+              }
+            });
+            
+            console.log(`[DriveFiles] Thumbnail response status: ${thumbnailResponse.status}`);
+            
+            if (thumbnailResponse.ok) {
+              const thumbnailBlob = await thumbnailResponse.blob();
+              const arrayBuffer = await thumbnailBlob.arrayBuffer();
+              const buffer = Buffer.from(arrayBuffer);
+              
+              res.setHeader('Content-Type', thumbnailBlob.type || 'image/jpeg');
+              res.setHeader('Cache-Control', 'public, max-age=3600'); // Cache thumbnails for 1 hour
+              return res.send(buffer);
+            } else {
+              const errorText = await thumbnailResponse.text().catch(() => 'Unknown error');
+              console.error(`[DriveFiles] Thumbnail fetch failed: ${thumbnailResponse.status} - ${errorText}`);
+              return res.status(thumbnailResponse.status).json({
+                error: 'Failed to fetch thumbnail',
+                error_description: `Google Drive API returned ${thumbnailResponse.status}: ${errorText}`
+              });
+            }
+          } catch (error: any) {
+            console.error('[DriveFiles] Error fetching thumbnail:', error);
+            return res.status(500).json({
               error: 'Failed to fetch thumbnail',
-              error_description: `Google Drive API returned ${thumbnailResponse.status}`
+              error_description: error.message || 'Failed to fetch thumbnail from Google Drive'
             });
           }
         } else if (download) {

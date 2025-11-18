@@ -15,26 +15,37 @@ const ThumbnailImage: React.FC<{ fileId: string; accountId: string; alt: string;
   const [error, setError] = useState(false);
 
   useEffect(() => {
+    let blobUrl: string | null = null;
+    
     const loadThumbnail = async () => {
       try {
         const accessToken = await PNOAuthService.getValidAccessToken();
         if (!accessToken) {
+          console.warn('[ThumbnailImage] No access token available');
           setError(true);
           return;
         }
 
         const thumbnailUrl = `${apiEndpoint}/api/drive/files/${fileId}?thumbnail=true&accountId=${accountId}`;
+        console.log(`[ThumbnailImage] Loading thumbnail for ${fileId} from ${thumbnailUrl}`);
+        
         const response = await fetch(thumbnailUrl, {
           headers: {
             'Authorization': `Bearer ${accessToken}`
           }
         });
 
+        console.log(`[ThumbnailImage] Response status: ${response.status}`);
+
         if (response.ok) {
           const blob = await response.blob();
-          const url = URL.createObjectURL(blob);
-          setThumbnailUrl(url);
+          blobUrl = URL.createObjectURL(blob);
+          console.log(`[ThumbnailImage] Created blob URL: ${blobUrl.substring(0, 50)}...`);
+          setThumbnailUrl(blobUrl);
+          setError(false);
         } else {
+          const errorText = await response.text().catch(() => 'Unknown error');
+          console.error(`[ThumbnailImage] Failed to load thumbnail: ${response.status} - ${errorText}`);
           setError(true);
         }
       } catch (err) {
@@ -45,10 +56,11 @@ const ThumbnailImage: React.FC<{ fileId: string; accountId: string; alt: string;
 
     loadThumbnail();
 
-    // Cleanup blob URL on unmount
+    // Cleanup blob URL on unmount or when fileId/accountId changes
     return () => {
-      if (thumbnailUrl) {
-        URL.revokeObjectURL(thumbnailUrl);
+      if (blobUrl) {
+        console.log(`[ThumbnailImage] Cleaning up blob URL for ${fileId}`);
+        URL.revokeObjectURL(blobUrl);
       }
     };
   }, [fileId, accountId]);
