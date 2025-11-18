@@ -215,10 +215,24 @@ export class AggregatorMetadataServiceDB {
       const orphanedFileIds: string[] = [];
       
       // Only validate Google Drive files (batch check for performance)
-      const googleDriveEntries = entries.filter(e => (e.metadata.backend || 'google_drive') === 'google_drive');
-      const otherEntries = entries.filter(e => (e.metadata.backend || 'google_drive') !== 'google_drive');
+      // Assume entries without backend field are Google Drive (legacy entries)
+      const googleDriveEntries = entries.filter(e => {
+        const backend = e.metadata.backend || 'google_drive';
+        // If backend is google_drive OR missing (assume google_drive for legacy entries)
+        return backend === 'google_drive' || !e.metadata.backend;
+      });
+      const otherEntries = entries.filter(e => {
+        const backend = e.metadata.backend;
+        // Only exclude if backend is explicitly set to something other than google_drive
+        return backend && backend !== 'google_drive';
+      });
       
-      console.log(`🔍 [getPublicMetadata] Found ${googleDriveEntries.length} Google Drive entries to validate`);
+      console.log(`🔍 [getPublicMetadata] Found ${googleDriveEntries.length} Google Drive entries to validate (out of ${entries.length} total)`);
+      console.log(`🔍 [getPublicMetadata] Entry backends:`, entries.map(e => ({
+        fileId: e.fileId,
+        backend: e.metadata.backend || 'missing (assuming google_drive)',
+        backendFileId: e.metadata.backendFileId || 'missing'
+      })));
       
       if (googleDriveEntries.length > 0) {
         try {
