@@ -288,8 +288,11 @@ export class AggregatorMetadataServiceDB {
           }
         } catch (validationError) {
           console.error('❌ [getPublicMetadata] File validation failed:', validationError);
-          // On error, return all entries (don't break the feed)
-          validatedEntries.push(...googleDriveEntries);
+          console.error('❌ [getPublicMetadata] Validation error details:', validationError instanceof Error ? validationError.message : String(validationError));
+          // On validation error, return empty to prevent showing potentially deleted files
+          // This is safer than showing files that might not exist
+          console.error('❌ [getPublicMetadata] Returning empty feed due to validation error');
+          validatedEntries.push(...[]); // Empty - don't show potentially deleted files
         }
       }
       
