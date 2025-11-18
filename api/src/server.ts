@@ -44,6 +44,21 @@ const limiter = rateLimit({
   legacyHeaders: false,
 });
 
+// More lenient rate limiter for aggregator endpoints (read-heavy, frequently accessed)
+const aggregatorLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: (req) => {
+    // Very high limit for aggregator endpoints - they're meant to be queried frequently
+    if (req.headers.authorization) {
+      return 2000; // 2000 requests per 15 minutes for authenticated users
+    }
+    return 1000; // 1000 requests per 15 minutes for unauthenticated requests
+  },
+  message: 'Too many requests from this IP, please try again later.',
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
 // Authentication rate limiting
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
@@ -116,8 +131,15 @@ class ProductionServer {
     // Compression
     this.app.use(compression());
 
-    // Rate limiting
-    this.app.use(limiter);
+    // Rate limiting - apply general limiter to most routes
+    // Aggregator endpoints get a more lenient limiter (applied specifically)
+    this.app.use((req, res, next) => {
+      // Skip rate limiting for aggregator endpoints (they get their own limiter)
+      if (req.path.startsWith('/api/aggregator/')) {
+        return next();
+      }
+      limiter(req, res, next);
+    });
 
     // Body parsing - increased limit for large video metadata with encrypted tokens
     this.app.use(express.json({ limit: '50mb' }));
@@ -1114,6 +1136,9 @@ class ProductionServer {
     });
 
     // Aggregator metadata index endpoints
+    // Aggregator endpoints with lenient rate limiting (applied before routes)
+    this.app.use('/api/aggregator', aggregatorLimiter);
+
     // GET /api/aggregator/metadata-index - Query public metadata
     this.app.get('/api/aggregator/metadata-index', async (req, res) => {
       try {
