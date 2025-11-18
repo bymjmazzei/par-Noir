@@ -139,6 +139,598 @@ class ProductionServer {
     return 'other';
   }
 
+  /**
+   * Get owner file index (contains all files owned by the user)
+   */
+  private async getOwnerFileIndex(
+    accessToken: string,
+    metadataFolderId: string,
+    pnIdentifier: string
+  ): Promise<any | null> {
+    const OWNER_INDEX_FILE_NAME = 'owner-file-index.json';
+    const searchResponse = await fetch(
+      `https://www.googleapis.com/drive/v3/files?q=name='${OWNER_INDEX_FILE_NAME}' and '${metadataFolderId}' in parents and trashed=false&fields=files(id)`,
+      {
+        headers: {
+          'Authorization': `Bearer ${accessToken}`
+        }
+      }
+    );
+
+    if (!searchResponse.ok) {
+      return null;
+    }
+
+    const searchData = await searchResponse.json();
+    
+    if (!searchData.files || searchData.files.length === 0) {
+      return null;
+    }
+
+    // Download existing index
+    const fileId = searchData.files[0].id;
+    const getResponse = await fetch(
+      `https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`,
+      {
+        headers: {
+          'Authorization': `Bearer ${accessToken}`
+        }
+      }
+    );
+
+    if (!getResponse.ok) {
+      return null;
+    }
+
+    try {
+      return await getResponse.json();
+    } catch {
+      return {
+        identifier: pnIdentifier,
+        files: [],
+        updatedAt: new Date().toISOString()
+      };
+    }
+  }
+
+  /**
+   * Update owner file index (includes ALL files, regardless of visibility)
+   */
+  private async updateOwnerFileIndex(
+    accessToken: string,
+    pnIdentifier: string,
+    metadataFolderId: string,
+    fileMetadata: any
+  ): Promise<void> {
+    const OWNER_INDEX_FILE_NAME = 'owner-file-index.json';
+    
+    let index = await this.getOwnerFileIndex(accessToken, metadataFolderId, pnIdentifier);
+    
+    if (!index) {
+      index = {
+        identifier: pnIdentifier,
+        files: [],
+        updatedAt: new Date().toISOString()
+      };
+    }
+
+    // Convert companion metadata to index entry format
+    const indexEntry: any = {
+      fileId: fileMetadata.fileId,
+      googleDriveFileId: fileMetadata.googleDriveFileId,
+      fileName: fileMetadata.fileName,
+      originalName: fileMetadata.originalName,
+      mimeType: fileMetadata.mimeType,
+      size: fileMetadata.size,
+      visibility: fileMetadata.visibility,
+      uploadedAt: fileMetadata.uploadedAt,
+      owner: fileMetadata.owner,
+      tags: fileMetadata.tags || [],
+      description: fileMetadata.description,
+      thumbnail: fileMetadata.thumbnail,
+      publicToken: fileMetadata.publicToken,
+      engagement: fileMetadata.engagement,
+      inReplyTo: fileMetadata.inReplyTo,
+      repostOf: fileMetadata.repostOf,
+      isPartOf: fileMetadata.isPartOf,
+      indexingPermissions: fileMetadata.indexingPermissions
+    };
+
+    // Update or add file entry (all files go in owner index)
+    const fileIndex = index.files.findIndex(
+      (f: any) => f.googleDriveFileId === fileMetadata.googleDriveFileId
+    );
+
+    if (fileIndex >= 0) {
+      // Update existing entry
+      const existingEntry = index.files[fileIndex] as any;
+      
+      // Preserve publicToken if new one not provided
+      if (!indexEntry.publicToken && existingEntry.publicToken) {
+        indexEntry.publicToken = existingEntry.publicToken;
+      }
+      
+      // Merge engagement metrics
+      if (existingEntry.engagement) {
+        indexEntry.engagement = {
+          views: indexEntry.engagement?.views ?? existingEntry.engagement.views ?? 0,
+          likes: indexEntry.engagement?.likes ?? existingEntry.engagement.likes ?? 0,
+          comments: indexEntry.engagement?.comments ?? existingEntry.engagement.comments ?? 0,
+          shares: indexEntry.engagement?.shares ?? existingEntry.engagement.shares ?? 0,
+          lastUpdated: indexEntry.engagement?.lastUpdated || existingEntry.engagement.lastUpdated || fileMetadata.uploadedAt,
+          engagementHistory: [
+            ...(existingEntry.engagement.engagementHistory || []),
+            ...(indexEntry.engagement?.engagementHistory || [])
+          ]
+        };
+      }
+      
+      index.files[fileIndex] = indexEntry;
+    } else {
+      // Add new file to owner index
+      index.files.push(indexEntry);
+    }
+
+    index.updatedAt = new Date().toISOString();
+
+    // Save owner index file
+    const indexContent = JSON.stringify(index, null, 2);
+
+    // Check if index file exists
+    const searchResponse = await fetch(
+      `https://www.googleapis.com/drive/v3/files?q=name='${OWNER_INDEX_FILE_NAME}' and '${metadataFolderId}' in parents and trashed=false&fields=files(id)`,
+      {
+        headers: {
+          'Authorization': `Bearer ${accessToken}`
+        }
+      }
+    );
+
+    if (!searchResponse.ok) {
+      throw new Error('Failed to search for owner index file');
+    }
+
+    const searchData = await searchResponse.json();
+    
+    if (searchData.files && searchData.files.length > 0) {
+      // Update existing index
+      const fileId = searchData.files[0].id;
+
+      const updateResponse = await fetch(
+        `https://www.googleapis.com/upload/drive/v3/files/${fileId}?uploadType=media`,
+        {
+          method: 'PATCH',
+          headers: {
+            'Authorization': `Bearer ${accessToken}`,
+            'Content-Type': 'application/json; charset=UTF-8'
+          },
+          body: indexContent
+        }
+      );
+
+      if (!updateResponse.ok) {
+        const errorText = await updateResponse.text();
+        throw new Error(`Failed to update owner index file: ${errorText}`);
+      }
+    } else {
+      // Create new owner index file using multipart upload
+      const boundary = `----WebKitFormBoundary${Date.now()}`;
+      const metadataPart = JSON.stringify({
+        name: OWNER_INDEX_FILE_NAME,
+        parents: [metadataFolderId]
+      });
+      
+      const multipartBody = [
+        `--${boundary}`,
+        'Content-Disposition: form-data; name="metadata"',
+        'Content-Type: application/json',
+        '',
+        metadataPart,
+        `--${boundary}`,
+        'Content-Disposition: form-data; name="file"; filename="index.json"',
+        'Content-Type: application/json',
+        '',
+        indexContent,
+        `--${boundary}--`
+      ].join('\r\n');
+      
+      const createResponse = await fetch(
+        'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart',
+        {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${accessToken}`,
+            'Content-Type': `multipart/form-data; boundary=${boundary}`
+          },
+          body: multipartBody
+        }
+      );
+
+      if (!createResponse.ok) {
+        const errorText = await createResponse.text();
+        throw new Error(`Failed to create owner index file: ${errorText}`);
+      }
+    }
+  }
+
+  /**
+   * Get public file index
+   */
+  private async getPublicFileIndex(
+    accessToken: string,
+    metadataFolderId: string,
+    pnIdentifier: string
+  ): Promise<any | null> {
+    const PUBLIC_INDEX_FILE_NAME = 'public-file-index.json';
+    const searchResponse = await fetch(
+      `https://www.googleapis.com/drive/v3/files?q=name='${PUBLIC_INDEX_FILE_NAME}' and '${metadataFolderId}' in parents and trashed=false&fields=files(id)`,
+      {
+        headers: {
+          'Authorization': `Bearer ${accessToken}`
+        }
+      }
+    );
+
+    if (!searchResponse.ok) {
+      return null;
+    }
+
+    const searchData = await searchResponse.json();
+    
+    if (!searchData.files || searchData.files.length === 0) {
+      return null;
+    }
+
+    // Download existing index
+    const fileId = searchData.files[0].id;
+    const getResponse = await fetch(
+      `https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`,
+      {
+        headers: {
+          'Authorization': `Bearer ${accessToken}`
+        }
+      }
+    );
+
+    if (!getResponse.ok) {
+      return null;
+    }
+
+    try {
+      return await getResponse.json();
+    } catch {
+      return {
+        identifier: pnIdentifier,
+        files: [],
+        updatedAt: new Date().toISOString()
+      };
+    }
+  }
+
+  /**
+   * Convert companion metadata to public metadata (simplified semantic web format)
+   */
+  private companionToPublicMetadata(companion: any, creatorDid?: string): any {
+    const mimeCategory = companion.mimeType?.split('/')[0] || 'file';
+    const schemaType = 
+      mimeCategory === 'image' ? 'ImageObject' :
+      mimeCategory === 'video' ? 'VideoObject' :
+      mimeCategory === 'audio' ? 'AudioObject' :
+      'CreativeWork';
+    
+    const resourceUri = `https://parnoir.com/resource/${companion.fileId}`;
+    const didUri = creatorDid || companion.owner.did || `did:key:${companion.owner.identifier}`;
+    
+    const SEMANTIC_CONTEXTS = [
+      'https://schema.org/',
+      'http://purl.org/dc/terms/',
+      'http://www.w3.org/ns/prov#',
+      'http://xmlns.com/foaf/0.1/',
+      'https://www.w3.org/ns/activitystreams#',
+      'https://parnoir.com/ns/v1#'
+    ];
+    
+    return {
+      '@context': SEMANTIC_CONTEXTS,
+      '@type': schemaType,
+      '@id': resourceUri,
+      fileId: companion.fileId,
+      backend: 'google_drive',
+      backendFileId: companion.googleDriveFileId,
+      name: companion.originalName || companion.fileName,
+      description: companion.description || '',
+      keywords: companion.tags || [],
+      uploadDate: companion.uploadedAt,
+      datePublished: companion.uploadedAt,
+      fileType: mimeCategory,
+      creator: {
+        '@type': 'Person',
+        '@id': didUri,
+        identifier: {
+          '@type': 'PropertyValue',
+          name: 'DID',
+          value: didUri
+        }
+      },
+      author: {
+        did: didUri
+      },
+      engagement: {
+        views: companion.engagement?.views || 0,
+        likes: companion.engagement?.likes || 0,
+        comments: companion.engagement?.comments || 0,
+        shares: companion.engagement?.shares || 0,
+        lastUpdated: companion.engagement?.lastUpdated || companion.uploadedAt,
+        engagementHistory: companion.engagement?.engagementHistory || []
+      },
+      publicToken: companion.publicToken,
+      isPublic: companion.visibility === 'public',
+      indexingPermissions: companion.indexingPermissions
+    };
+  }
+
+  /**
+   * Update public file index
+   */
+  private async updatePublicFileIndex(
+    accessToken: string,
+    pnIdentifier: string,
+    metadataFolderId: string,
+    pnFolderId: string,
+    fileMetadata: any
+  ): Promise<void> {
+    const PUBLIC_INDEX_FILE_NAME = 'public-file-index.json';
+    
+    let index = await this.getPublicFileIndex(accessToken, metadataFolderId, pnIdentifier);
+    
+    if (!index) {
+      index = {
+        identifier: pnIdentifier,
+        files: [],
+        updatedAt: new Date().toISOString()
+      };
+    }
+
+    // Update or add file entry
+    const fileIndex = index.files.findIndex(
+      (f: any) => f.googleDriveFileId === fileMetadata.googleDriveFileId
+    );
+
+    if (fileMetadata.visibility === 'public') {
+      // Convert companion metadata to public metadata (semantic web format)
+      const publicMetadata = this.companionToPublicMetadata(fileMetadata, fileMetadata.owner.did);
+      
+      // Create index entry with full semantic metadata
+      const indexEntry: any = {
+        ...publicMetadata,
+        // Keep legacy fields for compatibility
+        fileId: fileMetadata.fileId,
+        googleDriveFileId: fileMetadata.googleDriveFileId,
+        fileName: fileMetadata.fileName,
+        originalName: fileMetadata.originalName,
+        mimeType: fileMetadata.mimeType,
+        size: fileMetadata.size,
+        visibility: fileMetadata.visibility,
+        uploadedAt: fileMetadata.uploadedAt,
+        owner: fileMetadata.owner,
+        tags: fileMetadata.tags || [],
+        description: fileMetadata.description,
+        thumbnail: fileMetadata.thumbnail,
+        publicToken: fileMetadata.publicToken,
+        indexingPermissions: fileMetadata.indexingPermissions
+      };
+
+      const isNewPublicFile = fileIndex < 0;
+      
+      if (fileIndex >= 0) {
+        // Update existing entry, preserve fields if new ones not provided
+        const existingEntry = index.files[fileIndex] as any;
+        
+        // Preserve publicToken if new one not provided
+        if (!indexEntry.publicToken && existingEntry.publicToken) {
+          indexEntry.publicToken = existingEntry.publicToken;
+        }
+        
+        // Merge engagement metrics
+        if (existingEntry.engagement) {
+          indexEntry.engagement = {
+            views: indexEntry.engagement?.views ?? existingEntry.engagement.views ?? 0,
+            likes: indexEntry.engagement?.likes ?? existingEntry.engagement.likes ?? 0,
+            comments: indexEntry.engagement?.comments ?? existingEntry.engagement.comments ?? 0,
+            shares: indexEntry.engagement?.shares ?? existingEntry.engagement.shares ?? 0,
+            lastUpdated: indexEntry.engagement?.lastUpdated || existingEntry.engagement.lastUpdated || fileMetadata.uploadedAt,
+            engagementHistory: [
+              ...(existingEntry.engagement.engagementHistory || []),
+              ...(indexEntry.engagement?.engagementHistory || [])
+            ]
+          };
+        }
+        
+        index.files[fileIndex] = indexEntry;
+      } else {
+        // Only add to index if public
+        index.files.push(indexEntry);
+      }
+
+      // Share folder with service account when file becomes public (first time only)
+      if (isNewPublicFile) {
+        try {
+          const serviceAccountEmail = process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL;
+          if (serviceAccountEmail) {
+            // Check if permission already exists
+            const permissionsResponse = await fetch(
+              `https://www.googleapis.com/drive/v3/files/${pnFolderId}/permissions?fields=permissions(emailAddress)`,
+              {
+                headers: {
+                  'Authorization': `Bearer ${accessToken}`
+                }
+              }
+            );
+
+            let hasPermission = false;
+            if (permissionsResponse.ok) {
+              const permissionsData = await permissionsResponse.json();
+              hasPermission = permissionsData.permissions?.some(
+                (p: any) => p.emailAddress === serviceAccountEmail
+              );
+            }
+
+            if (!hasPermission) {
+              // Share folder with service account
+              await fetch(
+                `https://www.googleapis.com/drive/v3/files/${pnFolderId}/permissions`,
+                {
+                  method: 'POST',
+                  headers: {
+                    'Authorization': `Bearer ${accessToken}`,
+                    'Content-Type': 'application/json'
+                  },
+                  body: JSON.stringify({
+                    role: 'reader',
+                    type: 'user',
+                    emailAddress: serviceAccountEmail
+                  })
+                }
+              );
+            }
+          }
+        } catch (shareError: any) {
+          // Not critical, just log
+          console.warn(`[Upload] Failed to share folder with service account:`, shareError?.message || shareError);
+        }
+      }
+    } else {
+      // Remove from index if not public (cleanup)
+      if (fileIndex >= 0) {
+        index.files.splice(fileIndex, 1);
+      }
+    }
+
+    index.updatedAt = new Date().toISOString();
+
+    // Save index file
+    const indexContent = JSON.stringify(index, null, 2);
+
+    // Check if index file exists
+    const searchResponse = await fetch(
+      `https://www.googleapis.com/drive/v3/files?q=name='${PUBLIC_INDEX_FILE_NAME}' and '${metadataFolderId}' in parents and trashed=false&fields=files(id)`,
+      {
+        headers: {
+          'Authorization': `Bearer ${accessToken}`
+        }
+      }
+    );
+
+    if (!searchResponse.ok) {
+      throw new Error('Failed to search for index file');
+    }
+
+    const searchData = await searchResponse.json();
+    
+    if (searchData.files && searchData.files.length > 0) {
+      // Update existing index
+      const fileId = searchData.files[0].id;
+
+      const updateResponse = await fetch(
+        `https://www.googleapis.com/upload/drive/v3/files/${fileId}?uploadType=media`,
+        {
+          method: 'PATCH',
+          headers: {
+            'Authorization': `Bearer ${accessToken}`,
+            'Content-Type': 'application/json; charset=UTF-8'
+          },
+          body: indexContent
+        }
+      );
+
+      if (!updateResponse.ok) {
+        const errorText = await updateResponse.text();
+        throw new Error(`Failed to update public index file: ${errorText}`);
+      }
+
+      // Make index file publicly readable
+      try {
+        await fetch(
+          `https://www.googleapis.com/drive/v3/files/${fileId}/permissions`,
+          {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${accessToken}`,
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+              role: 'reader',
+              type: 'anyone'
+            })
+          }
+        );
+      } catch (permError: any) {
+        // Permission might already exist, ignore
+        console.warn(`[Upload] Failed to set public permissions:`, permError?.message || permError);
+      }
+    } else {
+      // Create new index using multipart upload
+      const boundary = `----WebKitFormBoundary${Date.now()}`;
+      const metadataPart = JSON.stringify({
+        name: PUBLIC_INDEX_FILE_NAME,
+        parents: [metadataFolderId]
+      });
+      
+      const multipartBody = [
+        `--${boundary}`,
+        'Content-Disposition: form-data; name="metadata"',
+        'Content-Type: application/json',
+        '',
+        metadataPart,
+        `--${boundary}`,
+        'Content-Disposition: form-data; name="file"; filename="index.json"',
+        'Content-Type: application/json',
+        '',
+        indexContent,
+        `--${boundary}--`
+      ].join('\r\n');
+      
+      const createResponse = await fetch(
+        'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart',
+        {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${accessToken}`,
+            'Content-Type': `multipart/form-data; boundary=${boundary}`
+          },
+          body: multipartBody
+        }
+      );
+
+      if (!createResponse.ok) {
+        const errorText = await createResponse.text();
+        throw new Error(`Failed to create index file: ${errorText}`);
+      }
+
+      const fileData = await createResponse.json();
+      
+      // Make index file publicly readable
+      try {
+        await fetch(
+          `https://www.googleapis.com/drive/v3/files/${fileData.id}/permissions`,
+          {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${accessToken}`,
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+              role: 'reader',
+              type: 'anyone'
+            })
+          }
+        );
+      } catch (permError: any) {
+        console.warn(`[Upload] Failed to set public permissions:`, permError?.message || permError);
+      }
+    }
+  }
+
   private setupRoutes(): void {
     // Health check endpoint
     this.app.get('/health', (req, res) => {
@@ -2591,6 +3183,31 @@ class ProductionServer {
                       body: multipartBody
                     });
                   }
+                }
+                
+                // Always update owner index (contains ALL files for the owner)
+                try {
+                  await this.updateOwnerFileIndex(
+                    accessToken,
+                    pnIdentifier,
+                    metadataFolderId,
+                    companionMetadata
+                  );
+                } catch (ownerIndexError: any) {
+                  console.warn(`[Upload] Failed to update owner index (non-critical):`, ownerIndexError?.message || ownerIndexError);
+                }
+                
+                // Always call updatePublicFileIndex - it will add if public, remove if not
+                try {
+                  await this.updatePublicFileIndex(
+                    accessToken,
+                    pnIdentifier,
+                    metadataFolderId,
+                    pnFolderId,
+                    companionMetadata
+                  );
+                } catch (indexError: any) {
+                  console.warn(`[Upload] Failed to update public file index:`, indexError?.message || indexError);
                 }
               }
             }
