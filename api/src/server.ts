@@ -2026,36 +2026,62 @@ class ProductionServer {
         
         // If no query provided and we have a pN identifier, try to find files in the pN folder
         let finalQuery = query;
-        if (!finalQuery && userIdentifier) {
+        if (!finalQuery && userIdentifier && accountId) {
           // Try to find the pN folder first, then query files in it
           // Folder name format: "par Noir - pn-{identifier}" or "par Noir - {identifier}"
           const pnFolderName = `par Noir - pn-${userIdentifier}`;
           try {
-            // Search for the folder
-            const folderSearchQuery = `name='${pnFolderName}' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
-            const folderFiles = await googleDriveProxyService.listFiles(userIdentifier, folderSearchQuery, 10, accountId);
-            
-            if (folderFiles.length > 0) {
-              const folderId = folderFiles[0].id;
-              // Query files in this folder
-              finalQuery = `'${folderId}' in parents and trashed=false`;
-              console.log(`[DriveFiles] Found pN folder "${pnFolderName}" (ID: ${folderId}), querying files in folder`);
-            } else {
-              // Fallback: try without "pn-" prefix
-              const altFolderName = `par Noir - ${userIdentifier}`;
-              const altFolderSearchQuery = `name='${altFolderName}' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
-              const altFolderFiles = await googleDriveProxyService.listFiles(userIdentifier, altFolderSearchQuery, 10, accountId);
+            // Search for the folder - use a direct Google Drive API call to avoid credential lookup issues
+            const accessToken = await googleDriveProxyService.getAccessToken(userIdentifier, accountId);
+            if (accessToken) {
+              // Search for the folder using Google Drive API directly
+              const folderSearchQuery = `name='${pnFolderName.replace(/'/g, "\\'")}' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
+              const folderSearchUrl = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(folderSearchQuery)}&fields=files(id,name)&pageSize=10`;
               
-              if (altFolderFiles.length > 0) {
-                const folderId = altFolderFiles[0].id;
-                finalQuery = `'${folderId}' in parents and trashed=false`;
-                console.log(`[DriveFiles] Found pN folder "${altFolderName}" (ID: ${folderId}), querying files in folder`);
-              } else {
-                console.log(`[DriveFiles] pN folder not found, listing all files (will be filtered client-side)`);
+              const folderResponse = await fetch(folderSearchUrl, {
+                headers: {
+                  'Authorization': `Bearer ${accessToken}`
+                }
+              });
+              
+              if (folderResponse.ok) {
+                const folderData = await folderResponse.json();
+                const folderFiles = folderData.files || [];
+                
+                if (folderFiles.length > 0) {
+                  const folderId = folderFiles[0].id;
+                  // Query files in this folder
+                  finalQuery = `'${folderId}' in parents and trashed=false`;
+                  console.log(`[DriveFiles] Found pN folder "${pnFolderName}" (ID: ${folderId}), querying files in folder`);
+                } else {
+                  // Fallback: try without "pn-" prefix
+                  const altFolderName = `par Noir - ${userIdentifier}`;
+                  const altFolderSearchQuery = `name='${altFolderName.replace(/'/g, "\\'")}' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
+                  const altFolderSearchUrl = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(altFolderSearchQuery)}&fields=files(id,name)&pageSize=10`;
+                  
+                  const altFolderResponse = await fetch(altFolderSearchUrl, {
+                    headers: {
+                      'Authorization': `Bearer ${accessToken}`
+                    }
+                  });
+                  
+                  if (altFolderResponse.ok) {
+                    const altFolderData = await altFolderResponse.json();
+                    const altFolderFiles = altFolderData.files || [];
+                    
+                    if (altFolderFiles.length > 0) {
+                      const folderId = altFolderFiles[0].id;
+                      finalQuery = `'${folderId}' in parents and trashed=false`;
+                      console.log(`[DriveFiles] Found pN folder "${altFolderName}" (ID: ${folderId}), querying files in folder`);
+                    } else {
+                      console.log(`[DriveFiles] pN folder not found, listing all files (will be filtered client-side)`);
+                    }
+                  }
+                }
               }
             }
-          } catch (folderError) {
-            console.warn(`[DriveFiles] Error searching for pN folder:`, folderError);
+          } catch (folderError: any) {
+            console.warn(`[DriveFiles] Error searching for pN folder:`, folderError?.message || folderError);
             // Continue without folder filter - client will filter
           }
         }
