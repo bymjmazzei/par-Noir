@@ -783,7 +783,20 @@ function App() {
                      (file.name || file.title || '').match(/\.(mp4|mov|avi|webm|mkv|flv|wmv)$/i);
       
       // Skip if not an image/video, no publicToken, or already has thumbnail/generating
-      if ((!isImage && !isVideo) || !file.publicToken || thumbnails.has(file.fileId) || generatingThumbnails.has(file.fileId)) {
+      // Validate publicToken exists and is not empty
+      const hasValidToken = file.publicToken && 
+                            typeof file.publicToken === 'string' && 
+                            file.publicToken.trim().length > 0;
+      
+      if ((!isImage && !isVideo) || !hasValidToken || thumbnails.has(file.fileId) || generatingThumbnails.has(file.fileId)) {
+        if (hasValidToken === false && (isImage || isVideo)) {
+          console.warn(`⚠️ [Feed] Skipping ${file.fileId} - missing or invalid publicToken:`, {
+            fileId: file.fileId,
+            hasPublicToken: !!file.publicToken,
+            publicTokenType: typeof file.publicToken,
+            publicTokenLength: file.publicToken ? String(file.publicToken).length : 0
+          });
+        }
         continue;
       }
 
@@ -795,8 +808,13 @@ function App() {
         let token: ShareToken;
         try {
           token = typeof file.publicToken === 'string' ? JSON.parse(file.publicToken) : file.publicToken;
+          
+          // Validate token structure
+          if (!token || !token.shareKey || !token.shareEncrypted) {
+            throw new Error('Invalid token structure - missing shareKey or shareEncrypted');
+          }
         } catch (e) {
-          console.warn(`Failed to parse token for ${file.fileId}:`, e);
+          console.error(`❌ [Feed] Failed to parse/validate token for ${file.fileId}:`, e);
           generatingThumbnails.delete(file.fileId);
           setGeneratingThumbnails(new Set(generatingThumbnails));
           continue;

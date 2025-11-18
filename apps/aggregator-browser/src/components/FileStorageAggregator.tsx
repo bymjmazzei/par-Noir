@@ -1200,7 +1200,11 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
                   }
                 );
                 publicToken = JSON.stringify(shareToken);
-                console.log('✅ [ShareSettings] Generated share token for public file');
+                console.log('✅ [ShareSettings] Generated share token for public file', {
+                  hasShareKey: !!shareToken.shareKey,
+                  hasShareEncrypted: !!shareToken.shareEncrypted,
+                  tokenLength: publicToken.length
+                });
               } else {
                 console.warn('⚠️ [ShareSettings] Missing session data for token generation');
               }
