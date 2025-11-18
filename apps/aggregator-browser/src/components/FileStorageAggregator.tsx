@@ -1306,6 +1306,16 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
 
         // Reload metadata
         await loadFileMetadata(sharingFile.id);
+        
+        // If making file public, wait a moment for API to update owner/public indexes
+        // Then reload files to reflect the change in the UI
+        if (makePublic && sharingAccountId) {
+          console.log('🔄 [ShareSettings] Waiting for API to update indexes...');
+          // Give API time to update owner index and public index
+          await new Promise(resolve => setTimeout(resolve, 2000));
+          console.log('🔄 [ShareSettings] Reloading files after making file public...');
+          await loadFilesForAccount(sharingAccountId);
+        }
       }
 
       // Update index visibility if public and permissions changed
@@ -1331,7 +1341,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
       }
 
       // Update local metadata map
-      if (nextPermissions) {
+      if (makePublic || nextPermissions) {
         setFileMetadataMap(prev => {
           const next = new Map(prev);
           const current = next.get(sharingFile.id);
@@ -1339,8 +1349,15 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
             next.set(sharingFile.id, {
               ...current,
               isPublic: makePublic,
-              indexingPermissions: nextPermissions
+              ...(nextPermissions && { indexingPermissions: nextPermissions })
             });
+          } else {
+            // If metadata doesn't exist locally, create it
+            next.set(sharingFile.id, {
+              fileId: sharingFile.id,
+              isPublic: makePublic,
+              ...(nextPermissions && { indexingPermissions: nextPermissions })
+            } as any);
           }
           return next;
         });
