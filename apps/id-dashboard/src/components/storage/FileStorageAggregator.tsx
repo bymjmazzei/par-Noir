@@ -3465,11 +3465,98 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
         return;
       }
       
+      // Find the account to get its email for metadata removal
+      const accountToRemove = driveAccounts.find(acc => acc.backendId === backendId);
+      const accountEmail = accountToRemove?.email || userEmails.get(backendId) || null;
+      
       const backend = aggregatorService.getBackend(backendId);
       if (backend) {
         // Disconnect the backend (clears tokens, etc.)
         await backend.disconnect();
         console.log(`✅ [handleDisconnect] Backend ${backendId} disconnected`);
+      }
+      
+      // Remove account from encrypted metadata storage
+      // This prevents it from being restored after lock/unlock
+      if (authenticatedUser?.id && accountEmail) {
+        try {
+          const { SecureMetadataStorage } = await import('../../utils/secureMetadataStorage');
+          const { SecureMetadataCrypto } = await import('../../utils/secureMetadata');
+          
+          const effectivePnName =
+            authenticatedUser?.pnName ||
+            resolvedAuth?.pnName ||
+            (authenticatedUser as any)?.username ||
+            (authenticatedUser as any)?.name ||
+            null;
+          
+          const passcode = sessionStorage.getItem('pn_session_passcode');
+          
+          if (effectivePnName && passcode) {
+            // Sync from cloud first to get latest metadata
+            try {
+              await SecureMetadataStorage.syncMetadataFromCloud(authenticatedUser.id);
+            } catch (cloudSyncError) {
+              console.warn('⚠️ [handleDisconnect] Unable to sync metadata from cloud (non-blocking):', cloudSyncError);
+            }
+            
+            let metadata = await SecureMetadataStorage.getMetadata(authenticatedUser.id);
+            
+            if (!metadata) {
+              try {
+                metadata = await SecureMetadataStorage.getMetadataFromCloud(authenticatedUser.id);
+              } catch (fallbackError) {
+                console.warn('⚠️ [handleDisconnect] Fallback cloud fetch failed (non-blocking):', fallbackError);
+              }
+            }
+            
+            if (metadata) {
+              // Decrypt metadata
+              const decrypted = await SecureMetadataCrypto.decryptMetadata(metadata, effectivePnName, passcode);
+              
+              // Remove account from storageCredentials
+              if (decrypted.storageCredentials) {
+                const updatedCredentials = { ...decrypted.storageCredentials };
+                
+                // Handle googleDriveAccounts array
+                if (Array.isArray(updatedCredentials.googleDriveAccounts)) {
+                  updatedCredentials.googleDriveAccounts = updatedCredentials.googleDriveAccounts.filter(
+                    (creds: any) => creds?.email?.toLowerCase() !== accountEmail.toLowerCase()
+                  );
+                  console.log(`✅ [handleDisconnect] Removed account from googleDriveAccounts array`);
+                }
+                
+                // Handle single googleDrive object (legacy format)
+                if (updatedCredentials.googleDrive && 
+                    typeof updatedCredentials.googleDrive === 'object' &&
+                    !Array.isArray(updatedCredentials.googleDrive) &&
+                    updatedCredentials.googleDrive.email?.toLowerCase() === accountEmail.toLowerCase()) {
+                  // Remove the single googleDrive object
+                  delete updatedCredentials.googleDrive;
+                  console.log(`✅ [handleDisconnect] Removed account from googleDrive object`);
+                }
+                
+                // Update encrypted metadata with removed account
+                await SecureMetadataStorage.updateMetadataField(
+                  authenticatedUser.id,
+                  effectivePnName,
+                  passcode,
+                  'storageCredentials',
+                  updatedCredentials
+                );
+                
+                console.log(`✅ [handleDisconnect] Removed account ${accountEmail} from encrypted metadata`);
+              }
+            }
+          } else {
+            console.warn('⚠️ [handleDisconnect] Missing pnName or passcode - cannot update encrypted metadata');
+          }
+        } catch (metadataError) {
+          console.error('❌ [handleDisconnect] Failed to remove account from encrypted metadata:', metadataError);
+          // Continue with removal from state even if metadata update fails
+        }
+      } else {
+        console.warn('⚠️ [handleDisconnect] Missing authenticatedUser.id or accountEmail - skipping metadata removal');
       }
       
       // Remove account from state and persist removal
