@@ -123,8 +123,11 @@ export class GoogleDriveSyncService {
 
       // Step 2: For each pN folder, look for _metadata folder and public-file-index.json
       const allMetadata: { metadata: PublicMetadata; pnIdentifier?: string }[] = [];
+      let hasErrors = false;
+      let successfullyScannedFolders = 0;
 
       for (const pnFolder of pnFolders) {
+        let folderScannedSuccessfully = false;
         try {
           // Extract pnIdentifier from folder name (e.g., "par Noir - pn-83c1db813607" -> "83c1db813607")
           const pnIdentifierMatch = pnFolder.name.match(/pn-([a-zA-Z0-9]+)/);
@@ -143,138 +146,161 @@ export class GoogleDriveSyncService {
             }
           );
 
-          if (metadataFolderResponse.ok) {
-            const metadataFolderData = await metadataFolderResponse.json() as { files?: Array<{ id: string; name: string }> };
-            const metadataFolders = metadataFolderData.files || [];
+          if (!metadataFolderResponse.ok) {
+            console.warn(`⚠️ Failed to find _metadata folder for pN ${pnFolder.name}: ${metadataFolderResponse.status}`);
+            hasErrors = true;
+            continue;
+          }
 
-            if (metadataFolders.length > 0) {
-              const metadataFolderId = metadataFolders[0].id;
-              
-              // Step 3: Look for public-file-index.json inside the _metadata folder
-              const indexFileQuery = `name='public-file-index.json' and '${metadataFolderId}' in parents and trashed=false`;
-              
-              const indexFileResponse = await fetch(
-                `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(indexFileQuery)}&fields=files(id,name)`,
-                {
-                  headers: {
-                    'Authorization': `Bearer ${accessToken}`,
-                    'Content-Type': 'application/json'
-                  }
-                }
-              );
+          const metadataFolderData = await metadataFolderResponse.json() as { files?: Array<{ id: string; name: string }> };
+          const metadataFolders = metadataFolderData.files || [];
 
-              if (indexFileResponse.ok) {
-                const indexFileData = await indexFileResponse.json() as { files?: Array<{ id: string; name: string }> };
-                const indexFiles = indexFileData.files || [];
+          if (metadataFolders.length === 0) {
+            // No _metadata folder - this is normal, just skip
+            continue;
+          }
 
-                if (indexFiles.length > 0) {
-                  const indexFileId = indexFiles[0].id;
-                  
-                  // Step 4: Download and parse the metadata index
-                  const downloadResponse = await fetch(
-                    `https://www.googleapis.com/drive/v3/files/${indexFileId}?alt=media`,
-                    {
-                      headers: {
-                        'Authorization': `Bearer ${accessToken}`
-                      }
-                    }
-                  );
-
-                  if (downloadResponse.ok) {
-                    const indexText = await downloadResponse.text();
-                    try {
-                      const indexData = JSON.parse(indexText);
-
-                      // public-file-index.json structure: { identifier: string, files: [...], updatedAt: string }
-                      if (indexData && Array.isArray(indexData.files)) {
-                        // Filter for public files only and transform to PublicMetadata format
-                        // New metadata structure includes @context, @type, @id, engagement, relationships
-                        const publicFiles = indexData.files
-                          .filter((file: any) => file.visibility === 'public')
-                          .map((file: any) => {
-                            // If file already has semantic web structure (@context, @type, @id), use it
-                            // Otherwise, construct it from legacy fields
-                            const hasSemanticStructure = file['@context'] && file['@type'] && file['@id'];
-                            
-                            if (hasSemanticStructure) {
-                              // Use existing semantic metadata structure
-                              return {
-                                metadata: file as PublicMetadata,
-                                pnIdentifier: pnIdentifier || indexData.identifier
-                              };
-                            } else {
-                              // Legacy format - construct semantic metadata
-                              const creatorDid = file.owner?.did || file.owner?.identifier;
-                              const resourceUri = `https://parnoir.com/resource/${file.fileId}`;
-                              const schemaType = this.getFileTypeFromMime(file.mimeType) === 'image' ? 'ImageObject' :
-                                                this.getFileTypeFromMime(file.mimeType) === 'video' ? 'VideoObject' :
-                                                this.getFileTypeFromMime(file.mimeType) === 'audio' ? 'AudioObject' :
-                                                'CreativeWork';
-                              
-                              return {
-                                metadata: {
-                                  '@context': ['https://schema.org/', 'https://parnoir.com/ns/v1#'],
-                                  '@type': schemaType,
-                                  '@id': resourceUri,
-                                  fileId: file.fileId,
-                                  backend: 'google_drive',
-                                  backendFileId: file.googleDriveFileId || file.fileId,
-                                  name: file.originalName || file.fileName,
-                                  title: file.originalName || file.fileName, // Legacy support
-                                  description: file.description,
-                                  keywords: file.tags || [],
-                                  tags: file.tags || [], // Legacy support
-                                  uploadDate: file.uploadedAt,
-                                  fileType: this.getFileTypeFromMime(file.mimeType),
-                                  creator: file.owner?.did ? {
-                                    '@type': 'Person',
-                                    '@id': file.owner.did,
-                                    identifier: {
-                                      '@type': 'PropertyValue',
-                                      name: 'DID',
-                                      value: file.owner.did
-                                    }
-                                  } : undefined,
-                                  author: file.owner ? { did: creatorDid } : undefined, // Legacy support
-                                  isPublic: true,
-                                  publicToken: file.publicToken,
-                                  thumbnail: file.thumbnail,
-                                  // Include engagement metrics if present
-                                  engagement: file.engagement || {
-                                    views: 0,
-                                    likes: 0,
-                                    comments: 0,
-                                    shares: 0,
-                                    lastUpdated: file.uploadedAt
-                                  },
-                                  // Include relationships if present
-                                  inReplyTo: file.inReplyTo,
-                                  repostOf: file.repostOf,
-                                  isPartOf: file.isPartOf
-                                } as PublicMetadata,
-                                pnIdentifier: pnIdentifier || indexData.identifier
-                              };
-                            }
-                          });
-
-                        allMetadata.push(...publicFiles);
-                        console.log(`✅ Loaded ${publicFiles.length} public file(s) from pN ${pnFolder.name}`);
-                      } else {
-                        console.warn(`⚠️ Invalid index format in pN ${pnFolder.name}: expected files array`);
-                      }
-                    } catch (parseError) {
-                      console.error(`❌ Failed to parse index from pN ${pnFolder.name}:`, parseError);
-                    }
-                  } else {
-                    console.error(`❌ Failed to download index from pN ${pnFolder.name}: ${downloadResponse.status}`);
-                  }
-                }
+          const metadataFolderId = metadataFolders[0].id;
+          
+          // Step 3: Look for public-file-index.json inside the _metadata folder
+          const indexFileQuery = `name='public-file-index.json' and '${metadataFolderId}' in parents and trashed=false`;
+          
+          const indexFileResponse = await fetch(
+            `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(indexFileQuery)}&fields=files(id,name)`,
+            {
+              headers: {
+                'Authorization': `Bearer ${accessToken}`,
+                'Content-Type': 'application/json'
               }
             }
+          );
+
+          if (!indexFileResponse.ok) {
+            console.warn(`⚠️ Failed to find public-file-index.json for pN ${pnFolder.name}: ${indexFileResponse.status}`);
+            hasErrors = true;
+            continue;
+          }
+
+          const indexFileData = await indexFileResponse.json() as { files?: Array<{ id: string; name: string }> };
+          const indexFiles = indexFileData.files || [];
+
+          if (indexFiles.length === 0) {
+            // No public-file-index.json - this is normal if no public files, just skip
+            continue;
+          }
+
+          const indexFileId = indexFiles[0].id;
+          
+          // Step 4: Download and parse the metadata index
+          const downloadResponse = await fetch(
+            `https://www.googleapis.com/drive/v3/files/${indexFileId}?alt=media`,
+            {
+              headers: {
+                'Authorization': `Bearer ${accessToken}`
+              }
+            }
+          );
+
+          if (!downloadResponse.ok) {
+            console.error(`❌ Failed to download index from pN ${pnFolder.name}: ${downloadResponse.status}`);
+            hasErrors = true;
+            continue;
+          }
+
+          const indexText = await downloadResponse.text();
+          try {
+            const indexData = JSON.parse(indexText);
+
+            // public-file-index.json structure: { identifier: string, files: [...], updatedAt: string }
+            if (indexData && Array.isArray(indexData.files)) {
+              // Filter for public files only and transform to PublicMetadata format
+              // New metadata structure includes @context, @type, @id, engagement, relationships
+              const publicFiles = indexData.files
+                .filter((file: any) => file.visibility === 'public')
+                .map((file: any) => {
+                  // If file already has semantic web structure (@context, @type, @id), use it
+                  // Otherwise, construct it from legacy fields
+                  const hasSemanticStructure = file['@context'] && file['@type'] && file['@id'];
+                  
+                  if (hasSemanticStructure) {
+                    // Use existing semantic metadata structure
+                    return {
+                      metadata: file as PublicMetadata,
+                      pnIdentifier: pnIdentifier || indexData.identifier
+                    };
+                  } else {
+                    // Legacy format - construct semantic metadata
+                    const creatorDid = file.owner?.did || file.owner?.identifier;
+                    const resourceUri = `https://parnoir.com/resource/${file.fileId}`;
+                    const schemaType = this.getFileTypeFromMime(file.mimeType) === 'image' ? 'ImageObject' :
+                                      this.getFileTypeFromMime(file.mimeType) === 'video' ? 'VideoObject' :
+                                      this.getFileTypeFromMime(file.mimeType) === 'audio' ? 'AudioObject' :
+                                      'CreativeWork';
+                    
+                    return {
+                      metadata: {
+                        '@context': ['https://schema.org/', 'https://parnoir.com/ns/v1#'],
+                        '@type': schemaType,
+                        '@id': resourceUri,
+                        fileId: file.fileId,
+                        backend: 'google_drive',
+                        backendFileId: file.googleDriveFileId || file.fileId,
+                        name: file.originalName || file.fileName,
+                        title: file.originalName || file.fileName, // Legacy support
+                        description: file.description,
+                        keywords: file.tags || [],
+                        tags: file.tags || [], // Legacy support
+                        uploadDate: file.uploadedAt,
+                        fileType: this.getFileTypeFromMime(file.mimeType),
+                        creator: file.owner?.did ? {
+                          '@type': 'Person',
+                          '@id': file.owner.did,
+                          identifier: {
+                            '@type': 'PropertyValue',
+                            name: 'DID',
+                            value: file.owner.did
+                          }
+                        } : undefined,
+                        author: file.owner ? { did: creatorDid } : undefined, // Legacy support
+                        isPublic: true,
+                        publicToken: file.publicToken,
+                        thumbnail: file.thumbnail,
+                        // Include engagement metrics if present
+                        engagement: file.engagement || {
+                          views: 0,
+                          likes: 0,
+                          comments: 0,
+                          shares: 0,
+                          lastUpdated: file.uploadedAt
+                        },
+                        // Include relationships if present
+                        inReplyTo: file.inReplyTo,
+                        repostOf: file.repostOf,
+                        isPartOf: file.isPartOf
+                      } as PublicMetadata,
+                      pnIdentifier: pnIdentifier || indexData.identifier
+                    };
+                  }
+                });
+
+              allMetadata.push(...publicFiles);
+              console.log(`✅ Loaded ${publicFiles.length} public file(s) from pN ${pnFolder.name}`);
+              folderScannedSuccessfully = true;
+            } else {
+              console.warn(`⚠️ Invalid index format in pN ${pnFolder.name}: expected files array`);
+              hasErrors = true;
+            }
+          } catch (parseError) {
+            console.error(`❌ Failed to parse index from pN ${pnFolder.name}:`, parseError);
+            hasErrors = true;
           }
         } catch (pnError) {
           console.warn(`⚠️ Failed to scan pN folder ${pnFolder.name}:`, pnError);
-          // Continue scanning other folders
+          hasErrors = true;
+        }
+        
+        if (folderScannedSuccessfully) {
+          successfullyScannedFolders++;
         }
       }
 
@@ -291,21 +317,29 @@ export class GoogleDriveSyncService {
       }
 
       // Step 6: Remove orphaned files from database (files that no longer exist in Google Drive)
-      // This handles deletions - if a folder/file was deleted from Google Drive, remove it from the database
-      // IMPORTANT: Run cleanup even if no files/folders were found (allMetadata is empty)
-      // This ensures deleted folders/files are removed from the database
-      try {
-        const currentFileIds = new Set(allMetadata.map(entry => entry.metadata.fileId));
-        console.log(`🔍 Checking for orphaned files. Found ${currentFileIds.size} valid file(s) in Google Drive, ${pnFolders.length} pN folder(s) scanned`);
-        const removedCount = await metadataService.removeOrphanedFiles(currentFileIds);
-        if (removedCount > 0) {
-          console.log(`🗑️ Removed ${removedCount} orphaned file(s) from database (deleted from Google Drive)`);
-        } else {
-          console.log('✅ No orphaned files to clean up - database is in sync with Google Drive');
+      // CRITICAL: Only run cleanup if we successfully scanned ALL folders without errors
+      // If any folder had errors reading its public-file-index.json, we can't trust that files are orphaned
+      // Files are properly managed through the API (added on public, removed on private/delete/disconnect)
+      // Cleanup should only handle cases where folders/files were manually deleted from Google Drive
+      // and we successfully confirmed they're missing
+      if (!hasErrors && successfullyScannedFolders > 0) {
+        try {
+          const currentFileIds = new Set(allMetadata.map(entry => entry.metadata.fileId));
+          console.log(`🔍 Checking for orphaned files. Found ${currentFileIds.size} valid file(s) in Google Drive, successfully scanned ${successfullyScannedFolders}/${pnFolders.length} pN folder(s)`);
+          const removedCount = await metadataService.removeOrphanedFiles(currentFileIds);
+          if (removedCount > 0) {
+            console.log(`🗑️ Removed ${removedCount} orphaned file(s) from database (deleted from Google Drive)`);
+          } else {
+            console.log('✅ No orphaned files to clean up - database is in sync with Google Drive');
+          }
+        } catch (cleanupError) {
+          console.error('❌ Failed to cleanup orphaned files:', cleanupError);
+          // Don't fail the sync if cleanup fails, but log it as an error
         }
-      } catch (cleanupError) {
-        console.error('❌ Failed to cleanup orphaned files:', cleanupError);
-        // Don't fail the sync if cleanup fails, but log it as an error
+      } else if (hasErrors) {
+        console.warn('⚠️ Skipping cleanup - sync had errors. Files may still exist in Google Drive but failed to read. Cleanup will run on next successful sync.');
+      } else {
+        console.log('ℹ️ No folders with public files found - skipping cleanup');
       }
 
     } catch (error) {
