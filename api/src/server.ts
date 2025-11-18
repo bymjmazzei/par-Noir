@@ -1222,34 +1222,6 @@ class ProductionServer {
       }
     });
 
-    // GET /api/aggregator/metadata-index/:fileId - Get metadata for a specific file
-    this.app.get('/api/aggregator/metadata-index/:fileId', async (req, res) => {
-      try {
-        const { AggregatorMetadataServiceDB } = await import('./server/modules/aggregatorMetadataServiceDB');
-        const service = AggregatorMetadataServiceDB.getInstance();
-
-        const { fileId } = req.params;
-
-        if (!fileId) {
-          return res.status(400).json({ error: 'Missing fileId parameter' });
-        }
-
-        const metadata = await service.getFileMetadata(fileId);
-
-        if (!metadata) {
-          return res.status(404).json({ error: 'File metadata not found' });
-        }
-
-        return res.json({ metadata });
-      } catch (error: any) {
-        console.error('Error fetching file metadata:', error);
-        return res.status(500).json({ 
-          error: 'Failed to fetch metadata',
-          message: error.message 
-        });
-      }
-    });
-
     // GET /api/aggregator/metadata-index/:fileId - Get metadata for a specific file (creates entry if doesn't exist)
     this.app.get('/api/aggregator/metadata-index/:fileId', async (req, res) => {
       try {
