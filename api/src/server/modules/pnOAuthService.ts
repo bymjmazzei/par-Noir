@@ -280,16 +280,17 @@ export class PNOAuthService {
     const db = getDatabasePool();
     try {
       await db.query(
-        `INSERT INTO oauth_refresh_tokens (refresh_token, did, pn_identifier, client_id, scope, expires_at)
-         VALUES ($1, $2, $3, $4, $5, $6)
+        `INSERT INTO oauth_refresh_tokens (refresh_token, did, pn_identifier, public_key, client_id, scope, expires_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7)
          ON CONFLICT (refresh_token) 
          DO UPDATE SET 
            did = $2,
            pn_identifier = $3,
-           client_id = $4,
-           scope = $5,
-           expires_at = $6`,
-        [token, params.did, pnIdentifier, params.clientId, params.scope, expiresAt]
+           public_key = $4,
+           client_id = $5,
+           scope = $6,
+           expires_at = $7`,
+        [token, params.did, pnIdentifier, params.publicKey, params.clientId, params.scope, expiresAt]
       );
     } catch (error) {
       console.error('[OAuth] Failed to store refresh token in database:', error);

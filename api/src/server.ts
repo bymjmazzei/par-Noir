@@ -2821,12 +2821,41 @@ class ProductionServer {
           console.log(`✅ [Userinfo] Using pN identifier from token: ${pnIdentifier}`);
         }
 
+        // Get publicKey from authorization code (stored during /oauth/auth)
+        // We need to look it up from the authorization code that was used to generate this token
+        // Since authorization codes are short-lived, we'll need to get it from the refresh token or derive it
+        // For now, extract from DID if it's in did:key format (fallback)
+        let publicKey: string | undefined = undefined;
+        
+        // Try to get publicKey from refresh token database
+        try {
+          const db = (await import('./server/utils/database')).getDatabasePool();
+          const refreshTokenResult = await db.query(
+            `SELECT public_key FROM oauth_refresh_tokens WHERE did = $1 ORDER BY expires_at DESC LIMIT 1`,
+            [tokenPayload.did]
+          );
+          
+          if (refreshTokenResult.rows.length > 0 && refreshTokenResult.rows[0].public_key) {
+            publicKey = refreshTokenResult.rows[0].public_key;
+            console.log(`✅ [Userinfo] Found publicKey from refresh token`);
+          }
+        } catch (dbError) {
+          console.warn('⚠️ [Userinfo] Failed to look up publicKey from refresh token:', dbError);
+        }
+        
+        // Fallback: extract from DID if it's in did:key format
+        if (!publicKey && tokenPayload.did.startsWith('did:key:')) {
+          publicKey = tokenPayload.did.substring(8); // Remove "did:key:" prefix
+          console.log(`✅ [Userinfo] Using publicKey extracted from DID`);
+        }
+
         // Return user info based on token payload
         return res.json({
           sub: tokenPayload.did,
           did: tokenPayload.did,
           pn_name: tokenPayload.pnName || undefined,
-          pn_identifier: pnIdentifier // Add pN identifier from database
+          pn_identifier: pnIdentifier, // pN identifier from OAuth
+          public_key: publicKey // Public key for file decryption
         });
       } catch (error: any) {
         console.error('Userinfo error:', error);

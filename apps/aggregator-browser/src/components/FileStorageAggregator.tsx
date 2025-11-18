@@ -27,9 +27,14 @@ const ThumbnailImage: React.FC<{ fileId: string; accountId: string; fileName: st
   const [error, setError] = useState(false);
 
   // Check if file is encrypted
+  // Note: Files uploaded through the dashboard are stored with .encrypted extension
+  // But they're actually JSON packages, so we check the extension
   const isEncrypted = fileName.toLowerCase().endsWith('.encrypted');
+  
+  console.log(`[ThumbnailImage] Component rendered for file: ${fileName}, isEncrypted: ${isEncrypted}, fileId: ${fileId}`);
 
   useEffect(() => {
+    console.log(`[ThumbnailImage] useEffect triggered for file: ${fileName}, isEncrypted: ${isEncrypted}`);
     let blobUrl: string | null = null;
     
     const loadThumbnail = async () => {
@@ -52,47 +57,92 @@ const ThumbnailImage: React.FC<{ fileId: string; accountId: string; fileName: st
             return;
           }
 
-          // Get publicKey from session (stored during unlock)
-          const publicKey = session?.publicKey;
+          // Files are encrypted with DID:publicKey
+          // OAuth provides both DID and publicKey via userinfo endpoint
+          const pnId = session.did; // Use DID as the id (matching dashboard's authenticatedUser.id)
+          let publicKey = session?.publicKey;
+          
+          // Fallback: extract from DID if it's in did:key format
+          if (!publicKey && session.did.startsWith('did:key:')) {
+            publicKey = session.did.substring(8); // Remove "did:key:" prefix
+            console.log('[ThumbnailImage] Using publicKey extracted from DID');
+          }
           
           if (!publicKey) {
-            console.warn('[ThumbnailImage] No publicKey in session for decryption');
+            console.error('[ThumbnailImage] No publicKey available for decryption. OAuth should provide public_key in userinfo response.');
             setError(true);
             return;
           }
+          
+          console.log(`[ThumbnailImage] Using for decryption - pnId: ${pnId.substring(0, 30)}..., publicKey: ${publicKey.substring(0, 30)}...`);
 
           // Download encrypted file (it's stored as JSON string)
           const fileUrl = `${apiEndpoint}/api/drive/files/${fileId}?accountId=${accountId}&download=true`;
+          console.log(`[ThumbnailImage] Downloading encrypted file: ${fileUrl}`);
+          
           const response = await fetch(fileUrl, {
             headers: {
               'Authorization': `Bearer ${accessToken}`
             }
           });
 
+          console.log(`[ThumbnailImage] Download response status: ${response.status}, content-type: ${response.headers.get('content-type')}`);
+
           if (!response.ok) {
+            const errorText = await response.text().catch(() => 'Unknown error');
+            console.error(`[ThumbnailImage] Download failed: ${response.status} - ${errorText}`);
             throw new Error(`Failed to download file: ${response.status}`);
           }
 
           // Encrypted files are stored as JSON strings, so read as text first
           const encryptedText = await response.text();
+          console.log(`[ThumbnailImage] Downloaded text length: ${encryptedText.length}, preview: ${encryptedText.substring(0, 100)}`);
+          
           let encryptedPackage: EncryptedFilePackage;
           
           try {
             encryptedPackage = JSON.parse(encryptedText);
+            console.log(`[ThumbnailImage] Parsed encrypted package:`, {
+              hasEncrypted: !!encryptedPackage.encrypted,
+              hasIv: !!encryptedPackage.iv,
+              hasSalt: !!encryptedPackage.salt,
+              hasMetadata: !!encryptedPackage.metadata,
+              encryptedLength: encryptedPackage.encrypted?.length,
+              metadataName: encryptedPackage.metadata?.originalName
+            });
           } catch (parseError) {
             console.error('[ThumbnailImage] Failed to parse encrypted package:', parseError);
+            console.error('[ThumbnailImage] Response text:', encryptedText.substring(0, 500));
             throw new Error('File is not a valid encrypted package');
           }
           
           // Decrypt file
+          console.log(`[ThumbnailImage] Starting decryption with DID: ${session.did.substring(0, 20)}..., publicKey: ${publicKey.substring(0, 20)}...`);
+          
           const encryptionManager = new EncryptionManager();
-          const decryptedData = await encryptionManager.decrypt(
-            encryptedPackage.encrypted,
-            encryptedPackage.iv,
-            encryptedPackage.salt,
-            session.did,
-            publicKey
-          );
+          let decryptedData: Uint8Array;
+          
+          try {
+            decryptedData = await encryptionManager.decrypt(
+              encryptedPackage.encrypted,
+              encryptedPackage.iv,
+              encryptedPackage.salt,
+              pnId,
+              publicKey
+            );
+            console.log(`[ThumbnailImage] Decryption successful, decrypted size: ${decryptedData.length} bytes`);
+          } catch (decryptError: any) {
+            console.error('[ThumbnailImage] Decryption failed:', decryptError);
+            console.error('[ThumbnailImage] Decryption error details:', {
+              error: decryptError?.message,
+              errorName: decryptError?.name,
+              hasDid: !!session.did,
+              hasPublicKey: !!publicKey,
+              didPreview: session.did?.substring(0, 20),
+              publicKeyPreview: publicKey?.substring(0, 20)
+            });
+            throw decryptError;
+          }
 
           // Create thumbnail from decrypted blob
           const decryptedBlob = new Blob([decryptedData], {
@@ -271,36 +321,71 @@ const FileViewer: React.FC<{ file: DriveFile; accountId: string; onDownload: () 
             return;
           }
 
-          // Get publicKey from session (stored during unlock)
-          const publicKey = session?.publicKey;
+          // Files are encrypted with DID:publicKey
+          // OAuth provides both DID and publicKey via userinfo endpoint
+          const pnId = session.did; // Use DID as the id (matching dashboard's authenticatedUser.id)
+          let publicKey = session?.publicKey;
+          
+          // Fallback: extract from DID if it's in did:key format
+          if (!publicKey && session.did.startsWith('did:key:')) {
+            publicKey = session.did.substring(8); // Remove "did:key:" prefix
+            console.log('[FileViewer] Using publicKey extracted from DID');
+          }
           
           if (!publicKey) {
-            console.warn('[FileViewer] No publicKey in session for decryption');
+            console.error('[FileViewer] No publicKey available for decryption. OAuth should provide public_key in userinfo response.');
             setError(true);
             setLoading(false);
             return;
           }
+          
+          console.log(`[FileViewer] Using for decryption - pnId: ${pnId.substring(0, 30)}..., publicKey: ${publicKey.substring(0, 30)}...`);
 
           // Encrypted files are stored as JSON strings, so read as text first
           const encryptedText = await response.text();
+          console.log(`[FileViewer] Downloaded text length: ${encryptedText.length}, preview: ${encryptedText.substring(0, 100)}`);
+          
           let encryptedPackage: EncryptedFilePackage;
           
           try {
             encryptedPackage = JSON.parse(encryptedText);
+            console.log(`[FileViewer] Parsed encrypted package:`, {
+              hasEncrypted: !!encryptedPackage.encrypted,
+              hasIv: !!encryptedPackage.iv,
+              hasSalt: !!encryptedPackage.salt,
+              hasMetadata: !!encryptedPackage.metadata
+            });
           } catch (parseError) {
             console.error('[FileViewer] Failed to parse encrypted package:', parseError);
+            console.error('[FileViewer] Response text:', encryptedText.substring(0, 500));
             throw new Error('File is not a valid encrypted package');
           }
           
           // Decrypt file
+          console.log(`[FileViewer] Starting decryption with DID: ${session.did.substring(0, 20)}..., publicKey: ${publicKey.substring(0, 20)}...`);
+          
           const encryptionManager = new EncryptionManager();
-          const decryptedData = await encryptionManager.decrypt(
-            encryptedPackage.encrypted,
-            encryptedPackage.iv,
-            encryptedPackage.salt,
-            session.did,
-            publicKey
-          );
+          let decryptedData: Uint8Array;
+          
+          try {
+            decryptedData = await encryptionManager.decrypt(
+              encryptedPackage.encrypted,
+              encryptedPackage.iv,
+              encryptedPackage.salt,
+              pnId,
+              publicKey
+            );
+            console.log(`[FileViewer] Decryption successful, decrypted size: ${decryptedData.length} bytes`);
+          } catch (decryptError: any) {
+            console.error('[FileViewer] Decryption failed:', decryptError);
+            console.error('[FileViewer] Decryption error details:', {
+              error: decryptError?.message,
+              errorName: decryptError?.name,
+              hasDid: !!session.did,
+              hasPublicKey: !!publicKey
+            });
+            throw decryptError;
+          }
 
           // Create blob from decrypted data
           const decryptedBlob = new Blob([decryptedData], {
@@ -1010,6 +1095,21 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
                     {accountFiles.map((file) => {
                 const isImage = file.mimeType?.startsWith('image/');
                 const isVideo = file.mimeType?.startsWith('video/');
+                const isEncrypted = file.name.toLowerCase().endsWith('.encrypted');
+                
+                console.log(`[FileStorageAggregator] Processing file for thumbnail: ${file.name}, mimeType: ${file.mimeType}, isImage: ${isImage}, isVideo: ${isVideo}, isEncrypted: ${isEncrypted}`);
+                
+                // For encrypted files, check if they're media files by extension
+                let isMediaFile = isImage || isVideo;
+                if (isEncrypted) {
+                  const nameWithoutEncrypted = file.name.replace(/\.encrypted$/i, '');
+                  const hasImageExt = /\.(jpg|jpeg|png|gif|webp|bmp|svg|heic|heif)$/i.test(nameWithoutEncrypted);
+                  const hasVideoExt = /\.(mp4|mov|avi|mkv|webm|flv|wmv|m4v|3gp)$/i.test(nameWithoutEncrypted);
+                  isMediaFile = hasImageExt || hasVideoExt;
+                  console.log(`[FileStorageAggregator] Encrypted file check: nameWithoutEncrypted=${nameWithoutEncrypted}, hasImageExt=${hasImageExt}, hasVideoExt=${hasVideoExt}, isMediaFile=${isMediaFile}`);
+                }
+                
+                console.log(`[FileStorageAggregator] Final decision for ${file.name}: isMediaFile=${isMediaFile}, will render ThumbnailImage=${isMediaFile}`);
 
                 return (
                   <div
@@ -1018,7 +1118,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
                     onClick={() => setViewingFile(file)}
                   >
                     <div className="relative aspect-square bg-neutral-700/50 overflow-hidden">
-                      {isImage || isVideo ? (
+                      {isMediaFile ? (
                         <ThumbnailImage 
                           fileId={file.id}
                           accountId={file.accountId || account.accountId}
@@ -1035,7 +1135,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
                           <Globe className="h-3 w-3 text-white" />
                         </div>
                       )}
-                      {(isImage || isVideo) && (
+                      {isMediaFile && (
                         <div className="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-colors flex items-center justify-center opacity-0 group-hover:opacity-100">
                           <Eye className="h-6 w-6 text-white" />
                         </div>
@@ -1106,6 +1206,16 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
                     {accountFiles.map((file) => {
                 const isImage = file.mimeType?.startsWith('image/');
                 const isVideo = file.mimeType?.startsWith('video/');
+                const isEncrypted = file.name.toLowerCase().endsWith('.encrypted');
+                
+                // For encrypted files, check if they're media files by extension
+                let isMediaFile = isImage || isVideo;
+                if (isEncrypted) {
+                  const nameWithoutEncrypted = file.name.replace(/\.encrypted$/i, '');
+                  const hasImageExt = /\.(jpg|jpeg|png|gif|webp|bmp|svg|heic|heif)$/i.test(nameWithoutEncrypted);
+                  const hasVideoExt = /\.(mp4|mov|avi|mkv|webm|flv|wmv|m4v|3gp)$/i.test(nameWithoutEncrypted);
+                  isMediaFile = hasImageExt || hasVideoExt;
+                }
 
                 return (
                   <div
@@ -1114,11 +1224,12 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
                     onClick={() => setViewingFile(file)}
                   >
                     <div className="flex items-center space-x-3 flex-1 min-w-0">
-                      {isImage || isVideo ? (
+                      {isMediaFile ? (
                         <div className="w-12 h-12 flex-shrink-0 rounded overflow-hidden bg-neutral-700">
                           <ThumbnailImage 
                             fileId={file.id}
                             accountId={file.accountId || account.accountId}
+                            fileName={file.name}
                             alt={file.name}
                             className="w-full h-full object-cover"
                           />

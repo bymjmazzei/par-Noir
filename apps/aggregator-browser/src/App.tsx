@@ -1567,7 +1567,8 @@ function App() {
                   expiresAt: Date.now() + (tokenResponse.expires_in * 1000),
                   did: userInfo.did,
                   pnName: userInfo.pn_name,
-                  pnIdentifier: userInfo.pn_identifier // Store pN identifier from API
+                  pnIdentifier: userInfo.pn_identifier, // Store pN identifier from OAuth
+                  publicKey: userInfo.public_key // Store publicKey from OAuth for file decryption
                 };
                 
                 PNOAuthService.saveSession(session);
