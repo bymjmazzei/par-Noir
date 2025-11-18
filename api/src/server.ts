@@ -2016,7 +2016,8 @@ class ProductionServer {
 
         // Use pN identifier from token if available, otherwise fall back to DID
         // Credentials might be stored under different identifiers, so we'll try multiple candidates
-        const userIdentifier = tokenPayload.pnIdentifier || tokenPayload.did;
+        const pnIdentifier = tokenPayload.pnIdentifier; // Use pN identifier for folder search
+        const userIdentifier = tokenPayload.pnIdentifier || tokenPayload.did; // Use for credential lookup
         
         // Build list of identifier candidates to try (matching dashboard's getStorageIdentityCandidates logic)
         // Dashboard stores credentials under the FIRST candidate from getStorageIdentityCandidates()
@@ -2053,10 +2054,11 @@ class ProductionServer {
         
         // If no query provided and we have a pN identifier, try to find files in the pN folder
         let finalQuery = query;
-        if (!finalQuery && userIdentifier && accountId) {
+        if (!finalQuery && pnIdentifier && accountId) {
           // Try to find the pN folder first, then query files in it
           // Folder name format: "par Noir - pn-{identifier}" or "par Noir - {identifier}"
-          const pnFolderName = `par Noir - pn-${userIdentifier}`;
+          // Use the pN identifier (not DID) for folder naming
+          const pnFolderName = `par Noir - pn-${pnIdentifier}`;
           try {
             // Search for the folder - use a direct Google Drive API call to avoid credential lookup issues
             // Wrap in try-catch to handle credential errors gracefully
@@ -2073,26 +2075,35 @@ class ProductionServer {
               const folderSearchQuery = `name='${pnFolderName.replace(/'/g, "\\'")}' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
               const folderSearchUrl = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(folderSearchQuery)}&fields=files(id,name)&pageSize=10`;
               
+              console.log(`[DriveFiles] Searching for pN folder: "${pnFolderName}"`);
+              console.log(`[DriveFiles] Folder search query: ${folderSearchQuery}`);
+              
               const folderResponse = await fetch(folderSearchUrl, {
                 headers: {
                   'Authorization': `Bearer ${accessToken}`
                 }
               });
               
+              console.log(`[DriveFiles] Folder search response status: ${folderResponse.status}`);
+              
               if (folderResponse.ok) {
                 const folderData = await folderResponse.json() as { files?: Array<{ id: string; name: string }> };
                 const folderFiles = folderData.files || [];
+                
+                console.log(`[DriveFiles] Folder search found ${folderFiles.length} folder(s)`);
                 
                 if (folderFiles.length > 0) {
                   const folderId = folderFiles[0].id;
                   // Query files in this folder
                   finalQuery = `'${folderId}' in parents and trashed=false`;
-                  console.log(`[DriveFiles] Found pN folder "${pnFolderName}" (ID: ${folderId}), querying files in folder`);
+                  console.log(`[DriveFiles] ✅ Found pN folder "${pnFolderName}" (ID: ${folderId}), querying files in folder`);
                 } else {
-                  // Fallback: try without "pn-" prefix
-                  const altFolderName = `par Noir - ${userIdentifier}`;
+                  // Fallback: try without "pn-" prefix (using pN identifier, not DID)
+                  const altFolderName = `par Noir - ${pnIdentifier}`;
                   const altFolderSearchQuery = `name='${altFolderName.replace(/'/g, "\\'")}' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
                   const altFolderSearchUrl = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(altFolderSearchQuery)}&fields=files(id,name)&pageSize=10`;
+                  
+                  console.log(`[DriveFiles] Trying fallback folder name: "${altFolderName}"`);
                   
                   const altFolderResponse = await fetch(altFolderSearchUrl, {
                     headers: {
@@ -2104,20 +2115,25 @@ class ProductionServer {
                     const altFolderData = await altFolderResponse.json() as { files?: Array<{ id: string; name: string }> };
                     const altFolderFiles = altFolderData.files || [];
                     
+                    console.log(`[DriveFiles] Fallback folder search found ${altFolderFiles.length} folder(s)`);
+                    
                     if (altFolderFiles.length > 0) {
                       const folderId = altFolderFiles[0].id;
                       finalQuery = `'${folderId}' in parents and trashed=false`;
-                      console.log(`[DriveFiles] Found pN folder "${altFolderName}" (ID: ${folderId}), querying files in folder`);
+                      console.log(`[DriveFiles] ✅ Found pN folder "${altFolderName}" (ID: ${folderId}), querying files in folder`);
                     } else {
-                      console.log(`[DriveFiles] pN folder not found (searched for "${pnFolderName}" and "${altFolderName}"), listing all files (will be filtered client-side)`);
+                      console.warn(`[DriveFiles] ⚠️ pN folder not found (searched for "${pnFolderName}" and "${altFolderName}"), listing all files (will be filtered client-side)`);
                     }
+                  } else {
+                    console.warn(`[DriveFiles] Fallback folder search failed with status ${altFolderResponse.status}`);
                   }
                 }
               } else {
-                console.warn(`[DriveFiles] Folder search failed with status ${folderResponse.status}`);
+                const errorText = await folderResponse.text().catch(() => 'Unknown error');
+                console.warn(`[DriveFiles] Folder search failed with status ${folderResponse.status}: ${errorText}`);
               }
             } else {
-              console.log(`[DriveFiles] No access token available for folder search, listing all files (will be filtered client-side)`);
+              console.warn(`[DriveFiles] ⚠️ No access token available for folder search, listing all files (will be filtered client-side)`);
             }
           } catch (folderError: any) {
             console.warn(`[DriveFiles] Error searching for pN folder:`, folderError?.message || folderError);
