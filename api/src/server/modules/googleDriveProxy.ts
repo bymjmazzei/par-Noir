@@ -100,13 +100,12 @@ export class GoogleDriveProxyService {
     const tokenAge = expiresAt - now;
     const shouldRefresh = expiresAt < now + 60000 || tokenAge < 1800000; // Refresh if expires in < 1 min or age < 30 min
     
-    if (shouldRefresh) {
-      if (!token.refresh_token) {
-        throw new Error('Google Drive token expired and no refresh token available');
-      }
-
+    // If we have a refresh token, always try to refresh to ensure we have a valid token
+    if (token.refresh_token && shouldRefresh) {
       try {
+        console.log(`[GoogleDriveProxy] Refreshing access token for accountId: ${accountId || 'default'}`);
         const refreshedToken = await this.refreshAccessToken(token.refresh_token);
+        console.log(`[GoogleDriveProxy] Token refreshed successfully`);
         
         // Update stored credentials for the specific account
         if (accountId && credentials.googleDriveAccounts) {
@@ -146,12 +145,16 @@ export class GoogleDriveProxyService {
         await storageCredentialsService.upsertCredentials(userDid, credentials);
         
         return refreshedToken.access_token;
-      } catch (error) {
-        console.error('Failed to refresh Google Drive token:', error);
-        throw new Error('Failed to refresh Google Drive access token');
+      } catch (error: any) {
+        console.error(`[GoogleDriveProxy] Failed to refresh Google Drive token:`, error.message || error);
+        // If refresh fails, try using the existing token anyway (it might still be valid)
+        // But log a warning
+        console.warn(`[GoogleDriveProxy] Token refresh failed, attempting to use existing token`);
+        // Don't throw - try the existing token first
       }
     }
 
+    // Return the access token (either refreshed or original)
     return token.access_token;
   }
 
