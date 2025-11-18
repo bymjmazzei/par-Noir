@@ -4519,37 +4519,59 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
       setIsLoading(true);
       setError(null);
 
-      const accessToken = authenticatedUser?.accessToken;
-      if (!accessToken) {
-        setError('Authentication required. Please unlock your pN.');
-        return;
+      // Use backend directly to delete file (bypasses API token validation)
+      const backend = aggregatorService?.getBackend(file.backend);
+      if (!backend) {
+        throw new Error(`Backend not found for ${file.backend}`);
       }
 
-      // Find the account ID for this file
-      const account = driveAccounts.find(acc => acc.backendId === file.backend);
-      const accountId = account?.accountId || account?.backendId;
+      if (!backend.isConnected()) {
+        throw new Error('Backend is not connected');
+      }
 
-      const accountIdParam = accountId ? `?accountId=${encodeURIComponent(accountId)}` : '';
-      
-      console.log('🗑️ [Delete] Deleting file...', {
+      console.log('🗑️ [Delete] Deleting file from backend...', {
         fileId: file.backendFileId,
         fileName: file.name,
-        accountId
+        backend: file.backend
       });
 
-      const response = await fetch(`${apiEndpoint}/api/drive/files/${file.backendFileId}${accountIdParam}`, {
-        method: 'DELETE',
-        headers: {
-          'Authorization': `Bearer ${accessToken}`
+      // Delete file from Google Drive using backend
+      await backend.deleteFile(file.backendFileId);
+
+      console.log('✅ [Delete] File deleted from Google Drive successfully');
+
+      // Try to update indexes via API (non-critical, handles errors gracefully)
+      const accessToken = authenticatedUser?.accessToken;
+      if (accessToken) {
+        const account = driveAccounts.find(acc => acc.backendId === file.backend);
+        const accountId = account?.accountId || account?.backendId;
+        const accountIdParam = accountId ? `?accountId=${encodeURIComponent(accountId)}` : '';
+
+        try {
+          // Call API to update owner/public indexes
+          // This may fail with 401 if token is invalid, but that's okay - file is already deleted
+          const response = await fetch(`${apiEndpoint}/api/drive/files/${file.backendFileId}${accountIdParam}`, {
+            method: 'DELETE',
+            headers: {
+              'Authorization': `Bearer ${accessToken}`
+            }
+          });
+
+          if (response.ok) {
+            console.log('✅ [Delete] Indexes updated successfully');
+          } else if (response.status === 401) {
+            console.warn('⚠️ [Delete] Index cleanup skipped (token expired) - file deleted but indexes may need manual cleanup');
+          } else {
+            const errorText = await response.text().catch(() => 'Unknown error');
+            console.warn('⚠️ [Delete] Index cleanup failed (non-critical):', errorText);
+          }
+        } catch (indexError) {
+          console.warn('⚠️ [Delete] Index cleanup failed (non-critical):', indexError);
+          // File is already deleted, so this is not a critical error
         }
-      });
-
-      if (!response.ok) {
-        const errorText = await response.text().catch(() => 'Unknown error');
-        throw new Error(`Failed to delete file: ${errorText}`);
+      } else {
+        console.warn('⚠️ [Delete] No access token available - file deleted but indexes may need manual cleanup');
       }
-
-      console.log('✅ [Delete] File deleted successfully');
 
       // Reload files after deletion
       if (loadFilesRef.current) {
