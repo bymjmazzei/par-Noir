@@ -2451,39 +2451,41 @@ class ProductionServer {
           const db = (await import('./server/utils/database')).getDatabasePool();
           const currentMeta = await aggregator.getFileMetadata(fileId);
           if (currentMeta) {
-            const updatedMetadata = {
-              ...currentMeta.metadata,
-              engagement: {
-                views: engagementStats.views || 0,
-                likes: engagementStats.likes || 0,
-                comments: engagementStats.comments || 0,
-                shares: engagementStats.shares || 0,
-                lastUpdated: new Date().toISOString(),
-                engagementHistory: currentMeta.metadata.engagement?.engagementHistory || []
-              }
-            };
-            
-            await db.query(
-              `UPDATE aggregator_metadata 
-               SET metadata = $1, updated_at = NOW()
-               WHERE file_id = $2`,
-              [JSON.stringify(updatedMetadata), fileId]
-            );
-          }
+          const updatedMetadata = {
+            ...currentMeta.metadata,
+            engagement: {
+              views: currentMeta.metadata.engagement?.views || 0,
+              likes: engagementStats.likes || 0,
+              comments: engagementStats.comments || 0,
+              shares: engagementStats.shares || 0,
+              lastUpdated: new Date().toISOString(),
+              engagementHistory: currentMeta.metadata.engagement?.engagementHistory || []
+            }
+          };
           
-          // Also update companion metadata spreadsheet if file owner has one
-          try {
-            const ownerDid = fileMetadata.metadata.pnIdentifier || fileMetadata.metadata.owner?.did;
-            if (ownerDid) {
-              // Try to get owner's access token
-              const identifierCandidates = [ownerDid];
-              if (fileMetadata.metadata.owner?.identifier) {
-                identifierCandidates.push(fileMetadata.metadata.owner.identifier);
-              }
-              
-              // Get first Google Drive account for owner
-              const { getCredentialsForUser } = await import('./server/modules/userCredentialsService');
-              const credentials = await getCredentialsForUser(ownerDid, identifierCandidates);
+          await db.query(
+            `UPDATE aggregator_metadata 
+             SET metadata = $1, updated_at = NOW()
+             WHERE file_id = $2`,
+            [JSON.stringify(updatedMetadata), fileId]
+          );
+        }
+        
+        // Also update companion metadata spreadsheet if file owner has one
+        try {
+          const ownerDid = fileMetadata.pnIdentifier || fileMetadata.metadata.creator?.["@id"] || fileMetadata.metadata.author?.did;
+          if (ownerDid) {
+            // Try to get owner's access token
+            const identifierCandidates = [ownerDid];
+            const ownerIdentifier = fileMetadata.metadata.creator?.identifier?.value;
+            if (ownerIdentifier) {
+              identifierCandidates.push(ownerIdentifier);
+            }
+            
+            // Get first Google Drive account for owner
+            const { storageCredentialsService } = await import('./server/modules/storageCredentialsService');
+            const credentialsRecord = await storageCredentialsService.getCredentials(ownerDid);
+            const credentials = credentialsRecord?.credentials;
               const googleDriveAccounts = credentials?.googleDriveAccounts || (credentials?.googleDrive ? [credentials.googleDrive] : []);
               
               if (googleDriveAccounts.length > 0) {
@@ -2617,17 +2619,19 @@ class ProductionServer {
         // Also update companion metadata spreadsheet if file owner has one
         try {
           if (fileMetadata) {
-            const ownerDid = fileMetadata.metadata.pnIdentifier || fileMetadata.metadata.owner?.did;
+            const ownerDid = fileMetadata.pnIdentifier || fileMetadata.metadata.creator?.["@id"] || fileMetadata.metadata.author?.did;
             if (ownerDid) {
               // Try to get owner's access token
               const identifierCandidates = [ownerDid];
-              if (fileMetadata.metadata.owner?.identifier) {
-                identifierCandidates.push(fileMetadata.metadata.owner.identifier);
+              const ownerIdentifier = fileMetadata.metadata.creator?.identifier?.value;
+              if (ownerIdentifier) {
+                identifierCandidates.push(ownerIdentifier);
               }
               
               // Get first Google Drive account for owner
-              const { getCredentialsForUser } = await import('./server/modules/userCredentialsService');
-              const credentials = await getCredentialsForUser(ownerDid, identifierCandidates);
+              const { storageCredentialsService } = await import('./server/modules/storageCredentialsService');
+              const credentialsRecord = await storageCredentialsService.getCredentials(ownerDid);
+              const credentials = credentialsRecord?.credentials;
               const googleDriveAccounts = credentials?.googleDriveAccounts || (credentials?.googleDrive ? [credentials.googleDrive] : []);
               
               if (googleDriveAccounts.length > 0) {
@@ -2750,17 +2754,19 @@ class ProductionServer {
         // Also update companion metadata spreadsheet if file owner has one
         try {
           if (fileMetadata) {
-            const ownerDid = fileMetadata.metadata.pnIdentifier || fileMetadata.metadata.owner?.did;
+            const ownerDid = fileMetadata.pnIdentifier || fileMetadata.metadata.creator?.["@id"] || fileMetadata.metadata.author?.did;
             if (ownerDid) {
               // Try to get owner's access token
               const identifierCandidates = [ownerDid];
-              if (fileMetadata.metadata.owner?.identifier) {
-                identifierCandidates.push(fileMetadata.metadata.owner.identifier);
+              const ownerIdentifier = fileMetadata.metadata.creator?.identifier?.value;
+              if (ownerIdentifier) {
+                identifierCandidates.push(ownerIdentifier);
               }
               
               // Get first Google Drive account for owner
-              const { getCredentialsForUser } = await import('./server/modules/userCredentialsService');
-              const credentials = await getCredentialsForUser(ownerDid, identifierCandidates);
+              const { storageCredentialsService } = await import('./server/modules/storageCredentialsService');
+              const credentialsRecord = await storageCredentialsService.getCredentials(ownerDid);
+              const credentials = credentialsRecord?.credentials;
               const googleDriveAccounts = credentials?.googleDriveAccounts || (credentials?.googleDrive ? [credentials.googleDrive] : []);
               
               if (googleDriveAccounts.length > 0) {
