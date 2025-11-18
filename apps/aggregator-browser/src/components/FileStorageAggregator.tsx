@@ -1164,12 +1164,20 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
         };
       }
 
-      // Update visibility if changed
-      if (makePublic !== isCurrentlyPublic) {
+      // Check if file needs token generation (either making public OR already public but missing token)
+      const existingPublicToken = existingMetadata?.publicToken;
+      const hasValidToken = existingPublicToken && 
+                            typeof existingPublicToken === 'string' && 
+                            existingPublicToken.trim().length > 0;
+      const isPublicAfterUpdate = makePublic || isCurrentlyPublic;
+      const needsTokenGeneration = isPublicAfterUpdate && !hasValidToken;
+      
+      // Update if visibility changed OR if token needs to be generated
+      if (makePublic !== isCurrentlyPublic || needsTokenGeneration) {
         let publicToken: string | undefined = undefined;
         
-        // If making public, generate share token (like dashboard does)
-        if (makePublic) {
+        // Generate share token if making public OR if already public but missing token
+        if (needsTokenGeneration) {
           try {
             // Download the encrypted file to generate share token
             const downloadResponse = await fetch(
@@ -1244,18 +1252,25 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
           }
         }
         
-        // Toggle public status via metadata update
+        // Update metadata - either toggle public status OR regenerate token for existing public file
         const accountIdParam = sharingAccountId ? `?accountId=${encodeURIComponent(sharingAccountId)}` : '';
+        const updateBody: any = {};
+        
+        if (makePublic !== isCurrentlyPublic) {
+          updateBody.isPublic = makePublic;
+        }
+        
+        if (publicToken) {
+          updateBody.publicToken = publicToken;
+        }
+        
         const metadataResponse = await fetch(`${apiEndpoint}/api/aggregator/metadata-index/${targetFileId}${accountIdParam}`, {
           method: 'PUT',
           headers: {
             'Content-Type': 'application/json',
             'Authorization': `Bearer ${accessToken}`
           },
-          body: JSON.stringify({
-            isPublic: makePublic,
-            ...(publicToken && { publicToken })
-          }),
+          body: JSON.stringify(updateBody),
         });
 
         if (!metadataResponse.ok) {
