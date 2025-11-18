@@ -365,6 +365,53 @@ export class GoogleDriveProxyService {
 
     return response.json() as Promise<GoogleDriveFile>;
   }
+
+  /**
+   * Delete file from Google Drive
+   */
+  async deleteFile(userDid: string, fileId: string, accountId?: string): Promise<void> {
+    const accessToken = await this.getAccessToken(userDid, accountId);
+
+    const response = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}`, {
+      method: 'DELETE',
+      headers: {
+        'Authorization': `Bearer ${accessToken}`,
+      },
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`Failed to delete file: ${errorText}`);
+    }
+  }
+
+  /**
+   * Update file metadata in Google Drive
+   */
+  async updateFileMetadata(
+    userDid: string,
+    fileId: string,
+    updates: { name?: string; description?: string; parents?: string[] },
+    accountId?: string
+  ): Promise<GoogleDriveFile> {
+    const accessToken = await this.getAccessToken(userDid, accountId);
+
+    const response = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}`, {
+      method: 'PATCH',
+      headers: {
+        'Authorization': `Bearer ${accessToken}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(updates),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`Failed to update file: ${errorText}`);
+    }
+
+    return response.json() as Promise<GoogleDriveFile>;
+  }
 }
 
 export const googleDriveProxyService = new GoogleDriveProxyService();
