@@ -35,44 +35,65 @@ export class GoogleDriveProxyService {
    * Handles token refresh if needed
    */
   async getAccessToken(userDid: string, accountId?: string): Promise<string> {
+    console.log(`[GoogleDriveProxy] getAccessToken called with userDid: ${userDid}, accountId: ${accountId}`);
     const credentialsRecord = await storageCredentialsService.getCredentials(userDid);
     
     if (!credentialsRecord) {
+      console.error(`[GoogleDriveProxy] No credentials record found for userDid: ${userDid}`);
       throw new Error('Google Drive not connected. Please connect in the dashboard.');
     }
 
     const credentials = credentialsRecord.credentials;
+    console.log(`[GoogleDriveProxy] Found credentials record. Has googleDriveAccounts: ${!!credentials.googleDriveAccounts}, has googleDrive: ${!!credentials.googleDrive}`);
     
     // Support both googleDriveAccounts array and single googleDrive object
     let account: GoogleDriveToken | null = null;
     
     if (accountId && credentials.googleDriveAccounts) {
+      // Extract the actual account identifier if accountId includes "::"
+      const actualAccountId = accountId.includes('::') ? accountId.split('::')[1] : accountId;
+      
+      console.log(`[GoogleDriveProxy] Looking for account with accountId: ${accountId} (actualAccountId: ${actualAccountId})`);
+      console.log(`[GoogleDriveProxy] Available accounts:`, credentials.googleDriveAccounts.map((acc: any) => ({
+        backendId: acc.backendId,
+        keyPrefix: acc.keyPrefix
+      })));
+      
       // Find specific account by accountId (backendId, keyPrefix, or full accountId string)
       // AccountId might be in format "google_drive::email-hash" or just "backendId" or "keyPrefix"
       account = credentials.googleDriveAccounts.find(
         (acc: any) => 
           acc.backendId === accountId || 
           acc.keyPrefix === accountId ||
+          acc.backendId === actualAccountId ||
+          acc.keyPrefix === actualAccountId ||
           `${acc.backendId}` === accountId ||
           `${acc.keyPrefix}` === accountId ||
-          (accountId.includes('::') && (acc.backendId === accountId.split('::')[1] || acc.keyPrefix === accountId.split('::')[1]))
+          `${acc.backendId}` === actualAccountId ||
+          `${acc.keyPrefix}` === actualAccountId
       ) || null;
       
       if (!account) {
-        console.error(`[GoogleDriveProxy] Account not found for accountId: ${accountId}`);
+        console.error(`[GoogleDriveProxy] Account not found for accountId: ${accountId} (actualAccountId: ${actualAccountId})`);
         console.error(`[GoogleDriveProxy] Available accounts:`, credentials.googleDriveAccounts.map((acc: any) => ({
           backendId: acc.backendId,
           keyPrefix: acc.keyPrefix
         })));
+        throw new Error(`Google Drive account not found for accountId: ${accountId}`);
       }
+      
+      console.log(`[GoogleDriveProxy] Found matching account:`, { backendId: (account as any).backendId, keyPrefix: (account as any).keyPrefix });
     } else if (credentials.googleDriveAccounts && credentials.googleDriveAccounts.length > 0) {
       // Use first account if no accountId specified
       account = credentials.googleDriveAccounts[0];
+      console.log(`[GoogleDriveProxy] Using first account (no accountId specified)`);
     } else if (credentials.googleDrive) {
       // Fallback to single googleDrive object
       account = credentials.googleDrive;
+      console.log(`[GoogleDriveProxy] Using single googleDrive object`);
     } else {
       account = credentials as GoogleDriveToken;
+      console.log(`[GoogleDriveProxy] Using credentials as GoogleDriveToken`);
     }
 
     if (!account) {

@@ -2032,7 +2032,15 @@ class ProductionServer {
           const pnFolderName = `par Noir - pn-${userIdentifier}`;
           try {
             // Search for the folder - use a direct Google Drive API call to avoid credential lookup issues
-            const accessToken = await googleDriveProxyService.getAccessToken(userIdentifier, accountId);
+            // Wrap in try-catch to handle credential errors gracefully
+            let accessToken: string | null = null;
+            try {
+              accessToken = await googleDriveProxyService.getAccessToken(userIdentifier, accountId);
+            } catch (tokenError: any) {
+              console.warn(`[DriveFiles] Could not get access token for folder search:`, tokenError?.message || tokenError);
+              // Continue without folder filter - will list all files and client will filter
+            }
+            
             if (accessToken) {
               // Search for the folder using Google Drive API directly
               const folderSearchQuery = `name='${pnFolderName.replace(/'/g, "\\'")}' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
@@ -2074,11 +2082,15 @@ class ProductionServer {
                       finalQuery = `'${folderId}' in parents and trashed=false`;
                       console.log(`[DriveFiles] Found pN folder "${altFolderName}" (ID: ${folderId}), querying files in folder`);
                     } else {
-                      console.log(`[DriveFiles] pN folder not found, listing all files (will be filtered client-side)`);
+                      console.log(`[DriveFiles] pN folder not found (searched for "${pnFolderName}" and "${altFolderName}"), listing all files (will be filtered client-side)`);
                     }
                   }
                 }
+              } else {
+                console.warn(`[DriveFiles] Folder search failed with status ${folderResponse.status}`);
               }
+            } else {
+              console.log(`[DriveFiles] No access token available for folder search, listing all files (will be filtered client-side)`);
             }
           } catch (folderError: any) {
             console.warn(`[DriveFiles] Error searching for pN folder:`, folderError?.message || folderError);
