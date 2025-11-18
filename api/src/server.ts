@@ -658,7 +658,7 @@ class ProductionServer {
       }
     });
 
-    // PUT /api/aggregator/metadata-index/:fileId - Update metadata
+    // PUT /api/aggregator/metadata-index/:fileId - Update metadata (creates entry if doesn't exist)
     this.app.put('/api/aggregator/metadata-index/:fileId', async (req, res) => {
       try {
         const { AggregatorMetadataServiceDB } = await import('./server/modules/aggregatorMetadataServiceDB');
@@ -674,13 +674,120 @@ class ProductionServer {
           category,
           locationCreated,
           license,
-          inLanguage
+          inLanguage,
+          isPublic
         } = req.body;
 
         if (!fileId) {
           return res.status(400).json({ error: 'Missing fileId parameter' });
         }
 
+        // Check if metadata entry exists
+        const existing = await service.getFileMetadata(fileId);
+        
+        if (!existing) {
+          // Create new metadata entry - fetch file info from Google Drive
+          const authHeader = req.headers.authorization;
+          if (!authHeader || !authHeader.startsWith('Bearer ')) {
+            return res.status(401).json({
+              error: 'unauthorized',
+              error_description: 'Missing or invalid Authorization header'
+            });
+          }
+
+          const token = authHeader.substring(7);
+          const { PNOAuthService } = await import('./server/modules/pnOAuthService');
+          const tokenPayload = PNOAuthService.validateAccessToken(token);
+          
+          if (!tokenPayload) {
+            return res.status(401).json({
+              error: 'unauthorized',
+              error_description: 'Invalid or expired access token'
+            });
+          }
+
+          const userIdentifier = tokenPayload.pnIdentifier || tokenPayload.did;
+          const identifierCandidates: string[] = [];
+          if (tokenPayload.pnIdentifier) {
+            identifierCandidates.push(tokenPayload.pnIdentifier);
+          }
+          if (tokenPayload.did) {
+            identifierCandidates.push(tokenPayload.did);
+            if (tokenPayload.did.startsWith('did:key:')) {
+              const keyPart = tokenPayload.did.substring(8);
+              if (keyPart) {
+                identifierCandidates.push(keyPart);
+              }
+            }
+          }
+
+          // Fetch file info from Google Drive
+          const { googleDriveProxyService } = await import('./server/modules/googleDriveProxy');
+          const accountId = req.query.accountId as string | undefined;
+          
+          try {
+            const accessToken = await googleDriveProxyService.getAccessToken(userIdentifier, accountId, identifierCandidates);
+            const driveResponse = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?fields=id,name,mimeType,size,createdTime,modifiedTime`, {
+              headers: {
+                'Authorization': `Bearer ${accessToken}`
+              }
+            });
+
+            if (!driveResponse.ok) {
+              throw new Error(`Failed to fetch file info: ${driveResponse.status}`);
+            }
+
+            const driveFile = await driveResponse.json();
+            
+            // Create initial metadata entry
+            const initialMetadata: any = {
+              fileId: fileId,
+              backendFileId: fileId,
+              backend: 'google_drive',
+              name: name || driveFile.name?.replace(/\.encrypted$/i, '') || fileId,
+              fileType: driveFile.mimeType?.startsWith('image/') ? 'image' : 
+                        driveFile.mimeType?.startsWith('video/') ? 'video' : 'other',
+              uploadDate: driveFile.createdTime || new Date().toISOString(),
+              isPublic: isPublic || false,
+              "@context": ['https://schema.org/', 'https://parnoir.com/ns/v1#'],
+              "@id": `https://parnoir.com/resource/${fileId}`,
+              engagement: {
+                views: 0,
+                likes: 0,
+                comments: 0,
+                shares: 0,
+                lastUpdated: new Date().toISOString()
+              }
+            };
+
+            // Submit initial metadata
+            await service.submitMetadata(initialMetadata, tokenPayload.pnIdentifier);
+          } catch (driveError: any) {
+            console.error(`[MetadataIndex] Failed to fetch file info for ${fileId}:`, driveError);
+            // Continue anyway - create entry with minimal info
+            const minimalMetadata: any = {
+              fileId: fileId,
+              backendFileId: fileId,
+              backend: 'google_drive',
+              name: name || fileId,
+              fileType: 'other',
+              uploadDate: new Date().toISOString(),
+              isPublic: isPublic || false,
+              "@context": ['https://schema.org/', 'https://parnoir.com/ns/v1#'],
+              "@id": `https://parnoir.com/resource/${fileId}`,
+              engagement: {
+                views: 0,
+                likes: 0,
+                comments: 0,
+                shares: 0,
+                lastUpdated: new Date().toISOString()
+              }
+            };
+            await service.submitMetadata(minimalMetadata, tokenPayload.pnIdentifier);
+          }
+        }
+
+        // Now update with provided fields
         const updated = await service.updateMetadata(fileId, {
           name,
           description,
@@ -692,6 +799,24 @@ class ProductionServer {
           license,
           inLanguage
         });
+
+        // Also update isPublic if provided
+        if (isPublic !== undefined) {
+          const current = await service.getFileMetadata(fileId);
+          if (current) {
+            const updatedMetadata = {
+              ...current.metadata,
+              isPublic: isPublic
+            };
+            const db = (await import('../utils/database')).getDatabasePool();
+            await db.query(
+              `UPDATE aggregator_metadata 
+               SET metadata = $1, updated_at = NOW()
+               WHERE file_id = $2`,
+              [JSON.stringify(updatedMetadata), fileId]
+            );
+          }
+        }
 
         if (!updated) {
           return res.status(404).json({ error: 'File not found in index' });
