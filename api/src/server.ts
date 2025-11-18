@@ -2045,7 +2045,7 @@ class ProductionServer {
               });
               
               if (folderResponse.ok) {
-                const folderData = await folderResponse.json();
+                const folderData = await folderResponse.json() as { files?: Array<{ id: string; name: string }> };
                 const folderFiles = folderData.files || [];
                 
                 if (folderFiles.length > 0) {
@@ -2066,7 +2066,7 @@ class ProductionServer {
                   });
                   
                   if (altFolderResponse.ok) {
-                    const altFolderData = await altFolderResponse.json();
+                    const altFolderData = await altFolderResponse.json() as { files?: Array<{ id: string; name: string }> };
                     const altFolderFiles = altFolderData.files || [];
                     
                     if (altFolderFiles.length > 0) {
