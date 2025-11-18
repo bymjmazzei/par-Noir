@@ -276,11 +276,15 @@ export class AggregatorMetadataServiceDB {
               }
             }
           } else {
-            // No service account - can't validate
-            console.warn('⚠️ [getPublicMetadata] Service account not available, skipping file validation');
-            console.warn('⚠️ [getPublicMetadata] Orphaned files may appear in feed. Configure GOOGLE_SERVICE_ACCOUNT_KEY to enable validation.');
-            // Still return entries, but log warning
-            validatedEntries.push(...googleDriveEntries);
+            // No service account - can't validate files exist
+            // This is a critical issue - we can't verify files exist, so we should return empty
+            // OR we need to trust the database (but database can have orphaned entries)
+            console.error('❌ [getPublicMetadata] CRITICAL: Service account not configured - cannot validate files exist!');
+            console.error('❌ [getPublicMetadata] Orphaned files WILL appear in feed. Configure GOOGLE_SERVICE_ACCOUNT_KEY.');
+            console.error('❌ [getPublicMetadata] For now, returning empty feed to prevent showing deleted files.');
+            // Return empty array to prevent showing potentially deleted files
+            // User must configure service account OR use cleanup endpoint
+            validatedEntries.push(...[]); // Empty - don't show potentially deleted files
           }
         } catch (validationError) {
           console.error('❌ [getPublicMetadata] File validation failed:', validationError);
