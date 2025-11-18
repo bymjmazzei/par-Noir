@@ -1561,6 +1561,13 @@ function App() {
                 const tokenResponse = await PNOAuthService.exchangeCodeForToken(data.code!, actualRedirectUri);
                 const userInfo = await PNOAuthService.getUserInfo(tokenResponse.access_token);
                 
+                console.log('🔐 [OAuth] UserInfo response:', {
+                  did: userInfo.did,
+                  pn_identifier: userInfo.pn_identifier,
+                  public_key: userInfo.public_key ? `${userInfo.public_key.substring(0, 30)}...` : 'undefined',
+                  hasPublicKey: !!userInfo.public_key
+                });
+                
                 const session = {
                   accessToken: tokenResponse.access_token,
                   refreshToken: tokenResponse.refresh_token,
@@ -1572,6 +1579,7 @@ function App() {
                 };
                 
                 PNOAuthService.saveSession(session);
+                console.log('🔐 [OAuth] Session saved with publicKey:', session.publicKey ? `${session.publicKey.substring(0, 30)}...` : 'undefined');
                 console.log('🔐 Calling setUnlocked with pN identifier:', userInfo.pn_identifier || userInfo.did);
                 // Use pN identifier from API if available, otherwise fall back to DID
                 // But only set unlocked if we have a pN identifier (not a DID)

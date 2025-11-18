@@ -62,10 +62,27 @@ const ThumbnailImage: React.FC<{ fileId: string; accountId: string; fileName: st
           const pnId = session.did; // Use DID as the id (matching dashboard's authenticatedUser.id)
           let publicKey = session?.publicKey;
           
-          // Fallback: extract from DID if it's in did:key format
+          // If publicKey is missing, try to refresh it from userinfo
+          if (!publicKey && session.accessToken) {
+            console.log('[ThumbnailImage] publicKey missing from session, fetching from userinfo...');
+            try {
+              const userInfo = await PNOAuthService.getUserInfo(session.accessToken);
+              if (userInfo.public_key) {
+                publicKey = userInfo.public_key;
+                // Update session with publicKey
+                const updatedSession = { ...session, publicKey };
+                PNOAuthService.saveSession(updatedSession);
+                console.log('[ThumbnailImage] Retrieved publicKey from userinfo and updated session');
+              }
+            } catch (err) {
+              console.warn('[ThumbnailImage] Failed to fetch publicKey from userinfo:', err);
+            }
+          }
+          
+          // Fallback: extract from DID if it's in did:key format (this is NOT the correct publicKey, but may work for some files)
           if (!publicKey && session.did.startsWith('did:key:')) {
             publicKey = session.did.substring(8); // Remove "did:key:" prefix
-            console.log('[ThumbnailImage] Using publicKey extracted from DID');
+            console.warn('[ThumbnailImage] Using publicKey extracted from DID (may not work - API server needs to return public_key)');
           }
           
           if (!publicKey) {
@@ -326,10 +343,27 @@ const FileViewer: React.FC<{ file: DriveFile; accountId: string; onDownload: () 
           const pnId = session.did; // Use DID as the id (matching dashboard's authenticatedUser.id)
           let publicKey = session?.publicKey;
           
-          // Fallback: extract from DID if it's in did:key format
+          // If publicKey is missing, try to refresh it from userinfo
+          if (!publicKey && session.accessToken) {
+            console.log('[FileViewer] publicKey missing from session, fetching from userinfo...');
+            try {
+              const userInfo = await PNOAuthService.getUserInfo(session.accessToken);
+              if (userInfo.public_key) {
+                publicKey = userInfo.public_key;
+                // Update session with publicKey
+                const updatedSession = { ...session, publicKey };
+                PNOAuthService.saveSession(updatedSession);
+                console.log('[FileViewer] Retrieved publicKey from userinfo and updated session');
+              }
+            } catch (err) {
+              console.warn('[FileViewer] Failed to fetch publicKey from userinfo:', err);
+            }
+          }
+          
+          // Fallback: extract from DID if it's in did:key format (this is NOT the correct publicKey, but may work for some files)
           if (!publicKey && session.did.startsWith('did:key:')) {
             publicKey = session.did.substring(8); // Remove "did:key:" prefix
-            console.log('[FileViewer] Using publicKey extracted from DID');
+            console.warn('[FileViewer] Using publicKey extracted from DID (may not work - API server needs to return public_key)');
           }
           
           if (!publicKey) {
