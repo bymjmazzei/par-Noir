@@ -1379,6 +1379,12 @@ class ProductionServer {
           }
         }
 
+        // Refetch to ensure entry exists (in case it was just created)
+        let current = await service.getFileMetadata(fileId);
+        if (!current) {
+          return res.status(404).json({ error: 'File not found in index' });
+        }
+
         // Now update with provided fields
         const updated = await service.updateMetadata(fileId, {
           name,
@@ -1394,7 +1400,7 @@ class ProductionServer {
 
         // Also update isPublic if provided
         if (isPublic !== undefined) {
-          const current = await service.getFileMetadata(fileId);
+          current = await service.getFileMetadata(fileId);
           if (current) {
             const updatedMetadata = {
               ...current.metadata,
@@ -1407,14 +1413,18 @@ class ProductionServer {
                WHERE file_id = $2`,
               [JSON.stringify(updatedMetadata), fileId]
             );
+            // Refetch after isPublic update
+            current = await service.getFileMetadata(fileId);
           }
         }
 
-        if (!updated) {
+        // Return the updated metadata (or current if updateMetadata returned null)
+        const result = updated || current;
+        if (!result) {
           return res.status(404).json({ error: 'File not found in index' });
         }
 
-        return res.json({ success: true, metadata: updated });
+        return res.json({ success: true, metadata: result });
       } catch (error: any) {
         console.error('Error updating metadata:', error);
         return res.status(500).json({ 
