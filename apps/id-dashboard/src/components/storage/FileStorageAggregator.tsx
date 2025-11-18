@@ -3464,23 +3464,22 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
         console.warn('⚠️ [handleDisconnect] Aggregator service unavailable');
         return;
       }
+      
       const backend = aggregatorService.getBackend(backendId);
       if (backend) {
+        // Disconnect the backend (clears tokens, etc.)
         await backend.disconnect();
-        setConnectedBackends(prev => {
-          const next = new Set(prev);
-          next.delete(backendId);
-          return next;
-        });
-        setUserEmails(prev => {
-          const next = new Map(prev);
-          next.delete(backendId);
-          return next;
-        });
-        setFiles(prev => prev.filter(f => f.backend !== backendId));
+        console.log(`✅ [handleDisconnect] Backend ${backendId} disconnected`);
       }
+      
+      // Remove account from state and persist removal
+      // This ensures the account doesn't reappear after lock/unlock
+      removeDriveAccount(backendId);
+      console.log(`✅ [handleDisconnect] Account ${backendId} removed from dashboard`);
     } catch (err) {
-      console.error('Error disconnecting:', err);
+      console.error('❌ [handleDisconnect] Error disconnecting:', err);
+      // Still try to remove from state even if backend.disconnect() fails
+      removeDriveAccount(backendId);
     }
   };
 
