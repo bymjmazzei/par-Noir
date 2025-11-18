@@ -4,7 +4,7 @@
  */
 
 import React, { useState, useRef } from 'react';
-import { X, Upload, File, Image, Video, FileText, AlertCircle } from 'lucide-react';
+import { X, Upload, File, Image, Video, FileText, AlertCircle, Cloud } from 'lucide-react';
 import { useUserState } from '../contexts/UserStateContext';
 import { useToast } from '../hooks/useToast';
 import { PNOAuthService } from '../services/pnOAuthService';
@@ -528,40 +528,68 @@ export function UploadModal({ onClose, onUploadComplete, onBrowseCloudClick }: U
             </>
           )}
 
-          {/* Cloud Storage Account Selection */}
-          {isLoadingAccounts ? (
-            <div className="bg-neutral-800/50 border border-neutral-700 rounded-lg p-4 flex items-start space-x-3">
-              <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin flex-shrink-0 mt-0.5" />
-              <div>
-                <p className="text-white font-medium">Loading cloud storage accounts...</p>
+          {/* Cloud Storage Account Tiles - Matching Dashboard */}
+          <div>
+            <label className="block text-sm font-medium text-white mb-4">Cloud Storage Account</label>
+            {isLoadingAccounts ? (
+              <div className="bg-neutral-800/50 border border-neutral-700 rounded-lg p-4 flex items-start space-x-3">
+                <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin flex-shrink-0 mt-0.5" />
+                <div>
+                  <p className="text-white font-medium">Loading cloud storage accounts...</p>
+                </div>
               </div>
-            </div>
-          ) : cloudAccounts.length === 0 ? (
-            <div className="bg-yellow-500/10 border border-yellow-500/20 rounded-lg p-4 flex items-start space-x-3">
-              <AlertCircle className="h-5 w-5 text-yellow-400 flex-shrink-0 mt-0.5" />
-              <div>
-                <p className="text-yellow-400 font-medium">No Cloud Storage Connected</p>
-                <p className="text-text-secondary text-sm mt-1">
-                  Connect cloud storage in the dashboard to upload files.
-                </p>
+            ) : cloudAccounts.length === 0 ? (
+              <div className="bg-yellow-500/10 border border-yellow-500/20 rounded-lg p-4 flex items-start space-x-3">
+                <AlertCircle className="h-5 w-5 text-yellow-400 flex-shrink-0 mt-0.5" />
+                <div>
+                  <p className="text-yellow-400 font-medium">No Cloud Storage Connected</p>
+                  <p className="text-text-secondary text-sm mt-1">
+                    Connect cloud storage in the dashboard to upload files.
+                  </p>
+                </div>
               </div>
-            </div>
-          ) : (
-            <div>
-              <label className="block text-sm font-medium text-white mb-2">Cloud Storage Account</label>
-              <select
-                value={selectedAccountId || ''}
-                onChange={(e) => setSelectedAccountId(e.target.value)}
-                className="w-full px-4 py-2 bg-neutral-800 border border-neutral-700 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-              >
-                {cloudAccounts.map((account) => (
-                  <option key={account.accountId} value={account.accountId}>
-                    {account.displayName || account.email || `${account.provider} (${account.accountId})`}
-                  </option>
-                ))}
-              </select>
-            </div>
-          )}
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                {cloudAccounts.map((account) => {
+                  const isSelected = selectedAccountId === account.accountId;
+                  return (
+                    <div
+                      key={account.accountId}
+                      onClick={() => setSelectedAccountId(account.accountId)}
+                      className={`bg-neutral-800 border-2 rounded-lg p-4 cursor-pointer transition-all hover:bg-neutral-700 ${
+                        isSelected ? 'border-blue-500 bg-blue-500/10' : 'border-neutral-700'
+                      }`}
+                    >
+                      <div className="flex items-center space-x-3">
+                        <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${
+                          isSelected ? 'bg-blue-500/20' : 'bg-neutral-700'
+                        }`}>
+                          <Cloud className={`h-6 w-6 ${isSelected ? 'text-blue-400' : 'text-text-secondary'}`} />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className={`font-medium truncate ${
+                            isSelected ? 'text-blue-400' : 'text-white'
+                          }`}>
+                            {account.displayName || account.email || account.provider}
+                          </p>
+                          <p className="text-text-secondary text-sm truncate">
+                            {account.email || account.accountId}
+                          </p>
+                        </div>
+                        {isSelected && (
+                          <div className="w-5 h-5 rounded-full bg-blue-500 flex items-center justify-center flex-shrink-0">
+                            <svg className="w-3 h-3 text-white" fill="currentColor" viewBox="0 0 20 20">
+                              <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                            </svg>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
         </div>
 
         {/* Footer */}
