@@ -2024,7 +2024,43 @@ class ProductionServer {
         const pageSize = req.query.pageSize ? parseInt(req.query.pageSize as string, 10) : 50;
         const accountId = req.query.accountId as string | undefined;
         
-        const files = await googleDriveProxyService.listFiles(userIdentifier, query, pageSize, accountId);
+        // If no query provided and we have a pN identifier, try to find files in the pN folder
+        let finalQuery = query;
+        if (!finalQuery && userIdentifier) {
+          // Try to find the pN folder first, then query files in it
+          // Folder name format: "par Noir - pn-{identifier}" or "par Noir - {identifier}"
+          const pnFolderName = `par Noir - pn-${userIdentifier}`;
+          try {
+            // Search for the folder
+            const folderSearchQuery = `name='${pnFolderName}' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
+            const folderFiles = await googleDriveProxyService.listFiles(userIdentifier, folderSearchQuery, 10, accountId);
+            
+            if (folderFiles.length > 0) {
+              const folderId = folderFiles[0].id;
+              // Query files in this folder
+              finalQuery = `'${folderId}' in parents and trashed=false`;
+              console.log(`[DriveFiles] Found pN folder "${pnFolderName}" (ID: ${folderId}), querying files in folder`);
+            } else {
+              // Fallback: try without "pn-" prefix
+              const altFolderName = `par Noir - ${userIdentifier}`;
+              const altFolderSearchQuery = `name='${altFolderName}' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
+              const altFolderFiles = await googleDriveProxyService.listFiles(userIdentifier, altFolderSearchQuery, 10, accountId);
+              
+              if (altFolderFiles.length > 0) {
+                const folderId = altFolderFiles[0].id;
+                finalQuery = `'${folderId}' in parents and trashed=false`;
+                console.log(`[DriveFiles] Found pN folder "${altFolderName}" (ID: ${folderId}), querying files in folder`);
+              } else {
+                console.log(`[DriveFiles] pN folder not found, listing all files (will be filtered client-side)`);
+              }
+            }
+          } catch (folderError) {
+            console.warn(`[DriveFiles] Error searching for pN folder:`, folderError);
+            // Continue without folder filter - client will filter
+          }
+        }
+        
+        const files = await googleDriveProxyService.listFiles(userIdentifier, finalQuery, pageSize, accountId);
         
         return res.json({ files });
       } catch (error: any) {

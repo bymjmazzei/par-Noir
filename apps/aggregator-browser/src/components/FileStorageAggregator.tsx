@@ -44,15 +44,15 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
   hideSecureFolderSection = false 
 }) => {
   const [isLoading, setIsLoading] = useState(false);
-  const [files, setFiles] = useState<DriveFile[]>([]);
+  const [filesByAccount, setFilesByAccount] = useState<Map<string, DriveFile[]>>(new Map());
   const [error, setError] = useState<string | null>(null);
   const [driveAccounts, setDriveAccounts] = useState<DriveAccount[]>([]);
   const [selectedAccountId, setSelectedAccountId] = useState<string | null>(null);
-  const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
+  const [viewMode, setViewMode] = useState<'grid' | 'list'>('list');
   const [editingFile, setEditingFile] = useState<DriveFile | null>(null);
   const [viewingFile, setViewingFile] = useState<DriveFile | null>(null);
   const [openMenuFor, setOpenMenuFor] = useState<string | null>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const fileInputRefs = useRef<Map<string, HTMLInputElement | null>>(new Map());
   const actionMenuRef = useRef<HTMLDivElement | null>(null);
 
   // Load cloud accounts
@@ -95,52 +95,256 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
   // Load files for a specific account
   const loadFilesForAccount = async (accountId: string) => {
     if (!authenticatedUser?.id) {
+      console.log('[FileStorageAggregator] Skipping file load - no authenticated user');
       return;
     }
 
-    setIsLoading(true);
-    setError(null);
-
     try {
+      console.log(`[FileStorageAggregator] Loading files for account: ${accountId}`);
       const accessToken = await PNOAuthService.getValidAccessToken();
       if (!accessToken) {
-        throw new Error('No valid access token');
+        console.error('[FileStorageAggregator] No valid access token available');
+        setError('Please connect your pN to view files');
+        return;
       }
 
+      // Server will automatically filter to files in the pN folder if no query is provided
+      console.log(`[FileStorageAggregator] Making request to: ${apiEndpoint}/api/drive/files?accountId=${accountId}`);
       const response = await fetch(`${apiEndpoint}/api/drive/files?accountId=${accountId}`, {
         headers: {
           'Authorization': `Bearer ${accessToken}`
         }
       });
 
+      console.log(`[FileStorageAggregator] Response status: ${response.status} ${response.statusText}`);
+
+      if (response.status === 401) {
+        // Token might be invalid, try refreshing (force refresh even if not expired)
+        console.warn('[FileStorageAggregator] Got 401, token may be expired. Attempting refresh...');
+        const errorBody = await response.text().catch(() => '');
+        console.warn('[FileStorageAggregator] 401 error body:', errorBody);
+        
+        // Force refresh the token
+        const refreshedToken = await PNOAuthService.getValidAccessToken(true);
+        if (!refreshedToken) {
+          console.error('[FileStorageAggregator] Failed to get refreshed token - refresh token may be invalid or expired');
+          setError('Your session has expired. Please unlock your pN again to continue.');
+          return;
+        }
+        
+        console.log('[FileStorageAggregator] Retrying with refreshed token...');
+        // Retry with refreshed token
+        const retryResponse = await fetch(`${apiEndpoint}/api/drive/files?accountId=${accountId}`, {
+          headers: {
+            'Authorization': `Bearer ${refreshedToken}`
+          }
+        });
+        
+        console.log(`[FileStorageAggregator] Retry response status: ${retryResponse.status} ${retryResponse.statusText}`);
+        
+        if (!retryResponse.ok) {
+          const errorText = await retryResponse.text().catch(() => 'Unknown error');
+          console.error('[FileStorageAggregator] Retry failed:', errorText);
+          throw new Error(`Failed to load files: ${retryResponse.statusText} - ${errorText}`);
+        }
+        
+        const retryData = await retryResponse.json();
+        const allFiles = (retryData.files || []).map((file: DriveFile) => ({
+          ...file,
+          accountId
+        }));
+        
+        // Filter to show only media files (images/videos), excluding metadata, index, encrypted, and system files
+        const mediaFiles = allFiles.filter((file: DriveFile) => {
+          const name = file.name.toLowerCase();
+          const mimeType = file.mimeType || '';
+          
+          // Exclude folders
+          if (mimeType === 'application/vnd.google-apps.folder') {
+            return false;
+          }
+          
+          // Exclude metadata files
+          if (name.endsWith('.metadata.json') || name === '_metadata') {
+            return false;
+          }
+          
+          // Exclude index files
+          if (name.includes('file-index.json') || name.includes('index.json')) {
+            return false;
+          }
+          
+          // Exclude system files/folders (but allow actual media files that might start with _)
+          if ((name.startsWith('_') || name === 'metadata') && !mimeType.startsWith('image/') && !mimeType.startsWith('video/')) {
+            // Check if it's a media file by extension even if MIME type doesn't match
+            const nameWithoutEncrypted = file.name.replace(/\.encrypted$/i, '');
+            const hasImageExt = /\.(jpg|jpeg|png|gif|webp|bmp|svg|heic|heif)$/i.test(nameWithoutEncrypted);
+            const hasVideoExt = /\.(mp4|mov|avi|mkv|webm|flv|wmv|m4v|3gp)$/i.test(nameWithoutEncrypted);
+            if (!hasImageExt && !hasVideoExt) {
+              return false;
+            }
+          }
+          
+          // Check MIME types
+          const isImageMime = mimeType.startsWith('image/');
+          const isVideoMime = mimeType.startsWith('video/');
+          
+          // Check file extensions (including encrypted files which have .encrypted suffix)
+          // Remove .encrypted suffix first to check original extension
+          const nameWithoutEncrypted = file.name.replace(/\.encrypted$/i, '');
+          const hasImageExt = /\.(jpg|jpeg|png|gif|webp|bmp|svg|heic|heif)$/i.test(nameWithoutEncrypted);
+          const hasVideoExt = /\.(mp4|mov|avi|mkv|webm|flv|wmv|m4v|3gp)$/i.test(nameWithoutEncrypted);
+          
+          // Include if it's an image/video by MIME type OR by file extension
+          // This allows encrypted files to show if they have image/video extensions
+          return isImageMime || isVideoMime || hasImageExt || hasVideoExt;
+        });
+        
+        // Debug: log all files and what was filtered
+        console.log(`[FileStorageAggregator] All files from API (${allFiles.length}):`, allFiles.map(f => ({
+          name: f.name,
+          mimeType: f.mimeType,
+          size: f.size
+        })));
+        
+        if (allFiles.length > mediaFiles.length) {
+          const filteredOut = allFiles.filter(f => !mediaFiles.some(mf => mf.id === f.id));
+          console.log(`[FileStorageAggregator] Filtered out ${filteredOut.length} files:`, filteredOut.map(f => ({
+            name: f.name,
+            mimeType: f.mimeType
+          })));
+        }
+        
+        console.log(`[FileStorageAggregator] Media files (${mediaFiles.length}):`, mediaFiles.map(f => ({
+          name: f.name,
+          mimeType: f.mimeType
+        })));
+        
+        console.log(`[FileStorageAggregator] Loaded ${allFiles.length} total files, filtered to ${mediaFiles.length} media files for account ${accountId}`);
+        setFilesByAccount(prev => {
+          const next = new Map(prev);
+          next.set(accountId, mediaFiles);
+          return next;
+        });
+        setError(null); // Clear any previous errors
+        return;
+      }
+
       if (response.ok) {
         const data = await response.json();
-        const files = (data.files || []).map((file: DriveFile) => ({
+        const allFiles = (data.files || []).map((file: DriveFile) => ({
           ...file,
           accountId // Tag each file with its account ID
         }));
+        
+        // Filter to show only media files (images/videos), excluding metadata, index, encrypted, and system files
+        const mediaFiles = allFiles.filter((file: DriveFile) => {
+          const name = file.name.toLowerCase();
+          const mimeType = file.mimeType || '';
+          
+          // Exclude folders
+          if (mimeType === 'application/vnd.google-apps.folder') {
+            return false;
+          }
+          
+          // Exclude metadata files
+          if (name.endsWith('.metadata.json') || name === '_metadata') {
+            return false;
+          }
+          
+          // Exclude index files
+          if (name.includes('file-index.json') || name.includes('index.json')) {
+            return false;
+          }
+          
+          // Exclude system files/folders (but allow actual media files that might start with _)
+          if ((name.startsWith('_') || name === 'metadata') && !mimeType.startsWith('image/') && !mimeType.startsWith('video/')) {
+            // Check if it's a media file by extension even if MIME type doesn't match
+            const nameWithoutEncrypted = file.name.replace(/\.encrypted$/i, '');
+            const hasImageExt = /\.(jpg|jpeg|png|gif|webp|bmp|svg|heic|heif)$/i.test(nameWithoutEncrypted);
+            const hasVideoExt = /\.(mp4|mov|avi|mkv|webm|flv|wmv|m4v|3gp)$/i.test(nameWithoutEncrypted);
+            if (!hasImageExt && !hasVideoExt) {
+              return false;
+            }
+          }
+          
+          // Check MIME types
+          const isImageMime = mimeType.startsWith('image/');
+          const isVideoMime = mimeType.startsWith('video/');
+          
+          // Check file extensions (including encrypted files which have .encrypted suffix)
+          // Remove .encrypted suffix first to check original extension
+          const nameWithoutEncrypted = file.name.replace(/\.encrypted$/i, '');
+          const hasImageExt = /\.(jpg|jpeg|png|gif|webp|bmp|svg|heic|heif)$/i.test(nameWithoutEncrypted);
+          const hasVideoExt = /\.(mp4|mov|avi|mkv|webm|flv|wmv|m4v|3gp)$/i.test(nameWithoutEncrypted);
+          
+          // Include if it's an image/video by MIME type OR by file extension
+          // This allows encrypted files to show if they have image/video extensions
+          return isImageMime || isVideoMime || hasImageExt || hasVideoExt;
+        });
+        
+        // Debug: log all files and what was filtered
+        console.log(`[FileStorageAggregator] All files from API (${allFiles.length}):`, allFiles.map(f => ({
+          name: f.name,
+          mimeType: f.mimeType,
+          size: f.size
+        })));
+        
+        if (allFiles.length > mediaFiles.length) {
+          const filteredOut = allFiles.filter(f => !mediaFiles.some(mf => mf.id === f.id));
+          console.log(`[FileStorageAggregator] Filtered out ${filteredOut.length} files:`, filteredOut.map(f => ({
+            name: f.name,
+            mimeType: f.mimeType
+          })));
+        }
+        
+        console.log(`[FileStorageAggregator] Media files (${mediaFiles.length}):`, mediaFiles.map(f => ({
+          name: f.name,
+          mimeType: f.mimeType
+        })));
+        
+        console.log(`[FileStorageAggregator] Loaded ${allFiles.length} total files, filtered to ${mediaFiles.length} media files for account ${accountId}`);
         setFilesByAccount(prev => {
           const next = new Map(prev);
-          next.set(accountId, files);
+          next.set(accountId, mediaFiles);
           return next;
         });
+        setError(null); // Clear any previous errors
       } else {
-        throw new Error(`Failed to load files: ${response.statusText}`);
+        const errorText = await response.text().catch(() => 'Unknown error');
+        console.error(`[FileStorageAggregator] Request failed (${response.status}):`, errorText);
+        throw new Error(`Failed to load files: ${response.statusText} - ${errorText}`);
       }
     } catch (err: any) {
-      setError(err.message || 'Failed to load files');
       console.error('[FileStorageAggregator] Failed to load files:', err);
-    } finally {
-      setIsLoading(false);
+      // Only set error if it's a real error, not just empty files
+      if (err.message && !err.message.includes('No valid access token')) {
+        setError(err.message || 'Failed to load files');
+      }
     }
   };
 
   // Load files for all accounts
   useEffect(() => {
     if (driveAccounts.length > 0 && authenticatedUser?.id) {
-      driveAccounts.forEach(account => {
-        loadFilesForAccount(account.accountId);
-      });
+      // Load files for each account sequentially to avoid race conditions
+      const loadAllFiles = async () => {
+        setIsLoading(true);
+        setError(null); // Clear previous errors
+        try {
+          for (const account of driveAccounts) {
+            try {
+              await loadFilesForAccount(account.accountId);
+            } catch (err) {
+              // Log error but continue loading other accounts
+              console.error(`[FileStorageAggregator] Failed to load files for account ${account.accountId}:`, err);
+            }
+          }
+        } finally {
+          setIsLoading(false);
+        }
+      };
+      loadAllFiles();
     }
   }, [driveAccounts.length, authenticatedUser?.id]);
 
@@ -289,27 +493,15 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
 
   return (
     <div className="space-y-6">
-      {/* Secure Cloud Providers */}
-      <div className="bg-neutral-900/60 border border-neutral-700 rounded-xl p-6">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center space-x-3">
-            <Cloud className="h-5 w-5 text-blue-400" />
-            <div>
-              <h3 className="text-lg font-semibold text-white">Secure Cloud</h3>
-              <p className="text-text-secondary text-sm">Connect encrypted cloud storage providers.</p>
-            </div>
+      {/* Show warning if no accounts */}
+      {driveAccounts.length === 0 && (
+        <div className="bg-yellow-500/10 border border-yellow-500/20 rounded-lg p-4">
+          <div className="flex items-center space-x-2">
+            <AlertCircle className="h-4 w-4 text-yellow-400" />
+            <span className="text-yellow-400 text-sm">No cloud storage accounts connected. Connect in the dashboard.</span>
           </div>
         </div>
-
-        {driveAccounts.length === 0 && (
-          <div className="mt-4 bg-yellow-500/10 border border-yellow-500/20 rounded-lg p-4">
-            <div className="flex items-center space-x-2">
-              <AlertCircle className="h-4 w-4 text-yellow-400" />
-              <span className="text-yellow-400 text-sm">No cloud storage accounts connected. Connect in the dashboard.</span>
-            </div>
-          </div>
-        )}
-      </div>
+      )}
 
       {/* Error Display */}
       {error && (
