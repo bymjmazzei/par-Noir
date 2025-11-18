@@ -1413,7 +1413,8 @@ class ProductionServer {
           locationCreated,
           license,
           inLanguage,
-          isPublic
+          isPublic,
+          publicToken
         } = req.body;
 
         if (!fileId) {
@@ -1488,6 +1489,7 @@ class ProductionServer {
                         driveFile.mimeType?.startsWith('video/') ? 'video' : 'other',
               uploadDate: driveFile.createdTime || new Date().toISOString(),
               isPublic: isPublic || false,
+              ...(publicToken && { publicToken }),
               "@context": ['https://schema.org/', 'https://parnoir.com/ns/v1#'],
               "@id": `https://parnoir.com/resource/${fileId}`,
               engagement: {
@@ -1571,7 +1573,8 @@ class ProductionServer {
           if (current) {
             const updatedMetadata = {
               ...current.metadata,
-              isPublic: isPublic
+              isPublic: isPublic,
+              ...(publicToken && { publicToken })
             };
             const db = (await import('./server/utils/database')).getDatabasePool();
             await db.query(
@@ -1814,8 +1817,23 @@ class ProductionServer {
                       }
                       
                       if (metadataFolderId) {
+                        // TODO: Generate publicToken (share token) for public files
+                        // This requires:
+                        // 1. Downloading the encrypted file from Google Drive
+                        // 2. Parsing the encrypted package JSON
+                        // 3. Decrypting with owner's DID + publicKey
+                        // 4. Generating a share key and re-encrypting
+                        // 5. Creating ShareToken structure with shareKey and shareEncrypted
+                        // Without publicToken, files won't be decryptable in the public feed
+                        // For now, publicToken is omitted - files will appear in feed but won't load until publicToken is generated
+                        
                         // Create companion metadata file
                         const metadataFileName = `${fileId}.metadata.json`;
+                        // Get publicToken from request body if provided (generated client-side)
+                        const currentMetadata = await service.getFileMetadata(fileId);
+                        const existingPublicToken = currentMetadata?.metadata?.publicToken;
+                        const tokenToUse = publicToken || existingPublicToken;
+                        
                         const companionMetadata = {
                           fileId: fileId,
                           googleDriveFileId: fileId,
@@ -1830,6 +1848,7 @@ class ProductionServer {
                             identifier: pnIdentifier
                           },
                           tags: [],
+                          ...(tokenToUse && { publicToken: tokenToUse }),
                           engagement: {
                             views: 0,
                             likes: 0,
@@ -1909,6 +1928,14 @@ class ProductionServer {
                         }
                         
                         // Update public file index (adds file to public index)
+                        // Ensure publicToken is included from current metadata if not in companionMetadata
+                        if (!companionMetadata.publicToken) {
+                          const currentMeta = await service.getFileMetadata(fileId);
+                          if (currentMeta?.metadata?.publicToken) {
+                            companionMetadata.publicToken = currentMeta.metadata.publicToken;
+                          }
+                        }
+                        
                         try {
                           await this.updatePublicFileIndex(
                             accessToken,

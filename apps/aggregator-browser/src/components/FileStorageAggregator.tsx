@@ -7,6 +7,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Download, File, RefreshCw, AlertCircle, Lock, Globe, X, Edit, Eye, Grid, List, Plus, Cloud, MoreVertical, Share2 } from 'lucide-react';
 import { PNOAuthService } from '../services/pnOAuthService';
 import { EncryptionManager } from '../utils/encryptionManager';
+import { getEncryptionService } from '../services/encryptionService';
 
 const apiEndpoint = process.env.REACT_APP_API_ENDPOINT || 'https://api.parnoir.com';
 
@@ -1165,6 +1166,53 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
 
       // Update visibility if changed
       if (makePublic !== isCurrentlyPublic) {
+        let publicToken: string | undefined = undefined;
+        
+        // If making public, generate share token (like dashboard does)
+        if (makePublic) {
+          try {
+            // Download the encrypted file to generate share token
+            const downloadResponse = await fetch(
+              `${apiEndpoint}/api/drive/files/${targetFileId}?accountId=${encodeURIComponent(sharingAccountId || '')}`,
+              {
+                headers: {
+                  'Authorization': `Bearer ${accessToken}`
+                }
+              }
+            );
+
+            if (downloadResponse.ok) {
+              const fileBlob = await downloadResponse.blob();
+              const fileText = await fileBlob.text();
+              
+              // Parse encrypted file package (JSON format)
+              const encryptedPackage: EncryptedFilePackage = JSON.parse(fileText);
+              
+              // Get user session for token generation
+              const session = PNOAuthService.loadSession();
+              if (session?.did && session?.publicKey) {
+                const encryptionService = getEncryptionService();
+                const shareToken = await encryptionService.generateShareToken(
+                  encryptedPackage,
+                  {
+                    id: session.did,
+                    publicKey: session.publicKey
+                  }
+                );
+                publicToken = JSON.stringify(shareToken);
+                console.log('✅ [ShareSettings] Generated share token for public file');
+              } else {
+                console.warn('⚠️ [ShareSettings] Missing session data for token generation');
+              }
+            } else {
+              console.warn('⚠️ [ShareSettings] Failed to download file for token generation:', downloadResponse.status);
+            }
+          } catch (tokenError: any) {
+            console.error('❌ [ShareSettings] Failed to generate share token:', tokenError);
+            // Don't fail the request - file can be made public without token (will need to be regenerated later)
+          }
+        }
+        
         // Toggle public status via metadata update
         const accountIdParam = sharingAccountId ? `?accountId=${encodeURIComponent(sharingAccountId)}` : '';
         const metadataResponse = await fetch(`${apiEndpoint}/api/aggregator/metadata-index/${targetFileId}${accountIdParam}`, {
@@ -1174,7 +1222,8 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
             'Authorization': `Bearer ${accessToken}`
           },
           body: JSON.stringify({
-            isPublic: makePublic
+            isPublic: makePublic,
+            ...(publicToken && { publicToken })
           }),
         });
 
