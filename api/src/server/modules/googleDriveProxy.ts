@@ -234,7 +234,28 @@ export class GoogleDriveProxyService {
     parents?: string[],
     accountId?: string
   ): Promise<GoogleDriveFile> {
-    const accessToken = await this.getAccessToken(userDid, accountId);
+    // Get access token and also get the account info for retry logic
+    let accessToken = await this.getAccessToken(userDid, accountId);
+    
+    // Get account info for refresh token if needed for retry
+    const credentialsRecord = await storageCredentialsService.getCredentials(userDid);
+    const credentials = credentialsRecord?.credentials;
+    let refreshToken: string | undefined;
+    if (accountId && credentials?.googleDriveAccounts) {
+      const account = credentials.googleDriveAccounts.find(
+        (acc: any) => 
+          acc.backendId === accountId || 
+          acc.keyPrefix === accountId ||
+          `${acc.backendId}` === accountId ||
+          `${acc.keyPrefix}` === accountId ||
+          (accountId.includes('::') && (acc.backendId === accountId.split('::')[1] || acc.keyPrefix === accountId.split('::')[1]))
+      );
+      refreshToken = account ? ((account as any).refresh_token || (account as any).refreshToken) : undefined;
+    } else if (credentials?.googleDriveAccounts?.[0]) {
+      refreshToken = (credentials.googleDriveAccounts[0] as any).refresh_token || (credentials.googleDriveAccounts[0] as any).refreshToken;
+    } else if (credentials?.googleDrive) {
+      refreshToken = (credentials.googleDrive as any).refresh_token || (credentials.googleDrive as any).refreshToken;
+    }
 
     const metadata = {
       name: fileName,
@@ -269,10 +290,10 @@ export class GoogleDriveProxyService {
       console.error(`[GoogleDriveProxy] Upload failed with status ${response.status}:`, errorText);
       
       // If we get a 401, the token is invalid - try refreshing it
-      if (response.status === 401 && token.refresh_token) {
+      if (response.status === 401 && refreshToken) {
         console.log(`[GoogleDriveProxy] Got 401, attempting token refresh and retry`);
         try {
-          const refreshedToken = await this.refreshAccessToken(token.refresh_token);
+          const refreshedToken = await this.refreshAccessToken(refreshToken);
           // Retry upload with refreshed token
           const retryResponse = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart', {
             method: 'POST',
