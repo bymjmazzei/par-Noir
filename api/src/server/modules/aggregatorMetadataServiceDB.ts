@@ -33,10 +33,10 @@ export class AggregatorMetadataServiceDB {
 
     const db = getDatabasePool();
 
-    // Ensure isPublic is true and enhance metadata structure
+    // Enhance metadata structure - preserve isPublic value from metadata
     const validatedMetadata: PublicMetadata = {
       ...metadata,
-      isPublic: true, // Always true when submitted to public index
+      isPublic: metadata.isPublic === true, // Default to false (private) if not explicitly true
       backend: metadata.backend || 'google_drive',
       backendFileId: metadata.backendFileId || metadata.fileId,
       name: metadata.name || metadata.title || metadata.fileId,

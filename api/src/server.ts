@@ -1142,7 +1142,7 @@ class ProductionServer {
           backendFileId: metadata.backendFileId || metadata.fileId,
           name: title || metadata.fileId || 'Untitled',
           uploadDate: metadata.uploadDate || new Date().toISOString(),
-          isPublic: metadata.isPublic !== false, // Default to true if not specified
+          isPublic: metadata.isPublic === true, // Default to false (private) if not explicitly set to true
           fileType: metadata.fileType || this.getFileTypeFromMime(metadata.mimeType) || 'other'
         };
 
