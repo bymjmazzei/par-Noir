@@ -1250,6 +1250,107 @@ class ProductionServer {
       }
     });
 
+    // GET /api/aggregator/metadata-index/:fileId - Get metadata for a specific file (creates entry if doesn't exist)
+    this.app.get('/api/aggregator/metadata-index/:fileId', async (req, res) => {
+      try {
+        const { AggregatorMetadataServiceDB } = await import('./server/modules/aggregatorMetadataServiceDB');
+        const service = AggregatorMetadataServiceDB.getInstance();
+
+        const { fileId } = req.params;
+        console.log(`[MetadataIndex GET] Request received for fileId: ${fileId}`);
+
+        if (!fileId) {
+          return res.status(400).json({ error: 'Missing fileId parameter' });
+        }
+
+        // Check if metadata entry exists
+        let metadata = await service.getFileMetadata(fileId);
+        console.log(`[MetadataIndex GET] Existing entry check for ${fileId}: ${metadata ? 'found' : 'not found'}`);
+
+        // If not found, try to create it from Google Drive
+        if (!metadata) {
+          const authHeader = req.headers.authorization;
+          if (authHeader && authHeader.startsWith('Bearer ')) {
+            const token = authHeader.substring(7);
+            const { PNOAuthService } = await import('./server/modules/pnOAuthService');
+            const tokenPayload = PNOAuthService.validateAccessToken(token);
+
+            if (tokenPayload) {
+              const userIdentifier = tokenPayload.pnIdentifier || tokenPayload.did;
+              const identifierCandidates: string[] = [];
+              if (tokenPayload.pnIdentifier) {
+                identifierCandidates.push(tokenPayload.pnIdentifier);
+              }
+              if (tokenPayload.did) {
+                identifierCandidates.push(tokenPayload.did);
+                if (tokenPayload.did.startsWith('did:key:')) {
+                  const keyPart = tokenPayload.did.substring(8);
+                  if (keyPart) {
+                    identifierCandidates.push(keyPart);
+                  }
+                }
+              }
+
+              const { googleDriveProxyService } = await import('./server/modules/googleDriveProxy');
+              const accountId = req.query.accountId as string | undefined;
+
+              try {
+                const accessToken = await googleDriveProxyService.getAccessToken(userIdentifier, accountId, identifierCandidates);
+                const driveResponse = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?fields=id,name,mimeType,size,createdTime,modifiedTime`, {
+                  headers: { 'Authorization': `Bearer ${accessToken}` }
+                });
+
+                if (driveResponse.ok) {
+                  const driveFile = await driveResponse.json();
+                  const initialMetadata: any = {
+                    fileId: fileId,
+                    backendFileId: fileId,
+                    backend: 'google_drive',
+                    name: driveFile.name?.replace(/\.encrypted$/i, '') || fileId,
+                    fileType: driveFile.mimeType?.startsWith('image/') ? 'image' :
+                              driveFile.mimeType?.startsWith('video/') ? 'video' : 'other',
+                    uploadDate: driveFile.createdTime || new Date().toISOString(),
+                    isPublic: false,
+                    "@context": ['https://schema.org/', 'https://parnoir.com/ns/v1#'],
+                    "@id": `https://parnoir.com/resource/${fileId}`,
+                    engagement: {
+                      views: 0,
+                      likes: 0,
+                      comments: 0,
+                      shares: 0,
+                      lastUpdated: new Date().toISOString()
+                    }
+                  };
+
+                  try {
+                    await service.submitMetadata(initialMetadata, tokenPayload.pnIdentifier);
+                    console.log(`[MetadataIndex GET] Created metadata entry for ${fileId}`);
+                    metadata = await service.getFileMetadata(fileId);
+                  } catch (submitError: any) {
+                    console.error(`[MetadataIndex GET] Failed to submit metadata for ${fileId}:`, submitError);
+                  }
+                }
+              } catch (driveError: any) {
+                console.error(`[MetadataIndex GET] Failed to fetch file info for ${fileId}:`, driveError);
+              }
+            }
+          }
+        }
+
+        if (!metadata) {
+          return res.status(404).json({ error: 'File not found in index' });
+        }
+
+        return res.json({ metadata: metadata.metadata || metadata });
+      } catch (error: any) {
+        console.error('Error getting metadata:', error);
+        return res.status(500).json({
+          error: 'Failed to get metadata',
+          message: error.message
+        });
+      }
+    });
+
     // PUT /api/aggregator/metadata-index/:fileId - Update metadata (creates entry if doesn't exist)
     this.app.put('/api/aggregator/metadata-index/:fileId', async (req, res) => {
       try {
