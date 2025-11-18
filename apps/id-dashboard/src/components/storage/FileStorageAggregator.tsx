@@ -3,7 +3,7 @@
  * Dashboard aggregator that collects files from all connected storage backends
  */
 import React, { useState, useEffect, useRef } from 'react';
-import { Download, File, RefreshCw, AlertCircle, Lock, Globe, Info, X, Edit, Eye, Grid, List, Plus, Cloud, MoreVertical, Share2 } from 'lucide-react';
+import { Download, File, RefreshCw, AlertCircle, Lock, Globe, Info, X, Edit, Eye, Grid, List, Plus, Cloud, MoreVertical, Share2, Trash2 } from 'lucide-react';
 import { DesktopSecureFolderPanel } from './DesktopSecureFolderPanel';
 import { getFileAggregatorService } from '../../services/aggregator/FileAggregatorService';
 import { getEncryptionService } from '../../services/aggregator/EncryptionService';
@@ -2380,30 +2380,83 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
 
         if (ownerIndex?.files?.length) {
           ownerIndexRetryCountsRef.current.delete(backendId);
-          filesForBackend = ownerIndex.files.map((entry: any) => {
-            const derivedMime =
-              entry.mimeType ||
-              (entry.fileName?.toLowerCase().endsWith('.encrypted') ? 'application/octet-stream' : undefined);
+          
+          // IMPORTANT: Always scan Google Drive to verify files exist before using owner index entries
+          // This prevents showing orphaned files that were deleted from Drive but remain in the index
+          let scannedFiles: any[] = [];
+          try {
+            scannedFiles = await backend.listFiles(undefined, currentPnIdentifier);
+            console.debug('✅ [loadFiles] Scanned Google Drive to verify file existence', {
+              backendId,
+              scannedCount: scannedFiles.length,
+              ownerIndexCount: ownerIndex.files.length
+            });
+          } catch (scanError) {
+            console.warn('⚠️ [loadFiles] Failed to scan Drive for orphaned file cleanup (non-blocking)', {
+              backendId,
+              error: scanError,
+            });
+            // Continue with owner index entries if scan fails (better than showing nothing)
+          }
 
-            const normalizedName = entry.fileName || entry.originalName || 'Untitled';
-            const parsedSize = typeof entry.size === 'number' ? entry.size : Number(entry.size || 0);
-            const fileId = entry.fileId || entry.googleDriveFileId || `${backendId}:${entry.fileName}`;
+          // Create a set of file IDs that actually exist in Google Drive
+          const existingFileIds = new Set(scannedFiles.map((f: any) => f.id));
+          
+          filesForBackend = ownerIndex.files
+            .filter((entry: any) => {
+              // Filter out orphaned entries that don't exist in Google Drive
+              const googleDriveFileId = entry.googleDriveFileId;
+              if (googleDriveFileId && !existingFileIds.has(googleDriveFileId)) {
+                console.debug('🗑️ [loadFiles] Filtering out orphaned file from files list', {
+                  backendId,
+                  fileId: googleDriveFileId,
+                  fileName: entry.fileName || entry.originalName
+                });
+                return false;
+              }
+              return true;
+            })
+            .map((entry: any) => {
+              const derivedMime =
+                entry.mimeType ||
+                (entry.fileName?.toLowerCase().endsWith('.encrypted') ? 'application/octet-stream' : undefined);
 
-            return {
-              id: fileId,
-              backend: backendId,
-              backendFileId: entry.googleDriveFileId,
-              name: normalizedName,
-              originalName: entry.originalName || normalizedName,
-              mimeType: derivedMime,
-              size: Number.isFinite(parsedSize) ? parsedSize.toString() : '0',
-              encrypted: true,
-              visibility: normalizeVisibility(entry.visibility),
-              aggregatedAt: entry.uploadedAt || new Date().toISOString(),
-            };
-          });
+              const normalizedName = entry.fileName || entry.originalName || 'Untitled';
+              const parsedSize = typeof entry.size === 'number' ? entry.size : Number(entry.size || 0);
+              const fileId = entry.fileId || entry.googleDriveFileId || `${backendId}:${entry.fileName}`;
+
+              return {
+                id: fileId,
+                backend: backendId,
+                backendFileId: entry.googleDriveFileId,
+                name: normalizedName,
+                originalName: entry.originalName || normalizedName,
+                mimeType: derivedMime,
+                size: Number.isFinite(parsedSize) ? parsedSize.toString() : '0',
+                encrypted: true,
+                visibility: normalizeVisibility(entry.visibility),
+                aggregatedAt: entry.uploadedAt || new Date().toISOString(),
+              };
+            });
+
+          // Process metadata from owner index, filtering out orphaned entries
+          const existingFileIds = new Set(scannedFiles.map((f: any) => f.id));
+          const orphanedEntries: any[] = [];
 
           ownerIndex.files.forEach((entry: any) => {
+            const googleDriveFileId = entry.googleDriveFileId;
+            
+            // Skip entries that don't exist in Google Drive (orphaned)
+            if (googleDriveFileId && !existingFileIds.has(googleDriveFileId)) {
+              orphanedEntries.push(entry);
+              console.debug('🗑️ [loadFiles] Filtering out orphaned file from owner index', {
+                backendId,
+                fileId: googleDriveFileId,
+                fileName: entry.fileName || entry.originalName
+              });
+              return; // Skip this entry
+            }
+
             const fileId = entry.fileId || entry.googleDriveFileId || `${backendId}:${entry.fileName}`;
             const name = entry.originalName || entry.fileName || 'Untitled';
             const mime =
@@ -2478,6 +2531,17 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
               }
             }
           });
+
+          // Log orphaned entries found (for debugging)
+          if (orphanedEntries.length > 0) {
+            console.warn(`⚠️ [loadFiles] Found ${orphanedEntries.length} orphaned file(s) in owner index for ${backendId}`, {
+              orphanedFiles: orphanedEntries.map(e => ({
+                fileId: e.googleDriveFileId,
+                fileName: e.fileName || e.originalName
+              }))
+            });
+            // TODO: Optionally clean up owner index by removing orphaned entries
+          }
         } else {
           console.debug('ℹ️ [loadFiles] Owner index empty; scanning Drive contents', { backendId });
           try {
@@ -4439,6 +4503,67 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
     }
   };
 
+  const handleDelete = async (file: AggregatedFile) => {
+    if (!file.backendFileId) {
+      setError('Cannot delete file: missing file ID');
+      return;
+    }
+
+    // Confirm deletion
+    const confirmed = window.confirm(`Are you sure you want to delete "${file.originalName || file.name}"? This action cannot be undone.`);
+    if (!confirmed) {
+      return;
+    }
+
+    try {
+      setIsLoading(true);
+      setError(null);
+
+      const accessToken = authenticatedUser?.accessToken;
+      if (!accessToken) {
+        setError('Authentication required. Please unlock your pN.');
+        return;
+      }
+
+      // Find the account ID for this file
+      const account = driveAccounts.find(acc => acc.backendId === file.backend);
+      const accountId = account?.accountId || account?.backendId;
+
+      const accountIdParam = accountId ? `?accountId=${encodeURIComponent(accountId)}` : '';
+      
+      console.log('🗑️ [Delete] Deleting file...', {
+        fileId: file.backendFileId,
+        fileName: file.name,
+        accountId
+      });
+
+      const response = await fetch(`${apiEndpoint}/api/drive/files/${file.backendFileId}${accountIdParam}`, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${accessToken}`
+        }
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text().catch(() => 'Unknown error');
+        throw new Error(`Failed to delete file: ${errorText}`);
+      }
+
+      console.log('✅ [Delete] File deleted successfully');
+
+      // Reload files after deletion
+      if (loadFilesRef.current) {
+        await loadFilesRef.current();
+      }
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Failed to delete file';
+      console.error('❌ [Delete] Delete failed:', err);
+      setError(errorMessage);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
 
   const totalFiles = files.length;
   const hasConnectedBackends = driveAccounts.length > 0;
@@ -4996,6 +5121,20 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
                                       <Share2 className="h-4 w-4" />
                                       <span>Share settings</span>
                               </button>
+                                    <div className="border-t border-neutral-700 my-1"></div>
+                                    <button
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setOpenMenuFor(null);
+                                        actionMenuRef.current = null;
+                                        handleDelete(file);
+                                      }}
+                                      className="flex w-full items-center space-x-2 px-3 py-2 text-sm text-red-400 hover:text-red-300 hover:bg-red-900/20 transition-colors"
+                                      disabled={isLoading}
+                                    >
+                                      <Trash2 className="h-4 w-4" />
+                                      <span>Delete</span>
+                                    </button>
                                   </div>
                                 )}
                               </div>
@@ -5134,16 +5273,30 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
                                   >
                                     <Share2 className="h-4 w-4" />
                                     <span>Share settings</span>
-                            </button>
-                                </div>
-                              )}
+                                  </button>
+                                  <div className="border-t border-neutral-700 my-1"></div>
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setOpenMenuFor(null);
+                                      actionMenuRef.current = null;
+                                      handleDelete(file);
+                                    }}
+                                    className="flex w-full items-center space-x-2 px-3 py-2 text-sm text-red-400 hover:text-red-300 hover:bg-red-900/20 transition-colors"
+                                    disabled={isLoading}
+                                  >
+                                    <Trash2 className="h-4 w-4" />
+                                    <span>Delete</span>
+                                  </button>
                             </div>
-                          </div>
+                          )}
                         </div>
-                      );
-                    })}
-                  </div>
-                )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
               </div>
             );
           })}

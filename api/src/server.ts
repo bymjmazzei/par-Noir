@@ -470,6 +470,77 @@ class ProductionServer {
   }
 
   /**
+   * Remove file from owner index
+   */
+  private async removeFromOwnerIndex(
+    accessToken: string,
+    pnIdentifier: string,
+    metadataFolderId: string,
+    fileId: string
+  ): Promise<void> {
+    const OWNER_INDEX_FILE_NAME = 'owner-file-index.json';
+    
+    // Get existing owner index
+    const index = await this.getOwnerFileIndex(accessToken, metadataFolderId, pnIdentifier);
+    
+    if (!index || !index.files) {
+      // No index or no files, nothing to remove
+      return;
+    }
+    
+    // Remove file from index
+    const initialLength = index.files.length;
+    index.files = index.files.filter((f: any) => f.googleDriveFileId !== fileId && f.fileId !== fileId);
+    
+    if (index.files.length === initialLength) {
+      // File wasn't in the index, nothing to do
+      return;
+    }
+    
+    index.updatedAt = new Date().toISOString();
+    
+    // Save updated index
+    const indexContent = JSON.stringify(index, null, 2);
+    
+    // Find and update the index file
+    const searchResponse = await fetch(
+      `https://www.googleapis.com/drive/v3/files?q=name='${OWNER_INDEX_FILE_NAME}' and '${metadataFolderId}' in parents and trashed=false&fields=files(id)`,
+      {
+        headers: {
+          'Authorization': `Bearer ${accessToken}`
+        }
+      }
+    );
+    
+    if (!searchResponse.ok) {
+      throw new Error('Failed to search for owner index file');
+    }
+    
+    const searchData = await searchResponse.json() as { files?: Array<{ id: string }> };
+    
+    if (searchData.files && searchData.files.length > 0) {
+      const indexFileId = searchData.files[0].id;
+      
+      const updateResponse = await fetch(
+        `https://www.googleapis.com/upload/drive/v3/files/${indexFileId}?uploadType=media`,
+        {
+          method: 'PATCH',
+          headers: {
+            'Authorization': `Bearer ${accessToken}`,
+            'Content-Type': 'application/json; charset=UTF-8'
+          },
+          body: indexContent
+        }
+      );
+      
+      if (!updateResponse.ok) {
+        const errorText = await updateResponse.text();
+        throw new Error(`Failed to update owner index file: ${errorText}`);
+      }
+    }
+  }
+
+  /**
    * Remove file from public index
    */
   private async removeFromPublicIndex(
@@ -3760,11 +3831,96 @@ class ProductionServer {
         }
 
         const userIdentifier = tokenPayload.pnIdentifier || tokenPayload.did;
+        const pnIdentifier = tokenPayload.pnIdentifier;
         const { fileId } = req.params;
         const accountId = req.query.accountId as string | undefined;
         const { googleDriveProxyService } = await import('./server/modules/googleDriveProxy');
         
+        // Delete file from Google Drive
         await googleDriveProxyService.deleteFile(userIdentifier, fileId, accountId);
+        console.log(`✅ [DeleteFile] Deleted file ${fileId} from Google Drive`);
+        
+        // Clean up indexes: remove from owner index and public index
+        if (pnIdentifier) {
+          try {
+            const identifierCandidates: string[] = [];
+            if (tokenPayload.pnIdentifier) {
+              identifierCandidates.push(tokenPayload.pnIdentifier);
+            }
+            if (tokenPayload.did) {
+              identifierCandidates.push(tokenPayload.did);
+              if (tokenPayload.did.startsWith('did:key:')) {
+                const keyPart = tokenPayload.did.substring(8);
+                if (keyPart) {
+                  identifierCandidates.push(keyPart);
+                }
+              }
+            }
+            
+            const accessToken = await googleDriveProxyService.getAccessToken(userIdentifier, accountId, identifierCandidates);
+            
+            // Get pN folder and metadata folder
+            const pnFolderName = `par Noir - pn-${pnIdentifier}`;
+            const folderSearchQuery = `name='${pnFolderName.replace(/'/g, "\\'")}' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
+            const folderSearchUrl = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(folderSearchQuery)}&fields=files(id,name)&pageSize=1`;
+            
+            const folderResponse = await fetch(folderSearchUrl, {
+              headers: { 'Authorization': `Bearer ${accessToken}` }
+            });
+            
+            if (folderResponse.ok) {
+              const folderData = await folderResponse.json() as { files?: Array<{ id: string; name: string }> };
+              if (folderData.files && folderData.files.length > 0) {
+                const pnFolderId = folderData.files[0].id;
+                
+                // Get metadata folder
+                const metadataFolderName = '_metadata';
+                const metadataSearchQuery = `name='${metadataFolderName}' and '${pnFolderId}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`;
+                const metadataSearchUrl = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(metadataSearchQuery)}&fields=files(id,name)&pageSize=1`;
+                
+                const metadataFolderResponse = await fetch(metadataSearchUrl, {
+                  headers: { 'Authorization': `Bearer ${accessToken}` }
+                });
+                
+                if (metadataFolderResponse.ok) {
+                  const metadataFolderData = await metadataFolderResponse.json() as { files?: Array<{ id: string; name: string }> };
+                  if (metadataFolderData.files && metadataFolderData.files.length > 0) {
+                    const metadataFolderId = metadataFolderData.files[0].id;
+                    
+                    // Remove from owner index
+                    try {
+                      await this.removeFromOwnerIndex(accessToken, pnIdentifier, metadataFolderId, fileId);
+                      console.log(`✅ [DeleteFile] Removed file ${fileId} from owner index`);
+                    } catch (ownerIndexError: any) {
+                      console.warn(`⚠️ [DeleteFile] Failed to remove from owner index (non-critical):`, ownerIndexError?.message || ownerIndexError);
+                    }
+                    
+                    // Remove from public index
+                    try {
+                      await this.removeFromPublicIndex(accessToken, pnIdentifier, metadataFolderId, fileId);
+                      console.log(`✅ [DeleteFile] Removed file ${fileId} from public index`);
+                    } catch (publicIndexError: any) {
+                      console.warn(`⚠️ [DeleteFile] Failed to remove from public index (non-critical):`, publicIndexError?.message || publicIndexError);
+                    }
+                  }
+                }
+              }
+            }
+          } catch (indexCleanupError: any) {
+            // Don't fail the delete if index cleanup fails - file is already deleted from Drive
+            console.warn(`⚠️ [DeleteFile] Index cleanup failed (non-critical):`, indexCleanupError?.message || indexCleanupError);
+          }
+        }
+        
+        // Also remove from database metadata index
+        try {
+          const { AggregatorMetadataServiceDB } = await import('./server/modules/aggregatorMetadataServiceDB');
+          const service = AggregatorMetadataServiceDB.getInstance();
+          await service.removeMetadata(fileId);
+          console.log(`✅ [DeleteFile] Removed file ${fileId} from database metadata index`);
+        } catch (dbError: any) {
+          console.warn(`⚠️ [DeleteFile] Failed to remove from database (non-critical):`, dbError?.message || dbError);
+        }
         
         return res.json({ success: true, fileId });
       } catch (error: any) {
