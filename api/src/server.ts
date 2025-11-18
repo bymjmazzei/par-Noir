@@ -1280,6 +1280,59 @@ class ProductionServer {
       }
     });
 
+    // GET /api/aggregator/metadata-index/debug - Debug endpoint to check database state
+    this.app.get('/api/aggregator/metadata-index/debug', async (req, res) => {
+      try {
+        const db = (await import('./server/utils/database')).getDatabasePool();
+        
+        // Get all files with their isPublic status
+        const allFiles = await db.query(`
+          SELECT 
+            file_id, 
+            metadata->>'isPublic' as is_public, 
+            metadata->>'name' as name,
+            metadata->>'publicToken' as has_public_token,
+            metadata->>'backendFileId' as backend_file_id,
+            updated_at
+          FROM aggregator_metadata
+          ORDER BY updated_at DESC
+        `);
+        
+        const publicFiles = allFiles.rows.filter((r: any) => r.is_public === 'true');
+        const privateFiles = allFiles.rows.filter((r: any) => r.is_public === 'false' || r.is_public === null);
+        const filesWithTokenButNotPublic = allFiles.rows.filter((r: any) => 
+          r.is_public !== 'true' && r.has_public_token
+        );
+        
+        return res.json({
+          totalFiles: allFiles.rows.length,
+          publicFiles: publicFiles.length,
+          privateFiles: privateFiles.length,
+          filesWithTokenButNotPublic: filesWithTokenButNotPublic.length,
+          samplePublicFiles: publicFiles.slice(0, 10).map((r: any) => ({
+            fileId: r.file_id,
+            name: r.name,
+            backendFileId: r.backend_file_id,
+            updatedAt: r.updated_at
+          })),
+          samplePrivateFiles: privateFiles.slice(0, 5).map((r: any) => ({
+            fileId: r.file_id,
+            name: r.name,
+            isPublic: r.is_public,
+            hasPublicToken: !!r.has_public_token,
+            updatedAt: r.updated_at
+          })),
+          note: 'The public feed ONLY shows files where isPublic = true in the database. Google Drive files are NOT used.'
+        });
+      } catch (error: any) {
+        console.error('Error in debug endpoint:', error);
+        return res.status(500).json({ 
+          error: 'Failed to fetch debug info',
+          message: error.message 
+        });
+      }
+    });
+
     // GET /api/aggregator/metadata-index/stats - Get index statistics
     this.app.get('/api/aggregator/metadata-index/stats', async (req, res) => {
       try {

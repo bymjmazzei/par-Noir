@@ -110,6 +110,12 @@ export class AggregatorMetadataServiceDB {
 
   /**
    * Get all public metadata with optional filters
+   * 
+   * IMPORTANT: This is the SOURCE OF TRUTH for the public feed.
+   * The public feed reads directly from the database - NOT from Google Drive files.
+   * Google Drive `public-file-index.json` files are NOT used by the API.
+   * 
+   * Only files with `isPublic = 'true'` in the database will appear in the public feed.
    */
   async getPublicMetadata(filters?: {
     tags?: string[];
@@ -129,11 +135,7 @@ export class AggregatorMetadataServiceDB {
           COALESCE(ARRAY_AGG(DISTINCT fp.feed_id) FILTER (WHERE fp.feed_id IS NOT NULL), ARRAY[]::uuid[]) as feed_ids
         FROM aggregator_metadata am
         LEFT JOIN feed_posts fp ON am.file_id = fp.file_id
-        WHERE (
-          am.metadata->>'isPublic' = 'true' 
-          OR am.metadata->>'isPublic' IS NULL
-          OR (am.metadata->>'isPublic' = 'false' AND am.metadata->>'publicToken' IS NOT NULL)
-        )
+        WHERE am.metadata->>'isPublic' = 'true'
         GROUP BY am.file_id, am.metadata, am.submitted_at, am.pn_identifier
       `;
       const params: any[] = [];
