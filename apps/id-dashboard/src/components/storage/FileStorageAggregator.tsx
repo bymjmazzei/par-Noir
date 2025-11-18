@@ -3571,11 +3571,54 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
       
       // CRITICAL: Update API storage credentials to remove the account
       // This prevents it from being restored via hydrateStorageCredentialsFromAPI
-      // Since we already called removeDriveAccount, buildStorageCredentialPayload will exclude the removed account
+      // We need to explicitly send the current state (without the removed account) to the API
       try {
         console.log('🔄 [handleDisconnect] Updating API storage credentials to remove account...');
-        await persistStorageCredentialsToAPI();
-        console.log('✅ [handleDisconnect] API storage credentials updated');
+        
+        // Build payload from current state (after removal)
+        const payload = buildStorageCredentialPayload();
+        
+        // Even if payload is empty (no accounts left), we need to persist it to clear the API
+        // This ensures the disconnected account is removed from API storage
+        const identityCandidates = getStorageIdentityCandidates();
+        
+        if (identityCandidates.length > 0) {
+          const seen = new Set<string>();
+          for (const identityId of identityCandidates) {
+            if (!identityId || seen.has(identityId)) {
+              continue;
+            }
+            seen.add(identityId);
+            
+            try {
+              // Send current payload (may be empty if all accounts disconnected)
+              const response = await fetch(`${apiEndpoint}/api/storage/credentials/${encodeURIComponent(identityId)}`, {
+                method: 'PUT',
+                headers: {
+                  'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                  credentials: payload || { googleDriveAccounts: [] },
+                  cid: null,
+                }),
+              });
+              
+              if (!response.ok) {
+                const errorText = await response.text().catch(() => 'Unknown error');
+                console.warn('⚠️ [handleDisconnect] Failed to update API storage credentials:', {
+                  status: response.status,
+                  error: errorText,
+                });
+              } else {
+                console.log('✅ [handleDisconnect] API storage credentials updated (account removed)');
+              }
+            } catch (apiError) {
+              console.error('❌ [handleDisconnect] Failed to update API storage credentials:', apiError);
+            }
+          }
+        } else {
+          console.warn('⚠️ [handleDisconnect] No identity candidates available for API update');
+        }
       } catch (apiError) {
         console.error('❌ [handleDisconnect] Failed to update API storage credentials:', apiError);
         // Non-critical - account is already removed from state
@@ -3586,7 +3629,20 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
       removeDriveAccount(backendId);
       // Try to update API even on error
       try {
-        await persistStorageCredentialsToAPI();
+        const payload = buildStorageCredentialPayload();
+        const identityCandidates = getStorageIdentityCandidates();
+        
+        if (identityCandidates.length > 0) {
+          const identityId = identityCandidates[0];
+          await fetch(`${apiEndpoint}/api/storage/credentials/${encodeURIComponent(identityId)}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              credentials: payload || { googleDriveAccounts: [] },
+              cid: null,
+            }),
+          });
+        }
       } catch (apiError) {
         console.error('❌ [handleDisconnect] Failed to update API after error:', apiError);
       }
