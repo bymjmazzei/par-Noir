@@ -8,6 +8,7 @@ import React, { useState, useEffect } from 'react';
 import { Cloud, RefreshCw, Image, Video, FileText, File, Lock, Globe, Grid, List, Search, Filter } from 'lucide-react';
 import { useUserState } from '../contexts/UserStateContext';
 import { useToast } from '../hooks/useToast';
+import { PNOAuthService } from '../services/pnOAuthService';
 
 interface CloudFile {
   id: string;
@@ -40,10 +41,12 @@ export function BrowseCloud({ onClose, onUploadClick }: { onClose: () => void; o
       }
 
       try {
+        const session = PNOAuthService.loadSession();
+        const accessToken = session?.accessToken || '';
         const apiEndpoint = process.env.REACT_APP_API_ENDPOINT || 'https://api.parnoir.com';
         const response = await fetch(`${apiEndpoint}/api/storage/accounts/${userState.pnIdentifier}`, {
           headers: {
-            'Authorization': `Bearer ${localStorage.getItem('oauth_access_token') || ''}`
+            'Authorization': `Bearer ${accessToken}`
           }
         });
 
@@ -72,9 +75,18 @@ export function BrowseCloud({ onClose, onUploadClick }: { onClose: () => void; o
 
       // Load files from all accounts (API currently returns all files)
       try {
+        const session = PNOAuthService.loadSession();
+        const accessToken = session?.accessToken || '';
+        
+        if (!accessToken) {
+          console.error('[BrowseCloud] No access token available');
+          setIsLoading(false);
+          return;
+        }
+        
         const response = await fetch(`${apiEndpoint}/api/drive/files`, {
           headers: {
-            'Authorization': `Bearer ${localStorage.getItem('oauth_access_token') || ''}`
+            'Authorization': `Bearer ${accessToken}`
           }
         });
 
@@ -86,7 +98,7 @@ export function BrowseCloud({ onClose, onUploadClick }: { onClose: () => void; o
             try {
               const metadataResponse = await fetch(`${apiEndpoint}/api/aggregator/metadata-index`, {
                 headers: {
-                  'Authorization': `Bearer ${localStorage.getItem('oauth_access_token') || ''}`
+                  'Authorization': `Bearer ${accessToken}`
                 }
               });
               if (metadataResponse.ok) {

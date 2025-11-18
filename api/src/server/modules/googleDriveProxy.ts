@@ -47,10 +47,24 @@ export class GoogleDriveProxyService {
     let account: GoogleDriveToken | null = null;
     
     if (accountId && credentials.googleDriveAccounts) {
-      // Find specific account by accountId (backendId or keyPrefix)
+      // Find specific account by accountId (backendId, keyPrefix, or full accountId string)
+      // AccountId might be in format "google_drive::email-hash" or just "backendId" or "keyPrefix"
       account = credentials.googleDriveAccounts.find(
-        (acc: any) => acc.backendId === accountId || acc.keyPrefix === accountId
+        (acc: any) => 
+          acc.backendId === accountId || 
+          acc.keyPrefix === accountId ||
+          `${acc.backendId}` === accountId ||
+          `${acc.keyPrefix}` === accountId ||
+          (accountId.includes('::') && (acc.backendId === accountId.split('::')[1] || acc.keyPrefix === accountId.split('::')[1]))
       ) || null;
+      
+      if (!account) {
+        console.error(`[GoogleDriveProxy] Account not found for accountId: ${accountId}`);
+        console.error(`[GoogleDriveProxy] Available accounts:`, credentials.googleDriveAccounts.map((acc: any) => ({
+          backendId: acc.backendId,
+          keyPrefix: acc.keyPrefix
+        })));
+      }
     } else if (credentials.googleDriveAccounts && credentials.googleDriveAccounts.length > 0) {
       // Use first account if no accountId specified
       account = credentials.googleDriveAccounts[0];
@@ -81,7 +95,12 @@ export class GoogleDriveProxyService {
     const now = Date.now();
     const expiresAt = token.expires_at || (token.expires_in ? now + (token.expires_in * 1000) : now + 3600000);
     
-    if (expiresAt < now + 60000) { // Refresh if expires in less than 1 minute
+    // Always try to refresh if token is expired or close to expiring
+    // Also refresh if token is older than 30 minutes (tokens typically expire after 1 hour)
+    const tokenAge = expiresAt - now;
+    const shouldRefresh = expiresAt < now + 60000 || tokenAge < 1800000; // Refresh if expires in < 1 min or age < 30 min
+    
+    if (shouldRefresh) {
       if (!token.refresh_token) {
         throw new Error('Google Drive token expired and no refresh token available');
       }
@@ -92,7 +111,12 @@ export class GoogleDriveProxyService {
         // Update stored credentials for the specific account
         if (accountId && credentials.googleDriveAccounts) {
           const accountIndex = credentials.googleDriveAccounts.findIndex(
-            (acc: any) => acc.backendId === accountId || acc.keyPrefix === accountId
+            (acc: any) => 
+              acc.backendId === accountId || 
+              acc.keyPrefix === accountId ||
+              `${acc.backendId}` === accountId ||
+              `${acc.keyPrefix}` === accountId ||
+              (accountId.includes('::') && (acc.backendId === accountId.split('::')[1] || acc.keyPrefix === accountId.split('::')[1]))
           );
           if (accountIndex >= 0) {
             credentials.googleDriveAccounts[accountIndex] = {

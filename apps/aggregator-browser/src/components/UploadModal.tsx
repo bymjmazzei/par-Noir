@@ -7,6 +7,7 @@ import React, { useState, useRef } from 'react';
 import { X, Upload, File, Image, Video, FileText, AlertCircle } from 'lucide-react';
 import { useUserState } from '../contexts/UserStateContext';
 import { useToast } from '../hooks/useToast';
+import { PNOAuthService } from '../services/pnOAuthService';
 import { ContentRating, FeedCategory } from '../types/aggregator';
 import { ContentRatingBadge } from './ContentRatingBadge';
 import { FEED_CATEGORIES } from '../constants/feedCategories';
@@ -46,9 +47,12 @@ export function UploadModal({ onClose, onUploadComplete, onBrowseCloudClick }: U
       try {
         const apiEndpoint = process.env.REACT_APP_API_ENDPOINT || 'https://api.parnoir.com';
         console.log(`[UploadModal] Loading cloud accounts for pN: ${userState.pnIdentifier}`);
+        const session = PNOAuthService.loadSession();
+        const accessToken = session?.accessToken || '';
+        
         const response = await fetch(`${apiEndpoint}/api/storage/accounts/${userState.pnIdentifier}`, {
           headers: {
-            'Authorization': `Bearer ${localStorage.getItem('oauth_access_token') || ''}`
+            'Authorization': `Bearer ${accessToken}`
           }
         });
 
@@ -199,11 +203,20 @@ export function UploadModal({ onClose, onUploadComplete, onBrowseCloudClick }: U
 
       setUploadProgress(40);
 
+      const session = PNOAuthService.loadSession();
+      const accessToken = session?.accessToken || '';
+      
+      if (!accessToken) {
+        showError('Please connect your pN to upload files');
+        setUploading(false);
+        return;
+      }
+
       const uploadResponse = await fetch(`${apiEndpoint}/api/drive/files`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('oauth_access_token') || ''}`
+          'Authorization': `Bearer ${accessToken}`
         },
         body: JSON.stringify({
           fileData: base64File,
