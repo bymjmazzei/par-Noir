@@ -2888,6 +2888,66 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
         await metadataIndexService.indexFile(file, publicMetadata, metadataPnIdentifier);
         console.log('✅ [Phase 3] Metadata indexed with token');
 
+        // CRITICAL: Also call PUT endpoint to explicitly update isPublic in database
+        // This ensures the database is updated even if POST didn't properly update existing entry
+        try {
+          const targetFileId = publicMetadata.fileId || file.backendFileId || file.id;
+          console.log('🔄 [Phase 3] Updating isPublic via PUT endpoint...', { targetFileId, isPublic: publicMetadata.isPublic });
+          
+          const { retry: retryHelper } = await import('../../utils/helpers');
+          const putResponse = await retryHelper(
+            async () => {
+              const res = await fetch(
+                `${apiEndpoint}/api/aggregator/metadata-index/${encodeURIComponent(targetFileId)}${authenticatedUser?.accessToken ? `?accountId=${encodeURIComponent(file.backend || '')}` : ''}`,
+                {
+                  method: 'PUT',
+                  headers: {
+                    'Content-Type': 'application/json',
+                    ...(authenticatedUser?.accessToken && {
+                      'Authorization': `Bearer ${authenticatedUser.accessToken}`
+                    })
+                  },
+                  body: JSON.stringify({
+                    isPublic: publicMetadata.isPublic,
+                    publicToken: publicMetadata.publicToken,
+                    name: publicMetadata.name || file.name,
+                    description: publicMetadata.description || '',
+                    keywords: publicMetadata.keywords || [],
+                    tags: publicMetadata.keywords || [],
+                    fileType: publicMetadata.fileType || 'other',
+                    uploadDate: publicMetadata.uploadDate || new Date().toISOString(),
+                  }),
+                }
+              );
+
+              // If 429, throw to trigger retry
+              if (res.status === 429) {
+                const retryAfter = res.headers.get('Retry-After');
+                const delay = retryAfter ? parseInt(retryAfter, 10) * 1000 : undefined;
+                const error = new Error(`Rate limited (429). ${delay ? `Retry after ${delay}ms` : 'Retrying...'}`);
+                (error as any).status = 429;
+                (error as any).retryAfter = delay;
+                throw error;
+              }
+
+              if (!res.ok) {
+                const errorText = await res.text().catch(() => res.statusText);
+                throw new Error(`PUT failed: ${res.status} - ${errorText}`);
+              }
+
+              return res;
+            },
+            3, // maxAttempts
+            2000 // baseDelay (2 seconds)
+          );
+          
+          const putResult = await putResponse.json();
+          console.log('✅ [Phase 3] PUT endpoint updated isPublic successfully', putResult);
+        } catch (putError) {
+          console.error('❌ [Phase 3] Failed to update isPublic via PUT endpoint (non-critical):', putError);
+          // Non-critical - POST should have handled it, but log for debugging
+        }
+
         setFileMetadataMap(prev => {
           const next = new Map(prev);
           next.set(file.id, publicMetadata);
