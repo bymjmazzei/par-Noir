@@ -29,10 +29,16 @@ const DEFAULT_ORIGINS = [
 const ENV_ORIGINS = process.env.ALLOWED_ORIGINS?.split(',').map(o => o.trim()).filter(Boolean) || [];
 const ALLOWED_ORIGINS = [...new Set([...DEFAULT_ORIGINS, ...ENV_ORIGINS])]; // Merge and deduplicate
 
-// Rate limiting configuration
+// Rate limiting configuration - higher limit for authenticated requests
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 100, // limit each IP to 100 requests per windowMs
+  max: (req) => {
+    // Higher limit for authenticated requests (requests with Authorization header)
+    if (req.headers.authorization) {
+      return 500; // 500 requests per 15 minutes for authenticated users
+    }
+    return 100; // 100 requests per 15 minutes for unauthenticated requests
+  },
   message: 'Too many requests from this IP, please try again later.',
   standardHeaders: true,
   legacyHeaders: false,

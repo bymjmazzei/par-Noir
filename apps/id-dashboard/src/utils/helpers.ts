@@ -260,6 +260,7 @@ export function sleep(ms: number): Promise<void> {
 
 /**
  * Retry function with exponential backoff
+ * Respects Retry-After header from 429 errors if provided
  */
 export async function retry<T>(
   fn: () => Promise<T>,
@@ -278,7 +279,9 @@ export async function retry<T>(
         throw lastError;
       }
       
-      const delay = baseDelay * Math.pow(2, attempt - 1);
+      // Check if error has retryAfter property (from 429 errors)
+      const retryAfter = (error as any)?.retryAfter;
+      const delay = retryAfter || (baseDelay * Math.pow(2, attempt - 1));
       await sleep(delay);
     }
   }

@@ -2968,23 +2968,44 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
 
       if (makePublic && nextPermissions) {
         try {
-          const response = await fetch(
-            `${apiEndpoint}/api/third-party/files/${encodeURIComponent(targetFileId)}/index-visibility`,
-            {
-              method: 'PUT',
-              headers: {
-                'Content-Type': 'application/json'
-              },
-              body: JSON.stringify({
-                indexingPermissions: nextPermissions
-              })
-            }
-          );
+          // Retry on 429 (rate limit) errors with exponential backoff
+          const { retry: retryHelper } = await import('../../utils/helpers');
+          
+          const response = await retryHelper(
+            async () => {
+              const res = await fetch(
+                `${apiEndpoint}/api/third-party/files/${encodeURIComponent(targetFileId)}/index-visibility`,
+                {
+                  method: 'PUT',
+                  headers: {
+                    'Content-Type': 'application/json'
+                  },
+                  body: JSON.stringify({
+                    indexingPermissions: nextPermissions
+                  })
+                }
+              );
 
-          if (!response.ok) {
-            const errorText = await response.text().catch(() => response.statusText);
-            throw new Error(errorText || `Failed to update index visibility (${response.status})`);
-          }
+              // If 429, throw to trigger retry
+              if (res.status === 429) {
+                const retryAfter = res.headers.get('Retry-After');
+                const delay = retryAfter ? parseInt(retryAfter, 10) * 1000 : undefined;
+                const error = new Error(`Rate limited (429). ${delay ? `Retry after ${delay}ms` : 'Retrying...'}`);
+                (error as any).status = 429;
+                (error as any).retryAfter = delay;
+                throw error;
+              }
+
+              if (!res.ok) {
+                const errorText = await res.text().catch(() => res.statusText);
+                throw new Error(errorText || `Failed to update index visibility (${res.status})`);
+              }
+
+              return res;
+            },
+            3, // maxAttempts
+            2000 // baseDelay (2 seconds)
+          );
         } catch (apiError) {
           const message = apiError instanceof Error ? apiError.message : 'Failed to update index visibility';
           setIndexerError(message);

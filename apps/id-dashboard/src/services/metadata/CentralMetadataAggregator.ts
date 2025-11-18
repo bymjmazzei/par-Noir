@@ -4,6 +4,7 @@
  */
 
 import { PublicMetadata } from '../../types/aggregator';
+import { retry } from '../../utils/helpers';
 
 const CENTRAL_API_URL = 'https://api.parnoir.com';
 const CENTRAL_INDEX_PATH = '/api/aggregator/metadata-index';
@@ -92,16 +93,35 @@ export class CentralMetadataAggregator {
       console.log(`📤 [CentralMetadataAggregator] Payload preview:`, JSON.stringify(payloadPreview, null, 2));
       console.log(`📤 [CentralMetadataAggregator] Full payload size: ${JSON.stringify(payload).length} chars`);
 
-      const response = await fetch(`${CENTRAL_API_URL}${CENTRAL_INDEX_PATH}`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
+      // Retry on 429 (rate limit) errors with exponential backoff
+      const response = await retry(
+        async () => {
+          const res = await fetch(`${CENTRAL_API_URL}${CENTRAL_INDEX_PATH}`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              metadata: payload,
+              pnIdentifier
+            }),
+          });
+
+          // If 429, throw to trigger retry
+          if (res.status === 429) {
+            const retryAfter = res.headers.get('Retry-After');
+            const delay = retryAfter ? parseInt(retryAfter, 10) * 1000 : undefined;
+            const error = new Error(`Rate limited (429). ${delay ? `Retry after ${delay}ms` : 'Retrying...'}`);
+            (error as any).status = 429;
+            (error as any).retryAfter = delay;
+            throw error;
+          }
+
+          return res;
         },
-        body: JSON.stringify({
-          metadata: payload,
-          pnIdentifier
-        }),
-      });
+        3, // maxAttempts
+        2000 // baseDelay (2 seconds)
+      );
 
       if (!response.ok) {
         let errorText = '';
