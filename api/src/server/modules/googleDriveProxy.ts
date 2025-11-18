@@ -316,10 +316,11 @@ export class GoogleDriveProxyService {
     fileName: string,
     mimeType: string,
     parents?: string[],
-    accountId?: string
+    accountId?: string,
+    additionalCandidates?: string[]
   ): Promise<GoogleDriveFile> {
     // Get access token and also get the account info for retry logic
-    let accessToken = await this.getAccessToken(userDid, accountId);
+    let accessToken = await this.getAccessToken(userDid, accountId, additionalCandidates);
     
     // Get account info for refresh token if needed for retry
     const credentialsRecord = await storageCredentialsService.getCredentials(userDid);

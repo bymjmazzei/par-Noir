@@ -2225,6 +2225,86 @@ class ProductionServer {
           });
         }
 
+        // Build list of identifier candidates to try (matching GET endpoint logic)
+        const identifierCandidates: string[] = [];
+        if (tokenPayload.pnIdentifier) {
+          identifierCandidates.push(tokenPayload.pnIdentifier);
+        }
+        if (tokenPayload.did) {
+          identifierCandidates.push(tokenPayload.did);
+          if (tokenPayload.did.startsWith('did:key:')) {
+            const keyPart = tokenPayload.did.substring(8);
+            if (keyPart) {
+              identifierCandidates.push(keyPart);
+            }
+          }
+        }
+
+        // If no parents specified, find the pN folder and upload there
+        let finalParents = parents;
+        if (!finalParents || finalParents.length === 0) {
+          const pnIdentifier = tokenPayload.pnIdentifier;
+          if (pnIdentifier && accountId) {
+            try {
+              let accessToken: string | null = null;
+              try {
+                accessToken = await googleDriveProxyService.getAccessToken(userIdentifier, accountId, identifierCandidates);
+              } catch (tokenError: any) {
+                console.warn(`[Upload] Could not get access token for folder search:`, tokenError?.message || tokenError);
+              }
+              
+              if (accessToken) {
+                // Search for the pN folder
+                const pnFolderName = `par Noir - pn-${pnIdentifier}`;
+                const folderSearchQuery = `name='${pnFolderName.replace(/'/g, "\\'")}' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
+                const folderSearchUrl = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(folderSearchQuery)}&fields=files(id,name)&pageSize=10`;
+                
+                console.log(`[Upload] Searching for pN folder: "${pnFolderName}"`);
+                
+                const folderResponse = await fetch(folderSearchUrl, {
+                  headers: {
+                    'Authorization': `Bearer ${accessToken}`
+                  }
+                });
+                
+                if (folderResponse.ok) {
+                  const folderData = await folderResponse.json() as { files?: Array<{ id: string; name: string }> };
+                  const folderFiles = folderData.files || [];
+                  
+                  if (folderFiles.length > 0) {
+                    finalParents = [folderFiles[0].id];
+                    console.log(`[Upload] ✅ Found pN folder "${pnFolderName}" (ID: ${folderFiles[0].id}), uploading file there`);
+                  } else {
+                    // Fallback: try without "pn-" prefix
+                    const altFolderName = `par Noir - ${pnIdentifier}`;
+                    const altFolderSearchQuery = `name='${altFolderName.replace(/'/g, "\\'")}' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
+                    const altFolderSearchUrl = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(altFolderSearchQuery)}&fields=files(id,name)&pageSize=10`;
+                    
+                    const altFolderResponse = await fetch(altFolderSearchUrl, {
+                      headers: {
+                        'Authorization': `Bearer ${accessToken}`
+                      }
+                    });
+                    
+                    if (altFolderResponse.ok) {
+                      const altFolderData = await altFolderResponse.json() as { files?: Array<{ id: string; name: string }> };
+                      const altFolderFiles = altFolderData.files || [];
+                      
+                      if (altFolderFiles.length > 0) {
+                        finalParents = [altFolderFiles[0].id];
+                        console.log(`[Upload] ✅ Found pN folder "${altFolderName}" (ID: ${altFolderFiles[0].id}), uploading file there`);
+                      }
+                    }
+                  }
+                }
+              }
+            } catch (folderError: any) {
+              console.warn(`[Upload] Error searching for pN folder:`, folderError?.message || folderError);
+              // Continue without folder - file will be uploaded to root
+            }
+          }
+        }
+
         // Convert base64 to Buffer
         const fileBuffer = Buffer.from(fileData, 'base64');
         const file = await googleDriveProxyService.uploadFile(
@@ -2232,8 +2312,9 @@ class ProductionServer {
           fileBuffer,
           fileName,
           mimeType || 'application/octet-stream',
-          parents,
-          accountId // Pass accountId to select specific Google Drive account
+          finalParents,
+          accountId, // Pass accountId to select specific Google Drive account
+          identifierCandidates // Pass identifier candidates for token lookup
         );
         
         return res.json({ file });
