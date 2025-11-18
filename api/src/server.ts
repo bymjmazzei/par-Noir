@@ -1883,42 +1883,22 @@ class ProductionServer {
                         console.warn(`[MetadataIndex PUT] Failed to remove from public index:`, removeError?.message || removeError);
                       }
                       
-                      // Update companion metadata file to mark as private
+                      // Update companion metadata spreadsheet to mark as private
                       try {
-                        const metadataFileName = `${fileId}.metadata.json`;
-                        const metadataFileSearchQuery = `name='${metadataFileName.replace(/'/g, "\\'")}' and '${metadataFolderId}' in parents and trashed=false`;
-                        const metadataFileSearchUrl = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(metadataFileSearchQuery)}&fields=files(id)&pageSize=1`;
+                        const { CompanionMetadataSheets } = await import('./server/modules/companionMetadataSheets');
+                        const spreadsheetId = await CompanionMetadataSheets.findSpreadsheet(
+                          accessToken,
+                          metadataFolderId,
+                          fileId
+                        );
                         
-                        const metadataFileSearchResponse = await fetch(metadataFileSearchUrl, {
-                          headers: { 'Authorization': `Bearer ${accessToken}` }
-                        });
-                        
-                        if (metadataFileSearchResponse.ok) {
-                          const metadataFileData = await metadataFileSearchResponse.json() as { files?: Array<{ id: string }> };
-                          if (metadataFileData.files && metadataFileData.files.length > 0) {
-                            const metadataFileId = metadataFileData.files[0].id;
-                            // Download existing metadata
-                            const getMetadataResponse = await fetch(
-                              `https://www.googleapis.com/drive/v3/files/${metadataFileId}?alt=media`,
-                              { headers: { 'Authorization': `Bearer ${accessToken}` } }
-                            );
-                            
-                            if (getMetadataResponse.ok) {
-                              const existingMetadata = await getMetadataResponse.json() as any;
-                              existingMetadata.visibility = 'private';
-                              const updatedMetadataContent = JSON.stringify(existingMetadata, null, 2);
-                              
-                              await fetch(`https://www.googleapis.com/upload/drive/v3/files/${metadataFileId}?uploadType=media`, {
-                                method: 'PATCH',
-                                headers: {
-                                  'Authorization': `Bearer ${accessToken}`,
-                                  'Content-Type': 'application/json; charset=UTF-8'
-                                },
-                                body: updatedMetadataContent
-                              });
-                              console.log(`[MetadataIndex PUT] Updated companion metadata file for ${fileId} to private`);
-                            }
-                          }
+                        if (spreadsheetId) {
+                          await CompanionMetadataSheets.updateMetadata(
+                            accessToken,
+                            spreadsheetId,
+                            { visibility: 'private' }
+                          );
+                          console.log(`[MetadataIndex PUT] Updated companion metadata spreadsheet for ${fileId} to private`);
                         }
                       } catch (metadataUpdateError: any) {
                         console.warn(`[MetadataIndex PUT] Failed to update companion metadata:`, metadataUpdateError?.message || metadataUpdateError);
@@ -2041,8 +2021,7 @@ class ProductionServer {
                         // Without publicToken, files won't be decryptable in the public feed
                         // For now, publicToken is omitted - files will appear in feed but won't load until publicToken is generated
                         
-                        // Create companion metadata file
-                        const metadataFileName = `${fileId}.metadata.json`;
+                        // Create companion metadata spreadsheet (Google Sheets format)
                         // Get publicToken from request body if provided (generated client-side)
                         // IMPORTANT: Refetch metadata AFTER database update to ensure we have the latest publicToken
                         const currentMetadata = await service.getFileMetadata(fileId);
@@ -2055,6 +2034,8 @@ class ProductionServer {
                           usingToken: !!tokenToUse
                         });
                         
+                        const { CompanionMetadataSheets } = await import('./server/modules/companionMetadataSheets');
+                        
                         const companionMetadata = {
                           fileId: fileId,
                           googleDriveFileId: fileId,
@@ -2062,7 +2043,7 @@ class ProductionServer {
                           originalName: originalFileName,
                           mimeType: originalMimeType,
                           size: parseInt(driveFile.size || '0', 10),
-                          visibility: 'public',
+                          visibility: 'public' as const,
                           uploadedAt: driveFile.createdTime || new Date().toISOString(),
                           owner: {
                             did: tokenPayload.did,
@@ -2080,60 +2061,30 @@ class ProductionServer {
                           }
                         };
                         
-                        // Check if metadata file already exists
-                        const metadataFileSearchQuery = `name='${metadataFileName.replace(/'/g, "\\'")}' and '${metadataFolderId}' in parents and trashed=false`;
-                        const metadataFileSearchUrl = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(metadataFileSearchQuery)}&fields=files(id)&pageSize=1`;
+                        // Check if metadata spreadsheet already exists
+                        const existingSpreadsheetId = await CompanionMetadataSheets.findSpreadsheet(
+                          accessToken,
+                          metadataFolderId,
+                          fileId
+                        );
                         
-                        const metadataFileSearchResponse = await fetch(metadataFileSearchUrl, {
-                          headers: { 'Authorization': `Bearer ${accessToken}` }
-                        });
-                        
-                        const metadataContent = JSON.stringify(companionMetadata, null, 2);
-                        
-                        if (metadataFileSearchResponse.ok) {
-                          const metadataFileData = await metadataFileSearchResponse.json() as { files?: Array<{ id: string }> };
-                          if (metadataFileData.files && metadataFileData.files.length > 0) {
-                            // Update existing metadata file
-                            const metadataFileId = metadataFileData.files[0].id;
-                            await fetch(`https://www.googleapis.com/upload/drive/v3/files/${metadataFileId}?uploadType=media`, {
-                              method: 'PATCH',
-                              headers: {
-                                'Authorization': `Bearer ${accessToken}`,
-                                'Content-Type': 'application/json; charset=UTF-8'
-                              },
-                              body: metadataContent
-                            });
-                          } else {
-                            // Create new metadata file using multipart upload
-                            const boundary = `----WebKitFormBoundary${Date.now()}`;
-                            const metadataPart = JSON.stringify({
-                              name: metadataFileName,
-                              parents: [metadataFolderId]
-                            });
-                            
-                            const multipartBody = [
-                              `--${boundary}`,
-                              'Content-Disposition: form-data; name="metadata"',
-                              'Content-Type: application/json',
-                              '',
-                              metadataPart,
-                              `--${boundary}`,
-                              'Content-Disposition: form-data; name="file"; filename="metadata.json"',
-                              'Content-Type: application/json',
-                              '',
-                              metadataContent,
-                              `--${boundary}--`
-                            ].join('\r\n');
-                            
-                            await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart', {
-                              method: 'POST',
-                              headers: {
-                                'Authorization': `Bearer ${accessToken}`,
-                                'Content-Type': `multipart/form-data; boundary=${boundary}`
-                              },
-                              body: multipartBody
-                            });
-                          }
+                        if (existingSpreadsheetId) {
+                          // Update existing metadata spreadsheet
+                          await CompanionMetadataSheets.updateMetadata(
+                            accessToken,
+                            existingSpreadsheetId,
+                            companionMetadata
+                          );
+                          console.log(`[MetadataIndex PUT] Updated existing companion metadata spreadsheet for ${fileId}`);
+                        } else {
+                          // Create new metadata spreadsheet
+                          const spreadsheetId = await CompanionMetadataSheets.createSpreadsheet(
+                            accessToken,
+                            metadataFolderId,
+                            fileId,
+                            companionMetadata
+                          );
+                          console.log(`[MetadataIndex PUT] Created new companion metadata spreadsheet for ${fileId}: ${spreadsheetId}`);
                         }
                         
                         // Update owner index (contains ALL files for the owner)
@@ -2473,6 +2424,9 @@ class ProductionServer {
     this.app.post('/api/engagement/:fileId/like', async (req, res) => {
       try {
         const { EngagementService } = await import('./server/modules/engagementService');
+        const { AggregatorMetadataServiceDB } = await import('./server/modules/aggregatorMetadataServiceDB');
+        const { CompanionMetadataSheets } = await import('./server/modules/companionMetadataSheets');
+        const { googleDriveProxyService } = await import('./server/modules/googleDriveProxy');
         const { fileId } = req.params;
         const { userDid } = req.body;
 
@@ -2481,6 +2435,101 @@ class ProductionServer {
         }
 
         const result = await EngagementService.toggleLike(fileId, userDid);
+
+        // Update engagement counts in database metadata
+        const aggregator = AggregatorMetadataServiceDB.getInstance();
+        const fileMetadata = await aggregator.getFileMetadata(fileId);
+        
+        if (fileMetadata) {
+          // Update engagement counts in database metadata
+          // Get current engagement stats from engagement table to sync counts
+          const engagementStats = await EngagementService.getEngagementStats(fileId);
+          
+          // Update database metadata with current counts (not increment/decrement)
+          // We'll derive counts from engagement table, but updateEngagement increments
+          // So we need to manually update the counts based on engagementStats
+          const db = (await import('./server/utils/database')).getDatabasePool();
+          const currentMeta = await aggregator.getFileMetadata(fileId);
+          if (currentMeta) {
+            const updatedMetadata = {
+              ...currentMeta.metadata,
+              engagement: {
+                views: engagementStats.views || 0,
+                likes: engagementStats.likes || 0,
+                comments: engagementStats.comments || 0,
+                shares: engagementStats.shares || 0,
+                lastUpdated: new Date().toISOString(),
+                engagementHistory: currentMeta.metadata.engagement?.engagementHistory || []
+              }
+            };
+            
+            await db.query(
+              `UPDATE aggregator_metadata 
+               SET metadata = $1, updated_at = NOW()
+               WHERE file_id = $2`,
+              [JSON.stringify(updatedMetadata), fileId]
+            );
+          }
+          
+          // Also update companion metadata spreadsheet if file owner has one
+          try {
+            const ownerDid = fileMetadata.metadata.pnIdentifier || fileMetadata.metadata.owner?.did;
+            if (ownerDid) {
+              // Try to get owner's access token
+              const identifierCandidates = [ownerDid];
+              if (fileMetadata.metadata.owner?.identifier) {
+                identifierCandidates.push(fileMetadata.metadata.owner.identifier);
+              }
+              
+              // Get first Google Drive account for owner
+              const { getCredentialsForUser } = await import('./server/modules/userCredentialsService');
+              const credentials = await getCredentialsForUser(ownerDid, identifierCandidates);
+              const googleDriveAccounts = credentials?.googleDriveAccounts || (credentials?.googleDrive ? [credentials.googleDrive] : []);
+              
+              if (googleDriveAccounts.length > 0) {
+                const account = googleDriveAccounts[0];
+                const accountId = (account as any).accountId || (account as any).id;
+                const accessToken = await googleDriveProxyService.getAccessToken(ownerDid, accountId, identifierCandidates);
+                
+                // Find metadata folder
+                const folderSearchQuery = `name='Metadata' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
+                const folderSearchUrl = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(folderSearchQuery)}&fields=files(id)&pageSize=1`;
+                const folderResponse = await fetch(folderSearchUrl, {
+                  headers: { 'Authorization': `Bearer ${accessToken}` }
+                });
+                
+                if (folderResponse.ok) {
+                  const folderData = await folderResponse.json() as { files?: Array<{ id: string }> };
+                  if (folderData.files && folderData.files.length > 0) {
+                    const metadataFolderId = folderData.files[0].id;
+                    const spreadsheetId = await CompanionMetadataSheets.findSpreadsheet(
+                      accessToken,
+                      metadataFolderId,
+                      fileId
+                    );
+                    
+                    if (spreadsheetId) {
+                      if (result.liked) {
+                        // Add like to sheet
+                        await CompanionMetadataSheets.appendLike(accessToken, spreadsheetId, {
+                          fileId,
+                          pnIdentifier: userDid,
+                          timestamp: new Date().toISOString()
+                        });
+                      } else {
+                        // Remove like from sheet
+                        await CompanionMetadataSheets.removeLike(accessToken, spreadsheetId, fileId, userDid);
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          } catch (sheetError: any) {
+            // Non-critical - log but don't fail the request
+            console.warn(`[Engagement] Failed to update companion metadata sheet for like:`, sheetError?.message || sheetError);
+          }
+        }
 
         return res.json({
           success: true,
@@ -2518,6 +2567,9 @@ class ProductionServer {
     this.app.post('/api/engagement/:fileId/comment', async (req, res) => {
       try {
         const { EngagementService } = await import('./server/modules/engagementService');
+        const { AggregatorMetadataServiceDB } = await import('./server/modules/aggregatorMetadataServiceDB');
+        const { CompanionMetadataSheets } = await import('./server/modules/companionMetadataSheets');
+        const { googleDriveProxyService } = await import('./server/modules/googleDriveProxy');
         const { fileId } = req.params;
         const { userDid, content, authorName, fileOwnerDid } = req.body;
 
@@ -2532,6 +2584,94 @@ class ProductionServer {
           authorName,
           fileOwnerDid // Optional - will be fetched from metadata if not provided
         );
+
+        // Update engagement counts in database metadata
+        const aggregator = AggregatorMetadataServiceDB.getInstance();
+        // Get current engagement stats from engagement table to sync counts
+        const engagementStats = await EngagementService.getEngagementStats(fileId);
+        
+        // Update database metadata with current counts (derive from engagement table)
+        const db = (await import('./server/utils/database')).getDatabasePool();
+        const fileMetadata = await aggregator.getFileMetadata(fileId);
+        if (fileMetadata) {
+          const updatedMetadata = {
+            ...fileMetadata.metadata,
+            engagement: {
+              views: fileMetadata.metadata.engagement?.views || 0,
+              likes: engagementStats.likes || 0,
+              comments: engagementStats.comments || 0,
+              shares: engagementStats.shares || 0,
+              lastUpdated: new Date().toISOString(),
+              engagementHistory: fileMetadata.metadata.engagement?.engagementHistory || []
+            }
+          };
+          
+          await db.query(
+            `UPDATE aggregator_metadata 
+             SET metadata = $1, updated_at = NOW()
+             WHERE file_id = $2`,
+            [JSON.stringify(updatedMetadata), fileId]
+          );
+        }
+
+        // Also update companion metadata spreadsheet if file owner has one
+        try {
+          if (fileMetadata) {
+            const ownerDid = fileMetadata.metadata.pnIdentifier || fileMetadata.metadata.owner?.did;
+            if (ownerDid) {
+              // Try to get owner's access token
+              const identifierCandidates = [ownerDid];
+              if (fileMetadata.metadata.owner?.identifier) {
+                identifierCandidates.push(fileMetadata.metadata.owner.identifier);
+              }
+              
+              // Get first Google Drive account for owner
+              const { getCredentialsForUser } = await import('./server/modules/userCredentialsService');
+              const credentials = await getCredentialsForUser(ownerDid, identifierCandidates);
+              const googleDriveAccounts = credentials?.googleDriveAccounts || (credentials?.googleDrive ? [credentials.googleDrive] : []);
+              
+              if (googleDriveAccounts.length > 0) {
+                const account = googleDriveAccounts[0];
+                const accountId = (account as any).accountId || (account as any).id;
+                const accessToken = await googleDriveProxyService.getAccessToken(ownerDid, accountId, identifierCandidates);
+                
+                // Find metadata folder
+                const folderSearchQuery = `name='Metadata' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
+                const folderSearchUrl = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(folderSearchQuery)}&fields=files(id)&pageSize=1`;
+                const folderResponse = await fetch(folderSearchUrl, {
+                  headers: { 'Authorization': `Bearer ${accessToken}` }
+                });
+                
+                if (folderResponse.ok) {
+                  const folderData = await folderResponse.json() as { files?: Array<{ id: string }> };
+                  if (folderData.files && folderData.files.length > 0) {
+                    const metadataFolderId = folderData.files[0].id;
+                    const spreadsheetId = await CompanionMetadataSheets.findSpreadsheet(
+                      accessToken,
+                      metadataFolderId,
+                      fileId
+                    );
+                    
+                    if (spreadsheetId) {
+                      // Add comment to sheet
+                      await CompanionMetadataSheets.appendComment(accessToken, spreadsheetId, {
+                        fileId,
+                        commentId: comment.id,
+                        pnIdentifier: userDid,
+                        authorName: comment.authorName || userDid.substring(0, 8),
+                        content: comment.content,
+                        timestamp: comment.timestamp
+                      });
+                    }
+                  }
+                }
+              }
+            }
+          }
+        } catch (sheetError: any) {
+          // Non-critical - log but don't fail the request
+          console.warn(`[Engagement] Failed to update companion metadata sheet for comment:`, sheetError?.message || sheetError);
+        }
 
         return res.status(201).json({
           ...comment,
@@ -2566,6 +2706,9 @@ class ProductionServer {
     this.app.post('/api/engagement/:fileId/share', async (req, res) => {
       try {
         const { EngagementService } = await import('./server/modules/engagementService');
+        const { AggregatorMetadataServiceDB } = await import('./server/modules/aggregatorMetadataServiceDB');
+        const { CompanionMetadataSheets } = await import('./server/modules/companionMetadataSheets');
+        const { googleDriveProxyService } = await import('./server/modules/googleDriveProxy');
         const { fileId } = req.params;
         const { userDid } = req.body;
 
@@ -2574,6 +2717,91 @@ class ProductionServer {
         }
 
         const count = await EngagementService.recordShare(fileId, userDid);
+
+        // Update engagement counts in database metadata
+        const aggregator = AggregatorMetadataServiceDB.getInstance();
+        // Get current engagement stats from engagement table to sync counts
+        const engagementStats = await EngagementService.getEngagementStats(fileId);
+        
+        // Update database metadata with current counts (derive from engagement table)
+        const db = (await import('./server/utils/database')).getDatabasePool();
+        const fileMetadata = await aggregator.getFileMetadata(fileId);
+        if (fileMetadata) {
+          const updatedMetadata = {
+            ...fileMetadata.metadata,
+            engagement: {
+              views: fileMetadata.metadata.engagement?.views || 0,
+              likes: engagementStats.likes || 0,
+              comments: engagementStats.comments || 0,
+              shares: engagementStats.shares || 0,
+              lastUpdated: new Date().toISOString(),
+              engagementHistory: fileMetadata.metadata.engagement?.engagementHistory || []
+            }
+          };
+          
+          await db.query(
+            `UPDATE aggregator_metadata 
+             SET metadata = $1, updated_at = NOW()
+             WHERE file_id = $2`,
+            [JSON.stringify(updatedMetadata), fileId]
+          );
+        }
+
+        // Also update companion metadata spreadsheet if file owner has one
+        try {
+          if (fileMetadata) {
+            const ownerDid = fileMetadata.metadata.pnIdentifier || fileMetadata.metadata.owner?.did;
+            if (ownerDid) {
+              // Try to get owner's access token
+              const identifierCandidates = [ownerDid];
+              if (fileMetadata.metadata.owner?.identifier) {
+                identifierCandidates.push(fileMetadata.metadata.owner.identifier);
+              }
+              
+              // Get first Google Drive account for owner
+              const { getCredentialsForUser } = await import('./server/modules/userCredentialsService');
+              const credentials = await getCredentialsForUser(ownerDid, identifierCandidates);
+              const googleDriveAccounts = credentials?.googleDriveAccounts || (credentials?.googleDrive ? [credentials.googleDrive] : []);
+              
+              if (googleDriveAccounts.length > 0) {
+                const account = googleDriveAccounts[0];
+                const accountId = (account as any).accountId || (account as any).id;
+                const accessToken = await googleDriveProxyService.getAccessToken(ownerDid, accountId, identifierCandidates);
+                
+                // Find metadata folder
+                const folderSearchQuery = `name='Metadata' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
+                const folderSearchUrl = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(folderSearchQuery)}&fields=files(id)&pageSize=1`;
+                const folderResponse = await fetch(folderSearchUrl, {
+                  headers: { 'Authorization': `Bearer ${accessToken}` }
+                });
+                
+                if (folderResponse.ok) {
+                  const folderData = await folderResponse.json() as { files?: Array<{ id: string }> };
+                  if (folderData.files && folderData.files.length > 0) {
+                    const metadataFolderId = folderData.files[0].id;
+                    const spreadsheetId = await CompanionMetadataSheets.findSpreadsheet(
+                      accessToken,
+                      metadataFolderId,
+                      fileId
+                    );
+                    
+                    if (spreadsheetId) {
+                      // Add share to sheet
+                      await CompanionMetadataSheets.appendShare(accessToken, spreadsheetId, {
+                        fileId,
+                        pnIdentifier: userDid,
+                        timestamp: new Date().toISOString()
+                      });
+                    }
+                  }
+                }
+              }
+            }
+          }
+        } catch (sheetError: any) {
+          // Non-critical - log but don't fail the request
+          console.warn(`[Engagement] Failed to update companion metadata sheet for share:`, sheetError?.message || sheetError);
+        }
 
         return res.json({
           success: true,

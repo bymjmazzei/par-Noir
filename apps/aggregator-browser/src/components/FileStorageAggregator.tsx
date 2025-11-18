@@ -1853,11 +1853,36 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
                               e.stopPropagation();
                               setOpenMenuFor(openMenuFor === file.id ? null : file.id);
                             }}
-                            className="w-7 h-7 flex items-center justify-center text-text-secondary hover:text-text-primary transition-colors rounded"
+                            style={{
+                              width: '28px',
+                              height: '28px',
+                              padding: 0,
+                              margin: 0,
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              position: 'relative',
+                              background: 'transparent',
+                              border: 'none',
+                              cursor: 'pointer',
+                              color: '#a3a3a3',
+                              lineHeight: 0
+                            }}
                             title="File actions"
                             disabled={isLoading}
                           >
-                            <MoreVertical className="h-4 w-4" />
+                            <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '16px', height: '16px' }}>
+                              <MoreVertical 
+                                style={{ 
+                                  width: '16px',
+                                  height: '16px',
+                                  margin: 0,
+                                  padding: 0,
+                                  display: 'block',
+                                  verticalAlign: 'middle'
+                                }} 
+                              />
+                            </span>
                           </button>
                           {openMenuFor === file.id && (
                             <div
@@ -1979,11 +2004,26 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
                             e.stopPropagation();
                             setOpenMenuFor(openMenuFor === file.id ? null : file.id);
                           }}
-                          className="px-2 py-1.5 text-xs font-medium rounded-lg transition-colors disabled:opacity-50 bg-neutral-700/50 hover:bg-neutral-700 text-text-secondary hover:text-text-primary"
+                          style={{
+                            width: '28px',
+                            height: '28px',
+                            padding: 0,
+                            margin: 0,
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            background: 'rgba(64, 64, 64, 0.5)',
+                            border: 'none',
+                            borderRadius: '8px',
+                            cursor: 'pointer',
+                            color: '#a3a3a3',
+                            lineHeight: 0
+                          }}
+                          className="transition-colors disabled:opacity-50 hover:bg-neutral-700"
                           title="File actions"
                           disabled={isLoading}
                         >
-                          <MoreVertical className="h-4 w-4" />
+                          <MoreVertical className="h-4 w-4" style={{ margin: 0, padding: 0 }} />
                         </button>
                         {openMenuFor === file.id && (
                           <div
