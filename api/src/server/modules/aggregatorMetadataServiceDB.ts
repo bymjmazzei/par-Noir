@@ -208,6 +208,16 @@ export class AggregatorMetadataServiceDB {
         });
       }
 
+      // CRITICAL: The database should only contain entries for files that actually exist.
+      // If a file is deleted from Google Drive, it MUST be removed from the database.
+      // This is handled by:
+      // 1. DELETE endpoint removes from database when file is deleted through API
+      // 2. Cleanup endpoint can be used to remove orphaned entries
+      // 3. Files deleted outside the API will remain until cleanup is run
+      //
+      // For now, we trust the database. If files appear that don't exist, use the cleanup endpoint.
+      // In the future, we can add background validation jobs to auto-remove orphaned entries.
+      
       return entries;
     } catch (error) {
       console.error('❌ Failed to get public metadata:', error);
