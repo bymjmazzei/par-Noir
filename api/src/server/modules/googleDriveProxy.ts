@@ -136,8 +136,10 @@ export class GoogleDriveProxyService {
     
     // Always try to refresh if token is expired or close to expiring
     // Also refresh if token is older than 30 minutes (tokens typically expire after 1 hour)
+    // OR if expires_at is in the past (force refresh)
     const tokenAge = expiresAt - now;
-    const shouldRefresh = expiresAt < now + 60000 || tokenAge < 1800000; // Refresh if expires in < 1 min or age < 30 min
+    const isExpired = expiresAt < now;
+    const shouldRefresh = isExpired || expiresAt < now + 60000 || tokenAge < 1800000; // Refresh if expired, expires in < 1 min, or age < 30 min
     
     console.log(`[GoogleDriveProxy] Token check for accountId: ${accountId || 'default'}, expiresAt: ${expiresAt}, now: ${now}, age: ${tokenAge}ms, shouldRefresh: ${shouldRefresh}`);
     
@@ -235,7 +237,7 @@ export class GoogleDriveProxyService {
    * List files from Google Drive
    */
   async listFiles(userDid: string, query?: string, pageSize: number = 50, accountId?: string, additionalCandidates?: string[]): Promise<GoogleDriveFile[]> {
-    const accessToken = await this.getAccessToken(userDid, accountId, additionalCandidates);
+    let accessToken = await this.getAccessToken(userDid, accountId, additionalCandidates);
 
     const params = new URLSearchParams({
       fields: 'nextPageToken, files(id, name, mimeType, size, createdTime, modifiedTime, webViewLink, webContentLink, thumbnailLink, parents, description)',
@@ -247,11 +249,54 @@ export class GoogleDriveProxyService {
       params.append('q', query);
     }
 
-    const response = await fetch(`https://www.googleapis.com/drive/v3/files?${params}`, {
+    // Try the request, and if we get a 401, refresh the token and retry once
+    let response = await fetch(`https://www.googleapis.com/drive/v3/files?${params}`, {
       headers: {
         'Authorization': `Bearer ${accessToken}`,
       },
     });
+
+    // If we get a 401, the token is invalid - force refresh and retry
+    if (response.status === 401) {
+      console.log(`[GoogleDriveProxy] Got 401 from Google Drive API, forcing token refresh and retrying...`);
+      
+      // Force refresh by getting credentials and updating expires_at to past
+      const credentialsRecord = await storageCredentialsService.findCredentialsByIdentityCandidates([userDid, ...(additionalCandidates || [])]);
+      if (credentialsRecord) {
+        const credentials = credentialsRecord.credentials;
+        let account: GoogleDriveToken | null = null;
+        
+        if (accountId && credentials.googleDriveAccounts) {
+          const actualAccountId = accountId.includes('::') ? accountId.split('::')[1] : accountId;
+          account = credentials.googleDriveAccounts.find(
+            (acc: any) => 
+              acc.backendId === accountId || 
+              acc.keyPrefix === accountId ||
+              acc.backendId === actualAccountId ||
+              acc.keyPrefix === actualAccountId
+          ) || null;
+        } else if (credentials.googleDriveAccounts && credentials.googleDriveAccounts.length > 0) {
+          account = credentials.googleDriveAccounts[0];
+        } else if (credentials.googleDrive) {
+          account = credentials.googleDrive;
+        }
+        
+        if (account && ((account as any).refresh_token || (account as any).refreshToken)) {
+          // Force refresh by setting expires_at to past
+          (account as any).expires_at = Date.now() - 1000;
+          await storageCredentialsService.upsertCredentials(credentialsRecord.identityId, credentials);
+          // Get fresh token (will trigger refresh)
+          accessToken = await this.getAccessToken(userDid, accountId, additionalCandidates);
+          
+          // Retry the request with refreshed token
+          response = await fetch(`https://www.googleapis.com/drive/v3/files?${params}`, {
+            headers: {
+              'Authorization': `Bearer ${accessToken}`,
+            },
+          });
+        }
+      }
+    }
 
     if (!response.ok) {
       const errorText = await response.text();
