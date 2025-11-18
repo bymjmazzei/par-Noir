@@ -1293,6 +1293,7 @@ class ProductionServer {
             metadata->>'name' as name,
             metadata->>'publicToken' as has_public_token,
             metadata->>'backendFileId' as backend_file_id,
+            metadata->>'backend' as backend,
             updated_at
           FROM aggregator_metadata
           ORDER BY updated_at DESC
@@ -1303,16 +1304,19 @@ class ProductionServer {
         const filesWithTokenButNotPublic = allFiles.rows.filter((r: any) => 
           r.is_public !== 'true' && r.has_public_token
         );
+        const googleDriveFiles = allFiles.rows.filter((r: any) => r.backend === 'google_drive');
         
         return res.json({
           totalFiles: allFiles.rows.length,
           publicFiles: publicFiles.length,
           privateFiles: privateFiles.length,
           filesWithTokenButNotPublic: filesWithTokenButNotPublic.length,
+          googleDriveFiles: googleDriveFiles.length,
           samplePublicFiles: publicFiles.slice(0, 10).map((r: any) => ({
             fileId: r.file_id,
             name: r.name,
             backendFileId: r.backend_file_id,
+            backend: r.backend,
             updatedAt: r.updated_at
           })),
           samplePrivateFiles: privateFiles.slice(0, 5).map((r: any) => ({
@@ -1320,6 +1324,7 @@ class ProductionServer {
             name: r.name,
             isPublic: r.is_public,
             hasPublicToken: !!r.has_public_token,
+            backend: r.backend,
             updatedAt: r.updated_at
           })),
           note: 'The public feed ONLY shows files where isPublic = true in the database. Google Drive files are NOT used.'
@@ -1328,6 +1333,42 @@ class ProductionServer {
         console.error('Error in debug endpoint:', error);
         return res.status(500).json({ 
           error: 'Failed to fetch debug info',
+          message: error.message 
+        });
+      }
+    });
+
+    // DELETE /api/aggregator/metadata-index/cleanup - Clear all database entries (for fresh start)
+    this.app.delete('/api/aggregator/metadata-index/cleanup', async (req, res) => {
+      try {
+        const db = (await import('./server/utils/database')).getDatabasePool();
+        
+        // Get count before deletion
+        const countResult = await db.query('SELECT COUNT(*) as count FROM aggregator_metadata');
+        const beforeCount = parseInt(countResult.rows[0].count, 10);
+        
+        // Delete all entries
+        await db.query('DELETE FROM aggregator_metadata');
+        
+        // Also clear feed_posts if they exist
+        try {
+          await db.query('DELETE FROM feed_posts');
+        } catch (feedError) {
+          // Table might not exist, ignore
+          console.log('feed_posts table not found or already empty');
+        }
+        
+        console.log(`🗑️ [Cleanup] Cleared ${beforeCount} entries from aggregator_metadata`);
+        
+        return res.json({
+          success: true,
+          deletedCount: beforeCount,
+          message: `Cleared ${beforeCount} entries from database. Public feed should now be empty.`
+        });
+      } catch (error: any) {
+        console.error('Error in cleanup endpoint:', error);
+        return res.status(500).json({ 
+          error: 'Failed to cleanup database',
           message: error.message 
         });
       }
