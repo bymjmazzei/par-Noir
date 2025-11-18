@@ -2014,13 +2014,17 @@ class ProductionServer {
           });
         }
 
-        const userDid = tokenPayload.did;
+        // Use pN identifier from token if available, otherwise fall back to DID
+        // Credentials are stored under pN identifier, not DID
+        const userIdentifier = tokenPayload.pnIdentifier || tokenPayload.did;
+        
         const { googleDriveProxyService } = await import('./server/modules/googleDriveProxy');
         
         const query = req.query.q as string | undefined;
         const pageSize = req.query.pageSize ? parseInt(req.query.pageSize as string, 10) : 50;
+        const accountId = req.query.accountId as string | undefined;
         
-        const files = await googleDriveProxyService.listFiles(userDid, query, pageSize);
+        const files = await googleDriveProxyService.listFiles(userIdentifier, query, pageSize, accountId);
         
         return res.json({ files });
       } catch (error: any) {
@@ -2054,7 +2058,11 @@ class ProductionServer {
           });
         }
 
-        const userDid = tokenPayload.did;
+        // Use pN identifier from token if available, otherwise fall back to DID
+        // Credentials are stored under pN identifier, not DID
+        const userIdentifier = tokenPayload.pnIdentifier || tokenPayload.did;
+        console.log(`[Upload] Using identifier: ${userIdentifier} (pnIdentifier: ${tokenPayload.pnIdentifier}, did: ${tokenPayload.did})`);
+        
         const { googleDriveProxyService } = await import('./server/modules/googleDriveProxy');
         
         // Expect multipart/form-data with 'file' and optional 'fileName', 'mimeType', 'parents', 'accountId'
@@ -2071,7 +2079,7 @@ class ProductionServer {
         // Convert base64 to Buffer
         const fileBuffer = Buffer.from(fileData, 'base64');
         const file = await googleDriveProxyService.uploadFile(
-          userDid,
+          userIdentifier, // Use pN identifier instead of DID
           fileBuffer,
           fileName,
           mimeType || 'application/octet-stream',
@@ -2111,15 +2119,17 @@ class ProductionServer {
           });
         }
 
-        const userDid = tokenPayload.did;
+        // Use pN identifier from token if available, otherwise fall back to DID
+        const userIdentifier = tokenPayload.pnIdentifier || tokenPayload.did;
         const { fileId } = req.params;
         const { googleDriveProxyService } = await import('./server/modules/googleDriveProxy');
         
         // Check if requesting metadata or file content
         const download = req.query.download === 'true';
+        const accountId = req.query.accountId as string | undefined;
         
         if (download) {
-          const blob = await googleDriveProxyService.downloadFile(userDid, fileId);
+          const blob = await googleDriveProxyService.downloadFile(userIdentifier, fileId, accountId);
           const arrayBuffer = await blob.arrayBuffer();
           const buffer = Buffer.from(arrayBuffer);
           
@@ -2127,7 +2137,7 @@ class ProductionServer {
           res.setHeader('Content-Disposition', `attachment; filename="${fileId}"`);
           return res.send(buffer);
         } else {
-          const metadata = await googleDriveProxyService.getFileMetadata(userDid, fileId);
+          const metadata = await googleDriveProxyService.getFileMetadata(userIdentifier, fileId, accountId);
           return res.json({ file: metadata });
         }
       } catch (error: any) {

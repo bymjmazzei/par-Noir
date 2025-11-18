@@ -195,8 +195,8 @@ export class GoogleDriveProxyService {
   /**
    * List files from Google Drive
    */
-  async listFiles(userDid: string, query?: string, pageSize: number = 50): Promise<GoogleDriveFile[]> {
-    const accessToken = await this.getAccessToken(userDid);
+  async listFiles(userDid: string, query?: string, pageSize: number = 50, accountId?: string): Promise<GoogleDriveFile[]> {
+    const accessToken = await this.getAccessToken(userDid, accountId);
 
     const params = new URLSearchParams({
       fields: 'nextPageToken, files(id, name, mimeType, size, createdTime, modifiedTime, webViewLink, webContentLink, thumbnailLink, parents, description)',
@@ -326,8 +326,8 @@ export class GoogleDriveProxyService {
   /**
    * Download file from Google Drive
    */
-  async downloadFile(userDid: string, fileId: string): Promise<Blob> {
-    const accessToken = await this.getAccessToken(userDid);
+  async downloadFile(userDid: string, fileId: string, accountId?: string): Promise<Blob> {
+    const accessToken = await this.getAccessToken(userDid, accountId);
 
     const response = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`, {
       headers: {
@@ -346,8 +346,8 @@ export class GoogleDriveProxyService {
   /**
    * Get file metadata from Google Drive
    */
-  async getFileMetadata(userDid: string, fileId: string): Promise<GoogleDriveFile> {
-    const accessToken = await this.getAccessToken(userDid);
+  async getFileMetadata(userDid: string, fileId: string, accountId?: string): Promise<GoogleDriveFile> {
+    const accessToken = await this.getAccessToken(userDid, accountId);
 
     const response = await fetch(
       `https://www.googleapis.com/drive/v3/files/${fileId}?fields=id,name,mimeType,size,createdTime,modifiedTime,webViewLink,webContentLink,parents,description`,
