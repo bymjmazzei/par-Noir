@@ -1587,6 +1587,22 @@ class ProductionServer {
             current = await service.getFileMetadata(fileId);
           }
           
+          // Handle making file public - create companion metadata and update indexes
+          if (isBecomingPublic) {
+            // Ensure publicToken is saved before proceeding
+            if (publicToken) {
+              console.log(`[MetadataIndex PUT] publicToken provided in request for file ${fileId}`);
+            } else {
+              // Refetch to get publicToken if it was just saved
+              const refreshedMetadata = await service.getFileMetadata(fileId);
+              if (refreshedMetadata?.metadata?.publicToken) {
+                console.log(`[MetadataIndex PUT] Found publicToken in database for file ${fileId}`);
+              } else {
+                console.warn(`[MetadataIndex PUT] No publicToken found for file ${fileId} - file may not load in public feed`);
+              }
+            }
+          }
+          
           // Handle making file private - remove from public index
           if (isBecomingPrivate) {
             try {
@@ -1830,9 +1846,16 @@ class ProductionServer {
                         // Create companion metadata file
                         const metadataFileName = `${fileId}.metadata.json`;
                         // Get publicToken from request body if provided (generated client-side)
+                        // IMPORTANT: Refetch metadata AFTER database update to ensure we have the latest publicToken
                         const currentMetadata = await service.getFileMetadata(fileId);
                         const existingPublicToken = currentMetadata?.metadata?.publicToken;
                         const tokenToUse = publicToken || existingPublicToken;
+                        
+                        console.log(`[MetadataIndex PUT] Companion metadata for file ${fileId}:`, {
+                          hasPublicTokenInRequest: !!publicToken,
+                          hasPublicTokenInDatabase: !!existingPublicToken,
+                          usingToken: !!tokenToUse
+                        });
                         
                         const companionMetadata = {
                           fileId: fileId,
@@ -1933,7 +1956,12 @@ class ProductionServer {
                           const currentMeta = await service.getFileMetadata(fileId);
                           if (currentMeta?.metadata?.publicToken) {
                             companionMetadata.publicToken = currentMeta.metadata.publicToken;
+                            console.log(`[MetadataIndex] Using publicToken from database for file ${fileId}`);
+                          } else {
+                            console.warn(`[MetadataIndex] No publicToken found for public file ${fileId} - file may not load in public feed`);
                           }
+                        } else {
+                          console.log(`[MetadataIndex] Using publicToken from request for file ${fileId}`);
                         }
                         
                         try {
@@ -1944,8 +1972,10 @@ class ProductionServer {
                             pnFolderId,
                             companionMetadata
                           );
+                          console.log(`[MetadataIndex] Successfully updated public file index for file ${fileId}`);
                         } catch (indexError: any) {
-                          console.warn(`[MetadataIndex] Failed to update public file index:`, indexError?.message || indexError);
+                          console.error(`[MetadataIndex] Failed to update public file index:`, indexError?.message || indexError);
+                          console.error(`[MetadataIndex] Stack trace:`, indexError?.stack);
                         }
                       }
                     }

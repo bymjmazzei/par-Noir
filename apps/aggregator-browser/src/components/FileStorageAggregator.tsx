@@ -1287,8 +1287,24 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
           updateBody.isPublic = makePublic;
         }
         
+        // Always include publicToken if we have one (newly generated or existing)
+        // This ensures the API has the token for public files
         if (publicToken) {
           updateBody.publicToken = publicToken;
+          console.log('📤 [ShareSettings] Sending publicToken to API:', {
+            hasToken: !!publicToken,
+            tokenLength: publicToken.length,
+            isNewToken: !hasValidToken
+          });
+        } else if (hasValidToken && existingPublicToken) {
+          // If file already has a token, preserve it by sending it to API
+          updateBody.publicToken = existingPublicToken;
+          console.log('📤 [ShareSettings] Preserving existing publicToken:', {
+            hasToken: !!existingPublicToken,
+            tokenLength: String(existingPublicToken).length
+          });
+        } else if (makePublic) {
+          console.warn('⚠️ [ShareSettings] Making file public but no publicToken available - file may not load in public feed');
         }
         
         const metadataResponse = await fetch(`${apiEndpoint}/api/aggregator/metadata-index/${targetFileId}${accountIdParam}`, {
