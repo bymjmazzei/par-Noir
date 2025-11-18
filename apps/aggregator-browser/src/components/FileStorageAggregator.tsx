@@ -1173,7 +1173,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
           try {
             // Download the encrypted file to generate share token
             const downloadResponse = await fetch(
-              `${apiEndpoint}/api/drive/files/${targetFileId}?accountId=${encodeURIComponent(sharingAccountId || '')}`,
+              `${apiEndpoint}/api/drive/files/${targetFileId}?accountId=${encodeURIComponent(sharingAccountId || '')}&download=true`,
               {
                 headers: {
                   'Authorization': `Bearer ${accessToken}`
