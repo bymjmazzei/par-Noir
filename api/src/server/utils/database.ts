@@ -357,6 +357,7 @@ export async function initializeDatabase(): Promise<void> {
         refresh_token TEXT PRIMARY KEY,
         did VARCHAR(255) NOT NULL,
         pn_identifier VARCHAR(255),
+        public_key TEXT,
         client_id VARCHAR(255) NOT NULL,
         scope TEXT[] DEFAULT ARRAY[]::TEXT[],
         expires_at TIMESTAMP WITH TIME ZONE NOT NULL,
@@ -381,6 +382,25 @@ export async function initializeDatabase(): Promise<void> {
     } catch (error) {
       // Column might already exist, ignore error
       console.debug('ℹ️ oauth_refresh_tokens.pn_identifier column migration error:', (error as Error).message);
+    }
+    
+    // Add public_key column if it doesn't exist (for existing installations)
+    try {
+      await db.query(`
+        DO $$ 
+        BEGIN
+          IF NOT EXISTS (
+            SELECT 1 FROM information_schema.columns 
+            WHERE table_name = 'oauth_refresh_tokens' 
+            AND column_name = 'public_key'
+          ) THEN
+            ALTER TABLE oauth_refresh_tokens ADD COLUMN public_key TEXT;
+          END IF;
+        END $$;
+      `);
+    } catch (error) {
+      // Column might already exist, ignore error
+      console.debug('ℹ️ oauth_refresh_tokens.public_key column migration error:', (error as Error).message);
     }
 
     await db.query(`

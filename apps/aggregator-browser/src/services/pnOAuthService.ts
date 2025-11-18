@@ -25,6 +25,7 @@ export interface OAuthUserInfo {
   // pN name is NOT returned - it's a secret
   nickname?: string; // Optional nickname if available
   pn_identifier?: string; // pN identifier from database (e.g., "83c1db813607")
+  public_key?: string; // Public key from OAuth for file decryption
 }
 
 export interface AuthSession {
