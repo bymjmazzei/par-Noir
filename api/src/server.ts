@@ -2143,8 +2143,10 @@ class ProductionServer {
         
         // Pass additional identifier candidates to getAccessToken via listFiles
         // listFiles will call getAccessToken with the additional candidates
+        console.log(`[DriveFiles] Final query for listFiles: ${finalQuery || '(none - will list all files)'}`);
         const files = await googleDriveProxyService.listFiles(userIdentifier, finalQuery, pageSize, accountId, identifierCandidates);
         
+        console.log(`[DriveFiles] Returning ${files.length} file(s) to client`);
         return res.json({ files });
       } catch (error: any) {
         console.error('Error listing Google Drive files:', error);
