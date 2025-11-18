@@ -2245,11 +2245,37 @@ class ProductionServer {
         const { fileId } = req.params;
         const { googleDriveProxyService } = await import('./server/modules/googleDriveProxy');
         
-        // Check if requesting metadata or file content
+        // Check if requesting thumbnail, download, or metadata
+        const thumbnail = req.query.thumbnail === 'true';
         const download = req.query.download === 'true';
         const accountId = req.query.accountId as string | undefined;
         
-        if (download) {
+        if (thumbnail) {
+          // Proxy thumbnail request through API server with authentication
+          const accessToken = await googleDriveProxyService.getAccessToken(userIdentifier, accountId);
+          const thumbnailUrl = `https://www.googleapis.com/drive/v3/files/${fileId}/thumbnail?alt=media`;
+          
+          const thumbnailResponse = await fetch(thumbnailUrl, {
+            headers: {
+              'Authorization': `Bearer ${accessToken}`
+            }
+          });
+          
+          if (thumbnailResponse.ok) {
+            const thumbnailBlob = await thumbnailResponse.blob();
+            const arrayBuffer = await thumbnailBlob.arrayBuffer();
+            const buffer = Buffer.from(arrayBuffer);
+            
+            res.setHeader('Content-Type', thumbnailBlob.type || 'image/jpeg');
+            res.setHeader('Cache-Control', 'public, max-age=3600'); // Cache thumbnails for 1 hour
+            return res.send(buffer);
+          } else {
+            return res.status(thumbnailResponse.status).json({
+              error: 'Failed to fetch thumbnail',
+              error_description: `Google Drive API returned ${thumbnailResponse.status}`
+            });
+          }
+        } else if (download) {
           const blob = await googleDriveProxyService.downloadFile(userIdentifier, fileId, accountId);
           const arrayBuffer = await blob.arrayBuffer();
           const buffer = Buffer.from(arrayBuffer);

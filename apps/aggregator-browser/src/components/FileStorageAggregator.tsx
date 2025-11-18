@@ -9,6 +9,182 @@ import { PNOAuthService } from '../services/pnOAuthService';
 
 const apiEndpoint = process.env.REACT_APP_API_ENDPOINT || 'https://api.parnoir.com';
 
+// Thumbnail component that handles authenticated loading
+const ThumbnailImage: React.FC<{ fileId: string; accountId: string; alt: string; className?: string }> = ({ fileId, accountId, alt, className = 'w-full h-full object-cover' }) => {
+  const [thumbnailUrl, setThumbnailUrl] = useState<string | null>(null);
+  const [error, setError] = useState(false);
+
+  useEffect(() => {
+    const loadThumbnail = async () => {
+      try {
+        const accessToken = await PNOAuthService.getValidAccessToken();
+        if (!accessToken) {
+          setError(true);
+          return;
+        }
+
+        const thumbnailUrl = `${apiEndpoint}/api/drive/files/${fileId}?thumbnail=true&accountId=${accountId}`;
+        const response = await fetch(thumbnailUrl, {
+          headers: {
+            'Authorization': `Bearer ${accessToken}`
+          }
+        });
+
+        if (response.ok) {
+          const blob = await response.blob();
+          const url = URL.createObjectURL(blob);
+          setThumbnailUrl(url);
+        } else {
+          setError(true);
+        }
+      } catch (err) {
+        console.error('[ThumbnailImage] Failed to load thumbnail:', err);
+        setError(true);
+      }
+    };
+
+    loadThumbnail();
+
+    // Cleanup blob URL on unmount
+    return () => {
+      if (thumbnailUrl) {
+        URL.revokeObjectURL(thumbnailUrl);
+      }
+    };
+  }, [fileId, accountId]);
+
+  if (error || !thumbnailUrl) {
+    return (
+      <div className="w-full h-full flex items-center justify-center">
+        <Lock className="h-8 w-8 text-blue-400" />
+      </div>
+    );
+  }
+
+  return (
+    <img
+      src={thumbnailUrl}
+      alt={alt}
+      className={className}
+      onError={() => setError(true)}
+    />
+  );
+};
+
+// File viewer component that handles authenticated file loading
+const FileViewer: React.FC<{ file: DriveFile; accountId: string; onDownload: () => void }> = ({ file, accountId, onDownload }) => {
+  const [fileUrl, setFileUrl] = useState<string | null>(null);
+  const [error, setError] = useState(false);
+  const [loading, setLoading] = useState(true);
+
+  const isImage = file.mimeType?.startsWith('image/');
+  const isVideo = file.mimeType?.startsWith('video/');
+
+  useEffect(() => {
+    const loadFile = async () => {
+      try {
+        setLoading(true);
+        const accessToken = await PNOAuthService.getValidAccessToken();
+        if (!accessToken) {
+          setError(true);
+          setLoading(false);
+          return;
+        }
+
+        const fileUrl = `${apiEndpoint}/api/drive/files/${file.id}?accountId=${accountId}&download=true`;
+        const response = await fetch(fileUrl, {
+          headers: {
+            'Authorization': `Bearer ${accessToken}`
+          }
+        });
+
+        if (response.ok) {
+          const blob = await response.blob();
+          const url = URL.createObjectURL(blob);
+          setFileUrl(url);
+        } else {
+          setError(true);
+        }
+      } catch (err) {
+        console.error('[FileViewer] Failed to load file:', err);
+        setError(true);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    if (isImage || isVideo) {
+      loadFile();
+    } else {
+      setLoading(false);
+    }
+
+    // Cleanup blob URL on unmount
+    return () => {
+      if (fileUrl) {
+        URL.revokeObjectURL(fileUrl);
+      }
+    };
+  }, [file.id, accountId, isImage, isVideo]);
+
+  if (loading) {
+    return (
+      <div className="w-full h-full flex items-center justify-center">
+        <div className="text-white">Loading...</div>
+      </div>
+    );
+  }
+
+  if (error || !fileUrl) {
+    return (
+      <div className="text-center text-white">
+        <p className="mb-4">Preview not available</p>
+        <button
+          onClick={onDownload}
+          className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+        >
+          Download File
+        </button>
+      </div>
+    );
+  }
+
+  if (isImage) {
+    return (
+      <img
+        src={fileUrl}
+        alt={file.name}
+        className="max-w-full max-h-full object-contain"
+        style={{ 
+          filter: 'drop-shadow(0 4px 6px rgba(0, 0, 0, 0.3))'
+        }}
+      />
+    );
+  }
+
+  if (isVideo) {
+    return (
+      <video
+        src={fileUrl}
+        controls
+        className="max-w-full max-h-full"
+      />
+    );
+  }
+
+  return (
+    <div className="text-center text-white">
+      <p className="mb-4">Preview not available for this file type</p>
+      <button
+        onClick={onDownload}
+        className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+      >
+        Download File
+      </button>
+    </div>
+  );
+};
+
 interface DriveAccount {
   provider: string;
   accountId: string;
@@ -622,18 +798,45 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
                     onClick={() => setViewingFile(file)}
                   >
                     <div className="relative aspect-square bg-neutral-700/50 overflow-hidden">
-                      {file.thumbnailLink && isImage ? (
+                      {isImage || isVideo ? (
                         <img
-                          src={file.thumbnailLink}
+                          src={`${apiEndpoint}/api/drive/files/${file.id}/thumbnail?accountId=${file.accountId || account.accountId}`}
                           alt={file.name}
                           className="w-full h-full object-cover"
-                        />
-                      ) : file.thumbnailLink && isVideo ? (
-                        <video
-                          src={file.thumbnailLink}
-                          className="w-full h-full object-cover"
-                          muted
-                          loop
+                          onError={(e) => {
+                            // If thumbnail fails to load, show lock icon
+                            const target = e.target as HTMLImageElement;
+                            target.style.display = 'none';
+                            const parent = target.parentElement;
+                            if (parent && !parent.querySelector('.lock-fallback')) {
+                              const lockDiv = document.createElement('div');
+                              lockDiv.className = 'lock-fallback w-full h-full flex items-center justify-center';
+                              lockDiv.innerHTML = '<svg class="h-8 w-8 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path></svg>';
+                              parent.appendChild(lockDiv);
+                            }
+                          }}
+                          onLoad={async (e) => {
+                            // Add Authorization header via fetch if needed
+                            const img = e.target as HTMLImageElement;
+                            const thumbnailUrl = `${apiEndpoint}/api/drive/files/${file.id}/thumbnail?accountId=${file.accountId || account.accountId}`;
+                            try {
+                              const accessToken = await PNOAuthService.getValidAccessToken();
+                              if (accessToken) {
+                                // Use fetch to get thumbnail with auth, then set as blob URL
+                                const response = await fetch(thumbnailUrl, {
+                                  headers: {
+                                    'Authorization': `Bearer ${accessToken}`
+                                  }
+                                });
+                                if (response.ok) {
+                                  const blob = await response.blob();
+                                  img.src = URL.createObjectURL(blob);
+                                }
+                              }
+                            } catch (err) {
+                              console.error('[FileStorageAggregator] Failed to load thumbnail:', err);
+                            }
+                          }}
                         />
                       ) : (
                         <div className="w-full h-full flex items-center justify-center">
@@ -724,20 +927,13 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
                     onClick={() => setViewingFile(file)}
                   >
                     <div className="flex items-center space-x-3 flex-1 min-w-0">
-                      {file.thumbnailLink && isImage ? (
+                      {isImage || isVideo ? (
                         <div className="w-12 h-12 flex-shrink-0 rounded overflow-hidden bg-neutral-700">
-                          <img
-                            src={file.thumbnailLink}
+                          <ThumbnailImage 
+                            fileId={file.id}
+                            accountId={file.accountId || account.accountId}
                             alt={file.name}
                             className="w-full h-full object-cover"
-                          />
-                        </div>
-                      ) : file.thumbnailLink && isVideo ? (
-                        <div className="w-12 h-12 flex-shrink-0 rounded overflow-hidden bg-neutral-700">
-                          <video
-                            src={file.thumbnailLink}
-                            className="w-full h-full object-cover"
-                            muted
                           />
                         </div>
                       ) : (
@@ -832,12 +1028,84 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
               <X className="h-6 w-6" />
             </button>
             
-            {viewingFile.webViewLink ? (
-              <iframe
-                src={viewingFile.webViewLink}
-                className="w-full h-full"
-                title={viewingFile.name}
-              />
+            {viewingFile.accountId ? (
+              <div className="w-full h-full flex items-center justify-center">
+                {isImage ? (
+                  <img
+                    src={`${apiEndpoint}/api/drive/files/${viewingFile.id}?accountId=${viewingFile.accountId}&download=true`}
+                    alt={viewingFile.name}
+                    className="max-w-full max-h-full object-contain"
+                    style={{ 
+                      filter: 'drop-shadow(0 4px 6px rgba(0, 0, 0, 0.3))'
+                    }}
+                    onError={async (e) => {
+                      // If direct image load fails, try downloading and decrypting
+                      const target = e.target as HTMLImageElement;
+                      try {
+                        const accessToken = await PNOAuthService.getValidAccessToken();
+                        if (accessToken) {
+                          const response = await fetch(`${apiEndpoint}/api/drive/files/${viewingFile.id}?accountId=${viewingFile.accountId}&download=true`, {
+                            headers: {
+                              'Authorization': `Bearer ${accessToken}`
+                            }
+                          });
+                          if (response.ok) {
+                            const blob = await response.blob();
+                            target.src = URL.createObjectURL(blob);
+                          } else {
+                            throw new Error('Failed to download file');
+                          }
+                        }
+                      } catch (err) {
+                        console.error('[FileStorageAggregator] Failed to load file:', err);
+                        target.style.display = 'none';
+                        const parent = target.parentElement;
+                        if (parent) {
+                          parent.innerHTML = `
+                            <div class="text-center text-white">
+                              <p class="mb-4">Preview not available</p>
+                              <button class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700" onclick="window.downloadFile()">
+                                Download File
+                              </button>
+                            </div>
+                          `;
+                        }
+                      }
+                    }}
+                  />
+                ) : isVideo ? (
+                  <video
+                    src={`${apiEndpoint}/api/drive/files/${viewingFile.id}?accountId=${viewingFile.accountId}&download=true`}
+                    controls
+                    className="max-w-full max-h-full"
+                    onError={(e) => {
+                      const target = e.target as HTMLVideoElement;
+                      target.style.display = 'none';
+                      const parent = target.parentElement;
+                      if (parent) {
+                        parent.innerHTML = `
+                          <div class="text-center text-white">
+                            <p class="mb-4">Preview not available</p>
+                            <button class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700" onclick="window.downloadFile()">
+                              Download File
+                            </button>
+                          </div>
+                        `;
+                      }
+                    }}
+                  />
+                ) : (
+                  <div className="text-center text-white">
+                    <p className="mb-4">Preview not available for this file type</p>
+                    <button
+                      onClick={() => handleDownload(viewingFile, viewingFile.accountId)}
+                      className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+                    >
+                      Download File
+                    </button>
+                  </div>
+                )}
+              </div>
             ) : (
               <div className="text-center text-white">
                 <p>Preview not available</p>
