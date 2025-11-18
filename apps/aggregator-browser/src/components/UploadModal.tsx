@@ -47,8 +47,16 @@ export function UploadModal({ onClose, onUploadComplete, onBrowseCloudClick }: U
       try {
         const apiEndpoint = process.env.REACT_APP_API_ENDPOINT || 'https://api.parnoir.com';
         console.log(`[UploadModal] Loading cloud accounts for pN: ${userState.pnIdentifier}`);
-        const session = PNOAuthService.loadSession();
-        const accessToken = session?.accessToken || '';
+        
+        // Get valid access token (will refresh if expired)
+        const accessToken = await PNOAuthService.getValidAccessToken();
+        
+        if (!accessToken) {
+          console.error('[UploadModal] No valid access token available');
+          setCloudAccounts([]);
+          setIsLoadingAccounts(false);
+          return;
+        }
         
         const response = await fetch(`${apiEndpoint}/api/storage/accounts/${userState.pnIdentifier}`, {
           headers: {
@@ -203,11 +211,11 @@ export function UploadModal({ onClose, onUploadComplete, onBrowseCloudClick }: U
 
       setUploadProgress(40);
 
-      const session = PNOAuthService.loadSession();
-      const accessToken = session?.accessToken || '';
+      // Get valid access token (will refresh if expired)
+      const accessToken = await PNOAuthService.getValidAccessToken();
       
       if (!accessToken) {
-        showError('Please connect your pN to upload files');
+        showError('Please connect your pN to upload files. Your session may have expired.');
         setUploading(false);
         return;
       }

@@ -41,9 +41,16 @@ export function BrowseCloud({ onClose, onUploadClick }: { onClose: () => void; o
       }
 
       try {
-        const session = PNOAuthService.loadSession();
-        const accessToken = session?.accessToken || '';
+        // Get valid access token (will refresh if expired)
+        const accessToken = await PNOAuthService.getValidAccessToken();
         const apiEndpoint = process.env.REACT_APP_API_ENDPOINT || 'https://api.parnoir.com';
+        
+        if (!accessToken) {
+          console.error('[BrowseCloud] No valid access token available');
+          setCloudAccounts([]);
+          return;
+        }
+        
         const response = await fetch(`${apiEndpoint}/api/storage/accounts/${userState.pnIdentifier}`, {
           headers: {
             'Authorization': `Bearer ${accessToken}`
@@ -75,12 +82,13 @@ export function BrowseCloud({ onClose, onUploadClick }: { onClose: () => void; o
 
       // Load files from all accounts (API currently returns all files)
       try {
-        const session = PNOAuthService.loadSession();
-        const accessToken = session?.accessToken || '';
+        // Get valid access token (will refresh if expired)
+        const accessToken = await PNOAuthService.getValidAccessToken();
         
         if (!accessToken) {
-          console.error('[BrowseCloud] No access token available');
+          console.error('[BrowseCloud] No valid access token available');
           setIsLoading(false);
+          showError('Your session may have expired. Please reconnect your pN.');
           return;
         }
         

@@ -333,6 +333,50 @@ export class PNOAuthService {
   }
 
   /**
+   * Get a valid access token, refreshing if necessary
+   */
+  static async getValidAccessToken(): Promise<string | null> {
+    const session = this.loadSession();
+    
+    if (!session) {
+      return null;
+    }
+
+    // If session is expired, try to refresh
+    if (session.expiresAt < Date.now()) {
+      if (!session.refreshToken) {
+        console.warn('[PNOAuth] Session expired and no refresh token available');
+        this.clearSession();
+        return null;
+      }
+
+      try {
+        console.log('[PNOAuth] Refreshing expired access token');
+        const tokenResponse = await this.refreshAccessToken(session.refreshToken);
+        
+        // Update session with new token
+        const updatedSession: AuthSession = {
+          ...session,
+          accessToken: tokenResponse.access_token,
+          expiresAt: Date.now() + (tokenResponse.expires_in * 1000),
+          refreshToken: tokenResponse.refresh_token || session.refreshToken
+        };
+        
+        this.saveSession(updatedSession);
+        console.log('[PNOAuth] Token refreshed successfully');
+        
+        return tokenResponse.access_token;
+      } catch (error: any) {
+        console.error('[PNOAuth] Failed to refresh token:', error);
+        this.clearSession();
+        return null;
+      }
+    }
+
+    return session.accessToken;
+  }
+
+  /**
    * Generate random state for CSRF protection
    */
   private static generateState(): string {
