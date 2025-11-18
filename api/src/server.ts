@@ -2442,6 +2442,164 @@ class ProductionServer {
           identifierCandidates // Pass identifier candidates for token lookup
         );
         
+        // Create companion metadata file (same as dashboard)
+        try {
+          const pnIdentifier = tokenPayload.pnIdentifier;
+          if (pnIdentifier && file.id) {
+            // Extract original filename (remove .encrypted suffix if present)
+            const originalFileName = fileName.replace(/\.encrypted$/i, '');
+            const originalMimeType = fileName.endsWith('.encrypted') 
+              ? (mimeType?.replace('application/json', '') || 'application/octet-stream')
+              : (mimeType || 'application/octet-stream');
+            
+            // Get access token for metadata creation
+            const accessToken = await googleDriveProxyService.getAccessToken(userIdentifier, accountId, identifierCandidates);
+            
+            // Get or create pN folder
+            const pnFolderName = `par Noir - pn-${pnIdentifier}`;
+            const folderSearchQuery = `name='${pnFolderName.replace(/'/g, "\\'")}' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
+            const folderSearchUrl = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(folderSearchQuery)}&fields=files(id,name)&pageSize=1`;
+            
+            const folderResponse = await fetch(folderSearchUrl, {
+              headers: { 'Authorization': `Bearer ${accessToken}` }
+            });
+            
+            let pnFolderId: string | null = null;
+            if (folderResponse.ok) {
+              const folderData = await folderResponse.json() as { files?: Array<{ id: string; name: string }> };
+              if (folderData.files && folderData.files.length > 0) {
+                pnFolderId = folderData.files[0].id;
+              }
+            }
+            
+            if (pnFolderId) {
+              // Get or create _metadata folder
+              const metadataFolderName = '_metadata';
+              const metadataSearchQuery = `name='${metadataFolderName}' and '${pnFolderId}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`;
+              const metadataSearchUrl = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(metadataSearchQuery)}&fields=files(id,name)&pageSize=1`;
+              
+              const metadataFolderResponse = await fetch(metadataSearchUrl, {
+                headers: { 'Authorization': `Bearer ${accessToken}` }
+              });
+              
+              let metadataFolderId: string | null = null;
+              if (metadataFolderResponse.ok) {
+                const metadataFolderData = await metadataFolderResponse.json() as { files?: Array<{ id: string; name: string }> };
+                if (metadataFolderData.files && metadataFolderData.files.length > 0) {
+                  metadataFolderId = metadataFolderData.files[0].id;
+                } else {
+                  // Create _metadata folder
+                  const createMetadataFolderResponse = await fetch('https://www.googleapis.com/drive/v3/files', {
+                    method: 'POST',
+                    headers: {
+                      'Authorization': `Bearer ${accessToken}`,
+                      'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                      name: metadataFolderName,
+                      mimeType: 'application/vnd.google-apps.folder',
+                      parents: [pnFolderId]
+                    })
+                  });
+                  
+                  if (createMetadataFolderResponse.ok) {
+                    const createdFolder = await createMetadataFolderResponse.json();
+                    metadataFolderId = createdFolder.id;
+                  }
+                }
+              }
+              
+              if (metadataFolderId) {
+                // Create companion metadata file
+                const metadataFileName = `${file.id}.metadata.json`;
+                const companionMetadata = {
+                  fileId: file.id,
+                  googleDriveFileId: file.id,
+                  fileName: fileName,
+                  originalName: originalFileName,
+                  mimeType: originalMimeType,
+                  size: parseInt(file.size || '0', 10),
+                  visibility: 'private',
+                  uploadedAt: new Date().toISOString(),
+                  owner: {
+                    did: tokenPayload.did,
+                    identifier: pnIdentifier
+                  },
+                  tags: [],
+                  engagement: {
+                    views: 0,
+                    likes: 0,
+                    comments: 0,
+                    shares: 0,
+                    lastUpdated: new Date().toISOString(),
+                    engagementHistory: []
+                  }
+                };
+                
+                // Check if metadata file already exists
+                const metadataFileSearchQuery = `name='${metadataFileName.replace(/'/g, "\\'")}' and '${metadataFolderId}' in parents and trashed=false`;
+                const metadataFileSearchUrl = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(metadataFileSearchQuery)}&fields=files(id)&pageSize=1`;
+                
+                const metadataFileSearchResponse = await fetch(metadataFileSearchUrl, {
+                  headers: { 'Authorization': `Bearer ${accessToken}` }
+                });
+                
+                const metadataContent = JSON.stringify(companionMetadata, null, 2);
+                
+                if (metadataFileSearchResponse.ok) {
+                  const metadataFileData = await metadataFileSearchResponse.json() as { files?: Array<{ id: string }> };
+                  if (metadataFileData.files && metadataFileData.files.length > 0) {
+                    // Update existing metadata file
+                    const metadataFileId = metadataFileData.files[0].id;
+                    await fetch(`https://www.googleapis.com/upload/drive/v3/files/${metadataFileId}?uploadType=media`, {
+                      method: 'PATCH',
+                      headers: {
+                        'Authorization': `Bearer ${accessToken}`,
+                        'Content-Type': 'application/json; charset=UTF-8'
+                      },
+                      body: metadataContent
+                    });
+                  } else {
+                    // Create new metadata file using multipart upload
+                    // Build multipart/form-data body manually
+                    const boundary = `----WebKitFormBoundary${Date.now()}`;
+                    const metadataPart = JSON.stringify({
+                      name: metadataFileName,
+                      parents: [metadataFolderId]
+                    });
+                    
+                    const multipartBody = [
+                      `--${boundary}`,
+                      'Content-Disposition: form-data; name="metadata"',
+                      'Content-Type: application/json',
+                      '',
+                      metadataPart,
+                      `--${boundary}`,
+                      'Content-Disposition: form-data; name="file"; filename="metadata.json"',
+                      'Content-Type: application/json',
+                      '',
+                      metadataContent,
+                      `--${boundary}--`
+                    ].join('\r\n');
+                    
+                    await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart', {
+                      method: 'POST',
+                      headers: {
+                        'Authorization': `Bearer ${accessToken}`,
+                        'Content-Type': `multipart/form-data; boundary=${boundary}`
+                      },
+                      body: multipartBody
+                    });
+                  }
+                }
+              }
+            }
+          }
+        } catch (metadataError: any) {
+          // Don't fail upload if metadata creation fails - log and continue
+          console.warn(`[Upload] Failed to create companion metadata file:`, metadataError?.message || metadataError);
+        }
+        
         return res.json({ file });
       } catch (error: any) {
         console.error('Error uploading file to Google Drive:', error);
