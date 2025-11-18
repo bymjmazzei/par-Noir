@@ -161,7 +161,7 @@ class ProductionServer {
       return null;
     }
 
-    const searchData = await searchResponse.json();
+    const searchData = await searchResponse.json() as { files?: Array<{ id: string }> };
     
     if (!searchData.files || searchData.files.length === 0) {
       return null;
@@ -290,7 +290,7 @@ class ProductionServer {
       throw new Error('Failed to search for owner index file');
     }
 
-    const searchData = await searchResponse.json();
+    const searchData = await searchResponse.json() as { files?: Array<{ id: string }> };
     
     if (searchData.files && searchData.files.length > 0) {
       // Update existing index
@@ -375,7 +375,7 @@ class ProductionServer {
       return null;
     }
 
-    const searchData = await searchResponse.json();
+    const searchData = await searchResponse.json() as { files?: Array<{ id: string }> };
     
     if (!searchData.files || searchData.files.length === 0) {
       return null;
@@ -569,10 +569,10 @@ class ProductionServer {
 
             let hasPermission = false;
             if (permissionsResponse.ok) {
-              const permissionsData = await permissionsResponse.json();
+              const permissionsData = await permissionsResponse.json() as { permissions?: Array<{ emailAddress?: string }> };
               hasPermission = permissionsData.permissions?.some(
                 (p: any) => p.emailAddress === serviceAccountEmail
-              );
+              ) ?? false;
             }
 
             if (!hasPermission) {
@@ -625,7 +625,7 @@ class ProductionServer {
       throw new Error('Failed to search for index file');
     }
 
-    const searchData = await searchResponse.json();
+    const searchData = await searchResponse.json() as { files?: Array<{ id: string }> };
     
     if (searchData.files && searchData.files.length > 0) {
       // Update existing index
@@ -707,7 +707,7 @@ class ProductionServer {
         throw new Error(`Failed to create index file: ${errorText}`);
       }
 
-      const fileData = await createResponse.json();
+      const fileData = await createResponse.json() as { id: string };
       
       // Make index file publicly readable
       try {
@@ -1273,7 +1273,7 @@ class ProductionServer {
                 });
 
                 if (driveResponse.ok) {
-                  const driveFile = await driveResponse.json();
+                  const driveFile = await driveResponse.json() as { name?: string; mimeType?: string; createdTime?: string };
                   const initialMetadata: any = {
                     fileId: fileId,
                     backendFileId: fileId,
@@ -1405,7 +1405,7 @@ class ProductionServer {
               throw new Error(`Failed to fetch file info: ${driveResponse.status}`);
             }
 
-            const driveFile = await driveResponse.json();
+            const driveFile = await driveResponse.json() as { name?: string; mimeType?: string; createdTime?: string };
             
             // Create initial metadata entry
             const initialMetadata: any = {
@@ -1551,7 +1551,7 @@ class ProductionServer {
                   });
                   
                   if (driveResponse.ok) {
-                    const driveFile = await driveResponse.json();
+                    const driveFile = await driveResponse.json() as { name?: string; mimeType?: string; size?: string; createdTime?: string };
                     const originalFileName = driveFile.name?.replace(/\.encrypted$/i, '') || fileId;
                     const originalMimeType = driveFile.mimeType || 'application/octet-stream';
                     
@@ -1603,7 +1603,7 @@ class ProductionServer {
                           });
                           
                           if (createMetadataFolderResponse.ok) {
-                            const createdFolder = await createMetadataFolderResponse.json();
+                            const createdFolder = await createMetadataFolderResponse.json() as { id: string };
                             metadataFolderId = createdFolder.id;
                           }
                         }
