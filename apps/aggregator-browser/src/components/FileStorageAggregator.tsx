@@ -1853,7 +1853,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
                               e.stopPropagation();
                               setOpenMenuFor(openMenuFor === file.id ? null : file.id);
                             }}
-                            className="p-1.5 text-text-secondary hover:text-text-primary transition-colors rounded"
+                            className="p-1.5 text-text-secondary hover:text-text-primary transition-colors rounded flex items-center justify-center"
                             title="File actions"
                             disabled={isLoading}
                           >
