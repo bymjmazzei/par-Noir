@@ -1077,6 +1077,19 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
     // Load existing metadata to determine current visibility
     const metadata = await loadFileMetadata(file.id);
     const isPublic = metadata?.isPublic || false;
+    const hasPublicToken = metadata?.publicToken && 
+                          typeof metadata.publicToken === 'string' && 
+                          metadata.publicToken.trim().length > 0;
+    
+    console.log('[FileStorageAggregator] File metadata loaded:', {
+      fileId: file.id,
+      fileName: file.name,
+      isPublic,
+      hasPublicToken,
+      publicTokenType: typeof metadata?.publicToken,
+      publicTokenLength: metadata?.publicToken ? String(metadata.publicToken).length : 0
+    });
+    
     setShareVisibility(isPublic ? 'public' : 'private');
     
     // Load third-party indexers if public
