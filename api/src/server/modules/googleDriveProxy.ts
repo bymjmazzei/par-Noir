@@ -49,24 +49,15 @@ export class GoogleDriveProxyService {
       identifierCandidates.push(userDid.replace('pn-', ''));
     }
     
-    let credentialsRecord: any = null;
-    let usedIdentifier: string | null = null;
-    
-    // Try each identifier candidate
-    for (const candidate of identifierCandidates) {
-      if (!candidate) continue; // Skip null/undefined candidates
-      credentialsRecord = await storageCredentialsService.getCredentials(candidate);
-      if (credentialsRecord) {
-        usedIdentifier = candidate;
-        console.log(`[GoogleDriveProxy] Found credentials using identifier: ${candidate}`);
-        break;
-      }
-    }
+    // Try to find credentials using any of the candidates
+    const credentialsRecord = await storageCredentialsService.findCredentialsByIdentityCandidates(identifierCandidates);
     
     if (!credentialsRecord) {
       console.error(`[GoogleDriveProxy] No credentials record found for userDid: ${userDid} (tried: ${identifierCandidates.filter(Boolean).join(', ')})`);
       throw new Error('Google Drive not connected. Please connect in the dashboard.');
     }
+    
+    const usedIdentifier = credentialsRecord.identityId;
     
     console.log(`[GoogleDriveProxy] Using credentials stored under identifier: ${usedIdentifier}`);
 

@@ -158,6 +158,77 @@ export class StorageCredentialsService {
     };
   }
 
+  /**
+   * Find credentials by trying multiple identity candidates
+   * Returns the first match found
+   */
+  async findCredentialsByIdentityCandidates(candidates: string[]): Promise<StoredCredentialsRecord | null> {
+    if (!candidates || candidates.length === 0) {
+      return null;
+    }
+
+    const db = getDatabasePool();
+    
+    // Try each candidate in order
+    for (const candidate of candidates) {
+      if (!candidate) continue;
+      
+      try {
+        const result = await db.query(
+          `
+            SELECT identity_id, encrypted_metadata, cid, updated_at, created_at
+            FROM storage_credentials
+            WHERE identity_id = $1
+          `,
+          [candidate]
+        );
+
+        if (result.rows.length > 0) {
+          console.log(`[StorageCredentials] Found credentials using candidate: ${candidate}`);
+          const row = result.rows[0];
+          // Decrypt and return (same logic as getCredentials)
+          let credentials: any = null;
+
+          try {
+            const encryptedRaw = row.encrypted_metadata;
+            let encryptedPayload: EncryptedPayload;
+
+            if (typeof encryptedRaw === 'string') {
+              encryptedPayload = JSON.parse(encryptedRaw);
+            } else if (encryptedRaw && typeof encryptedRaw === 'object') {
+              encryptedPayload = encryptedRaw as EncryptedPayload;
+            } else {
+              throw new Error('Unsupported encrypted payload format');
+            }
+
+            if (!encryptedPayload?.iv || !encryptedPayload?.authTag || !encryptedPayload?.ciphertext) {
+              throw new Error('Encrypted payload missing required fields');
+            }
+
+            const decrypted = this.decryptPayload(encryptedPayload);
+            credentials = JSON.parse(decrypted);
+          } catch (error) {
+            console.warn(`⚠️ Failed to decrypt storage credentials for identity ${candidate}:`, error);
+            continue; // Try next candidate
+          }
+
+          return {
+            identityId: row.identity_id,
+            credentials,
+            cid: row.cid,
+            updatedAt: row.updated_at.toISOString(),
+            createdAt: row.created_at.toISOString(),
+          };
+        }
+      } catch (error) {
+        console.warn(`[StorageCredentials] Error querying candidate ${candidate}:`, error);
+        continue; // Try next candidate
+      }
+    }
+    
+    return null;
+  }
+
   async deleteCredentials(identityId: string): Promise<boolean> {
     if (!identityId) {
       throw new Error('identityId is required');

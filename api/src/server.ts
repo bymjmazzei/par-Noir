@@ -2018,15 +2018,32 @@ class ProductionServer {
         // Credentials might be stored under different identifiers, so we'll try multiple candidates
         const userIdentifier = tokenPayload.pnIdentifier || tokenPayload.did;
         
-        // Build list of identifier candidates to try
-        // Credentials might be stored under the pnIdentifier, did, or a different derivation
-        const identifierCandidates = [
-          tokenPayload.pnIdentifier,
-          tokenPayload.did,
-        ].filter(Boolean) as string[];
+        // Build list of identifier candidates to try (matching dashboard's getStorageIdentityCandidates logic)
+        // Dashboard stores credentials under the FIRST candidate from getStorageIdentityCandidates()
+        // which is the derived pN identifier, then falls back to other candidates
+        const identifierCandidates: string[] = [];
+        
+        // 1. Add pN identifier from token FIRST (this is what dashboard uses as primary candidate)
+        if (tokenPayload.pnIdentifier) {
+          identifierCandidates.push(tokenPayload.pnIdentifier);
+        }
+        
+        // 2. Add full DID (dashboard includes authenticatedUser.id as a candidate)
+        if (tokenPayload.did) {
+          identifierCandidates.push(tokenPayload.did);
+          
+          // If DID is in format "did:key:xxxxx", also try just "xxxxx" (the publicKey part)
+          // Dashboard sometimes uses publicKey directly
+          if (tokenPayload.did.startsWith('did:key:')) {
+            const keyPart = tokenPayload.did.substring(8); // Remove "did:key:" prefix
+            if (keyPart) {
+              identifierCandidates.push(keyPart);
+            }
+          }
+        }
         
         console.log(`[DriveFiles] Token payload - pnIdentifier: ${tokenPayload.pnIdentifier}, did: ${tokenPayload.did}`);
-        console.log(`[DriveFiles] Will try identifier candidates: ${identifierCandidates.join(', ')}`);
+        console.log(`[DriveFiles] Will try identifier candidates (in order): ${identifierCandidates.join(', ')}`);
         
         const { googleDriveProxyService } = await import('./server/modules/googleDriveProxy');
         
