@@ -5,6 +5,7 @@
  */
 
 import crypto from 'crypto';
+import { getDatabasePool } from '../utils/database';
 
 export interface AuthorizationCode {
   code: string;
@@ -37,10 +38,10 @@ export interface TokenPayload {
   expiresAt: number;
 }
 
-// In-memory storage (in production, use Redis or database)
+// In-memory storage for authorization codes and access tokens (short-lived)
 const authorizationCodes = new Map<string, AuthorizationCode>();
-const refreshTokens = new Map<string, { did: string; clientId: string; scope: string[] }>();
 const accessTokens = new Map<string, TokenPayload>();
+// Note: refreshTokens are now stored in PostgreSQL database for persistence
 
 // Cleanup expired codes/tokens every 5 minutes
 setInterval(() => {
@@ -59,6 +60,11 @@ setInterval(() => {
       accessTokens.delete(token);
     }
   }
+  
+  // Clean expired refresh tokens from database (async, don't wait)
+  PNOAuthService.cleanupExpiredRefreshTokens().catch(err => {
+    console.error('[OAuth] Error in scheduled refresh token cleanup:', err);
+  });
 }, 5 * 60 * 1000);
 
 export class PNOAuthService {
@@ -156,8 +162,8 @@ export class PNOAuthService {
       scope: authCode.scope
     });
 
-    // Generate refresh token
-    const refreshToken = this.generateRefreshToken({
+    // Generate refresh token (now async - stores in database)
+    const refreshToken = await this.generateRefreshToken({
       did: authCode.did,
       clientId: params.clientId,
       scope: authCode.scope
@@ -258,52 +264,91 @@ export class PNOAuthService {
   }
 
   /**
-   * Generate refresh token
+   * Generate refresh token and store in database
    */
-  private static generateRefreshToken(params: { did: string; clientId: string; scope: string[] }): string {
+  private static async generateRefreshToken(params: { did: string; clientId: string; scope: string[] }): Promise<string> {
     const token = crypto.randomBytes(32).toString('hex');
+    const expiresAt = new Date(Date.now() + this.REFRESH_TOKEN_EXPIRY);
     
-    refreshTokens.set(token, {
-      did: params.did,
-      clientId: params.clientId,
-      scope: params.scope
-    });
-
+    const db = getDatabasePool();
+    try {
+      await db.query(
+        `INSERT INTO oauth_refresh_tokens (refresh_token, did, client_id, scope, expires_at)
+         VALUES ($1, $2, $3, $4, $5)
+         ON CONFLICT (refresh_token) 
+         DO UPDATE SET 
+           did = $2,
+           client_id = $3,
+           scope = $4,
+           expires_at = $5`,
+        [token, params.did, params.clientId, params.scope, expiresAt]
+      );
+    } catch (error) {
+      console.error('[OAuth] Failed to store refresh token in database:', error);
+      throw new Error('Failed to generate refresh token');
+    }
+    
     return token;
   }
 
   /**
-   * Refresh access token using refresh token
+   * Refresh access token using refresh token (from database)
    */
   static async refreshAccessToken(refreshToken: string, clientId: string): Promise<AccessToken | null> {
-    const tokenData = refreshTokens.get(refreshToken);
+    const db = getDatabasePool();
     
-    if (!tokenData) {
+    try {
+      // Query refresh token from database
+      const result = await db.query(
+        `SELECT did, client_id, scope, expires_at 
+         FROM oauth_refresh_tokens 
+         WHERE refresh_token = $1`,
+        [refreshToken]
+      );
+
+      if (result.rows.length === 0) {
+        console.warn('[OAuth] Refresh token not found in database');
+        return null;
+      }
+
+      const tokenData = result.rows[0];
+
+      // Check if token is expired
+      const expiresAt = new Date(tokenData.expires_at);
+      if (expiresAt.getTime() < Date.now()) {
+        console.warn('[OAuth] Refresh token has expired');
+        // Clean up expired token
+        await db.query('DELETE FROM oauth_refresh_tokens WHERE refresh_token = $1', [refreshToken]);
+        return null;
+      }
+
+      // Verify client ID matches
+      if (tokenData.client_id !== clientId) {
+        console.warn('[OAuth] Client ID mismatch for refresh token');
+        return null;
+      }
+
+      // Generate new access token
+      // Note: refresh token doesn't store publicKey, so pN identifier won't be in refreshed tokens
+      // This is acceptable - user can re-authenticate to get a new token with pN identifier
+      const accessToken = await this.generateAccessToken({
+        did: tokenData.did,
+        publicKey: undefined, // Refresh tokens don't store publicKey
+        clientId: clientId,
+        scope: tokenData.scope || []
+      });
+
+      return {
+        access_token: accessToken,
+        token_type: 'Bearer',
+        expires_in: Math.floor(this.ACCESS_TOKEN_EXPIRY / 1000),
+        refresh_token: refreshToken, // Return same refresh token
+        scope: (tokenData.scope || []).join(' ')
+      };
+    } catch (error) {
+      console.error('[OAuth] Error refreshing access token:', error);
       return null;
     }
-
-    // Verify client ID matches
-    if (tokenData.clientId !== clientId) {
-      return null;
-    }
-
-    // Generate new access token
-    // Note: refresh token doesn't store publicKey, so pN identifier won't be in refreshed tokens
-    // This is acceptable - user can re-authenticate to get a new token with pN identifier
-    const accessToken = await this.generateAccessToken({
-      did: tokenData.did,
-      publicKey: undefined, // Refresh tokens don't have publicKey
-      clientId: clientId,
-      scope: tokenData.scope
-    });
-
-    return {
-      access_token: accessToken,
-      token_type: 'Bearer',
-      expires_in: Math.floor(this.ACCESS_TOKEN_EXPIRY / 1000),
-      refresh_token: refreshToken, // Return same refresh token
-      scope: tokenData.scope.join(' ')
-    };
   }
 
   /**
@@ -353,10 +398,42 @@ export class PNOAuthService {
   }
 
   /**
-   * Revoke refresh token
+   * Revoke refresh token (remove from database)
    */
-  static revokeRefreshToken(refreshToken: string): boolean {
-    return refreshTokens.delete(refreshToken);
+  static async revokeRefreshToken(refreshToken: string): Promise<boolean> {
+    const db = getDatabasePool();
+    
+    try {
+      const result = await db.query(
+        'DELETE FROM oauth_refresh_tokens WHERE refresh_token = $1',
+        [refreshToken]
+      );
+      return (result.rowCount ?? 0) > 0;
+    } catch (error) {
+      console.error('[OAuth] Error revoking refresh token:', error);
+      return false;
+    }
+  }
+
+  /**
+   * Clean up expired refresh tokens (should be called periodically)
+   */
+  static async cleanupExpiredRefreshTokens(): Promise<number> {
+    const db = getDatabasePool();
+    
+    try {
+      const result = await db.query(
+        'DELETE FROM oauth_refresh_tokens WHERE expires_at < NOW()'
+      );
+      const deletedCount = result.rowCount ?? 0;
+      if (deletedCount > 0) {
+        console.log(`🧹 Cleaned up ${deletedCount} expired refresh token(s)`);
+      }
+      return deletedCount;
+    } catch (error) {
+      console.error('[OAuth] Error cleaning up expired refresh tokens:', error);
+      return 0;
+    }
   }
 
   /**

@@ -2984,7 +2984,7 @@ class ProductionServer {
     });
 
     // POST /oauth/revoke - Revoke token endpoint
-    this.app.post('/oauth/revoke', (req, res) => {
+    this.app.post('/oauth/revoke', async (req, res) => {
       try {
         const { token, token_type_hint } = req.body;
 
@@ -3000,12 +3000,12 @@ class ProductionServer {
         
         // If not found and hint suggests refresh token, try that
         if (!revoked && token_type_hint === 'refresh_token') {
-          revoked = PNOAuthService.revokeRefreshToken(token);
+          revoked = await PNOAuthService.revokeRefreshToken(token);
         }
 
         // If still not found, try refresh token anyway
         if (!revoked) {
-          revoked = PNOAuthService.revokeRefreshToken(token);
+          revoked = await PNOAuthService.revokeRefreshToken(token);
         }
 
         return res.json({ revoked: true });

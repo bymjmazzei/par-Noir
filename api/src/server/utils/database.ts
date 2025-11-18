@@ -351,6 +351,31 @@ export async function initializeDatabase(): Promise<void> {
       )
     `);
 
+    // OAuth refresh tokens table (persistent storage for refresh tokens)
+    await db.query(`
+      CREATE TABLE IF NOT EXISTS oauth_refresh_tokens (
+        refresh_token TEXT PRIMARY KEY,
+        did VARCHAR(255) NOT NULL,
+        client_id VARCHAR(255) NOT NULL,
+        scope TEXT[] DEFAULT ARRAY[]::TEXT[],
+        expires_at TIMESTAMP WITH TIME ZONE NOT NULL,
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+      )
+    `);
+
+    await db.query(`
+      CREATE INDEX IF NOT EXISTS idx_oauth_refresh_tokens_did
+      ON oauth_refresh_tokens(did)
+    `);
+
+    await db.query(`
+      CREATE INDEX IF NOT EXISTS idx_oauth_refresh_tokens_expires_at
+      ON oauth_refresh_tokens(expires_at)
+    `);
+
+    // Clean up expired refresh tokens periodically (via application logic)
+    // The cleanup will happen in the service layer
+
     console.log('✅ Database schema initialized');
   } catch (error) {
     console.error('❌ Failed to initialize database schema:', error);
