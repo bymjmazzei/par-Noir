@@ -1353,7 +1353,13 @@ class ProductionServer {
             };
 
             // Submit initial metadata
-            await service.submitMetadata(initialMetadata, tokenPayload.pnIdentifier);
+            try {
+              await service.submitMetadata(initialMetadata, tokenPayload.pnIdentifier);
+              console.log(`[MetadataIndex] Created metadata entry for ${fileId}`);
+            } catch (submitError: any) {
+              console.error(`[MetadataIndex] Failed to submit initial metadata for ${fileId}:`, submitError);
+              throw submitError; // Re-throw to be caught by outer catch
+            }
           } catch (driveError: any) {
             console.error(`[MetadataIndex] Failed to fetch file info for ${fileId}:`, driveError);
             // Continue anyway - create entry with minimal info
@@ -1375,7 +1381,13 @@ class ProductionServer {
                 lastUpdated: new Date().toISOString()
               }
             };
-            await service.submitMetadata(minimalMetadata, tokenPayload.pnIdentifier);
+            try {
+              await service.submitMetadata(minimalMetadata, tokenPayload.pnIdentifier);
+              console.log(`[MetadataIndex] Created minimal metadata entry for ${fileId}`);
+            } catch (minimalSubmitError: any) {
+              console.error(`[MetadataIndex] Failed to submit minimal metadata for ${fileId}:`, minimalSubmitError);
+              // Don't throw - we'll check if entry exists after and handle accordingly
+            }
           }
         }
 
