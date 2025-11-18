@@ -6,13 +6,28 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Download, File, RefreshCw, AlertCircle, Lock, Globe, X, Edit, Eye, Grid, List, Plus, Cloud, MoreVertical, Share2 } from 'lucide-react';
 import { PNOAuthService } from '../services/pnOAuthService';
+import { EncryptionManager } from '../utils/encryptionManager';
 
 const apiEndpoint = process.env.REACT_APP_API_ENDPOINT || 'https://api.parnoir.com';
 
+interface EncryptedFilePackage {
+  encrypted: string;
+  iv: string;
+  salt: string;
+  metadata: {
+    originalName: string;
+    originalSize: number;
+    originalMimeType: string;
+  };
+}
+
 // Thumbnail component that handles authenticated loading
-const ThumbnailImage: React.FC<{ fileId: string; accountId: string; alt: string; className?: string }> = ({ fileId, accountId, alt, className = 'w-full h-full object-cover' }) => {
+const ThumbnailImage: React.FC<{ fileId: string; accountId: string; fileName: string; alt: string; className?: string }> = ({ fileId, accountId, fileName, alt, className = 'w-full h-full object-cover' }) => {
   const [thumbnailUrl, setThumbnailUrl] = useState<string | null>(null);
   const [error, setError] = useState(false);
+
+  // Check if file is encrypted
+  const isEncrypted = fileName.toLowerCase().endsWith('.encrypted');
 
   useEffect(() => {
     let blobUrl: string | null = null;
@@ -26,27 +41,93 @@ const ThumbnailImage: React.FC<{ fileId: string; accountId: string; alt: string;
           return;
         }
 
-        const thumbnailUrl = `${apiEndpoint}/api/drive/files/${fileId}?thumbnail=true&accountId=${accountId}`;
-        console.log(`[ThumbnailImage] Loading thumbnail for ${fileId} from ${thumbnailUrl}`);
-        
-        const response = await fetch(thumbnailUrl, {
-          headers: {
-            'Authorization': `Bearer ${accessToken}`
+        if (isEncrypted) {
+          // For encrypted files: download, decrypt, and generate thumbnail
+          console.log(`[ThumbnailImage] Decrypting encrypted file for thumbnail: ${fileName}`);
+          
+          const session = PNOAuthService.loadSession();
+          if (!session?.did) {
+            console.error('[ThumbnailImage] No DID in session for decryption');
+            setError(true);
+            return;
           }
-        });
 
-        console.log(`[ThumbnailImage] Response status: ${response.status}`);
+          // Get publicKey from session (stored during unlock)
+          const publicKey = session?.publicKey;
+          
+          if (!publicKey) {
+            console.warn('[ThumbnailImage] No publicKey in session for decryption');
+            setError(true);
+            return;
+          }
 
-        if (response.ok) {
-          const blob = await response.blob();
-          blobUrl = URL.createObjectURL(blob);
-          console.log(`[ThumbnailImage] Created blob URL: ${blobUrl.substring(0, 50)}...`);
+          // Download encrypted file (it's stored as JSON string)
+          const fileUrl = `${apiEndpoint}/api/drive/files/${fileId}?accountId=${accountId}&download=true`;
+          const response = await fetch(fileUrl, {
+            headers: {
+              'Authorization': `Bearer ${accessToken}`
+            }
+          });
+
+          if (!response.ok) {
+            throw new Error(`Failed to download file: ${response.status}`);
+          }
+
+          // Encrypted files are stored as JSON strings, so read as text first
+          const encryptedText = await response.text();
+          let encryptedPackage: EncryptedFilePackage;
+          
+          try {
+            encryptedPackage = JSON.parse(encryptedText);
+          } catch (parseError) {
+            console.error('[ThumbnailImage] Failed to parse encrypted package:', parseError);
+            throw new Error('File is not a valid encrypted package');
+          }
+          
+          // Decrypt file
+          const encryptionManager = new EncryptionManager();
+          const decryptedData = await encryptionManager.decrypt(
+            encryptedPackage.encrypted,
+            encryptedPackage.iv,
+            encryptedPackage.salt,
+            session.did,
+            publicKey
+          );
+
+          // Create thumbnail from decrypted blob
+          const decryptedBlob = new Blob([decryptedData], {
+            type: encryptedPackage.metadata.originalMimeType || 'image/jpeg'
+          });
+
+          // Generate thumbnail (resize for images, extract frame for videos)
+          const thumbnailBlob = await createThumbnailFromBlob(decryptedBlob, 300, 300);
+          blobUrl = URL.createObjectURL(thumbnailBlob);
           setThumbnailUrl(blobUrl);
           setError(false);
         } else {
-          const errorText = await response.text().catch(() => 'Unknown error');
-          console.error(`[ThumbnailImage] Failed to load thumbnail: ${response.status} - ${errorText}`);
-          setError(true);
+          // Non-encrypted files: load thumbnail from Google Drive
+          const thumbnailUrl = `${apiEndpoint}/api/drive/files/${fileId}?thumbnail=true&accountId=${accountId}`;
+          console.log(`[ThumbnailImage] Loading thumbnail for ${fileId} from ${thumbnailUrl}`);
+          
+          const response = await fetch(thumbnailUrl, {
+            headers: {
+              'Authorization': `Bearer ${accessToken}`
+            }
+          });
+
+          console.log(`[ThumbnailImage] Response status: ${response.status}`);
+
+          if (response.ok) {
+            const blob = await response.blob();
+            blobUrl = URL.createObjectURL(blob);
+            console.log(`[ThumbnailImage] Created blob URL: ${blobUrl.substring(0, 50)}...`);
+            setThumbnailUrl(blobUrl);
+            setError(false);
+          } else {
+            const errorText = await response.text().catch(() => 'Unknown error');
+            console.error(`[ThumbnailImage] Failed to load thumbnail: ${response.status} - ${errorText}`);
+            setError(true);
+          }
         }
       } catch (err) {
         console.error('[ThumbnailImage] Failed to load thumbnail:', err);
@@ -63,7 +144,62 @@ const ThumbnailImage: React.FC<{ fileId: string; accountId: string; alt: string;
         URL.revokeObjectURL(blobUrl);
       }
     };
-  }, [fileId, accountId]);
+  }, [fileId, accountId, isEncrypted, fileName]);
+
+// Helper function to create thumbnail from blob
+async function createThumbnailFromBlob(blob: Blob, maxWidth: number, maxHeight: number): Promise<Blob> {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    const url = URL.createObjectURL(blob);
+    
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      
+      const canvas = document.createElement('canvas');
+      let width = img.width;
+      let height = img.height;
+      
+      // Calculate dimensions maintaining aspect ratio
+      if (width > height) {
+        if (width > maxWidth) {
+          height = (height * maxWidth) / width;
+          width = maxWidth;
+        }
+      } else {
+        if (height > maxHeight) {
+          width = (width * maxHeight) / height;
+          height = maxHeight;
+        }
+      }
+      
+      canvas.width = width;
+      canvas.height = height;
+      
+      const ctx = canvas.getContext('2d');
+      if (!ctx) {
+        reject(new Error('Failed to get canvas context'));
+        return;
+      }
+      
+      ctx.drawImage(img, 0, 0, width, height);
+      
+      canvas.toBlob((thumbnailBlob) => {
+        if (thumbnailBlob) {
+          resolve(thumbnailBlob);
+        } else {
+          reject(new Error('Failed to create thumbnail blob'));
+        }
+      }, 'image/jpeg', 0.8);
+    };
+    
+    img.onerror = () => {
+      URL.revokeObjectURL(url);
+      reject(new Error('Failed to load image for thumbnail'));
+    };
+    
+    img.src = url;
+  });
+}
 
   if (error || !thumbnailUrl) {
     return (
@@ -91,6 +227,7 @@ const FileViewer: React.FC<{ file: DriveFile; accountId: string; onDownload: () 
 
   const isImage = file.mimeType?.startsWith('image/');
   const isVideo = file.mimeType?.startsWith('video/');
+  const isEncrypted = file.name.toLowerCase().endsWith('.encrypted');
 
   useEffect(() => {
     const loadFile = async () => {
@@ -104,18 +241,81 @@ const FileViewer: React.FC<{ file: DriveFile; accountId: string; onDownload: () 
         }
 
         const fileUrl = `${apiEndpoint}/api/drive/files/${file.id}?accountId=${accountId}&download=true`;
+        console.log(`[FileViewer] Loading file: ${file.name} from ${fileUrl}`);
+        
         const response = await fetch(fileUrl, {
           headers: {
             'Authorization': `Bearer ${accessToken}`
           }
         });
 
-        if (response.ok) {
-          const blob = await response.blob();
-          const url = URL.createObjectURL(blob);
+        console.log(`[FileViewer] Response status: ${response.status}`);
+
+        if (!response.ok) {
+          const errorText = await response.text().catch(() => 'Unknown error');
+          console.error(`[FileViewer] Failed to load file: ${response.status} - ${errorText}`);
+          setError(true);
+          setLoading(false);
+          return;
+        }
+
+        if (isEncrypted) {
+          // Decrypt encrypted file
+          console.log(`[FileViewer] Decrypting encrypted file: ${file.name}`);
+          
+          const session = PNOAuthService.loadSession();
+          if (!session?.did) {
+            console.error('[FileViewer] No DID in session for decryption');
+            setError(true);
+            setLoading(false);
+            return;
+          }
+
+          // Get publicKey from session (stored during unlock)
+          const publicKey = session?.publicKey;
+          
+          if (!publicKey) {
+            console.warn('[FileViewer] No publicKey in session for decryption');
+            setError(true);
+            setLoading(false);
+            return;
+          }
+
+          // Encrypted files are stored as JSON strings, so read as text first
+          const encryptedText = await response.text();
+          let encryptedPackage: EncryptedFilePackage;
+          
+          try {
+            encryptedPackage = JSON.parse(encryptedText);
+          } catch (parseError) {
+            console.error('[FileViewer] Failed to parse encrypted package:', parseError);
+            throw new Error('File is not a valid encrypted package');
+          }
+          
+          // Decrypt file
+          const encryptionManager = new EncryptionManager();
+          const decryptedData = await encryptionManager.decrypt(
+            encryptedPackage.encrypted,
+            encryptedPackage.iv,
+            encryptedPackage.salt,
+            session.did,
+            publicKey
+          );
+
+          // Create blob from decrypted data
+          const decryptedBlob = new Blob([decryptedData], {
+            type: encryptedPackage.metadata.originalMimeType || file.mimeType || 'application/octet-stream'
+          });
+
+          const url = URL.createObjectURL(decryptedBlob);
+          console.log(`[FileViewer] Created decrypted blob URL for ${file.name}`);
           setFileUrl(url);
         } else {
-          setError(true);
+          // Non-encrypted file: use directly
+          const blob = await response.blob();
+          const url = URL.createObjectURL(blob);
+          console.log(`[FileViewer] Created blob URL for ${file.name}`);
+          setFileUrl(url);
         }
       } catch (err) {
         console.error('[FileViewer] Failed to load file:', err);
@@ -137,7 +337,7 @@ const FileViewer: React.FC<{ file: DriveFile; accountId: string; onDownload: () 
         URL.revokeObjectURL(fileUrl);
       }
     };
-  }, [file.id, accountId, isImage, isVideo]);
+  }, [file.id, file.name, accountId, isImage, isVideo, isEncrypted]);
 
   if (loading) {
     return (
@@ -150,7 +350,15 @@ const FileViewer: React.FC<{ file: DriveFile; accountId: string; onDownload: () 
   if (error || !fileUrl) {
     return (
       <div className="text-center text-white">
-        <p className="mb-4">Preview not available</p>
+        <Lock className="h-16 w-16 mx-auto mb-4 text-blue-400" />
+        <p className="mb-2 text-lg font-semibold">
+          {isEncrypted ? 'Encrypted File' : 'Preview not available'}
+        </p>
+        <p className="mb-4 text-sm text-gray-400">
+          {isEncrypted 
+            ? 'This file is encrypted and must be downloaded to view.' 
+            : 'This file cannot be previewed in the browser.'}
+        </p>
         <button
           onClick={onDownload}
           className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
@@ -814,6 +1022,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
                         <ThumbnailImage 
                           fileId={file.id}
                           accountId={file.accountId || account.accountId}
+                          fileName={file.name}
                           alt={file.name}
                         />
                       ) : (
@@ -1007,83 +1216,11 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
             </button>
             
             {viewingFile.accountId ? (
-              <div className="w-full h-full flex items-center justify-center">
-                {isImage ? (
-                  <img
-                    src={`${apiEndpoint}/api/drive/files/${viewingFile.id}?accountId=${viewingFile.accountId}&download=true`}
-                    alt={viewingFile.name}
-                    className="max-w-full max-h-full object-contain"
-                    style={{ 
-                      filter: 'drop-shadow(0 4px 6px rgba(0, 0, 0, 0.3))'
-                    }}
-                    onError={async (e) => {
-                      // If direct image load fails, try downloading and decrypting
-                      const target = e.target as HTMLImageElement;
-                      try {
-                        const accessToken = await PNOAuthService.getValidAccessToken();
-                        if (accessToken) {
-                          const response = await fetch(`${apiEndpoint}/api/drive/files/${viewingFile.id}?accountId=${viewingFile.accountId}&download=true`, {
-                            headers: {
-                              'Authorization': `Bearer ${accessToken}`
-                            }
-                          });
-                          if (response.ok) {
-                            const blob = await response.blob();
-                            target.src = URL.createObjectURL(blob);
-                          } else {
-                            throw new Error('Failed to download file');
-                          }
-                        }
-                      } catch (err) {
-                        console.error('[FileStorageAggregator] Failed to load file:', err);
-                        target.style.display = 'none';
-                        const parent = target.parentElement;
-                        if (parent) {
-                          parent.innerHTML = `
-                            <div class="text-center text-white">
-                              <p class="mb-4">Preview not available</p>
-                              <button class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700" onclick="window.downloadFile()">
-                                Download File
-                              </button>
-                            </div>
-                          `;
-                        }
-                      }
-                    }}
-                  />
-                ) : isVideo ? (
-                  <video
-                    src={`${apiEndpoint}/api/drive/files/${viewingFile.id}?accountId=${viewingFile.accountId}&download=true`}
-                    controls
-                    className="max-w-full max-h-full"
-                    onError={(e) => {
-                      const target = e.target as HTMLVideoElement;
-                      target.style.display = 'none';
-                      const parent = target.parentElement;
-                      if (parent) {
-                        parent.innerHTML = `
-                          <div class="text-center text-white">
-                            <p class="mb-4">Preview not available</p>
-                            <button class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700" onclick="window.downloadFile()">
-                              Download File
-                            </button>
-                          </div>
-                        `;
-                      }
-                    }}
-                  />
-                ) : (
-                  <div className="text-center text-white">
-                    <p className="mb-4">Preview not available for this file type</p>
-                    <button
-                      onClick={() => handleDownload(viewingFile, viewingFile.accountId)}
-                      className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
-                    >
-                      Download File
-                    </button>
-                  </div>
-                )}
-              </div>
+              <FileViewer 
+                file={viewingFile}
+                accountId={viewingFile.accountId}
+                onDownload={() => handleDownload(viewingFile, viewingFile.accountId)}
+              />
             ) : (
               <div className="text-center text-white">
                 <p>Preview not available</p>

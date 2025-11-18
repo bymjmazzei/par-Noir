@@ -32,6 +32,7 @@ export interface AuthSession {
   refreshToken?: string;
   expiresAt: number;
   did: string;
+  publicKey?: string; // Public key needed for file decryption
   // pN name is NOT stored - it's a secret
   nickname?: string; // Optional nickname if available
   pnIdentifier?: string; // pN identifier from database (e.g., "83c1db813607")
@@ -257,6 +258,7 @@ export class PNOAuthService {
       refreshToken: tokenResponse.refresh_token,
       expiresAt: Date.now() + (tokenResponse.expires_in * 1000),
       did: userInfo.did,
+      publicKey: params.publicKey, // Store publicKey for file decryption
       pnName: userInfo.pn_name
     };
 
@@ -334,16 +336,19 @@ export class PNOAuthService {
 
   /**
    * Get a valid access token, refreshing if necessary
+   * @param forceRefresh - If true, force a token refresh even if token hasn't expired
    */
-  static async getValidAccessToken(): Promise<string | null> {
+  static async getValidAccessToken(forceRefresh: boolean = false): Promise<string | null> {
     const session = this.loadSession();
     
     if (!session) {
+      console.log('[PNOAuth] No session found');
       return null;
     }
 
-    // If session is expired, try to refresh
-    if (session.expiresAt < Date.now()) {
+    // If session is expired or force refresh is requested, try to refresh
+    const isExpired = session.expiresAt < Date.now();
+    if (isExpired || forceRefresh) {
       if (!session.refreshToken) {
         console.warn('[PNOAuth] Session expired and no refresh token available');
         this.clearSession();
@@ -351,7 +356,7 @@ export class PNOAuthService {
       }
 
       try {
-        console.log('[PNOAuth] Refreshing expired access token');
+        console.log(`[PNOAuth] Refreshing access token (expired: ${isExpired}, forced: ${forceRefresh})`);
         const tokenResponse = await this.refreshAccessToken(session.refreshToken);
         
         // Update session with new token
@@ -368,11 +373,14 @@ export class PNOAuthService {
         return tokenResponse.access_token;
       } catch (error: any) {
         console.error('[PNOAuth] Failed to refresh token:', error);
-        this.clearSession();
+        // Don't clear session immediately - let user try to reconnect
+        // The session will be cleared when they try to use it again
+        console.warn('[PNOAuth] Refresh token invalid or expired. User needs to re-authenticate.');
         return null;
       }
     }
 
+    console.log('[PNOAuth] Using existing valid token');
     return session.accessToken;
   }
 
