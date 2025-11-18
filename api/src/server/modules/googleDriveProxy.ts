@@ -100,6 +100,8 @@ export class GoogleDriveProxyService {
     const tokenAge = expiresAt - now;
     const shouldRefresh = expiresAt < now + 60000 || tokenAge < 1800000; // Refresh if expires in < 1 min or age < 30 min
     
+    console.log(`[GoogleDriveProxy] Token check for accountId: ${accountId || 'default'}, expiresAt: ${expiresAt}, now: ${now}, age: ${tokenAge}ms, shouldRefresh: ${shouldRefresh}`);
+    
     // If we have a refresh token, always try to refresh to ensure we have a valid token
     if (token.refresh_token && shouldRefresh) {
       try {
@@ -264,6 +266,36 @@ export class GoogleDriveProxyService {
 
     if (!response.ok) {
       const errorText = await response.text();
+      console.error(`[GoogleDriveProxy] Upload failed with status ${response.status}:`, errorText);
+      
+      // If we get a 401, the token is invalid - try refreshing it
+      if (response.status === 401 && token.refresh_token) {
+        console.log(`[GoogleDriveProxy] Got 401, attempting token refresh and retry`);
+        try {
+          const refreshedToken = await this.refreshAccessToken(token.refresh_token);
+          // Retry upload with refreshed token
+          const retryResponse = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart', {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${refreshedToken.access_token}`,
+              'Content-Type': `multipart/form-data; boundary=${boundary}`,
+              'Content-Length': body.length.toString(),
+            },
+            body: body,
+          });
+          
+          if (!retryResponse.ok) {
+            const retryErrorText = await retryResponse.text();
+            throw new Error(`Failed to upload file after token refresh: ${retryErrorText}`);
+          }
+          
+          return retryResponse.json() as Promise<GoogleDriveFile>;
+        } catch (refreshError: any) {
+          console.error(`[GoogleDriveProxy] Token refresh and retry failed:`, refreshError.message || refreshError);
+          throw new Error(`Failed to upload file: ${errorText}`);
+        }
+      }
+      
       throw new Error(`Failed to upload file: ${errorText}`);
     }
 
