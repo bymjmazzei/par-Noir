@@ -1253,10 +1253,12 @@ class ProductionServer {
     // PUT /api/aggregator/metadata-index/:fileId - Update metadata (creates entry if doesn't exist)
     this.app.put('/api/aggregator/metadata-index/:fileId', async (req, res) => {
       try {
+        const { fileId } = req.params;
+        console.log(`[MetadataIndex PUT] Request received for fileId: ${fileId}, isPublic: ${req.body.isPublic}`);
+        
         const { AggregatorMetadataServiceDB } = await import('./server/modules/aggregatorMetadataServiceDB');
         const service = AggregatorMetadataServiceDB.getInstance();
 
-        const { fileId } = req.params;
         const { 
           name, 
           description, 
@@ -1276,6 +1278,7 @@ class ProductionServer {
 
         // Check if metadata entry exists
         const existing = await service.getFileMetadata(fileId);
+        console.log(`[MetadataIndex PUT] Existing entry check for ${fileId}: ${existing ? 'found' : 'not found'}`);
         
         if (!existing) {
           // Create new metadata entry - fetch file info from Google Drive
@@ -1393,7 +1396,9 @@ class ProductionServer {
 
         // Refetch to ensure entry exists (in case it was just created)
         let current = await service.getFileMetadata(fileId);
+        console.log(`[MetadataIndex PUT] After upsert, refetch for ${fileId}: ${current ? 'found' : 'not found'}`);
         if (!current) {
+          console.error(`[MetadataIndex PUT] Failed to create/find metadata entry for ${fileId}`);
           return res.status(404).json({ error: 'File not found in index' });
         }
 
