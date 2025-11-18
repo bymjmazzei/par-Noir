@@ -2440,7 +2440,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
             });
 
           // Process metadata from owner index, filtering out orphaned entries
-          const existingFileIds = new Set(scannedFiles.map((f: any) => f.id));
+          // Reuse existingFileIds from above
           const orphanedEntries: any[] = [];
 
           ownerIndex.files.forEach((entry: any) => {
