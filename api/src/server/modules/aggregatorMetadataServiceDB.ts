@@ -210,12 +210,15 @@ export class AggregatorMetadataServiceDB {
 
       // CRITICAL: Validate files actually exist before returning them
       // This automatically removes orphaned entries (files deleted from Google Drive)
+      console.log(`🔍 [getPublicMetadata] Starting validation for ${entries.length} entries`);
       const validatedEntries: CentralIndexEntry[] = [];
       const orphanedFileIds: string[] = [];
       
       // Only validate Google Drive files (batch check for performance)
       const googleDriveEntries = entries.filter(e => (e.metadata.backend || 'google_drive') === 'google_drive');
       const otherEntries = entries.filter(e => (e.metadata.backend || 'google_drive') !== 'google_drive');
+      
+      console.log(`🔍 [getPublicMetadata] Found ${googleDriveEntries.length} Google Drive entries to validate`);
       
       if (googleDriveEntries.length > 0) {
         try {
@@ -226,21 +229,28 @@ export class AggregatorMetadataServiceDB {
           // Get access token (will initialize auth if needed)
           let accessToken: string | null = null;
           try {
+            console.log('🔑 [getPublicMetadata] Attempting to get service account token...');
             accessToken = await syncService.getAccessToken();
+            console.log(`✅ [getPublicMetadata] Got service account token: ${accessToken ? 'yes' : 'no'}`);
           } catch (tokenError) {
-            console.warn('⚠️ [getPublicMetadata] Could not get service account token for validation:', tokenError);
+            console.error('❌ [getPublicMetadata] Could not get service account token for validation:', tokenError);
+            console.error('❌ [getPublicMetadata] Token error details:', tokenError instanceof Error ? tokenError.message : String(tokenError));
           }
           
           if (accessToken) {
+            console.log(`✅ [getPublicMetadata] Starting file validation with service account...`);
             // Batch validate files (check up to 20 at a time to avoid rate limits)
             const batchSize = 20;
             for (let i = 0; i < googleDriveEntries.length; i += batchSize) {
               const batch = googleDriveEntries.slice(i, i + batchSize);
+              console.log(`🔍 [getPublicMetadata] Validating batch ${Math.floor(i/batchSize) + 1} (${batch.length} files)...`);
               
               await Promise.all(batch.map(async (entry) => {
                 const fileId = entry.metadata.backendFileId || entry.fileId;
+                const entryFileId = entry.fileId;
                 if (!fileId) {
-                  orphanedFileIds.push(entry.fileId);
+                  console.warn(`⚠️ [getPublicMetadata] Entry ${entryFileId} has no backendFileId, marking as orphaned`);
+                  orphanedFileIds.push(entryFileId);
                   return;
                 }
                 
@@ -253,19 +263,22 @@ export class AggregatorMetadataServiceDB {
                   
                   if (checkResponse.ok) {
                     // File exists - include it
+                    console.log(`✅ [getPublicMetadata] File ${fileId} exists in Google Drive`);
                     validatedEntries.push(entry);
                   } else if (checkResponse.status === 404) {
                     // File doesn't exist - mark as orphaned
-                    console.log(`🗑️ [getPublicMetadata] File ${fileId} not found in Google Drive, marking as orphaned`);
-                    orphanedFileIds.push(entry.fileId);
+                    console.log(`🗑️ [getPublicMetadata] File ${fileId} NOT FOUND in Google Drive (404), marking as orphaned`);
+                    orphanedFileIds.push(entryFileId);
                   } else {
-                    // Other error (permission, etc.) - include it (might be a permission issue, not deletion)
-                    console.warn(`⚠️ [getPublicMetadata] File ${fileId} check returned ${checkResponse.status}, including anyway`);
+                    // Other error (permission, etc.) - log it but include it (might be a permission issue, not deletion)
+                    const errorText = await checkResponse.text().catch(() => 'Unknown error');
+                    console.warn(`⚠️ [getPublicMetadata] File ${fileId} check returned ${checkResponse.status}: ${errorText}`);
+                    console.warn(`⚠️ [getPublicMetadata] Including file anyway (might be permission issue)`);
                     validatedEntries.push(entry);
                   }
                 } catch (checkError) {
-                  // Network error - include it (don't remove on transient errors)
-                  console.warn(`⚠️ [getPublicMetadata] Error checking file ${fileId}:`, checkError);
+                  // Network error - log it but include it (don't remove on transient errors)
+                  console.error(`❌ [getPublicMetadata] Error checking file ${fileId}:`, checkError);
                   validatedEntries.push(entry);
                 }
               }));
@@ -275,13 +288,12 @@ export class AggregatorMetadataServiceDB {
                 await new Promise(resolve => setTimeout(resolve, 100));
               }
             }
+            console.log(`✅ [getPublicMetadata] Validation complete: ${validatedEntries.length} valid, ${orphanedFileIds.length} orphaned`);
           } else {
             // No service account - can't validate files exist
-            // This is a critical issue - we can't verify files exist, so we should return empty
-            // OR we need to trust the database (but database can have orphaned entries)
             console.error('❌ [getPublicMetadata] CRITICAL: Service account not configured - cannot validate files exist!');
             console.error('❌ [getPublicMetadata] Orphaned files WILL appear in feed. Configure GOOGLE_SERVICE_ACCOUNT_KEY.');
-            console.error('❌ [getPublicMetadata] For now, returning empty feed to prevent showing deleted files.');
+            console.error('❌ [getPublicMetadata] Returning EMPTY feed to prevent showing deleted files.');
             // Return empty array to prevent showing potentially deleted files
             // User must configure service account OR use cleanup endpoint
             validatedEntries.push(...[]); // Empty - don't show potentially deleted files
@@ -289,6 +301,7 @@ export class AggregatorMetadataServiceDB {
         } catch (validationError) {
           console.error('❌ [getPublicMetadata] File validation failed:', validationError);
           console.error('❌ [getPublicMetadata] Validation error details:', validationError instanceof Error ? validationError.message : String(validationError));
+          console.error('❌ [getPublicMetadata] Validation stack:', validationError instanceof Error ? validationError.stack : 'No stack');
           // On validation error, return empty to prevent showing potentially deleted files
           // This is safer than showing files that might not exist
           console.error('❌ [getPublicMetadata] Returning empty feed due to validation error');
