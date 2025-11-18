@@ -1500,7 +1500,7 @@ class ProductionServer {
               ...current.metadata,
               isPublic: isPublic
             };
-            const db = (await import('../utils/database')).getDatabasePool();
+            const db = (await import('./server/utils/database')).getDatabasePool();
             await db.query(
               `UPDATE aggregator_metadata 
                SET metadata = $1, updated_at = NOW()
@@ -1522,6 +1522,10 @@ class ProductionServer {
                 
                 if (tokenPayload) {
                   const pnIdentifier = tokenPayload.pnIdentifier;
+                  if (!pnIdentifier) {
+                    console.error(`[MetadataIndex PUT] Missing pnIdentifier in token payload`);
+                    throw new Error('Missing pnIdentifier in token');
+                  }
                   const userIdentifier = tokenPayload.pnIdentifier || tokenPayload.did;
                   const identifierCandidates: string[] = [];
                   if (tokenPayload.pnIdentifier) {
