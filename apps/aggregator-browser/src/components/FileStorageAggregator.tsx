@@ -1183,10 +1183,37 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
 
             if (downloadResponse.ok) {
               const fileBlob = await downloadResponse.blob();
+              const contentType = downloadResponse.headers.get('content-type') || '';
+              
+              console.log('📥 [ShareSettings] Downloaded file for token generation:', {
+                fileId: targetFileId,
+                blobSize: fileBlob.size,
+                contentType
+              });
+              
+              // Encrypted files are stored as JSON, so parse as text
               const fileText = await fileBlob.text();
               
+              if (!fileText || fileText.trim().length === 0) {
+                throw new Error('Downloaded file is empty');
+              }
+              
               // Parse encrypted file package (JSON format)
-              const encryptedPackage: EncryptedFilePackage = JSON.parse(fileText);
+              let encryptedPackage: EncryptedFilePackage;
+              try {
+                encryptedPackage = JSON.parse(fileText);
+              } catch (parseError: any) {
+                console.error('❌ [ShareSettings] Failed to parse encrypted file package:', {
+                  error: parseError?.message,
+                  fileTextPreview: fileText.substring(0, 200)
+                });
+                throw new Error(`Failed to parse encrypted file: ${parseError?.message}`);
+              }
+              
+              // Validate package structure
+              if (!encryptedPackage.encrypted || !encryptedPackage.iv || !encryptedPackage.salt) {
+                throw new Error('Invalid encrypted file package structure - missing required fields');
+              }
               
               // Get user session for token generation
               const session = PNOAuthService.loadSession();
