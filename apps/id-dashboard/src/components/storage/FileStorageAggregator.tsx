@@ -3476,6 +3476,11 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
         console.log(`✅ [handleDisconnect] Backend ${backendId} disconnected`);
       }
       
+      // Remove account from state FIRST (before updating API/metadata)
+      // This ensures buildStorageCredentialPayload() excludes the removed account
+      removeDriveAccount(backendId);
+      console.log(`✅ [handleDisconnect] Account ${backendId} removed from dashboard state`);
+      
       // Remove account from encrypted metadata storage
       // This prevents it from being restored after lock/unlock
       if (authenticatedUser?.id && accountEmail) {
@@ -3520,10 +3525,14 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
                 
                 // Handle googleDriveAccounts array
                 if (Array.isArray(updatedCredentials.googleDriveAccounts)) {
+                  const beforeCount = updatedCredentials.googleDriveAccounts.length;
                   updatedCredentials.googleDriveAccounts = updatedCredentials.googleDriveAccounts.filter(
                     (creds: any) => creds?.email?.toLowerCase() !== accountEmail.toLowerCase()
                   );
-                  console.log(`✅ [handleDisconnect] Removed account from googleDriveAccounts array`);
+                  const afterCount = updatedCredentials.googleDriveAccounts.length;
+                  if (beforeCount > afterCount) {
+                    console.log(`✅ [handleDisconnect] Removed account from googleDriveAccounts array (${beforeCount} -> ${afterCount})`);
+                  }
                 }
                 
                 // Handle single googleDrive object (legacy format)
@@ -3550,23 +3559,37 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
             }
           } else {
             console.warn('⚠️ [handleDisconnect] Missing pnName or passcode - cannot update encrypted metadata');
+            console.warn('⚠️ [handleDisconnect] Will rely on API storage credentials update instead');
           }
         } catch (metadataError) {
           console.error('❌ [handleDisconnect] Failed to remove account from encrypted metadata:', metadataError);
-          // Continue with removal from state even if metadata update fails
+          // Continue with API update even if metadata update fails
         }
       } else {
         console.warn('⚠️ [handleDisconnect] Missing authenticatedUser.id or accountEmail - skipping metadata removal');
       }
       
-      // Remove account from state and persist removal
-      // This ensures the account doesn't reappear after lock/unlock
-      removeDriveAccount(backendId);
-      console.log(`✅ [handleDisconnect] Account ${backendId} removed from dashboard`);
+      // CRITICAL: Update API storage credentials to remove the account
+      // This prevents it from being restored via hydrateStorageCredentialsFromAPI
+      // Since we already called removeDriveAccount, buildStorageCredentialPayload will exclude the removed account
+      try {
+        console.log('🔄 [handleDisconnect] Updating API storage credentials to remove account...');
+        await persistStorageCredentialsToAPI();
+        console.log('✅ [handleDisconnect] API storage credentials updated');
+      } catch (apiError) {
+        console.error('❌ [handleDisconnect] Failed to update API storage credentials:', apiError);
+        // Non-critical - account is already removed from state
+      }
     } catch (err) {
       console.error('❌ [handleDisconnect] Error disconnecting:', err);
       // Still try to remove from state even if backend.disconnect() fails
       removeDriveAccount(backendId);
+      // Try to update API even on error
+      try {
+        await persistStorageCredentialsToAPI();
+      } catch (apiError) {
+        console.error('❌ [handleDisconnect] Failed to update API after error:', apiError);
+      }
     }
   };
 
