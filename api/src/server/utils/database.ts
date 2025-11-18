@@ -363,6 +363,25 @@ export async function initializeDatabase(): Promise<void> {
         created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
       )
     `);
+    
+    // Add pn_identifier column if it doesn't exist (for existing installations)
+    try {
+      await db.query(`
+        DO $$ 
+        BEGIN
+          IF NOT EXISTS (
+            SELECT 1 FROM information_schema.columns 
+            WHERE table_name = 'oauth_refresh_tokens' 
+            AND column_name = 'pn_identifier'
+          ) THEN
+            ALTER TABLE oauth_refresh_tokens ADD COLUMN pn_identifier VARCHAR(255);
+          END IF;
+        END $$;
+      `);
+    } catch (error) {
+      // Column might already exist, ignore error
+      console.debug('ℹ️ oauth_refresh_tokens.pn_identifier column migration error:', (error as Error).message);
+    }
 
     await db.query(`
       CREATE INDEX IF NOT EXISTS idx_oauth_refresh_tokens_did
