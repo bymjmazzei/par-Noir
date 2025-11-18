@@ -3840,6 +3840,21 @@ class ProductionServer {
         await googleDriveProxyService.deleteFile(userIdentifier, fileId, accountId);
         console.log(`✅ [DeleteFile] Deleted file ${fileId} from Google Drive`);
         
+        // Remove from database metadata index (critical - this is what the public feed reads from)
+        try {
+          const { AggregatorMetadataServiceDB } = await import('./server/modules/aggregatorMetadataServiceDB');
+          const metadataService = AggregatorMetadataServiceDB.getInstance();
+          const removed = await metadataService.removeMetadata(fileId);
+          if (removed) {
+            console.log(`✅ [DeleteFile] Removed file ${fileId} from database metadata index`);
+          } else {
+            console.log(`ℹ️ [DeleteFile] File ${fileId} was not in database metadata index (may have been private)`);
+          }
+        } catch (dbError: any) {
+          console.error(`❌ [DeleteFile] Failed to remove from database metadata index:`, dbError?.message || dbError);
+          // Don't fail the delete if database cleanup fails - file is already deleted from Drive
+        }
+        
         // Clean up indexes: remove from owner index and public index
         if (pnIdentifier) {
           try {
