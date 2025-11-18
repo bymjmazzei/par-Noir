@@ -276,8 +276,10 @@ export class AggregatorMetadataServiceDB {
               }
             }
           } else {
-            // No service account - can't validate, return all entries
+            // No service account - can't validate
             console.warn('⚠️ [getPublicMetadata] Service account not available, skipping file validation');
+            console.warn('⚠️ [getPublicMetadata] Orphaned files may appear in feed. Configure GOOGLE_SERVICE_ACCOUNT_KEY to enable validation.');
+            // Still return entries, but log warning
             validatedEntries.push(...googleDriveEntries);
           }
         } catch (validationError) {
@@ -290,16 +292,27 @@ export class AggregatorMetadataServiceDB {
       // Add non-Google Drive entries (no validation needed)
       validatedEntries.push(...otherEntries);
       
-      // Remove orphaned files from database (in background, non-blocking)
+      // CRITICAL: Remove orphaned files from database BEFORE returning
+      // This ensures deleted files don't appear in the feed
       if (orphanedFileIds.length > 0) {
         console.log(`🗑️ [getPublicMetadata] Removing ${orphanedFileIds.length} orphaned file(s) from database...`);
-        // Remove in background (don't await - don't slow down the response)
-        Promise.all(orphanedFileIds.map(fileId => 
-          this.removeMetadata(fileId).catch(err => 
-            console.error(`Failed to remove orphaned file ${fileId}:`, err)
-          )
-        )).catch(err => console.error('Error removing orphaned files:', err));
+        try {
+          // Remove orphaned files (await to ensure they're removed)
+          await Promise.all(orphanedFileIds.map(fileId => 
+            this.removeMetadata(fileId).catch(err => {
+              console.error(`Failed to remove orphaned file ${fileId}:`, err);
+              return null; // Continue with other removals even if one fails
+            })
+          ));
+          console.log(`✅ [getPublicMetadata] Removed ${orphanedFileIds.length} orphaned file(s) from database`);
+        } catch (err) {
+          console.error('❌ [getPublicMetadata] Error removing orphaned files:', err);
+          // Continue anyway - don't break the feed
+        }
       }
+      
+      // Log what we're returning
+      console.log(`📤 [getPublicMetadata] Returning ${validatedEntries.length} validated files (${orphanedFileIds.length} orphaned files removed)`);
       
       return validatedEntries;
     } catch (error) {
