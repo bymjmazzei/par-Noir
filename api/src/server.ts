@@ -2149,6 +2149,89 @@ class ProductionServer {
       }
     });
 
+    // DELETE /api/drive/files/:fileId - Delete file from Google Drive
+    this.app.delete('/api/drive/files/:fileId', async (req, res) => {
+      try {
+        const authHeader = req.headers.authorization;
+        if (!authHeader || !authHeader.startsWith('Bearer ')) {
+          return res.status(401).json({
+            error: 'unauthorized',
+            error_description: 'Missing or invalid Authorization header'
+          });
+        }
+
+        const token = authHeader.substring(7);
+        const { PNOAuthService } = await import('./server/modules/pnOAuthService');
+        const tokenPayload = PNOAuthService.validateAccessToken(token);
+        
+        if (!tokenPayload) {
+          return res.status(401).json({
+            error: 'unauthorized',
+            error_description: 'Invalid or expired access token'
+          });
+        }
+
+        const userIdentifier = tokenPayload.pnIdentifier || tokenPayload.did;
+        const { fileId } = req.params;
+        const accountId = req.query.accountId as string | undefined;
+        const { googleDriveProxyService } = await import('./server/modules/googleDriveProxy');
+        
+        await googleDriveProxyService.deleteFile(userIdentifier, fileId, accountId);
+        
+        return res.json({ success: true, fileId });
+      } catch (error: any) {
+        console.error('Error deleting Google Drive file:', error);
+        return res.status(500).json({
+          error: 'Failed to delete file',
+          error_description: error.message || 'Failed to delete Google Drive file'
+        });
+      }
+    });
+
+    // PUT /api/drive/files/:fileId - Update file metadata in Google Drive
+    this.app.put('/api/drive/files/:fileId', async (req, res) => {
+      try {
+        const authHeader = req.headers.authorization;
+        if (!authHeader || !authHeader.startsWith('Bearer ')) {
+          return res.status(401).json({
+            error: 'unauthorized',
+            error_description: 'Missing or invalid Authorization header'
+          });
+        }
+
+        const token = authHeader.substring(7);
+        const { PNOAuthService } = await import('./server/modules/pnOAuthService');
+        const tokenPayload = PNOAuthService.validateAccessToken(token);
+        
+        if (!tokenPayload) {
+          return res.status(401).json({
+            error: 'unauthorized',
+            error_description: 'Invalid or expired access token'
+          });
+        }
+
+        const userIdentifier = tokenPayload.pnIdentifier || tokenPayload.did;
+        const { fileId } = req.params;
+        const { name, description, parents, accountId } = req.body;
+        const { googleDriveProxyService } = await import('./server/modules/googleDriveProxy');
+        
+        const updates: { name?: string; description?: string; parents?: string[] } = {};
+        if (name) updates.name = name;
+        if (description !== undefined) updates.description = description;
+        if (parents) updates.parents = parents;
+        
+        const updatedFile = await googleDriveProxyService.updateFileMetadata(userIdentifier, fileId, updates, accountId);
+        
+        return res.json({ file: updatedFile });
+      } catch (error: any) {
+        console.error('Error updating Google Drive file:', error);
+        return res.status(500).json({
+          error: 'Failed to update file',
+          error_description: error.message || 'Failed to update Google Drive file'
+        });
+      }
+    });
+
     this.app.get('/api/did/:did', (req, res) => {
       // Resolve DID document
       const { did } = req.params;
