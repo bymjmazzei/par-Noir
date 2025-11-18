@@ -165,6 +165,7 @@ export class PNOAuthService {
     // Generate refresh token (now async - stores in database)
     const refreshToken = await this.generateRefreshToken({
       did: authCode.did,
+      publicKey: authCode.publicKey, // Include publicKey to derive pN identifier
       clientId: params.clientId,
       scope: authCode.scope
     });
@@ -233,14 +234,17 @@ export class PNOAuthService {
   /**
    * Generate access token
    */
-  private static async generateAccessToken(params: { did: string; publicKey?: string; clientId: string; scope: string[] }): Promise<string> {
-    // Derive pN identifier from DID + publicKey (same as dashboard)
-    const pnIdentifier = await this.derivePnIdentifier(params.did, params.publicKey);
+  private static async generateAccessToken(params: { did: string; publicKey?: string; pnIdentifier?: string; clientId: string; scope: string[] }): Promise<string> {
+    // Use provided pN identifier if available, otherwise derive from DID + publicKey
+    let pnIdentifier = params.pnIdentifier;
+    if (!pnIdentifier && params.publicKey) {
+      pnIdentifier = await this.derivePnIdentifier(params.did, params.publicKey);
+    }
     
     const payload: TokenPayload = {
       did: params.did,
       // pN name is NOT stored - it's a secret
-      pnIdentifier, // Store derived pN identifier
+      pnIdentifier, // Store derived or provided pN identifier
       clientId: params.clientId,
       scope: params.scope,
       issuedAt: Date.now(),
@@ -266,22 +270,26 @@ export class PNOAuthService {
   /**
    * Generate refresh token and store in database
    */
-  private static async generateRefreshToken(params: { did: string; clientId: string; scope: string[] }): Promise<string> {
+  private static async generateRefreshToken(params: { did: string; publicKey?: string; clientId: string; scope: string[] }): Promise<string> {
     const token = crypto.randomBytes(32).toString('hex');
     const expiresAt = new Date(Date.now() + this.REFRESH_TOKEN_EXPIRY);
+    
+    // Derive pN identifier if publicKey is available
+    const pnIdentifier = params.publicKey ? await this.derivePnIdentifier(params.did, params.publicKey) : undefined;
     
     const db = getDatabasePool();
     try {
       await db.query(
-        `INSERT INTO oauth_refresh_tokens (refresh_token, did, client_id, scope, expires_at)
-         VALUES ($1, $2, $3, $4, $5)
+        `INSERT INTO oauth_refresh_tokens (refresh_token, did, pn_identifier, client_id, scope, expires_at)
+         VALUES ($1, $2, $3, $4, $5, $6)
          ON CONFLICT (refresh_token) 
          DO UPDATE SET 
            did = $2,
-           client_id = $3,
-           scope = $4,
-           expires_at = $5`,
-        [token, params.did, params.clientId, params.scope, expiresAt]
+           pn_identifier = $3,
+           client_id = $4,
+           scope = $5,
+           expires_at = $6`,
+        [token, params.did, pnIdentifier, params.clientId, params.scope, expiresAt]
       );
     } catch (error) {
       console.error('[OAuth] Failed to store refresh token in database:', error);
@@ -300,7 +308,7 @@ export class PNOAuthService {
     try {
       // Query refresh token from database
       const result = await db.query(
-        `SELECT did, client_id, scope, expires_at 
+        `SELECT did, pn_identifier, client_id, scope, expires_at 
          FROM oauth_refresh_tokens 
          WHERE refresh_token = $1`,
         [refreshToken]
@@ -329,11 +337,11 @@ export class PNOAuthService {
       }
 
       // Generate new access token
-      // Note: refresh token doesn't store publicKey, so pN identifier won't be in refreshed tokens
-      // This is acceptable - user can re-authenticate to get a new token with pN identifier
+      // Use stored pN identifier from refresh token if available
       const accessToken = await this.generateAccessToken({
         did: tokenData.did,
-        publicKey: undefined, // Refresh tokens don't store publicKey
+        publicKey: undefined, // Refresh tokens don't store publicKey, but we store pn_identifier
+        pnIdentifier: tokenData.pn_identifier, // Use stored pN identifier from refresh token
         clientId: clientId,
         scope: tokenData.scope || []
       });

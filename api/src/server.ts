@@ -2015,8 +2015,18 @@ class ProductionServer {
         }
 
         // Use pN identifier from token if available, otherwise fall back to DID
-        // Credentials are stored under pN identifier, not DID
+        // Credentials might be stored under different identifiers, so we'll try multiple candidates
         const userIdentifier = tokenPayload.pnIdentifier || tokenPayload.did;
+        
+        // Build list of identifier candidates to try
+        // Credentials might be stored under the pnIdentifier, did, or a different derivation
+        const identifierCandidates = [
+          tokenPayload.pnIdentifier,
+          tokenPayload.did,
+        ].filter(Boolean) as string[];
+        
+        console.log(`[DriveFiles] Token payload - pnIdentifier: ${tokenPayload.pnIdentifier}, did: ${tokenPayload.did}`);
+        console.log(`[DriveFiles] Will try identifier candidates: ${identifierCandidates.join(', ')}`);
         
         const { googleDriveProxyService } = await import('./server/modules/googleDriveProxy');
         
@@ -2035,7 +2045,7 @@ class ProductionServer {
             // Wrap in try-catch to handle credential errors gracefully
             let accessToken: string | null = null;
             try {
-              accessToken = await googleDriveProxyService.getAccessToken(userIdentifier, accountId);
+              accessToken = await googleDriveProxyService.getAccessToken(userIdentifier, accountId, identifierCandidates);
             } catch (tokenError: any) {
               console.warn(`[DriveFiles] Could not get access token for folder search:`, tokenError?.message || tokenError);
               // Continue without folder filter - will list all files and client will filter
@@ -2098,7 +2108,9 @@ class ProductionServer {
           }
         }
         
-        const files = await googleDriveProxyService.listFiles(userIdentifier, finalQuery, pageSize, accountId);
+        // Pass additional identifier candidates to getAccessToken via listFiles
+        // listFiles will call getAccessToken with the additional candidates
+        const files = await googleDriveProxyService.listFiles(userIdentifier, finalQuery, pageSize, accountId, identifierCandidates);
         
         return res.json({ files });
       } catch (error: any) {

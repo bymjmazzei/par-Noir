@@ -34,14 +34,41 @@ export class GoogleDriveProxyService {
    * Supports multiple accounts - if accountId is provided, uses that specific account
    * Handles token refresh if needed
    */
-  async getAccessToken(userDid: string, accountId?: string): Promise<string> {
+  async getAccessToken(userDid: string, accountId?: string, additionalCandidates?: string[]): Promise<string> {
     console.log(`[GoogleDriveProxy] getAccessToken called with userDid: ${userDid}, accountId: ${accountId}`);
-    const credentialsRecord = await storageCredentialsService.getCredentials(userDid);
+    
+    // Try multiple identifier candidates (credentials might be stored under different identifiers)
+    // This handles cases where credentials were stored with a different identifier format
+    const identifierCandidates = [
+      userDid, // Try the provided identifier first
+      ...(additionalCandidates || []), // Try any additional candidates passed in
+    ];
+    
+    // Also try the identifier without any prefix if it has one
+    if (userDid.includes('pn-')) {
+      identifierCandidates.push(userDid.replace('pn-', ''));
+    }
+    
+    let credentialsRecord: any = null;
+    let usedIdentifier: string | null = null;
+    
+    // Try each identifier candidate
+    for (const candidate of identifierCandidates) {
+      if (!candidate) continue; // Skip null/undefined candidates
+      credentialsRecord = await storageCredentialsService.getCredentials(candidate);
+      if (credentialsRecord) {
+        usedIdentifier = candidate;
+        console.log(`[GoogleDriveProxy] Found credentials using identifier: ${candidate}`);
+        break;
+      }
+    }
     
     if (!credentialsRecord) {
-      console.error(`[GoogleDriveProxy] No credentials record found for userDid: ${userDid}`);
+      console.error(`[GoogleDriveProxy] No credentials record found for userDid: ${userDid} (tried: ${identifierCandidates.filter(Boolean).join(', ')})`);
       throw new Error('Google Drive not connected. Please connect in the dashboard.');
     }
+    
+    console.log(`[GoogleDriveProxy] Using credentials stored under identifier: ${usedIdentifier}`);
 
     const credentials = credentialsRecord.credentials;
     console.log(`[GoogleDriveProxy] Found credentials record. Has googleDriveAccounts: ${!!credentials.googleDriveAccounts}, has googleDrive: ${!!credentials.googleDrive}`);
@@ -216,8 +243,8 @@ export class GoogleDriveProxyService {
   /**
    * List files from Google Drive
    */
-  async listFiles(userDid: string, query?: string, pageSize: number = 50, accountId?: string): Promise<GoogleDriveFile[]> {
-    const accessToken = await this.getAccessToken(userDid, accountId);
+  async listFiles(userDid: string, query?: string, pageSize: number = 50, accountId?: string, additionalCandidates?: string[]): Promise<GoogleDriveFile[]> {
+    const accessToken = await this.getAccessToken(userDid, accountId, additionalCandidates);
 
     const params = new URLSearchParams({
       fields: 'nextPageToken, files(id, name, mimeType, size, createdTime, modifiedTime, webViewLink, webContentLink, thumbnailLink, parents, description)',

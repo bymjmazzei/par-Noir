@@ -356,6 +356,7 @@ export async function initializeDatabase(): Promise<void> {
       CREATE TABLE IF NOT EXISTS oauth_refresh_tokens (
         refresh_token TEXT PRIMARY KEY,
         did VARCHAR(255) NOT NULL,
+        pn_identifier VARCHAR(255),
         client_id VARCHAR(255) NOT NULL,
         scope TEXT[] DEFAULT ARRAY[]::TEXT[],
         expires_at TIMESTAMP WITH TIME ZONE NOT NULL,
