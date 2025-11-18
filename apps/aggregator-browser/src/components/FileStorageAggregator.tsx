@@ -1439,6 +1439,8 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
         throw new Error('No publicKey available for encryption. Please unlock your pN.');
       }
 
+      console.log('📤 [Upload] Starting upload...', { fileName: file.name, fileSize: file.size });
+
       // Encrypt file using the same standard as dashboard
       const fileArrayBuffer = await file.arrayBuffer();
       const fileData = new Uint8Array(fileArrayBuffer);
@@ -1461,6 +1463,28 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
           originalMimeType: file.type,
         },
       };
+
+      // Generate share token now (during upload) so it's ready for public sharing
+      // This matches the dashboard's behavior and avoids having to regenerate it later
+      console.log('🔑 [Upload] Generating share token for future public sharing...');
+      let shareToken: any = undefined;
+      try {
+        const encryptionService = getEncryptionService();
+        shareToken = await encryptionService.generateShareToken(
+          packageData,
+          {
+            id: session.did,
+            publicKey: publicKey
+          }
+        );
+        console.log('✅ [Upload] Share token generated successfully');
+      } catch (tokenError: any) {
+        console.error('❌ [Upload] Share token generation failed:', {
+          error: tokenError?.message || tokenError,
+        });
+        // Don't fail the upload if token generation fails - user can try making it public later
+        shareToken = undefined;
+      }
 
       // Convert to JSON string (will be uploaded as .encrypted file)
       const encryptedBlob = new Blob([JSON.stringify(packageData)], {
@@ -1495,20 +1519,84 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
         })
       });
 
-      if (response.ok) {
-        // Wait a moment for the file to be processed on the server
-        await new Promise(resolve => setTimeout(resolve, 3000));
-        
-        // Reload files for this account
-        await loadFilesForAccount(accountId);
-        const input = fileInputRefs.current.get(accountId);
-        if (input) {
-          input.value = ''; // Reset so onChange fires even if same file is selected again
-        }
-      } else {
+      if (!response.ok) {
         const errorText = await response.text().catch(() => 'Unknown error');
         throw new Error(`Upload failed: ${errorText}`);
       }
+
+      const uploadResult = await response.json();
+      const uploadedFile = uploadResult.file;
+      
+      if (!uploadedFile || !uploadedFile.id) {
+        throw new Error('Upload succeeded but no file ID returned');
+      }
+
+      const fileId = uploadedFile.id;
+      console.log('✅ [Upload] File uploaded successfully, fileId:', fileId);
+
+      // Create initial metadata entry (matches dashboard behavior)
+      // This ensures the file appears properly in the system and can be edited/shared later
+      try {
+        console.log('📝 [Upload] Creating initial metadata entry...');
+        
+        // Determine file type from MIME type
+        const fileType = file.type.startsWith('image/') ? 'image' 
+          : file.type.startsWith('video/') ? 'video'
+          : file.type.startsWith('audio/') ? 'audio'
+          : 'document';
+
+        // Create metadata entry via API (this also updates owner index automatically)
+        const metadataResponse = await fetch(`${apiEndpoint}/api/aggregator/metadata-index/${fileId}`, {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${accessToken}`
+          },
+          body: JSON.stringify({
+            name: file.name,
+            description: '',
+            keywords: [],
+            tags: [],
+            fileType: fileType,
+            isPublic: false, // Default to private
+            publicToken: shareToken ? JSON.stringify(shareToken) : undefined, // Store share token for future use
+            uploadDate: new Date().toISOString(),
+            // Include accountId in query params if needed
+          }),
+        });
+
+        if (metadataResponse.ok) {
+          const metadataResult = await metadataResponse.json();
+          console.log('✅ [Upload] Metadata entry created successfully');
+          
+          // Update local metadata map
+          if (metadataResult.metadata) {
+            setFileMetadataMap(prev => {
+              const next = new Map(prev);
+              next.set(fileId, metadataResult.metadata);
+              return next;
+            });
+          }
+        } else {
+          const errorText = await metadataResponse.text().catch(() => 'Unknown error');
+          console.warn('⚠️ [Upload] Failed to create metadata entry (non-critical):', errorText);
+          // Don't fail the upload - metadata can be created later
+        }
+      } catch (metadataError: any) {
+        console.warn('⚠️ [Upload] Metadata creation failed (non-critical):', metadataError?.message || metadataError);
+        // Don't fail the upload - metadata can be created later
+      }
+
+      // Reload files for this account
+      console.log('🔄 [Upload] Reloading files...');
+      await loadFilesForAccount(accountId);
+      
+      const input = fileInputRefs.current.get(accountId);
+      if (input) {
+        input.value = ''; // Reset so onChange fires even if same file is selected again
+      }
+      
+      console.log('✅ [Upload] Upload flow completed successfully');
     } catch (err: any) {
       const errorMessage = err.message || 'Failed to upload file';
       setError(errorMessage);
