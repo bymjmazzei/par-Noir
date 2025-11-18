@@ -54,8 +54,9 @@ export class GoogleDriveSyncService {
 
   /**
    * Get access token for Google Drive API
+   * Made public so it can be used by other services for validation
    */
-  private async getAccessToken(): Promise<string> {
+  async getAccessToken(): Promise<string> {
     if (!this.auth) {
       await this.initializeAuth();
     }

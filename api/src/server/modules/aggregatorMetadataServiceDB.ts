@@ -208,17 +208,100 @@ export class AggregatorMetadataServiceDB {
         });
       }
 
-      // CRITICAL: The database should only contain entries for files that actually exist.
-      // If a file is deleted from Google Drive, it MUST be removed from the database.
-      // This is handled by:
-      // 1. DELETE endpoint removes from database when file is deleted through API
-      // 2. Cleanup endpoint can be used to remove orphaned entries
-      // 3. Files deleted outside the API will remain until cleanup is run
-      //
-      // For now, we trust the database. If files appear that don't exist, use the cleanup endpoint.
-      // In the future, we can add background validation jobs to auto-remove orphaned entries.
+      // CRITICAL: Validate files actually exist before returning them
+      // This automatically removes orphaned entries (files deleted from Google Drive)
+      const validatedEntries: CentralIndexEntry[] = [];
+      const orphanedFileIds: string[] = [];
       
-      return entries;
+      // Only validate Google Drive files (batch check for performance)
+      const googleDriveEntries = entries.filter(e => (e.metadata.backend || 'google_drive') === 'google_drive');
+      const otherEntries = entries.filter(e => (e.metadata.backend || 'google_drive') !== 'google_drive');
+      
+      if (googleDriveEntries.length > 0) {
+        try {
+          // Use service account to validate files exist
+          const { GoogleDriveSyncService } = await import('./googleDriveSyncService');
+          const syncService = GoogleDriveSyncService.getInstance();
+          
+          // Get access token (will initialize auth if needed)
+          let accessToken: string | null = null;
+          try {
+            accessToken = await syncService.getAccessToken();
+          } catch (tokenError) {
+            console.warn('⚠️ [getPublicMetadata] Could not get service account token for validation:', tokenError);
+          }
+          
+          if (accessToken) {
+            // Batch validate files (check up to 20 at a time to avoid rate limits)
+            const batchSize = 20;
+            for (let i = 0; i < googleDriveEntries.length; i += batchSize) {
+              const batch = googleDriveEntries.slice(i, i + batchSize);
+              
+              await Promise.all(batch.map(async (entry) => {
+                const fileId = entry.metadata.backendFileId || entry.fileId;
+                if (!fileId) {
+                  orphanedFileIds.push(entry.fileId);
+                  return;
+                }
+                
+                try {
+                  // Check if file exists in Google Drive
+                  const checkUrl = `https://www.googleapis.com/drive/v3/files/${fileId}?fields=id&supportsAllDrives=true`;
+                  const checkResponse = await fetch(checkUrl, {
+                    headers: { 'Authorization': `Bearer ${accessToken}` }
+                  });
+                  
+                  if (checkResponse.ok) {
+                    // File exists - include it
+                    validatedEntries.push(entry);
+                  } else if (checkResponse.status === 404) {
+                    // File doesn't exist - mark as orphaned
+                    console.log(`🗑️ [getPublicMetadata] File ${fileId} not found in Google Drive, marking as orphaned`);
+                    orphanedFileIds.push(entry.fileId);
+                  } else {
+                    // Other error (permission, etc.) - include it (might be a permission issue, not deletion)
+                    console.warn(`⚠️ [getPublicMetadata] File ${fileId} check returned ${checkResponse.status}, including anyway`);
+                    validatedEntries.push(entry);
+                  }
+                } catch (checkError) {
+                  // Network error - include it (don't remove on transient errors)
+                  console.warn(`⚠️ [getPublicMetadata] Error checking file ${fileId}:`, checkError);
+                  validatedEntries.push(entry);
+                }
+              }));
+              
+              // Small delay between batches to avoid rate limits
+              if (i + batchSize < googleDriveEntries.length) {
+                await new Promise(resolve => setTimeout(resolve, 100));
+              }
+            }
+          } else {
+            // No service account - can't validate, return all entries
+            console.warn('⚠️ [getPublicMetadata] Service account not available, skipping file validation');
+            validatedEntries.push(...googleDriveEntries);
+          }
+        } catch (validationError) {
+          console.error('❌ [getPublicMetadata] File validation failed:', validationError);
+          // On error, return all entries (don't break the feed)
+          validatedEntries.push(...googleDriveEntries);
+        }
+      }
+      
+      // Add non-Google Drive entries (no validation needed)
+      validatedEntries.push(...otherEntries);
+      
+      // Remove orphaned files from database (in background, non-blocking)
+      if (orphanedFileIds.length > 0) {
+        console.log(`🗑️ [getPublicMetadata] Removing ${orphanedFileIds.length} orphaned file(s) from database...`);
+        // Remove in background (don't await - don't slow down the response)
+        Promise.all(orphanedFileIds.map(fileId => 
+          this.removeMetadata(fileId).catch(err => 
+            console.error(`Failed to remove orphaned file ${fileId}:`, err)
+          )
+        )).catch(err => console.error('Error removing orphaned files:', err));
+      }
+      
+      return validatedEntries;
     } catch (error) {
       console.error('❌ Failed to get public metadata:', error);
       throw error;
