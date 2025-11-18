@@ -640,9 +640,16 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
           const hasImageExt = /\.(jpg|jpeg|png|gif|webp|bmp|svg|heic|heif)$/i.test(nameWithoutEncrypted);
           const hasVideoExt = /\.(mp4|mov|avi|mkv|webm|flv|wmv|m4v|3gp)$/i.test(nameWithoutEncrypted);
           
-          // Include if it's an image/video by MIME type OR by file extension
-          // This allows encrypted files to show if they have image/video extensions
-          return isImageMime || isVideoMime || hasImageExt || hasVideoExt;
+          // Check if file name suggests it's an image (e.g., "img123", "image123", "photo123")
+          // This handles files without extensions that are likely images
+          const nameLower = nameWithoutEncrypted.toLowerCase();
+          const looksLikeImage = /^(img|image|photo|pic|picture|snap|shot)\d+/i.test(nameLower) || 
+                                 nameLower.startsWith('img') || 
+                                 nameLower.startsWith('image');
+          
+          // Include if it's an image/video by MIME type OR by file extension OR looks like an image
+          // This allows encrypted files to show if they have image/video extensions or look like images
+          return isImageMime || isVideoMime || hasImageExt || hasVideoExt || looksLikeImage;
         });
         
         setFilesByAccount(prev => {
@@ -704,9 +711,16 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
           const hasImageExt = /\.(jpg|jpeg|png|gif|webp|bmp|svg|heic|heif)$/i.test(nameWithoutEncrypted);
           const hasVideoExt = /\.(mp4|mov|avi|mkv|webm|flv|wmv|m4v|3gp)$/i.test(nameWithoutEncrypted);
           
-          // Include if it's an image/video by MIME type OR by file extension
-          // This allows encrypted files to show if they have image/video extensions
-          return isImageMime || isVideoMime || hasImageExt || hasVideoExt;
+          // Check if file name suggests it's an image (e.g., "img123", "image123", "photo123")
+          // This handles files without extensions that are likely images
+          const nameLower = nameWithoutEncrypted.toLowerCase();
+          const looksLikeImage = /^(img|image|photo|pic|picture|snap|shot)\d+/i.test(nameLower) || 
+                                 nameLower.startsWith('img') || 
+                                 nameLower.startsWith('image');
+          
+          // Include if it's an image/video by MIME type OR by file extension OR looks like an image
+          // This allows encrypted files to show if they have image/video extensions or look like images
+          return isImageMime || isVideoMime || hasImageExt || hasVideoExt || looksLikeImage;
         });
         
         setFilesByAccount(prev => {
