@@ -281,18 +281,36 @@ export class AggregatorMetadataServiceDB {
                     validatedEntries.push(entry);
                   } else if (checkResponse.status === 404) {
                     // File doesn't exist - mark as orphaned
-                    console.log(`🗑️ [getPublicMetadata] File ${fileId} NOT FOUND in Google Drive (404), marking as orphaned`);
-                    orphanedFileIds.push(entryFileId);
+                    // But only if we're certain it's a 404 (not a permission issue)
+                    const errorBody = await checkResponse.text().catch(() => '');
+                    const isDefinitelyNotFound = errorBody.includes('File not found') || 
+                                                 errorBody.includes('notFound') ||
+                                                 errorBody === '';
+                    
+                    if (isDefinitelyNotFound) {
+                      console.log(`🗑️ [getPublicMetadata] File ${fileId} NOT FOUND in Google Drive (404), marking as orphaned`);
+                      orphanedFileIds.push(entryFileId);
+                    } else {
+                      // Might be a permission issue - include it
+                      console.warn(`⚠️ [getPublicMetadata] File ${fileId} returned 404 but error body suggests permission issue, including anyway`);
+                      validatedEntries.push(entry);
+                    }
+                  } else if (checkResponse.status === 403) {
+                    // Permission denied - service account can't access this file
+                    // This is normal for user files - include it anyway
+                    console.log(`ℹ️ [getPublicMetadata] File ${fileId} permission denied (403) - service account can't access, including anyway`);
+                    validatedEntries.push(entry);
                   } else {
-                    // Other error (permission, etc.) - log it but include it (might be a permission issue, not deletion)
+                    // Other error (rate limit, etc.) - log it but include it
                     const errorText = await checkResponse.text().catch(() => 'Unknown error');
                     console.warn(`⚠️ [getPublicMetadata] File ${fileId} check returned ${checkResponse.status}: ${errorText}`);
-                    console.warn(`⚠️ [getPublicMetadata] Including file anyway (might be permission issue)`);
+                    console.warn(`⚠️ [getPublicMetadata] Including file anyway (might be transient error)`);
                     validatedEntries.push(entry);
                   }
                 } catch (checkError) {
                   // Network error - log it but include it (don't remove on transient errors)
-                  console.error(`❌ [getPublicMetadata] Error checking file ${fileId}:`, checkError);
+                  console.warn(`⚠️ [getPublicMetadata] Error checking file ${fileId}:`, checkError);
+                  console.warn(`⚠️ [getPublicMetadata] Including file anyway (network error)`);
                   validatedEntries.push(entry);
                 }
               }));
@@ -305,21 +323,20 @@ export class AggregatorMetadataServiceDB {
             console.log(`✅ [getPublicMetadata] Validation complete: ${validatedEntries.length} valid, ${orphanedFileIds.length} orphaned`);
           } else {
             // No service account - can't validate files exist
-            console.error('❌ [getPublicMetadata] CRITICAL: Service account not configured - cannot validate files exist!');
-            console.error('❌ [getPublicMetadata] Orphaned files WILL appear in feed. Configure GOOGLE_SERVICE_ACCOUNT_KEY.');
-            console.error('❌ [getPublicMetadata] Returning EMPTY feed to prevent showing deleted files.');
-            // Return empty array to prevent showing potentially deleted files
-            // User must configure service account OR use cleanup endpoint
-            validatedEntries.push(...[]); // Empty - don't show potentially deleted files
+            // But we should still return the files - validation is best-effort
+            console.warn('⚠️ [getPublicMetadata] Service account not configured - skipping file validation');
+            console.warn('⚠️ [getPublicMetadata] Files will be returned without validation (may include deleted files)');
+            // Include all entries without validation
+            validatedEntries.push(...googleDriveEntries);
           }
         } catch (validationError) {
           console.error('❌ [getPublicMetadata] File validation failed:', validationError);
           console.error('❌ [getPublicMetadata] Validation error details:', validationError instanceof Error ? validationError.message : String(validationError));
           console.error('❌ [getPublicMetadata] Validation stack:', validationError instanceof Error ? validationError.stack : 'No stack');
-          // On validation error, return empty to prevent showing potentially deleted files
-          // This is safer than showing files that might not exist
-          console.error('❌ [getPublicMetadata] Returning empty feed due to validation error');
-          validatedEntries.push(...[]); // Empty - don't show potentially deleted files
+          // On validation error, include files anyway - validation is best-effort
+          // Better to show files that might exist than to show nothing
+          console.warn('⚠️ [getPublicMetadata] Validation failed, including files without validation');
+          validatedEntries.push(...googleDriveEntries);
         }
       }
       
