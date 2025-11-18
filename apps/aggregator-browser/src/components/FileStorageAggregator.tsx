@@ -31,10 +31,7 @@ const ThumbnailImage: React.FC<{ fileId: string; accountId: string; fileName: st
   // But they're actually JSON packages, so we check the extension
   const isEncrypted = fileName.toLowerCase().endsWith('.encrypted');
   
-  console.log(`[ThumbnailImage] Component rendered for file: ${fileName}, isEncrypted: ${isEncrypted}, fileId: ${fileId}`);
-
   useEffect(() => {
-    console.log(`[ThumbnailImage] useEffect triggered for file: ${fileName}, isEncrypted: ${isEncrypted}`);
     let blobUrl: string | null = null;
     
     const loadThumbnail = async () => {
@@ -48,54 +45,41 @@ const ThumbnailImage: React.FC<{ fileId: string; accountId: string; fileName: st
 
         if (isEncrypted) {
           // For encrypted files: download, decrypt, and generate thumbnail
-          console.log(`[ThumbnailImage] Decrypting encrypted file for thumbnail: ${fileName}`);
-          
           const session = PNOAuthService.loadSession();
           if (!session?.did) {
-            console.error('[ThumbnailImage] No DID in session for decryption');
             setError(true);
             return;
           }
 
-          // Files are encrypted with DID:publicKey
-          // OAuth provides both DID and publicKey via userinfo endpoint
-          const pnId = session.did; // Use DID as the id (matching dashboard's authenticatedUser.id)
+          const pnId = session.did;
           let publicKey = session?.publicKey;
           
           // If publicKey is missing, try to refresh it from userinfo
           if (!publicKey && session.accessToken) {
-            console.log('[ThumbnailImage] publicKey missing from session, fetching from userinfo...');
             try {
               const userInfo = await PNOAuthService.getUserInfo(session.accessToken);
               if (userInfo.public_key) {
                 publicKey = userInfo.public_key;
-                // Update session with publicKey
                 const updatedSession = { ...session, publicKey };
                 PNOAuthService.saveSession(updatedSession);
-                console.log('[ThumbnailImage] Retrieved publicKey from userinfo and updated session');
               }
             } catch (err) {
-              console.warn('[ThumbnailImage] Failed to fetch publicKey from userinfo:', err);
+              // Silent fail
             }
           }
           
-          // Fallback: extract from DID if it's in did:key format (this is NOT the correct publicKey, but may work for some files)
+          // Fallback: extract from DID if it's in did:key format
           if (!publicKey && session.did.startsWith('did:key:')) {
-            publicKey = session.did.substring(8); // Remove "did:key:" prefix
-            console.warn('[ThumbnailImage] Using publicKey extracted from DID (may not work - API server needs to return public_key)');
+            publicKey = session.did.substring(8);
           }
           
           if (!publicKey) {
-            console.error('[ThumbnailImage] No publicKey available for decryption. OAuth should provide public_key in userinfo response.');
             setError(true);
             return;
           }
-          
-          console.log(`[ThumbnailImage] Using for decryption - pnId: ${pnId.substring(0, 30)}..., publicKey: ${publicKey.substring(0, 30)}...`);
 
           // Download encrypted file (it's stored as JSON string)
           const fileUrl = `${apiEndpoint}/api/drive/files/${fileId}?accountId=${accountId}&download=true`;
-          console.log(`[ThumbnailImage] Downloading encrypted file: ${fileUrl}`);
           
           const response = await fetch(fileUrl, {
             headers: {
@@ -103,39 +87,22 @@ const ThumbnailImage: React.FC<{ fileId: string; accountId: string; fileName: st
             }
           });
 
-          console.log(`[ThumbnailImage] Download response status: ${response.status}, content-type: ${response.headers.get('content-type')}`);
-
           if (!response.ok) {
-            const errorText = await response.text().catch(() => 'Unknown error');
-            console.error(`[ThumbnailImage] Download failed: ${response.status} - ${errorText}`);
             throw new Error(`Failed to download file: ${response.status}`);
           }
 
           // Encrypted files are stored as JSON strings, so read as text first
           const encryptedText = await response.text();
-          console.log(`[ThumbnailImage] Downloaded text length: ${encryptedText.length}, preview: ${encryptedText.substring(0, 100)}`);
           
           let encryptedPackage: EncryptedFilePackage;
           
           try {
             encryptedPackage = JSON.parse(encryptedText);
-            console.log(`[ThumbnailImage] Parsed encrypted package:`, {
-              hasEncrypted: !!encryptedPackage.encrypted,
-              hasIv: !!encryptedPackage.iv,
-              hasSalt: !!encryptedPackage.salt,
-              hasMetadata: !!encryptedPackage.metadata,
-              encryptedLength: encryptedPackage.encrypted?.length,
-              metadataName: encryptedPackage.metadata?.originalName
-            });
           } catch (parseError) {
-            console.error('[ThumbnailImage] Failed to parse encrypted package:', parseError);
-            console.error('[ThumbnailImage] Response text:', encryptedText.substring(0, 500));
             throw new Error('File is not a valid encrypted package');
           }
           
           // Decrypt file
-          console.log(`[ThumbnailImage] Starting decryption with DID: ${session.did.substring(0, 20)}..., publicKey: ${publicKey.substring(0, 20)}...`);
-          
           const encryptionManager = new EncryptionManager();
           let decryptedData: Uint8Array;
           
@@ -147,17 +114,7 @@ const ThumbnailImage: React.FC<{ fileId: string; accountId: string; fileName: st
               pnId,
               publicKey
             );
-            console.log(`[ThumbnailImage] Decryption successful, decrypted size: ${decryptedData.length} bytes`);
           } catch (decryptError: any) {
-            console.error('[ThumbnailImage] Decryption failed:', decryptError);
-            console.error('[ThumbnailImage] Decryption error details:', {
-              error: decryptError?.message,
-              errorName: decryptError?.name,
-              hasDid: !!session.did,
-              hasPublicKey: !!publicKey,
-              didPreview: session.did?.substring(0, 20),
-              publicKeyPreview: publicKey?.substring(0, 20)
-            });
             throw decryptError;
           }
 
@@ -165,35 +122,56 @@ const ThumbnailImage: React.FC<{ fileId: string; accountId: string; fileName: st
           const decryptedBlob = new Blob([decryptedData], {
             type: encryptedPackage.metadata.originalMimeType || 'image/jpeg'
           });
-
-          // Generate thumbnail (resize for images, extract frame for videos)
+          
           const thumbnailBlob = await createThumbnailFromBlob(decryptedBlob, 300, 300);
           blobUrl = URL.createObjectURL(thumbnailBlob);
           setThumbnailUrl(blobUrl);
           setError(false);
         } else {
-          // Non-encrypted files: load thumbnail from Google Drive
+          // Non-encrypted files: try to load thumbnail from Google Drive, fallback to downloading full file
           const thumbnailUrl = `${apiEndpoint}/api/drive/files/${fileId}?thumbnail=true&accountId=${accountId}`;
-          console.log(`[ThumbnailImage] Loading thumbnail for ${fileId} from ${thumbnailUrl}`);
           
-          const response = await fetch(thumbnailUrl, {
+          let response = await fetch(thumbnailUrl, {
             headers: {
               'Authorization': `Bearer ${accessToken}`
             }
           });
 
-          console.log(`[ThumbnailImage] Response status: ${response.status}`);
-
           if (response.ok) {
             const blob = await response.blob();
             blobUrl = URL.createObjectURL(blob);
-            console.log(`[ThumbnailImage] Created blob URL: ${blobUrl.substring(0, 50)}...`);
             setThumbnailUrl(blobUrl);
             setError(false);
           } else {
-            const errorText = await response.text().catch(() => 'Unknown error');
-            console.error(`[ThumbnailImage] Failed to load thumbnail: ${response.status} - ${errorText}`);
-            setError(true);
+            // Fallback: download full file and generate thumbnail client-side
+            const downloadUrl = `${apiEndpoint}/api/drive/files/${fileId}?accountId=${accountId}&download=true`;
+            
+            response = await fetch(downloadUrl, {
+              headers: {
+                'Authorization': `Bearer ${accessToken}`
+              }
+            });
+
+            if (response.ok) {
+              const fileBlob = await response.blob();
+              
+              // Check if it's an image or video
+              const mimeType = fileBlob.type || '';
+              const isImage = mimeType.startsWith('image/');
+              const isVideo = mimeType.startsWith('video/');
+              
+              if (isImage || isVideo) {
+                // Generate thumbnail from the full file
+                const thumbnailBlob = await createThumbnailFromBlob(fileBlob, 300, 300);
+                blobUrl = URL.createObjectURL(thumbnailBlob);
+                setThumbnailUrl(blobUrl);
+                setError(false);
+              } else {
+                setError(true);
+              }
+            } else {
+              setError(true);
+            }
           }
         }
       } catch (err) {
@@ -207,7 +185,6 @@ const ThumbnailImage: React.FC<{ fileId: string; accountId: string; fileName: st
     // Cleanup blob URL on unmount or when fileId/accountId changes
     return () => {
       if (blobUrl) {
-        console.log(`[ThumbnailImage] Cleaning up blob URL for ${fileId}`);
         URL.revokeObjectURL(blobUrl);
       }
     };
@@ -292,8 +269,10 @@ const FileViewer: React.FC<{ file: DriveFile; accountId: string; onDownload: () 
   const [error, setError] = useState(false);
   const [loading, setLoading] = useState(true);
 
-  const isImage = file.mimeType?.startsWith('image/');
-  const isVideo = file.mimeType?.startsWith('video/');
+  // Determine file type from name (for encrypted files, check original extension)
+  const nameWithoutEncrypted = file.name.replace(/\.encrypted$/i, '');
+  const isImage = file.mimeType?.startsWith('image/') || /\.(jpg|jpeg|png|gif|webp|bmp|svg|heic|heif)$/i.test(nameWithoutEncrypted);
+  const isVideo = file.mimeType?.startsWith('video/') || /\.(mp4|mov|avi|mkv|webm|flv|wmv|m4v|3gp)$/i.test(nameWithoutEncrypted);
   const isEncrypted = file.name.toLowerCase().endsWith('.encrypted');
 
   useEffect(() => {
@@ -308,15 +287,11 @@ const FileViewer: React.FC<{ file: DriveFile; accountId: string; onDownload: () 
         }
 
         const fileUrl = `${apiEndpoint}/api/drive/files/${file.id}?accountId=${accountId}&download=true`;
-        console.log(`[FileViewer] Loading file: ${file.name} from ${fileUrl}`);
-        
         const response = await fetch(fileUrl, {
           headers: {
             'Authorization': `Bearer ${accessToken}`
           }
         });
-
-        console.log(`[FileViewer] Response status: ${response.status}`);
 
         if (!response.ok) {
           const errorText = await response.text().catch(() => 'Unknown error');
@@ -328,76 +303,53 @@ const FileViewer: React.FC<{ file: DriveFile; accountId: string; onDownload: () 
 
         if (isEncrypted) {
           // Decrypt encrypted file
-          console.log(`[FileViewer] Decrypting encrypted file: ${file.name}`);
-          
           const session = PNOAuthService.loadSession();
           if (!session?.did) {
-            console.error('[FileViewer] No DID in session for decryption');
             setError(true);
             setLoading(false);
             return;
           }
 
-          // Files are encrypted with DID:publicKey
-          // OAuth provides both DID and publicKey via userinfo endpoint
-          const pnId = session.did; // Use DID as the id (matching dashboard's authenticatedUser.id)
+          const pnId = session.did;
           let publicKey = session?.publicKey;
           
           // If publicKey is missing, try to refresh it from userinfo
           if (!publicKey && session.accessToken) {
-            console.log('[FileViewer] publicKey missing from session, fetching from userinfo...');
             try {
               const userInfo = await PNOAuthService.getUserInfo(session.accessToken);
               if (userInfo.public_key) {
                 publicKey = userInfo.public_key;
-                // Update session with publicKey
                 const updatedSession = { ...session, publicKey };
                 PNOAuthService.saveSession(updatedSession);
-                console.log('[FileViewer] Retrieved publicKey from userinfo and updated session');
               }
             } catch (err) {
-              console.warn('[FileViewer] Failed to fetch publicKey from userinfo:', err);
+              // Silent fail
             }
           }
           
-          // Fallback: extract from DID if it's in did:key format (this is NOT the correct publicKey, but may work for some files)
+          // Fallback: extract from DID if it's in did:key format
           if (!publicKey && session.did.startsWith('did:key:')) {
-            publicKey = session.did.substring(8); // Remove "did:key:" prefix
-            console.warn('[FileViewer] Using publicKey extracted from DID (may not work - API server needs to return public_key)');
+            publicKey = session.did.substring(8);
           }
           
           if (!publicKey) {
-            console.error('[FileViewer] No publicKey available for decryption. OAuth should provide public_key in userinfo response.');
             setError(true);
             setLoading(false);
             return;
           }
-          
-          console.log(`[FileViewer] Using for decryption - pnId: ${pnId.substring(0, 30)}..., publicKey: ${publicKey.substring(0, 30)}...`);
 
           // Encrypted files are stored as JSON strings, so read as text first
           const encryptedText = await response.text();
-          console.log(`[FileViewer] Downloaded text length: ${encryptedText.length}, preview: ${encryptedText.substring(0, 100)}`);
           
           let encryptedPackage: EncryptedFilePackage;
           
           try {
             encryptedPackage = JSON.parse(encryptedText);
-            console.log(`[FileViewer] Parsed encrypted package:`, {
-              hasEncrypted: !!encryptedPackage.encrypted,
-              hasIv: !!encryptedPackage.iv,
-              hasSalt: !!encryptedPackage.salt,
-              hasMetadata: !!encryptedPackage.metadata
-            });
           } catch (parseError) {
-            console.error('[FileViewer] Failed to parse encrypted package:', parseError);
-            console.error('[FileViewer] Response text:', encryptedText.substring(0, 500));
             throw new Error('File is not a valid encrypted package');
           }
           
           // Decrypt file
-          console.log(`[FileViewer] Starting decryption with DID: ${session.did.substring(0, 20)}..., publicKey: ${publicKey.substring(0, 20)}...`);
-          
           const encryptionManager = new EncryptionManager();
           let decryptedData: Uint8Array;
           
@@ -409,31 +361,23 @@ const FileViewer: React.FC<{ file: DriveFile; accountId: string; onDownload: () 
               pnId,
               publicKey
             );
-            console.log(`[FileViewer] Decryption successful, decrypted size: ${decryptedData.length} bytes`);
           } catch (decryptError: any) {
-            console.error('[FileViewer] Decryption failed:', decryptError);
-            console.error('[FileViewer] Decryption error details:', {
-              error: decryptError?.message,
-              errorName: decryptError?.name,
-              hasDid: !!session.did,
-              hasPublicKey: !!publicKey
-            });
             throw decryptError;
           }
 
           // Create blob from decrypted data
+          const originalMimeType = encryptedPackage.metadata?.originalMimeType || file.mimeType || 'application/octet-stream';
           const decryptedBlob = new Blob([decryptedData], {
-            type: encryptedPackage.metadata.originalMimeType || file.mimeType || 'application/octet-stream'
+            type: originalMimeType
           });
 
           const url = URL.createObjectURL(decryptedBlob);
-          console.log(`[FileViewer] Created decrypted blob URL for ${file.name}`);
           setFileUrl(url);
+          setError(false);
         } else {
           // Non-encrypted file: use directly
           const blob = await response.blob();
           const url = URL.createObjectURL(blob);
-          console.log(`[FileViewer] Created blob URL for ${file.name}`);
           setFileUrl(url);
         }
       } catch (err) {
@@ -564,7 +508,6 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
   const [driveAccounts, setDriveAccounts] = useState<DriveAccount[]>([]);
   const [selectedAccountId, setSelectedAccountId] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('list');
-  const [editingFile, setEditingFile] = useState<DriveFile | null>(null);
   const [viewingFile, setViewingFile] = useState<DriveFile | null>(null);
   const [openMenuFor, setOpenMenuFor] = useState<string | null>(null);
   const fileInputRefs = useRef<Map<string, HTMLInputElement | null>>(new Map());
@@ -610,44 +553,32 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
   // Load files for a specific account
   const loadFilesForAccount = async (accountId: string) => {
     if (!authenticatedUser?.id) {
-      console.log('[FileStorageAggregator] Skipping file load - no authenticated user');
       return;
     }
 
     try {
-      console.log(`[FileStorageAggregator] Loading files for account: ${accountId}`);
       const accessToken = await PNOAuthService.getValidAccessToken();
       if (!accessToken) {
-        console.error('[FileStorageAggregator] No valid access token available');
         setError('Please connect your pN to view files');
         return;
       }
 
       // Server will automatically filter to files in the pN folder if no query is provided
-      console.log(`[FileStorageAggregator] Making request to: ${apiEndpoint}/api/drive/files?accountId=${accountId}`);
       const response = await fetch(`${apiEndpoint}/api/drive/files?accountId=${accountId}`, {
         headers: {
           'Authorization': `Bearer ${accessToken}`
         }
       });
 
-      console.log(`[FileStorageAggregator] Response status: ${response.status} ${response.statusText}`);
-
       if (response.status === 401) {
         // Token might be invalid, try refreshing (force refresh even if not expired)
-        console.warn('[FileStorageAggregator] Got 401, token may be expired. Attempting refresh...');
-        const errorBody = await response.text().catch(() => '');
-        console.warn('[FileStorageAggregator] 401 error body:', errorBody);
-        
         // Force refresh the token
         const refreshedToken = await PNOAuthService.getValidAccessToken(true);
         if (!refreshedToken) {
-          console.error('[FileStorageAggregator] Failed to get refreshed token - refresh token may be invalid or expired');
           setError('Your session has expired. Please unlock your pN again to continue.');
           return;
         }
         
-        console.log('[FileStorageAggregator] Retrying with refreshed token...');
         // Retry with refreshed token
         const retryResponse = await fetch(`${apiEndpoint}/api/drive/files?accountId=${accountId}`, {
           headers: {
@@ -655,18 +586,16 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
           }
         });
         
-        console.log(`[FileStorageAggregator] Retry response status: ${retryResponse.status} ${retryResponse.statusText}`);
-        
         if (!retryResponse.ok) {
           const errorText = await retryResponse.text().catch(() => 'Unknown error');
-          console.error('[FileStorageAggregator] Retry failed:', errorText);
           throw new Error(`Failed to load files: ${retryResponse.statusText} - ${errorText}`);
         }
         
         const retryData = await retryResponse.json();
         const allFiles = (retryData.files || []).map((file: DriveFile) => ({
           ...file,
-          accountId
+          accountId,
+          displayName: file.name.replace(/\.encrypted$/i, '')
         }));
         
         // Filter to show only media files (images/videos), excluding metadata, index, encrypted, and system files
@@ -715,27 +644,6 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
           return isImageMime || isVideoMime || hasImageExt || hasVideoExt;
         });
         
-        // Debug: log all files and what was filtered
-        console.log(`[FileStorageAggregator] All files from API (${allFiles.length}):`, allFiles.map(f => ({
-          name: f.name,
-          mimeType: f.mimeType,
-          size: f.size
-        })));
-        
-        if (allFiles.length > mediaFiles.length) {
-          const filteredOut = allFiles.filter(f => !mediaFiles.some(mf => mf.id === f.id));
-          console.log(`[FileStorageAggregator] Filtered out ${filteredOut.length} files:`, filteredOut.map(f => ({
-            name: f.name,
-            mimeType: f.mimeType
-          })));
-        }
-        
-        console.log(`[FileStorageAggregator] Media files (${mediaFiles.length}):`, mediaFiles.map(f => ({
-          name: f.name,
-          mimeType: f.mimeType
-        })));
-        
-        console.log(`[FileStorageAggregator] Loaded ${allFiles.length} total files, filtered to ${mediaFiles.length} media files for account ${accountId}`);
         setFilesByAccount(prev => {
           const next = new Map(prev);
           next.set(accountId, mediaFiles);
@@ -749,7 +657,9 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
         const data = await response.json();
         const allFiles = (data.files || []).map((file: DriveFile) => ({
           ...file,
-          accountId // Tag each file with its account ID
+          accountId, // Tag each file with its account ID
+          // Store original name for display (remove .encrypted suffix)
+          displayName: file.name.replace(/\.encrypted$/i, '')
         }));
         
         // Filter to show only media files (images/videos), excluding metadata, index, encrypted, and system files
@@ -798,27 +708,6 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
           return isImageMime || isVideoMime || hasImageExt || hasVideoExt;
         });
         
-        // Debug: log all files and what was filtered
-        console.log(`[FileStorageAggregator] All files from API (${allFiles.length}):`, allFiles.map(f => ({
-          name: f.name,
-          mimeType: f.mimeType,
-          size: f.size
-        })));
-        
-        if (allFiles.length > mediaFiles.length) {
-          const filteredOut = allFiles.filter(f => !mediaFiles.some(mf => mf.id === f.id));
-          console.log(`[FileStorageAggregator] Filtered out ${filteredOut.length} files:`, filteredOut.map(f => ({
-            name: f.name,
-            mimeType: f.mimeType
-          })));
-        }
-        
-        console.log(`[FileStorageAggregator] Media files (${mediaFiles.length}):`, mediaFiles.map(f => ({
-          name: f.name,
-          mimeType: f.mimeType
-        })));
-        
-        console.log(`[FileStorageAggregator] Loaded ${allFiles.length} total files, filtered to ${mediaFiles.length} media files for account ${accountId}`);
         setFilesByAccount(prev => {
           const next = new Map(prev);
           next.set(accountId, mediaFiles);
@@ -899,6 +788,452 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
     }
   };
 
+  // Edit Metadata state
+  const [editingFile, setEditingFile] = useState<DriveFile | null>(null);
+  const [editForm, setEditForm] = useState<{
+    name: string;
+    description: string;
+    tags: string;
+    genre: string;
+    category: string;
+    locationName: string;
+    locationAddress: string;
+    locationLat: string;
+    locationLng: string;
+    license: string;
+    language: string;
+  }>({
+    name: '',
+    description: '',
+    tags: '',
+    genre: '',
+    category: '',
+    locationName: '',
+    locationAddress: '',
+    locationLat: '',
+    locationLng: '',
+    license: '',
+    language: ''
+  });
+  const [fileMetadataMap, setFileMetadataMap] = useState<Map<string, any>>(new Map());
+
+  // Share Settings state
+  const [sharingFile, setSharingFile] = useState<DriveFile | null>(null);
+  const [sharingAccountId, setSharingAccountId] = useState<string | null>(null);
+  const [shareVisibility, setShareVisibility] = useState<'public' | 'private'>('private');
+  const [isSavingShare, setIsSavingShare] = useState(false);
+  const [thirdPartyIndexers, setThirdPartyIndexers] = useState<any[]>([]);
+  const [indexerToggles, setIndexerToggles] = useState<Record<string, boolean>>({});
+  const [indexingPermissionsState, setIndexingPermissionsState] = useState<any>(null);
+  const [isLoadingIndexers, setIsLoadingIndexers] = useState(false);
+  const [indexerError, setIndexerError] = useState<string | null>(null);
+
+  // Load file metadata
+  const loadFileMetadata = async (fileId: string) => {
+    try {
+      const accessToken = await PNOAuthService.getValidAccessToken();
+      if (!accessToken) return null;
+
+      const response = await fetch(`${apiEndpoint}/api/aggregator/metadata-index/${fileId}`, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${accessToken}`
+        }
+      });
+
+      if (response.ok) {
+        const metadata = await response.json();
+        setFileMetadataMap(prev => {
+          const next = new Map(prev);
+          next.set(fileId, metadata.metadata || metadata);
+          return next;
+        });
+        return metadata.metadata || metadata;
+      } else if (response.status === 404) {
+        // Metadata doesn't exist yet, return null
+        return null;
+      }
+    } catch (err) {
+      console.error('[FileStorageAggregator] Failed to load metadata:', err);
+    }
+    return null;
+  };
+
+  // Load third-party indexers
+  const loadThirdPartyIndexers = async (fileId: string) => {
+    setIsLoadingIndexers(true);
+    setIndexerError(null);
+    try {
+      const accessToken = await PNOAuthService.getValidAccessToken();
+      if (!accessToken) {
+        setThirdPartyIndexers([]);
+        return;
+      }
+
+      // Get current index visibility
+      const visibilityResponse = await fetch(`${apiEndpoint}/api/third-party/files/${encodeURIComponent(fileId)}/index-visibility`, {
+        headers: {
+          'Authorization': `Bearer ${accessToken}`
+        }
+      });
+
+      if (visibilityResponse.ok) {
+        const visibilityData = await visibilityResponse.json();
+        setIndexingPermissionsState(visibilityData.indexingPermissions || null);
+
+        // Load available indexers (simplified - in production this would come from a separate endpoint)
+        // For now, we'll use a static list or derive from permissions
+        const indexers: any[] = [];
+        if (visibilityData.indexers) {
+          indexers.push(...visibilityData.indexers);
+        }
+
+        setThirdPartyIndexers(indexers);
+
+        // Initialize toggles based on permissions
+        if (visibilityData.indexingPermissions) {
+          const toggles: Record<string, boolean> = {};
+          indexers.forEach(indexer => {
+            if (visibilityData.indexingPermissions.mode === 'all') {
+              toggles[indexer.id] = !visibilityData.indexingPermissions.blocked?.includes(indexer.id);
+            } else {
+              toggles[indexer.id] = visibilityData.indexingPermissions.allowed?.includes(indexer.id) || false;
+            }
+          });
+          setIndexerToggles(toggles);
+        }
+      }
+    } catch (err) {
+      console.error('[FileStorageAggregator] Failed to load indexers:', err);
+      setIndexerError('Failed to load third-party indexers');
+    } finally {
+      setIsLoadingIndexers(false);
+    }
+  };
+
+  // Handle edit metadata
+  const handleEditMetadata = async (file: DriveFile, accountId: string) => {
+    console.log('[FileStorageAggregator] Edit metadata clicked for:', file.name);
+    
+    // Load existing metadata
+    const metadata = await loadFileMetadata(file.id);
+    
+    // Extract location data if present
+    const location = metadata?.locationCreated || metadata?.schema?.locationCreated;
+    const locationName = location?.name || '';
+    const locationAddress = location?.address ? 
+      `${location.address.addressLocality || ''}${location.address.addressRegion ? ', ' + location.address.addressRegion : ''}${location.address.addressCountry ? ', ' + location.address.addressCountry : ''}`.trim() : '';
+    const locationLat = location?.geo?.latitude?.toString() || '';
+    const locationLng = location?.geo?.longitude?.toString() || '';
+    
+    // Extract genre (can be array or string)
+    const genre = metadata?.genre || metadata?.schema?.genre || [];
+    const genreString = Array.isArray(genre) ? genre.join(', ') : (typeof genre === 'string' ? genre : '');
+    
+    // Extract category
+    const category = metadata?.category || metadata?.schema?.category || '';
+    
+    // Extract license (can be object with name or string)
+    const license = metadata?.license || metadata?.schema?.license || '';
+    const licenseString = typeof license === 'object' && license?.name ? license.name : (typeof license === 'string' ? license : '');
+    
+    // Extract language (can be array or string)
+    const language = metadata?.inLanguage || metadata?.schema?.inLanguage || '';
+    const languageString = Array.isArray(language) ? language.join(', ') : (typeof language === 'string' ? language : '');
+    
+    setEditForm({
+      name: metadata?.name || (file.name.endsWith('.encrypted') ? file.name.replace('.encrypted', '') : file.name),
+      description: metadata?.description || '',
+      tags: (metadata?.keywords || metadata?.tags || []).join(', '),
+      genre: genreString,
+      category: category,
+      locationName: locationName,
+      locationAddress: locationAddress,
+      locationLat: locationLat,
+      locationLng: locationLng,
+      license: licenseString,
+      language: languageString
+    });
+    setEditingFile(file);
+  };
+
+  // Handle save metadata
+  const handleSaveMetadata = async () => {
+    if (!editingFile) return;
+
+    try {
+      setIsLoading(true);
+      setError(null);
+
+      const accessToken = await PNOAuthService.getValidAccessToken();
+      if (!accessToken) {
+        throw new Error('Not authenticated');
+      }
+
+      // Parse tags from comma-separated string
+      const tags = editForm.tags
+        .split(',')
+        .map(t => t.trim())
+        .filter(t => t.length > 0);
+
+      // Parse genre from comma-separated string
+      const genre = editForm.genre
+        .split(',')
+        .map(g => g.trim())
+        .filter(g => g.length > 0);
+
+      // Build location object if provided
+      let locationCreated = undefined;
+      if (editForm.locationName || editForm.locationAddress || editForm.locationLat || editForm.locationLng) {
+        locationCreated = {
+          '@type': 'Place',
+          ...(editForm.locationName && { name: editForm.locationName }),
+          ...(editForm.locationAddress && {
+            address: {
+              '@type': 'PostalAddress',
+              addressLocality: editForm.locationAddress.split(',')[0]?.trim() || '',
+              addressRegion: editForm.locationAddress.split(',')[1]?.trim() || '',
+              addressCountry: editForm.locationAddress.split(',')[2]?.trim() || ''
+            }
+          }),
+          ...((editForm.locationLat || editForm.locationLng) && {
+            geo: {
+              '@type': 'GeoCoordinates',
+              ...(editForm.locationLat && { latitude: parseFloat(editForm.locationLat) }),
+              ...(editForm.locationLng && { longitude: parseFloat(editForm.locationLng) })
+            }
+          })
+        };
+      }
+
+      // Parse language from comma-separated string or single value
+      const language = editForm.language
+        .split(',')
+        .map(l => l.trim())
+        .filter(l => l.length > 0);
+
+      // Update via API endpoint
+      const response = await fetch(`${apiEndpoint}/api/aggregator/metadata-index/${editingFile.id}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${accessToken}`
+        },
+        body: JSON.stringify({
+          name: editForm.name,
+          description: editForm.description,
+          keywords: tags,
+          tags: tags,
+          genre: genre.length > 0 ? genre : undefined,
+          category: editForm.category || undefined,
+          locationCreated: locationCreated,
+          license: editForm.license || undefined,
+          inLanguage: language.length > 0 ? (language.length === 1 ? language[0] : language) : undefined
+        }),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Failed to update metadata: ${errorText}`);
+      }
+
+      const updatedMetadata = await response.json();
+      
+      // Update local metadata map
+      setFileMetadataMap(prev => {
+        const next = new Map(prev);
+        next.set(editingFile.id, updatedMetadata.metadata || updatedMetadata);
+        return next;
+      });
+
+      setEditingFile(null);
+      setEditForm({
+        name: '',
+        description: '',
+        tags: '',
+        genre: '',
+        category: '',
+        locationName: '',
+        locationAddress: '',
+        locationLat: '',
+        locationLng: '',
+        license: '',
+        language: ''
+      });
+    } catch (err: any) {
+      const errorMessage = err instanceof Error ? err.message : 'Failed to update metadata';
+      setError(errorMessage);
+      console.error('[FileStorageAggregator] Failed to save metadata:', err);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Handle share settings
+  const handleShareSettings = async (file: DriveFile, accountId: string) => {
+    console.log('[FileStorageAggregator] Share settings clicked for:', file.name);
+    
+    // Load existing metadata to determine current visibility
+    const metadata = await loadFileMetadata(file.id);
+    const isPublic = metadata?.isPublic || false;
+    setShareVisibility(isPublic ? 'public' : 'private');
+    
+    // Load third-party indexers if public
+    if (isPublic) {
+      await loadThirdPartyIndexers(file.id);
+    }
+    
+    setSharingFile(file);
+    setSharingAccountId(accountId);
+  };
+
+  // Close share settings
+  const closeShareSettings = () => {
+    setSharingFile(null);
+    setSharingAccountId(null);
+    setShareVisibility('private');
+    setThirdPartyIndexers([]);
+    setIndexerToggles({});
+    setIndexingPermissionsState(null);
+    setIndexerError(null);
+  };
+
+  // Handle indexer toggle
+  const handleIndexerToggle = (indexerId: string) => {
+    setIndexerToggles((prev) => {
+      const next = { ...prev };
+      next[indexerId] = !prev[indexerId];
+      return next;
+    });
+  };
+
+  // Handle save share settings
+  const handleSaveShareSettings = async () => {
+    if (!sharingFile) return;
+
+    try {
+      setIsSavingShare(true);
+      setError(null);
+
+      const accessToken = await PNOAuthService.getValidAccessToken();
+      if (!accessToken) {
+        throw new Error('Not authenticated');
+      }
+
+      const existingMetadata = fileMetadataMap.get(sharingFile.id);
+      const targetFileId = existingMetadata?.fileId || sharingFile.id;
+      const isCurrentlyPublic = existingMetadata?.isPublic || false;
+      const makePublic = shareVisibility === 'public';
+
+      const blockedIds = Object.entries(indexerToggles)
+        .filter(([, enabled]) => !enabled)
+        .map(([id]) => id);
+      const enabledIds = Object.entries(indexerToggles)
+        .filter(([, enabled]) => enabled)
+        .map(([id]) => id);
+
+      let nextPermissions: any = null;
+      if (thirdPartyIndexers.length > 0) {
+        if (blockedIds.length === 0) {
+          nextPermissions = {
+            mode: 'all',
+            blocked: [],
+            allowed: enabledIds,
+            updatedAt: new Date().toISOString()
+          };
+        } else if (blockedIds.length === thirdPartyIndexers.length) {
+          nextPermissions = {
+            mode: 'none',
+            blocked: [...blockedIds],
+            allowed: [],
+            updatedAt: new Date().toISOString()
+          };
+        } else {
+          nextPermissions = {
+            mode: 'all',
+            blocked: [...blockedIds],
+            allowed: enabledIds,
+            updatedAt: new Date().toISOString()
+          };
+        }
+      } else if (indexingPermissionsState) {
+        nextPermissions = {
+          ...indexingPermissionsState,
+          updatedAt: new Date().toISOString()
+        };
+      }
+
+      // Update visibility if changed
+      if (makePublic !== isCurrentlyPublic) {
+        // Toggle public status via metadata update
+        const accountIdParam = sharingAccountId ? `?accountId=${encodeURIComponent(sharingAccountId)}` : '';
+        const metadataResponse = await fetch(`${apiEndpoint}/api/aggregator/metadata-index/${targetFileId}${accountIdParam}`, {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${accessToken}`
+          },
+          body: JSON.stringify({
+            isPublic: makePublic
+          }),
+        });
+
+        if (!metadataResponse.ok) {
+          throw new Error('Failed to update file visibility');
+        }
+
+        // Reload metadata
+        await loadFileMetadata(sharingFile.id);
+      }
+
+      // Update index visibility if public and permissions changed
+      if (makePublic && nextPermissions) {
+        const response = await fetch(
+          `${apiEndpoint}/api/third-party/files/${encodeURIComponent(targetFileId)}/index-visibility`,
+          {
+            method: 'PUT',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${accessToken}`
+            },
+            body: JSON.stringify({
+              indexingPermissions: nextPermissions
+            })
+          }
+        );
+
+        if (!response.ok) {
+          const errorText = await response.text().catch(() => response.statusText);
+          throw new Error(errorText || `Failed to update index visibility (${response.status})`);
+        }
+      }
+
+      // Update local metadata map
+      if (nextPermissions) {
+        setFileMetadataMap(prev => {
+          const next = new Map(prev);
+          const current = next.get(sharingFile.id);
+          if (current) {
+            next.set(sharingFile.id, {
+              ...current,
+              isPublic: makePublic,
+              indexingPermissions: nextPermissions
+            });
+          }
+          return next;
+        });
+      }
+
+      closeShareSettings();
+    } catch (err: any) {
+      const message = err instanceof Error ? err.message : 'Failed to update sharing settings';
+      setError(message);
+      console.error('[FileStorageAggregator] Failed to save share settings:', err);
+    } finally {
+      setIsSavingShare(false);
+    }
+  };
+
   // Handle file delete
   const handleDelete = async (file: DriveFile, accountId: string) => {
     if (!authenticatedUser?.id || !accountId) return;
@@ -950,7 +1285,13 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
 
   const handleUploadForAccount = async (accountId: string, event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
-    if (!file || !authenticatedUser?.id) {
+    
+    if (!file) {
+      return;
+    }
+    
+    if (!authenticatedUser?.id) {
+      setError('Please unlock your pN to upload files');
       return;
     }
 
@@ -963,7 +1304,62 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
         throw new Error('No valid access token');
       }
 
-      // Convert file to base64
+      // Get session for encryption (need DID and publicKey)
+      const session = PNOAuthService.loadSession();
+      if (!session?.did) {
+        throw new Error('No DID in session for encryption');
+      }
+
+      let publicKey = session?.publicKey;
+      
+      // If publicKey is missing, try to refresh it from userinfo
+      if (!publicKey && session.accessToken) {
+        try {
+          const userInfo = await PNOAuthService.getUserInfo(session.accessToken);
+          if (userInfo.public_key) {
+            publicKey = userInfo.public_key;
+            // Update session with publicKey
+            const updatedSession = { ...session, publicKey };
+            PNOAuthService.saveSession(updatedSession);
+          }
+        } catch (err) {
+          // Silent fail - will throw error below if still missing
+        }
+      }
+      
+      if (!publicKey) {
+        throw new Error('No publicKey available for encryption. Please unlock your pN.');
+      }
+
+      // Encrypt file using the same standard as dashboard
+      const fileArrayBuffer = await file.arrayBuffer();
+      const fileData = new Uint8Array(fileArrayBuffer);
+      
+      const encryptionManager = new EncryptionManager();
+      const encrypted = await encryptionManager.encrypt(
+        fileData,
+        session.did, // Use DID as pnId (matches dashboard)
+        publicKey
+      );
+
+      // Create encrypted file package (same format as dashboard)
+      const packageData: EncryptedFilePackage = {
+        encrypted: encrypted.encrypted,
+        iv: encrypted.iv,
+        salt: encrypted.salt,
+        metadata: {
+          originalName: file.name,
+          originalSize: file.size,
+          originalMimeType: file.type,
+        },
+      };
+
+      // Convert to JSON string (will be uploaded as .encrypted file)
+      const encryptedBlob = new Blob([JSON.stringify(packageData)], {
+        type: 'application/json',
+      });
+
+      // Convert encrypted blob to base64
       const base64File = await new Promise<string>((resolve, reject) => {
         const reader = new FileReader();
         reader.onload = () => {
@@ -971,10 +1367,12 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
           const base64 = result.includes(',') ? result.split(',')[1] : result;
           resolve(base64);
         };
-        reader.onerror = () => reject(new Error('Failed to read file'));
-        reader.readAsDataURL(file);
+        reader.onerror = () => reject(new Error('Failed to read encrypted file'));
+        reader.readAsDataURL(encryptedBlob);
       });
 
+      // Upload encrypted file with .encrypted extension
+      const encryptedFileName = `${file.name}.encrypted`;
       const response = await fetch(`${apiEndpoint}/api/drive/files`, {
         method: 'POST',
         headers: {
@@ -983,24 +1381,34 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
         },
         body: JSON.stringify({
           fileData: base64File,
-          fileName: file.name,
-          mimeType: file.type || 'application/octet-stream',
+          fileName: encryptedFileName,
+          mimeType: 'application/json', // Encrypted files are stored as JSON
           accountId: accountId
         })
       });
 
       if (response.ok) {
+        // Wait a moment for the file to be processed on the server
+        await new Promise(resolve => setTimeout(resolve, 3000));
+        
         // Reload files for this account
         await loadFilesForAccount(accountId);
         const input = fileInputRefs.current.get(accountId);
-        if (input) input.value = '';
+        if (input) {
+          input.value = ''; // Reset so onChange fires even if same file is selected again
+        }
       } else {
         const errorText = await response.text().catch(() => 'Unknown error');
         throw new Error(`Upload failed: ${errorText}`);
       }
     } catch (err: any) {
-      setError(err.message || 'Failed to upload file');
+      const errorMessage = err.message || 'Failed to upload file';
+      setError(errorMessage);
       console.error('[FileStorageAggregator] Upload error:', err);
+      
+      // Reset file input on error too
+      const input = fileInputRefs.current.get(accountId);
+      if (input) input.value = '';
     } finally {
       setIsLoading(false);
     }
@@ -1064,7 +1472,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
                         loadFilesForAccount(account.accountId);
                       }}
                       disabled={isLoading}
-                      className="p-2 rounded text-text-secondary hover:text-text-primary transition-colors disabled:opacity-50"
+                      className="p-2 rounded text-text-secondary hover:text-text-primary transition-colors disabled:opacity-50 flex items-center justify-center"
                       title="Refresh Files"
                     >
                       <RefreshCw className={`h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} />
@@ -1080,23 +1488,34 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
                       }}
                       className="hidden"
                       disabled={isLoading}
-                      onChange={(e) => handleUploadForAccount(account.accountId, e)}
+                      onChange={(e) => {
+                        console.log('[FileStorageAggregator] File input onChange triggered', { 
+                          accountId: account.accountId,
+                          files: e.target.files?.length || 0
+                        });
+                        handleUploadForAccount(account.accountId, e);
+                      }}
                     />
                     <button
                       onClick={() => {
                         setSelectedAccountId(account.accountId);
                         const input = fileInputRefs.current.get(account.accountId);
-                        input?.click();
+                        if (input) {
+                          input.click();
+                        } else {
+                          console.error('[FileStorageAggregator] File input not found for account:', account.accountId);
+                          setError('File input not initialized. Please refresh the page.');
+                        }
                       }}
                       disabled={isLoading}
-                      className="p-2 rounded bg-blue-600 text-white hover:bg-blue-500 transition-colors disabled:opacity-50"
+                      className="p-2 rounded bg-blue-600 text-white hover:bg-blue-500 transition-colors disabled:opacity-50 flex items-center justify-center"
                       title="Upload File"
                     >
                       <Plus className="h-4 w-4" />
                     </button>
                     <button
                       onClick={() => setViewMode('list')}
-                      className={`p-2 rounded transition-colors ${
+                      className={`p-2 rounded transition-colors flex items-center justify-center ${
                         viewMode === 'list'
                           ? 'bg-blue-600 text-white'
                           : 'text-text-secondary hover:text-text-primary'
@@ -1107,7 +1526,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
                     </button>
                     <button
                       onClick={() => setViewMode('grid')}
-                      className={`p-2 rounded transition-colors ${
+                      className={`p-2 rounded transition-colors flex items-center justify-center ${
                         viewMode === 'grid'
                           ? 'bg-blue-600 text-white'
                           : 'text-text-secondary hover:text-text-primary'
@@ -1149,7 +1568,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
                   <div
                     key={file.id}
                     className="bg-neutral-800/50 rounded-lg overflow-hidden hover:bg-neutral-800 transition-colors group cursor-pointer"
-                    onClick={() => setViewingFile(file)}
+                    onClick={() => setViewingFile({ ...file, accountId: file.accountId || account.accountId })}
                   >
                     <div className="relative aspect-square bg-neutral-700/50 overflow-hidden">
                       {isMediaFile ? (
@@ -1177,14 +1596,14 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
                     </div>
 
                     <div className="p-3">
-                      <p className="text-white text-xs truncate mb-1" title={file.name}>
-                        {file.name}
+                      <p className="text-white text-xs truncate mb-1" title={(file as any).displayName || file.name}>
+                        {(file as any).displayName || file.name}
                       </p>
                       <p className="text-text-secondary text-xs">
                         {(parseInt(file.size || '0') / 1024).toFixed(1)} KB
                       </p>
 
-                      <div className="flex items-center justify-end mt-2 pt-2 border-t border-neutral-700">
+                      <div className="flex items-center justify-center mt-2 pt-2 border-t border-neutral-700">
                         <div className="relative">
                           <button
                             onClick={(e) => {
@@ -1206,6 +1625,18 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
                                 onClick={(e) => {
                                   e.stopPropagation();
                                   setOpenMenuFor(null);
+                                  handleEditMetadata(file, account.accountId);
+                                }}
+                                className="flex w-full items-center space-x-2 px-3 py-2 text-sm text-text-secondary hover:text-text-primary hover:bg-neutral-800 transition-colors"
+                                disabled={isLoading}
+                              >
+                                <Edit className="h-4 w-4" />
+                                <span>Edit metadata</span>
+                              </button>
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setOpenMenuFor(null);
                                   handleDownload(file, account.accountId);
                                 }}
                                 className="flex w-full items-center space-x-2 px-3 py-2 text-sm text-text-secondary hover:text-text-primary hover:bg-neutral-800 transition-colors"
@@ -1213,6 +1644,18 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
                               >
                                 <Download className="h-4 w-4" />
                                 <span>Download</span>
+                              </button>
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setOpenMenuFor(null);
+                                  handleShareSettings(file, account.accountId);
+                                }}
+                                className="flex w-full items-center space-x-2 px-3 py-2 text-sm text-text-secondary hover:text-text-primary hover:bg-neutral-800 transition-colors"
+                                disabled={isLoading}
+                              >
+                                <Share2 className="h-4 w-4" />
+                                <span>Share settings</span>
                               </button>
                               <button
                                 onClick={(e) => {
@@ -1255,7 +1698,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
                   <div
                     key={file.id}
                     className="flex items-center justify-between p-3 bg-neutral-800/50 rounded-lg hover:bg-neutral-800 transition-colors cursor-pointer"
-                    onClick={() => setViewingFile(file)}
+                    onClick={() => setViewingFile({ ...file, accountId: file.accountId || account.accountId })}
                   >
                     <div className="flex items-center space-x-3 flex-1 min-w-0">
                       {isMediaFile ? (
@@ -1275,7 +1718,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center space-x-2">
                           <p className="text-white text-sm truncate">
-                            {file.name}
+                            {(file as any).displayName || file.name}
                           </p>
                           {file.isPublic && (
                             <Globe className="h-3 w-3 text-green-400 flex-shrink-0" aria-label="Public" />
@@ -1286,7 +1729,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
                         </p>
                       </div>
                     </div>
-                    <div className="flex items-center justify-end space-x-2">
+                    <div className="flex items-center justify-center space-x-2">
                       <div className="relative">
                         <button
                           onClick={(e) => {
@@ -1308,6 +1751,18 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
                               onClick={(e) => {
                                 e.stopPropagation();
                                 setOpenMenuFor(null);
+                                handleEditMetadata(file, account.accountId);
+                              }}
+                              className="flex w-full items-center space-x-2 px-3 py-2 text-sm text-text-secondary hover:text-text-primary hover:bg-neutral-800 transition-colors"
+                              disabled={isLoading}
+                            >
+                              <Edit className="h-4 w-4" />
+                              <span>Edit metadata</span>
+                            </button>
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setOpenMenuFor(null);
                                 handleDownload(file, account.accountId);
                               }}
                               className="flex w-full items-center space-x-2 px-3 py-2 text-sm text-text-secondary hover:text-text-primary hover:bg-neutral-800 transition-colors"
@@ -1315,6 +1770,18 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
                             >
                               <Download className="h-4 w-4" />
                               <span>Download</span>
+                            </button>
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setOpenMenuFor(null);
+                                handleShareSettings(file, account.accountId);
+                              }}
+                              className="flex w-full items-center space-x-2 px-3 py-2 text-sm text-text-secondary hover:text-text-primary hover:bg-neutral-800 transition-colors"
+                              disabled={isLoading}
+                            >
+                              <Share2 className="h-4 w-4" />
+                              <span>Share settings</span>
                             </button>
                             <button
                               onClick={(e) => {
@@ -1377,6 +1844,416 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
                 </button>
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* Edit Metadata Modal */}
+      {editingFile && (
+        <div 
+          className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4"
+          onClick={() => {
+            setEditingFile(null);
+            setEditForm({ 
+              name: '', 
+              description: '', 
+              tags: '',
+              genre: '',
+              category: '',
+              locationName: '',
+              locationAddress: '',
+              locationLat: '',
+              locationLng: '',
+              license: '',
+              language: ''
+            });
+          }}
+        >
+          <div 
+            className="bg-neutral-800 rounded-lg p-6 max-w-md w-full text-text-primary border border-neutral-700 shadow-2xl max-h-[85vh] flex flex-col"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex justify-between items-center mb-4 flex-shrink-0">
+              <h3 className="text-lg font-semibold">Edit Metadata</h3>
+              <button
+                onClick={() => {
+                  setEditingFile(null);
+                  setEditForm({ 
+                    name: '', 
+                    description: '', 
+                    tags: '',
+                    genre: '',
+                    category: '',
+                    locationName: '',
+                    locationAddress: '',
+                    locationLat: '',
+                    locationLng: '',
+                    license: '',
+                    language: ''
+                  });
+                }}
+                className="text-text-secondary hover:text-text-primary transition-colors"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            
+            <div className="space-y-4 overflow-y-auto pr-2 -mr-2 flex-1">
+              <div>
+                <label className="block text-sm font-medium text-text-secondary mb-1">
+                  Name / Title
+                </label>
+                <input
+                  type="text"
+                  value={editForm.name}
+                  onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
+                  className="w-full px-3 py-2 bg-neutral-700 border border-neutral-600 rounded-lg text-text-primary focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="File name"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-text-secondary mb-1">
+                  Description
+                </label>
+                <textarea
+                  value={editForm.description}
+                  onChange={(e) => setEditForm({ ...editForm, description: e.target.value })}
+                  className="w-full px-3 py-2 bg-neutral-700 border border-neutral-600 rounded-lg text-text-primary focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+                  placeholder="File description"
+                  rows={3}
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-text-secondary mb-1">
+                  Tags (comma-separated)
+                </label>
+                <input
+                  type="text"
+                  value={editForm.tags}
+                  onChange={(e) => setEditForm({ ...editForm, tags: e.target.value })}
+                  className="w-full px-3 py-2 bg-neutral-700 border border-neutral-600 rounded-lg text-text-primary focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="tag1, tag2, tag3"
+                />
+              </div>
+
+              <div className="border-t border-neutral-700 pt-4 mt-4">
+                <h4 className="text-sm font-semibold text-text-primary mb-3">Content Classification</h4>
+                
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium text-text-secondary mb-1">
+                      Genre (comma-separated)
+                    </label>
+                    <input
+                      type="text"
+                      value={editForm.genre}
+                      onChange={(e) => setEditForm({ ...editForm, genre: e.target.value })}
+                      className="w-full px-3 py-2 bg-neutral-700 border border-neutral-600 rounded-lg text-text-primary focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      placeholder="photography, art, documentation"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-text-secondary mb-1">
+                      Category
+                    </label>
+                    <input
+                      type="text"
+                      value={editForm.category}
+                      onChange={(e) => setEditForm({ ...editForm, category: e.target.value })}
+                      className="w-full px-3 py-2 bg-neutral-700 border border-neutral-600 rounded-lg text-text-primary focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      placeholder="Main category"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div className="border-t border-neutral-700 pt-4 mt-4">
+                <h4 className="text-sm font-semibold text-text-primary mb-3">Location</h4>
+                
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium text-text-secondary mb-1">
+                      Place Name
+                    </label>
+                    <input
+                      type="text"
+                      value={editForm.locationName}
+                      onChange={(e) => setEditForm({ ...editForm, locationName: e.target.value })}
+                      className="w-full px-3 py-2 bg-neutral-700 border border-neutral-600 rounded-lg text-text-primary focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      placeholder="e.g., Central Park, New York"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-text-secondary mb-1">
+                      Address (City, State, Country)
+                    </label>
+                    <input
+                      type="text"
+                      value={editForm.locationAddress}
+                      onChange={(e) => setEditForm({ ...editForm, locationAddress: e.target.value })}
+                      className="w-full px-3 py-2 bg-neutral-700 border border-neutral-600 rounded-lg text-text-primary focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      placeholder="New York, NY, USA"
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-text-secondary mb-1">
+                        Latitude
+                      </label>
+                      <input
+                        type="number"
+                        step="any"
+                        value={editForm.locationLat}
+                        onChange={(e) => setEditForm({ ...editForm, locationLat: e.target.value })}
+                        className="w-full px-3 py-2 bg-neutral-700 border border-neutral-600 rounded-lg text-text-primary focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        placeholder="40.785091"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-text-secondary mb-1">
+                        Longitude
+                      </label>
+                      <input
+                        type="number"
+                        step="any"
+                        value={editForm.locationLng}
+                        onChange={(e) => setEditForm({ ...editForm, locationLng: e.target.value })}
+                        className="w-full px-3 py-2 bg-neutral-700 border border-neutral-600 rounded-lg text-text-primary focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        placeholder="-73.968285"
+                      />
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="border-t border-neutral-700 pt-4 mt-4">
+                <h4 className="text-sm font-semibold text-text-primary mb-3">Rights & Licensing</h4>
+                
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium text-text-secondary mb-1">
+                      License
+                    </label>
+                    <input
+                      type="text"
+                      value={editForm.license}
+                      onChange={(e) => setEditForm({ ...editForm, license: e.target.value })}
+                      className="w-full px-3 py-2 bg-neutral-700 border border-neutral-600 rounded-lg text-text-primary focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      placeholder="e.g., CC BY 4.0, All Rights Reserved"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div className="border-t border-neutral-700 pt-4 mt-4">
+                <h4 className="text-sm font-semibold text-text-primary mb-3">Language</h4>
+                
+                <div>
+                  <label className="block text-sm font-medium text-text-secondary mb-1">
+                    Language (ISO 639-1 code, comma-separated)
+                  </label>
+                  <input
+                    type="text"
+                    value={editForm.language}
+                    onChange={(e) => setEditForm({ ...editForm, language: e.target.value })}
+                    className="w-full px-3 py-2 bg-neutral-700 border border-neutral-600 rounded-lg text-text-primary focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    placeholder="en, es, fr"
+                  />
+                  <p className="text-xs text-text-secondary mt-1">
+                    Use ISO 639-1 language codes (e.g., en, es, fr, de)
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex justify-end space-x-2 pt-4 flex-shrink-0 border-t border-neutral-700 mt-4">
+                <button
+                  onClick={() => {
+                    setEditingFile(null);
+                    setEditForm({ 
+                      name: '', 
+                      description: '', 
+                      tags: '',
+                      genre: '',
+                      category: '',
+                      locationName: '',
+                      locationAddress: '',
+                      locationLat: '',
+                      locationLng: '',
+                      license: '',
+                      language: ''
+                    });
+                  }}
+                  className="px-4 py-2 text-sm font-medium text-text-secondary hover:text-text-primary transition-colors"
+                  disabled={isLoading}
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleSaveMetadata}
+                  disabled={isLoading}
+                  className="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50"
+                >
+                  {isLoading ? 'Saving...' : 'Save Changes'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Share Settings Modal */}
+      {sharingFile && (
+        <div
+          className="fixed inset-0 bg-black bg-opacity-80 flex items-center justify-center z-50 p-4"
+          onClick={closeShareSettings}
+        >
+          <div
+            className="relative w-full max-w-3xl bg-neutral-900 border border-neutral-700 rounded-xl shadow-2xl overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between px-6 py-4 border-b border-neutral-800">
+              <div>
+                <h2 className="text-xl font-semibold text-white uppercase tracking-wide">Share Settings</h2>
+                <p className="text-sm text-text-secondary mt-1 truncate max-w-xl">
+                  {sharingFile.name.replace(/\.encrypted$/i, '')}
+                </p>
+              </div>
+              <button
+                onClick={closeShareSettings}
+                className="p-2 text-text-secondary hover:text-text-primary transition-colors rounded-lg"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <div className="px-6 py-5 space-y-8 max-h-[70vh] overflow-y-auto">
+              <section>
+                <h3 className="text-sm font-semibold text-text-primary uppercase tracking-wide mb-3">
+                  Visibility
+                </h3>
+                <div className="grid grid-cols-2 gap-4">
+                  {(['public', 'private'] as const).map((option) => {
+                    const isActive = shareVisibility === option;
+                    return (
+                      <button
+                        key={option}
+                        onClick={() => {
+                          setShareVisibility(option);
+                          if (option === 'public' && thirdPartyIndexers.length === 0) {
+                            loadThirdPartyIndexers(sharingFile.id);
+                          }
+                        }}
+                        className={`text-left px-4 py-3 rounded-xl border transition-colors ${
+                          isActive
+                            ? 'border-blue-500 bg-blue-600/20 text-white'
+                            : 'border-neutral-700 bg-neutral-800 text-text-secondary hover:text-text-primary hover:border-neutral-500'
+                        }`}
+                      >
+                        <span className="text-sm font-semibold uppercase tracking-wide block">
+                          {option === 'public' ? 'PUBLIC' : 'PRIVATE'}
+                        </span>
+                        <span className="mt-1 text-xs text-text-secondary">
+                          {option === 'public'
+                            ? 'Anyone with the public link can access this file.'
+                            : 'Only you (and collaborators you invite) can view this file.'}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </section>
+
+              <section>
+                <div className="flex items-center justify-between mb-3">
+                  <h3 className="text-sm font-semibold text-text-primary uppercase tracking-wide">
+                    Third-Party Indexing
+                  </h3>
+                  {shareVisibility === 'public' && (
+                    <span className="text-xs text-text-secondary">
+                      Choose which par Noir partners can surface this file.
+                    </span>
+                  )}
+                </div>
+
+                {shareVisibility !== 'public' ? (
+                  <div className="rounded-lg border border-neutral-700 bg-neutral-800/60 px-4 py-3 text-sm text-text-secondary">
+                    Make the file PUBLIC to manage third-party indexing visibility.
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    {isLoadingIndexers ? (
+                      <div className="flex items-center space-x-2 text-text-secondary text-sm">
+                        <RefreshCw className="h-4 w-4 animate-spin" />
+                        <span>Loading partners...</span>
+                      </div>
+                    ) : indexerError ? (
+                      <div className="rounded-lg border border-yellow-500/40 bg-yellow-500/10 px-4 py-3 text-sm text-yellow-200">
+                        {indexerError}
+                      </div>
+                    ) : thirdPartyIndexers.length === 0 ? (
+                      <div className="rounded-lg border border-neutral-700 bg-neutral-800/60 px-4 py-3 text-sm text-text-secondary">
+                        No third-party indexers are currently available.
+                      </div>
+                    ) : (
+                      <div className="space-y-3">
+                        {thirdPartyIndexers.map((indexer) => {
+                          const enabled = Boolean(indexerToggles[indexer.id]);
+                          return (
+                            <div
+                              key={indexer.id}
+                              className="flex items-center justify-between border border-neutral-800 bg-neutral-900/70 rounded-lg px-4 py-3"
+                            >
+                              <div className="mr-4">
+                                <p className="text-sm font-semibold text-white uppercase tracking-wide">
+                                  {indexer.name}
+                                </p>
+                                {indexer.description && (
+                                  <p className="text-xs text-text-secondary mt-1 max-w-md">
+                                    {indexer.description}
+                                  </p>
+                                )}
+                              </div>
+                              <button
+                                onClick={() => handleIndexerToggle(indexer.id)}
+                                className={`px-4 py-2 text-xs font-semibold uppercase tracking-widest rounded-md border transition-colors ${
+                                  enabled
+                                    ? 'bg-blue-600 border-blue-500 text-white'
+                                    : 'bg-neutral-800 border-neutral-600 text-text-secondary hover:text-text-primary'
+                                }`}
+                              >
+                                {enabled ? 'ENABLED' : 'DISABLED'}
+                              </button>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </section>
+            </div>
+
+            <div className="flex items-center justify-end space-x-3 px-6 py-4 border-t border-neutral-800 bg-neutral-900/80">
+              <button
+                onClick={closeShareSettings}
+                className="px-4 py-2 text-sm font-semibold uppercase tracking-wide text-text-secondary hover:text-text-primary transition-colors"
+                disabled={isSavingShare}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleSaveShareSettings}
+                disabled={isSavingShare || (shareVisibility === 'public' && isLoadingIndexers)}
+                className="px-5 py-2 text-sm font-semibold uppercase tracking-wide rounded-lg bg-blue-600 text-white hover:bg-blue-500 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+              >
+                {isSavingShare ? 'Saving...' : 'Save Changes'}
+              </button>
+            </div>
           </div>
         </div>
       )}

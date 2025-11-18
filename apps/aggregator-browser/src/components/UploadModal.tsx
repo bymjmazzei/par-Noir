@@ -28,7 +28,7 @@ export function UploadModal({ onClose, onUploadComplete }: UploadModalProps) {
     <div className="h-full w-full bg-neutral-900 flex flex-col overflow-y-auto" style={{ paddingBottom: '64px' }}>
       {/* Railway Header */}
       <div 
-        className="fixed top-0 left-0 right-[56px] h-12 flex items-center justify-center z-[100] bg-transparent"
+        className="fixed top-0 left-0 right-0 h-12 flex items-center justify-center z-[100] bg-transparent"
       >
         <h2 className="text-sm font-medium uppercase tracking-wide text-white">
           Upload from Secure Cloud
