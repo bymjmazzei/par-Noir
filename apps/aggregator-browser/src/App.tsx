@@ -2867,7 +2867,7 @@ function App() {
                             setViewMode('profile');
                             setMePageTab('media');
                           }}
-                          indexedFiles={[]}
+                          indexedFiles={indexedFiles}
                         />
                       </div>
                     </div>

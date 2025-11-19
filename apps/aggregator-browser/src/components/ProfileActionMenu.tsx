@@ -75,7 +75,6 @@ export function ProfileActionMenu({ creatorId, onViewProfile, onMessage, indexed
   const [editNameValue, setEditNameValue] = useState('');
   const [profileImageUrl, setProfileImageUrl] = useState<string | null>(null);
   const [profileImageLoading, setProfileImageLoading] = useState(false);
-  const [profileImageFileId, setProfileImageFileId] = useState<string | null>(null);
   const [externalDisplayName, setExternalDisplayName] = useState<string | null>(null);
 
   // Helper to check if ID is a valid pN identifier (not a DID or public key)
@@ -112,7 +111,8 @@ export function ProfileActionMenu({ creatorId, onViewProfile, onMessage, indexed
     return getDisplayName(creatorId);
   }, [creatorId, externalDisplayName, userState.preferences.displayName, userState.preferences.userDisplayNames, userState.pnIdentifier, getDisplayName]);
 
-  // Load profile data (display name and profile image fileId) from API
+  // Load profile data (display name) from API
+  // Note: Profile image now comes from top post, not profileImageFileId
   useEffect(() => {
     if (!creatorId || !isValidPnIdentifier(creatorId)) return;
 
@@ -124,10 +124,6 @@ export function ProfileActionMenu({ creatorId, onViewProfile, onMessage, indexed
           setExternalDisplayName(profile.displayName);
           // Cache it in user state
           setUserDisplayName(creatorId, profile.displayName);
-        }
-        
-        if (profile.profileImageFileId) {
-          setProfileImageFileId(profile.profileImageFileId);
         }
       } catch (error) {
         // Silently fail - profile may not exist for this user
