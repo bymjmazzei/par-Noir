@@ -197,7 +197,8 @@ export function FeedEngagementSidebar({
             }`} 
             fill={isLiked ? 'red' : 'white'}
             stroke="black"
-            strokeWidth={1}
+            strokeWidth={1.5}
+            style={{ fill: isLiked ? 'red' : 'white', stroke: 'black', strokeWidth: 1.5 }}
           />
         </div>
         <span className="text-xs text-white font-medium">{likes.toLocaleString()}</span>
@@ -217,7 +218,8 @@ export function FeedEngagementSidebar({
             className="h-6 w-6 md:h-7 md:w-7 text-white group-hover:text-blue-400 transition-colors" 
             fill="white"
             stroke="black"
-            strokeWidth={1}
+            strokeWidth={1.5}
+            style={{ fill: 'white', stroke: 'black', strokeWidth: 1.5 }}
           />
         </div>
         <span className="text-xs text-white font-medium">{comments.toLocaleString()}</span>
@@ -233,7 +235,8 @@ export function FeedEngagementSidebar({
           className="h-6 w-6 md:h-7 md:w-7 text-white group-hover:text-green-400 transition-colors" 
           fill="white"
           stroke="black"
-          strokeWidth={1}
+          strokeWidth={1.5}
+          style={{ fill: 'white', stroke: 'black', strokeWidth: 1.5 }}
         />
       </button>
 
@@ -256,7 +259,8 @@ export function FeedEngagementSidebar({
             }`} 
             fill={isSaved ? 'yellow' : 'white'}
             stroke="black"
-            strokeWidth={1}
+            strokeWidth={1.5}
+            style={{ fill: isSaved ? 'yellow' : 'white', stroke: 'black', strokeWidth: 1.5 }}
           />
         </div>
       </button>
@@ -272,7 +276,8 @@ export function FeedEngagementSidebar({
             className="h-6 w-6 md:h-7 md:w-7 text-white group-hover:text-yellow-400 transition-colors" 
             fill="white"
             stroke="black"
-            strokeWidth={1}
+            strokeWidth={1.5}
+            style={{ fill: 'white', stroke: 'black', strokeWidth: 1.5 }}
           />
         </button>
       )}
@@ -294,7 +299,8 @@ export function FeedEngagementSidebar({
             className="h-6 w-6 md:h-7 md:w-7 text-white transition-colors" 
             fill="white"
             stroke="black"
-            strokeWidth={1}
+            strokeWidth={1.5}
+            style={{ fill: 'white', stroke: 'black', strokeWidth: 1.5 }}
           />
         </button>
       )}
