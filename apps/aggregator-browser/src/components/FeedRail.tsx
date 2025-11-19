@@ -137,12 +137,8 @@ export function FeedRail({ feeds, activeFeedId, onFeedSelect, onBrowseFeeds }: F
               style={{ opacity: isActive ? 1 : 0.85 }}
             >
               {isPublicFeed ? (
-                // White pN icon for public feed
-                <img 
-                  src="/branding/Par-Noir-Icon-White.png" 
-                  alt="pN" 
-                  className="w-5 h-5 object-contain"
-                />
+                // pN text for public feed
+                <span className="text-base font-medium uppercase tracking-wide text-white">pN</span>
               ) : (
                 <span className="text-base font-medium uppercase tracking-wide">{feed.name}</span>
               )}
