@@ -142,7 +142,6 @@ export function FeedRail({ feeds, activeFeedId, onFeedSelect, onBrowseFeeds }: F
                   src="/branding/Par-Noir-Logo-White.png" 
                   alt="pN" 
                   className="w-5 h-5 object-contain"
-                  style={{ filter: 'brightness(0) invert(1)' }}
                 />
               ) : (
                 <span className="text-base font-medium uppercase tracking-wide">{feed.name}</span>
