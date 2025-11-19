@@ -526,6 +526,8 @@ export function ProfileActionMenu({ creatorId, onViewProfile, onMessage, indexed
             <span>Go to Profile</span>
           </button>
         </div>
+        </div>,
+        document.body
       )}
     </div>
   );
