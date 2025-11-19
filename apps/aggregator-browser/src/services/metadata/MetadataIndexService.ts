@@ -116,9 +116,13 @@ export class MetadataIndexService {
             metadata: {
               ...entry.metadata,
               // Use normalized pnIdentifier as creatorId - they're the same thing
-              creatorId: normalizedPnId || entry.metadata.creatorId
+              creatorId: normalizedPnId || entry.metadata.creatorId,
+              // Include publicToken from entry level if it exists (API may return it at entry level)
+              publicToken: entry.publicToken || entry.metadata?.publicToken
             },
-            thumbnail: entry.metadata?.thumbnail
+            thumbnail: entry.metadata?.thumbnail,
+            // Also include publicToken at IndexedFile level for easier access
+            publicToken: entry.publicToken || entry.metadata?.publicToken
           };
         });
       
