@@ -136,20 +136,51 @@ export function ProfileActionMenu({ creatorId, onViewProfile, onMessage, indexed
 
   // Find top post file for profile icon (replaces profileImageFileId)
   const topPostFile = useMemo(() => {
-    if (indexedFiles.length === 0) return null;
+    if (indexedFiles.length === 0) {
+      console.log('[ProfileActionMenu] No indexedFiles provided, cannot find top post');
+      return null;
+    }
     
     // Find file where isTopPost === true for this creator
     const topPost = indexedFiles.find(f => {
-      const fileCreatorId = f.metadata.creator?.identifier?.value || 
+      // Check multiple possible creator ID fields
+      const fileCreatorId = (f.metadata as any).creatorId || 
+                            f.metadata.creator?.identifier?.value || 
                             f.metadata.author?.did ||
                             f.metadata.creator?.["@id"];
       const normalizedFileCreatorId = normalizeId(fileCreatorId);
-      return normalizedFileCreatorId === normalizedCreatorId && 
-             f.metadata.isTopPost === true;
+      const isTopPost = f.metadata.isTopPost === true;
+      const matches = normalizedFileCreatorId === normalizedCreatorId;
+      
+      if (isTopPost && matches) {
+        console.log('[ProfileActionMenu] Found top post:', {
+          fileId: f.metadata.fileId,
+          fileCreatorId,
+          normalizedFileCreatorId,
+          normalizedCreatorId,
+          matches,
+          isTopPost
+        });
+      }
+      
+      return matches && isTopPost;
     });
     
+    if (!topPost) {
+      console.log('[ProfileActionMenu] No top post found for creator:', {
+        creatorId,
+        normalizedCreatorId,
+        indexedFilesCount: indexedFiles.length,
+        sampleFiles: indexedFiles.slice(0, 3).map(f => ({
+          fileId: f.metadata.fileId,
+          creatorId: (f.metadata as any).creatorId || f.metadata.creator?.identifier?.value,
+          isTopPost: f.metadata.isTopPost
+        }))
+      });
+    }
+    
     return topPost || null;
-  }, [indexedFiles, normalizedCreatorId]);
+  }, [indexedFiles, normalizedCreatorId, creatorId]);
 
   // Load profile image from top post
   useEffect(() => {
