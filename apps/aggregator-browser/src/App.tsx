@@ -1123,22 +1123,112 @@ function App() {
 
       loadUserFiles();
     } else {
-      // For other creators, filter from public index
-      const filtered = indexedFiles.filter(f => {
-        const fileOwnerId = f.metadata.creator?.identifier?.value || 
-                            f.metadata.creator?.["@id"] || 
-                            f.metadata.author?.did ||
-                            f.metadata.creatorId;
-        
-        // Compare normalized (case-insensitive, trimmed) identifiers
-        const normalizedOwnerId = fileOwnerId?.trim().toLowerCase() || '';
-        const normalizedViewingId = viewingCreatorId.trim().toLowerCase();
-        
-        return normalizedOwnerId === normalizedViewingId;
-      });
-      
-      setCreatorFilesState(filtered);
-      console.log(`📊 Loaded ${filtered.length} files for creator index`);
+      // For other creators (or when not logged in), load from public API
+      const loadPublicCreatorFiles = async () => {
+        try {
+          const apiEndpoint = process.env.REACT_APP_API_ENDPOINT || 'https://api.parnoir.com';
+          const response = await fetch(
+            `${apiEndpoint}/api/aggregator/metadata-index?authorDid=${encodeURIComponent(viewingCreatorId)}`,
+            {
+              method: 'GET',
+              headers: {
+                'Content-Type': 'application/json'
+              }
+            }
+          );
+
+          let apiFiles: IndexedFile[] = [];
+          if (response.ok) {
+            const data = await response.json();
+            if (data.files && Array.isArray(data.files)) {
+              // Normalize identifiers for comparison
+              const normalizeIdentifier = (id: string | undefined | null): string => {
+                if (!id) return '';
+                const cleaned = id.startsWith('pn-') ? id.substring(3) : id;
+                return cleaned.trim().toLowerCase();
+              };
+              
+              const userIdentifier = normalizeIdentifier(viewingCreatorId);
+              
+              // Filter files by creatorId
+              const userFiles = data.files.filter((entry: any) => {
+                const entryPnId = normalizeIdentifier(entry.pnIdentifier);
+                const metadata = entry.metadata || {};
+                const creatorIdRaw = metadata.creator?.identifier?.value ||
+                                    metadata.creator?.["@id"] ||
+                                    metadata.author?.did ||
+                                    metadata.creatorId;
+                const creatorId = normalizeIdentifier(creatorIdRaw);
+                
+                return entryPnId === userIdentifier || creatorId === userIdentifier;
+              });
+
+              // Convert to IndexedFile format
+              apiFiles = userFiles.map((entry: any) => {
+                const metadata = entry.metadata || {};
+                return {
+                  metadata: {
+                    ...metadata,
+                    fileId: entry.fileId || metadata.fileId,
+                    creatorId: entry.pnIdentifier || metadata.creatorId || viewingCreatorId,
+                    creator: metadata.creator || {
+                      identifier: { value: entry.pnIdentifier || viewingCreatorId }
+                    },
+                    author: metadata.author || {
+                      did: entry.pnIdentifier || viewingCreatorId
+                    }
+                  }
+                } as IndexedFile;
+              });
+            }
+          }
+
+          // Also check already-loaded public index as fallback
+          const publicIndexFiles = indexedFiles.filter(f => {
+            const fileOwnerId = f.metadata.creator?.identifier?.value || 
+                                f.metadata.creator?.["@id"] || 
+                                f.metadata.author?.did ||
+                                f.metadata.creatorId;
+            const normalizeIdentifier = (id: string | undefined | null): string => {
+              if (!id) return '';
+              const cleaned = id.startsWith('pn-') ? id.substring(3) : id;
+              return cleaned.trim().toLowerCase();
+            };
+            const normalizedOwnerId = normalizeIdentifier(fileOwnerId);
+            const normalizedViewingId = normalizeIdentifier(viewingCreatorId);
+            return normalizedOwnerId === normalizedViewingId;
+          });
+
+          // Combine and deduplicate
+          const combinedFiles = Array.from(
+            new Map([...apiFiles, ...publicIndexFiles]
+              .map(f => [f.metadata.fileId, f])).values()
+          );
+
+          console.log(`📊 Loaded ${combinedFiles.length} public files for creator ${viewingCreatorId} (${apiFiles.length} from API, ${publicIndexFiles.length} from index)`);
+          setCreatorFilesState(combinedFiles);
+        } catch (error) {
+          console.error('Failed to load creator files:', error);
+          // Fallback to filtering from already-loaded index
+          const filtered = indexedFiles.filter(f => {
+            const fileOwnerId = f.metadata.creator?.identifier?.value || 
+                                f.metadata.creator?.["@id"] || 
+                                f.metadata.author?.did ||
+                                f.metadata.creatorId;
+            const normalizeIdentifier = (id: string | undefined | null): string => {
+              if (!id) return '';
+              const cleaned = id.startsWith('pn-') ? id.substring(3) : id;
+              return cleaned.trim().toLowerCase();
+            };
+            const normalizedOwnerId = normalizeIdentifier(fileOwnerId);
+            const normalizedViewingId = normalizeIdentifier(viewingCreatorId);
+            return normalizedOwnerId === normalizedViewingId;
+          });
+          setCreatorFilesState(filtered);
+        }
+      };
+
+      loadPublicCreatorFiles();
     }
   }, [viewingCreatorId, userState.pnIdentifier, userState.isUnlocked, indexedFiles]);
 
