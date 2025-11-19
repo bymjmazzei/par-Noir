@@ -164,7 +164,7 @@ export function FeedEngagementSidebar({
   };
 
   return (
-    <div className="absolute right-2 md:right-4 bottom-20 flex flex-col items-center z-10 pointer-events-auto" style={{ gap: '12px' }}>
+    <div className="absolute right-2 md:right-4 bottom-20 flex flex-col items-center z-10 pointer-events-auto" style={{ gap: '16px' }}>
       {/* Creator Profile Icon - Above Like Button */}
       {creatorId && (
         <ProfileActionMenu
@@ -189,15 +189,13 @@ export function FeedEngagementSidebar({
           {!userState.isUnlocked && (
             <Lock className="absolute -top-1 -right-1 h-3 w-3 text-yellow-400" />
           )}
-          <div className="w-12 h-12 md:w-14 md:h-14 rounded-full bg-black/30 backdrop-blur-sm flex items-center justify-center group-hover:bg-black/50 active:bg-black/70 transition-colors touch-manipulation">
-            <Heart className={`h-6 w-6 md:h-7 md:w-7 transition-colors ${
-              isLiked
-                ? 'text-red-500 fill-red-500'
-                : userState.isUnlocked
-                ? 'text-white group-hover:text-red-400'
-                : 'text-white/50'
-            }`} />
-          </div>
+          <Heart className={`h-6 w-6 md:h-7 md:w-7 transition-colors ${
+            isLiked
+              ? 'text-red-500 fill-red-500'
+              : userState.isUnlocked
+              ? 'text-white group-hover:text-red-400'
+              : 'text-white/50'
+          }`} />
         </div>
         <span className="text-xs text-white font-medium">{likes.toLocaleString()}</span>
       </button>
@@ -212,13 +210,11 @@ export function FeedEngagementSidebar({
           {!userState.isUnlocked && (
             <Lock className="absolute -top-1 -right-1 h-3 w-3 text-yellow-400" />
           )}
-          <div className="w-12 h-12 md:w-14 md:h-14 rounded-full bg-black/30 backdrop-blur-sm flex items-center justify-center group-hover:bg-black/50 active:bg-black/70 transition-colors touch-manipulation">
-            <MessageCircle className={`h-6 w-6 md:h-7 md:w-7 transition-colors ${
-              userState.isUnlocked
-                ? 'text-white group-hover:text-blue-400'
-                : 'text-white/50'
-            }`} />
-          </div>
+          <MessageCircle className={`h-6 w-6 md:h-7 md:w-7 transition-colors ${
+            userState.isUnlocked
+              ? 'text-white group-hover:text-blue-400'
+              : 'text-white/50'
+          }`} />
         </div>
         <span className="text-xs text-white font-medium">{comments.toLocaleString()}</span>
       </button>
@@ -229,9 +225,7 @@ export function FeedEngagementSidebar({
         className="flex flex-col items-center space-y-1 group"
         title="Share"
       >
-        <div className="w-12 h-12 md:w-14 md:h-14 rounded-full bg-black/30 backdrop-blur-sm flex items-center justify-center group-hover:bg-black/50 active:bg-black/70 transition-colors touch-manipulation">
-          <Share2 className="h-6 w-6 md:h-7 md:w-7 text-white group-hover:text-green-400 transition-colors" />
-        </div>
+        <Share2 className="h-6 w-6 md:h-7 md:w-7 text-white group-hover:text-green-400 transition-colors" />
       </button>
 
       {/* Save Button - Always show, but require unlock to function */}
@@ -245,15 +239,13 @@ export function FeedEngagementSidebar({
           {!userState.isUnlocked && (
             <Lock className="absolute -top-1 -right-1 h-3 w-3 text-yellow-400" />
           )}
-          <div className="w-12 h-12 md:w-14 md:h-14 rounded-full bg-black/30 backdrop-blur-sm flex items-center justify-center group-hover:bg-black/50 active:bg-black/70 transition-colors touch-manipulation">
-            <Bookmark className={`h-6 w-6 md:h-7 md:w-7 transition-colors ${
-              isSaved
-                ? 'text-yellow-400 fill-yellow-400'
-                : userState.isUnlocked
-                ? 'text-white group-hover:text-yellow-400'
-                : 'text-white/50'
-            }`} />
-          </div>
+          <Bookmark className={`h-6 w-6 md:h-7 md:w-7 transition-colors ${
+            isSaved
+              ? 'text-yellow-400 fill-yellow-400'
+              : userState.isUnlocked
+              ? 'text-white group-hover:text-yellow-400'
+              : 'text-white/50'
+          }`} />
         </div>
       </button>
 
@@ -264,9 +256,7 @@ export function FeedEngagementSidebar({
           className="flex flex-col items-center space-y-1 group"
           title="Bookmark"
         >
-          <div className="w-12 h-12 md:w-14 md:h-14 rounded-full bg-black/30 backdrop-blur-sm flex items-center justify-center group-hover:bg-black/50 active:bg-black/70 transition-colors touch-manipulation">
-            <Bookmark className="h-6 w-6 md:h-7 md:w-7 text-white group-hover:text-yellow-400 transition-colors" />
-          </div>
+          <Bookmark className="h-6 w-6 md:h-7 md:w-7 text-white group-hover:text-yellow-400 transition-colors" />
         </button>
       )}
 
@@ -283,9 +273,7 @@ export function FeedEngagementSidebar({
           className="flex flex-col items-center space-y-1 group"
           title="More options"
         >
-          <div className="w-12 h-12 md:w-14 md:h-14 rounded-full bg-black/30 backdrop-blur-sm flex items-center justify-center group-hover:bg-black/50 active:bg-black/70 transition-colors touch-manipulation">
-            <MoreVertical className="h-6 w-6 md:h-7 md:w-7 text-white transition-colors" />
-          </div>
+          <MoreVertical className="h-6 w-6 md:h-7 md:w-7 text-white transition-colors" />
         </button>
       )}
     </div>
