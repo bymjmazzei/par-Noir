@@ -2033,12 +2033,29 @@ function App() {
   
   const filteredMeFiles = filteredMeFilesMemo;
   
-  // Only log when the count actually changes
+  // Only log when the count actually changes - use refs to track all values to prevent unnecessary re-runs
   const prevFilteredCountRef = useRef<number>(-1);
+  const prevViewingCreatorIdRef = useRef<string | null>(null);
+  const prevIsOwnIndexRef = useRef<boolean>(false);
+  const prevMePageTabRef = useRef<string>('all');
+  
   useEffect(() => {
-    if (viewingCreatorId && filteredMeFiles.length !== prevFilteredCountRef.current) {
+    const countChanged = filteredMeFiles.length !== prevFilteredCountRef.current;
+    const creatorChanged = viewingCreatorId !== prevViewingCreatorIdRef.current;
+    const ownIndexChanged = isOwnIndex !== prevIsOwnIndexRef.current;
+    const tabChanged = mePageTab !== prevMePageTabRef.current;
+    
+    // Only log if something meaningful changed
+    if (viewingCreatorId && (countChanged || creatorChanged || ownIndexChanged || tabChanged)) {
       prevFilteredCountRef.current = filteredMeFiles.length;
-      console.log(`📊 Creator index: Found ${filteredMeFiles.length} files for creator ${viewingCreatorId}${isOwnIndex ? ` (tab: ${mePageTab}, ${creatorFiles.length} owned, ${userLikedFiles.length} liked, ${userCommentedFiles.length} commented, ${savedFiles.length} saved)` : ''}`);
+      prevViewingCreatorIdRef.current = viewingCreatorId;
+      prevIsOwnIndexRef.current = isOwnIndex;
+      prevMePageTabRef.current = mePageTab;
+      
+      // Only log if count actually changed (not just other dependencies)
+      if (countChanged || creatorChanged) {
+        console.log(`📊 Creator index: Found ${filteredMeFiles.length} files for creator ${viewingCreatorId}${isOwnIndex ? ` (tab: ${mePageTab}, ${creatorFiles.length} owned, ${userLikedFiles.length} liked, ${userCommentedFiles.length} commented, ${savedFiles.length} saved)` : ''}`);
+      }
     }
   }, [filteredMeFiles.length, viewingCreatorId, isOwnIndex, mePageTab, creatorFiles.length, userLikedFiles.length, userCommentedFiles.length, savedFiles.length]);
 

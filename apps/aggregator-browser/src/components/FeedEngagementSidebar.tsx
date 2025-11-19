@@ -157,7 +157,6 @@ export function FeedEngagementSidebar({
         <ProfileActionMenu
           creatorId={creatorId}
           onViewProfile={() => {
-            console.log('🔍 ProfileActionMenu onViewProfile called with creatorId:', creatorId);
             onCreatorClick?.(creatorId);
           }}
           onMessage={onMessage}

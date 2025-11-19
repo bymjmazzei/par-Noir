@@ -22,7 +22,7 @@ interface ProfileActionMenuProps {
   isOwner?: boolean; // Optional: whether this is the owner's profile
 }
 
-export function ProfileActionMenu({ creatorId, onViewProfile, onMessage, indexedFiles = [], isOwner = false }: ProfileActionMenuProps) {
+export const ProfileActionMenu = React.memo(function ProfileActionMenu({ creatorId, onViewProfile, onMessage, indexedFiles = [], isOwner = false }: ProfileActionMenuProps) {
   const { userState, getDisplayName, updateDisplayName, setUserDisplayName } = useUserState();
   const { success, error: showError } = useToast();
   const [isOpen, setIsOpen] = useState(false);
@@ -134,10 +134,15 @@ export function ProfileActionMenu({ creatorId, onViewProfile, onMessage, indexed
     loadProfileData();
   }, [creatorId, setUserDisplayName]);
 
+  // Create a stable key for indexedFiles based on fileIds to prevent unnecessary recalculations
+  const indexedFilesKey = useMemo(() => {
+    return indexedFiles.map(f => f.metadata.fileId).sort().join(',');
+  }, [indexedFiles]);
+
   // Find top post file for profile icon (replaces profileImageFileId)
+  // Only recalculate when indexedFilesKey or creatorId changes, not on every indexedFiles reference change
   const topPostFile = useMemo(() => {
     if (indexedFiles.length === 0) {
-      console.log('[ProfileActionMenu] No indexedFiles provided, cannot find top post');
       return null;
     }
     
@@ -155,18 +160,26 @@ export function ProfileActionMenu({ creatorId, onViewProfile, onMessage, indexed
       return matches && isTopPost;
     });
     
-    if (!topPost) {
-      // No top post found - this is normal for many creators
-    }
-    
     return topPost || null;
-  }, [indexedFiles, normalizedCreatorId, creatorId]);
+  }, [indexedFilesKey, normalizedCreatorId, creatorId, indexedFiles]);
 
   // Load profile image from top post
+  // Use a ref to track the last processed fileId to prevent re-processing the same file
+  const lastProcessedFileIdRef = useRef<string | null>(null);
+  
   useEffect(() => {
     if (!topPostFile) {
-      console.log('[ProfileActionMenu] No topPostFile, clearing profile image');
-      setProfileImageUrl(null);
+      if (lastProcessedFileIdRef.current !== null) {
+        setProfileImageUrl(null);
+        lastProcessedFileIdRef.current = null;
+      }
+      return;
+    }
+    
+    const fileId = topPostFile.metadata.fileId;
+    
+    // Skip if we've already processed this file
+    if (lastProcessedFileIdRef.current === fileId) {
       return;
     }
     
@@ -174,21 +187,10 @@ export function ProfileActionMenu({ creatorId, onViewProfile, onMessage, indexed
     const publicToken = topPostFile.publicToken || topPostFile.metadata.publicToken;
     
     if (!publicToken) {
-      console.log('[ProfileActionMenu] Top post has no publicToken:', {
-        fileId: topPostFile.metadata.fileId,
-        hasPublicTokenAtFileLevel: !!topPostFile.publicToken,
-        hasPublicTokenInMetadata: !!topPostFile.metadata.publicToken
-      });
       setProfileImageUrl(null);
+      lastProcessedFileIdRef.current = fileId; // Mark as processed even if no token
       return;
     }
-
-    console.log('[ProfileActionMenu] Loading profile image from top post:', {
-      fileId: topPostFile.metadata.fileId,
-      fileType: topPostFile.metadata.fileType,
-      encodingFormat: topPostFile.metadata.encodingFormat,
-      hasPublicToken: !!publicToken
-    });
 
     const loadProfileImage = async () => {
       // Check if it's an image or video (we can use video thumbnail too)
@@ -205,16 +207,9 @@ export function ProfileActionMenu({ creatorId, onViewProfile, onMessage, indexed
                      encodingFormat.startsWith('video/') ||
                      encodingFormat === 'video';
       
-      console.log('[ProfileActionMenu] File type check:', {
-        isImage,
-        isVideo,
-        fileType: topPostFile.metadata.fileType,
-        encodingFormat: topPostFile.metadata.encodingFormat
-      });
-      
       if (!isImage && !isVideo) {
-        console.log('[ProfileActionMenu] File is not an image or video, skipping');
         setProfileImageUrl(null);
+        lastProcessedFileIdRef.current = fileId;
         return;
       }
 
@@ -225,20 +220,20 @@ export function ProfileActionMenu({ creatorId, onViewProfile, onMessage, indexed
           : publicToken;
         
         if (isImage) {
-          console.log('[ProfileActionMenu] Decrypting image...');
           const decryptedBlob = await decryptWithToken(token);
           const url = URL.createObjectURL(decryptedBlob);
-          console.log('[ProfileActionMenu] Image decrypted, created object URL:', url);
           setProfileImageUrl(url);
+          lastProcessedFileIdRef.current = fileId; // Mark as processed
         } else if (isVideo) {
           // For videos, we'd ideally use a thumbnail, but for now we'll skip
           // In the future, we could generate/extract a thumbnail
-          console.log('[ProfileActionMenu] Video detected, skipping (no thumbnail support yet)');
           setProfileImageUrl(null);
+          lastProcessedFileIdRef.current = fileId;
         }
       } catch (error) {
-        console.error('[ProfileActionMenu] Failed to load top post image:', error);
+        // Silently fail - don't log to avoid console spam
         setProfileImageUrl(null);
+        lastProcessedFileIdRef.current = fileId;
       } finally {
         setProfileImageLoading(false);
       }
@@ -612,4 +607,19 @@ export function ProfileActionMenu({ creatorId, onViewProfile, onMessage, indexed
       )}
     </div>
   );
-}
+}, (prevProps, nextProps) => {
+  // Custom comparison function to prevent re-renders when props haven't meaningfully changed
+  // Compare creatorId, isOwner, and indexedFiles length/fileIds
+  if (prevProps.creatorId !== nextProps.creatorId) return false;
+  if (prevProps.isOwner !== nextProps.isOwner) return false;
+  if (prevProps.onViewProfile !== nextProps.onViewProfile) return false;
+  if (prevProps.onMessage !== nextProps.onMessage) return false;
+  
+  // Compare indexedFiles by fileIds, not reference
+  const prevFileIds = prevProps.indexedFiles.map(f => f.metadata.fileId).sort().join(',');
+  const nextFileIds = nextProps.indexedFiles.map(f => f.metadata.fileId).sort().join(',');
+  if (prevFileIds !== nextFileIds) return false;
+  
+  // Props are equal, skip re-render
+  return true;
+});
