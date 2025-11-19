@@ -155,65 +155,93 @@ export function FullScreenFeed({
   useEffect(() => {
     if (!visibleFileId) return;
     
-    const popularComments = getPopularComments(visibleFileId);
-    if (popularComments.length === 0) {
-      // Reset state if no comments
-      setCurrentCommentIndex(prev => {
-        const newMap = new Map(prev);
-        newMap.delete(visibleFileId);
-        return newMap;
-      });
-      setCommentOpacity(prev => {
-        const newMap = new Map(prev);
-        newMap.delete(visibleFileId);
-        return newMap;
-      });
-      return;
-    }
+    let intervalId: NodeJS.Timeout | null = null;
     
-    // Initialize index and opacity if not set
-    if (!currentCommentIndex.has(visibleFileId)) {
-      setCurrentCommentIndex(prev => {
-        const newMap = new Map(prev);
-        newMap.set(visibleFileId, 0);
-        return newMap;
-      });
-    }
-    if (!commentOpacity.has(visibleFileId)) {
-      setCommentOpacity(prev => {
-        const newMap = new Map(prev);
-        newMap.set(visibleFileId, 1);
-        return newMap;
-      });
-    }
-    
-    const interval = setInterval(() => {
-      // Fade out current comment
-      setCommentOpacity(prev => {
-        const newMap = new Map(prev);
-        newMap.set(visibleFileId, 0);
-        return newMap;
+    // Check comments with a small delay to allow them to load
+    const checkComments = () => {
+      const popularComments = getPopularComments(visibleFileId);
+      console.log(`[LiveComments] Rotation effect for ${visibleFileId}:`, {
+        popularCommentsCount: popularComments.length,
+        comments: popularComments.map(c => ({ id: c.id, content: c.content?.substring(0, 20), likes: c.likes?.length || 0 }))
       });
       
-      // After fade out completes, switch to next comment and fade in
-      setTimeout(() => {
+      if (popularComments.length === 0) {
+        // Reset state if no comments
         setCurrentCommentIndex(prev => {
           const newMap = new Map(prev);
-          const current = newMap.get(visibleFileId) || 0;
-          newMap.set(visibleFileId, (current + 1) % popularComments.length);
+          newMap.delete(visibleFileId);
           return newMap;
         });
-        
+        setCommentOpacity(prev => {
+          const newMap = new Map(prev);
+          newMap.delete(visibleFileId);
+          return newMap;
+        });
+        return null;
+      }
+      
+      // Initialize index and opacity if not set
+      if (!currentCommentIndex.has(visibleFileId)) {
+        setCurrentCommentIndex(prev => {
+          const newMap = new Map(prev);
+          newMap.set(visibleFileId, 0);
+          return newMap;
+        });
+      }
+      if (!commentOpacity.has(visibleFileId)) {
         setCommentOpacity(prev => {
           const newMap = new Map(prev);
           newMap.set(visibleFileId, 1);
           return newMap;
         });
-      }, 200); // Wait for fade out to complete (200ms)
-    }, 2000); // Rotate every 2 seconds
+      }
+      
+      return popularComments;
+    };
     
-    return () => clearInterval(interval);
-  }, [visibleFileId, getPopularComments, commentOpacity]);
+    // Initial check with delay to allow comments to load
+    const initialTimeout = setTimeout(() => {
+      const popularComments = checkComments();
+      if (!popularComments || popularComments.length === 0) return;
+      
+      intervalId = setInterval(() => {
+        // Re-check comments in case they've loaded
+        const currentPopularComments = getPopularComments(visibleFileId);
+        if (currentPopularComments.length === 0) {
+          if (intervalId) clearInterval(intervalId);
+          return;
+        }
+        
+        // Fade out current comment
+        setCommentOpacity(prev => {
+          const newMap = new Map(prev);
+          newMap.set(visibleFileId, 0);
+          return newMap;
+        });
+        
+        // After fade out completes, switch to next comment and fade in
+        setTimeout(() => {
+          setCurrentCommentIndex(prev => {
+            const newMap = new Map(prev);
+            const current = newMap.get(visibleFileId) || 0;
+            newMap.set(visibleFileId, (current + 1) % currentPopularComments.length);
+            return newMap;
+          });
+          
+          setCommentOpacity(prev => {
+            const newMap = new Map(prev);
+            newMap.set(visibleFileId, 1);
+            return newMap;
+          });
+        }, 200); // Wait for fade out to complete (200ms)
+      }, 2000); // Rotate every 2 seconds
+    }, 500); // Wait 500ms for comments to load
+    
+    return () => {
+      clearTimeout(initialTimeout);
+      if (intervalId) clearInterval(intervalId);
+    };
+  }, [visibleFileId, getPopularComments]);
 
   // Load video blobs and thumbnails for visible files
   useEffect(() => {
