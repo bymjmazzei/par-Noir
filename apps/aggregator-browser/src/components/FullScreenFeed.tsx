@@ -413,7 +413,12 @@ export function FullScreenFeed({
               }}
               onAddToFeed={onAddToFeed ? () => onAddToFeed(indexedFile) : undefined}
               onEdit={onEdit ? () => onEdit(indexedFile) : undefined}
-              isOwner={userState.isUnlocked && userState.pnIdentifier === creatorId}
+              isOwner={userState.isUnlocked && userState.pnIdentifier && (
+                creatorId === userState.pnIdentifier ||
+                (indexedFile.metadata as any).creatorId === userState.pnIdentifier ||
+                file.creator?.identifier?.value === userState.pnIdentifier ||
+                file.author?.did === userState.pnIdentifier
+              )}
               onCreatorClick={onCreatorClick}
               onMessage={onMessage}
               indexedFiles={files}
