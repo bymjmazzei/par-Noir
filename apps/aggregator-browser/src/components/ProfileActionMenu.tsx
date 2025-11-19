@@ -343,7 +343,7 @@ export function ProfileActionMenu({ creatorId, onViewProfile, onMessage, indexed
   };
 
   return (
-    <div className="relative" data-profile-menu>
+    <div className="relative" data-profile-menu style={{ zIndex: 9999 }}>
       <button
         onClick={(e) => {
           console.log('🔍 Profile button clicked', { isOpen, willBeOpen: !isOpen });
@@ -376,15 +376,22 @@ export function ProfileActionMenu({ creatorId, onViewProfile, onMessage, indexed
           <div 
             className="fixed inset-0 z-[9998]"
             onClick={(e) => {
-              e.stopPropagation();
-              e.preventDefault();
-              console.log('🔍 Clicked backdrop, closing menu');
-              setIsOpen(false);
+              // Only close if clicking directly on backdrop, not on the button or menu
+              const target = e.target as HTMLElement;
+              if (target.classList.contains('fixed') || target.classList.contains('inset-0')) {
+                console.log('🔍 Clicked backdrop, closing menu');
+                setIsOpen(false);
+              }
             }}
+            style={{ pointerEvents: 'auto' }}
           />
           <div 
             className="absolute left-full top-0 ml-2 w-56 bg-neutral-800 border border-neutral-700 rounded-lg shadow-xl overflow-hidden z-[9999]"
-            onClick={(e) => e.stopPropagation()}
+            onClick={(e) => {
+              e.stopPropagation();
+              e.preventDefault();
+            }}
+            style={{ pointerEvents: 'auto' }}
           >
             {/* Header with Display Name */}
           <div className="px-4 py-3 border-b border-neutral-700">
@@ -482,6 +489,7 @@ export function ProfileActionMenu({ creatorId, onViewProfile, onMessage, indexed
             <span>Go to Profile</span>
           </button>
         </div>
+        </>
       )}
     </div>
   );
