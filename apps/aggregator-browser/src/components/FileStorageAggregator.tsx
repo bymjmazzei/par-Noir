@@ -1915,11 +1915,50 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
                           <Lock className="h-8 w-8 text-blue-400" />
                         </div>
                       )}
+                      {/* Public indicator - moved to top left to make room for menu */}
                       {file.isPublic && (
-                        <div className="absolute top-2 right-2 bg-green-500/80 rounded-full p-1">
+                        <div className="absolute top-2 left-2 bg-green-500/80 rounded-full p-1 z-10">
                           <Globe className="h-3 w-3 text-white" />
                         </div>
                       )}
+                      {/* Menu button - top right corner */}
+                      <div className="absolute top-2 right-2 z-20 menu-container" onClick={(e) => e.stopPropagation()}>
+                        <button
+                          ref={(el) => {
+                            if (el) menuButtonRefs.current.set(file.id, el);
+                            else menuButtonRefs.current.delete(file.id);
+                          }}
+                          data-menu-button={file.id}
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            e.preventDefault();
+                            const button = e.currentTarget;
+                            const rect = button.getBoundingClientRect();
+                            const newState = openMenuFor === file.id ? null : file.id;
+                            if (newState) {
+                              // Position menu below the button for grid view (top right)
+                              setMenuPosition({
+                                top: rect.bottom + 8, // 8px below button
+                                left: rect.right - 176 // 176px = w-44 (11rem), align right edge
+                              });
+                            } else {
+                              setMenuPosition(null);
+                            }
+                            console.log('[FileStorageAggregator] Menu button clicked (grid):', { fileId: file.id, currentState: openMenuFor, newState, willOpen: newState !== null });
+                            setOpenMenuFor(newState);
+                          }}
+                          onMouseDown={(e) => {
+                            e.stopPropagation();
+                            e.preventDefault();
+                          }}
+                          className="bg-neutral-900/80 hover:bg-neutral-800/90 rounded-full p-1.5 transition-colors"
+                          title="File actions"
+                          disabled={isLoading}
+                        >
+                          <MoreVertical className="h-4 w-4 text-white" />
+                        </button>
+                      </div>
                       {isMediaFile && (
                         <div className="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-colors flex items-center justify-center opacity-0 group-hover:opacity-100">
                           <Eye className="h-6 w-6 text-white" />
@@ -1934,68 +1973,6 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
                       <p className="text-text-secondary text-xs">
                         {(parseInt(file.size || '0') / 1024).toFixed(1)} KB
                       </p>
-
-                      <div className="flex items-center justify-center mt-2 pt-2 border-t border-neutral-700 menu-container" onClick={(e) => e.stopPropagation()}>
-                        <div className="relative">
-                          <button
-                            data-menu-button={file.id}
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              e.preventDefault();
-                              const button = e.currentTarget;
-                              const rect = button.getBoundingClientRect();
-                              const newState = openMenuFor === file.id ? null : file.id;
-                              if (newState) {
-                                // Position menu above the button for grid view
-                                setMenuPosition({
-                                  top: rect.top - 8, // 8px above button
-                                  left: rect.right - 176 // 176px = w-44 (11rem)
-                                });
-                              } else {
-                                setMenuPosition(null);
-                              }
-                              console.log('[FileStorageAggregator] Menu button clicked (grid):', { fileId: file.id, currentState: openMenuFor, newState, willOpen: newState !== null });
-                              setOpenMenuFor(newState);
-                            }}
-                            onMouseDown={(e) => {
-                              e.stopPropagation();
-                              e.preventDefault();
-                            }}
-                            style={{
-                              width: '28px',
-                              height: '28px',
-                              padding: 0,
-                              margin: 0,
-                              display: 'flex',
-                              alignItems: 'center',
-                              justifyContent: 'center',
-                              position: 'relative',
-                              background: 'transparent',
-                              border: 'none',
-                              cursor: 'pointer',
-                              color: '#a3a3a3',
-                              lineHeight: 0
-                            }}
-                            title="File actions"
-                            disabled={isLoading}
-                          >
-                            <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '16px', height: '16px' }}>
-                              <MoreVertical 
-                                style={{ 
-                                  width: '16px',
-                                  height: '16px',
-                                  margin: 0,
-                                  padding: 0,
-                                  display: 'block',
-                                  verticalAlign: 'middle'
-                                }} 
-                              />
-                            </span>
-                          </button>
-                          {/* Menu will be rendered in portal */}
-                        </div>
-                      </div>
                     </div>
                   </div>
                     );
