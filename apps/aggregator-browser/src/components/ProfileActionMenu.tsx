@@ -31,13 +31,13 @@ export function ProfileActionMenu({ creatorId, onViewProfile, onMessage, indexed
   const containerRef = useRef<HTMLDivElement>(null);
   const [menuPosition, setMenuPosition] = useState({ top: 0, left: 0 });
 
-  // Update menu position when it opens
+  // Update menu position when it opens - position to the LEFT of the button
   useEffect(() => {
     if (isOpen && buttonRef.current) {
       const rect = buttonRef.current.getBoundingClientRect();
       setMenuPosition({
         top: rect.top,
-        left: rect.right + 8
+        left: rect.left - 224 - 8 // 224px is menu width (w-56 = 14rem = 224px), 8px margin
       });
     }
   }, [isOpen]);
@@ -416,7 +416,7 @@ export function ProfileActionMenu({ creatorId, onViewProfile, onMessage, indexed
       {isOpen && createPortal(
         <div 
           ref={menuRef}
-          className="fixed w-56 bg-red-600 border-4 border-yellow-400 rounded-lg shadow-xl overflow-hidden z-[99999]"
+          className="fixed w-56 bg-neutral-800 border border-neutral-700 rounded-lg shadow-xl overflow-hidden z-[99999]"
           style={{ 
             top: `${menuPosition.top}px`,
             left: `${menuPosition.left}px`,
