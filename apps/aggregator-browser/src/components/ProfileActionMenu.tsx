@@ -521,7 +521,12 @@ export function ProfileActionMenu({ creatorId, onViewProfile, onMessage, indexed
 
           {/* Go to Profile */}
           <button
-            onClick={onViewProfile}
+            onClick={(e) => {
+              e.stopPropagation();
+              e.preventDefault();
+              console.log('🔍 Go to Profile clicked, calling onViewProfile');
+              onViewProfile();
+            }}
             className="flex items-center space-x-2 px-4 py-2 text-white hover:bg-neutral-700 transition-colors w-full text-left"
           >
             <User className="h-4 w-4" />
