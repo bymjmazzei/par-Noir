@@ -135,14 +135,7 @@ export function ProfileActionMenu({ creatorId, onViewProfile, onMessage, indexed
   }, [creatorId, setUserDisplayName]);
 
   // Find top post file for profile icon (replaces profileImageFileId)
-  // Only use top post for the owner's own profile, not for other users' profiles
   const topPostFile = useMemo(() => {
-    // Only show top post as profile icon for the owner's own profile
-    if (!isOwnProfile) {
-      console.log('[ProfileActionMenu] Not owner profile, skipping top post lookup');
-      return null;
-    }
-    
     if (indexedFiles.length === 0) {
       console.log('[ProfileActionMenu] No indexedFiles provided, cannot find top post');
       return null;
@@ -187,7 +180,7 @@ export function ProfileActionMenu({ creatorId, onViewProfile, onMessage, indexed
     }
     
     return topPost || null;
-  }, [indexedFiles, normalizedCreatorId, creatorId, isOwnProfile]);
+  }, [indexedFiles, normalizedCreatorId, creatorId]);
 
   // Load profile image from top post
   useEffect(() => {
