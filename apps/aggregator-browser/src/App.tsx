@@ -490,6 +490,12 @@ function App() {
   
   // Creator files state for INDEX view - MUST be before early returns to satisfy Rules of Hooks
   const [creatorFilesState, setCreatorFilesState] = useState<IndexedFile[]>([]);
+  
+  // Create a stable key for indexedFilesMap based on fileIds (not array reference)
+  // MUST be declared before any useEffect that uses it
+  const indexedFilesKey = useMemo(() => {
+    return indexedFiles.map(f => f.metadata.fileId).sort().join(',');
+  }, [indexedFiles]);
 
   // Memoize filtered files by active feed
   const filteredFilesByFeed = useMemo(() => {
@@ -1358,11 +1364,6 @@ function App() {
       lastSavedFeedFetchRef.current = null;
     }
   }, [viewingCreatorId, userState.pnIdentifier, userState.isUnlocked]);
-  
-  // Create a stable key for indexedFilesMap based on fileIds (not array reference)
-  const indexedFilesKey = useMemo(() => {
-    return indexedFiles.map(f => f.metadata.fileId).sort().join(',');
-  }, [indexedFiles]);
 
   // Create a map of indexed files by fileId for efficient lookup
   // Use a ref to store the actual Map and only recreate when fileIds change
