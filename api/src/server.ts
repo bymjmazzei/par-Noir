@@ -3274,6 +3274,197 @@ class ProductionServer {
     });
 
     // ============================================================================
+    // Saved Feed APIs (Private curated feed for each user)
+    // ============================================================================
+
+    // GET /api/feeds/saved?userDid=... - Get user's saved feed
+    this.app.get('/api/feeds/saved', async (req, res) => {
+      try {
+        const { userDid } = req.query;
+        const db = (await import('./server/utils/database')).getDatabasePool();
+
+        if (!userDid || typeof userDid !== 'string') {
+          return res.status(400).json({ error: 'userDid is required' });
+        }
+
+        // Get or create saved feed for user
+        // Saved feed has a special feedId format: "saved-{userDid}"
+        const savedFeedId = `saved-${userDid}`;
+
+        // Check if saved feed exists
+        const feedResult = await db.query(`
+          SELECT feed_id, feed_name, created_at, updated_at
+          FROM feeds
+          WHERE feed_id = $1
+        `, [savedFeedId]);
+
+        if (feedResult.rows.length === 0) {
+          // No saved feed exists yet
+          return res.status(404).json({ error: 'Saved feed not found' });
+        }
+
+        // Get file IDs in the saved feed
+        const postsResult = await db.query(`
+          SELECT file_id
+          FROM feed_posts
+          WHERE feed_id = $1
+          ORDER BY added_at DESC
+        `, [savedFeedId]);
+
+        const fileIds = postsResult.rows.map(row => row.file_id);
+
+        return res.json({
+          feed: {
+            feedId: feedResult.rows[0].feed_id,
+            feedName: feedResult.rows[0].feed_name,
+            fileIds,
+            createdAt: feedResult.rows[0].created_at,
+            updatedAt: feedResult.rows[0].updated_at
+          }
+        });
+      } catch (error: any) {
+        console.error('Error getting saved feed:', error);
+        return res.status(500).json({ error: 'Failed to get saved feed', message: error.message });
+      }
+    });
+
+    // POST /api/feeds/saved - Add file to saved feed
+    this.app.post('/api/feeds/saved', async (req, res) => {
+      try {
+        const { userDid, fileId } = req.body;
+        const db = (await import('./server/utils/database')).getDatabasePool();
+
+        if (!userDid || !fileId) {
+          return res.status(400).json({ error: 'userDid and fileId are required' });
+        }
+
+        const savedFeedId = `saved-${userDid}`;
+
+        // Check if saved feed exists, create if not
+        let feedResult = await db.query(`
+          SELECT feed_id, feed_name, created_at, updated_at
+          FROM feeds
+          WHERE feed_id = $1
+        `, [savedFeedId]);
+
+        if (feedResult.rows.length === 0) {
+          // Create saved feed
+          await db.query(`
+            INSERT INTO feeds (feed_id, feed_name, creator_did, creator_tier, rating_range)
+            VALUES ($1, $2, $3, $4, $5)
+          `, [savedFeedId, 'Saved', userDid, 'free', ['GA', 'FF', 'T13+', 'YA16+', 'M18+', 'NSFW', 'X18+']]);
+
+          feedResult = await db.query(`
+            SELECT feed_id, feed_name, created_at, updated_at
+            FROM feeds
+            WHERE feed_id = $1
+          `, [savedFeedId]);
+        }
+
+        // Check if file is already in saved feed
+        const existingPost = await db.query(`
+          SELECT file_id
+          FROM feed_posts
+          WHERE feed_id = $1 AND file_id = $2
+        `, [savedFeedId, fileId]);
+
+        if (existingPost.rows.length > 0) {
+          // File already saved, return existing feed
+          const postsResult = await db.query(`
+            SELECT file_id
+            FROM feed_posts
+            WHERE feed_id = $1
+            ORDER BY added_at DESC
+          `, [savedFeedId]);
+
+          const fileIds = postsResult.rows.map(row => row.file_id);
+
+          return res.json({
+            feed: {
+              feedId: feedResult.rows[0].feed_id,
+              feedName: feedResult.rows[0].feed_name,
+              fileIds,
+              createdAt: feedResult.rows[0].created_at,
+              updatedAt: feedResult.rows[0].updated_at
+            }
+          });
+        }
+
+        // Add file to saved feed
+        await db.query(`
+          INSERT INTO feed_posts (feed_id, file_id, added_by)
+          VALUES ($1, $2, $3)
+        `, [savedFeedId, fileId, userDid]);
+
+        // Update feed updated_at
+        await db.query(`
+          UPDATE feeds
+          SET updated_at = NOW()
+          WHERE feed_id = $1
+        `, [savedFeedId]);
+
+        // Get all file IDs
+        const postsResult = await db.query(`
+          SELECT file_id
+          FROM feed_posts
+          WHERE feed_id = $1
+          ORDER BY added_at DESC
+        `, [savedFeedId]);
+
+        const fileIds = postsResult.rows.map(row => row.file_id);
+
+        return res.json({
+          feed: {
+            feedId: feedResult.rows[0].feed_id,
+            feedName: feedResult.rows[0].feed_name,
+            fileIds,
+            createdAt: feedResult.rows[0].created_at,
+            updatedAt: new Date().toISOString()
+          }
+        });
+      } catch (error: any) {
+        console.error('Error saving to feed:', error);
+        return res.status(500).json({ error: 'Failed to save to feed', message: error.message });
+      }
+    });
+
+    // DELETE /api/feeds/saved - Remove file from saved feed
+    this.app.delete('/api/feeds/saved', async (req, res) => {
+      try {
+        const { userDid, fileId } = req.body;
+        const db = (await import('./server/utils/database')).getDatabasePool();
+
+        if (!userDid || !fileId) {
+          return res.status(400).json({ error: 'userDid and fileId are required' });
+        }
+
+        const savedFeedId = `saved-${userDid}`;
+
+        // Remove file from saved feed
+        const result = await db.query(`
+          DELETE FROM feed_posts
+          WHERE feed_id = $1 AND file_id = $2
+        `, [savedFeedId, fileId]);
+
+        if (result.rowCount === 0) {
+          return res.status(404).json({ error: 'File not found in saved feed' });
+        }
+
+        // Update feed updated_at
+        await db.query(`
+          UPDATE feeds
+          SET updated_at = NOW()
+          WHERE feed_id = $1
+        `, [savedFeedId]);
+
+        return res.json({ success: true, message: 'File removed from saved feed' });
+      } catch (error: any) {
+        console.error('Error removing from saved feed:', error);
+        return res.status(500).json({ error: 'Failed to remove from saved feed', message: error.message });
+      }
+    });
+
+    // ============================================================================
     // Feed Discovery APIs (Catalogue/Store Interface)
     // ============================================================================
 
