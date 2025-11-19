@@ -1258,10 +1258,15 @@ function App() {
   
   // Track saved feed fileIds separately to avoid refetching
   const [savedFeedFileIds, setSavedFeedFileIds] = useState<string[]>([]);
+  const savedFeedLoadingRef = useRef(false);
   
   // Load saved feed fileIds from API (only when user/viewing changes)
   useEffect(() => {
     if (viewingCreatorId === userState.pnIdentifier && userState.isUnlocked && userState.pnIdentifier) {
+      // Prevent multiple simultaneous calls
+      if (savedFeedLoadingRef.current) return;
+      
+      savedFeedLoadingRef.current = true;
       setIsLoadingSavedFiles(true);
       (async () => {
         try {
@@ -1276,26 +1281,39 @@ function App() {
           setSavedFeedFileIds([]);
         } finally {
           setIsLoadingSavedFiles(false);
+          savedFeedLoadingRef.current = false;
         }
       })();
     } else {
       setSavedFeedFileIds([]);
       setSavedFiles([]);
+      savedFeedLoadingRef.current = false;
     }
   }, [viewingCreatorId, userState.pnIdentifier, userState.isUnlocked]);
   
-  // Match saved feed fileIds with indexed files (only when indexedFiles or savedFeedFileIds change)
+  // Create a map of indexed files by fileId for efficient lookup
+  const indexedFilesMap = useMemo(() => {
+    const map = new Map<string, IndexedFile>();
+    indexedFiles.forEach(f => {
+      map.set(f.metadata.fileId, f);
+    });
+    return map;
+  }, [indexedFiles]);
+  
+  // Match saved feed fileIds with indexed files (only when savedFeedFileIds or indexedFilesMap changes)
   useEffect(() => {
-    if (savedFeedFileIds.length > 0 && indexedFiles.length > 0) {
-      const savedFromIndexed = indexedFiles.filter(f => 
-        savedFeedFileIds.includes(f.metadata.fileId)
-      );
+    if (savedFeedFileIds.length > 0 && indexedFilesMap.size > 0) {
+      const savedFromIndexed = savedFeedFileIds
+        .map(fileId => indexedFilesMap.get(fileId))
+        .filter((f): f is IndexedFile => f !== undefined);
       setSavedFiles(savedFromIndexed);
-      console.log(`📊 Saved files: ${savedFromIndexed.length} files matched from ${savedFeedFileIds.length} saved IDs`);
+      if (savedFromIndexed.length > 0) {
+        console.log(`📊 Saved files: ${savedFromIndexed.length} files matched from ${savedFeedFileIds.length} saved IDs`);
+      }
     } else if (savedFeedFileIds.length === 0) {
       setSavedFiles([]);
     }
-  }, [indexedFiles, savedFeedFileIds]);
+  }, [savedFeedFileIds, indexedFilesMap]);
 
   // Track user engagement fileIds separately
   const [userLikedFileIds, setUserLikedFileIds] = useState<string[]>([]);
@@ -1334,15 +1352,15 @@ function App() {
     }
   }, [viewingCreatorId, userState.pnIdentifier, userState.isUnlocked]);
   
-  // Match engagement fileIds with indexed files (only when indexedFiles or engagement fileIds change)
+  // Match engagement fileIds with indexed files (only when engagement fileIds or indexedFilesMap changes)
   useEffect(() => {
-    if (indexedFiles.length > 0) {
-      const likedFromIndexed = indexedFiles.filter(f => 
-        userLikedFileIds.includes(f.metadata.fileId)
-      );
-      const commentedFromIndexed = indexedFiles.filter(f => 
-        userCommentedFileIds.includes(f.metadata.fileId)
-      );
+    if (indexedFilesMap.size > 0) {
+      const likedFromIndexed = userLikedFileIds
+        .map(fileId => indexedFilesMap.get(fileId))
+        .filter((f): f is IndexedFile => f !== undefined);
+      const commentedFromIndexed = userCommentedFileIds
+        .map(fileId => indexedFilesMap.get(fileId))
+        .filter((f): f is IndexedFile => f !== undefined);
       
       setUserLikedFiles(likedFromIndexed);
       setUserCommentedFiles(commentedFromIndexed);
@@ -1354,7 +1372,7 @@ function App() {
       setUserLikedFiles([]);
       setUserCommentedFiles([]);
     }
-  }, [indexedFiles, userLikedFileIds, userCommentedFileIds]);
+  }, [userLikedFileIds, userCommentedFileIds, indexedFilesMap]);
 
   // Load other user's liked and commented files when viewing their profile
   useEffect(() => {
@@ -1800,101 +1818,101 @@ function App() {
   const creatorFiles = viewingCreatorId ? creatorFilesState : [];
   const isOwnIndex = viewingCreatorId === userState.pnIdentifier && userState.isUnlocked;
   
-  // If viewing own index, filter files based on active tab
-  let filteredMeFiles: IndexedFile[] = [];
-  if (isOwnIndex) {
-    switch (mePageTab) {
-      case 'all':
-        // Combine all: owned media, liked files, and commented files
-        filteredMeFiles = Array.from(
-          new Map([...creatorFiles, ...userLikedFiles, ...userCommentedFiles]
-            .map(f => [f.metadata.fileId, f])).values()
-        );
-        break;
-      case 'media':
-        // Only owned media
-        filteredMeFiles = creatorFiles;
-        break;
-      case 'likes':
-        // Only liked files (exclude owned media - only show files owned by others that user liked)
-        filteredMeFiles = userLikedFiles.filter(f => {
-          const fileOwnerId = f.metadata.creator?.identifier?.value || 
-                              f.metadata.creator?.["@id"] || 
-                              f.metadata.author?.did ||
-                              f.metadata.creatorId;
-          const normalizedOwnerId = fileOwnerId?.trim().toLowerCase() || '';
-          const normalizedViewingId = viewingCreatorId!.trim().toLowerCase();
-          return normalizedOwnerId !== normalizedViewingId;
-        });
-        break;
-      case 'comments':
-        // Only commented files (exclude owned media - only show files owned by others that user commented on)
-        filteredMeFiles = userCommentedFiles.filter(f => {
-          const fileOwnerId = f.metadata.creator?.identifier?.value || 
-                              f.metadata.creator?.["@id"] || 
-                              f.metadata.author?.did ||
-                              f.metadata.creatorId;
-          const normalizedOwnerId = fileOwnerId?.trim().toLowerCase() || '';
-          const normalizedViewingId = viewingCreatorId!.trim().toLowerCase();
-          return normalizedOwnerId !== normalizedViewingId;
-        });
-        break;
-      case 'saved':
-        // Only saved files (private collection)
-        filteredMeFiles = savedFiles;
-        break;
-      case 'connections':
-        // Only files from connected users
-        filteredMeFiles = connectionsFiles;
-        break;
-    }
-    
-    // Pin top post at the top for 'all' and 'media' tabs
-    if ((mePageTab === 'all' || mePageTab === 'media') && filteredMeFiles.length > 0) {
-      const topPostIndex = filteredMeFiles.findIndex(f => f.metadata.isTopPost === true);
-      if (topPostIndex > 0) {
-        // Move top post to the beginning
-        const topPost = filteredMeFiles[topPostIndex];
-        filteredMeFiles = [topPost, ...filteredMeFiles.filter((_, i) => i !== topPostIndex)];
+  // Memoize filteredMeFiles to prevent unnecessary recalculations
+  const filteredMeFilesMemo = useMemo(() => {
+    let filtered: IndexedFile[] = [];
+    if (isOwnIndex) {
+      switch (mePageTab) {
+        case 'all':
+          filtered = Array.from(
+            new Map([...creatorFiles, ...userLikedFiles, ...userCommentedFiles]
+              .map(f => [f.metadata.fileId, f])).values()
+          );
+          break;
+        case 'media':
+          filtered = creatorFiles;
+          break;
+        case 'likes':
+          filtered = userLikedFiles.filter(f => {
+            const fileOwnerId = f.metadata.creator?.identifier?.value || 
+                                f.metadata.creator?.["@id"] || 
+                                f.metadata.author?.did ||
+                                f.metadata.creatorId;
+            const normalizedOwnerId = fileOwnerId?.trim().toLowerCase() || '';
+            const normalizedViewingId = viewingCreatorId!.trim().toLowerCase();
+            return normalizedOwnerId !== normalizedViewingId;
+          });
+          break;
+        case 'comments':
+          filtered = userCommentedFiles.filter(f => {
+            const fileOwnerId = f.metadata.creator?.identifier?.value || 
+                                f.metadata.creator?.["@id"] || 
+                                f.metadata.author?.did ||
+                                f.metadata.creatorId;
+            const normalizedOwnerId = fileOwnerId?.trim().toLowerCase() || '';
+            const normalizedViewingId = viewingCreatorId!.trim().toLowerCase();
+            return normalizedOwnerId !== normalizedViewingId;
+          });
+          break;
+        case 'saved':
+          filtered = savedFiles;
+          break;
+        case 'connections':
+          filtered = connectionsFiles;
+          break;
+      }
+      
+      // Pin top post at the top for 'all' and 'media' tabs
+      if ((mePageTab === 'all' || mePageTab === 'media') && filtered.length > 0) {
+        const topPostIndex = filtered.findIndex(f => f.metadata.isTopPost === true);
+        if (topPostIndex > 0) {
+          const topPost = filtered[topPostIndex];
+          filtered = [topPost, ...filtered.filter((_, i) => i !== topPostIndex)];
+        }
+      }
+    } else if (viewingCreatorId) {
+      switch (mePageTab) {
+        case 'all':
+          filtered = Array.from(
+            new Map([...creatorFiles, ...viewedUserLikedFiles, ...viewedUserCommentedFiles]
+              .map(f => [f.metadata.fileId, f])).values()
+          );
+          break;
+        case 'media':
+          filtered = creatorFiles;
+          break;
+        case 'likes':
+          filtered = viewedUserLikedFiles;
+          break;
+        case 'comments':
+          filtered = viewedUserCommentedFiles;
+          break;
+        default:
+          filtered = creatorFiles;
+      }
+      
+      // Pin top post at the top for 'all' and 'media' tabs
+      if ((mePageTab === 'all' || mePageTab === 'media') && filtered.length > 0) {
+        const topPostIndex = filtered.findIndex(f => f.metadata.isTopPost === true);
+        if (topPostIndex > 0) {
+          const topPost = filtered[topPostIndex];
+          filtered = [topPost, ...filtered.filter((_, i) => i !== topPostIndex)];
+        }
       }
     }
-  } else if (viewingCreatorId) {
-    // For other users' profiles, filter based on active tab
-    switch (mePageTab) {
-      case 'all':
-        // Combine all: owned media, liked files, and commented files
-        filteredMeFiles = Array.from(
-          new Map([...creatorFiles, ...viewedUserLikedFiles, ...viewedUserCommentedFiles]
-            .map(f => [f.metadata.fileId, f])).values()
-        );
-        break;
-      case 'media':
-        filteredMeFiles = creatorFiles;
-        break;
-      case 'likes':
-        filteredMeFiles = viewedUserLikedFiles;
-        break;
-      case 'comments':
-        filteredMeFiles = viewedUserCommentedFiles;
-        break;
-      default:
-        filteredMeFiles = creatorFiles;
-    }
-    
-    // Pin top post at the top for 'all' and 'media' tabs (for other users' profiles too)
-    if ((mePageTab === 'all' || mePageTab === 'media') && filteredMeFiles.length > 0) {
-      const topPostIndex = filteredMeFiles.findIndex(f => f.metadata.isTopPost === true);
-      if (topPostIndex > 0) {
-        // Move top post to the beginning
-        const topPost = filteredMeFiles[topPostIndex];
-        filteredMeFiles = [topPost, ...filteredMeFiles.filter((_, i) => i !== topPostIndex)];
-      }
-    }
-  }
+    return filtered;
+  }, [isOwnIndex, mePageTab, creatorFiles, userLikedFiles, userCommentedFiles, savedFiles, connectionsFiles, viewedUserLikedFiles, viewedUserCommentedFiles, viewingCreatorId]);
   
-  if (viewingCreatorId) {
-    console.log(`📊 Creator index: Found ${filteredMeFiles.length} files for creator ${viewingCreatorId}${isOwnIndex ? ` (tab: ${mePageTab}, ${creatorFiles.length} owned, ${userLikedFiles.length} liked, ${userCommentedFiles.length} commented, ${savedFiles.length} saved)` : ''}`);
-  }
+  const filteredMeFiles = filteredMeFilesMemo;
+  
+  // Only log when the count actually changes
+  const prevFilteredCountRef = useRef<number>(-1);
+  useEffect(() => {
+    if (viewingCreatorId && filteredMeFiles.length !== prevFilteredCountRef.current) {
+      prevFilteredCountRef.current = filteredMeFiles.length;
+      console.log(`📊 Creator index: Found ${filteredMeFiles.length} files for creator ${viewingCreatorId}${isOwnIndex ? ` (tab: ${mePageTab}, ${creatorFiles.length} owned, ${userLikedFiles.length} liked, ${userCommentedFiles.length} commented, ${savedFiles.length} saved)` : ''}`);
+    }
+  }, [filteredMeFiles.length, viewingCreatorId, isOwnIndex, mePageTab, creatorFiles.length, userLikedFiles.length, userCommentedFiles.length, savedFiles.length]);
   
   const creatorFeeds = viewingCreatorId ? feeds.filter(feed => feed.creatorId === viewingCreatorId) : [];
   const uniqueFiles = viewingCreatorId ? Array.from(new Map(creatorFiles.map(f => [f.metadata.fileId, f])).values()) : [];
