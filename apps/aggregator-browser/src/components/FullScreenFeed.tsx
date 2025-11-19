@@ -275,11 +275,11 @@ export function FullScreenFeed({
         scrollbarWidth: 'none', 
         msOverflowStyle: 'none', 
         WebkitOverflowScrolling: 'touch',
-        // Height accounts for bottom nav, with padding to prevent cut-off
-        height: 'calc(100vh - 64px - env(safe-area-inset-bottom, 0px))',
-        maxHeight: 'calc(100vh - 64px - env(safe-area-inset-bottom, 0px))',
-        // Add padding at bottom to ensure last item isn't cut off
-        paddingBottom: 'env(safe-area-inset-bottom, 0px)',
+        // Full viewport height - the fixed bottom nav will overlay
+        height: '100vh',
+        maxHeight: '100vh',
+        // Add bottom padding equal to bottom nav height so content doesn't get hidden behind it
+        paddingBottom: 'calc(64px + env(safe-area-inset-bottom, 0px))', // Bottom nav (h-16 = 64px) + safe area
         // Start at top of window
         marginTop: '0',
         paddingTop: '0',
@@ -306,10 +306,10 @@ export function FullScreenFeed({
             data-file-id={fileId}
             className="w-full snap-start flex items-center justify-center bg-black relative"
             style={{ 
-              // Match container height to fit within viewport minus bottom nav
-              height: 'calc(100vh - 64px - env(safe-area-inset-bottom, 0px))',
-              minHeight: 'calc(100vh - 64px - env(safe-area-inset-bottom, 0px))',
-              maxHeight: 'calc(100vh - 64px - env(safe-area-inset-bottom, 0px))',
+              // Full viewport height - bottom padding in parent prevents overlap
+              height: '100vh',
+              minHeight: '100vh',
+              maxHeight: '100vh',
               // Start at top of window
               marginTop: '0',
               paddingTop: '0',
@@ -343,8 +343,8 @@ export function FullScreenFeed({
                   src={videoBlobs.get(fileId)!}
                   className="w-full object-contain"
                   style={{ 
-                    // Account for bottom nav via parent padding
-                    maxHeight: 'calc(100vh - 64px - env(safe-area-inset-bottom, 0px))',
+                    // Full viewport height - parent padding prevents overlap with bottom nav
+                    maxHeight: '100vh',
                     height: 'auto',
                     width: '100%'
                   }}
@@ -383,8 +383,8 @@ export function FullScreenFeed({
                 alt={fileName}
                 className="w-full object-contain"
                 style={{ 
-                  // Account for bottom nav via parent padding
-                  maxHeight: 'calc(100vh - 64px - env(safe-area-inset-bottom, 0px))',
+                  // Full viewport height - parent padding prevents overlap with bottom nav
+                  maxHeight: '100vh',
                   height: 'auto',
                   width: '100%'
                 }}

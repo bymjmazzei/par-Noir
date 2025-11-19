@@ -2882,7 +2882,7 @@ function App() {
               }
             }}
             className="flex-1"
-            style={{ height: 'calc(100vh - 64px)' }}
+            style={{ height: '100vh', maxHeight: '100vh' }}
           >
             {filteredFilesByFeed.length > 0 ? (
               <FullScreenFeed
