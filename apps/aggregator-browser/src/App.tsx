@@ -2035,7 +2035,7 @@ function App() {
   
   // Only log when the count actually changes - use refs to track all values to prevent unnecessary re-runs
   const prevFilteredCountRef = useRef<number>(-1);
-  const prevViewingCreatorIdRef = useRef<string | null>(null);
+  // prevViewingCreatorIdRef is already declared above (line 436)
   const prevIsOwnIndexRef = useRef<boolean>(false);
   const prevMePageTabRef = useRef<string>('all');
   
