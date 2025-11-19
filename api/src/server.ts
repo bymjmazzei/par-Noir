@@ -2634,7 +2634,7 @@ class ProductionServer {
         const { CompanionMetadataSheets } = await import('./server/modules/companionMetadataSheets');
         const { googleDriveProxyService } = await import('./server/modules/googleDriveProxy');
         const { fileId } = req.params;
-        const { userDid, content, authorName, fileOwnerDid } = req.body;
+        const { userDid, content, authorName, fileOwnerDid, parentCommentId, postReply } = req.body;
 
         if (!userDid || !content) {
           return res.status(400).json({ error: 'userDid and content are required' });
@@ -2645,7 +2645,9 @@ class ProductionServer {
           userDid, 
           content, 
           authorName,
-          fileOwnerDid // Optional - will be fetched from metadata if not provided
+          fileOwnerDid, // Optional - will be fetched from metadata if not provided
+          parentCommentId, // Optional - for threaded replies
+          postReply // Optional - for post replies
         );
 
         // Update engagement counts in database metadata
@@ -2745,6 +2747,30 @@ class ProductionServer {
       } catch (error: any) {
         console.error('Error adding comment:', error);
         return res.status(500).json({ error: 'Failed to add comment', message: error.message });
+      }
+    });
+
+    // POST /api/engagement/:fileId/comment/:commentId/like - Like a comment
+    this.app.post('/api/engagement/:fileId/comment/:commentId/like', async (req, res) => {
+      try {
+        const { EngagementService } = await import('./server/modules/engagementService');
+        const { fileId, commentId } = req.params;
+        const { userDid } = req.body;
+
+        if (!userDid) {
+          return res.status(400).json({ error: 'userDid is required' });
+        }
+
+        const result = await EngagementService.likeComment(fileId, commentId, userDid);
+
+        return res.json({
+          liked: result.liked,
+          likes: result.likes,
+          likeCount: result.likes.length
+        });
+      } catch (error: any) {
+        console.error('Error liking comment:', error);
+        return res.status(500).json({ error: 'Failed to like comment', message: error.message });
       }
     });
 

@@ -23,7 +23,14 @@ interface Comment {
   authorName: string;
   content: string;
   timestamp: string;
-  likes?: number;
+  likes: string[]; // Array of user IDs who liked
+  parentCommentId?: string; // For threaded replies
+  replies?: Comment[];
+  postReply?: {
+    fileId: string;
+    thumbnail?: string;
+    title?: string;
+  };
 }
 
 const STORAGE_KEY = 'pn_engagement_data';
@@ -198,7 +205,14 @@ export function useEngagement() {
     });
   }, [userState.isUnlocked, userState.pnIdentifier]);
 
-  const addComment = useCallback(async (fileId: string, content: string, authorId: string, authorName: string) => {
+  const addComment = useCallback(async (
+    fileId: string, 
+    content: string, 
+    authorId: string, 
+    authorName: string,
+    parentCommentId?: string,
+    postReply?: { fileId: string; thumbnail?: string; title?: string }
+  ) => {
     if (userState.isUnlocked && userState.pnIdentifier) {
       // Use backend API
       try {
@@ -208,7 +222,9 @@ export function useEngagement() {
           body: JSON.stringify({
             userDid: userState.pnIdentifier,
             content,
-            authorName
+            authorName,
+            parentCommentId,
+            postReply
           })
         });
 
@@ -217,7 +233,47 @@ export function useEngagement() {
           setEngagement(prev => {
             const newComments = new Map(prev.comments);
             const fileComments = newComments.get(fileId) || [];
-            newComments.set(fileId, [...fileComments, comment]);
+            
+            if (parentCommentId) {
+              // Add as reply to parent comment
+              const updatedComments = fileComments.map(c => {
+                if (c.id === parentCommentId) {
+                  return {
+                    ...c,
+                    replies: [...(c.replies || []), comment]
+                  };
+                }
+                // Also check nested replies
+                if (c.replies) {
+                  const updateNestedReplies = (replies: Comment[]): Comment[] => {
+                    return replies.map(r => {
+                      if (r.id === parentCommentId) {
+                        return {
+                          ...r,
+                          replies: [...(r.replies || []), comment]
+                        };
+                      }
+                      if (r.replies) {
+                        return {
+                          ...r,
+                          replies: updateNestedReplies(r.replies)
+                        };
+                      }
+                      return r;
+                    });
+                  };
+                  return {
+                    ...c,
+                    replies: updateNestedReplies(c.replies)
+                  };
+                }
+                return c;
+              });
+              newComments.set(fileId, updatedComments);
+            } else {
+              newComments.set(fileId, [...fileComments, comment]);
+            }
+            
             return { ...prev, comments: newComments };
           });
           return;
@@ -235,13 +291,135 @@ export function useEngagement() {
       authorName,
       content,
       timestamp: new Date().toISOString(),
-      likes: 0
+      likes: [],
+      parentCommentId,
+      postReply
     };
 
     setEngagement(prev => {
       const newComments = new Map(prev.comments);
       const fileComments = newComments.get(fileId) || [];
-      newComments.set(fileId, [...fileComments, comment]);
+      
+      if (parentCommentId) {
+        // Add as reply to parent comment
+        const updatedComments = fileComments.map(c => {
+          if (c.id === parentCommentId) {
+            return {
+              ...c,
+              replies: [...(c.replies || []), comment]
+            };
+          }
+          // Also check nested replies
+          if (c.replies) {
+            const updateNestedReplies = (replies: Comment[]): Comment[] => {
+              return replies.map(r => {
+                if (r.id === parentCommentId) {
+                  return {
+                    ...r,
+                    replies: [...(r.replies || []), comment]
+                  };
+                }
+                if (r.replies) {
+                  return {
+                    ...r,
+                    replies: updateNestedReplies(r.replies)
+                  };
+                }
+                return r;
+              });
+            };
+            return {
+              ...c,
+              replies: updateNestedReplies(c.replies)
+            };
+          }
+          return c;
+        });
+        newComments.set(fileId, updatedComments);
+      } else {
+        newComments.set(fileId, [...fileComments, comment]);
+      }
+      
+      return { ...prev, comments: newComments };
+    });
+  }, [userState.isUnlocked, userState.pnIdentifier]);
+
+  const likeComment = useCallback(async (fileId: string, commentId: string, userId: string) => {
+    if (userState.isUnlocked && userState.pnIdentifier) {
+      // Use backend API
+      try {
+        const response = await fetch(`${API_ENDPOINT}/api/engagement/${fileId}/comment/${commentId}/like`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ userDid: userState.pnIdentifier })
+        });
+
+        if (response.ok) {
+          const result = await response.json();
+          setEngagement(prev => {
+            const newComments = new Map(prev.comments);
+            const fileComments = newComments.get(fileId) || [];
+            
+            const updateCommentLikes = (comments: Comment[]): Comment[] => {
+              return comments.map(c => {
+                if (c.id === commentId) {
+                  const likes = c.likes || [];
+                  const hasLiked = likes.includes(userId);
+                  return {
+                    ...c,
+                    likes: hasLiked 
+                      ? likes.filter(id => id !== userId)
+                      : [...likes, userId]
+                  };
+                }
+                if (c.replies) {
+                  return {
+                    ...c,
+                    replies: updateCommentLikes(c.replies)
+                  };
+                }
+                return c;
+              });
+            };
+            
+            newComments.set(fileId, updateCommentLikes(fileComments));
+            return { ...prev, comments: newComments };
+          });
+          return;
+        }
+      } catch (error) {
+        console.error('Failed to like comment:', error);
+      }
+    }
+
+    // Fallback to localStorage
+    setEngagement(prev => {
+      const newComments = new Map(prev.comments);
+      const fileComments = newComments.get(fileId) || [];
+      
+      const updateCommentLikes = (comments: Comment[]): Comment[] => {
+        return comments.map(c => {
+          if (c.id === commentId) {
+            const likes = c.likes || [];
+            const hasLiked = likes.includes(userId);
+            return {
+              ...c,
+              likes: hasLiked 
+                ? likes.filter(id => id !== userId)
+                : [...likes, userId]
+            };
+          }
+          if (c.replies) {
+            return {
+              ...c,
+              replies: updateCommentLikes(c.replies)
+            };
+          }
+          return c;
+        });
+      };
+      
+      newComments.set(fileId, updateCommentLikes(fileComments));
       return { ...prev, comments: newComments };
     });
   }, [userState.isUnlocked, userState.pnIdentifier]);
@@ -349,7 +527,8 @@ export function useEngagement() {
     loadComments,
     loadLikeStatus,
     loadEngagementStats,
-    loadBulkEngagementStats
+    loadBulkEngagementStats,
+    likeComment // Add this export
   };
 }
 

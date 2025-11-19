@@ -21,7 +21,14 @@ export interface Comment {
   authorName: string;
   content: string;
   timestamp: string;
-  likes?: number;
+  likes: string[]; // Array of user IDs who liked
+  parentCommentId?: string; // For threaded replies
+  replies?: Comment[];
+  postReply?: {
+    fileId: string;
+    thumbnail?: string;
+    title?: string;
+  };
   fileOwnerDid?: string; // File owner DID (owns the content)
 }
 
@@ -121,7 +128,9 @@ export class EngagementService {
     userDid: string,
     content: string,
     authorName?: string,
-    fileOwnerDid?: string
+    fileOwnerDid?: string,
+    parentCommentId?: string,
+    postReply?: { fileId: string; thumbnail?: string; title?: string }
   ): Promise<Comment> {
     const db = getDatabasePool();
     
@@ -146,6 +155,8 @@ export class EngagementService {
         content,
         fileOwnerDid: ownerDid || null,
         commentorDid: userDid,
+        parentCommentId: parentCommentId || null,
+        postReply: postReply || null,
         note: 'File owner owns content; commentor references it'
       };
 
@@ -158,20 +169,22 @@ export class EngagementService {
       const row = result.rows[0];
       const parsedContent = JSON.parse(row.content || '{}');
       
-      const comment = {
+      const comment: Comment = {
         id: row.engagement_id,
         fileId: row.file_id,
         authorId: row.user_did, // Commentor DID
         authorName: authorName || row.user_did.substring(0, 8),
         content: parsedContent.content || content,
         timestamp: row.created_at,
-        likes: 0,
+        likes: [],
+        parentCommentId: parsedContent.parentCommentId || parentCommentId || undefined,
+        postReply: parsedContent.postReply || postReply || undefined,
         // Add file owner reference
         fileOwnerDid: parsedContent.fileOwnerDid || ownerDid || undefined
       };
 
-      // Trigger notification for file owner
-      if (ownerDid && ownerDid !== userDid) {
+      // Trigger notification for file owner (only for top-level comments, not replies)
+      if (ownerDid && ownerDid !== userDid && !parentCommentId) {
         try {
           const { NotificationService } = await import('./notificationService');
           await NotificationService.notifyFileComment(fileId, comment.id, userDid, ownerDid);
@@ -190,7 +203,7 @@ export class EngagementService {
 
   /**
    * Get comments for a file
-   * Returns comments with file owner reference
+   * Returns comments with file owner reference, threaded structure
    */
   static async getComments(fileId: string): Promise<Comment[]> {
     const db = getDatabasePool();
@@ -207,13 +220,39 @@ export class EngagementService {
         console.warn('Could not fetch file owner from metadata:', error);
       }
 
+      // Get all comments (including replies)
       const result = await db.query<EngagementRow>(`
         SELECT * FROM engagement 
         WHERE file_id = $1 AND type = 'comment'
         ORDER BY created_at ASC
       `, [fileId]);
 
-      return result.rows.map(row => {
+      // Get comment likes
+      const likesResult = await db.query(`
+        SELECT content, user_did 
+        FROM engagement 
+        WHERE file_id = $1 AND type = 'comment_like'
+      `, [fileId]);
+
+      // Build a map of comment likes
+      const commentLikesMap = new Map<string, string[]>();
+      likesResult.rows.forEach(row => {
+        try {
+          const parsed = JSON.parse(row.content || '{}');
+          const commentId = parsed.commentId;
+          if (commentId) {
+            if (!commentLikesMap.has(commentId)) {
+              commentLikesMap.set(commentId, []);
+            }
+            commentLikesMap.get(commentId)!.push(row.user_did);
+          }
+        } catch {
+          // Skip invalid entries
+        }
+      });
+
+      // Parse all comments
+      const allComments = result.rows.map(row => {
         // Try to parse JSON content (new format) or use plain text (old format)
         let parsedContent: any = {};
         let commentContent = row.content || '';
@@ -226,19 +265,100 @@ export class EngagementService {
           commentContent = row.content || '';
         }
 
+        const commentId = row.engagement_id;
+        const likes = commentLikesMap.get(commentId) || [];
+
         return {
-          id: row.engagement_id,
+          id: commentId,
           fileId: row.file_id,
           authorId: row.user_did, // Commentor DID
           authorName: row.user_did.substring(0, 8),
           content: commentContent,
           timestamp: row.created_at,
-          likes: 0, // TODO: Add comment likes if needed
+          likes,
+          parentCommentId: parsedContent.parentCommentId || undefined,
+          postReply: parsedContent.postReply || undefined,
+          replies: [] as Comment[],
           fileOwnerDid: parsedContent.fileOwnerDid || fileOwnerDid // File owner reference
-        };
+        } as Comment;
       });
+
+      // Build threaded structure
+      const topLevelComments: Comment[] = [];
+      const commentMap = new Map<string, Comment>();
+      
+      // First pass: create map of all comments
+      allComments.forEach(comment => {
+        commentMap.set(comment.id, comment);
+      });
+
+      // Second pass: build tree structure
+      allComments.forEach(comment => {
+        if (comment.parentCommentId) {
+          // This is a reply - add it to parent's replies
+          const parent = commentMap.get(comment.parentCommentId);
+          if (parent) {
+            if (!parent.replies) {
+              parent.replies = [];
+            }
+            parent.replies.push(comment);
+          }
+        } else {
+          // This is a top-level comment
+          topLevelComments.push(comment);
+        }
+      });
+
+      return topLevelComments;
     } catch (error) {
       console.error('Failed to get comments:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Like a comment
+   */
+  static async likeComment(fileId: string, commentId: string, userDid: string): Promise<{ liked: boolean; likes: string[] }> {
+    const db = getDatabasePool();
+    
+    try {
+      // Check if already liked by looking for existing like with this commentId in content
+      const existing = await db.query(`
+        SELECT engagement_id FROM engagement 
+        WHERE file_id = $1 AND user_did = $2 AND type = 'comment_like' 
+        AND content::jsonb->>'commentId' = $3
+        LIMIT 1
+      `, [fileId, userDid, commentId]);
+
+      if (existing.rows.length > 0) {
+        // Unlike - remove the like
+        await db.query(`
+          DELETE FROM engagement 
+          WHERE file_id = $1 AND user_did = $2 AND type = 'comment_like' 
+          AND content::jsonb->>'commentId' = $3
+        `, [fileId, userDid, commentId]);
+      } else {
+        // Like - add the like
+        await db.query(`
+          INSERT INTO engagement (file_id, user_did, type, content)
+          VALUES ($1, $2, 'comment_like', $3)
+        `, [fileId, userDid, JSON.stringify({ commentId })]);
+      }
+
+      // Get updated likes list
+      const likesResult = await db.query(`
+        SELECT user_did FROM engagement 
+        WHERE file_id = $1 AND type = 'comment_like' 
+        AND content::jsonb->>'commentId' = $2
+      `, [fileId, commentId]);
+
+      const likes = likesResult.rows.map(row => row.user_did);
+      const liked = existing.rows.length === 0; // If it didn't exist, now it's liked
+
+      return { liked, likes };
+    } catch (error) {
+      console.error('Failed to like comment:', error);
       throw error;
     }
   }
