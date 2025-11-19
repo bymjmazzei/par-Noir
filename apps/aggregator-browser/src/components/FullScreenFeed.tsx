@@ -99,9 +99,15 @@ export function FullScreenFeed({
   // Function to get popular comments for a file
   const getPopularComments = useCallback((fileId: string): any[] => {
     const allComments = getComments(fileId);
+    if (!allComments || allComments.length === 0) {
+      return [];
+    }
     // Filter to top-level comments only (no replies), sort by likes, filter short comments
     const topLevelComments = allComments
-      .filter((c: any) => !c.parentCommentId && c.content && c.content.length >= 10)
+      .filter((c: any) => {
+        // Include comments that are top-level (no parent) and have content
+        return !c.parentCommentId && c.content && typeof c.content === 'string' && c.content.trim().length >= 10;
+      })
       .sort((a: any, b: any) => {
         const aLikes = Array.isArray(a.likes) ? a.likes.length : 0;
         const bLikes = Array.isArray(b.likes) ? b.likes.length : 0;
@@ -657,12 +663,23 @@ export function FullScreenFeed({
                 {/* Right Half - Live Comments */}
                 <div className="flex-1 flex items-center">
                   {(() => {
+                    // Only show comments for the currently visible file
+                    if (visibleFileId !== fileId) {
+                      return null;
+                    }
+                    
                     const popularComments = getPopularComments(fileId);
+                    
+                    // If no comments, don't show anything
+                    if (popularComments.length === 0) {
+                      return null;
+                    }
+                    
                     const currentIndex = currentCommentIndex.get(fileId) || 0;
-                    const opacity = commentOpacity.get(fileId) ?? (popularComments.length > 0 ? 1 : 0);
+                    const opacity = commentOpacity.get(fileId) ?? 1;
                     const currentComment = popularComments[currentIndex];
                     
-                    if (!currentComment || popularComments.length === 0) {
+                    if (!currentComment) {
                       return null;
                     }
                     
