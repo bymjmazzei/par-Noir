@@ -403,14 +403,20 @@ export function ProfileActionMenu({ creatorId, onViewProfile, onMessage, indexed
       {isOpen && (
         <div 
           ref={menuRef}
-          className="absolute left-full top-0 ml-2 w-56 bg-neutral-800 border border-neutral-700 rounded-lg shadow-xl overflow-hidden z-[9999]"
-          style={{ position: 'absolute', display: 'block', visibility: 'visible', opacity: 1 }}
+          className="fixed w-56 bg-neutral-800 border border-neutral-700 rounded-lg shadow-xl overflow-hidden z-[9999]"
+          style={{ 
+            display: 'block', 
+            visibility: 'visible', 
+            opacity: 1,
+            top: buttonRef.current ? `${buttonRef.current.getBoundingClientRect().top}px` : '0px',
+            left: buttonRef.current ? `${buttonRef.current.getBoundingClientRect().right + 8}px` : '0px'
+          }}
           onClick={(e) => {
             e.stopPropagation();
             e.preventDefault();
           }}
         >
-          {console.log('🔍 Menu rendering, isOpen:', isOpen)}
+          {console.log('🔍 Menu rendering, isOpen:', isOpen, 'buttonRef:', buttonRef.current)}
             {/* Header with Display Name */}
           <div className="px-4 py-3 border-b border-neutral-700">
             {isEditingName && isOwnProfile ? (
