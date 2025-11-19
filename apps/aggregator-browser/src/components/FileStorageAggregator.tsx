@@ -4,7 +4,7 @@
  */
 
 import React, { useState, useEffect, useRef } from 'react';
-import { Download, File, RefreshCw, AlertCircle, Lock, Globe, X, Edit, Eye, Grid, List, Plus, Cloud, MoreVertical, Share2 } from 'lucide-react';
+import { Download, File, RefreshCw, AlertCircle, Lock, Globe, X, Edit, Eye, Grid, List, Plus, Cloud, MoreVertical, Share2, Star } from 'lucide-react';
 import { PNOAuthService } from '../services/pnOAuthService';
 import { EncryptionManager } from '../utils/encryptionManager';
 import { getEncryptionService } from '../services/encryptionService';
@@ -1424,6 +1424,53 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
     }
   };
 
+  // Handle set/unset top post
+  const handleSetTopPost = async (file: DriveFile, accountId: string) => {
+    if (!authenticatedUser?.id || !accountId) return;
+
+    setIsLoading(true);
+    setError(null);
+
+    try {
+      const accessToken = await PNOAuthService.getValidAccessToken();
+      if (!accessToken) {
+        throw new Error('No valid access token');
+      }
+
+      // Get current metadata to check if already top post
+      const metadata = fileMetadataMap.get(file.id);
+      const currentIsTopPost = metadata?.isTopPost || false;
+      const newIsTopPost = !currentIsTopPost;
+
+      const response = await fetch(`${apiEndpoint}/api/aggregator/metadata-index/${file.id}`, {
+        method: 'PUT',
+        headers: {
+          'Authorization': `Bearer ${accessToken}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          isTopPost: newIsTopPost
+        })
+      });
+
+      if (response.ok) {
+        // Update local metadata
+        const updatedMetadata = { ...metadata, isTopPost: newIsTopPost };
+        setFileMetadataMap(prev => new Map(prev).set(file.id, updatedMetadata));
+        setOpenMenuFor(null);
+        console.log(`[FileStorageAggregator] ${newIsTopPost ? 'Set' : 'Unset'} top post for ${file.name}`);
+      } else {
+        const errorText = await response.text();
+        throw new Error(`Failed to update top post: ${errorText}`);
+      }
+    } catch (err: any) {
+      setError(err.message || 'Failed to set top post');
+      console.error('[FileStorageAggregator] Set top post error:', err);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   // Close menu when clicking outside
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -1925,6 +1972,20 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
                                 <Share2 className="h-4 w-4" />
                                 <span>Share settings</span>
                               </button>
+                              {file.isPublic && (
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setOpenMenuFor(null);
+                                    handleSetTopPost(file, account.accountId);
+                                  }}
+                                  className="flex w-full items-center space-x-2 px-3 py-2 text-sm text-text-secondary hover:text-yellow-400 hover:bg-neutral-800 transition-colors"
+                                  disabled={isLoading}
+                                >
+                                  <Star className={`h-4 w-4 ${fileMetadataMap.get(file.id)?.isTopPost ? 'fill-yellow-400 text-yellow-400' : ''}`} />
+                                  <span>{fileMetadataMap.get(file.id)?.isTopPost ? 'Unset top post' : 'Set as top post'}</span>
+                                </button>
+                              )}
                               <button
                                 onClick={(e) => {
                                   e.stopPropagation();
@@ -2066,6 +2127,20 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
                               <Share2 className="h-4 w-4" />
                               <span>Share settings</span>
                             </button>
+                            {file.isPublic && (
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setOpenMenuFor(null);
+                                  handleSetTopPost(file, account.accountId);
+                                }}
+                                className="flex w-full items-center space-x-2 px-3 py-2 text-sm text-text-secondary hover:text-yellow-400 hover:bg-neutral-800 transition-colors"
+                                disabled={isLoading}
+                              >
+                                <Star className={`h-4 w-4 ${fileMetadataMap.get(file.id)?.isTopPost ? 'fill-yellow-400 text-yellow-400' : ''}`} />
+                                <span>{fileMetadataMap.get(file.id)?.isTopPost ? 'Unset top post' : 'Set as top post'}</span>
+                              </button>
+                            )}
                             <button
                               onClick={(e) => {
                                 e.stopPropagation();
