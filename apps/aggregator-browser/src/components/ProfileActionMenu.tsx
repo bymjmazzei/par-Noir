@@ -46,8 +46,17 @@ export function ProfileActionMenu({ creatorId, onViewProfile, onMessage, indexed
     return true;
   };
 
+  // Normalize identifiers for comparison (remove "pn-" prefix if present)
+  const normalizeId = (id: string | undefined | null): string => {
+    if (!id) return '';
+    return id.startsWith('pn-') ? id.substring(3) : id;
+  };
+  
+  const normalizedCreatorId = normalizeId(creatorId);
+  const normalizedUserPnId = normalizeId(userState.pnIdentifier);
+  
   // Use isOwner prop if provided, otherwise check if creatorId matches user's pN identifier
-  const isOwnProfile = isOwner || (userState.pnIdentifier && isValidPnIdentifier(creatorId) && creatorId === userState.pnIdentifier);
+  const isOwnProfile = isOwner || (normalizedUserPnId && isValidPnIdentifier(creatorId) && normalizedCreatorId === normalizedUserPnId);
 
   // Get display name for this creator
   const displayName = useMemo(() => {

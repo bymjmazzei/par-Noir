@@ -97,14 +97,30 @@ export class MetadataIndexService {
           
           return shouldInclude;
         })
-        .map((entry: any) => ({
-          metadata: {
-            ...entry.metadata,
-            // Use pnIdentifier as creatorId - they're the same thing
-            creatorId: entry.pnIdentifier || entry.metadata.creatorId
-          },
-          thumbnail: entry.metadata?.thumbnail
-        }));
+        .map((entry: any) => {
+          // Normalize pnIdentifier - remove "pn-" prefix if present
+          const pnId = entry.pnIdentifier;
+          const normalizedPnId = pnId && pnId.startsWith('pn-') ? pnId.substring(3) : pnId;
+          
+          // Debug logging for first entry
+          if (aggregatedEntries.indexOf(entry) === 0) {
+            console.log('🔍 [MetadataIndexService] Setting creatorId:', {
+              rawPnIdentifier: pnId,
+              normalizedPnId,
+              existingCreatorId: entry.metadata.creatorId,
+              finalCreatorId: normalizedPnId || entry.metadata.creatorId
+            });
+          }
+          
+          return {
+            metadata: {
+              ...entry.metadata,
+              // Use normalized pnIdentifier as creatorId - they're the same thing
+              creatorId: normalizedPnId || entry.metadata.creatorId
+            },
+            thumbnail: entry.metadata?.thumbnail
+          };
+        });
       
       console.log(`✅ [MetadataIndexService] After initial filtering: ${files.length} files`);
 

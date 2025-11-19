@@ -54,8 +54,30 @@ export function FeedEngagementSidebar({
                     file.metadata.creator?.["@id"] || 
                     file.metadata.author?.did;
   
-  // Calculate isOwner - creatorId is now the pN identifier, so direct comparison works
-  const calculatedIsOwner = isOwner || (userState.isUnlocked && userState.pnIdentifier && creatorId === userState.pnIdentifier);
+  // Normalize identifiers for comparison (remove "pn-" prefix if present)
+  const normalizeId = (id: string | undefined | null): string => {
+    if (!id) return '';
+    return id.startsWith('pn-') ? id.substring(3) : id;
+  };
+  
+  const normalizedCreatorId = normalizeId(creatorId);
+  const normalizedUserPnId = normalizeId(userState.pnIdentifier);
+  
+  // Debug logging (only for own files to avoid spam)
+  if (userState.isUnlocked && userState.pnIdentifier) {
+    console.log('🔍 [FeedEngagementSidebar] Ownership check:', {
+      creatorId,
+      normalizedCreatorId,
+      userPnIdentifier: userState.pnIdentifier,
+      normalizedUserPnId,
+      match: normalizedCreatorId === normalizedUserPnId,
+      isOwner,
+      finalIsOwner: isOwner || (normalizedCreatorId === normalizedUserPnId)
+    });
+  }
+  
+  // Calculate isOwner - normalize both IDs before comparison
+  const calculatedIsOwner = isOwner || (userState.isUnlocked && normalizedUserPnId && normalizedCreatorId === normalizedUserPnId);
 
   const handleShare = async (e: React.MouseEvent) => {
     e.stopPropagation();
