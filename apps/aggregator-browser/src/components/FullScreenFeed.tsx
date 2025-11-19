@@ -281,7 +281,11 @@ export function FullScreenFeed({
         const isImage = file.fileType === 'image' || 
                        (file.name || file.title || '').match(/\.(jpg|jpeg|png|gif|webp|svg|bmp|ico)$/i);
         const fileName = file.name || file.title || 'Untitled';
-        const creatorId = file.creator?.identifier?.value || file.creator?.["@id"] || file.author?.did;
+        // Get creatorId - prefer pN identifier from metadata.creatorId, fallback to creator/author fields
+        const creatorId = (indexedFile.metadata as any).creatorId || 
+                          file.creator?.identifier?.value || 
+                          file.creator?.["@id"] || 
+                          file.author?.did;
 
         return (
           <div

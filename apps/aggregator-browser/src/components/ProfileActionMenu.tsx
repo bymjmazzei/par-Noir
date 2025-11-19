@@ -4,7 +4,7 @@
  */
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { User, MessageCircle, UserPlus, Check, X, Clock, ChevronDown, Edit2, Save, X as XIcon } from 'lucide-react';
+import { User, MessageCircle, UserPlus, Check, X, Clock, ChevronDown, Edit2, Save, X as XIcon, Pencil } from 'lucide-react';
 import { useUserState } from '../contexts/UserStateContext';
 import { getConnectionStatus, sendConnectionRequest, acceptConnectionRequest, rejectConnectionRequest } from '../services/connectionService';
 import { ConnectionStatus } from '../services/connectionService';
@@ -403,31 +403,35 @@ export function ProfileActionMenu({ creatorId, onViewProfile, onMessage, indexed
                 </button>
               </div>
             ) : (
-              <div className="flex items-center justify-between gap-2">
-                <div className="flex items-center space-x-2 min-w-0 flex-1">
-                  {/* Profile Icon */}
-                  <div className="w-8 h-8 rounded-full bg-black/30 backdrop-blur-sm flex items-center justify-center flex-shrink-0 overflow-hidden">
-                    {profileImageUrl && !profileImageLoading ? (
-                      <img 
-                        src={profileImageUrl} 
-                        alt={displayName}
-                        className="w-full h-full object-cover"
-                      />
-                    ) : (
-                      <User className="h-4 w-4 text-white" />
-                    )}
-                  </div>
-                  <span className="text-white font-medium text-sm truncate">{displayName}</span>
+              <div className="flex items-center gap-2">
+                {/* Profile Icon */}
+                <div className="w-8 h-8 rounded-full bg-black/30 backdrop-blur-sm flex items-center justify-center flex-shrink-0 overflow-hidden">
+                  {profileImageUrl && !profileImageLoading ? (
+                    <img 
+                      src={profileImageUrl} 
+                      alt={displayName}
+                      className="w-full h-full object-cover"
+                    />
+                  ) : (
+                    <User className="h-4 w-4 text-white" />
+                  )}
                 </div>
-                {isOwnProfile && (
-                  <button
-                    onClick={() => setIsEditingName(true)}
-                    className="p-1 text-neutral-400 hover:text-white hover:bg-neutral-700 rounded transition-colors flex-shrink-0"
-                    title="Edit display name"
-                  >
-                    <Edit2 className="h-3 w-3" />
-                  </button>
-                )}
+                <div className="flex items-center space-x-1.5 min-w-0 flex-1">
+                  <span className="text-white font-medium text-sm truncate">{displayName}</span>
+                  {isOwnProfile && (
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        e.preventDefault();
+                        setIsEditingName(true);
+                      }}
+                      className="p-0.5 text-neutral-400 hover:text-white hover:bg-neutral-700 rounded transition-colors flex-shrink-0"
+                      title="Edit display name"
+                    >
+                      <Pencil className="h-3.5 w-3.5" />
+                    </button>
+                  )}
+                </div>
               </div>
             )}
           </div>

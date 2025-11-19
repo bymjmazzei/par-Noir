@@ -173,9 +173,9 @@ export function UserStateProvider({ children }: { children: ReactNode }) {
   };
 
   const getDisplayName = (creatorId: string, nickname?: string): string => {
-    // If it's the current user, return their display name or nickname
+    // If it's the current user, return their display name or nickname or full pN identifier
     if (creatorId === userState.pnIdentifier) {
-      return userState.preferences.displayName || nickname || creatorId.substring(0, 8);
+      return userState.preferences.displayName || nickname || creatorId;
     }
 
     // Check cache for other users
@@ -184,8 +184,8 @@ export function UserStateProvider({ children }: { children: ReactNode }) {
       return cached;
     }
 
-    // Fallback to nickname or truncated creatorId
-    return nickname || creatorId.substring(0, 8);
+    // Fallback to nickname or full creatorId (pN identifier)
+    return nickname || creatorId;
   };
 
   return (

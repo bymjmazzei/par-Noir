@@ -47,7 +47,20 @@ export function FeedEngagementSidebar({
   const engagement = file.metadata.engagement;
   const likes = engagement?.likes || 0;
   const comments = engagement?.comments || 0;
-  const creatorId = file.metadata.creator?.identifier?.value || file.metadata.creator?.["@id"] || file.metadata.author?.did;
+  
+  // Get creatorId - prefer pN identifier from metadata.creatorId, fallback to creator/author fields
+  const creatorId = (file.metadata as any).creatorId || 
+                    file.metadata.creator?.identifier?.value || 
+                    file.metadata.creator?.["@id"] || 
+                    file.metadata.author?.did;
+  
+  // Calculate isOwner if not provided - check both creatorId (pN identifier) and extracted creatorId
+  const calculatedIsOwner = isOwner || (userState.isUnlocked && userState.pnIdentifier && (
+    (creatorId && creatorId === userState.pnIdentifier) ||
+    ((file.metadata as any).creatorId && (file.metadata as any).creatorId === userState.pnIdentifier) ||
+    (file.metadata.creator?.identifier?.value === userState.pnIdentifier) ||
+    (file.metadata.author?.did === userState.pnIdentifier)
+  ));
 
   const handleShare = async (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -96,7 +109,7 @@ export function FeedEngagementSidebar({
             onViewProfile={() => onCreatorClick?.(creatorId)}
             onMessage={onMessage}
             indexedFiles={indexedFiles}
-            isOwner={isOwner}
+            isOwner={calculatedIsOwner}
           />
         </div>
       )}
