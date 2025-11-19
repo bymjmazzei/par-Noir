@@ -404,12 +404,13 @@ export function ProfileActionMenu({ creatorId, onViewProfile, onMessage, indexed
         <div 
           ref={menuRef}
           className="absolute left-full top-0 ml-2 w-56 bg-neutral-800 border border-neutral-700 rounded-lg shadow-xl overflow-hidden z-[9999]"
-          style={{ position: 'absolute', display: 'block' }}
+          style={{ position: 'absolute', display: 'block', visibility: 'visible', opacity: 1 }}
           onClick={(e) => {
             e.stopPropagation();
             e.preventDefault();
           }}
         >
+          {console.log('🔍 Menu rendering, isOpen:', isOpen)}
             {/* Header with Display Name */}
           <div className="px-4 py-3 border-b border-neutral-700">
             {isEditingName && isOwnProfile ? (
