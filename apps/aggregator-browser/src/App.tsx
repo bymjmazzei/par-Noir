@@ -1256,7 +1256,10 @@ function App() {
   const [viewedUserLikedFiles, setViewedUserLikedFiles] = useState<IndexedFile[]>([]);
   const [viewedUserCommentedFiles, setViewedUserCommentedFiles] = useState<IndexedFile[]>([]);
   
-  // Load saved files from private collection
+  // Track saved feed fileIds separately to avoid refetching
+  const [savedFeedFileIds, setSavedFeedFileIds] = useState<string[]>([]);
+  
+  // Load saved feed fileIds from API (only when user/viewing changes)
   useEffect(() => {
     if (viewingCreatorId === userState.pnIdentifier && userState.isUnlocked && userState.pnIdentifier) {
       setIsLoadingSavedFiles(true);
@@ -1264,27 +1267,41 @@ function App() {
         try {
           const savedFeed = await getSavedFeed(userState.pnIdentifier);
           if (savedFeed && savedFeed.fileIds.length > 0) {
-            // Find saved files from indexed files
-            const savedFromIndexed = indexedFiles.filter(f => 
-              savedFeed.fileIds.includes(f.metadata.fileId)
-            );
-            setSavedFiles(savedFromIndexed);
-            console.log(`📊 Saved files: ${savedFromIndexed.length} files loaded`);
+            setSavedFeedFileIds(savedFeed.fileIds);
           } else {
-            setSavedFiles([]);
+            setSavedFeedFileIds([]);
           }
         } catch (error) {
-          console.error('Failed to load saved files:', error);
-          setSavedFiles([]);
+          console.error('Failed to load saved feed:', error);
+          setSavedFeedFileIds([]);
         } finally {
           setIsLoadingSavedFiles(false);
         }
       })();
-                } else {
+    } else {
+      setSavedFeedFileIds([]);
       setSavedFiles([]);
     }
-  }, [viewingCreatorId, userState.pnIdentifier, userState.isUnlocked, indexedFiles]);
+  }, [viewingCreatorId, userState.pnIdentifier, userState.isUnlocked]);
+  
+  // Match saved feed fileIds with indexed files (only when indexedFiles or savedFeedFileIds change)
+  useEffect(() => {
+    if (savedFeedFileIds.length > 0 && indexedFiles.length > 0) {
+      const savedFromIndexed = indexedFiles.filter(f => 
+        savedFeedFileIds.includes(f.metadata.fileId)
+      );
+      setSavedFiles(savedFromIndexed);
+      console.log(`📊 Saved files: ${savedFromIndexed.length} files matched from ${savedFeedFileIds.length} saved IDs`);
+    } else if (savedFeedFileIds.length === 0) {
+      setSavedFiles([]);
+    }
+  }, [indexedFiles, savedFeedFileIds]);
 
+  // Track user engagement fileIds separately
+  const [userLikedFileIds, setUserLikedFileIds] = useState<string[]>([]);
+  const [userCommentedFileIds, setUserCommentedFileIds] = useState<string[]>([]);
+  
+  // Load user engagement fileIds (only when user/viewing changes)
   useEffect(() => {
     if (viewingCreatorId === userState.pnIdentifier && userState.isUnlocked && userState.pnIdentifier) {
       setIsLoadingUserEngagement(true);
@@ -1299,31 +1316,45 @@ function App() {
           // Get file IDs that user has commented on
           const commentedFileIds = Array.from(engagementData.comments.keys());
           
-          // Find files from already indexed files
-          const likedFromIndexed = indexedFiles.filter(f => 
-            likedFileIds.includes(f.metadata.fileId)
-          );
-          const commentedFromIndexed = indexedFiles.filter(f => 
-            commentedFileIds.includes(f.metadata.fileId)
-          );
-          
-          setUserLikedFiles(likedFromIndexed);
-          setUserCommentedFiles(commentedFromIndexed);
-          
-          console.log(`📊 User engagement: ${likedFromIndexed.length} liked files, ${commentedFromIndexed.length} commented files`);
-              } catch (error) {
-          console.error('Failed to load user engagement files:', error);
-          setUserLikedFiles([]);
-          setUserCommentedFiles([]);
+          setUserLikedFileIds(likedFileIds);
+          setUserCommentedFileIds(commentedFileIds);
+        } catch (error) {
+          console.error('Failed to load user engagement:', error);
+          setUserLikedFileIds([]);
+          setUserCommentedFileIds([]);
         } finally {
           setIsLoadingUserEngagement(false);
         }
       })();
-            } else {
+    } else {
+      setUserLikedFileIds([]);
+      setUserCommentedFileIds([]);
       setUserLikedFiles([]);
       setUserCommentedFiles([]);
     }
-  }, [viewingCreatorId, userState.pnIdentifier, userState.isUnlocked, indexedFiles]);
+  }, [viewingCreatorId, userState.pnIdentifier, userState.isUnlocked]);
+  
+  // Match engagement fileIds with indexed files (only when indexedFiles or engagement fileIds change)
+  useEffect(() => {
+    if (indexedFiles.length > 0) {
+      const likedFromIndexed = indexedFiles.filter(f => 
+        userLikedFileIds.includes(f.metadata.fileId)
+      );
+      const commentedFromIndexed = indexedFiles.filter(f => 
+        userCommentedFileIds.includes(f.metadata.fileId)
+      );
+      
+      setUserLikedFiles(likedFromIndexed);
+      setUserCommentedFiles(commentedFromIndexed);
+      
+      if (likedFromIndexed.length > 0 || commentedFromIndexed.length > 0) {
+        console.log(`📊 User engagement: ${likedFromIndexed.length} liked files, ${commentedFromIndexed.length} commented files`);
+      }
+    } else {
+      setUserLikedFiles([]);
+      setUserCommentedFiles([]);
+    }
+  }, [indexedFiles, userLikedFileIds, userCommentedFileIds]);
 
   // Load other user's liked and commented files when viewing their profile
   useEffect(() => {
@@ -2314,15 +2345,12 @@ function App() {
                   try {
                     await saveToFeed(userState.pnIdentifier!, file.metadata.fileId);
                     success('Saved to your private collection!');
-                    // Refresh saved files
+                    // Refresh saved feed fileIds (the matching effect will update savedFiles)
                     const savedFeed = await getSavedFeed(userState.pnIdentifier);
                     if (savedFeed && savedFeed.fileIds.length > 0) {
-                      const savedFromIndexed = indexedFiles.filter(f => 
-                        savedFeed.fileIds.includes(f.metadata.fileId)
-                      );
-                      setSavedFiles(savedFromIndexed);
+                      setSavedFeedFileIds(savedFeed.fileIds);
                     } else {
-                      setSavedFiles([]);
+                      setSavedFeedFileIds([]);
                     }
                   } catch (error) {
                     showErrorToast('Failed to save. Please try again.');
