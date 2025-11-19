@@ -159,9 +159,9 @@ export function FeedRail({ feeds, activeFeedId, onFeedSelect, onBrowseFeeds }: F
                   </text>
                   <line 
                     x1="2" 
-                    y1="4" 
+                    y1="5" 
                     x2="8" 
-                    y2="4" 
+                    y2="5" 
                     stroke="currentColor" 
                     strokeWidth="1.5" 
                     strokeLinecap="round"
