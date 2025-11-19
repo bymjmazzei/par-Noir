@@ -138,19 +138,12 @@ export function FeedRail({ feeds, activeFeedId, onFeedSelect, onBrowseFeeds }: F
             >
               {isPublicFeed ? (
                 // White pN icon for public feed
-                <svg 
-                  width="20" 
-                  height="20" 
-                  viewBox="0 0 24 24" 
-                  fill="none" 
-                  xmlns="http://www.w3.org/2000/svg"
-                  className="text-white"
-                >
-                  <path 
-                    d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zm-1-13h2v6h-2zm0 8h2v2h-2z" 
-                    fill="currentColor"
-                  />
-                </svg>
+                <img 
+                  src="/branding/Par-Noir-Logo-White.png" 
+                  alt="pN" 
+                  className="w-5 h-5 object-contain"
+                  style={{ filter: 'brightness(0) invert(1)' }}
+                />
               ) : (
                 <span className="text-base font-medium uppercase tracking-wide">{feed.name}</span>
               )}
