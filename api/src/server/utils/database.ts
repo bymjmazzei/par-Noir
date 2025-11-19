@@ -195,20 +195,88 @@ export async function initializeDatabase(): Promise<void> {
       await db.query(`
         DO $$ 
         BEGIN
+          -- Drop foreign key constraints first if they exist
+          IF EXISTS (
+            SELECT 1 FROM information_schema.table_constraints 
+            WHERE constraint_name = 'feed_posts_feed_id_fkey'
+          ) THEN
+            ALTER TABLE feed_posts DROP CONSTRAINT feed_posts_feed_id_fkey;
+          END IF;
+          
+          IF EXISTS (
+            SELECT 1 FROM information_schema.table_constraints 
+            WHERE constraint_name = 'feed_subscriptions_feed_id_fkey'
+          ) THEN
+            ALTER TABLE feed_subscriptions DROP CONSTRAINT feed_subscriptions_feed_id_fkey;
+          END IF;
+          
+          IF EXISTS (
+            SELECT 1 FROM information_schema.table_constraints 
+            WHERE constraint_name = 'creator_subscriber_index_feed_id_fkey'
+          ) THEN
+            ALTER TABLE creator_subscriber_index DROP CONSTRAINT creator_subscriber_index_feed_id_fkey;
+          END IF;
+          
+          -- Convert columns to TEXT if they're UUID
           IF EXISTS (
             SELECT 1 FROM information_schema.columns 
             WHERE table_name = 'feeds' 
             AND column_name = 'feed_id'
             AND data_type = 'uuid'
           ) THEN
-            -- Convert UUID to TEXT
             ALTER TABLE feeds ALTER COLUMN feed_id TYPE TEXT USING feed_id::text;
-            -- Update foreign key constraints in feed_posts
+          END IF;
+          
+          IF EXISTS (
+            SELECT 1 FROM information_schema.columns 
+            WHERE table_name = 'feed_posts' 
+            AND column_name = 'feed_id'
+            AND data_type = 'uuid'
+          ) THEN
             ALTER TABLE feed_posts ALTER COLUMN feed_id TYPE TEXT USING feed_id::text;
-            -- Update foreign key constraints in feed_subscriptions
+          END IF;
+          
+          IF EXISTS (
+            SELECT 1 FROM information_schema.columns 
+            WHERE table_name = 'feed_subscriptions' 
+            AND column_name = 'feed_id'
+            AND data_type = 'uuid'
+          ) THEN
             ALTER TABLE feed_subscriptions ALTER COLUMN feed_id TYPE TEXT USING feed_id::text;
-            -- Update foreign key constraints in creator_subscriber_index
+          END IF;
+          
+          IF EXISTS (
+            SELECT 1 FROM information_schema.columns 
+            WHERE table_name = 'creator_subscriber_index' 
+            AND column_name = 'feed_id'
+            AND data_type = 'uuid'
+          ) THEN
             ALTER TABLE creator_subscriber_index ALTER COLUMN feed_id TYPE TEXT USING feed_id::text;
+          END IF;
+          
+          -- Recreate foreign key constraints with TEXT
+          IF NOT EXISTS (
+            SELECT 1 FROM information_schema.table_constraints 
+            WHERE constraint_name = 'feed_posts_feed_id_fkey'
+          ) THEN
+            ALTER TABLE feed_posts ADD CONSTRAINT feed_posts_feed_id_fkey 
+            FOREIGN KEY (feed_id) REFERENCES feeds(feed_id) ON DELETE CASCADE;
+          END IF;
+          
+          IF NOT EXISTS (
+            SELECT 1 FROM information_schema.table_constraints 
+            WHERE constraint_name = 'feed_subscriptions_feed_id_fkey'
+          ) THEN
+            ALTER TABLE feed_subscriptions ADD CONSTRAINT feed_subscriptions_feed_id_fkey 
+            FOREIGN KEY (feed_id) REFERENCES feeds(feed_id) ON DELETE CASCADE;
+          END IF;
+          
+          IF NOT EXISTS (
+            SELECT 1 FROM information_schema.table_constraints 
+            WHERE constraint_name = 'creator_subscriber_index_feed_id_fkey'
+          ) THEN
+            ALTER TABLE creator_subscriber_index ADD CONSTRAINT creator_subscriber_index_feed_id_fkey 
+            FOREIGN KEY (feed_id) REFERENCES feeds(feed_id) ON DELETE CASCADE;
           END IF;
         END $$;
       `);
