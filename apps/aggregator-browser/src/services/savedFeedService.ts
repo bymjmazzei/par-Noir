@@ -29,8 +29,14 @@ export async function getSavedFeed(userDid: string): Promise<SavedFeed | null> {
   }
 
   if (response.status === 404) {
-    // No saved feed exists yet - this is not an error
-    return null;
+    // No saved posts yet - return empty feed
+    return {
+      feedId: `saved-${userDid}`,
+      feedName: 'Saved',
+      fileIds: [],
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    };
   }
 
   // For 500 or other errors, throw so backoff logic can work
