@@ -1487,24 +1487,31 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
     
     const handleClickOutside = (event: MouseEvent) => {
       const target = event.target as Node;
-      if (actionMenuRef.current && !actionMenuRef.current.contains(target)) {
-        // Check if click is on the menu button itself
-        const menuButton = document.querySelector(`[data-menu-button="${openMenuFor}"]`);
-        if (menuButton && menuButton.contains(target)) {
-          return; // Don't close if clicking the button
-        }
-        setOpenMenuFor(null);
+      
+      // Check if click is on the menu button itself
+      const menuButton = document.querySelector(`[data-menu-button="${openMenuFor}"]`);
+      if (menuButton && (menuButton.contains(target) || menuButton === target)) {
+        return; // Don't close if clicking the button
       }
+      
+      // Check if click is inside the menu
+      if (actionMenuRef.current && actionMenuRef.current.contains(target)) {
+        return; // Don't close if clicking inside menu
+      }
+      
+      // Close menu if clicking outside
+      console.log('[FileStorageAggregator] Click outside detected, closing menu');
+      setOpenMenuFor(null);
     };
 
-    // Use a small delay to avoid immediate closure
+    // Use a delay to avoid immediate closure from the button click
     const timeout = setTimeout(() => {
-      document.addEventListener('mousedown', handleClickOutside);
-    }, 100);
+      document.addEventListener('mousedown', handleClickOutside, true);
+    }, 200);
 
     return () => {
       clearTimeout(timeout);
-      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('mousedown', handleClickOutside, true);
     };
   }, [openMenuFor]);
 
@@ -1963,9 +1970,15 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
                           {openMenuFor === file.id && (
                             <div
                               ref={actionMenuRef}
-                              className="absolute right-0 mt-2 w-44 bg-neutral-900 border border-neutral-700 rounded-lg shadow-xl z-30 py-1"
-                              onClick={(e) => e.stopPropagation()}
-                              onMouseDown={(e) => e.stopPropagation()}
+                              className="absolute right-0 bottom-full mb-2 w-44 bg-neutral-900 border border-neutral-700 rounded-lg shadow-xl z-50 py-1"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                e.preventDefault();
+                              }}
+                              onMouseDown={(e) => {
+                                e.stopPropagation();
+                                e.preventDefault();
+                              }}
                             >
                               <button
                                 onClick={(e) => {
@@ -2122,9 +2135,15 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
                         {openMenuFor === file.id && (
                           <div
                             ref={actionMenuRef}
-                            className="absolute right-0 mt-2 w-44 bg-neutral-900 border border-neutral-700 rounded-lg shadow-xl z-30 py-1"
-                            onClick={(e) => e.stopPropagation()}
-                            onMouseDown={(e) => e.stopPropagation()}
+                            className="absolute right-0 bottom-full mb-2 w-44 bg-neutral-900 border border-neutral-700 rounded-lg shadow-xl z-50 py-1"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              e.preventDefault();
+                            }}
+                            onMouseDown={(e) => {
+                              e.stopPropagation();
+                              e.preventDefault();
+                            }}
                           >
                             <button
                               onClick={(e) => {
