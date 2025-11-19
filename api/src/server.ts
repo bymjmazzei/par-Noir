@@ -2718,22 +2718,30 @@ class ProductionServer {
 
         const db = (await import('./server/utils/database')).getDatabasePool();
         
-        // Get all files the user has liked
+        // Normalize userDid - check both with and without "pn-" prefix
+        // Engagement table might store it in either format
+        const normalizedUserDid = userDid.startsWith('pn-') ? userDid.substring(3) : userDid;
+        const withPrefix = `pn-${normalizedUserDid}`;
+        const withoutPrefix = normalizedUserDid;
+        
+        // Get all files the user has liked (check both formats)
         const likedResult = await db.query(`
           SELECT DISTINCT file_id 
           FROM engagement 
-          WHERE user_did = $1 AND type = 'like'
-        `, [userDid]);
+          WHERE (user_did = $1 OR user_did = $2) AND type = 'like'
+        `, [withPrefix, withoutPrefix]);
         
-        // Get all files the user has commented on
+        // Get all files the user has commented on (check both formats)
         const commentedResult = await db.query(`
           SELECT DISTINCT file_id 
           FROM engagement 
-          WHERE user_did = $1 AND type = 'comment'
-        `, [userDid]);
+          WHERE (user_did = $1 OR user_did = $2) AND type = 'comment'
+        `, [withPrefix, withoutPrefix]);
 
         const likedFileIds = likedResult.rows.map(row => row.file_id);
         const commentedFileIds = commentedResult.rows.map(row => row.file_id);
+
+        console.log(`📊 User engagement query: userDid=${userDid}, normalized=${normalizedUserDid}, found ${likedFileIds.length} likes, ${commentedFileIds.length} comments`);
 
         return res.json({
           likedFileIds,
