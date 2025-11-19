@@ -2037,6 +2037,20 @@ function App() {
   const prevIsOwnIndexRef = useRef<boolean>(false);
   const prevMePageTabRef = useRef<string>('all');
   
+  // Track lengths with refs to avoid dependency issues
+  const creatorFilesLengthRef = useRef<number>(0);
+  const userLikedFilesLengthRef = useRef<number>(0);
+  const userCommentedFilesLengthRef = useRef<number>(0);
+  const savedFilesLengthRef = useRef<number>(0);
+  
+  // Update length refs when they change
+  useEffect(() => {
+    creatorFilesLengthRef.current = creatorFiles.length;
+    userLikedFilesLengthRef.current = userLikedFiles.length;
+    userCommentedFilesLengthRef.current = userCommentedFiles.length;
+    savedFilesLengthRef.current = savedFiles.length;
+  }, [creatorFiles, userLikedFiles, userCommentedFiles, savedFiles]);
+  
   useEffect(() => {
     const currentCount = filteredMeFilesMemo.length;
     const countChanged = currentCount !== prevFilteredCountRef.current;
@@ -2053,10 +2067,10 @@ function App() {
       
       // Only log if count actually changed (not just other dependencies)
       if (countChanged || creatorChanged) {
-        console.log(`📊 Creator index: Found ${currentCount} files for creator ${viewingCreatorId}${isOwnIndex ? ` (tab: ${mePageTab}, ${creatorFiles.length} owned, ${userLikedFiles.length} liked, ${userCommentedFiles.length} commented, ${savedFiles.length} saved)` : ''}`);
+        console.log(`📊 Creator index: Found ${currentCount} files for creator ${viewingCreatorId}${isOwnIndex ? ` (tab: ${mePageTab}, ${creatorFilesLengthRef.current} owned, ${userLikedFilesLengthRef.current} liked, ${userCommentedFilesLengthRef.current} commented, ${savedFilesLengthRef.current} saved)` : ''}`);
       }
     }
-  }, [filteredMeFilesMemo.length, viewingCreatorId, isOwnIndex, mePageTab, creatorFiles.length, userLikedFiles.length, userCommentedFiles.length, savedFiles.length]);
+  }, [filteredMeFilesMemo.length, viewingCreatorId, isOwnIndex, mePageTab]);
 
   const filteredMeFiles = filteredMeFilesMemo;
 
