@@ -151,7 +151,7 @@ export function FeedEngagementSidebar({
   };
 
   return (
-    <div className="absolute right-2 md:right-4 bottom-16 flex flex-col items-center z-10 pointer-events-auto" style={{ gap: '16px' }}>
+    <div className="absolute right-2 md:right-4 bottom-16 flex flex-col items-center z-10 pointer-events-auto" style={{ gap: '16px', paddingBottom: 0, marginBottom: 0 }}>
       {/* Creator Profile Icon - Above Like Button */}
       {creatorId && (
         <ProfileActionMenu
@@ -233,8 +233,9 @@ export function FeedEngagementSidebar({
       {/* Share Button */}
       <button
         onClick={handleShare}
-        className="flex flex-col items-center space-y-1 group"
+        className="flex flex-col items-center group"
         title="Share"
+        style={{ marginBottom: 0, paddingBottom: 0 }}
       >
         <Send 
           className="h-6 w-6 md:h-7 md:w-7 text-white group-hover:text-green-400 transition-colors" 
