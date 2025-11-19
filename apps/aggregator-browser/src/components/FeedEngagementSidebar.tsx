@@ -117,7 +117,7 @@ export function FeedEngagementSidebar({
   };
 
   return (
-    <div className="absolute right-2 md:right-4 bottom-16 flex flex-col items-center space-y-3 z-10 pointer-events-auto">
+    <div className="absolute right-2 md:right-4 bottom-20 flex flex-col items-center space-y-3 z-10 pointer-events-auto">
       {/* Creator Profile Icon - Above Like Button */}
       {creatorId && (
         <ProfileActionMenu
