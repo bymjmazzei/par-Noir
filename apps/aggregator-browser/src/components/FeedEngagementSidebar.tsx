@@ -4,7 +4,7 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { Heart, MessageCircle, Share2, Bookmark, MoreVertical, Plus, Edit, BookmarkCheck } from 'lucide-react';
+import { Heart, MessageCircle, Share2, Bookmark, MoreVertical, Plus, Edit } from 'lucide-react';
 import { IndexedFile } from '../types/aggregator';
 import { useUserState } from '../contexts/UserStateContext';
 import { Lock } from 'lucide-react';
@@ -243,11 +243,11 @@ export function FeedEngagementSidebar({
           disabled={isCheckingSaved}
         >
           <div className="w-12 h-12 md:w-14 md:h-14 rounded-full bg-black/30 backdrop-blur-sm flex items-center justify-center group-hover:bg-black/50 active:bg-black/70 transition-colors touch-manipulation">
-            {isSaved ? (
-              <BookmarkCheck className="h-6 w-6 md:h-7 md:w-7 text-yellow-400 fill-yellow-400 transition-colors" />
-            ) : (
-              <Bookmark className="h-6 w-6 md:h-7 md:w-7 text-white group-hover:text-yellow-400 transition-colors" />
-            )}
+            <Bookmark className={`h-6 w-6 md:h-7 md:w-7 transition-colors ${
+              isSaved
+                ? 'text-yellow-400 fill-yellow-400'
+                : 'text-white group-hover:text-yellow-400'
+            }`} />
           </div>
         </button>
       )}
