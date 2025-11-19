@@ -4,7 +4,7 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { Heart, MessageCircle, Share2, Bookmark, MoreVertical, Plus, Edit } from 'lucide-react';
+import { Heart, MessageCircle, Share2, Bookmark, MoreVertical, Plus, Edit, Send } from 'lucide-react';
 import { IndexedFile } from '../types/aggregator';
 import { useUserState } from '../contexts/UserStateContext';
 import { Lock } from 'lucide-react';
@@ -237,7 +237,7 @@ export function FeedEngagementSidebar({
         className="flex flex-col items-center space-y-1 group"
         title="Share"
       >
-        <Share2 
+        <Send 
           className="h-6 w-6 md:h-7 md:w-7 text-white group-hover:text-green-400 transition-colors" 
           fill="white"
           stroke="black"
