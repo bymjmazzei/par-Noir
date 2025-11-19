@@ -11,7 +11,6 @@ import { PublicMetadata, MetadataFilters, IndexedFile, Feed } from './types/aggr
 import { decryptWithToken, ShareToken } from './utils/tokenDecryption';
 import { useUserState } from './contexts/UserStateContext';
 import { FeedRail, buildFeedRailItems } from './components/FeedRail';
-import { EngagementActions } from './components/EngagementActions';
 import { PNConnect } from './components/PNConnect';
 import { FeedBrowser } from './components/FeedBrowser';
 import { CreatorIndex } from './components/CreatorIndex';
@@ -2792,52 +2791,54 @@ function App() {
                       </div>
                     )}
 
-                    {/* Engagement Actions */}
+                    {/* Engagement Actions - Use FeedEngagementSidebar for consistency */}
                     <div 
-                      className="pt-3 border-t border-neutral-700"
+                      className="pt-3 border-t border-neutral-700 relative"
                       onClick={(e) => e.stopPropagation()}
                     >
-                      <EngagementActions
-                        file={{
-                          ...indexedFile,
-                          metadata: {
-                            ...indexedFile.metadata,
-                            engagement: {
-                              ...indexedFile.metadata.engagement,
-                              likes: getLikeCount(file.fileId, indexedFile.metadata.engagement?.likes || 0),
-                              comments: getComments(file.fileId).length + (indexedFile.metadata.engagement?.comments || 0),
-                              shares: getShareCount(file.fileId, indexedFile.metadata.engagement?.shares || 0)
+                      <div className="flex justify-end">
+                        <FeedEngagementSidebar
+                          file={{
+                            ...indexedFile,
+                            metadata: {
+                              ...indexedFile.metadata,
+                              engagement: {
+                                ...indexedFile.metadata.engagement,
+                                likes: getLikeCount(file.fileId, indexedFile.metadata.engagement?.likes || 0),
+                                comments: getComments(file.fileId).length + (indexedFile.metadata.engagement?.comments || 0),
+                                shares: getShareCount(file.fileId, indexedFile.metadata.engagement?.shares || 0)
+                              }
                             }
-                          }
-                        }}
-                        compact
-                        onLike={() => {
-                          const wasLiked = isLiked(file.fileId);
-                          toggleLike(file.fileId);
-                          if (!wasLiked) {
-                            success('Liked!');
-                          }
-                        }}
-                        onComment={() => setCommentingFile(indexedFile)}
-                        onShare={async () => {
-                          share(file.fileId);
-                          const shareUrl = `${window.location.origin}${window.location.pathname}?file=${file.fileId}&view=feed`;
-                          try {
-                            await navigator.clipboard.writeText(shareUrl);
-                            success('Link copied to clipboard!');
-                            setParam('file', file.fileId);
-                          } catch (err) {
-                            error('Failed to copy link. Please try again.');
-                          }
-                        }}
-                        onAddToFeed={() => {
-                          const creatorId = file.creator?.identifier?.value || file.creator?.["@id"] || file.author?.did;
-                          if (userState.isUnlocked && userState.pnIdentifier === creatorId) {
-                            setAddingToFeedFile(indexedFile);
-                          }
-                        }}
-                        isOwner={userState.isUnlocked && userState.pnIdentifier === (file.creator?.identifier?.value || file.creator?.["@id"] || file.author?.did)}
-                      />
+                          }}
+                          isLiked={isLiked(file.fileId)}
+                          onLike={() => {
+                            const wasLiked = isLiked(file.fileId);
+                            toggleLike(file.fileId);
+                            if (!wasLiked) {
+                              success('Liked!');
+                            }
+                          }}
+                          onComment={() => setCommentingFile(indexedFile)}
+                          onShare={async () => {
+                            share(file.fileId);
+                            const shareUrl = `${window.location.origin}${window.location.pathname}?file=${file.fileId}&view=feed`;
+                            try {
+                              await navigator.clipboard.writeText(shareUrl);
+                              success('Link copied to clipboard!');
+                              setParam('file', file.fileId);
+                            } catch (err) {
+                              error('Failed to copy link. Please try again.');
+                            }
+                          }}
+                          isOwner={userState.isUnlocked && userState.pnIdentifier === (file.creator?.identifier?.value || file.creator?.["@id"] || file.author?.did)}
+                          onCreatorClick={(creatorId) => {
+                            setViewingCreatorId(creatorId);
+                            setViewMode('profile');
+                            setMePageTab('media');
+                          }}
+                          indexedFiles={[]}
+                        />
+                      </div>
                     </div>
                   </div>
                 </div>

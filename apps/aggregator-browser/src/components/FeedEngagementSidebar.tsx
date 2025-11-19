@@ -201,23 +201,6 @@ export function FeedEngagementSidebar({
       )}
 
 
-      {/* Edit Button (for owners) */}
-      {isOwner && onEdit && (
-        <button
-          onClick={(e) => {
-            e.stopPropagation();
-            e.preventDefault();
-            onEdit();
-          }}
-          className="flex flex-col items-center space-y-1 group"
-          title="Edit"
-        >
-          <div className="w-12 h-12 md:w-14 md:h-14 rounded-full bg-black/30 backdrop-blur-sm flex items-center justify-center group-hover:bg-black/50 active:bg-black/70 transition-colors touch-manipulation">
-            <Edit className="h-6 w-6 md:h-7 md:w-7 text-white group-hover:text-blue-400 transition-colors" />
-          </div>
-          <span className="text-xs text-white font-medium">Edit</span>
-        </button>
-      )}
 
       {/* More Options */}
       {onMore && (
