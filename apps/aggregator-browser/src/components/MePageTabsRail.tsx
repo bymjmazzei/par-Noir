@@ -79,20 +79,54 @@ export function MePageTabsRail({ activeTab, onTabSelect, availableTabs }: MePage
       >
         {visibleTabs.map((tab) => {
           const isActive = tab === activeTab;
+          const isAllTab = tab === 'all';
           
           return (
             <button
               key={tab}
               data-tab={tab}
               onClick={() => onTabSelect(tab)}
-              className="relative whitespace-nowrap text-sm font-medium uppercase tracking-wide transition-colors"
+              className="relative whitespace-nowrap text-sm font-medium uppercase tracking-wide transition-colors flex items-center justify-center"
               style={{ opacity: isActive ? 1 : 0.85 }}
             >
-              <span className={isActive ? 'text-white' : 'text-neutral-400 hover:text-neutral-300'}>
-                {TAB_LABELS[tab]}
-              </span>
+              {isAllTab ? (
+                // pN text for all tab (lowercase p with line, uppercase N)
+                <svg 
+                  width="24" 
+                  height="20" 
+                  viewBox="0 0 24 20" 
+                  fill="none" 
+                  xmlns="http://www.w3.org/2000/svg"
+                  className={isActive ? 'text-white' : 'text-neutral-400'}
+                >
+                  <text 
+                    x="0" 
+                    y="15" 
+                    fontSize="14" 
+                    fontFamily="system-ui, -apple-system, sans-serif" 
+                    fontWeight="500" 
+                    fill="currentColor"
+                    letterSpacing="0.05em"
+                  >
+                    pN
+                  </text>
+                  <line 
+                    x1="2" 
+                    y1="4" 
+                    x2="8" 
+                    y2="4" 
+                    stroke="currentColor" 
+                    strokeWidth="1.5" 
+                    strokeLinecap="round"
+                  />
+                </svg>
+              ) : (
+                <span className={isActive ? 'text-white' : 'text-neutral-400 hover:text-neutral-300'}>
+                  {TAB_LABELS[tab]}
+                </span>
+              )}
               {isActive && (
-                <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-white" />
+                <span className="absolute left-0 right-0 h-0.5 bg-white" style={{ bottom: '-2px' }} />
               )}
             </button>
           );
