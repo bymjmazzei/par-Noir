@@ -3,7 +3,7 @@
  * Dropdown menu for profile actions with display name header and edit functionality
  */
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { User, MessageCircle, UserPlus, Check, X, Clock, ChevronDown, Edit2, Save, X as XIcon, Pencil } from 'lucide-react';
 import { useUserState } from '../contexts/UserStateContext';
 import { getConnectionStatus, sendConnectionRequest, acceptConnectionRequest, rejectConnectionRequest } from '../services/connectionService';
@@ -25,6 +25,7 @@ export function ProfileActionMenu({ creatorId, onViewProfile, onMessage, indexed
   const { userState, getDisplayName, updateDisplayName, setUserDisplayName } = useUserState();
   const { success, error: showError } = useToast();
   const [isOpen, setIsOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
   const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>({ status: 'not_connected' });
   const [loading, setLoading] = useState(false);
   const [isEditingName, setIsEditingName] = useState(false);
@@ -376,22 +377,20 @@ export function ProfileActionMenu({ creatorId, onViewProfile, onMessage, indexed
           <div 
             className="fixed inset-0 z-[9998]"
             onClick={(e) => {
-              // Only close if clicking directly on backdrop, not on the button or menu
-              const target = e.target as HTMLElement;
-              if (target.classList.contains('fixed') || target.classList.contains('inset-0')) {
+              // Only close if clicking on the backdrop itself, not on menu or button
+              if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
                 console.log('🔍 Clicked backdrop, closing menu');
                 setIsOpen(false);
               }
             }}
-            style={{ pointerEvents: 'auto' }}
           />
           <div 
+            ref={menuRef}
             className="absolute left-full top-0 ml-2 w-56 bg-neutral-800 border border-neutral-700 rounded-lg shadow-xl overflow-hidden z-[9999]"
             onClick={(e) => {
               e.stopPropagation();
               e.preventDefault();
             }}
-            style={{ pointerEvents: 'auto' }}
           >
             {/* Header with Display Name */}
           <div className="px-4 py-3 border-b border-neutral-700">
