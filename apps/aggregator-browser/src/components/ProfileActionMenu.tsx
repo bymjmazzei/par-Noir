@@ -212,10 +212,18 @@ export function ProfileActionMenu({ creatorId, onViewProfile, onMessage, indexed
 
     const loadProfileImage = async () => {
       // Check if it's an image or video (we can use video thumbnail too)
-      const isImage = topPostFile.metadata.fileType?.startsWith('image/') || 
-                     topPostFile.metadata.encodingFormat?.startsWith('image/');
-      const isVideo = topPostFile.metadata.fileType?.startsWith('video/') || 
-                     topPostFile.metadata.encodingFormat?.startsWith('video/');
+      // Handle both MIME types (image/jpeg) and simple types (image)
+      const fileType = topPostFile.metadata.fileType || '';
+      const encodingFormat = topPostFile.metadata.encodingFormat || '';
+      
+      const isImage = fileType.startsWith('image/') || 
+                     fileType === 'image' ||
+                     encodingFormat.startsWith('image/') ||
+                     encodingFormat === 'image';
+      const isVideo = fileType.startsWith('video/') || 
+                     fileType === 'video' ||
+                     encodingFormat.startsWith('video/') ||
+                     encodingFormat === 'video';
       
       console.log('[ProfileActionMenu] File type check:', {
         isImage,
