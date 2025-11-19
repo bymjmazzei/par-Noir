@@ -3396,16 +3396,38 @@ class ProductionServer {
         // Saved feed has a special feedId format: "saved-{userDid}"
         const savedFeedId = `saved-${userDid}`;
 
-        // Check if saved feed exists
-        const feedResult = await db.query(`
+        // Check if saved feed exists, create if not
+        let feedResult = await db.query(`
           SELECT feed_id, feed_name, created_at, updated_at
           FROM feeds
           WHERE feed_id = $1
         `, [savedFeedId]);
 
         if (feedResult.rows.length === 0) {
-          // No saved feed exists yet
-          return res.status(404).json({ error: 'Saved feed not found' });
+          // Create saved feed if it doesn't exist
+          try {
+            await db.query(`
+              INSERT INTO feeds (feed_id, feed_name, creator_did, creator_tier, rating_range)
+              VALUES ($1, $2, $3, $4, $5)
+            `, [savedFeedId, 'Saved', userDid, 'free', JSON.stringify(['GA', 'FF', 'T13+', 'YA16+', 'M18+', 'NSFW', 'X18+'])]);
+
+            feedResult = await db.query(`
+              SELECT feed_id, feed_name, created_at, updated_at
+              FROM feeds
+              WHERE feed_id = $1
+            `, [savedFeedId]);
+          } catch (createError: any) {
+            // If creation fails, might be a race condition - try to fetch again
+            feedResult = await db.query(`
+              SELECT feed_id, feed_name, created_at, updated_at
+              FROM feeds
+              WHERE feed_id = $1
+            `, [savedFeedId]);
+            
+            if (feedResult.rows.length === 0) {
+              throw createError;
+            }
+          }
         }
 
         // Get file IDs in the saved feed
