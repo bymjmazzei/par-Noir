@@ -2554,7 +2554,7 @@ function App() {
           
           {/* Unified feed view for all profiles */}
           {filteredMeFiles.length > 0 ? (
-            <div className="flex-1 h-full" style={{ marginTop: '48px' }}>
+            <div className="flex-1" style={{ marginTop: '48px', height: 'calc(100vh - 64px - 48px)' }}>
               <FullScreenFeed
                 files={filteredMeFiles}
                 currentIndex={currentFeedIndex}

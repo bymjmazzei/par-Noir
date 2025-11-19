@@ -270,8 +270,19 @@ export function FullScreenFeed({
           (horizontalSwipeRef as React.MutableRefObject<HTMLDivElement | null>).current = el;
         }
       }}
-      className="h-full w-full overflow-y-scroll snap-y snap-mandatory bg-black"
-      style={{ scrollbarWidth: 'none', msOverflowStyle: 'none', WebkitOverflowScrolling: 'touch' }}
+      className="w-full overflow-y-scroll snap-y snap-mandatory bg-black"
+      style={{ 
+        scrollbarWidth: 'none', 
+        msOverflowStyle: 'none', 
+        WebkitOverflowScrolling: 'touch',
+        height: 'calc(100vh - 64px)', // Account for bottom nav (h-16 = 64px)
+        maxHeight: 'calc(100vh - 64px)',
+        // Start at top of window
+        marginTop: '0',
+        paddingTop: '0',
+        // On mobile, account for safe area insets
+        paddingBottom: 'env(safe-area-inset-bottom, 0px)'
+      }}
     >
       {files.map((indexedFile, idx) => {
         const file = indexedFile.metadata;
@@ -291,8 +302,15 @@ export function FullScreenFeed({
           <div
             key={fileId}
             data-file-id={fileId}
-            className="h-full w-full snap-start flex items-center justify-center bg-black relative"
-            style={{ height: '100%', minHeight: '100%' }}
+            className="w-full snap-start flex items-center justify-center bg-black relative"
+            style={{ 
+              height: 'calc(100vh - 64px)', // Account for bottom nav (h-16 = 64px)
+              minHeight: 'calc(100vh - 64px)',
+              maxHeight: 'calc(100vh - 64px)',
+              // Start at top of window
+              marginTop: '0',
+              paddingTop: '0'
+            }}
           >
             {/* Full-screen video */}
             {isVideo && videoBlobs.get(fileId) && (
@@ -319,7 +337,12 @@ export function FullScreenFeed({
                     }
                   }}
                   src={videoBlobs.get(fileId)!}
-                  className="w-full h-full object-contain"
+                  className="w-full object-contain"
+                  style={{ 
+                    maxHeight: 'calc(100vh - 64px)', // Account for bottom nav
+                    height: 'auto',
+                    width: '100%'
+                  }}
                   controls={false}
                   muted
                   loop
@@ -353,7 +376,12 @@ export function FullScreenFeed({
               <img
                 src={thumbnails.get(fileId)!}
                 alt={fileName}
-                className="w-full h-full object-contain"
+                className="w-full object-contain"
+                style={{ 
+                  maxHeight: 'calc(100vh - 64px)', // Account for bottom nav
+                  height: 'auto',
+                  width: '100%'
+                }}
               />
             )}
 
