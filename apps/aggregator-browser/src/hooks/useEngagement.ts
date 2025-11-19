@@ -4,7 +4,7 @@
  * Uses backend API when user is authenticated, falls back to localStorage
  */
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { IndexedFile } from '../types/aggregator';
 import { useUserState } from '../contexts/UserStateContext';
 
@@ -73,6 +73,9 @@ export function useEngagement() {
   const { userState } = useUserState();
   const [engagement, setEngagement] = useState<EngagementData>(loadEngagementData);
   const [loadingStats, setLoadingStats] = useState<Set<string>>(new Set());
+  const [loadingComments, setLoadingComments] = useState<Set<string>>(new Set());
+  const commentErrorRef = useRef<Map<string, { timestamp: number; count: number }>>(new Map());
+  const lastCommentFetchRef = useRef<Map<string, number>>(new Map());
 
   // Save to localStorage whenever engagement changes (for offline/fallback)
   useEffect(() => {
@@ -486,8 +489,47 @@ export function useEngagement() {
 
   // Load comments from backend (call when needed)
   const loadComments = useCallback(async (fileId: string) => {
+    // Prevent multiple simultaneous calls for the same file
+    if (loadingComments.has(fileId)) {
+      // Return cached comments if available
+      return engagement.comments.get(fileId) || [];
+    }
+
+    // Throttling: prevent refetching too quickly after a successful fetch
+    const lastFetch = lastCommentFetchRef.current.get(fileId);
+    if (lastFetch && Date.now() - lastFetch < 2000) { // 2 seconds throttle
+      return engagement.comments.get(fileId) || [];
+    }
+
+    // If we've had recent errors, don't retry immediately (exponential backoff)
+    const errorInfo = commentErrorRef.current.get(fileId);
+    if (errorInfo) {
+      const timeSinceError = Date.now() - errorInfo.timestamp;
+      const backoffDelay = Math.min(5000 * Math.pow(2, errorInfo.count), 60000); // Max 1 minute
+      if (timeSinceError < backoffDelay) {
+        // Return cached comments if available, otherwise empty array
+        return engagement.comments.get(fileId) || [];
+      }
+    }
+
+    setLoadingComments(prev => new Set(prev).add(fileId));
+
     try {
       const response = await fetch(`${API_ENDPOINT}/api/engagement/${fileId}/comments`);
+      
+      if (response.status === 429) {
+        // Rate limited - track error and return cached comments
+        const errorInfo = commentErrorRef.current.get(fileId);
+        if (errorInfo) {
+          errorInfo.count++;
+          errorInfo.timestamp = Date.now();
+        } else {
+          commentErrorRef.current.set(fileId, { timestamp: Date.now(), count: 1 });
+        }
+        console.warn(`Rate limited loading comments for ${fileId}, using cached data`);
+        return engagement.comments.get(fileId) || [];
+      }
+
       if (response.ok) {
         const result = await response.json();
         const comments = result.comments || [];
@@ -518,13 +560,29 @@ export function useEngagement() {
           newComments.set(fileId, normalizedComments);
           return { ...prev, comments: newComments };
         });
+        
+        // Clear error ref on success
+        commentErrorRef.current.delete(fileId);
+        lastCommentFetchRef.current.set(fileId, Date.now());
+        
         return normalizedComments;
+      } else {
+        // Other error status - track but don't backoff as aggressively
+        console.warn(`Failed to load comments for ${fileId}: ${response.status}`);
+        return engagement.comments.get(fileId) || [];
       }
     } catch (error) {
       console.warn('Failed to load comments:', error);
+      // Return cached comments if available
+      return engagement.comments.get(fileId) || [];
+    } finally {
+      setLoadingComments(prev => {
+        const next = new Set(prev);
+        next.delete(fileId);
+        return next;
+      });
     }
-    return [];
-  }, []);
+  }, [loadingComments, engagement.comments]);
 
   const isLiked = useCallback((fileId: string): boolean => {
     return engagement.likes.has(fileId);

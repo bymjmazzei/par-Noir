@@ -104,7 +104,7 @@ function App() {
   const lastNavigatedFileIndexRef = useRef<number | null>(null); // Track the index we navigated to
   
   const metadataIndexService = getMetadataIndexService();
-  const { toggleLike, share, getLikeCount, isLiked, getComments, getShareCount, loadBulkEngagementStats } = useEngagement();
+  const { toggleLike, share, getLikeCount, isLiked, getComments, loadComments, getShareCount, loadBulkEngagementStats } = useEngagement();
   const { toasts, removeToast, success, error: showErrorToast } = useToast();
   const { getParam, setParam } = useURLParams();
 
@@ -2591,6 +2591,7 @@ function App() {
                 isLiked={isLiked}
                 getLikeCount={getLikeCount}
                 getComments={getComments}
+                loadComments={loadComments}
                 getShareCount={getShareCount}
                 userState={userState}
                 onCreatorClick={(creatorId) => {
@@ -2937,6 +2938,7 @@ function App() {
                 isLiked={isLiked}
                 getLikeCount={getLikeCount}
                 getComments={getComments}
+                loadComments={loadComments}
                 getShareCount={getShareCount}
                 userState={userState}
                 onCreatorClick={(creatorId) => setViewingCreatorId(creatorId)}

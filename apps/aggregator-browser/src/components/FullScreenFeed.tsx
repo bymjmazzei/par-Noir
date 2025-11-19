@@ -28,6 +28,7 @@ interface FullScreenFeedProps {
   isLiked: (fileId: string) => boolean;
   getLikeCount: (fileId: string, defaultCount: number) => number;
   getComments: (fileId: string) => any[];
+  loadComments?: (fileId: string) => Promise<any[]>; // Optional: for preloading comments
   getShareCount: (fileId: string, defaultCount: number) => number;
   userState: {
     isUnlocked: boolean;
@@ -52,6 +53,7 @@ export function FullScreenFeed({
   isLiked,
   getLikeCount,
   getComments,
+  loadComments,
   getShareCount,
   userState,
   onCreatorClick,
@@ -129,11 +131,19 @@ export function FullScreenFeed({
     if (element) {
       element.scrollIntoView({ behavior: 'smooth', block: 'center' });
       setVisibleFileId(currentFile.metadata.fileId);
+      
+      // Preload comments for the visible file if loadComments is available
+      if (loadComments) {
+        loadComments(currentFile.metadata.fileId).catch(err => {
+          // Silently fail - comments will be loaded when modal opens
+          console.debug('Failed to preload comments:', err);
+        });
+      }
     }
     }, 100);
 
     return () => clearTimeout(scrollTimer);
-  }, [currentIndex, files]);
+  }, [currentIndex, files, loadComments]);
 
   // Rotate comments every 2 seconds with fade transitions
   useEffect(() => {
