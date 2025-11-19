@@ -35,20 +35,16 @@ export function ProfileActionMenu({ creatorId, onViewProfile, onMessage, indexed
 
     const handleClickOutside = (event: MouseEvent) => {
       const target = event.target as Node;
-      const clickedMenu = menuRef.current?.contains(target);
-      const clickedButton = buttonRef.current?.contains(target);
-      const clickedContainer = containerRef.current?.contains(target);
-      
-      if (!clickedMenu && !clickedButton && !clickedContainer) {
+      if (containerRef.current && !containerRef.current.contains(target)) {
         console.log('🔍 Clicked outside, closing menu');
         setIsOpen(false);
       }
     };
 
-    // Use a small delay to avoid immediate closure
+    // Delay to avoid immediate closure
     const timeout = setTimeout(() => {
       document.addEventListener('mousedown', handleClickOutside);
-    }, 100);
+    }, 200);
 
     return () => {
       clearTimeout(timeout);
@@ -377,12 +373,14 @@ export function ProfileActionMenu({ creatorId, onViewProfile, onMessage, indexed
       <button
         ref={buttonRef}
         onClick={(e) => {
-          console.log('🔍 Profile button clicked', { isOpen, willBeOpen: !isOpen });
           e.stopPropagation();
           e.preventDefault();
-          const newState = !isOpen;
-          setIsOpen(newState);
-          console.log('🔍 setIsOpen called with:', newState);
+          console.log('🔍 Profile button clicked, current isOpen:', isOpen);
+          setIsOpen(prev => {
+            const newState = !prev;
+            console.log('🔍 Setting isOpen to:', newState);
+            return newState;
+          });
         }}
         className="flex flex-col items-center space-y-1 group cursor-pointer"
         title="Profile actions"
@@ -403,15 +401,15 @@ export function ProfileActionMenu({ creatorId, onViewProfile, onMessage, indexed
       </button>
 
       {isOpen && (
-        <>
-          <div 
-            ref={menuRef}
-            className="absolute left-full top-0 ml-2 w-56 bg-neutral-800 border border-neutral-700 rounded-lg shadow-xl overflow-hidden z-[9999]"
-            onClick={(e) => {
-              e.stopPropagation();
-              e.preventDefault();
-            }}
-          >
+        <div 
+          ref={menuRef}
+          className="absolute left-full top-0 ml-2 w-56 bg-neutral-800 border border-neutral-700 rounded-lg shadow-xl overflow-hidden z-[9999]"
+          style={{ position: 'absolute', display: 'block' }}
+          onClick={(e) => {
+            e.stopPropagation();
+            e.preventDefault();
+          }}
+        >
             {/* Header with Display Name */}
           <div className="px-4 py-3 border-b border-neutral-700">
             {isEditingName && isOwnProfile ? (
@@ -508,7 +506,6 @@ export function ProfileActionMenu({ creatorId, onViewProfile, onMessage, indexed
             <span>Go to Profile</span>
           </button>
         </div>
-        </>
       )}
     </div>
   );
