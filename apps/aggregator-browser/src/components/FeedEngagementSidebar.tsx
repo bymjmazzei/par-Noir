@@ -234,23 +234,28 @@ export function FeedEngagementSidebar({
         </div>
       </button>
 
-      {/* Save Button */}
-      {userState.isUnlocked && (
-        <button
-          onClick={handleSave}
-          className="flex flex-col items-center space-y-1 group"
-          title={isSaved ? 'Remove from saved' : 'Save'}
-          disabled={isCheckingSaved}
-        >
+      {/* Save Button - Always show, but require unlock to function */}
+      <button
+        onClick={handleSave}
+        className="flex flex-col items-center space-y-1 group"
+        title={userState.isUnlocked ? (isSaved ? 'Remove from saved' : 'Save') : 'Connect pN to save'}
+        disabled={isCheckingSaved || !userState.isUnlocked}
+      >
+        <div className="relative">
+          {!userState.isUnlocked && (
+            <Lock className="absolute -top-1 -right-1 h-3 w-3 text-yellow-400" />
+          )}
           <div className="w-12 h-12 md:w-14 md:h-14 rounded-full bg-black/30 backdrop-blur-sm flex items-center justify-center group-hover:bg-black/50 active:bg-black/70 transition-colors touch-manipulation">
             <Bookmark className={`h-6 w-6 md:h-7 md:w-7 transition-colors ${
               isSaved
                 ? 'text-yellow-400 fill-yellow-400'
-                : 'text-white group-hover:text-yellow-400'
+                : userState.isUnlocked
+                ? 'text-white group-hover:text-yellow-400'
+                : 'text-white/50'
             }`} />
           </div>
-        </button>
-      )}
+        </div>
+      </button>
 
       {/* Bookmark Button (legacy - only show if onBookmark callback provided) */}
       {onBookmark && (
