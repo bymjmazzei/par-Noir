@@ -190,10 +190,14 @@ export function ProfileActionMenu({ creatorId, onViewProfile, onMessage, indexed
       return;
     }
     
-    if (!topPostFile.publicToken) {
+    // Check for publicToken at IndexedFile level or in metadata
+    const publicToken = topPostFile.publicToken || topPostFile.metadata.publicToken;
+    
+    if (!publicToken) {
       console.log('[ProfileActionMenu] Top post has no publicToken:', {
         fileId: topPostFile.metadata.fileId,
-        hasPublicToken: !!topPostFile.publicToken
+        hasPublicTokenAtFileLevel: !!topPostFile.publicToken,
+        hasPublicTokenInMetadata: !!topPostFile.metadata.publicToken
       });
       setProfileImageUrl(null);
       return;
@@ -203,7 +207,7 @@ export function ProfileActionMenu({ creatorId, onViewProfile, onMessage, indexed
       fileId: topPostFile.metadata.fileId,
       fileType: topPostFile.metadata.fileType,
       encodingFormat: topPostFile.metadata.encodingFormat,
-      hasPublicToken: !!topPostFile.publicToken
+      hasPublicToken: !!publicToken
     });
 
     const loadProfileImage = async () => {
@@ -228,9 +232,9 @@ export function ProfileActionMenu({ creatorId, onViewProfile, onMessage, indexed
 
       setProfileImageLoading(true);
       try {
-        const token: ShareToken = typeof topPostFile.publicToken === 'string' 
-          ? JSON.parse(topPostFile.publicToken) 
-          : topPostFile.publicToken;
+        const token: ShareToken = typeof publicToken === 'string' 
+          ? JSON.parse(publicToken) 
+          : publicToken;
         
         if (isImage) {
           console.log('[ProfileActionMenu] Decrypting image...');
