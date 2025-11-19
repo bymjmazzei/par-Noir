@@ -353,7 +353,7 @@ export function FullScreenFeed({
               <img
                 src={thumbnails.get(fileId)!}
                 alt={fileName}
-                className="max-w-full max-h-full object-contain"
+                className="w-full h-full object-contain"
               />
             )}
 
