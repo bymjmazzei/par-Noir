@@ -8,6 +8,7 @@ import { Heart, MessageCircle, Share2, Lock, Plus } from 'lucide-react';
 import { useUserState } from '../contexts/UserStateContext';
 import { PNConnect } from './PNConnect';
 import { IndexedFile } from '../types/aggregator';
+import { useToast } from '../hooks/useToast';
 
 interface EngagementActionsProps {
   file: IndexedFile;
@@ -29,24 +30,54 @@ export function EngagementActions({
   isOwner = false
 }: EngagementActionsProps) {
   const { userState } = useUserState();
+  const { success, error } = useToast();
   const [showConnectPrompt, setShowConnectPrompt] = useState(false);
   const engagement = file.metadata.engagement;
   const likes = engagement?.likes || 0;
   const comments = engagement?.comments || 0;
 
-  const handleAction = (action: 'like' | 'comment' | 'share', callback?: () => void) => {
+  const handleShare = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    e.preventDefault();
+    
+    const fileId = file.metadata.fileId;
+    const shareUrl = `${window.location.origin}${window.location.pathname}?file=${fileId}&view=feed`;
+    
+    try {
+      await navigator.clipboard.writeText(shareUrl);
+      success('Link copied to clipboard!');
+      
+      // Call optional callback for additional actions (like recording share)
+      if (onShare) {
+        onShare();
+      }
+    } catch (err) {
+      console.error('Failed to copy link:', err);
+      error('Failed to copy link. Please try again.');
+    }
+  };
+
+  const handleAction = (e: React.MouseEvent, action: 'like' | 'comment', callback?: () => void) => {
+    e.stopPropagation();
+    e.preventDefault();
+    
     if (!userState.isUnlocked && (action === 'like' || action === 'comment')) {
       setShowConnectPrompt(true);
       return;
     }
-    callback?.();
+    
+    if (callback) {
+      callback();
+    } else {
+      console.warn(`No handler provided for ${action} action`);
+    }
   };
 
   if (compact) {
     return (
-      <div className="flex items-center space-x-4">
+      <div className="flex items-center space-x-4" onClick={(e) => e.stopPropagation()}>
         <button
-          onClick={() => handleAction('like', onLike)}
+          onClick={(e) => handleAction(e, 'like', onLike)}
           className="flex items-center space-x-1 text-text-secondary hover:text-red-400 transition-colors"
           title={!userState.isUnlocked ? 'Connect pN to like' : 'Like'}
         >
@@ -55,7 +86,7 @@ export function EngagementActions({
           <span className="text-xs">{likes}</span>
         </button>
         <button
-          onClick={() => handleAction('comment', onComment)}
+          onClick={(e) => handleAction(e, 'comment', onComment)}
           className="flex items-center space-x-1 text-text-secondary hover:text-blue-400 transition-colors"
           title={!userState.isUnlocked ? 'Connect pN to comment' : 'Comment'}
         >
@@ -64,7 +95,7 @@ export function EngagementActions({
           <span className="text-xs">{comments}</span>
         </button>
         <button
-          onClick={() => handleAction('share', onShare)}
+          onClick={handleShare}
           className="flex items-center space-x-1 text-text-secondary hover:text-green-400 transition-colors"
           title="Share"
         >
@@ -72,7 +103,11 @@ export function EngagementActions({
         </button>
         {isOwner && onAddToFeed && (
           <button
-            onClick={onAddToFeed}
+            onClick={(e) => {
+              e.stopPropagation();
+              e.preventDefault();
+              onAddToFeed();
+            }}
             className="flex items-center space-x-1 text-text-secondary hover:text-blue-400 transition-colors"
             title="Add to Feed"
           >
@@ -85,9 +120,9 @@ export function EngagementActions({
 
   return (
     <>
-      <div className="flex items-center space-x-6">
+      <div className="flex items-center space-x-6" onClick={(e) => e.stopPropagation()}>
         <button
-          onClick={() => handleAction('like', onLike)}
+          onClick={(e) => handleAction(e, 'like', onLike)}
           className="flex flex-col items-center space-y-1 group"
           title={!userState.isUnlocked ? 'Connect pN to like' : 'Like'}
         >
@@ -105,7 +140,7 @@ export function EngagementActions({
         </button>
         
         <button
-          onClick={() => handleAction('comment', onComment)}
+          onClick={(e) => handleAction(e, 'comment', onComment)}
           className="flex flex-col items-center space-y-1 group"
           title={!userState.isUnlocked ? 'Connect pN to comment' : 'Comment'}
         >
@@ -123,7 +158,7 @@ export function EngagementActions({
         </button>
         
         <button
-          onClick={() => handleAction('share', onShare)}
+          onClick={handleShare}
           className="flex flex-col items-center space-y-1 group"
           title="Share"
         >

@@ -6,18 +6,19 @@
 import React, { useRef, useEffect } from 'react';
 
 interface MePageTabsRailProps {
-  activeTab: 'all' | 'media' | 'likes' | 'comments' | 'saved';
-  onTabSelect: (tab: 'all' | 'media' | 'likes' | 'comments' | 'saved') => void;
-  availableTabs?: ('all' | 'media' | 'likes' | 'comments' | 'saved')[];
+  activeTab: 'all' | 'media' | 'likes' | 'comments' | 'saved' | 'connections';
+  onTabSelect: (tab: 'all' | 'media' | 'likes' | 'comments' | 'saved' | 'connections') => void;
+  availableTabs?: ('all' | 'media' | 'likes' | 'comments' | 'saved' | 'connections')[];
 }
 
-const TABS = ['all', 'media', 'likes', 'comments', 'saved'] as const;
+const TABS = ['all', 'media', 'likes', 'comments', 'saved', 'connections'] as const;
 const TAB_LABELS: Record<typeof TABS[number], string> = {
   all: 'ALL',
   media: 'MEDIA',
   likes: 'LIKES',
   comments: 'COMMENTS',
-  saved: 'SAVED'
+  saved: 'SAVED',
+  connections: 'CONNECTIONS'
 };
 
 export function MePageTabsRail({ activeTab, onTabSelect, availableTabs }: MePageTabsRailProps) {

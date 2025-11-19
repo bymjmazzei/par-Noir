@@ -5245,10 +5245,69 @@ class ProductionServer {
 
     this.app.post('/api/messages/send', async (req, res) => {
       try {
-        const { fromDid, toDid, content, mediaFileId } = req.body;
+        const { fromDid, toDid, content, mediaFileId, isConnectionRequest } = req.body;
         if (!fromDid || !toDid || !content) {
           return res.status(400).json({ error: 'fromDid, toDid, and content are required' });
         }
+
+        // Check if users are connected (unless this is a connection request)
+        if (!isConnectionRequest) {
+          try {
+            const { ConnectionsService } = await import('./server/modules/connectionsService');
+            const { googleDriveProxyService } = await import('./server/modules/googleDriveProxy');
+            const { storageCredentialsService } = await import('./server/modules/storageCredentialsService');
+            
+            // Get sender's credentials and metadata folder
+            const senderCredentials = await storageCredentialsService.getCredentials(fromDid);
+            if (!senderCredentials?.credentials) {
+              return res.status(403).json({ error: 'Only connections can message each other' });
+            }
+
+            const googleDriveAccounts = senderCredentials.credentials.googleDriveAccounts || 
+              (senderCredentials.credentials.googleDrive ? [senderCredentials.credentials.googleDrive] : []);
+            
+            if (googleDriveAccounts.length === 0) {
+              return res.status(403).json({ error: 'Only connections can message each other' });
+            }
+
+            const account = googleDriveAccounts[0];
+            const accountId = (account as any).accountId || (account as any).id;
+            const senderAccessToken = await googleDriveProxyService.getAccessToken(fromDid, accountId, [fromDid]);
+            
+            // Find metadata folder
+            const folderSearchQuery = `name='Metadata' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
+            const folderSearchUrl = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(folderSearchQuery)}&fields=files(id)&pageSize=1`;
+            const folderResponse = await fetch(folderSearchUrl, {
+              headers: { 'Authorization': `Bearer ${senderAccessToken}` }
+            });
+
+            if (folderResponse.ok) {
+              const folderData = await folderResponse.json() as { files?: Array<{ id: string }> };
+              if (folderData.files && folderData.files.length > 0) {
+                const metadataFolderId = folderData.files[0].id;
+                
+                // Check if connected
+                const areConnected = await ConnectionsService.areConnected(
+                  senderAccessToken,
+                  metadataFolderId,
+                  fromDid,
+                  toDid
+                );
+
+                if (!areConnected) {
+                  return res.status(403).json({ 
+                    error: 'Only connections can message each other',
+                    requiresConnection: true
+                  });
+                }
+              }
+            }
+          } catch (connectionCheckError: any) {
+            // If connection check fails, still allow message (fail open for now)
+            console.warn('Connection check failed, allowing message:', connectionCheckError?.message || connectionCheckError);
+          }
+        }
+
         // TODO: Implement message sending to Google Drive
         return res.json({
           success: true,
@@ -5349,6 +5408,769 @@ class ProductionServer {
         return res.status(500).json({
           error: 'Failed to delete message',
           error_description: error.message || 'Failed to delete message'
+        });
+      }
+    });
+
+    // ============================================================================
+    // Profile APIs
+    // ============================================================================
+
+    // POST /api/profile/image - Set profile image fileId
+    this.app.post('/api/profile/image', async (req, res) => {
+      try {
+        const { userDid, fileId } = req.body;
+        if (!userDid || !fileId) {
+          return res.status(400).json({ error: 'userDid and fileId are required' });
+        }
+
+        const { ProfileService } = await import('./server/modules/profileService');
+        const { googleDriveProxyService } = await import('./server/modules/googleDriveProxy');
+        const { storageCredentialsService } = await import('./server/modules/storageCredentialsService');
+
+        // Get user's credentials
+        const userCredentials = await storageCredentialsService.getCredentials(userDid);
+        if (!userCredentials?.credentials) {
+          return res.status(404).json({ error: 'User credentials not found' });
+        }
+
+        const googleDriveAccounts = userCredentials.credentials.googleDriveAccounts || 
+          (userCredentials.credentials.googleDrive ? [userCredentials.credentials.googleDrive] : []);
+        
+        if (googleDriveAccounts.length === 0) {
+          return res.status(404).json({ error: 'User has no Google Drive connected' });
+        }
+
+        const account = googleDriveAccounts[0];
+        const accountId = (account as any).accountId || (account as any).id;
+        const userAccessToken = await googleDriveProxyService.getAccessToken(userDid, accountId, [userDid]);
+
+        // Find metadata folder
+        const folderQuery = `name='Metadata' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
+        const folderUrl = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(folderQuery)}&fields=files(id)&pageSize=1`;
+        const folderResponse = await fetch(folderUrl, {
+          headers: { 'Authorization': `Bearer ${userAccessToken}` }
+        });
+
+        if (!folderResponse.ok) {
+          return res.status(404).json({ error: 'Metadata folder not found' });
+        }
+
+        const folderData = await folderResponse.json() as { files?: Array<{ id: string }> };
+        if (!folderData.files || folderData.files.length === 0) {
+          return res.status(404).json({ error: 'Metadata folder not found' });
+        }
+
+        const metadataFolderId = folderData.files[0].id;
+
+        // Update profile image
+        await ProfileService.updateProfileImage(
+          userAccessToken,
+          metadataFolderId,
+          userDid,
+          fileId
+        );
+
+        return res.json({ success: true });
+      } catch (error: any) {
+        console.error('Error updating profile image:', error);
+        return res.status(500).json({
+          error: 'Failed to update profile image',
+          error_description: error.message || 'Failed to update profile image'
+        });
+      }
+    });
+
+    // POST /api/profile/display-name - Update display name
+    this.app.post('/api/profile/display-name', async (req, res) => {
+      try {
+        const { userDid, displayName } = req.body;
+        if (!userDid || !displayName) {
+          return res.status(400).json({ error: 'userDid and displayName are required' });
+        }
+
+        const { ProfileService } = await import('./server/modules/profileService');
+        const { googleDriveProxyService } = await import('./server/modules/googleDriveProxy');
+        const { storageCredentialsService } = await import('./server/modules/storageCredentialsService');
+
+        // Get user's credentials
+        const userCredentials = await storageCredentialsService.getCredentials(userDid);
+        if (!userCredentials?.credentials) {
+          return res.status(404).json({ error: 'User credentials not found' });
+        }
+
+        const googleDriveAccounts = userCredentials.credentials.googleDriveAccounts || 
+          (userCredentials.credentials.googleDrive ? [userCredentials.credentials.googleDrive] : []);
+        
+        if (googleDriveAccounts.length === 0) {
+          return res.status(404).json({ error: 'User has no Google Drive connected' });
+        }
+
+        const account = googleDriveAccounts[0];
+        const accountId = (account as any).accountId || (account as any).id;
+        const userAccessToken = await googleDriveProxyService.getAccessToken(userDid, accountId, [userDid]);
+
+        // Find metadata folder
+        const folderQuery = `name='Metadata' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
+        const folderUrl = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(folderQuery)}&fields=files(id)&pageSize=1`;
+        const folderResponse = await fetch(folderUrl, {
+          headers: { 'Authorization': `Bearer ${userAccessToken}` }
+        });
+
+        if (!folderResponse.ok) {
+          return res.status(404).json({ error: 'Metadata folder not found' });
+        }
+
+        const folderData = await folderResponse.json() as { files?: Array<{ id: string }> };
+        if (!folderData.files || folderData.files.length === 0) {
+          return res.status(404).json({ error: 'Metadata folder not found' });
+        }
+
+        const metadataFolderId = folderData.files[0].id;
+
+        // Update display name
+        await ProfileService.updateDisplayName(
+          userAccessToken,
+          metadataFolderId,
+          userDid,
+          displayName
+        );
+
+        return res.json({ success: true });
+      } catch (error: any) {
+        console.error('Error updating display name:', error);
+        return res.status(500).json({
+          error: 'Failed to update display name',
+          error_description: error.message || 'Failed to update display name'
+        });
+      }
+    });
+
+    // GET /api/profile/:userDid - Get user profile
+    this.app.get('/api/profile/:userDid', async (req, res) => {
+      try {
+        const { userDid } = req.params;
+        if (!userDid) {
+          return res.status(400).json({ error: 'userDid is required' });
+        }
+
+        const { ProfileService } = await import('./server/modules/profileService');
+        const { googleDriveProxyService } = await import('./server/modules/googleDriveProxy');
+        const { storageCredentialsService } = await import('./server/modules/storageCredentialsService');
+
+        // Get user's credentials
+        const userCredentials = await storageCredentialsService.getCredentials(userDid);
+        if (!userCredentials?.credentials) {
+          return res.json({ displayName: null, profileImageFileId: null });
+        }
+
+        const googleDriveAccounts = userCredentials.credentials.googleDriveAccounts || 
+          (userCredentials.credentials.googleDrive ? [userCredentials.credentials.googleDrive] : []);
+        
+        if (googleDriveAccounts.length === 0) {
+          return res.json({ displayName: null, profileImageFileId: null });
+        }
+
+        const account = googleDriveAccounts[0];
+        const accountId = (account as any).accountId || (account as any).id;
+        const userAccessToken = await googleDriveProxyService.getAccessToken(userDid, accountId, [userDid]);
+
+        // Find metadata folder
+        const folderQuery = `name='Metadata' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
+        const folderUrl = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(folderQuery)}&fields=files(id)&pageSize=1`;
+        const folderResponse = await fetch(folderUrl, {
+          headers: { 'Authorization': `Bearer ${userAccessToken}` }
+        });
+
+        if (!folderResponse.ok) {
+          return res.json({ displayName: null, profileImageFileId: null });
+        }
+
+        const folderData = await folderResponse.json() as { files?: Array<{ id: string }> };
+        if (!folderData.files || folderData.files.length === 0) {
+          return res.json({ displayName: null, profileImageFileId: null });
+        }
+
+        const metadataFolderId = folderData.files[0].id;
+
+        const profile = await ProfileService.getProfile(userAccessToken, metadataFolderId);
+
+        return res.json({
+          displayName: profile?.displayName || null,
+          profileImageFileId: profile?.profileImageFileId || null
+        });
+      } catch (error: any) {
+        console.error('Error getting profile:', error);
+        return res.status(500).json({
+          error: 'Failed to get profile',
+          error_description: error.message || 'Failed to get profile'
+        });
+      }
+    });
+
+    // ============================================================================
+    // Connections APIs
+    // ============================================================================
+
+    // POST /api/connections/request - Send connection request
+    this.app.post('/api/connections/request', async (req, res) => {
+      try {
+        const { requesterDid, recipientDid } = req.body;
+        if (!requesterDid || !recipientDid) {
+          return res.status(400).json({ error: 'requesterDid and recipientDid are required' });
+        }
+
+        if (requesterDid === recipientDid) {
+          return res.status(400).json({ error: 'Cannot connect to yourself' });
+        }
+
+        const { ConnectionsService } = await import('./server/modules/connectionsService');
+        const { googleDriveProxyService } = await import('./server/modules/googleDriveProxy');
+        const { storageCredentialsService } = await import('./server/modules/storageCredentialsService');
+
+        // Get requester's credentials
+        const requesterCredentials = await storageCredentialsService.getCredentials(requesterDid);
+        if (!requesterCredentials?.credentials) {
+          return res.status(404).json({ error: 'Requester credentials not found' });
+        }
+
+        const requesterGoogleDriveAccounts = requesterCredentials.credentials.googleDriveAccounts || 
+          (requesterCredentials.credentials.googleDrive ? [requesterCredentials.credentials.googleDrive] : []);
+        
+        if (requesterGoogleDriveAccounts.length === 0) {
+          return res.status(404).json({ error: 'Requester has no Google Drive connected' });
+        }
+
+        const requesterAccount = requesterGoogleDriveAccounts[0];
+        const requesterAccountId = (requesterAccount as any).accountId || (requesterAccount as any).id;
+        const requesterAccessToken = await googleDriveProxyService.getAccessToken(requesterDid, requesterAccountId, [requesterDid]);
+
+        // Find requester's metadata folder
+        const requesterFolderQuery = `name='Metadata' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
+        const requesterFolderUrl = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(requesterFolderQuery)}&fields=files(id)&pageSize=1`;
+        const requesterFolderResponse = await fetch(requesterFolderUrl, {
+          headers: { 'Authorization': `Bearer ${requesterAccessToken}` }
+        });
+
+        if (!requesterFolderResponse.ok) {
+          return res.status(404).json({ error: 'Requester metadata folder not found' });
+        }
+
+        const requesterFolderData = await requesterFolderResponse.json() as { files?: Array<{ id: string }> };
+        if (!requesterFolderData.files || requesterFolderData.files.length === 0) {
+          return res.status(404).json({ error: 'Requester metadata folder not found' });
+        }
+
+        const requesterMetadataFolderId = requesterFolderData.files[0].id;
+
+        // Get recipient's credentials
+        const recipientCredentials = await storageCredentialsService.getCredentials(recipientDid);
+        if (!recipientCredentials?.credentials) {
+          return res.status(404).json({ error: 'Recipient credentials not found' });
+        }
+
+        const recipientGoogleDriveAccounts = recipientCredentials.credentials.googleDriveAccounts || 
+          (recipientCredentials.credentials.googleDrive ? [recipientCredentials.credentials.googleDrive] : []);
+        
+        if (recipientGoogleDriveAccounts.length === 0) {
+          return res.status(404).json({ error: 'Recipient has no Google Drive connected' });
+        }
+
+        const recipientAccount = recipientGoogleDriveAccounts[0];
+        const recipientAccountId = (recipientAccount as any).accountId || (recipientAccount as any).id;
+        const recipientAccessToken = await googleDriveProxyService.getAccessToken(recipientDid, recipientAccountId, [recipientDid]);
+
+        // Find recipient's metadata folder
+        const recipientFolderQuery = `name='Metadata' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
+        const recipientFolderUrl = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(recipientFolderQuery)}&fields=files(id)&pageSize=1`;
+        const recipientFolderResponse = await fetch(recipientFolderUrl, {
+          headers: { 'Authorization': `Bearer ${recipientAccessToken}` }
+        });
+
+        if (!recipientFolderResponse.ok) {
+          return res.status(404).json({ error: 'Recipient metadata folder not found' });
+        }
+
+        const recipientFolderData = await recipientFolderResponse.json() as { files?: Array<{ id: string }> };
+        if (!recipientFolderData.files || recipientFolderData.files.length === 0) {
+          return res.status(404).json({ error: 'Recipient metadata folder not found' });
+        }
+
+        const recipientMetadataFolderId = recipientFolderData.files[0].id;
+
+        // Send connection request
+        const connection = await ConnectionsService.sendConnectionRequest(
+          requesterAccessToken,
+          requesterMetadataFolderId,
+          requesterDid,
+          recipientAccessToken,
+          recipientMetadataFolderId,
+          recipientDid
+        );
+
+        // Send connection request as message
+        try {
+          await fetch(`${req.protocol}://${req.get('host')}/api/messages/send`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': req.headers.authorization || ''
+            },
+            body: JSON.stringify({
+              fromDid: requesterDid,
+              toDid: recipientDid,
+              content: `${requesterDid.substring(0, 8)} wants to connect with you`,
+              isConnectionRequest: true,
+              connectionId: connection.connectionId
+            })
+          });
+        } catch (messageError: any) {
+          console.warn('Failed to send connection request as message:', messageError?.message || messageError);
+          // Continue even if message fails
+        }
+
+        return res.json({
+          success: true,
+          connection
+        });
+      } catch (error: any) {
+        console.error('Error sending connection request:', error);
+        return res.status(500).json({
+          error: 'Failed to send connection request',
+          error_description: error.message || 'Failed to send connection request'
+        });
+      }
+    });
+
+    // POST /api/connections/:connectionId/accept - Accept connection request
+    this.app.post('/api/connections/:connectionId/accept', async (req, res) => {
+      try {
+        const { connectionId } = req.params;
+        const { userDid } = req.body;
+        if (!connectionId || !userDid) {
+          return res.status(400).json({ error: 'connectionId and userDid are required' });
+        }
+
+        const { ConnectionsService } = await import('./server/modules/connectionsService');
+        const { googleDriveProxyService } = await import('./server/modules/googleDriveProxy');
+        const { storageCredentialsService } = await import('./server/modules/storageCredentialsService');
+
+        // Get user's credentials
+        const userCredentials = await storageCredentialsService.getCredentials(userDid);
+        if (!userCredentials?.credentials) {
+          return res.status(404).json({ error: 'User credentials not found' });
+        }
+
+        const googleDriveAccounts = userCredentials.credentials.googleDriveAccounts || 
+          (userCredentials.credentials.googleDrive ? [userCredentials.credentials.googleDrive] : []);
+        
+        if (googleDriveAccounts.length === 0) {
+          return res.status(404).json({ error: 'User has no Google Drive connected' });
+        }
+
+        const account = googleDriveAccounts[0];
+        const accountId = (account as any).accountId || (account as any).id;
+        const userAccessToken = await googleDriveProxyService.getAccessToken(userDid, accountId, [userDid]);
+
+        // Find metadata folder
+        const folderQuery = `name='Metadata' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
+        const folderUrl = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(folderQuery)}&fields=files(id)&pageSize=1`;
+        const folderResponse = await fetch(folderUrl, {
+          headers: { 'Authorization': `Bearer ${userAccessToken}` }
+        });
+
+        if (!folderResponse.ok) {
+          return res.status(404).json({ error: 'Metadata folder not found' });
+        }
+
+        const folderData = await folderResponse.json() as { files?: Array<{ id: string }> };
+        if (!folderData.files || folderData.files.length === 0) {
+          return res.status(404).json({ error: 'Metadata folder not found' });
+        }
+
+        const metadataFolderId = folderData.files[0].id;
+
+        // Get connection to find other user
+        const connectionsFile = await ConnectionsService.getConnectionsFile(userAccessToken, metadataFolderId);
+        if (!connectionsFile) {
+          return res.status(404).json({ error: 'Connection request not found' });
+        }
+
+        const connection = connectionsFile.connections.find(c => c.connectionId === connectionId);
+        if (!connection) {
+          return res.status(404).json({ error: 'Connection request not found' });
+        }
+
+        const otherUserDid = connection.userDid;
+
+        // Accept connection (updates acceptor's file)
+        await ConnectionsService.acceptConnectionRequest(
+          userAccessToken,
+          metadataFolderId,
+          userDid,
+          connectionId
+        );
+
+        // Update other user's file to accepted
+        try {
+          const otherUserCredentials = await storageCredentialsService.getCredentials(otherUserDid);
+          if (otherUserCredentials?.credentials) {
+            const otherGoogleDriveAccounts = otherUserCredentials.credentials.googleDriveAccounts || 
+              (otherUserCredentials.credentials.googleDrive ? [otherUserCredentials.credentials.googleDrive] : []);
+            
+            if (otherGoogleDriveAccounts.length > 0) {
+              const otherAccount = otherGoogleDriveAccounts[0];
+              const otherAccountId = (otherAccount as any).accountId || (otherAccount as any).id;
+              const otherAccessToken = await googleDriveProxyService.getAccessToken(otherUserDid, otherAccountId, [otherUserDid]);
+
+              // Find other user's metadata folder
+              const otherFolderUrl = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(folderQuery)}&fields=files(id)&pageSize=1`;
+              const otherFolderResponse = await fetch(otherFolderUrl, {
+                headers: { 'Authorization': `Bearer ${otherAccessToken}` }
+              });
+
+              if (otherFolderResponse.ok) {
+                const otherFolderData = await otherFolderResponse.json() as { files?: Array<{ id: string }> };
+                if (otherFolderData.files && otherFolderData.files.length > 0) {
+                  const otherMetadataFolderId = otherFolderData.files[0].id;
+                  
+                  await ConnectionsService.updateOtherUserConnectionStatus(
+                    otherAccessToken,
+                    otherMetadataFolderId,
+                    otherUserDid,
+                    connectionId,
+                    'accepted'
+                  );
+                }
+              }
+            }
+          }
+        } catch (otherUserError: any) {
+          console.warn('Failed to update other user\'s connection status:', otherUserError?.message || otherUserError);
+          // Continue even if other user update fails
+        }
+
+        return res.json({ success: true });
+      } catch (error: any) {
+        console.error('Error accepting connection request:', error);
+        return res.status(500).json({
+          error: 'Failed to accept connection request',
+          error_description: error.message || 'Failed to accept connection request'
+        });
+      }
+    });
+
+    // POST /api/connections/:connectionId/reject - Reject connection request
+    this.app.post('/api/connections/:connectionId/reject', async (req, res) => {
+      try {
+        const { connectionId } = req.params;
+        const { userDid } = req.body;
+        if (!connectionId || !userDid) {
+          return res.status(400).json({ error: 'connectionId and userDid are required' });
+        }
+
+        const { ConnectionsService } = await import('./server/modules/connectionsService');
+        const { googleDriveProxyService } = await import('./server/modules/googleDriveProxy');
+        const { storageCredentialsService } = await import('./server/modules/storageCredentialsService');
+
+        // Get user's credentials
+        const userCredentials = await storageCredentialsService.getCredentials(userDid);
+        if (!userCredentials?.credentials) {
+          return res.status(404).json({ error: 'User credentials not found' });
+        }
+
+        const googleDriveAccounts = userCredentials.credentials.googleDriveAccounts || 
+          (userCredentials.credentials.googleDrive ? [userCredentials.credentials.googleDrive] : []);
+        
+        if (googleDriveAccounts.length === 0) {
+          return res.status(404).json({ error: 'User has no Google Drive connected' });
+        }
+
+        const account = googleDriveAccounts[0];
+        const accountId = (account as any).accountId || (account as any).id;
+        const userAccessToken = await googleDriveProxyService.getAccessToken(userDid, accountId, [userDid]);
+
+        // Find metadata folder
+        const folderQuery = `name='Metadata' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
+        const folderUrl = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(folderQuery)}&fields=files(id)&pageSize=1`;
+        const folderResponse = await fetch(folderUrl, {
+          headers: { 'Authorization': `Bearer ${userAccessToken}` }
+        });
+
+        if (!folderResponse.ok) {
+          return res.status(404).json({ error: 'Metadata folder not found' });
+        }
+
+        const folderData = await folderResponse.json() as { files?: Array<{ id: string }> };
+        if (!folderData.files || folderData.files.length === 0) {
+          return res.status(404).json({ error: 'Metadata folder not found' });
+        }
+
+        const metadataFolderId = folderData.files[0].id;
+
+        // Remove connection from user's file
+        await ConnectionsService.removeConnection(
+          userAccessToken,
+          metadataFolderId,
+          userDid,
+          connectionId
+        );
+
+        return res.json({ success: true });
+      } catch (error: any) {
+        console.error('Error rejecting connection request:', error);
+        return res.status(500).json({
+          error: 'Failed to reject connection request',
+          error_description: error.message || 'Failed to reject connection request'
+        });
+      }
+    });
+
+    // GET /api/connections - Get user's accepted connections
+    this.app.get('/api/connections', async (req, res) => {
+      try {
+        const { userDid } = req.query;
+        if (!userDid) {
+          return res.status(400).json({ error: 'userDid is required' });
+        }
+
+        const { ConnectionsService } = await import('./server/modules/connectionsService');
+        const { googleDriveProxyService } = await import('./server/modules/googleDriveProxy');
+        const { storageCredentialsService } = await import('./server/modules/storageCredentialsService');
+
+        // Get user's credentials
+        const userCredentials = await storageCredentialsService.getCredentials(userDid as string);
+        if (!userCredentials?.credentials) {
+          return res.json({ connections: [] });
+        }
+
+        const googleDriveAccounts = userCredentials.credentials.googleDriveAccounts || 
+          (userCredentials.credentials.googleDrive ? [userCredentials.credentials.googleDrive] : []);
+        
+        if (googleDriveAccounts.length === 0) {
+          return res.json({ connections: [] });
+        }
+
+        const account = googleDriveAccounts[0];
+        const accountId = (account as any).accountId || (account as any).id;
+        const userAccessToken = await googleDriveProxyService.getAccessToken(userDid as string, accountId, [userDid as string]);
+
+        // Find metadata folder
+        const folderQuery = `name='Metadata' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
+        const folderUrl = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(folderQuery)}&fields=files(id)&pageSize=1`;
+        const folderResponse = await fetch(folderUrl, {
+          headers: { 'Authorization': `Bearer ${userAccessToken}` }
+        });
+
+        if (!folderResponse.ok) {
+          return res.json({ connections: [] });
+        }
+
+        const folderData = await folderResponse.json() as { files?: Array<{ id: string }> };
+        if (!folderData.files || folderData.files.length === 0) {
+          return res.json({ connections: [] });
+        }
+
+        const metadataFolderId = folderData.files[0].id;
+
+        const connections = await ConnectionsService.getConnections(userAccessToken, metadataFolderId);
+
+        return res.json({ connections });
+      } catch (error: any) {
+        console.error('Error getting connections:', error);
+        return res.status(500).json({
+          error: 'Failed to get connections',
+          error_description: error.message || 'Failed to get connections'
+        });
+      }
+    });
+
+    // GET /api/connections/pending - Get pending requests
+    this.app.get('/api/connections/pending', async (req, res) => {
+      try {
+        const { userDid } = req.query;
+        if (!userDid) {
+          return res.status(400).json({ error: 'userDid is required' });
+        }
+
+        const { ConnectionsService } = await import('./server/modules/connectionsService');
+        const { googleDriveProxyService } = await import('./server/modules/googleDriveProxy');
+        const { storageCredentialsService } = await import('./server/modules/storageCredentialsService');
+
+        // Get user's credentials
+        const userCredentials = await storageCredentialsService.getCredentials(userDid as string);
+        if (!userCredentials?.credentials) {
+          return res.json({ sent: [], received: [] });
+        }
+
+        const googleDriveAccounts = userCredentials.credentials.googleDriveAccounts || 
+          (userCredentials.credentials.googleDrive ? [userCredentials.credentials.googleDrive] : []);
+        
+        if (googleDriveAccounts.length === 0) {
+          return res.json({ sent: [], received: [] });
+        }
+
+        const account = googleDriveAccounts[0];
+        const accountId = (account as any).accountId || (account as any).id;
+        const userAccessToken = await googleDriveProxyService.getAccessToken(userDid as string, accountId, [userDid as string]);
+
+        // Find metadata folder
+        const folderQuery = `name='Metadata' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
+        const folderUrl = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(folderQuery)}&fields=files(id)&pageSize=1`;
+        const folderResponse = await fetch(folderUrl, {
+          headers: { 'Authorization': `Bearer ${userAccessToken}` }
+        });
+
+        if (!folderResponse.ok) {
+          return res.json({ sent: [], received: [] });
+        }
+
+        const folderData = await folderResponse.json() as { files?: Array<{ id: string }> };
+        if (!folderData.files || folderData.files.length === 0) {
+          return res.json({ sent: [], received: [] });
+        }
+
+        const metadataFolderId = folderData.files[0].id;
+
+        const pending = await ConnectionsService.getPendingRequests(userAccessToken, metadataFolderId);
+
+        return res.json(pending);
+      } catch (error: any) {
+        console.error('Error getting pending requests:', error);
+        return res.status(500).json({
+          error: 'Failed to get pending requests',
+          error_description: error.message || 'Failed to get pending requests'
+        });
+      }
+    });
+
+    // GET /api/connections/:otherUserDid/status - Check connection status with another user
+    this.app.get('/api/connections/:otherUserDid/status', async (req, res) => {
+      try {
+        const { otherUserDid } = req.params;
+        const { userDid } = req.query;
+        if (!userDid || !otherUserDid) {
+          return res.status(400).json({ error: 'userDid and otherUserDid are required' });
+        }
+
+        const { ConnectionsService } = await import('./server/modules/connectionsService');
+        const { googleDriveProxyService } = await import('./server/modules/googleDriveProxy');
+        const { storageCredentialsService } = await import('./server/modules/storageCredentialsService');
+
+        // Get user's credentials
+        const userCredentials = await storageCredentialsService.getCredentials(userDid as string);
+        if (!userCredentials?.credentials) {
+          return res.json({ status: 'not_connected' });
+        }
+
+        const googleDriveAccounts = userCredentials.credentials.googleDriveAccounts || 
+          (userCredentials.credentials.googleDrive ? [userCredentials.credentials.googleDrive] : []);
+        
+        if (googleDriveAccounts.length === 0) {
+          return res.json({ status: 'not_connected' });
+        }
+
+        const account = googleDriveAccounts[0];
+        const accountId = (account as any).accountId || (account as any).id;
+        const userAccessToken = await googleDriveProxyService.getAccessToken(userDid as string, accountId, [userDid as string]);
+
+        // Find metadata folder
+        const folderQuery = `name='Metadata' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
+        const folderUrl = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(folderQuery)}&fields=files(id)&pageSize=1`;
+        const folderResponse = await fetch(folderUrl, {
+          headers: { 'Authorization': `Bearer ${userAccessToken}` }
+        });
+
+        if (!folderResponse.ok) {
+          return res.json({ status: 'not_connected' });
+        }
+
+        const folderData = await folderResponse.json() as { files?: Array<{ id: string }> };
+        if (!folderData.files || folderData.files.length === 0) {
+          return res.json({ status: 'not_connected' });
+        }
+
+        const metadataFolderId = folderData.files[0].id;
+
+        const status = await ConnectionsService.getConnectionStatus(
+          userAccessToken,
+          metadataFolderId,
+          userDid as string,
+          otherUserDid
+        );
+
+        return res.json(status);
+      } catch (error: any) {
+        console.error('Error getting connection status:', error);
+        return res.status(500).json({
+          error: 'Failed to get connection status',
+          error_description: error.message || 'Failed to get connection status'
+        });
+      }
+    });
+
+    // DELETE /api/connections/:connectionId - Remove connection
+    this.app.delete('/api/connections/:connectionId', async (req, res) => {
+      try {
+        const { connectionId } = req.params;
+        const { userDid } = req.body;
+        if (!connectionId || !userDid) {
+          return res.status(400).json({ error: 'connectionId and userDid are required' });
+        }
+
+        const { ConnectionsService } = await import('./server/modules/connectionsService');
+        const { googleDriveProxyService } = await import('./server/modules/googleDriveProxy');
+        const { storageCredentialsService } = await import('./server/modules/storageCredentialsService');
+
+        // Get user's credentials
+        const userCredentials = await storageCredentialsService.getCredentials(userDid);
+        if (!userCredentials?.credentials) {
+          return res.status(404).json({ error: 'User credentials not found' });
+        }
+
+        const googleDriveAccounts = userCredentials.credentials.googleDriveAccounts || 
+          (userCredentials.credentials.googleDrive ? [userCredentials.credentials.googleDrive] : []);
+        
+        if (googleDriveAccounts.length === 0) {
+          return res.status(404).json({ error: 'User has no Google Drive connected' });
+        }
+
+        const account = googleDriveAccounts[0];
+        const accountId = (account as any).accountId || (account as any).id;
+        const userAccessToken = await googleDriveProxyService.getAccessToken(userDid, accountId, [userDid]);
+
+        // Find metadata folder
+        const folderQuery = `name='Metadata' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
+        const folderUrl = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(folderQuery)}&fields=files(id)&pageSize=1`;
+        const folderResponse = await fetch(folderUrl, {
+          headers: { 'Authorization': `Bearer ${userAccessToken}` }
+        });
+
+        if (!folderResponse.ok) {
+          return res.status(404).json({ error: 'Metadata folder not found' });
+        }
+
+        const folderData = await folderResponse.json() as { files?: Array<{ id: string }> };
+        if (!folderData.files || folderData.files.length === 0) {
+          return res.status(404).json({ error: 'Metadata folder not found' });
+        }
+
+        const metadataFolderId = folderData.files[0].id;
+
+        // Remove connection from user's file
+        await ConnectionsService.removeConnection(
+          userAccessToken,
+          metadataFolderId,
+          userDid,
+          connectionId
+        );
+
+        return res.json({ success: true });
+      } catch (error: any) {
+        console.error('Error removing connection:', error);
+        return res.status(500).json({
+          error: 'Failed to remove connection',
+          error_description: error.message || 'Failed to remove connection'
         });
       }
     });

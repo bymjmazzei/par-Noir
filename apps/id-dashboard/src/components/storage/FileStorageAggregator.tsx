@@ -3,7 +3,7 @@
  * Dashboard aggregator that collects files from all connected storage backends
  */
 import React, { useState, useEffect, useRef } from 'react';
-import { Download, File, RefreshCw, AlertCircle, Lock, Globe, Info, X, Edit, Eye, Grid, List, Plus, Cloud, MoreVertical, Share2, Trash2 } from 'lucide-react';
+import { Download, File, RefreshCw, AlertCircle, Lock, Globe, Info, X, Edit, Eye, Grid, List, Plus, Cloud, MoreVertical, Share2, Trash2, UserCircle } from 'lucide-react';
 import { DesktopSecureFolderPanel } from './DesktopSecureFolderPanel';
 import { getFileAggregatorService } from '../../services/aggregator/FileAggregatorService';
 import { getEncryptionService } from '../../services/aggregator/EncryptionService';
@@ -4749,6 +4749,66 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
     }
   };
 
+  const handleSetProfileImage = async (file: AggregatedFile) => {
+    if (!authenticatedUser?.id) {
+      setError('Please unlock your pN first');
+      return;
+    }
+
+    // Check if file is an image
+    const mimeType = file.mimeType || '';
+    const fileName = file.originalName || file.name || '';
+    const isImage = mimeType.startsWith('image/') || /\.(jpg|jpeg|png|gif|webp|svg|bmp|ico)$/i.test(fileName);
+    
+    if (!isImage) {
+      setError('Only image files can be set as profile image');
+      return;
+    }
+
+    // Get fileId from metadata if available, otherwise use file.id
+    const metadata = fileMetadataMap.get(file.id) || 
+                     (file.backendFileId ? fileMetadataMap.get(file.backendFileId) : undefined);
+    const fileId = metadata?.fileId || file.id;
+
+    try {
+      setIsLoading(true);
+      setError(null);
+
+      const accessToken = authenticatedUser?.accessToken;
+      if (!accessToken) {
+        throw new Error('No access token available');
+      }
+
+      const response = await fetch(`${apiEndpoint}/api/profile/image`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${accessToken}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          userDid: authenticatedUser.id,
+          fileId: fileId
+        })
+      });
+
+      if (!response.ok) {
+        const error = await response.json().catch(() => ({ error: 'Failed to set profile image' }));
+        throw new Error(error.error || 'Failed to set profile image');
+      }
+
+      console.log('✅ [Profile Image] Profile image updated successfully');
+      // Could show success message here if there's a success handler
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Failed to set profile image';
+      console.error('❌ [Profile Image] Failed:', err);
+      setError(errorMessage);
+    } finally {
+      setIsLoading(false);
+      setOpenMenuFor(null);
+      actionMenuRef.current = null;
+    }
+  };
+
   const handleDelete = async (file: AggregatedFile) => {
     if (!file.backendFileId) {
       setError('Cannot delete file: missing file ID');
@@ -5389,6 +5449,27 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
                                       <Share2 className="h-4 w-4" />
                                       <span>Share settings</span>
                               </button>
+                                    {/* Set as Profile Image - only for image files */}
+                                    {(() => {
+                                      const mimeType = file.mimeType || '';
+                                      const fileName = file.originalName || file.name || '';
+                                      const isImage = mimeType.startsWith('image/') || /\.(jpg|jpeg|png|gif|webp|svg|bmp|ico)$/i.test(fileName);
+                                      return isImage ? (
+                                        <button
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            setOpenMenuFor(null);
+                                            actionMenuRef.current = null;
+                                            handleSetProfileImage(file);
+                                          }}
+                                          className="flex w-full items-center space-x-2 px-3 py-2 text-sm text-text-secondary hover:text-text-primary hover:bg-neutral-800 transition-colors"
+                                          disabled={isLoading}
+                                        >
+                                          <UserCircle className="h-4 w-4" />
+                                          <span>Set as Profile Image</span>
+                                        </button>
+                                      ) : null;
+                                    })()}
                                     <div className="border-t border-neutral-700 my-1"></div>
                                     <button
                                       onClick={(e) => {
@@ -5542,6 +5623,27 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
                                     <Share2 className="h-4 w-4" />
                                     <span>Share settings</span>
                                   </button>
+                                  {/* Set as Profile Image - only for image files */}
+                                  {(() => {
+                                    const mimeType = file.mimeType || '';
+                                    const fileName = file.originalName || file.name || '';
+                                    const isImage = mimeType.startsWith('image/') || /\.(jpg|jpeg|png|gif|webp|svg|bmp|ico)$/i.test(fileName);
+                                    return isImage ? (
+                                      <button
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          setOpenMenuFor(null);
+                                          actionMenuRef.current = null;
+                                          handleSetProfileImage(file);
+                                        }}
+                                        className="flex w-full items-center space-x-2 px-3 py-2 text-sm text-text-secondary hover:text-text-primary hover:bg-neutral-800 transition-colors"
+                                        disabled={isLoading}
+                                      >
+                                        <UserCircle className="h-4 w-4" />
+                                        <span>Set as Profile Image</span>
+                                      </button>
+                                    ) : null;
+                                  })()}
                                   <div className="border-t border-neutral-700 my-1"></div>
                                   <button
                                     onClick={(e) => {

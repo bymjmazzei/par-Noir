@@ -11,6 +11,9 @@ export interface UserPreferences {
   ageVerified: boolean;
   verifiedAge?: number;
   subscribedFeedIds: string[];
+  displayName?: string; // User's display name (defaults to nickname)
+  profileImageFileId?: string; // FileId of profile image
+  userDisplayNames?: Record<string, string>; // Map of creatorId -> displayName (for other users)
 }
 
 export interface UserState {
@@ -28,6 +31,10 @@ interface UserStateContextType {
   subscribeToFeed: (feedId: string) => void;
   unsubscribeFromFeed: (feedId: string) => void;
   isSubscribedToFeed: (feedId: string) => boolean;
+  updateDisplayName: (displayName: string) => void;
+  updateProfileImageFileId: (fileId: string) => void;
+  setUserDisplayName: (creatorId: string, displayName: string) => void;
+  getDisplayName: (creatorId: string, nickname?: string) => string;
 }
 
 const defaultPreferences: UserPreferences = {
@@ -132,6 +139,55 @@ export function UserStateProvider({ children }: { children: ReactNode }) {
     return userState.preferences.subscribedFeedIds.includes(feedId);
   };
 
+  const updateDisplayName = (displayName: string) => {
+    setUserState(prev => ({
+      ...prev,
+      preferences: {
+        ...prev.preferences,
+        displayName
+      }
+    }));
+  };
+
+  const updateProfileImageFileId = (fileId: string) => {
+    setUserState(prev => ({
+      ...prev,
+      preferences: {
+        ...prev.preferences,
+        profileImageFileId: fileId
+      }
+    }));
+  };
+
+  const setUserDisplayName = (creatorId: string, displayName: string) => {
+    setUserState(prev => ({
+      ...prev,
+      preferences: {
+        ...prev.preferences,
+        userDisplayNames: {
+          ...(prev.preferences.userDisplayNames || {}),
+          [creatorId]: displayName
+        }
+      }
+    }));
+  };
+
+  const getDisplayName = (creatorId: string, nickname?: string): string => {
+    // If it's the current user, return their display name or nickname
+    if (creatorId === userState.pnIdentifier) {
+      return userState.preferences.displayName || nickname || creatorId.substring(0, 8);
+    }
+
+    // Check cache for other users
+    const cached = userState.preferences.userDisplayNames?.[creatorId];
+    if (cached) {
+      return cached;
+    }
+
+    // Fallback to nickname or truncated creatorId
+    return nickname || creatorId.substring(0, 8);
+  };
+
   return (
     <UserStateContext.Provider
       value={{
@@ -142,7 +198,11 @@ export function UserStateProvider({ children }: { children: ReactNode }) {
         setAgeVerified,
         subscribeToFeed,
         unsubscribeFromFeed,
-        isSubscribedToFeed
+        isSubscribedToFeed,
+        updateDisplayName,
+        updateProfileImageFileId,
+        setUserDisplayName,
+        getDisplayName
       }}
     >
       {children}

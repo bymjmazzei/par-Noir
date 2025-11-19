@@ -1,0 +1,216 @@
+/**
+ * Connection Service
+ * Manages user connections (two-way mutually accepted connections)
+ */
+
+import { PNOAuthService } from './pnOAuthService';
+
+const API_ENDPOINT = process.env.REACT_APP_API_ENDPOINT || 'https://api.parnoir.com';
+
+// Helper function to get auth headers
+function getAuthHeaders(): HeadersInit {
+  const session = PNOAuthService.loadSession();
+  const headers: HeadersInit = {
+    'Content-Type': 'application/json'
+  };
+  
+  if (session?.accessToken) {
+    headers['Authorization'] = `Bearer ${session.accessToken}`;
+  }
+  
+  return headers;
+}
+
+export interface Connection {
+  connectionId: string;
+  userDid: string;
+  status: 'pending_sent' | 'pending_received' | 'accepted' | 'blocked';
+  createdAt: string;
+  acceptedAt?: string;
+}
+
+export interface ConnectionStatus {
+  status: 'not_connected' | 'pending_sent' | 'pending_received' | 'connected' | 'blocked';
+  connectionId?: string;
+}
+
+export interface PendingRequests {
+  sent: Connection[];
+  received: Connection[];
+}
+
+/**
+ * Send connection request to another user
+ */
+export async function sendConnectionRequest(
+  requesterDid: string,
+  recipientDid: string
+): Promise<Connection> {
+  try {
+    const response = await fetch(`${API_ENDPOINT}/api/connections/request`, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify({
+        requesterDid,
+        recipientDid
+      })
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || 'Failed to send connection request');
+    }
+
+    const result = await response.json();
+    return result.connection;
+  } catch (error) {
+    console.error('Failed to send connection request:', error);
+    throw error;
+  }
+}
+
+/**
+ * Accept connection request
+ */
+export async function acceptConnectionRequest(
+  connectionId: string,
+  userDid: string
+): Promise<void> {
+  try {
+    const response = await fetch(`${API_ENDPOINT}/api/connections/${connectionId}/accept`, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify({
+        userDid
+      })
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || 'Failed to accept connection request');
+    }
+  } catch (error) {
+    console.error('Failed to accept connection request:', error);
+    throw error;
+  }
+}
+
+/**
+ * Reject connection request
+ */
+export async function rejectConnectionRequest(
+  connectionId: string,
+  userDid: string
+): Promise<void> {
+  try {
+    const response = await fetch(`${API_ENDPOINT}/api/connections/${connectionId}/reject`, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify({
+        userDid
+      })
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || 'Failed to reject connection request');
+    }
+  } catch (error) {
+    console.error('Failed to reject connection request:', error);
+    throw error;
+  }
+}
+
+/**
+ * Get user's accepted connections
+ */
+export async function getConnections(userDid: string): Promise<Connection[]> {
+  try {
+    const response = await fetch(`${API_ENDPOINT}/api/connections?userDid=${userDid}`, {
+      headers: getAuthHeaders()
+    });
+
+    if (!response.ok) {
+      throw new Error('Failed to load connections');
+    }
+
+    const result = await response.json();
+    return result.connections || [];
+  } catch (error) {
+    console.error('Failed to get connections:', error);
+    return [];
+  }
+}
+
+/**
+ * Get pending connection requests (both sent and received)
+ */
+export async function getPendingRequests(userDid: string): Promise<PendingRequests> {
+  try {
+    const response = await fetch(`${API_ENDPOINT}/api/connections/pending?userDid=${userDid}`, {
+      headers: getAuthHeaders()
+    });
+
+    if (!response.ok) {
+      throw new Error('Failed to load pending requests');
+    }
+
+    return await response.json();
+  } catch (error) {
+    console.error('Failed to get pending requests:', error);
+    return { sent: [], received: [] };
+  }
+}
+
+/**
+ * Check connection status with another user
+ */
+export async function getConnectionStatus(
+  userDid: string,
+  otherUserDid: string
+): Promise<ConnectionStatus> {
+  try {
+    const response = await fetch(
+      `${API_ENDPOINT}/api/connections/${otherUserDid}/status?userDid=${userDid}`,
+      {
+        headers: getAuthHeaders()
+      }
+    );
+
+    if (!response.ok) {
+      return { status: 'not_connected' };
+    }
+
+    return await response.json();
+  } catch (error) {
+    console.error('Failed to get connection status:', error);
+    return { status: 'not_connected' };
+  }
+}
+
+/**
+ * Remove connection
+ */
+export async function removeConnection(
+  connectionId: string,
+  userDid: string
+): Promise<void> {
+  try {
+    const response = await fetch(`${API_ENDPOINT}/api/connections/${connectionId}`, {
+      method: 'DELETE',
+      headers: getAuthHeaders(),
+      body: JSON.stringify({
+        userDid
+      })
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || 'Failed to remove connection');
+    }
+  } catch (error) {
+    console.error('Failed to remove connection:', error);
+    throw error;
+  }
+}
+

@@ -3,7 +3,7 @@
  * Tabbed interface for Messages and Notifications
  */
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { MessageCircle, Bell } from 'lucide-react';
 import { MessageList } from './MessageList';
 import { MessageThread } from './MessageThread';
@@ -12,14 +12,26 @@ import { Notification } from '../services/notificationService';
 
 interface InboxProps {
   onNotificationClick?: (notification: Notification) => void;
+  initialThread?: {
+    participantDid: string;
+    participantName?: string;
+  } | null;
 }
 
-export function Inbox({ onNotificationClick }: InboxProps) {
+export function Inbox({ onNotificationClick, initialThread = null }: InboxProps) {
   const [activeTab, setActiveTab] = useState<'messages' | 'notifications'>('messages');
   const [selectedThread, setSelectedThread] = useState<{
     participantDid: string;
     participantName?: string;
-  } | null>(null);
+  } | null>(initialThread);
+  
+  // Update selectedThread if initialThread changes
+  React.useEffect(() => {
+    if (initialThread) {
+      setSelectedThread(initialThread);
+      setActiveTab('messages');
+    }
+  }, [initialThread]);
 
   if (selectedThread) {
     return (

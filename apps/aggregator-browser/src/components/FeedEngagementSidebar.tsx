@@ -4,10 +4,12 @@
  */
 
 import React from 'react';
-import { Heart, MessageCircle, Share2, Bookmark, MoreVertical, Plus, Edit, User } from 'lucide-react';
+import { Heart, MessageCircle, Share2, Bookmark, MoreVertical, Plus, Edit } from 'lucide-react';
 import { IndexedFile } from '../types/aggregator';
 import { useUserState } from '../contexts/UserStateContext';
 import { Lock } from 'lucide-react';
+import { ProfileActionMenu } from './ProfileActionMenu';
+import { useToast } from '../hooks/useToast';
 
 interface FeedEngagementSidebarProps {
   file: IndexedFile;
@@ -21,6 +23,8 @@ interface FeedEngagementSidebarProps {
   isLiked?: boolean;
   isOwner?: boolean;
   onCreatorClick?: (creatorId: string) => void;
+  onMessage?: (creatorId: string) => void;
+  indexedFiles?: IndexedFile[]; // For loading profile images
 }
 
 export function FeedEngagementSidebar({
@@ -34,43 +38,71 @@ export function FeedEngagementSidebar({
   onEdit,
   isLiked = false,
   isOwner = false,
-  onCreatorClick
+  onCreatorClick,
+  onMessage,
+  indexedFiles = []
 }: FeedEngagementSidebarProps) {
   const { userState } = useUserState();
+  const { success, error } = useToast();
   const engagement = file.metadata.engagement;
   const likes = engagement?.likes || 0;
   const comments = engagement?.comments || 0;
   const creatorId = file.metadata.creator?.identifier?.value || file.metadata.creator?.["@id"] || file.metadata.author?.did;
 
-  const handleAction = (action: 'like' | 'comment' | 'share' | 'bookmark', callback?: () => void) => {
+  const handleShare = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    e.preventDefault();
+    
+    const fileId = file.metadata.fileId;
+    const shareUrl = `${window.location.origin}${window.location.pathname}?file=${fileId}&view=feed`;
+    
+    try {
+      await navigator.clipboard.writeText(shareUrl);
+      success('Link copied to clipboard!');
+      
+      // Call optional callback for additional actions (like recording share)
+      if (onShare) {
+        onShare();
+      }
+    } catch (err) {
+      console.error('Failed to copy link:', err);
+      error('Failed to copy link. Please try again.');
+    }
+  };
+
+  const handleAction = (e: React.MouseEvent, action: 'like' | 'comment' | 'bookmark', callback?: () => void) => {
+    e.stopPropagation();
+    e.preventDefault();
+    
     if (!userState.isUnlocked && (action === 'like' || action === 'comment')) {
       // Show connect prompt - handled by parent
       return;
     }
-    callback?.();
+    
+    if (callback) {
+      callback();
+    } else {
+      console.warn(`No handler provided for ${action} action`);
+    }
   };
 
   return (
     <div className="absolute right-2 md:right-4 bottom-20 md:bottom-24 flex flex-col items-center space-y-4 md:space-y-6 z-10" style={{ bottom: '80px' }}>
       {/* Creator Profile Icon - Above Like Button */}
-      {creatorId && onCreatorClick && (
-        <button
-          onClick={(e) => {
-            e.stopPropagation();
-            onCreatorClick(creatorId);
-          }}
-          className="flex flex-col items-center space-y-1 group"
-          title="View profile"
-        >
-          <div className="w-12 h-12 md:w-14 md:h-14 rounded-full bg-black/30 backdrop-blur-sm flex items-center justify-center group-hover:bg-black/50 active:bg-black/70 transition-colors touch-manipulation">
-            <User className="h-6 w-6 md:h-7 md:w-7 text-white group-hover:text-blue-400 transition-colors" />
-          </div>
-        </button>
+      {creatorId && (
+        <div onClick={(e) => e.stopPropagation()}>
+          <ProfileActionMenu
+            creatorId={creatorId}
+            onViewProfile={() => onCreatorClick?.(creatorId)}
+            onMessage={onMessage}
+            indexedFiles={indexedFiles}
+          />
+        </div>
       )}
 
       {/* Like Button */}
       <button
-        onClick={() => handleAction('like', onLike)}
+        onClick={(e) => handleAction(e, 'like', onLike)}
         className="flex flex-col items-center space-y-1 group"
         title={!userState.isUnlocked ? 'Connect pN to like' : 'Like'}
       >
@@ -93,7 +125,7 @@ export function FeedEngagementSidebar({
 
       {/* Comment Button */}
       <button
-        onClick={() => handleAction('comment', onComment)}
+        onClick={(e) => handleAction(e, 'comment', onComment)}
         className="flex flex-col items-center space-y-1 group"
         title={!userState.isUnlocked ? 'Connect pN to comment' : 'Comment'}
       >
@@ -114,7 +146,7 @@ export function FeedEngagementSidebar({
 
       {/* Share Button */}
       <button
-        onClick={() => handleAction('share', onShare)}
+        onClick={handleShare}
         className="flex flex-col items-center space-y-1 group"
         title="Share"
       >
@@ -127,7 +159,7 @@ export function FeedEngagementSidebar({
       {/* Bookmark Button */}
       {onBookmark && (
         <button
-          onClick={() => handleAction('bookmark', onBookmark)}
+          onClick={(e) => handleAction(e, 'bookmark', onBookmark)}
           className="flex flex-col items-center space-y-1 group"
           title="Bookmark"
         >
@@ -140,7 +172,11 @@ export function FeedEngagementSidebar({
       {/* Add to Feed Button (for owners) */}
       {isOwner && onAddToFeed && (
         <button
-          onClick={onAddToFeed}
+          onClick={(e) => {
+            e.stopPropagation();
+            e.preventDefault();
+            onAddToFeed();
+          }}
           className="flex flex-col items-center space-y-1 group"
           title="Add to Feed"
         >
@@ -154,7 +190,11 @@ export function FeedEngagementSidebar({
       {/* Edit Button (for owners) */}
       {isOwner && onEdit && (
         <button
-          onClick={onEdit}
+          onClick={(e) => {
+            e.stopPropagation();
+            e.preventDefault();
+            onEdit();
+          }}
           className="flex flex-col items-center space-y-1 group"
           title="Edit"
         >
@@ -168,7 +208,11 @@ export function FeedEngagementSidebar({
       {/* More Options */}
       {onMore && (
         <button
-          onClick={onMore}
+          onClick={(e) => {
+            e.stopPropagation();
+            e.preventDefault();
+            onMore();
+          }}
           className="flex flex-col items-center space-y-1 group"
           title="More options"
         >

@@ -34,6 +34,7 @@ interface FullScreenFeedProps {
     pnIdentifier?: string;
   };
   onCreatorClick?: (creatorId: string) => void;
+  onMessage?: (creatorId: string) => void;
   onSwipeLeft?: () => void; // Horizontal swipe left handler
   onSwipeRight?: () => void; // Horizontal swipe right handler
 }
@@ -54,6 +55,7 @@ export function FullScreenFeed({
   getShareCount,
   userState,
   onCreatorClick,
+  onMessage,
   onSwipeLeft,
   onSwipeRight
 }: FullScreenFeedProps) {
@@ -409,6 +411,8 @@ export function FullScreenFeed({
               onEdit={onEdit ? () => onEdit(indexedFile) : undefined}
               isOwner={userState.isUnlocked && userState.pnIdentifier === creatorId}
               onCreatorClick={onCreatorClick}
+              onMessage={onMessage}
+              indexedFiles={files}
             />
 
             {/* Engagement Overlay - Show when like/comment/save is clicked (share now directly copies) */}

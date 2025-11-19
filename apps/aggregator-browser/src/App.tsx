@@ -56,7 +56,7 @@ import { saveToFeed, getSavedFeed } from './services/savedFeedService';
 // In production, these would come from a shared package
 
 function App() {
-  const { userState, setLocked, setUnlocked } = useUserState();
+  const { userState, setLocked, setUnlocked, updateDisplayName } = useUserState();
   const [indexedFiles, setIndexedFiles] = useState<IndexedFile[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -73,6 +73,10 @@ function App() {
   const [activeBottomTab, setActiveBottomTab] = useState<'home' | 'search' | 'upload' | 'index' | 'messages'>('home');
   const [showSearch, setShowSearch] = useState(false);
   const [showInbox, setShowInbox] = useState(false);
+  const [initialThread, setInitialThread] = useState<{
+    participantDid: string;
+    participantName?: string;
+  } | null>(null);
   const [feeds, setFeeds] = useState<Feed[]>([]); // Available feeds
   const [visibleFileId, setVisibleFileId] = useState<string | null>(null); // Currently visible file in feed mode
   const [showFeedBrowser, setShowFeedBrowser] = useState(false); // Show feed browser modal
@@ -122,6 +126,11 @@ function App() {
               const updatedSession = { ...session, pnIdentifier };
               PNOAuthService.saveSession(updatedSession);
               setUnlocked(pnIdentifier);
+              
+              // Set display name to nickname if not already set
+              if (userInfo.nickname && !userState.preferences.displayName) {
+                updateDisplayName(userInfo.nickname);
+              }
             }
           }
         } catch (error) {
@@ -145,6 +154,11 @@ function App() {
               setUnlocked(userInfo.pn_identifier);
               setViewingCreatorId(userInfo.pn_identifier);
               setActiveBottomTab('index');
+              
+              // Set display name to nickname if not already set
+              if (userInfo.nickname && !userState.preferences.displayName) {
+                updateDisplayName(userInfo.nickname);
+              }
             } else {
               showErrorToast('Unable to load your pN identifier from API');
             }
@@ -1131,6 +1145,7 @@ function App() {
   // Load user's liked and commented files when viewing own index
   const [userLikedFiles, setUserLikedFiles] = useState<IndexedFile[]>([]);
   const [userCommentedFiles, setUserCommentedFiles] = useState<IndexedFile[]>([]);
+  const [connectionsFiles, setConnectionsFiles] = useState<IndexedFile[]>([]);
   const [isLoadingUserEngagement, setIsLoadingUserEngagement] = useState(false);
   
   // Load other user's liked and commented files when viewing their profile
@@ -1221,6 +1236,35 @@ function App() {
     }
   }, [viewingCreatorId, userState.pnIdentifier, indexedFiles]);
 
+  // Load connections files when viewing own index
+  useEffect(() => {
+    if (viewingCreatorId === userState.pnIdentifier && userState.isUnlocked && userState.pnIdentifier) {
+      (async () => {
+        try {
+          const { getConnections } = await import('./services/connectionService');
+          const connections = await getConnections(userState.pnIdentifier);
+          
+          // Get files from connected users
+          const connectionDids = connections.map(c => c.userDid);
+          const filesFromConnections = indexedFiles.filter(f => {
+            const creatorId = f.metadata.creator?.identifier?.value || 
+                             f.metadata.creator?.["@id"] || 
+                             f.metadata.author?.did;
+            return creatorId && connectionDids.includes(creatorId);
+          });
+          
+          setConnectionsFiles(filesFromConnections);
+          console.log(`📊 Connections feed: ${filesFromConnections.length} files from ${connections.length} connections`);
+        } catch (error) {
+          console.error('Failed to load connections files:', error);
+          setConnectionsFiles([]);
+        }
+      })();
+    } else {
+      setConnectionsFiles([]);
+    }
+  }, [viewingCreatorId, userState.pnIdentifier, userState.isUnlocked, indexedFiles]);
+
   // Helper function to load engagement data (same as in useEngagement hook)
   function loadEngagementData() {
     try {
@@ -1247,7 +1291,7 @@ function App() {
   const [editingFile, setEditingFile] = useState<IndexedFile | null>(null);
   
   // State for Me page tabs
-  const [mePageTab, setMePageTab] = useState<'all' | 'media' | 'likes' | 'comments' | 'saved'>('media');
+  const [mePageTab, setMePageTab] = useState<'all' | 'media' | 'likes' | 'comments' | 'saved' | 'connections'>('media');
   const [savedFiles, setSavedFiles] = useState<IndexedFile[]>([]);
   const [isLoadingSavedFiles, setIsLoadingSavedFiles] = useState(false);
 
@@ -1303,6 +1347,9 @@ function App() {
             break;
           case 'saved':
             currentFilteredMeFiles = savedFiles;
+            break;
+          case 'connections':
+            currentFilteredMeFiles = connectionsFiles;
             break;
     }
       } else if (viewingCreatorId) {
@@ -1477,6 +1524,10 @@ function App() {
         // Only saved files (private collection)
         filteredMeFiles = savedFiles;
         break;
+      case 'connections':
+        // Only files from connected users
+        filteredMeFiles = connectionsFiles;
+        break;
     }
   } else if (viewingCreatorId) {
     // For other users' profiles, filter based on active tab
@@ -1603,6 +1654,11 @@ function App() {
                 // But only set unlocked if we have a pN identifier (not a DID)
                 if (userInfo.pn_identifier && !userInfo.pn_identifier.startsWith('did:key:')) {
                   setUnlocked(userInfo.pn_identifier);
+                  
+                  // Set display name to nickname if not already set
+                  if (userInfo.nickname && !userState.preferences.displayName) {
+                    updateDisplayName(userInfo.nickname);
+                  }
                 } else {
                   // No pN identifier yet - this shouldn't happen but handle gracefully
                   console.warn('⚠️ OAuth userinfo did not return pN identifier, using DID as fallback');
@@ -1834,6 +1890,7 @@ function App() {
       ) : showInbox ? (
         <div className="h-screen w-full bg-neutral-900">
           <Inbox
+            initialThread={initialThread}
             onNotificationClick={(notification) => {
               setShowInbox(false);
               setActiveBottomTab('home');
@@ -1938,6 +1995,11 @@ function App() {
                     setMePageTab('media');
                     setCurrentFeedIndex(0);
                   }
+                }}
+                onMessage={(creatorId) => {
+                  setInitialThread({ participantDid: creatorId });
+                  setShowInbox(true);
+                  setActiveBottomTab('messages');
                 }}
                 onEdit={isOwnIndex ? (file) => setEditingFile(file) : undefined}
                 onSave={userState.isUnlocked && userState.pnIdentifier ? async (file) => {
@@ -2254,6 +2316,12 @@ function App() {
                 getShareCount={getShareCount}
                 userState={userState}
                 onCreatorClick={(creatorId) => setViewingCreatorId(creatorId)}
+                onMessage={(creatorId) => {
+                  setInitialThread({ participantDid: creatorId });
+                  setShowInbox(true);
+                  setActiveBottomTab('messages');
+                }}
+                indexedFiles={indexedFiles}
               />
             ) : (
               <div className="h-full flex items-center justify-center text-white">
