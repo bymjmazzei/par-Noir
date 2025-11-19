@@ -27,6 +27,34 @@ export function ProfileActionMenu({ creatorId, onViewProfile, onMessage, indexed
   const [isOpen, setIsOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  // Handle clicks outside the menu
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const handleClickOutside = (event: MouseEvent) => {
+      const target = event.target as Node;
+      const clickedMenu = menuRef.current?.contains(target);
+      const clickedButton = buttonRef.current?.contains(target);
+      const clickedContainer = containerRef.current?.contains(target);
+      
+      if (!clickedMenu && !clickedButton && !clickedContainer) {
+        console.log('🔍 Clicked outside, closing menu');
+        setIsOpen(false);
+      }
+    };
+
+    // Use a small delay to avoid immediate closure
+    const timeout = setTimeout(() => {
+      document.addEventListener('mousedown', handleClickOutside);
+    }, 100);
+
+    return () => {
+      clearTimeout(timeout);
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [isOpen]);
   const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>({ status: 'not_connected' });
   const [loading, setLoading] = useState(false);
   const [isEditingName, setIsEditingName] = useState(false);
@@ -345,7 +373,7 @@ export function ProfileActionMenu({ creatorId, onViewProfile, onMessage, indexed
   };
 
   return (
-    <div className="relative" data-profile-menu style={{ zIndex: 9999 }}>
+    <div ref={containerRef} className="relative" data-profile-menu style={{ zIndex: 9999 }}>
       <button
         ref={buttonRef}
         onClick={(e) => {
@@ -376,20 +404,6 @@ export function ProfileActionMenu({ creatorId, onViewProfile, onMessage, indexed
 
       {isOpen && (
         <>
-          <div 
-            className="fixed inset-0 z-[9998]"
-            onClick={(e) => {
-              // Only close if clicking on the backdrop itself, not on menu or button
-              const target = e.target as Node;
-              const clickedMenu = menuRef.current?.contains(target);
-              const clickedButton = buttonRef.current?.contains(target);
-              
-              if (!clickedMenu && !clickedButton) {
-                console.log('🔍 Clicked backdrop, closing menu');
-                setIsOpen(false);
-              }
-            }}
-          />
           <div 
             ref={menuRef}
             className="absolute left-full top-0 ml-2 w-56 bg-neutral-800 border border-neutral-700 rounded-lg shadow-xl overflow-hidden z-[9999]"
