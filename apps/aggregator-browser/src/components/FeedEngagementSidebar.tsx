@@ -196,9 +196,9 @@ export function FeedEngagementSidebar({
                 : 'text-white group-hover:text-red-400'
             }`} 
             fill={isLiked ? 'red' : 'white'}
-            stroke="black"
+            stroke="rgba(0, 0, 0, 0.65)"
             strokeWidth={1.5}
-            style={{ fill: isLiked ? 'red' : 'white', stroke: 'black', strokeWidth: 1.5 }}
+            style={{ fill: isLiked ? 'red' : 'white', stroke: 'rgba(0, 0, 0, 0.65)', strokeWidth: 1.5 }}
           />
         </div>
         <span className="text-xs text-white font-medium">{likes.toLocaleString()}</span>
@@ -217,9 +217,9 @@ export function FeedEngagementSidebar({
           <MessageCircle 
             className="h-6 w-6 md:h-7 md:w-7 text-white group-hover:text-blue-400 transition-colors" 
             fill="white"
-            stroke="black"
+            stroke="rgba(0, 0, 0, 0.65)"
             strokeWidth={1.5}
-            style={{ fill: 'white', stroke: 'black', strokeWidth: 1.5 }}
+            style={{ fill: 'white', stroke: 'rgba(0, 0, 0, 0.65)', strokeWidth: 1.5 }}
           />
         </div>
         <span className="text-xs text-white font-medium">{comments.toLocaleString()}</span>
@@ -234,9 +234,9 @@ export function FeedEngagementSidebar({
         <Send 
           className="h-6 w-6 md:h-7 md:w-7 text-white group-hover:text-green-400 transition-colors" 
           fill="white"
-          stroke="black"
+          stroke="rgba(0, 0, 0, 0.65)"
           strokeWidth={1.5}
-          style={{ fill: 'white', stroke: 'black', strokeWidth: 1.5 }}
+          style={{ fill: 'white', stroke: 'rgba(0, 0, 0, 0.65)', strokeWidth: 1.5 }}
         />
       </button>
 
@@ -258,9 +258,9 @@ export function FeedEngagementSidebar({
                 : 'text-white group-hover:text-yellow-400'
             }`} 
             fill={isSaved ? 'yellow' : 'white'}
-            stroke="black"
+            stroke="rgba(0, 0, 0, 0.65)"
             strokeWidth={1.5}
-            style={{ fill: isSaved ? 'yellow' : 'white', stroke: 'black', strokeWidth: 1.5 }}
+            style={{ fill: isSaved ? 'yellow' : 'white', stroke: 'rgba(0, 0, 0, 0.65)', strokeWidth: 1.5 }}
           />
         </div>
       </button>
@@ -275,9 +275,9 @@ export function FeedEngagementSidebar({
           <Bookmark 
             className="h-6 w-6 md:h-7 md:w-7 text-white group-hover:text-yellow-400 transition-colors" 
             fill="white"
-            stroke="black"
+            stroke="rgba(0, 0, 0, 0.65)"
             strokeWidth={1.5}
-            style={{ fill: 'white', stroke: 'black', strokeWidth: 1.5 }}
+            style={{ fill: 'white', stroke: 'rgba(0, 0, 0, 0.65)', strokeWidth: 1.5 }}
           />
         </button>
       )}
@@ -298,9 +298,9 @@ export function FeedEngagementSidebar({
           <MoreVertical 
             className="h-6 w-6 md:h-7 md:w-7 text-white transition-colors" 
             fill="white"
-            stroke="black"
+            stroke="rgba(0, 0, 0, 0.65)"
             strokeWidth={1.5}
-            style={{ fill: 'white', stroke: 'black', strokeWidth: 1.5 }}
+            style={{ fill: 'white', stroke: 'rgba(0, 0, 0, 0.65)', strokeWidth: 1.5 }}
           />
         </button>
       )}
