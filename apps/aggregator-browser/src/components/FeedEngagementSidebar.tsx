@@ -207,19 +207,6 @@ export function FeedEngagementSidebar({
         <span className="text-xs text-white font-medium">{comments.toLocaleString()}</span>
       </button>
 
-      {/* Share Button */}
-      <button
-        onClick={handleShare}
-        className="flex flex-col items-center space-y-1 group"
-        title="Share"
-      >
-        <Send 
-          className="h-6 w-6 md:h-7 md:w-7 text-white group-hover:text-green-400 transition-colors" 
-          fill="white"
-          style={{ fill: 'white' }}
-        />
-      </button>
-
       {/* Save Button - Always show, but require unlock to function */}
       <button
         onClick={handleSave}
@@ -241,6 +228,19 @@ export function FeedEngagementSidebar({
             style={{ fill: isSaved ? 'yellow' : 'white' }}
           />
         </div>
+      </button>
+
+      {/* Share Button */}
+      <button
+        onClick={handleShare}
+        className="flex flex-col items-center space-y-1 group"
+        title="Share"
+      >
+        <Send 
+          className="h-6 w-6 md:h-7 md:w-7 text-white group-hover:text-green-400 transition-colors" 
+          fill="white"
+          style={{ fill: 'white' }}
+        />
       </button>
 
       {/* Bookmark Button (legacy - only show if onBookmark callback provided) */}
