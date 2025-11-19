@@ -1921,6 +1921,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
                       <div className="flex items-center justify-center mt-2 pt-2 border-t border-neutral-700" onClick={(e) => e.stopPropagation()}>
                         <div className="relative">
                           <button
+                            data-menu-button={file.id}
                             onClick={(e) => {
                               e.stopPropagation();
                               e.preventDefault();
