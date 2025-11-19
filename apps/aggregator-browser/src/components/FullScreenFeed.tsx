@@ -155,7 +155,14 @@ export function FullScreenFeed({
       return;
     }
     
-    // Initialize opacity to 1 if not set
+    // Initialize index and opacity if not set
+    if (!currentCommentIndex.has(visibleFileId)) {
+      setCurrentCommentIndex(prev => {
+        const newMap = new Map(prev);
+        newMap.set(visibleFileId, 0);
+        return newMap;
+      });
+    }
     if (!commentOpacity.has(visibleFileId)) {
       setCommentOpacity(prev => {
         const newMap = new Map(prev);
@@ -668,14 +675,26 @@ export function FullScreenFeed({
                       return null;
                     }
                     
+                    const allComments = getComments(fileId);
                     const popularComments = getPopularComments(fileId);
+                    
+                    // Debug: log to help diagnose
+                    if (process.env.NODE_ENV === 'development') {
+                      console.log(`[LiveComments] File ${fileId}:`, {
+                        allCommentsCount: allComments?.length || 0,
+                        popularCommentsCount: popularComments.length,
+                        visibleFileId,
+                        currentIndex: currentCommentIndex.get(fileId),
+                        opacity: commentOpacity.get(fileId)
+                      });
+                    }
                     
                     // If no comments, don't show anything
                     if (popularComments.length === 0) {
                       return null;
                     }
                     
-                    const currentIndex = currentCommentIndex.get(fileId) || 0;
+                    const currentIndex = currentCommentIndex.get(fileId) ?? 0;
                     const opacity = commentOpacity.get(fileId) ?? 1;
                     const currentComment = popularComments[currentIndex];
                     
