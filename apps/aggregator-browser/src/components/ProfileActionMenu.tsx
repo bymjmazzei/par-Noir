@@ -346,12 +346,15 @@ export function ProfileActionMenu({ creatorId, onViewProfile, onMessage, indexed
     <div className="relative" data-profile-menu>
       <button
         onClick={(e) => {
+          console.log('🔍 Profile button clicked', { isOpen });
           e.stopPropagation();
           e.preventDefault();
           setIsOpen(!isOpen);
+          console.log('🔍 setIsOpen called with:', !isOpen);
         }}
-        className="flex flex-col items-center space-y-1 group"
+        className="flex flex-col items-center space-y-1 group cursor-pointer"
         title="Profile actions"
+        type="button"
       >
         <div className="relative w-12 h-12 md:w-14 md:h-14 rounded-full bg-black/30 backdrop-blur-sm flex items-center justify-center group-hover:bg-black/50 active:bg-black/70 transition-colors touch-manipulation overflow-hidden">
           {profileImageUrl && !profileImageLoading ? (
