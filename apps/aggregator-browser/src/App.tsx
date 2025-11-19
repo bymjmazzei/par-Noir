@@ -54,6 +54,9 @@ import { saveToFeed, getSavedFeed } from './services/savedFeedService';
 // Shared types - importing from id-dashboard
 // In production, these would come from a shared package
 
+// Stable empty array reference to prevent unnecessary re-renders
+const EMPTY_ARRAY: IndexedFile[] = [];
+
 function App() {
   const { userState, setLocked, setUnlocked, updateDisplayName } = useUserState();
   const [indexedFiles, setIndexedFiles] = useState<IndexedFile[]>([]);
@@ -720,7 +723,34 @@ function App() {
       // Discover public files from all users (with optional force refresh)
       const discoveredFiles = await metadataIndexService.discoverFiles(finalFilters, forceRefresh);
       
-      setIndexedFiles(discoveredFiles);
+      // Only update state if content actually changed (compare fileIds to avoid unnecessary re-renders)
+      setIndexedFiles(prev => {
+        const prevFileIds = new Set(prev.map(f => f.metadata.fileId));
+        const newFileIds = new Set(discoveredFiles.map(f => f.metadata.fileId));
+        
+        // Check if sets are equal (same fileIds)
+        if (prevFileIds.size === newFileIds.size && 
+            [...prevFileIds].every(id => newFileIds.has(id)) &&
+            [...newFileIds].every(id => prevFileIds.has(id))) {
+          // Same fileIds - check if any file content changed
+          const filesChanged = discoveredFiles.some(newFile => {
+            const prevFile = prev.find(f => f.metadata.fileId === newFile.metadata.fileId);
+            if (!prevFile) return true; // New file
+            // Compare key properties that might change
+            return JSON.stringify(prevFile.metadata.engagement) !== JSON.stringify(newFile.metadata.engagement) ||
+                   prevFile.metadata.isTopPost !== newFile.metadata.isTopPost;
+          });
+          
+          if (!filesChanged) {
+            // No changes - return previous array to prevent re-render
+            return prev;
+          }
+        }
+        
+        // Content changed - update state
+        return discoveredFiles;
+      });
+      
       console.log(`✅ Discovered ${discoveredFiles.length} public files`);
       
       // Generate thumbnails for image files (called separately to avoid TDZ)
@@ -1886,7 +1916,8 @@ function App() {
   }, [visibleFileId, viewingCreatorId, mePageTab, creatorFilesState, userState.pnIdentifier, userState.isUnlocked, userLikedFiles, userCommentedFiles, viewedUserLikedFiles, viewedUserCommentedFiles, savedFiles]);
 
   // Prepare data for conditional rendering
-  const creatorFiles = viewingCreatorId ? creatorFilesState : [];
+  // Use stable empty array reference to prevent unnecessary re-renders
+  const creatorFiles = viewingCreatorId ? creatorFilesState : EMPTY_ARRAY;
   const isOwnIndex = viewingCreatorId === userState.pnIdentifier && userState.isUnlocked;
   
   // Memoize filteredMeFiles to prevent unnecessary recalculations
