@@ -151,7 +151,7 @@ export function FeedEngagementSidebar({
   };
 
   return (
-    <div className="absolute right-2 md:right-4 bottom-16 flex flex-col items-center z-10 pointer-events-auto" style={{ gap: '16px', paddingBottom: 0, marginBottom: 0 }}>
+    <div className="absolute right-2 md:right-4 bottom-16 flex flex-col items-center z-10 pointer-events-auto" style={{ paddingBottom: 0, marginBottom: 0 }}>
       {/* Creator Profile Icon - Above Like Button */}
       {creatorId && (
         <ProfileActionMenu
@@ -170,6 +170,7 @@ export function FeedEngagementSidebar({
         onClick={(e) => handleAction(e, 'like', onLike)}
         className="flex flex-col items-center space-y-1 group"
         title={!userState.isUnlocked ? 'Connect pN to like' : 'Like'}
+        style={{ marginBottom: '16px' }}
       >
         <div className="relative">
           {!userState.isUnlocked && (
@@ -193,6 +194,7 @@ export function FeedEngagementSidebar({
         onClick={(e) => handleAction(e, 'comment', onComment)}
         className="flex flex-col items-center space-y-1 group"
         title={!userState.isUnlocked ? 'Connect pN to comment' : 'Comment'}
+        style={{ marginBottom: '16px' }}
       >
         <div className="relative">
           {!userState.isUnlocked && (
@@ -213,6 +215,7 @@ export function FeedEngagementSidebar({
         className="flex flex-col items-center space-y-1 group"
         title={userState.isUnlocked ? (isSaved ? 'Remove from saved' : 'Save') : 'Connect pN to save'}
         disabled={isCheckingSaved || !userState.isUnlocked}
+        style={{ marginBottom: '16px' }}
       >
         <div className="relative">
           {!userState.isUnlocked && (
@@ -235,7 +238,7 @@ export function FeedEngagementSidebar({
         onClick={handleShare}
         className="flex flex-col items-center group"
         title="Share"
-        style={{ marginBottom: 0, paddingBottom: 0 }}
+        style={{ marginBottom: 0, paddingBottom: 0, marginTop: 0, paddingTop: 0 }}
       >
         <Send 
           className="h-6 w-6 md:h-7 md:w-7 text-white group-hover:text-green-400 transition-colors" 
