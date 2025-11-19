@@ -1483,15 +1483,30 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
 
   // Close menu when clicking outside
   useEffect(() => {
+    if (!openMenuFor) return;
+    
     const handleClickOutside = (event: MouseEvent) => {
-      if (actionMenuRef.current && !actionMenuRef.current.contains(event.target as Node)) {
+      const target = event.target as Node;
+      if (actionMenuRef.current && !actionMenuRef.current.contains(target)) {
+        // Check if click is on the menu button itself
+        const menuButton = document.querySelector(`[data-menu-button="${openMenuFor}"]`);
+        if (menuButton && menuButton.contains(target)) {
+          return; // Don't close if clicking the button
+        }
         setOpenMenuFor(null);
       }
     };
 
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
+    // Use a small delay to avoid immediate closure
+    const timeout = setTimeout(() => {
+      document.addEventListener('mousedown', handleClickOutside);
+    }, 100);
+
+    return () => {
+      clearTimeout(timeout);
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [openMenuFor]);
 
   const hasConnectedBackends = driveAccounts.length > 0;
 
