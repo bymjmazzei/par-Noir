@@ -443,10 +443,10 @@ function App() {
     if (isProfileOpening) {
       if (viewingCreatorId === userState.pnIdentifier && userState.isUnlocked) {
         setCurrentFeedIndex(0);
-        setMePageTab('media');
+        setMePageTab('all');
       } else if (viewingCreatorId && viewingCreatorId !== userState.pnIdentifier) {
-        // When viewing another user's profile, set to media tab
-        setMePageTab('media');
+        // When viewing another user's profile, set to all tab
+        setMePageTab('all');
         setCurrentFeedIndex(0);
       }
     }
@@ -1579,7 +1579,7 @@ function App() {
   const [editingFile, setEditingFile] = useState<IndexedFile | null>(null);
   
   // State for Me page tabs
-  const [mePageTab, setMePageTab] = useState<'all' | 'media' | 'likes' | 'comments' | 'saved' | 'connections'>('media');
+  const [mePageTab, setMePageTab] = useState<'all' | 'media' | 'likes' | 'comments' | 'saved' | 'connections'>('all');
   const [savedFiles, setSavedFiles] = useState<IndexedFile[]>([]);
   const [isLoadingSavedFiles, setIsLoadingSavedFiles] = useState(false);
 
@@ -2257,7 +2257,7 @@ function App() {
             // The useEffect will handle finding the file index in filteredMeFiles
             setViewingCreatorId(creatorId);
             setViewMode('profile');
-            setMePageTab('media'); // Default to media tab - useEffect will adjust if needed
+            setMePageTab('all'); // Default to all tab - useEffect will adjust if needed
           }}
         />
       ) : viewingCreatorId ? (
@@ -2300,7 +2300,7 @@ function App() {
                 onCreatorClick={(creatorId) => {
                   if (creatorId !== viewingCreatorId) {
                     setViewingCreatorId(creatorId);
-                    setMePageTab('media');
+                    setMePageTab('all');
                     setCurrentFeedIndex(0);
                   }
                 }}
@@ -2575,7 +2575,7 @@ function App() {
                 console.log('🔍 onCreatorClick called with:', creatorId);
                 setViewingCreatorId(creatorId);
                 setViewMode('profile');
-                setMePageTab('media');
+                setMePageTab('all');
               }}
             />
                     </div>
@@ -2865,7 +2865,7 @@ function App() {
                           onCreatorClick={(creatorId) => {
                             setViewingCreatorId(creatorId);
                             setViewMode('profile');
-                            setMePageTab('media');
+                            setMePageTab('all');
                           }}
                           indexedFiles={indexedFiles}
                         />
