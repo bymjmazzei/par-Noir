@@ -346,11 +346,12 @@ export function ProfileActionMenu({ creatorId, onViewProfile, onMessage, indexed
     <div className="relative" data-profile-menu>
       <button
         onClick={(e) => {
-          console.log('🔍 Profile button clicked', { isOpen });
+          console.log('🔍 Profile button clicked', { isOpen, willBeOpen: !isOpen });
           e.stopPropagation();
           e.preventDefault();
-          setIsOpen(!isOpen);
-          console.log('🔍 setIsOpen called with:', !isOpen);
+          const newState = !isOpen;
+          setIsOpen(newState);
+          console.log('🔍 setIsOpen called with:', newState);
         }}
         className="flex flex-col items-center space-y-1 group cursor-pointer"
         title="Profile actions"
@@ -371,8 +372,21 @@ export function ProfileActionMenu({ creatorId, onViewProfile, onMessage, indexed
       </button>
 
       {isOpen && (
-        <div className="absolute left-full top-0 ml-2 w-56 bg-neutral-800 border border-neutral-700 rounded-lg shadow-xl overflow-hidden z-50">
-          {/* Header with Display Name */}
+        <>
+          <div 
+            className="fixed inset-0 z-[9998]"
+            onClick={(e) => {
+              e.stopPropagation();
+              e.preventDefault();
+              console.log('🔍 Clicked backdrop, closing menu');
+              setIsOpen(false);
+            }}
+          />
+          <div 
+            className="absolute left-full top-0 ml-2 w-56 bg-neutral-800 border border-neutral-700 rounded-lg shadow-xl overflow-hidden z-[9999]"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Header with Display Name */}
           <div className="px-4 py-3 border-b border-neutral-700">
             {isEditingName && isOwnProfile ? (
               <div className="flex items-center space-x-2">
