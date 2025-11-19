@@ -151,7 +151,7 @@ export function FeedEngagementSidebar({
   };
 
   return (
-    <div className="absolute right-2 md:right-4 bottom-20 flex flex-col items-center z-10 pointer-events-auto" style={{ gap: '16px' }}>
+    <div className="absolute right-2 md:right-4 flex flex-col items-center z-10 pointer-events-auto" style={{ gap: '16px', bottom: 'calc(64px + env(safe-area-inset-bottom, 0px))' }}>
       {/* Creator Profile Icon - Above Like Button */}
       {creatorId && (
         <ProfileActionMenu
