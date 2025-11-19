@@ -3382,7 +3382,7 @@ class ProductionServer {
     // Saved Feed APIs (Private curated feed for each user)
     // ============================================================================
 
-    // GET /api/feeds/saved?userDid=... - Get user's saved feed
+    // GET /api/feeds/saved?userDid=... - Get user's saved posts (index query, not a feed)
     this.app.get('/api/feeds/saved', async (req, res) => {
       try {
         const { userDid } = req.query;
@@ -3392,61 +3392,27 @@ class ProductionServer {
           return res.status(400).json({ error: 'userDid is required' });
         }
 
-        // Get or create saved feed for user
-        // Saved feed has a special feedId format: "saved-{userDid}"
+        // Saved posts use feed_id format: "saved-{userDid}"
         const savedFeedId = `saved-${userDid}`;
 
-        // Check if saved feed exists, create if not
-        let feedResult = await db.query(`
-          SELECT feed_id, feed_name, created_at, updated_at
-          FROM feeds
-          WHERE feed_id = $1
-        `, [savedFeedId]);
-
-        if (feedResult.rows.length === 0) {
-          // Create saved feed if it doesn't exist
-          try {
-            await db.query(`
-              INSERT INTO feeds (feed_id, feed_name, creator_did, creator_tier, rating_range)
-              VALUES ($1, $2, $3, $4, $5)
-            `, [savedFeedId, 'Saved', userDid, 'free', JSON.stringify(['GA', 'FF', 'T13+', 'YA16+', 'M18+', 'NSFW', 'X18+'])]);
-
-            feedResult = await db.query(`
-              SELECT feed_id, feed_name, created_at, updated_at
-              FROM feeds
-              WHERE feed_id = $1
-            `, [savedFeedId]);
-          } catch (createError: any) {
-            // If creation fails, might be a race condition - try to fetch again
-            feedResult = await db.query(`
-              SELECT feed_id, feed_name, created_at, updated_at
-              FROM feeds
-              WHERE feed_id = $1
-            `, [savedFeedId]);
-            
-            if (feedResult.rows.length === 0) {
-              throw createError;
-            }
-          }
-        }
-
-        // Get file IDs in the saved feed
+        // Query saved posts directly - no need to create a feed entry
         const postsResult = await db.query(`
-          SELECT file_id
+          SELECT file_id, added_at
           FROM feed_posts
           WHERE feed_id = $1
           ORDER BY added_at DESC
         `, [savedFeedId]);
 
         const fileIds = postsResult.rows.map(row => row.file_id);
+        const latestAddedAt = postsResult.rows.length > 0 ? postsResult.rows[0].added_at : null;
 
         return res.json({
           feed: {
-            feedId: feedResult.rows[0].feed_id,
-            feedName: feedResult.rows[0].feed_name,
+            feedId: savedFeedId,
+            feedName: 'Saved',
             fileIds,
-            createdAt: feedResult.rows[0].created_at,
-            updatedAt: feedResult.rows[0].updated_at
+            createdAt: latestAddedAt || new Date().toISOString(),
+            updatedAt: latestAddedAt || new Date().toISOString()
           }
         });
       } catch (error: any) {
