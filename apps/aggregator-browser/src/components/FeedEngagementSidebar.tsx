@@ -242,42 +242,6 @@ export function FeedEngagementSidebar({
           style={{ fill: 'white' }}
         />
       </button>
-
-      {/* Bookmark Button (legacy - only show if onBookmark callback provided) */}
-      {onBookmark && (
-        <button
-          onClick={(e) => handleAction(e, 'bookmark', onBookmark)}
-          className="flex flex-col items-center space-y-1 group"
-          title="Bookmark"
-        >
-          <Bookmark 
-            className="h-6 w-6 md:h-7 md:w-7 text-white group-hover:text-yellow-400 transition-colors" 
-            fill="white"
-            style={{ fill: 'white' }}
-          />
-        </button>
-      )}
-
-
-
-      {/* More Options */}
-      {onMore && (
-        <button
-          onClick={(e) => {
-            e.stopPropagation();
-            e.preventDefault();
-            onMore();
-          }}
-          className="flex flex-col items-center space-y-1 group"
-          title="More options"
-        >
-          <MoreVertical 
-            className="h-6 w-6 md:h-7 md:w-7 text-white transition-colors" 
-            fill="white"
-            style={{ fill: 'white' }}
-          />
-        </button>
-      )}
     </div>
   );
 }
