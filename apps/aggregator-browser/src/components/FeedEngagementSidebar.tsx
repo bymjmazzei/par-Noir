@@ -96,6 +96,7 @@ export function FeedEngagementSidebar({
             onViewProfile={() => onCreatorClick?.(creatorId)}
             onMessage={onMessage}
             indexedFiles={indexedFiles}
+            isOwner={isOwner}
           />
         </div>
       )}

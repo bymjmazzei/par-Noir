@@ -18,9 +18,10 @@ interface ProfileActionMenuProps {
   onViewProfile: () => void;
   onMessage?: (creatorId: string) => void;
   indexedFiles?: IndexedFile[]; // Optional: for loading profile images
+  isOwner?: boolean; // Optional: whether this is the owner's profile
 }
 
-export function ProfileActionMenu({ creatorId, onViewProfile, onMessage, indexedFiles = [] }: ProfileActionMenuProps) {
+export function ProfileActionMenu({ creatorId, onViewProfile, onMessage, indexedFiles = [], isOwner = false }: ProfileActionMenuProps) {
   const { userState, getDisplayName, updateDisplayName, setUserDisplayName } = useUserState();
   const { success, error: showError } = useToast();
   const [isOpen, setIsOpen] = useState(false);
@@ -33,18 +34,6 @@ export function ProfileActionMenu({ creatorId, onViewProfile, onMessage, indexed
   const [profileImageFileId, setProfileImageFileId] = useState<string | null>(null);
   const [externalDisplayName, setExternalDisplayName] = useState<string | null>(null);
 
-  const isOwnProfile = creatorId === userState.pnIdentifier;
-
-  // Get display name for this creator
-  const displayName = useMemo(() => {
-    // If we have an external display name from API, use it
-    if (externalDisplayName) {
-      return externalDisplayName;
-    }
-    // Otherwise use cached or default
-    return getDisplayName(creatorId);
-  }, [creatorId, externalDisplayName, userState.preferences.displayName, userState.preferences.userDisplayNames, userState.pnIdentifier, getDisplayName]);
-
   // Helper to check if ID is a valid pN identifier (not a DID or public key)
   const isValidPnIdentifier = (id: string): boolean => {
     if (!id) return false;
@@ -56,6 +45,19 @@ export function ProfileActionMenu({ creatorId, onViewProfile, onMessage, indexed
     if (/^MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8A/i.test(id)) return false;
     return true;
   };
+
+  // Use isOwner prop if provided, otherwise check if creatorId matches user's pN identifier
+  const isOwnProfile = isOwner || (userState.pnIdentifier && isValidPnIdentifier(creatorId) && creatorId === userState.pnIdentifier);
+
+  // Get display name for this creator
+  const displayName = useMemo(() => {
+    // If we have an external display name from API, use it
+    if (externalDisplayName) {
+      return externalDisplayName;
+    }
+    // Otherwise use cached or default
+    return getDisplayName(creatorId);
+  }, [creatorId, externalDisplayName, userState.preferences.displayName, userState.preferences.userDisplayNames, userState.pnIdentifier, getDisplayName]);
 
   // Load profile data (display name and profile image fileId) from API
   useEffect(() => {
@@ -358,6 +360,18 @@ export function ProfileActionMenu({ creatorId, onViewProfile, onMessage, indexed
           <div className="px-4 py-3 border-b border-neutral-700">
             {isEditingName && isOwnProfile ? (
               <div className="flex items-center space-x-2">
+                {/* Profile Icon */}
+                <div className="w-8 h-8 rounded-full bg-black/30 backdrop-blur-sm flex items-center justify-center flex-shrink-0 overflow-hidden">
+                  {profileImageUrl && !profileImageLoading ? (
+                    <img 
+                      src={profileImageUrl} 
+                      alt={displayName}
+                      className="w-full h-full object-cover"
+                    />
+                  ) : (
+                    <User className="h-4 w-4 text-white" />
+                  )}
+                </div>
                 <input
                   type="text"
                   value={editNameValue}
@@ -389,12 +403,26 @@ export function ProfileActionMenu({ creatorId, onViewProfile, onMessage, indexed
                 </button>
               </div>
             ) : (
-              <div className="flex items-center justify-between">
-                <span className="text-white font-medium text-sm truncate">{displayName}</span>
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center space-x-2 min-w-0 flex-1">
+                  {/* Profile Icon */}
+                  <div className="w-8 h-8 rounded-full bg-black/30 backdrop-blur-sm flex items-center justify-center flex-shrink-0 overflow-hidden">
+                    {profileImageUrl && !profileImageLoading ? (
+                      <img 
+                        src={profileImageUrl} 
+                        alt={displayName}
+                        className="w-full h-full object-cover"
+                      />
+                    ) : (
+                      <User className="h-4 w-4 text-white" />
+                    )}
+                  </div>
+                  <span className="text-white font-medium text-sm truncate">{displayName}</span>
+                </div>
                 {isOwnProfile && (
                   <button
                     onClick={() => setIsEditingName(true)}
-                    className="ml-2 p-1 text-neutral-400 hover:text-white hover:bg-neutral-700 rounded transition-colors"
+                    className="p-1 text-neutral-400 hover:text-white hover:bg-neutral-700 rounded transition-colors flex-shrink-0"
                     title="Edit display name"
                   >
                     <Edit2 className="h-3 w-3" />
