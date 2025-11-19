@@ -170,8 +170,13 @@ export async function getConnectionStatus(
   otherUserDid: string
 ): Promise<ConnectionStatus> {
   try {
+    // Skip if it's a DID or public key
+    if (otherUserDid.startsWith('did:key:') || otherUserDid.length > 200) {
+      return { status: 'not_connected' };
+    }
+
     const response = await fetch(
-      `${API_ENDPOINT}/api/connections/${otherUserDid}/status?userDid=${userDid}`,
+      `${API_ENDPOINT}/api/connections/${encodeURIComponent(otherUserDid)}/status?userDid=${encodeURIComponent(userDid)}`,
       {
         headers: getAuthHeaders()
       }
@@ -183,7 +188,7 @@ export async function getConnectionStatus(
 
     return await response.json();
   } catch (error) {
-    console.error('Failed to get connection status:', error);
+    // Silently return not_connected - connection status may not be available
     return { status: 'not_connected' };
   }
 }

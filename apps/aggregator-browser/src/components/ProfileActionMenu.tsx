@@ -45,9 +45,21 @@ export function ProfileActionMenu({ creatorId, onViewProfile, onMessage, indexed
     return getDisplayName(creatorId);
   }, [creatorId, externalDisplayName, userState.preferences.displayName, userState.preferences.userDisplayNames, userState.pnIdentifier, getDisplayName]);
 
+  // Helper to check if ID is a valid pN identifier (not a DID or public key)
+  const isValidPnIdentifier = (id: string): boolean => {
+    if (!id) return false;
+    // Skip DIDs
+    if (id.startsWith('did:key:')) return false;
+    // Skip public keys (very long base64 strings, typically >200 chars)
+    if (id.length > 200) return false;
+    // Skip if it looks like a base64-encoded public key
+    if (/^MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8A/i.test(id)) return false;
+    return true;
+  };
+
   // Load profile data (display name and profile image fileId) from API
   useEffect(() => {
-    if (!creatorId) return;
+    if (!creatorId || !isValidPnIdentifier(creatorId)) return;
 
     const loadProfileData = async () => {
       try {
@@ -63,7 +75,8 @@ export function ProfileActionMenu({ creatorId, onViewProfile, onMessage, indexed
           setProfileImageFileId(profile.profileImageFileId);
         }
       } catch (error) {
-        console.error('Failed to load profile data:', error);
+        // Silently fail - profile may not exist for this user
+        // Don't log to console to avoid spam
       }
     };
 
@@ -138,7 +151,7 @@ export function ProfileActionMenu({ creatorId, onViewProfile, onMessage, indexed
 
   // Load connection status
   useEffect(() => {
-    if (!userState.isUnlocked || !userState.pnIdentifier || isOwnProfile || !creatorId) {
+    if (!userState.isUnlocked || !userState.pnIdentifier || isOwnProfile || !creatorId || !isValidPnIdentifier(creatorId)) {
       setConnectionStatus({ status: 'not_connected' });
       return;
     }
@@ -148,7 +161,9 @@ export function ProfileActionMenu({ creatorId, onViewProfile, onMessage, indexed
         const status = await getConnectionStatus(userState.pnIdentifier!, creatorId);
         setConnectionStatus(status);
       } catch (error) {
-        console.error('Failed to load connection status:', error);
+        // Silently fail - user may not have connections set up
+        // Don't log to console to avoid spam
+        setConnectionStatus({ status: 'not_connected' });
       }
     };
 

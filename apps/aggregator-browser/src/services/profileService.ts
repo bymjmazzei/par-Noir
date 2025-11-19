@@ -31,7 +31,12 @@ export interface UserProfile {
  */
 export async function getUserProfile(userDid: string): Promise<UserProfile> {
   try {
-    const response = await fetch(`${API_ENDPOINT}/api/profile/${userDid}`, {
+    // Skip if it's a DID or public key
+    if (userDid.startsWith('did:key:') || userDid.length > 200) {
+      return { displayName: null, profileImageFileId: null };
+    }
+
+    const response = await fetch(`${API_ENDPOINT}/api/profile/${encodeURIComponent(userDid)}`, {
       headers: getAuthHeaders()
     });
 
@@ -41,7 +46,7 @@ export async function getUserProfile(userDid: string): Promise<UserProfile> {
 
     return await response.json();
   } catch (error) {
-    console.error('Failed to get user profile:', error);
+    // Silently return null - profile may not exist
     return { displayName: null, profileImageFileId: null };
   }
 }
