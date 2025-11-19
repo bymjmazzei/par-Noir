@@ -1970,7 +1970,12 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
                           {openMenuFor === file.id && (
                             <div
                               ref={actionMenuRef}
-                              className="absolute right-0 bottom-full mb-2 w-44 bg-neutral-900 border border-neutral-700 rounded-lg shadow-xl z-50 py-1"
+                              className="fixed w-44 bg-neutral-900 border border-neutral-700 rounded-lg shadow-xl z-[100] py-1"
+                              style={{
+                                top: '50%',
+                                left: '50%',
+                                transform: 'translate(-50%, -50%)'
+                              }}
                               onClick={(e) => {
                                 e.stopPropagation();
                                 e.preventDefault();
