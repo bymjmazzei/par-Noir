@@ -1274,7 +1274,7 @@ function App() {
 
       loadPublicCreatorFiles();
     }
-  }, [viewingCreatorId, userState.pnIdentifier, userState.isUnlocked, indexedFiles]);
+  }, [viewingCreatorId, userState.pnIdentifier, userState.isUnlocked, indexedFilesKey]);
 
   // Load user's liked and commented files when viewing own index
   const [userLikedFiles, setUserLikedFiles] = useState<IndexedFile[]>([]);
@@ -1637,7 +1637,7 @@ function App() {
       setViewedUserLikedFiles(prev => prev.length === 0 ? prev : []);
       setViewedUserCommentedFiles(prev => prev.length === 0 ? prev : []);
     }
-  }, [viewingCreatorId, userState.pnIdentifier, indexedFiles]);
+  }, [viewingCreatorId, userState.pnIdentifier, indexedFilesKey]);
 
   // Load connections files when viewing own index
   useEffect(() => {

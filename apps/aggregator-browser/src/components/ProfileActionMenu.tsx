@@ -141,8 +141,23 @@ export const ProfileActionMenu = React.memo(function ProfileActionMenu({ creator
 
   // Find top post file for profile icon (replaces profileImageFileId)
   // Only recalculate when indexedFilesKey or creatorId changes, not on every indexedFiles reference change
+  // Use a ref to cache the result and only recalculate when indexedFilesKey actually changes
+  const topPostFileRef = useRef<IndexedFile | null>(null);
+  const lastIndexedFilesKeyRef = useRef<string>('');
+  const lastCreatorIdRef = useRef<string>('');
+  
   const topPostFile = useMemo(() => {
+    // If indexedFilesKey and creatorId haven't changed, return cached result
+    if (indexedFilesKey === lastIndexedFilesKeyRef.current && 
+        normalizedCreatorId === lastCreatorIdRef.current &&
+        topPostFileRef.current !== null) {
+      return topPostFileRef.current;
+    }
+    
     if (indexedFiles.length === 0) {
+      topPostFileRef.current = null;
+      lastIndexedFilesKeyRef.current = indexedFilesKey;
+      lastCreatorIdRef.current = normalizedCreatorId;
       return null;
     }
     
@@ -160,7 +175,11 @@ export const ProfileActionMenu = React.memo(function ProfileActionMenu({ creator
       return matches && isTopPost;
     });
     
-    return topPost || null;
+    const result = topPost || null;
+    topPostFileRef.current = result;
+    lastIndexedFilesKeyRef.current = indexedFilesKey;
+    lastCreatorIdRef.current = normalizedCreatorId;
+    return result;
   }, [indexedFilesKey, normalizedCreatorId, creatorId, indexedFiles]);
 
   // Load profile image from top post
