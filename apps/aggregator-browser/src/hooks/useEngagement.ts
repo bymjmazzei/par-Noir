@@ -491,12 +491,34 @@ export function useEngagement() {
       if (response.ok) {
         const result = await response.json();
         const comments = result.comments || [];
+        
+        // Normalize comments to ensure likes is always an array
+        const normalizeComment = (comment: any): Comment => {
+          const normalized: Comment = {
+            id: comment.id,
+            fileId: comment.fileId,
+            authorId: comment.authorId,
+            authorName: comment.authorName,
+            content: comment.content,
+            timestamp: comment.timestamp,
+            likes: Array.isArray(comment.likes) 
+              ? comment.likes 
+              : (typeof comment.likes === 'number' ? [] : []), // Convert old number format to empty array
+            parentCommentId: comment.parentCommentId,
+            postReply: comment.postReply,
+            replies: comment.replies ? comment.replies.map(normalizeComment) : undefined
+          };
+          return normalized;
+        };
+        
+        const normalizedComments = comments.map(normalizeComment);
+        
         setEngagement(prev => {
           const newComments = new Map(prev.comments);
-          newComments.set(fileId, comments);
+          newComments.set(fileId, normalizedComments);
           return { ...prev, comments: newComments };
         });
-        return comments;
+        return normalizedComments;
       }
     } catch (error) {
       console.warn('Failed to load comments:', error);

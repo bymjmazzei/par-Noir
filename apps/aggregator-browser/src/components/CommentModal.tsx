@@ -54,7 +54,20 @@ export function CommentModal({ file, onClose }: CommentModalProps) {
     const load = async () => {
       setLoading(true);
       const loadedComments = await loadComments(file.metadata.fileId);
-      setComments(loadedComments.length > 0 ? loadedComments : getComments(file.metadata.fileId));
+      // Normalize comments to ensure likes is always an array
+      const normalizeComment = (comment: any): Comment => {
+        return {
+          ...comment,
+          likes: Array.isArray(comment.likes) 
+            ? comment.likes 
+            : (typeof comment.likes === 'number' ? [] : []), // Convert old number format to empty array
+          replies: comment.replies ? comment.replies.map(normalizeComment) : undefined
+        };
+      };
+      const normalized = loadedComments.length > 0 
+        ? loadedComments.map(normalizeComment)
+        : getComments(file.metadata.fileId).map(normalizeComment);
+      setComments(normalized);
       setLoading(false);
     };
     load();
@@ -160,7 +173,11 @@ export function CommentModal({ file, onClose }: CommentModalProps) {
 
   const isLiked = (comment: Comment): boolean => {
     if (!userState.pnIdentifier) return false;
-    return comment.likes?.includes(userState.pnIdentifier) || false;
+    // Handle both old format (number) and new format (array)
+    if (Array.isArray(comment.likes)) {
+      return comment.likes.includes(userState.pnIdentifier);
+    }
+    return false;
   };
 
   const toggleReplies = (commentId: string) => {
@@ -192,7 +209,8 @@ export function CommentModal({ file, onClose }: CommentModalProps) {
     const repliesExpanded = expandedReplies.has(comment.id);
     const postReplyExpanded = expandedPostReplies.has(comment.id);
     const liked = isLiked(comment);
-    const likeCount = comment.likes?.length || 0;
+    // Handle both old format (number) and new format (array)
+    const likeCount = Array.isArray(comment.likes) ? comment.likes.length : (typeof comment.likes === 'number' ? comment.likes : 0);
 
     return (
       <div key={comment.id} className={`${isReply ? 'ml-8 mt-3' : ''} ${depth > 0 ? 'border-l-2 border-neutral-700 pl-4' : ''}`}>
