@@ -2055,11 +2055,26 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
                     <div className="flex items-center justify-center space-x-2" onClick={(e) => e.stopPropagation()}>
                       <div className="relative">
                         <button
+                          ref={(el) => {
+                            if (el) menuButtonRefs.current.set(file.id, el);
+                            else menuButtonRefs.current.delete(file.id);
+                          }}
                           data-menu-button={file.id}
                           onClick={(e) => {
                             e.stopPropagation();
                             e.preventDefault();
+                            const button = e.currentTarget;
+                            const rect = button.getBoundingClientRect();
                             const newState = openMenuFor === file.id ? null : file.id;
+                            if (newState) {
+                              // Position menu to the left of the button, with top aligned to button top
+                              setMenuPosition({
+                                top: rect.top, // Align top of menu with top of button
+                                left: rect.left - 180 // 180px = w-44 (176px) + 4px spacing
+                              });
+                            } else {
+                              setMenuPosition(null);
+                            }
                             console.log('[FileStorageAggregator] Menu button clicked (list):', { fileId: file.id, currentState: openMenuFor, newState });
                             setOpenMenuFor(newState);
                           }}
