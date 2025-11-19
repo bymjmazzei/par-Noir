@@ -1925,7 +1925,9 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
                             onClick={(e) => {
                               e.stopPropagation();
                               e.preventDefault();
-                              setOpenMenuFor(openMenuFor === file.id ? null : file.id);
+                              const newState = openMenuFor === file.id ? null : file.id;
+                              console.log('[FileStorageAggregator] Menu button clicked:', { fileId: file.id, currentState: openMenuFor, newState });
+                              setOpenMenuFor(newState);
                             }}
                             style={{
                               width: '28px',
@@ -2092,7 +2094,9 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
                           onClick={(e) => {
                             e.stopPropagation();
                             e.preventDefault();
-                            setOpenMenuFor(openMenuFor === file.id ? null : file.id);
+                            const newState = openMenuFor === file.id ? null : file.id;
+                            console.log('[FileStorageAggregator] Menu button clicked (list):', { fileId: file.id, currentState: openMenuFor, newState });
+                            setOpenMenuFor(newState);
                           }}
                           style={{
                             width: '28px',
