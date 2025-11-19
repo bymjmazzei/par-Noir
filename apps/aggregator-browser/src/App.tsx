@@ -1359,16 +1359,39 @@ function App() {
     }
   }, [viewingCreatorId, userState.pnIdentifier, userState.isUnlocked]);
   
+  // Create a stable key for indexedFilesMap based on fileIds (not array reference)
+  const indexedFilesKey = useMemo(() => {
+    return indexedFiles.map(f => f.metadata.fileId).sort().join(',');
+  }, [indexedFiles]);
+
   // Create a map of indexed files by fileId for efficient lookup
+  // Use a ref to store the actual Map and only recreate when fileIds change
+  const indexedFilesMapRef = useRef<Map<string, IndexedFile>>(new Map());
   const indexedFilesMap = useMemo(() => {
+    // Only recreate if fileIds actually changed (not just array reference)
+    const currentKey = indexedFiles.map(f => f.metadata.fileId).sort().join(',');
+    const prevKey = Array.from(indexedFilesMapRef.current.keys()).sort().join(',');
+    
+    if (currentKey === prevKey && indexedFilesMapRef.current.size === indexedFiles.length) {
+      // FileIds haven't changed - update existing map with new file references but keep same Map instance
+      indexedFiles.forEach(f => {
+        indexedFilesMapRef.current.set(f.metadata.fileId, f);
+      });
+      return indexedFilesMapRef.current;
+    }
+    
+    // FileIds changed - create new map
     const map = new Map<string, IndexedFile>();
     indexedFiles.forEach(f => {
       map.set(f.metadata.fileId, f);
     });
+    indexedFilesMapRef.current = map;
     return map;
-  }, [indexedFiles]);
+  }, [indexedFilesKey, indexedFiles]);
   
-  // Match saved feed fileIds with indexed files (only when savedFeedFileIds or indexedFilesMap changes)
+  // Match saved feed fileIds with indexed files (only when savedFeedFileIds or indexedFilesKey changes)
+  // Use indexedFilesKey instead of indexedFilesMap to prevent re-runs when Map reference changes
+  const savedFeedFileIdsKey = useMemo(() => savedFeedFileIds.sort().join(','), [savedFeedFileIds]);
   useEffect(() => {
     if (savedFeedFileIds.length > 0 && indexedFilesMap.size > 0) {
       const savedFromIndexed = savedFeedFileIds
@@ -1385,9 +1408,9 @@ function App() {
         return savedFromIndexed;
       });
     } else if (savedFeedFileIds.length === 0) {
-      setSavedFiles(prev => prev.length === 0 ? prev : []);
+      setSavedFiles(prev => prev.length === 0 ? prev : EMPTY_ARRAY);
     }
-  }, [savedFeedFileIds, indexedFilesMap]);
+  }, [savedFeedFileIdsKey, indexedFilesKey, savedFeedFileIds, indexedFilesMap]);
 
   // Track user engagement fileIds separately
   const [userLikedFileIds, setUserLikedFileIds] = useState<string[]>([]);
@@ -1426,7 +1449,10 @@ function App() {
     }
   }, [viewingCreatorId, userState.pnIdentifier, userState.isUnlocked]);
   
-  // Match engagement fileIds with indexed files (only when engagement fileIds or indexedFilesMap changes)
+  // Match engagement fileIds with indexed files (only when engagement fileIds or indexedFilesKey changes)
+  // Use indexedFilesKey instead of indexedFilesMap to prevent re-runs when Map reference changes
+  const userLikedFileIdsKey = useMemo(() => userLikedFileIds.sort().join(','), [userLikedFileIds]);
+  const userCommentedFileIdsKey = useMemo(() => userCommentedFileIds.sort().join(','), [userCommentedFileIds]);
   useEffect(() => {
     if (indexedFilesMap.size > 0) {
       const likedFromIndexed = userLikedFileIds
@@ -1455,10 +1481,10 @@ function App() {
         return commentedFromIndexed;
       });
     } else {
-      setUserLikedFiles(prev => prev.length === 0 ? prev : []);
-      setUserCommentedFiles(prev => prev.length === 0 ? prev : []);
+      setUserLikedFiles(prev => prev.length === 0 ? prev : EMPTY_ARRAY);
+      setUserCommentedFiles(prev => prev.length === 0 ? prev : EMPTY_ARRAY);
     }
-  }, [userLikedFileIds, userCommentedFileIds, indexedFilesMap]);
+  }, [userLikedFileIdsKey, userCommentedFileIdsKey, indexedFilesKey, userLikedFileIds, userCommentedFileIds, indexedFilesMap]);
 
   // Load other user's liked and commented files when viewing their profile
   useEffect(() => {
@@ -2015,6 +2041,90 @@ function App() {
       console.log(`📊 Creator index: Found ${filteredMeFiles.length} files for creator ${viewingCreatorId}${isOwnIndex ? ` (tab: ${mePageTab}, ${creatorFiles.length} owned, ${userLikedFiles.length} liked, ${userCommentedFiles.length} commented, ${savedFiles.length} saved)` : ''}`);
     }
   }, [filteredMeFiles.length, viewingCreatorId, isOwnIndex, mePageTab, creatorFiles.length, userLikedFiles.length, userCommentedFiles.length, savedFiles.length]);
+
+  // Memoize callbacks for FeedEngagementSidebar to prevent re-renders
+  const handleLike = useCallback((fileId: string) => {
+    const wasLiked = isLiked(fileId);
+    toggleLike(fileId);
+    if (!wasLiked) {
+      success('Liked!');
+    }
+  }, [isLiked, toggleLike, success]);
+
+  const handleComment = useCallback((indexedFile: IndexedFile) => {
+    setCommentingFile(indexedFile);
+  }, []);
+
+  const handleShare = useCallback(async (fileId: string) => {
+    share(fileId);
+    const shareUrl = `${window.location.origin}${window.location.pathname}?file=${fileId}&view=feed`;
+    try {
+      await navigator.clipboard.writeText(shareUrl);
+      success('Link copied to clipboard!');
+      setParam('file', fileId);
+    } catch (err) {
+      showErrorToast('Failed to copy link. Please try again.');
+    }
+  }, [share, success, setParam, showErrorToast]);
+
+  const handleCreatorClick = useCallback((creatorId: string) => {
+    setViewingCreatorId(creatorId);
+    setViewMode('profile');
+    setMePageTab('all');
+  }, []);
+
+  // Memoize file props per fileId to prevent re-renders
+  const filePropsMapRef = useRef<Map<string, { file: IndexedFile; isLiked: boolean; isOwner: boolean }>>(new Map());
+  const getFileProps = useCallback((indexedFile: IndexedFile) => {
+    const fileId = indexedFile.metadata.fileId;
+    const cached = filePropsMapRef.current.get(fileId);
+    
+    // Check if we need to update cached props
+    const currentIsLiked = isLiked(fileId);
+    const currentIsOwner = userState.isUnlocked && userState.pnIdentifier === (indexedFile.metadata.creator?.identifier?.value || indexedFile.metadata.creator?.["@id"] || indexedFile.metadata.author?.did);
+    const currentLikeCount = getLikeCount(fileId, indexedFile.metadata.engagement?.likes || 0);
+    const currentCommentCount = getComments(fileId).length + (indexedFile.metadata.engagement?.comments || 0);
+    const currentShareCount = getShareCount(fileId, indexedFile.metadata.engagement?.shares || 0);
+    
+    // Check if engagement data changed
+    const engagementChanged = cached ? (
+      cached.isLiked !== currentIsLiked ||
+      cached.isOwner !== currentIsOwner ||
+      cached.file.metadata.engagement?.likes !== currentLikeCount ||
+      cached.file.metadata.engagement?.comments !== currentCommentCount ||
+      cached.file.metadata.engagement?.shares !== currentShareCount
+    ) : true;
+    
+    if (!cached || engagementChanged) {
+      const fileWithEngagement: IndexedFile = {
+        ...indexedFile,
+        metadata: {
+          ...indexedFile.metadata,
+          engagement: {
+            ...indexedFile.metadata.engagement,
+            likes: currentLikeCount,
+            comments: currentCommentCount,
+            shares: currentShareCount
+          }
+        }
+      };
+      
+      const props = {
+        file: fileWithEngagement,
+        isLiked: currentIsLiked,
+        isOwner: currentIsOwner
+      };
+      
+      filePropsMapRef.current.set(fileId, props);
+      return props;
+    }
+    
+    return cached;
+  }, [isLiked, getLikeCount, getComments, getShareCount, userState.isUnlocked, userState.pnIdentifier]);
+
+  // Memoize indexedFiles array reference to prevent FeedEngagementSidebar re-renders
+  // Only recreate when indexedFilesKey changes (actual fileIds change)
+  const stableIndexedFiles = useMemo(() => indexedFiles, [indexedFilesKey]);
   
   const creatorFeeds = viewingCreatorId ? feeds.filter(feed => feed.creatorId === viewingCreatorId) : [];
   const uniqueFiles = viewingCreatorId ? Array.from(new Map(creatorFiles.map(f => [f.metadata.fileId, f])).values()) : [];
@@ -2374,7 +2484,7 @@ function App() {
       ) : showSearch ? (
         <SearchResults
           initialQuery={searchQuery}
-          indexedFiles={indexedFiles}
+          indexedFiles={stableIndexedFiles}
           thumbnails={thumbnails}
           onFileClick={(file) => {
             setShowSearch(false);
@@ -2799,7 +2909,7 @@ function App() {
                   setShowInbox(true);
                   setActiveBottomTab('messages');
                 }}
-                indexedFiles={indexedFiles}
+                indexedFiles={stableIndexedFiles}
               />
             ) : (
               <div className="h-full flex items-center justify-center text-white">
@@ -2995,47 +3105,21 @@ function App() {
                       onClick={(e) => e.stopPropagation()}
                     >
                       <div className="flex justify-end">
-                        <FeedEngagementSidebar
-                          file={{
-                            ...indexedFile,
-                            metadata: {
-                              ...indexedFile.metadata,
-                              engagement: {
-                                ...indexedFile.metadata.engagement,
-                                likes: getLikeCount(file.fileId, indexedFile.metadata.engagement?.likes || 0),
-                                comments: getComments(file.fileId).length + (indexedFile.metadata.engagement?.comments || 0),
-                                shares: getShareCount(file.fileId, indexedFile.metadata.engagement?.shares || 0)
-                              }
-                            }
-                          }}
-                          isLiked={isLiked(file.fileId)}
-                          onLike={() => {
-                            const wasLiked = isLiked(file.fileId);
-                            toggleLike(file.fileId);
-                            if (!wasLiked) {
-                              success('Liked!');
-                            }
-                          }}
-                          onComment={() => setCommentingFile(indexedFile)}
-                          onShare={async () => {
-                            share(file.fileId);
-                            const shareUrl = `${window.location.origin}${window.location.pathname}?file=${file.fileId}&view=feed`;
-                            try {
-                              await navigator.clipboard.writeText(shareUrl);
-                              success('Link copied to clipboard!');
-                              setParam('file', file.fileId);
-                            } catch (err) {
-                              error('Failed to copy link. Please try again.');
-                            }
-                          }}
-                          isOwner={userState.isUnlocked && userState.pnIdentifier === (file.creator?.identifier?.value || file.creator?.["@id"] || file.author?.did)}
-                          onCreatorClick={(creatorId) => {
-                            setViewingCreatorId(creatorId);
-                            setViewMode('profile');
-                            setMePageTab('all');
-                          }}
-                          indexedFiles={indexedFiles}
-                        />
+                        {(() => {
+                          const fileProps = getFileProps(indexedFile);
+                          return (
+                            <FeedEngagementSidebar
+                              file={fileProps.file}
+                              isLiked={fileProps.isLiked}
+                              onLike={() => handleLike(file.fileId)}
+                              onComment={() => handleComment(indexedFile)}
+                              onShare={() => handleShare(file.fileId)}
+                              isOwner={fileProps.isOwner}
+                              onCreatorClick={handleCreatorClick}
+                              indexedFiles={stableIndexedFiles}
+                            />
+                          );
+                        })()}
                       </div>
                     </div>
                   </div>
