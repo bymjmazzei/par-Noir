@@ -120,15 +120,13 @@ export function FeedEngagementSidebar({
     <div className="absolute right-2 md:right-4 bottom-20 md:bottom-24 flex flex-col items-center space-y-4 md:space-y-6 z-10">
       {/* Creator Profile Icon - Above Like Button */}
       {creatorId && (
-        <div onClick={(e) => e.stopPropagation()}>
-          <ProfileActionMenu
-            creatorId={creatorId}
-            onViewProfile={() => onCreatorClick?.(creatorId)}
-            onMessage={onMessage}
-            indexedFiles={indexedFiles}
-            isOwner={calculatedIsOwner}
-          />
-        </div>
+        <ProfileActionMenu
+          creatorId={creatorId}
+          onViewProfile={() => onCreatorClick?.(creatorId)}
+          onMessage={onMessage}
+          indexedFiles={indexedFiles}
+          isOwner={calculatedIsOwner}
+        />
       )}
 
       {/* Like Button */}
