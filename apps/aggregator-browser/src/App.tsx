@@ -1127,8 +1127,12 @@ function App() {
       const loadPublicCreatorFiles = async () => {
         try {
           const apiEndpoint = process.env.REACT_APP_API_ENDPOINT || 'https://api.parnoir.com';
+          // Normalize the creator ID - API might expect "pn-" prefix
+          const normalizedCreatorId = viewingCreatorId.startsWith('pn-') 
+            ? viewingCreatorId 
+            : `pn-${viewingCreatorId}`;
           const response = await fetch(
-            `${apiEndpoint}/api/aggregator/metadata-index?authorDid=${encodeURIComponent(viewingCreatorId)}`,
+            `${apiEndpoint}/api/aggregator/metadata-index?authorDid=${encodeURIComponent(normalizedCreatorId)}`,
             {
               method: 'GET',
               headers: {
