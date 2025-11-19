@@ -2001,26 +2001,18 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
                                 <Share2 className="h-4 w-4" />
                                 <span>Share settings</span>
                               </button>
-                              {(() => {
-                                const metadata = fileMetadataMap.get(file.id);
-                                const isPublic = file.isPublic || metadata?.isPublic || false;
-                                if (!isPublic) return null;
-                                
-                                return (
-                                  <button
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      setOpenMenuFor(null);
-                                      handleSetTopPost(file, account.accountId);
-                                    }}
-                                    className="flex w-full items-center space-x-2 px-3 py-2 text-sm text-text-secondary hover:text-yellow-400 hover:bg-neutral-800 transition-colors"
-                                    disabled={isLoading}
-                                  >
-                                    <Star className={`h-4 w-4 ${metadata?.isTopPost ? 'fill-yellow-400 text-yellow-400' : ''}`} />
-                                    <span>{metadata?.isTopPost ? 'Unset top post' : 'Set as top post'}</span>
-                                  </button>
-                                );
-                              })()}
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setOpenMenuFor(null);
+                                  handleSetTopPost(file, account.accountId);
+                                }}
+                                className="flex w-full items-center space-x-2 px-3 py-2 text-sm text-text-secondary hover:text-yellow-400 hover:bg-neutral-800 transition-colors"
+                                disabled={isLoading}
+                              >
+                                <Star className={`h-4 w-4 ${fileMetadataMap.get(file.id)?.isTopPost ? 'fill-yellow-400 text-yellow-400' : ''}`} />
+                                <span>{fileMetadataMap.get(file.id)?.isTopPost ? 'Unset top post' : 'Set as top post'}</span>
+                              </button>
                               <button
                                 onClick={(e) => {
                                   e.stopPropagation();
@@ -2166,26 +2158,18 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
                               <Share2 className="h-4 w-4" />
                               <span>Share settings</span>
                             </button>
-                            {(() => {
-                              const metadata = fileMetadataMap.get(file.id);
-                              const isPublic = file.isPublic || metadata?.isPublic || false;
-                              if (!isPublic) return null;
-                              
-                              return (
-                                <button
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    setOpenMenuFor(null);
-                                    handleSetTopPost(file, account.accountId);
-                                  }}
-                                  className="flex w-full items-center space-x-2 px-3 py-2 text-sm text-text-secondary hover:text-yellow-400 hover:bg-neutral-800 transition-colors"
-                                  disabled={isLoading}
-                                >
-                                  <Star className={`h-4 w-4 ${metadata?.isTopPost ? 'fill-yellow-400 text-yellow-400' : ''}`} />
-                                  <span>{metadata?.isTopPost ? 'Unset top post' : 'Set as top post'}</span>
-                                </button>
-                              );
-                            })()}
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setOpenMenuFor(null);
+                                handleSetTopPost(file, account.accountId);
+                              }}
+                              className="flex w-full items-center space-x-2 px-3 py-2 text-sm text-text-secondary hover:text-yellow-400 hover:bg-neutral-800 transition-colors"
+                              disabled={isLoading}
+                            >
+                              <Star className={`h-4 w-4 ${fileMetadataMap.get(file.id)?.isTopPost ? 'fill-yellow-400 text-yellow-400' : ''}`} />
+                              <span>{fileMetadataMap.get(file.id)?.isTopPost ? 'Unset top post' : 'Set as top post'}</span>
+                            </button>
                             <button
                               onClick={(e) => {
                                 e.stopPropagation();
