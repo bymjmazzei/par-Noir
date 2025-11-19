@@ -3,13 +3,14 @@
  * TikTok-style vertical engagement buttons on the right side of feed posts
  */
 
-import React from 'react';
-import { Heart, MessageCircle, Share2, Bookmark, MoreVertical, Plus, Edit } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Heart, MessageCircle, Share2, Bookmark, MoreVertical, Plus, Edit, BookmarkCheck } from 'lucide-react';
 import { IndexedFile } from '../types/aggregator';
 import { useUserState } from '../contexts/UserStateContext';
 import { Lock } from 'lucide-react';
 import { ProfileActionMenu } from './ProfileActionMenu';
 import { useToast } from '../hooks/useToast';
+import { isFileSaved, saveToFeed, removeFromSavedFeed } from '../services/savedFeedService';
 
 interface FeedEngagementSidebarProps {
   file: IndexedFile;
@@ -47,6 +48,8 @@ export function FeedEngagementSidebar({
   const engagement = file.metadata.engagement;
   const likes = engagement?.likes || 0;
   const comments = engagement?.comments || 0;
+  const [isSaved, setIsSaved] = useState(false);
+  const [isCheckingSaved, setIsCheckingSaved] = useState(false);
   
   // Get creatorId - this is now the pN identifier (set from entry.pnIdentifier during conversion)
   const creatorId = (file.metadata as any).creatorId || 
@@ -78,6 +81,50 @@ export function FeedEngagementSidebar({
   
   // Calculate isOwner - normalize both IDs before comparison
   const calculatedIsOwner = isOwner || (userState.isUnlocked && normalizedUserPnId && normalizedCreatorId === normalizedUserPnId);
+
+  // Check if file is saved when component mounts or user unlocks
+  useEffect(() => {
+    if (userState.isUnlocked && userState.pnIdentifier && file.metadata.fileId) {
+      setIsCheckingSaved(true);
+      isFileSaved(userState.pnIdentifier, file.metadata.fileId)
+        .then(saved => {
+          setIsSaved(saved);
+          setIsCheckingSaved(false);
+        })
+        .catch(err => {
+          console.error('Failed to check if file is saved:', err);
+          setIsCheckingSaved(false);
+        });
+    } else {
+      setIsSaved(false);
+    }
+  }, [userState.isUnlocked, userState.pnIdentifier, file.metadata.fileId]);
+
+  const handleSave = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    e.preventDefault();
+    
+    if (!userState.isUnlocked || !userState.pnIdentifier) {
+      return;
+    }
+    
+    const fileId = file.metadata.fileId;
+    
+    try {
+      if (isSaved) {
+        await removeFromSavedFeed(userState.pnIdentifier, fileId);
+        setIsSaved(false);
+        success('Removed from saved');
+      } else {
+        await saveToFeed(userState.pnIdentifier, fileId);
+        setIsSaved(true);
+        success('Saved to your collection');
+      }
+    } catch (err) {
+      console.error('Failed to save/unsave file:', err);
+      error('Failed to save. Please try again.');
+    }
+  };
 
   const handleShare = async (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -117,7 +164,7 @@ export function FeedEngagementSidebar({
   };
 
   return (
-    <div className="absolute right-2 md:right-4 bottom-20 flex flex-col items-center space-y-3 z-10 pointer-events-auto">
+    <div className="absolute right-2 md:right-4 bottom-20 flex flex-col items-center justify-between z-10 pointer-events-auto" style={{ gap: '12px' }}>
       {/* Creator Profile Icon - Above Like Button */}
       {creatorId && (
         <ProfileActionMenu
@@ -187,7 +234,25 @@ export function FeedEngagementSidebar({
         </div>
       </button>
 
-      {/* Bookmark Button */}
+      {/* Save Button */}
+      {userState.isUnlocked && (
+        <button
+          onClick={handleSave}
+          className="flex flex-col items-center space-y-1 group"
+          title={isSaved ? 'Remove from saved' : 'Save'}
+          disabled={isCheckingSaved}
+        >
+          <div className="w-12 h-12 md:w-14 md:h-14 rounded-full bg-black/30 backdrop-blur-sm flex items-center justify-center group-hover:bg-black/50 active:bg-black/70 transition-colors touch-manipulation">
+            {isSaved ? (
+              <BookmarkCheck className="h-6 w-6 md:h-7 md:w-7 text-yellow-400 fill-yellow-400 transition-colors" />
+            ) : (
+              <Bookmark className="h-6 w-6 md:h-7 md:w-7 text-white group-hover:text-yellow-400 transition-colors" />
+            )}
+          </div>
+        </button>
+      )}
+
+      {/* Bookmark Button (legacy - only show if onBookmark callback provided) */}
       {onBookmark && (
         <button
           onClick={(e) => handleAction(e, 'bookmark', onBookmark)}
