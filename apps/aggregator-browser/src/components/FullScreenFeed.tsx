@@ -104,15 +104,21 @@ export function FullScreenFeed({
     if (!allComments || allComments.length === 0) {
       return [];
     }
-    // Filter to top-level comments only (no replies), sort by likes, filter short comments
+    // Filter to top-level comments only (no replies), sort by likes, filter very short comments
     const topLevelComments = allComments
       .filter((c: any) => {
         // Include comments that are top-level (no parent) and have content
-        return !c.parentCommentId && c.content && typeof c.content === 'string' && c.content.trim().length >= 10;
+        return !c.parentCommentId && c.content && typeof c.content === 'string' && c.content.trim().length >= 3;
       })
       .sort((a: any, b: any) => {
         const aLikes = Array.isArray(a.likes) ? a.likes.length : 0;
         const bLikes = Array.isArray(b.likes) ? b.likes.length : 0;
+        // If likes are equal, prefer more recent comments
+        if (aLikes === bLikes) {
+          const aTime = new Date(a.timestamp || 0).getTime();
+          const bTime = new Date(b.timestamp || 0).getTime();
+          return bTime - aTime;
+        }
         return bLikes - aLikes; // Most liked first
       })
       .slice(0, 15); // Top 15 most liked
@@ -688,16 +694,17 @@ export function FullScreenFeed({
                     const allComments = getComments(fileId);
                     const popularComments = getPopularComments(fileId);
                     
-                    // Debug: log to help diagnose
-                    if (process.env.NODE_ENV === 'development') {
-                      console.log(`[LiveComments] File ${fileId}:`, {
-                        allCommentsCount: allComments?.length || 0,
-                        popularCommentsCount: popularComments.length,
-                        visibleFileId,
-                        currentIndex: currentCommentIndex.get(fileId),
-                        opacity: commentOpacity.get(fileId)
-                      });
-                    }
+                    // Debug: log to help diagnose (always log for now)
+                    console.log(`[LiveComments] File ${fileId}:`, {
+                      allCommentsCount: allComments?.length || 0,
+                      popularCommentsCount: popularComments.length,
+                      visibleFileId,
+                      fileIdMatches: visibleFileId === fileId,
+                      currentIndex: currentCommentIndex.get(fileId),
+                      opacity: commentOpacity.get(fileId),
+                      hasComments: allComments && allComments.length > 0,
+                      sampleComment: allComments?.[0]
+                    });
                     
                     // If no comments, don't show anything
                     if (popularComments.length === 0) {
