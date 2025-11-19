@@ -184,10 +184,27 @@ export function ProfileActionMenu({ creatorId, onViewProfile, onMessage, indexed
 
   // Load profile image from top post
   useEffect(() => {
-    if (!topPostFile || !topPostFile.publicToken) {
+    if (!topPostFile) {
+      console.log('[ProfileActionMenu] No topPostFile, clearing profile image');
       setProfileImageUrl(null);
       return;
     }
+    
+    if (!topPostFile.publicToken) {
+      console.log('[ProfileActionMenu] Top post has no publicToken:', {
+        fileId: topPostFile.metadata.fileId,
+        hasPublicToken: !!topPostFile.publicToken
+      });
+      setProfileImageUrl(null);
+      return;
+    }
+
+    console.log('[ProfileActionMenu] Loading profile image from top post:', {
+      fileId: topPostFile.metadata.fileId,
+      fileType: topPostFile.metadata.fileType,
+      encodingFormat: topPostFile.metadata.encodingFormat,
+      hasPublicToken: !!topPostFile.publicToken
+    });
 
     const loadProfileImage = async () => {
       // Check if it's an image or video (we can use video thumbnail too)
@@ -196,7 +213,15 @@ export function ProfileActionMenu({ creatorId, onViewProfile, onMessage, indexed
       const isVideo = topPostFile.metadata.fileType?.startsWith('video/') || 
                      topPostFile.metadata.encodingFormat?.startsWith('video/');
       
+      console.log('[ProfileActionMenu] File type check:', {
+        isImage,
+        isVideo,
+        fileType: topPostFile.metadata.fileType,
+        encodingFormat: topPostFile.metadata.encodingFormat
+      });
+      
       if (!isImage && !isVideo) {
+        console.log('[ProfileActionMenu] File is not an image or video, skipping');
         setProfileImageUrl(null);
         return;
       }
@@ -208,16 +233,19 @@ export function ProfileActionMenu({ creatorId, onViewProfile, onMessage, indexed
           : topPostFile.publicToken;
         
         if (isImage) {
+          console.log('[ProfileActionMenu] Decrypting image...');
           const decryptedBlob = await decryptWithToken(token);
           const url = URL.createObjectURL(decryptedBlob);
+          console.log('[ProfileActionMenu] Image decrypted, created object URL:', url);
           setProfileImageUrl(url);
         } else if (isVideo) {
           // For videos, we'd ideally use a thumbnail, but for now we'll skip
           // In the future, we could generate/extract a thumbnail
+          console.log('[ProfileActionMenu] Video detected, skipping (no thumbnail support yet)');
           setProfileImageUrl(null);
         }
       } catch (error) {
-        console.error('Failed to load top post image:', error);
+        console.error('[ProfileActionMenu] Failed to load top post image:', error);
         setProfileImageUrl(null);
       } finally {
         setProfileImageLoading(false);
