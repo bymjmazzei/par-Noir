@@ -132,7 +132,7 @@ export class AggregatorMetadataServiceDB {
           am.metadata, 
           am.submitted_at, 
           am.pn_identifier,
-          COALESCE(ARRAY_AGG(DISTINCT fp.feed_id) FILTER (WHERE fp.feed_id IS NOT NULL), ARRAY[]::text[]) as feed_ids
+          COALESCE(ARRAY_AGG(DISTINCT fp.feed_id::text) FILTER (WHERE fp.feed_id IS NOT NULL), ARRAY[]::text[]) as feed_ids
         FROM aggregator_metadata am
         LEFT JOIN feed_posts fp ON am.file_id = fp.file_id
         WHERE am.metadata->>'isPublic' = 'true'
@@ -307,7 +307,7 @@ export class AggregatorMetadataServiceDB {
           am.metadata, 
           am.submitted_at, 
           am.pn_identifier,
-          COALESCE(ARRAY_AGG(DISTINCT fp.feed_id) FILTER (WHERE fp.feed_id IS NOT NULL), ARRAY[]::text[]) as feed_ids
+          COALESCE(ARRAY_AGG(DISTINCT fp.feed_id::text) FILTER (WHERE fp.feed_id IS NOT NULL), ARRAY[]::text[]) as feed_ids
         FROM aggregator_metadata am
         LEFT JOIN feed_posts fp ON am.file_id = fp.file_id
         WHERE (
