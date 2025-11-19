@@ -137,8 +137,8 @@ export function FeedRail({ feeds, activeFeedId, onFeedSelect, onBrowseFeeds }: F
               style={{ opacity: isActive ? 1 : 0.85 }}
             >
               {isPublicFeed ? (
-                // pN text for public feed
-                <span className="text-base font-medium uppercase tracking-wide text-white">pN</span>
+                // pN text for public feed (lowercase p, uppercase N)
+                <span className="text-base font-medium tracking-wide text-white" style={{ textTransform: 'none' }}>pN</span>
               ) : (
                 <span className="text-base font-medium uppercase tracking-wide">{feed.name}</span>
               )}
