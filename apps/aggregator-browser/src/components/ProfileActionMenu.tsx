@@ -364,7 +364,7 @@ export function ProfileActionMenu({ creatorId, onViewProfile, onMessage, indexed
       </button>
 
       {isOpen && (
-        <div className="absolute bottom-full right-0 mb-2 w-56 bg-neutral-800 border border-neutral-700 rounded-lg shadow-xl overflow-hidden z-50">
+        <div className="absolute left-full top-0 ml-2 w-56 bg-neutral-800 border border-neutral-700 rounded-lg shadow-xl overflow-hidden z-50">
           {/* Header with Display Name */}
           <div className="px-4 py-3 border-b border-neutral-700">
             {isEditingName && isOwnProfile ? (

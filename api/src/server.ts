@@ -5510,23 +5510,28 @@ class ProductionServer {
         const accountId = (account as any).accountId || (account as any).id;
         const userAccessToken = await googleDriveProxyService.getAccessToken(userDid, accountId, [userDid]);
 
-        // Find metadata folder
-        const folderQuery = `name='Metadata' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
-        const folderUrl = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(folderQuery)}&fields=files(id)&pageSize=1`;
-        const folderResponse = await fetch(folderUrl, {
-          headers: { 'Authorization': `Bearer ${userAccessToken}` }
-        });
+        // Find metadata folder - try both '_metadata' and 'Metadata'
+        let metadataFolderId: string | null = null;
+        
+        for (const folderName of ['_metadata', 'Metadata']) {
+          const folderQuery = `name='${folderName}' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
+          const folderUrl = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(folderQuery)}&fields=files(id)&pageSize=1`;
+          const folderResponse = await fetch(folderUrl, {
+            headers: { 'Authorization': `Bearer ${userAccessToken}` }
+          });
 
-        if (!folderResponse.ok) {
-          return res.status(404).json({ error: 'Metadata folder not found' });
+          if (folderResponse.ok) {
+            const folderData = await folderResponse.json() as { files?: Array<{ id: string }> };
+            if (folderData.files && folderData.files.length > 0) {
+              metadataFolderId = folderData.files[0].id;
+              break;
+            }
+          }
         }
 
-        const folderData = await folderResponse.json() as { files?: Array<{ id: string }> };
-        if (!folderData.files || folderData.files.length === 0) {
-          return res.status(404).json({ error: 'Metadata folder not found' });
+        if (!metadataFolderId) {
+          return res.status(404).json({ error: 'Metadata folder not found. Please ensure you have a folder named "_metadata" or "Metadata" in your Google Drive.' });
         }
-
-        const metadataFolderId = folderData.files[0].id;
 
         // Update display name
         await ProfileService.updateDisplayName(
