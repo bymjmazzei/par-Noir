@@ -1612,7 +1612,8 @@ class ProductionServer {
           license,
           inLanguage,
           isPublic,
-          publicToken
+          publicToken,
+          isTopPost
         } = req.body;
 
         if (!fileId) {
@@ -2135,6 +2136,66 @@ class ProductionServer {
               // Don't fail the update if metadata creation fails - log and continue
               console.warn(`[MetadataIndex] Failed to create companion metadata file:`, metadataError?.message || metadataError);
             }
+          }
+        }
+
+        // Handle isTopPost update
+        if (isTopPost !== undefined) {
+          current = await service.getFileMetadata(fileId);
+          if (current) {
+            // Get the file owner's pnIdentifier
+            const ownerPnIdentifier = current.pnIdentifier || 
+                                     current.metadata?.creator?.identifier?.value ||
+                                     current.metadata?.author?.did;
+            
+            if (ownerPnIdentifier && isTopPost === true) {
+              // If setting this file as top post, unset any other top posts by the same user
+              const db = (await import('./server/utils/database')).getDatabasePool();
+              
+              // Find all files by this owner that have isTopPost: true
+              const otherTopPostsResult = await db.query(`
+                SELECT file_id, metadata
+                FROM aggregator_metadata
+                WHERE file_id != $1
+                  AND pn_identifier = $2
+                  AND metadata->>'isTopPost' = 'true'
+              `, [fileId, ownerPnIdentifier]);
+              
+              // Unset isTopPost for all other files by this owner
+              for (const row of otherTopPostsResult.rows) {
+                const otherMetadata = typeof row.metadata === 'string' 
+                  ? JSON.parse(row.metadata) 
+                  : row.metadata;
+                const updatedOtherMetadata = {
+                  ...otherMetadata,
+                  isTopPost: false
+                };
+                await db.query(
+                  `UPDATE aggregator_metadata 
+                   SET metadata = $1, updated_at = NOW()
+                   WHERE file_id = $2`,
+                  [JSON.stringify(updatedOtherMetadata), row.file_id]
+                );
+                console.log(`[MetadataIndex PUT] Unset isTopPost for file ${row.file_id} (owner: ${ownerPnIdentifier})`);
+              }
+            }
+            
+            // Update current file's isTopPost
+            const updatedMetadata = {
+              ...current.metadata,
+              isTopPost: isTopPost
+            };
+            const db = (await import('./server/utils/database')).getDatabasePool();
+            await db.query(
+              `UPDATE aggregator_metadata 
+               SET metadata = $1, updated_at = NOW()
+               WHERE file_id = $2`,
+              [JSON.stringify(updatedMetadata), fileId]
+            );
+            console.log(`[MetadataIndex PUT] Set isTopPost=${isTopPost} for file ${fileId}`);
+            
+            // Refetch after isTopPost update
+            current = await service.getFileMetadata(fileId);
           }
         }
 

@@ -138,47 +138,59 @@ export function ProfileActionMenu({ creatorId, onViewProfile, onMessage, indexed
     loadProfileData();
   }, [creatorId, setUserDisplayName]);
 
-  // Get profile image fileId (own profile from preferences, other users from API)
-  const currentProfileImageFileId = useMemo(() => {
-    if (isOwnProfile) {
-      return userState.preferences.profileImageFileId || null;
-    }
-    return profileImageFileId;
-  }, [isOwnProfile, userState.preferences.profileImageFileId, profileImageFileId]);
+  // Find top post file for profile icon (replaces profileImageFileId)
+  const topPostFile = useMemo(() => {
+    if (indexedFiles.length === 0) return null;
+    
+    // Find file where isTopPost === true for this creator
+    const topPost = indexedFiles.find(f => {
+      const fileCreatorId = f.metadata.creator?.identifier?.value || 
+                            f.metadata.author?.did ||
+                            f.metadata.creator?.["@id"];
+      const normalizedFileCreatorId = normalizeId(fileCreatorId);
+      return normalizedFileCreatorId === normalizedCreatorId && 
+             f.metadata.isTopPost === true;
+    });
+    
+    return topPost || null;
+  }, [indexedFiles, normalizedCreatorId]);
 
-  // Load profile image
+  // Load profile image from top post
   useEffect(() => {
-    if (!currentProfileImageFileId || indexedFiles.length === 0) {
+    if (!topPostFile || !topPostFile.publicToken) {
       setProfileImageUrl(null);
       return;
     }
 
     const loadProfileImage = async () => {
-      const profileFile = indexedFiles.find(f => f.metadata.fileId === currentProfileImageFileId);
-      if (!profileFile || !profileFile.publicToken) {
-        setProfileImageUrl(null);
-        return;
-      }
-
-      // Check if it's an image
-      const isImage = profileFile.metadata.fileType?.startsWith('image/') || 
-                     profileFile.metadata.encodingFormat?.startsWith('image/');
-      if (!isImage) {
+      // Check if it's an image or video (we can use video thumbnail too)
+      const isImage = topPostFile.metadata.fileType?.startsWith('image/') || 
+                     topPostFile.metadata.encodingFormat?.startsWith('image/');
+      const isVideo = topPostFile.metadata.fileType?.startsWith('video/') || 
+                     topPostFile.metadata.encodingFormat?.startsWith('video/');
+      
+      if (!isImage && !isVideo) {
         setProfileImageUrl(null);
         return;
       }
 
       setProfileImageLoading(true);
       try {
-        const token: ShareToken = typeof profileFile.publicToken === 'string' 
-          ? JSON.parse(profileFile.publicToken) 
-          : profileFile.publicToken;
+        const token: ShareToken = typeof topPostFile.publicToken === 'string' 
+          ? JSON.parse(topPostFile.publicToken) 
+          : topPostFile.publicToken;
         
-        const decryptedBlob = await decryptWithToken(token);
-        const url = URL.createObjectURL(decryptedBlob);
-        setProfileImageUrl(url);
+        if (isImage) {
+          const decryptedBlob = await decryptWithToken(token);
+          const url = URL.createObjectURL(decryptedBlob);
+          setProfileImageUrl(url);
+        } else if (isVideo) {
+          // For videos, we'd ideally use a thumbnail, but for now we'll skip
+          // In the future, we could generate/extract a thumbnail
+          setProfileImageUrl(null);
+        }
       } catch (error) {
-        console.error('Failed to load profile image:', error);
+        console.error('Failed to load top post image:', error);
         setProfileImageUrl(null);
       } finally {
         setProfileImageLoading(false);
@@ -186,7 +198,7 @@ export function ProfileActionMenu({ creatorId, onViewProfile, onMessage, indexed
     };
 
     loadProfileImage();
-  }, [currentProfileImageFileId, indexedFiles]);
+  }, [topPostFile]);
 
   // Clean up object URL
   useEffect(() => {

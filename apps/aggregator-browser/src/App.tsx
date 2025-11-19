@@ -1817,6 +1817,16 @@ function App() {
         filteredMeFiles = connectionsFiles;
         break;
     }
+    
+    // Pin top post at the top for 'all' and 'media' tabs
+    if ((mePageTab === 'all' || mePageTab === 'media') && filteredMeFiles.length > 0) {
+      const topPostIndex = filteredMeFiles.findIndex(f => f.metadata.isTopPost === true);
+      if (topPostIndex > 0) {
+        // Move top post to the beginning
+        const topPost = filteredMeFiles[topPostIndex];
+        filteredMeFiles = [topPost, ...filteredMeFiles.filter((_, i) => i !== topPostIndex)];
+      }
+    }
   } else if (viewingCreatorId) {
     // For other users' profiles, filter based on active tab
     switch (mePageTab) {
@@ -1838,6 +1848,16 @@ function App() {
         break;
       default:
         filteredMeFiles = creatorFiles;
+    }
+    
+    // Pin top post at the top for 'all' and 'media' tabs (for other users' profiles too)
+    if ((mePageTab === 'all' || mePageTab === 'media') && filteredMeFiles.length > 0) {
+      const topPostIndex = filteredMeFiles.findIndex(f => f.metadata.isTopPost === true);
+      if (topPostIndex > 0) {
+        // Move top post to the beginning
+        const topPost = filteredMeFiles[topPostIndex];
+        filteredMeFiles = [topPost, ...filteredMeFiles.filter((_, i) => i !== topPostIndex)];
+      }
     }
   }
   

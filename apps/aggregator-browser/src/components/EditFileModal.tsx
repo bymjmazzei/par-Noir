@@ -4,7 +4,7 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { X, Globe, Lock, Users } from 'lucide-react';
+import { X, Globe, Lock, Users, Star } from 'lucide-react';
 import { IndexedFile } from '../types/aggregator';
 import { useUserState } from '../contexts/UserStateContext';
 
@@ -22,6 +22,7 @@ export function EditFileModal({ file, onClose, onSave }: EditFileModalProps) {
   const [name, setName] = useState(file.metadata.name || file.metadata.title || '');
   const [description, setDescription] = useState(file.metadata.description || '');
   const [tags, setTags] = useState((file.metadata.keywords || file.metadata.tags || []).join(', '));
+  const [isTopPost, setIsTopPost] = useState(file.metadata.isTopPost || false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -50,7 +51,8 @@ export function EditFileModal({ file, onClose, onSave }: EditFileModalProps) {
           keywords: tags.split(',').map(t => t.trim()).filter(Boolean),
           tags: tags.split(',').map(t => t.trim()).filter(Boolean),
           isPublic: visibility === 'public',
-          visibility: visibility
+          visibility: visibility,
+          isTopPost: isTopPost
         }),
       });
 
@@ -73,7 +75,8 @@ export function EditFileModal({ file, onClose, onSave }: EditFileModalProps) {
           title: name.trim() || file.metadata.title,
           description: description.trim() || undefined,
           keywords: tags.split(',').map(t => t.trim()).filter(Boolean),
-          tags: tags.split(',').map(t => t.trim()).filter(Boolean)
+          tags: tags.split(',').map(t => t.trim()).filter(Boolean),
+          isTopPost: isTopPost
         }
       };
 
@@ -187,6 +190,29 @@ export function EditFileModal({ file, onClose, onSave }: EditFileModalProps) {
               placeholder="tag1, tag2, tag3"
             />
             <p className="text-xs text-neutral-400 mt-1">Separate tags with commas</p>
+          </div>
+
+          {/* Top Post */}
+          <div>
+            <label className="block text-white font-medium mb-3">Top Post</label>
+            <button
+              onClick={() => setIsTopPost(!isTopPost)}
+              className={`w-full flex items-center space-x-3 p-3 rounded-lg border transition-colors ${
+                isTopPost
+                  ? 'border-yellow-500 bg-yellow-500/20'
+                  : 'border-neutral-700 bg-neutral-800 hover:bg-neutral-750'
+              }`}
+            >
+              <Star className={`h-5 w-5 ${isTopPost ? 'text-yellow-400 fill-yellow-400' : 'text-neutral-400'}`} />
+              <div className="flex-1 text-left">
+                <div className="text-white font-medium">Set as Top Post</div>
+                <div className="text-xs text-neutral-400">
+                  {isTopPost 
+                    ? 'This post will appear at the top of your profile and be used as your profile icon'
+                    : 'Pin this post to the top of your profile feeds'}
+                </div>
+              </div>
+            </button>
           </div>
 
           {/* Error */}
