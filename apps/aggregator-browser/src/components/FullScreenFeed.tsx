@@ -67,6 +67,8 @@ export function FullScreenFeed({
   const [showEngagementOverlay, setShowEngagementOverlay] = useState(false);
   const [videoPlaying, setVideoPlaying] = useState<Map<string, boolean>>(new Map());
   const [expandedCaptions, setExpandedCaptions] = useState<Set<string>>(new Set());
+  const [currentCommentIndex, setCurrentCommentIndex] = useState<Map<string, number>>(new Map());
+  const [commentOpacity, setCommentOpacity] = useState<Map<string, number>>(new Map());
 
   // Handle vertical swipe for next/previous media
   const verticalSwipeRef = useVerticalSwipe({
@@ -94,6 +96,21 @@ export function FullScreenFeed({
     snapThreshold: 0.2
   });
 
+  // Function to get popular comments for a file
+  const getPopularComments = useCallback((fileId: string): any[] => {
+    const allComments = getComments(fileId);
+    // Filter to top-level comments only (no replies), sort by likes, filter short comments
+    const topLevelComments = allComments
+      .filter((c: any) => !c.parentCommentId && c.content && c.content.length >= 10)
+      .sort((a: any, b: any) => {
+        const aLikes = Array.isArray(a.likes) ? a.likes.length : 0;
+        const bLikes = Array.isArray(b.likes) ? b.likes.length : 0;
+        return bLikes - aLikes; // Most liked first
+      })
+      .slice(0, 15); // Top 15 most liked
+    return topLevelComments;
+  }, [getComments]);
+
   // Scroll to current index when it changes
   useEffect(() => {
     if (!scrollContainerRef.current) return;
@@ -111,6 +128,63 @@ export function FullScreenFeed({
 
     return () => clearTimeout(scrollTimer);
   }, [currentIndex, files]);
+
+  // Rotate comments every 2 seconds with fade transitions
+  useEffect(() => {
+    if (!visibleFileId) return;
+    
+    const popularComments = getPopularComments(visibleFileId);
+    if (popularComments.length === 0) {
+      // Reset state if no comments
+      setCurrentCommentIndex(prev => {
+        const newMap = new Map(prev);
+        newMap.delete(visibleFileId);
+        return newMap;
+      });
+      setCommentOpacity(prev => {
+        const newMap = new Map(prev);
+        newMap.delete(visibleFileId);
+        return newMap;
+      });
+      return;
+    }
+    
+    // Initialize opacity to 1 if not set
+    if (!commentOpacity.has(visibleFileId)) {
+      setCommentOpacity(prev => {
+        const newMap = new Map(prev);
+        newMap.set(visibleFileId, 1);
+        return newMap;
+      });
+    }
+    
+    const interval = setInterval(() => {
+      // Fade out current comment
+      setCommentOpacity(prev => {
+        const newMap = new Map(prev);
+        newMap.set(visibleFileId, 0);
+        return newMap;
+      });
+      
+      // After fade out completes, switch to next comment and fade in
+      setTimeout(() => {
+        setCurrentCommentIndex(prev => {
+          const newMap = new Map(prev);
+          const current = newMap.get(visibleFileId) || 0;
+          newMap.set(visibleFileId, (current + 1) % popularComments.length);
+          return newMap;
+        });
+        
+        setCommentOpacity(prev => {
+          const newMap = new Map(prev);
+          newMap.set(visibleFileId, 1);
+          return newMap;
+        });
+      }, 200); // Wait for fade out to complete (200ms)
+    }, 2000); // Rotate every 2 seconds
+    
+    return () => clearInterval(interval);
+  }, [visibleFileId, getPopularComments, commentOpacity]);
 
   // Load video blobs and thumbnails for visible files
   useEffect(() => {
@@ -482,7 +556,7 @@ export function FullScreenFeed({
               />
             )}
 
-            {/* Content Info Overlay - Bottom Left */}
+            {/* Content Info Overlay - Split into two halves */}
             <div 
               className={`absolute left-0 right-20 p-4 md:p-6 transition-all duration-300 ${
                 expandedCaptions.has(fileId) 
@@ -496,85 +570,136 @@ export function FullScreenFeed({
                 bottom: '0' // Content info is within the media container, which already excludes bottom nav
               }}
             >
-              {/* Title */}
-              <h3 className="text-white text-base md:text-lg font-semibold mb-1 line-clamp-1">
-                {file.title || file.name || 'Untitled'}
-              </h3>
-              
-              {/* Caption with expand/collapse */}
-              {file.description && (
-                <div className="mb-2">
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setExpandedCaptions(prev => {
-                        const newSet = new Set(prev);
-                        if (newSet.has(fileId)) {
-                          newSet.delete(fileId);
-                        } else {
-                          newSet.add(fileId);
-                        }
-                        return newSet;
-                      });
-                    }}
-                    className="text-left w-full"
-                  >
-                    <p 
-                      className={`text-white/90 text-sm leading-relaxed ${
-                        expandedCaptions.has(fileId) 
-                          ? '' 
-                          : 'line-clamp-2'
-                      }`}
-                    >
-                      {file.description}
-                    </p>
-                    {/* Show expand/collapse if description is long enough to potentially need more than 2 lines */}
-                    {(file.description.length > 100 || file.description.split('\n').length > 2) && (
-                      <span className="text-white/70 text-xs mt-1 inline-block hover:text-white transition-colors">
-                        {expandedCaptions.has(fileId) ? 'Show less' : 'Tap to expand'}
-                      </span>
-                    )}
-                  </button>
+              <div className="flex gap-4">
+                {/* Left Half - Title & Caption */}
+                <div className="flex-1">
+                  {/* Title */}
+                  <h3 className="text-white text-base md:text-lg font-semibold mb-1 line-clamp-1">
+                    {file.title || file.name || 'Untitled'}
+                  </h3>
+                  
+                  {/* Caption with expand/collapse */}
+                  {file.description && (
+                    <div className="mb-2">
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setExpandedCaptions(prev => {
+                            const newSet = new Set(prev);
+                            if (newSet.has(fileId)) {
+                              newSet.delete(fileId);
+                            } else {
+                              newSet.add(fileId);
+                            }
+                            return newSet;
+                          });
+                        }}
+                        className="text-left w-full"
+                      >
+                        <p 
+                          className={`text-white/90 text-sm leading-relaxed ${
+                            expandedCaptions.has(fileId) 
+                              ? '' 
+                              : 'line-clamp-2'
+                          }`}
+                        >
+                          {file.description}
+                        </p>
+                        {/* Show expand/collapse if description is long enough to potentially need more than 2 lines */}
+                        {(file.description.length > 100 || file.description.split('\n').length > 2) && (
+                          <span className="text-white/70 text-xs mt-1 inline-block hover:text-white transition-colors">
+                            {expandedCaptions.has(fileId) ? 'Show less' : 'Tap to expand'}
+                          </span>
+                        )}
+                      </button>
+                    </div>
+                  )}
+                  
+                  {/* Metadata Tags/Category */}
+                  {(file.keywords || file.tags || file.category) && (
+                    <div className="flex flex-wrap gap-2 mb-2">
+                      {file.category && (
+                        <span className="px-2 py-1 bg-blue-500/30 text-blue-200 text-xs rounded-full border border-blue-400/50">
+                          {file.category}
+                        </span>
+                      )}
+                      {(file.keywords || file.tags || []).slice(0, 5).map((tag, tagIdx) => (
+                        <span
+                          key={tagIdx}
+                          className="px-2 py-1 bg-white/20 text-white text-xs rounded-full"
+                        >
+                          #{tag}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                  
+                  {/* Timestamp */}
+                  {file.uploadDate && (
+                    <div className="text-white/70 text-xs mb-2">
+                      {formatTimestamp(file.uploadDate)}
+                    </div>
+                  )}
+                  
+                  {/* Content Rating */}
+                  {file.contentRating && (
+                    <div className="flex items-center space-x-2">
+                      <ContentRatingBadge rating={file.contentRating} size="sm" />
+                      {file.warningTags && file.warningTags.length > 0 && (
+                        <span className="text-white/70 text-xs">
+                          {file.warningTags.join(', ')}
+                        </span>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                {/* Right Half - Live Comments */}
+                <div className="flex-1 flex items-center">
+                  {(() => {
+                    const popularComments = getPopularComments(fileId);
+                    const currentIndex = currentCommentIndex.get(fileId) || 0;
+                    const opacity = commentOpacity.get(fileId) ?? (popularComments.length > 0 ? 1 : 0);
+                    const currentComment = popularComments[currentIndex];
+                    
+                    if (!currentComment || popularComments.length === 0) {
+                      return null;
+                    }
+                    
+                    const likeCount = Array.isArray(currentComment.likes) ? currentComment.likes.length : 0;
+                    
+                    return (
+                      <div
+                        className="bg-black/60 backdrop-blur-sm rounded-lg p-3 w-full cursor-pointer hover:bg-black/70 transition-colors"
+                        style={{
+                          opacity,
+                          transition: 'opacity 200ms ease-in-out, background-color 200ms ease-in-out'
+                        }}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          // Open comment modal when clicking on comment
+                          onComment(indexedFile);
+                        }}
+                      >
+                        <div className="flex items-center gap-2 mb-1">
+                          <span className="text-white/90 text-xs font-semibold">
+                            {currentComment.authorName || 'Anonymous'}
+                          </span>
+                          {likeCount > 0 && (
+                            <span className="text-white/70 text-xs flex items-center gap-1">
+                              <span>❤️</span>
+                              <span>{likeCount}</span>
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-white text-sm line-clamp-2 leading-snug">
+                          {currentComment.content}
+                        </p>
+                      </div>
+                    );
+                  })()}
+                </div>
               </div>
-              )}
-              
-              {/* Metadata Tags/Category */}
-              {(file.keywords || file.tags || file.category) && (
-                <div className="flex flex-wrap gap-2 mb-2">
-                  {file.category && (
-                    <span className="px-2 py-1 bg-blue-500/30 text-blue-200 text-xs rounded-full border border-blue-400/50">
-                      {file.category}
-                    </span>
-                  )}
-                  {(file.keywords || file.tags || []).slice(0, 5).map((tag, tagIdx) => (
-                    <span
-                      key={tagIdx}
-                      className="px-2 py-1 bg-white/20 text-white text-xs rounded-full"
-                    >
-                      #{tag}
-                    </span>
-                  ))}
-                </div>
-              )}
-              
-              {/* Timestamp */}
-              {file.uploadDate && (
-                <div className="text-white/70 text-xs mb-2">
-                  {formatTimestamp(file.uploadDate)}
-                </div>
-              )}
-              
-              {/* Content Rating */}
-              {file.contentRating && (
-                <div className="flex items-center space-x-2">
-                  <ContentRatingBadge rating={file.contentRating} size="sm" />
-                  {file.warningTags && file.warningTags.length > 0 && (
-                    <span className="text-white/70 text-xs">
-                      {file.warningTags.join(', ')}
-                    </span>
-                  )}
-                </div>
-              )}
             </div>
           </div>
         );
