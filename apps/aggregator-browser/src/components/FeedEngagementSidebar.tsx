@@ -122,7 +122,10 @@ export function FeedEngagementSidebar({
       {creatorId && (
         <ProfileActionMenu
           creatorId={creatorId}
-          onViewProfile={() => onCreatorClick?.(creatorId)}
+          onViewProfile={() => {
+            console.log('🔍 ProfileActionMenu onViewProfile called with creatorId:', creatorId);
+            onCreatorClick?.(creatorId);
+          }}
           onMessage={onMessage}
           indexedFiles={indexedFiles}
           isOwner={calculatedIsOwner}

@@ -2264,7 +2264,10 @@ function App() {
                 setViewingBrandedFeed(feed);
               }}
               onCreatorClick={(creatorId) => {
+                console.log('🔍 onCreatorClick called with:', creatorId);
                 setViewingCreatorId(creatorId);
+                setViewMode('profile');
+                setMePageTab('media');
               }}
             />
                     </div>
