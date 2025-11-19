@@ -4,6 +4,7 @@
  */
 
 import React, { useState, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { Download, File, RefreshCw, AlertCircle, Lock, Globe, X, Edit, Eye, Grid, List, Plus, Cloud, MoreVertical, Share2, Star } from 'lucide-react';
 import { PNOAuthService } from '../services/pnOAuthService';
 import { EncryptionManager } from '../utils/encryptionManager';
@@ -511,8 +512,10 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('list');
   const [viewingFile, setViewingFile] = useState<DriveFile | null>(null);
   const [openMenuFor, setOpenMenuFor] = useState<string | null>(null);
+  const [menuPosition, setMenuPosition] = useState<{ top: number; left: number } | null>(null);
   const fileInputRefs = useRef<Map<string, HTMLInputElement | null>>(new Map());
   const actionMenuRef = useRef<HTMLDivElement | null>(null);
+  const menuButtonRefs = useRef<Map<string, HTMLButtonElement | null>>(new Map());
 
   // Load cloud accounts
   useEffect(() => {
@@ -1940,7 +1943,18 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
                             onClick={(e) => {
                               e.stopPropagation();
                               e.preventDefault();
+                              const button = e.currentTarget;
+                              const rect = button.getBoundingClientRect();
                               const newState = openMenuFor === file.id ? null : file.id;
+                              if (newState) {
+                                // Position menu above the button for grid view
+                                setMenuPosition({
+                                  top: rect.top - 8, // 8px above button
+                                  left: rect.right - 176 // 176px = w-44 (11rem)
+                                });
+                              } else {
+                                setMenuPosition(null);
+                              }
                               console.log('[FileStorageAggregator] Menu button clicked (grid):', { fileId: file.id, currentState: openMenuFor, newState, willOpen: newState !== null });
                               setOpenMenuFor(newState);
                             }}
@@ -1979,81 +1993,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
                               />
                             </span>
                           </button>
-                          {openMenuFor === file.id && (
-                            <div
-                              ref={actionMenuRef}
-                              className="absolute right-0 bottom-full mb-2 w-44 bg-neutral-900 border border-neutral-700 rounded-lg shadow-xl z-[100] py-1 menu-container"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                e.preventDefault();
-                              }}
-                              onMouseDown={(e) => {
-                                e.stopPropagation();
-                                e.preventDefault();
-                              }}
-                            >
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setOpenMenuFor(null);
-                                  handleEditMetadata(file, account.accountId);
-                                }}
-                                className="flex w-full items-center space-x-2 px-3 py-2 text-sm text-text-secondary hover:text-text-primary hover:bg-neutral-800 transition-colors"
-                                disabled={isLoading}
-                              >
-                                <Edit className="h-4 w-4" />
-                                <span>Edit metadata</span>
-                              </button>
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setOpenMenuFor(null);
-                                  handleDownload(file, account.accountId);
-                                }}
-                                className="flex w-full items-center space-x-2 px-3 py-2 text-sm text-text-secondary hover:text-text-primary hover:bg-neutral-800 transition-colors"
-                                disabled={isLoading}
-                              >
-                                <Download className="h-4 w-4" />
-                                <span>Download</span>
-                              </button>
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setOpenMenuFor(null);
-                                  handleShareSettings(file, account.accountId);
-                                }}
-                                className="flex w-full items-center space-x-2 px-3 py-2 text-sm text-text-secondary hover:text-text-primary hover:bg-neutral-800 transition-colors"
-                                disabled={isLoading}
-                              >
-                                <Share2 className="h-4 w-4" />
-                                <span>Share settings</span>
-                              </button>
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setOpenMenuFor(null);
-                                  handleSetTopPost(file, account.accountId);
-                                }}
-                                className="flex w-full items-center space-x-2 px-3 py-2 text-sm text-text-secondary hover:text-yellow-400 hover:bg-neutral-800 transition-colors"
-                                disabled={isLoading}
-                              >
-                                <Star className={`h-4 w-4 ${fileMetadataMap.get(file.id)?.isTopPost ? 'fill-yellow-400 text-yellow-400' : ''}`} />
-                                <span>{fileMetadataMap.get(file.id)?.isTopPost ? 'Unset top post' : 'Set as top post'}</span>
-                              </button>
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setOpenMenuFor(null);
-                                  handleDelete(file, account.accountId);
-                                }}
-                                className="flex w-full items-center space-x-2 px-3 py-2 text-sm text-red-400 hover:text-red-300 hover:bg-neutral-800 transition-colors"
-                                disabled={isLoading}
-                              >
-                                <X className="h-4 w-4" />
-                                <span>Delete</span>
-                              </button>
-                            </div>
-                          )}
+                          {/* Menu will be rendered in portal */}
                         </div>
                       </div>
                     </div>
@@ -2144,81 +2084,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
                         >
                           <MoreVertical className="h-4 w-4" style={{ margin: 0, padding: 0 }} />
                         </button>
-                        {openMenuFor === file.id && (
-                          <div
-                            ref={actionMenuRef}
-                            className="absolute right-0 bottom-full mb-2 w-44 bg-neutral-900 border border-neutral-700 rounded-lg shadow-xl z-50 py-1"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              e.preventDefault();
-                            }}
-                            onMouseDown={(e) => {
-                              e.stopPropagation();
-                              e.preventDefault();
-                            }}
-                          >
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setOpenMenuFor(null);
-                                handleEditMetadata(file, account.accountId);
-                              }}
-                              className="flex w-full items-center space-x-2 px-3 py-2 text-sm text-text-secondary hover:text-text-primary hover:bg-neutral-800 transition-colors"
-                              disabled={isLoading}
-                            >
-                              <Edit className="h-4 w-4" />
-                              <span>Edit metadata</span>
-                            </button>
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setOpenMenuFor(null);
-                                handleDownload(file, account.accountId);
-                              }}
-                              className="flex w-full items-center space-x-2 px-3 py-2 text-sm text-text-secondary hover:text-text-primary hover:bg-neutral-800 transition-colors"
-                              disabled={isLoading}
-                            >
-                              <Download className="h-4 w-4" />
-                              <span>Download</span>
-                            </button>
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setOpenMenuFor(null);
-                                handleShareSettings(file, account.accountId);
-                              }}
-                              className="flex w-full items-center space-x-2 px-3 py-2 text-sm text-text-secondary hover:text-text-primary hover:bg-neutral-800 transition-colors"
-                              disabled={isLoading}
-                            >
-                              <Share2 className="h-4 w-4" />
-                              <span>Share settings</span>
-                            </button>
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setOpenMenuFor(null);
-                                handleSetTopPost(file, account.accountId);
-                              }}
-                              className="flex w-full items-center space-x-2 px-3 py-2 text-sm text-text-secondary hover:text-yellow-400 hover:bg-neutral-800 transition-colors"
-                              disabled={isLoading}
-                            >
-                              <Star className={`h-4 w-4 ${fileMetadataMap.get(file.id)?.isTopPost ? 'fill-yellow-400 text-yellow-400' : ''}`} />
-                              <span>{fileMetadataMap.get(file.id)?.isTopPost ? 'Unset top post' : 'Set as top post'}</span>
-                            </button>
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setOpenMenuFor(null);
-                                handleDelete(file, account.accountId);
-                              }}
-                              className="flex w-full items-center space-x-2 px-3 py-2 text-sm text-red-400 hover:text-red-300 hover:bg-neutral-800 transition-colors"
-                              disabled={isLoading}
-                            >
-                              <X className="h-4 w-4" />
-                              <span>Delete</span>
-                            </button>
-                          </div>
-                        )}
+                        {/* Menu will be rendered in portal */}
                       </div>
                     </div>
                   </div>
@@ -2679,6 +2545,111 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
           </div>
         </div>
       )}
+
+      {/* Portal-based menu for both grid and list views */}
+      {openMenuFor && menuPosition && (() => {
+        // Find the file and account for the open menu
+        let menuFile: DriveFile | null = null;
+        let menuAccountId: string | null = null;
+        
+        for (const [accountId, files] of filesByAccount.entries()) {
+          const file = files.find(f => f.id === openMenuFor);
+          if (file) {
+            menuFile = file;
+            menuAccountId = accountId;
+            break;
+          }
+        }
+
+        if (!menuFile || !menuAccountId) return null;
+
+        const menuContent = (
+          <div
+            ref={actionMenuRef}
+            className="fixed w-44 bg-neutral-900 border border-neutral-700 rounded-lg shadow-xl z-[100] py-1 menu-container"
+            style={{
+              top: `${menuPosition.top}px`,
+              left: `${menuPosition.left}px`
+            }}
+            onClick={(e) => {
+              e.stopPropagation();
+              e.preventDefault();
+            }}
+            onMouseDown={(e) => {
+              e.stopPropagation();
+              e.preventDefault();
+            }}
+          >
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                setOpenMenuFor(null);
+                setMenuPosition(null);
+                handleEditMetadata(menuFile!, menuAccountId!);
+              }}
+              className="flex w-full items-center space-x-2 px-3 py-2 text-sm text-text-secondary hover:text-text-primary hover:bg-neutral-800 transition-colors"
+              disabled={isLoading}
+            >
+              <Edit className="h-4 w-4" />
+              <span>Edit metadata</span>
+            </button>
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                setOpenMenuFor(null);
+                setMenuPosition(null);
+                handleDownload(menuFile!, menuAccountId!);
+              }}
+              className="flex w-full items-center space-x-2 px-3 py-2 text-sm text-text-secondary hover:text-text-primary hover:bg-neutral-800 transition-colors"
+              disabled={isLoading}
+            >
+              <Download className="h-4 w-4" />
+              <span>Download</span>
+            </button>
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                setOpenMenuFor(null);
+                setMenuPosition(null);
+                handleShareSettings(menuFile!, menuAccountId!);
+              }}
+              className="flex w-full items-center space-x-2 px-3 py-2 text-sm text-text-secondary hover:text-text-primary hover:bg-neutral-800 transition-colors"
+              disabled={isLoading}
+            >
+              <Share2 className="h-4 w-4" />
+              <span>Share settings</span>
+            </button>
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                setOpenMenuFor(null);
+                setMenuPosition(null);
+                handleSetTopPost(menuFile!, menuAccountId!);
+              }}
+              className="flex w-full items-center space-x-2 px-3 py-2 text-sm text-text-secondary hover:text-yellow-400 hover:bg-neutral-800 transition-colors"
+              disabled={isLoading}
+            >
+              <Star className={`h-4 w-4 ${fileMetadataMap.get(menuFile!.id)?.isTopPost ? 'fill-yellow-400 text-yellow-400' : ''}`} />
+              <span>{fileMetadataMap.get(menuFile!.id)?.isTopPost ? 'Unset top post' : 'Set as top post'}</span>
+            </button>
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                setOpenMenuFor(null);
+                setMenuPosition(null);
+                handleDelete(menuFile!, menuAccountId!);
+              }}
+              className="flex w-full items-center space-x-2 px-3 py-2 text-sm text-red-400 hover:text-red-300 hover:bg-neutral-800 transition-colors"
+              disabled={isLoading}
+            >
+              <X className="h-4 w-4" />
+              <span>Delete</span>
+            </button>
+          </div>
+        );
+
+        return createPortal(menuContent, document.body);
+      })()}
     </div>
   );
 };
