@@ -2093,11 +2093,13 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
                         </p>
                       </div>
                     </div>
-                    <div className="flex items-center justify-center space-x-2">
+                    <div className="flex items-center justify-center space-x-2" onClick={(e) => e.stopPropagation()}>
                       <div className="relative">
                         <button
+                          data-menu-button={file.id}
                           onClick={(e) => {
                             e.stopPropagation();
+                            e.preventDefault();
                             setOpenMenuFor(openMenuFor === file.id ? null : file.id);
                           }}
                           style={{
