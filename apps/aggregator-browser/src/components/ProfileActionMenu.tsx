@@ -345,7 +345,11 @@ export function ProfileActionMenu({ creatorId, onViewProfile, onMessage, indexed
   return (
     <div className="relative" data-profile-menu>
       <button
-        onClick={() => setIsOpen(!isOpen)}
+        onClick={(e) => {
+          e.stopPropagation();
+          e.preventDefault();
+          setIsOpen(!isOpen);
+        }}
         className="flex flex-col items-center space-y-1 group"
         title="Profile actions"
       >

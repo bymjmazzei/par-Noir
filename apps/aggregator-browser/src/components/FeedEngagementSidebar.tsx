@@ -117,7 +117,7 @@ export function FeedEngagementSidebar({
   };
 
   return (
-    <div className="absolute right-2 md:right-4 bottom-20 md:bottom-24 flex flex-col items-center space-y-4 md:space-y-6 z-10" style={{ bottom: '80px' }}>
+    <div className="absolute right-2 md:right-4 bottom-20 md:bottom-24 flex flex-col items-center space-y-4 md:space-y-6 z-10">
       {/* Creator Profile Icon - Above Like Button */}
       {creatorId && (
         <div onClick={(e) => e.stopPropagation()}>
@@ -200,23 +200,6 @@ export function FeedEngagementSidebar({
         </button>
       )}
 
-      {/* Add to Feed Button (for owners) */}
-      {isOwner && onAddToFeed && (
-        <button
-          onClick={(e) => {
-            e.stopPropagation();
-            e.preventDefault();
-            onAddToFeed();
-          }}
-          className="flex flex-col items-center space-y-1 group"
-          title="Add to Feed"
-        >
-          <div className="w-12 h-12 md:w-14 md:h-14 rounded-full bg-black/30 backdrop-blur-sm flex items-center justify-center group-hover:bg-black/50 active:bg-black/70 transition-colors touch-manipulation">
-            <Plus className="h-6 w-6 md:h-7 md:w-7 text-white group-hover:text-blue-400 transition-colors" />
-          </div>
-          <span className="text-xs text-white font-medium">Feed</span>
-        </button>
-      )}
 
       {/* Edit Button (for owners) */}
       {isOwner && onEdit && (
