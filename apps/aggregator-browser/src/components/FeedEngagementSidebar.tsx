@@ -193,14 +193,11 @@ export function FeedEngagementSidebar({
             className={`h-6 w-6 md:h-7 md:w-7 transition-colors ${
               isLiked
                 ? 'text-red-500'
-                : userState.isUnlocked
-                ? 'text-white group-hover:text-red-400'
-                : 'text-white'
+                : 'text-white group-hover:text-red-400'
             }`} 
             fill={isLiked ? 'red' : 'white'}
             stroke="black"
             strokeWidth={1}
-            style={{ opacity: userState.isUnlocked ? 1 : 0.5 }}
           />
         </div>
         <span className="text-xs text-white font-medium">{likes.toLocaleString()}</span>
@@ -217,15 +214,10 @@ export function FeedEngagementSidebar({
             <Lock className="absolute -top-1 -right-1 h-3 w-3 text-yellow-400" />
           )}
           <MessageCircle 
-            className={`h-6 w-6 md:h-7 md:w-7 transition-colors ${
-              userState.isUnlocked
-                ? 'text-white group-hover:text-blue-400'
-                : 'text-white'
-            }`} 
+            className="h-6 w-6 md:h-7 md:w-7 text-white group-hover:text-blue-400 transition-colors" 
             fill="white"
             stroke="black"
             strokeWidth={1}
-            style={{ opacity: userState.isUnlocked ? 1 : 0.5 }}
           />
         </div>
         <span className="text-xs text-white font-medium">{comments.toLocaleString()}</span>
@@ -260,14 +252,11 @@ export function FeedEngagementSidebar({
             className={`h-6 w-6 md:h-7 md:w-7 transition-colors ${
               isSaved
                 ? 'text-yellow-400'
-                : userState.isUnlocked
-                ? 'text-white group-hover:text-yellow-400'
-                : 'text-white'
+                : 'text-white group-hover:text-yellow-400'
             }`} 
             fill={isSaved ? 'yellow' : 'white'}
             stroke="black"
             strokeWidth={1}
-            style={{ opacity: userState.isUnlocked ? 1 : 0.5 }}
           />
         </div>
       </button>
