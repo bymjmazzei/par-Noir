@@ -429,11 +429,11 @@ export function ProfileActionMenu({ creatorId, onViewProfile, onMessage, indexed
             display: 'block',
             visibility: 'visible',
             opacity: 1,
-            zIndex: 99999
+            zIndex: 99999,
+            pointerEvents: 'auto'
           }}
-          onClick={(e) => {
+          onMouseDown={(e) => {
             e.stopPropagation();
-            e.preventDefault();
           }}
         >
           {console.log('🔍 Menu rendering, isOpen:', isOpen, 'position:', menuPosition, 'buttonRect:', buttonRef.current?.getBoundingClientRect())}
@@ -526,6 +526,11 @@ export function ProfileActionMenu({ creatorId, onViewProfile, onMessage, indexed
 
           {/* Go to Profile */}
           <button
+            type="button"
+            onMouseDown={(e) => {
+              e.stopPropagation();
+              e.preventDefault();
+            }}
             onClick={(e) => {
               e.stopPropagation();
               e.preventDefault();
@@ -533,10 +538,12 @@ export function ProfileActionMenu({ creatorId, onViewProfile, onMessage, indexed
               setIsOpen(false); // Close menu first
               // Small delay to ensure menu closes before navigation
               setTimeout(() => {
+                console.log('🔍 Calling onViewProfile now');
                 onViewProfile();
-              }, 50);
+              }, 100);
             }}
-            className="flex items-center space-x-2 px-4 py-2 text-white hover:bg-neutral-700 transition-colors w-full text-left"
+            className="flex items-center space-x-2 px-4 py-2 text-white hover:bg-neutral-700 transition-colors w-full text-left cursor-pointer"
+            style={{ pointerEvents: 'auto' }}
           >
             <User className="h-4 w-4" />
             <span>Go to Profile</span>
