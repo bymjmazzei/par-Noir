@@ -429,19 +429,30 @@ function App() {
     setCurrentFeedIndex(0);
   }, [activeFeedId, visibleFileId]);
 
+  // Track previous viewingCreatorId to detect when profile is first opened
+  const prevViewingCreatorIdRef = useRef<string | null>(null);
+  
   // Reset feed index and tab when opening own profile (unless navigating to a specific file)
   useEffect(() => {
     // Don't reset if we're navigating to a specific file or if we just navigated to a file
     if (visibleFileId || isNavigatingToFileRef.current || lastNavigatedFileIdRef.current) return;
     
-    if (viewingCreatorId === userState.pnIdentifier && userState.isUnlocked) {
-      setCurrentFeedIndex(0);
-      setMePageTab('media');
-    } else if (viewingCreatorId && viewingCreatorId !== userState.pnIdentifier) {
-      // When viewing another user's profile, set to media tab
-      setMePageTab('media');
-      setCurrentFeedIndex(0);
+    // Only reset tab when profile is first opened (viewingCreatorId changes from null/other to this creator)
+    const isProfileOpening = prevViewingCreatorIdRef.current !== viewingCreatorId && viewingCreatorId;
+    
+    if (isProfileOpening) {
+      if (viewingCreatorId === userState.pnIdentifier && userState.isUnlocked) {
+        setCurrentFeedIndex(0);
+        setMePageTab('media');
+      } else if (viewingCreatorId && viewingCreatorId !== userState.pnIdentifier) {
+        // When viewing another user's profile, set to media tab
+        setMePageTab('media');
+        setCurrentFeedIndex(0);
+      }
     }
+    
+    // Update ref for next comparison
+    prevViewingCreatorIdRef.current = viewingCreatorId;
   }, [viewingCreatorId, userState.pnIdentifier, userState.isUnlocked, visibleFileId]);
 
   // Mark feed as viewed when switching to it
