@@ -4,6 +4,7 @@
  */
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { User, MessageCircle, UserPlus, Check, X, Clock, ChevronDown, Edit2, Save, X as XIcon, Pencil } from 'lucide-react';
 import { useUserState } from '../contexts/UserStateContext';
 import { getConnectionStatus, sendConnectionRequest, acceptConnectionRequest, rejectConnectionRequest } from '../services/connectionService';
@@ -28,6 +29,18 @@ export function ProfileActionMenu({ creatorId, onViewProfile, onMessage, indexed
   const menuRef = useRef<HTMLDivElement>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const [menuPosition, setMenuPosition] = useState({ top: 0, left: 0 });
+
+  // Update menu position when it opens
+  useEffect(() => {
+    if (isOpen && buttonRef.current) {
+      const rect = buttonRef.current.getBoundingClientRect();
+      setMenuPosition({
+        top: rect.top,
+        left: rect.right + 8
+      });
+    }
+  }, [isOpen]);
 
   // Handle clicks outside the menu
   useEffect(() => {
@@ -400,7 +413,7 @@ export function ProfileActionMenu({ creatorId, onViewProfile, onMessage, indexed
         </div>
       </button>
 
-      {isOpen && (
+      {isOpen && createPortal(
         <div 
           ref={menuRef}
           className="fixed w-56 bg-neutral-800 border border-neutral-700 rounded-lg shadow-xl overflow-hidden z-[9999]"
@@ -408,15 +421,15 @@ export function ProfileActionMenu({ creatorId, onViewProfile, onMessage, indexed
             display: 'block', 
             visibility: 'visible', 
             opacity: 1,
-            top: buttonRef.current ? `${buttonRef.current.getBoundingClientRect().top}px` : '0px',
-            left: buttonRef.current ? `${buttonRef.current.getBoundingClientRect().right + 8}px` : '0px'
+            top: `${menuPosition.top}px`,
+            left: `${menuPosition.left}px`
           }}
           onClick={(e) => {
             e.stopPropagation();
             e.preventDefault();
           }}
         >
-          {console.log('🔍 Menu rendering, isOpen:', isOpen, 'buttonRef:', buttonRef.current)}
+          {console.log('🔍 Menu rendering, isOpen:', isOpen, 'position:', menuPosition)}
             {/* Header with Display Name */}
           <div className="px-4 py-3 border-b border-neutral-700">
             {isEditingName && isOwnProfile ? (
