@@ -3064,6 +3064,50 @@ class ProductionServer {
       }
     });
 
+    // ============================================================================
+    // Saved Feed APIs (Private curated feed for each user)
+    // MUST come before /api/feeds/:feedId to avoid route conflict
+    // ============================================================================
+
+    // GET /api/feeds/saved?userDid=... - Get user's saved posts (index query, not a feed)
+    this.app.get('/api/feeds/saved', async (req, res) => {
+      try {
+        const { userDid } = req.query;
+        const db = (await import('./server/utils/database')).getDatabasePool();
+
+        if (!userDid || typeof userDid !== 'string') {
+          return res.status(400).json({ error: 'userDid is required' });
+        }
+
+        // Saved posts use feed_id format: "saved-{userDid}"
+        const savedFeedId = `saved-${userDid}`;
+
+        // Query saved posts directly - no need to create a feed entry
+        const postsResult = await db.query(`
+          SELECT file_id, added_at
+          FROM feed_posts
+          WHERE feed_id = $1
+          ORDER BY added_at DESC
+        `, [savedFeedId]);
+
+        const fileIds = postsResult.rows.map(row => row.file_id);
+        const latestAddedAt = postsResult.rows.length > 0 ? postsResult.rows[0].added_at : null;
+
+        return res.json({
+          feed: {
+            feedId: savedFeedId,
+            feedName: 'Saved',
+            fileIds,
+            createdAt: latestAddedAt || new Date().toISOString(),
+            updatedAt: latestAddedAt || new Date().toISOString()
+          }
+        });
+      } catch (error: any) {
+        console.error('Error getting saved feed:', error);
+        return res.status(500).json({ error: 'Failed to get saved feed', message: error.message });
+      }
+    });
+
     // GET /api/feeds - List feeds with filters
     this.app.get('/api/feeds', async (req, res) => {
       try {
@@ -3378,48 +3422,6 @@ class ProductionServer {
       }
     });
 
-    // ============================================================================
-    // Saved Feed APIs (Private curated feed for each user)
-    // ============================================================================
-
-    // GET /api/feeds/saved?userDid=... - Get user's saved posts (index query, not a feed)
-    this.app.get('/api/feeds/saved', async (req, res) => {
-      try {
-        const { userDid } = req.query;
-        const db = (await import('./server/utils/database')).getDatabasePool();
-
-        if (!userDid || typeof userDid !== 'string') {
-          return res.status(400).json({ error: 'userDid is required' });
-        }
-
-        // Saved posts use feed_id format: "saved-{userDid}"
-        const savedFeedId = `saved-${userDid}`;
-
-        // Query saved posts directly - no need to create a feed entry
-        const postsResult = await db.query(`
-          SELECT file_id, added_at
-          FROM feed_posts
-          WHERE feed_id = $1
-          ORDER BY added_at DESC
-        `, [savedFeedId]);
-
-        const fileIds = postsResult.rows.map(row => row.file_id);
-        const latestAddedAt = postsResult.rows.length > 0 ? postsResult.rows[0].added_at : null;
-
-        return res.json({
-          feed: {
-            feedId: savedFeedId,
-            feedName: 'Saved',
-            fileIds,
-            createdAt: latestAddedAt || new Date().toISOString(),
-            updatedAt: latestAddedAt || new Date().toISOString()
-          }
-        });
-      } catch (error: any) {
-        console.error('Error getting saved feed:', error);
-        return res.status(500).json({ error: 'Failed to get saved feed', message: error.message });
-      }
-    });
 
     // POST /api/feeds/saved - Add file to saved feed
     this.app.post('/api/feeds/saved', async (req, res) => {
