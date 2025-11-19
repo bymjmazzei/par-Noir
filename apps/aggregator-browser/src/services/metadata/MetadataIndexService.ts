@@ -98,7 +98,11 @@ export class MetadataIndexService {
           return shouldInclude;
         })
         .map((entry: any) => ({
-          metadata: entry.metadata,
+          metadata: {
+            ...entry.metadata,
+            // Use pnIdentifier as creatorId - they're the same thing
+            creatorId: entry.pnIdentifier || entry.metadata.creatorId
+          },
           thumbnail: entry.metadata?.thumbnail
         }));
       

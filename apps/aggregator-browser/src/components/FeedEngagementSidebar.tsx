@@ -48,19 +48,14 @@ export function FeedEngagementSidebar({
   const likes = engagement?.likes || 0;
   const comments = engagement?.comments || 0;
   
-  // Get creatorId - prefer pN identifier from metadata.creatorId, fallback to creator/author fields
+  // Get creatorId - this is now the pN identifier (set from entry.pnIdentifier during conversion)
   const creatorId = (file.metadata as any).creatorId || 
                     file.metadata.creator?.identifier?.value || 
                     file.metadata.creator?.["@id"] || 
                     file.metadata.author?.did;
   
-  // Calculate isOwner if not provided - check both creatorId (pN identifier) and extracted creatorId
-  const calculatedIsOwner = isOwner || (userState.isUnlocked && userState.pnIdentifier && (
-    (creatorId && creatorId === userState.pnIdentifier) ||
-    ((file.metadata as any).creatorId && (file.metadata as any).creatorId === userState.pnIdentifier) ||
-    (file.metadata.creator?.identifier?.value === userState.pnIdentifier) ||
-    (file.metadata.author?.did === userState.pnIdentifier)
-  ));
+  // Calculate isOwner - creatorId is now the pN identifier, so direct comparison works
+  const calculatedIsOwner = isOwner || (userState.isUnlocked && userState.pnIdentifier && creatorId === userState.pnIdentifier);
 
   const handleShare = async (e: React.MouseEvent) => {
     e.stopPropagation();

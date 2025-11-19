@@ -281,7 +281,7 @@ export function FullScreenFeed({
         const isImage = file.fileType === 'image' || 
                        (file.name || file.title || '').match(/\.(jpg|jpeg|png|gif|webp|svg|bmp|ico)$/i);
         const fileName = file.name || file.title || 'Untitled';
-        // Get creatorId - prefer pN identifier from metadata.creatorId, fallback to creator/author fields
+        // Get creatorId - this is now the pN identifier (set from entry.pnIdentifier during conversion)
         const creatorId = (indexedFile.metadata as any).creatorId || 
                           file.creator?.identifier?.value || 
                           file.creator?.["@id"] || 
@@ -414,10 +414,7 @@ export function FullScreenFeed({
               onAddToFeed={onAddToFeed ? () => onAddToFeed(indexedFile) : undefined}
               onEdit={onEdit ? () => onEdit(indexedFile) : undefined}
               isOwner={userState.isUnlocked && userState.pnIdentifier && (
-                creatorId === userState.pnIdentifier ||
-                (indexedFile.metadata as any).creatorId === userState.pnIdentifier ||
-                file.creator?.identifier?.value === userState.pnIdentifier ||
-                file.author?.did === userState.pnIdentifier
+                creatorId === userState.pnIdentifier
               )}
               onCreatorClick={onCreatorClick}
               onMessage={onMessage}
