@@ -404,7 +404,7 @@ export function ProfileActionMenu({ creatorId, onViewProfile, onMessage, indexed
         title="Profile actions"
         type="button"
       >
-        <div className="relative w-12 h-12 md:w-14 md:h-14 rounded-full bg-black/30 backdrop-blur-sm flex items-center justify-center group-hover:bg-black/50 active:bg-black/70 transition-colors touch-manipulation overflow-hidden">
+        <div className="relative w-12 h-12 md:w-14 md:h-14 rounded-full overflow-hidden flex items-center justify-center border-2 border-white/20 group-hover:border-white/40 transition-colors touch-manipulation">
           {profileImageUrl && !profileImageLoading ? (
             <img 
               src={profileImageUrl} 
@@ -412,7 +412,7 @@ export function ProfileActionMenu({ creatorId, onViewProfile, onMessage, indexed
               className="w-full h-full object-cover"
             />
           ) : (
-            <User className="h-6 w-6 md:h-7 md:w-7 text-white group-hover:text-blue-400 transition-colors" />
+            <User className="h-6 w-6 md:h-7 md:w-7 text-white fill-white group-hover:text-blue-400 group-hover:fill-blue-400 transition-colors" />
           )}
           <ChevronDown className="absolute bottom-0 right-0 h-3 w-3 text-white/70 bg-black/50 rounded-full p-0.5" />
         </div>
