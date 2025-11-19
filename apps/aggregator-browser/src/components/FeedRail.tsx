@@ -139,7 +139,7 @@ export function FeedRail({ feeds, activeFeedId, onFeedSelect, onBrowseFeeds }: F
               {isPublicFeed ? (
                 // White pN icon for public feed
                 <img 
-                  src="/branding/Par-Noir-Logo-White.png" 
+                  src="/branding/Par-Noir-Icon-White.png" 
                   alt="pN" 
                   className="w-5 h-5 object-contain"
                 />
