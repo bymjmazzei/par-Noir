@@ -1344,12 +1344,18 @@ function App() {
       const savedFromIndexed = savedFeedFileIds
         .map(fileId => indexedFilesMap.get(fileId))
         .filter((f): f is IndexedFile => f !== undefined);
-      setSavedFiles(savedFromIndexed);
-      if (savedFromIndexed.length > 0) {
-        console.log(`📊 Saved files: ${savedFromIndexed.length} files matched from ${savedFeedFileIds.length} saved IDs`);
-      }
+      
+      // Only update if content actually changed (compare by fileId list)
+      setSavedFiles(prev => {
+        const prevIds = new Set(prev.map(f => f.metadata.fileId));
+        const newIds = new Set(savedFromIndexed.map(f => f.metadata.fileId));
+        if (prevIds.size === newIds.size && [...prevIds].every(id => newIds.has(id))) {
+          return prev; // No change, return previous array to avoid re-render
+        }
+        return savedFromIndexed;
+      });
     } else if (savedFeedFileIds.length === 0) {
-      setSavedFiles([]);
+      setSavedFiles(prev => prev.length === 0 ? prev : []);
     }
   }, [savedFeedFileIds, indexedFilesMap]);
 
@@ -1400,15 +1406,27 @@ function App() {
         .map(fileId => indexedFilesMap.get(fileId))
         .filter((f): f is IndexedFile => f !== undefined);
       
-      setUserLikedFiles(likedFromIndexed);
-      setUserCommentedFiles(commentedFromIndexed);
+      // Only update if content actually changed (compare by fileId list)
+      setUserLikedFiles(prev => {
+        const prevIds = new Set(prev.map(f => f.metadata.fileId));
+        const newIds = new Set(likedFromIndexed.map(f => f.metadata.fileId));
+        if (prevIds.size === newIds.size && [...prevIds].every(id => newIds.has(id))) {
+          return prev; // No change, return previous array to avoid re-render
+        }
+        return likedFromIndexed;
+      });
       
-      if (likedFromIndexed.length > 0 || commentedFromIndexed.length > 0) {
-        console.log(`📊 User engagement: ${likedFromIndexed.length} liked files, ${commentedFromIndexed.length} commented files`);
-      }
+      setUserCommentedFiles(prev => {
+        const prevIds = new Set(prev.map(f => f.metadata.fileId));
+        const newIds = new Set(commentedFromIndexed.map(f => f.metadata.fileId));
+        if (prevIds.size === newIds.size && [...prevIds].every(id => newIds.has(id))) {
+          return prev; // No change, return previous array to avoid re-render
+        }
+        return commentedFromIndexed;
+      });
     } else {
-      setUserLikedFiles([]);
-      setUserCommentedFiles([]);
+      setUserLikedFiles(prev => prev.length === 0 ? prev : []);
+      setUserCommentedFiles(prev => prev.length === 0 ? prev : []);
     }
   }, [userLikedFileIds, userCommentedFileIds, indexedFilesMap]);
 
@@ -1531,22 +1549,37 @@ function App() {
                 .map(f => [f.metadata.fileId, f])).values()
             );
 
-            setViewedUserLikedFiles(combinedLiked);
-            setViewedUserCommentedFiles(combinedCommented);
+            // Only update if content actually changed
+            setViewedUserLikedFiles(prev => {
+              const prevIds = new Set(prev.map(f => f.metadata.fileId));
+              const newIds = new Set(combinedLiked.map(f => f.metadata.fileId));
+              if (prevIds.size === newIds.size && [...prevIds].every(id => newIds.has(id))) {
+                return prev;
+              }
+              return combinedLiked;
+            });
+            setViewedUserCommentedFiles(prev => {
+              const prevIds = new Set(prev.map(f => f.metadata.fileId));
+              const newIds = new Set(combinedCommented.map(f => f.metadata.fileId));
+              if (prevIds.size === newIds.size && [...prevIds].every(id => newIds.has(id))) {
+                return prev;
+              }
+              return combinedCommented;
+            });
             console.log(`📊 Loaded ${combinedLiked.length} liked files and ${combinedCommented.length} commented files for creator ${viewingCreatorId}`);
           } else {
-            setViewedUserLikedFiles([]);
-            setViewedUserCommentedFiles([]);
+            setViewedUserLikedFiles(prev => prev.length === 0 ? prev : []);
+            setViewedUserCommentedFiles(prev => prev.length === 0 ? prev : []);
           }
         } catch (error) {
           console.error('Failed to load user engagement files:', error);
-          setViewedUserLikedFiles([]);
-          setViewedUserCommentedFiles([]);
+          setViewedUserLikedFiles(prev => prev.length === 0 ? prev : []);
+          setViewedUserCommentedFiles(prev => prev.length === 0 ? prev : []);
         }
       })();
     } else {
-      setViewedUserLikedFiles([]);
-      setViewedUserCommentedFiles([]);
+      setViewedUserLikedFiles(prev => prev.length === 0 ? prev : []);
+      setViewedUserCommentedFiles(prev => prev.length === 0 ? prev : []);
     }
   }, [viewingCreatorId, userState.pnIdentifier, indexedFiles]);
 
