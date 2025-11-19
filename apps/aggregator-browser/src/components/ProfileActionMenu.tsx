@@ -26,6 +26,7 @@ export function ProfileActionMenu({ creatorId, onViewProfile, onMessage, indexed
   const { success, error: showError } = useToast();
   const [isOpen, setIsOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
+  const buttonRef = useRef<HTMLButtonElement>(null);
   const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>({ status: 'not_connected' });
   const [loading, setLoading] = useState(false);
   const [isEditingName, setIsEditingName] = useState(false);
@@ -346,6 +347,7 @@ export function ProfileActionMenu({ creatorId, onViewProfile, onMessage, indexed
   return (
     <div className="relative" data-profile-menu style={{ zIndex: 9999 }}>
       <button
+        ref={buttonRef}
         onClick={(e) => {
           console.log('🔍 Profile button clicked', { isOpen, willBeOpen: !isOpen });
           e.stopPropagation();
@@ -378,7 +380,11 @@ export function ProfileActionMenu({ creatorId, onViewProfile, onMessage, indexed
             className="fixed inset-0 z-[9998]"
             onClick={(e) => {
               // Only close if clicking on the backdrop itself, not on menu or button
-              if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+              const target = e.target as Node;
+              const clickedMenu = menuRef.current?.contains(target);
+              const clickedButton = buttonRef.current?.contains(target);
+              
+              if (!clickedMenu && !clickedButton) {
                 console.log('🔍 Clicked backdrop, closing menu');
                 setIsOpen(false);
               }
