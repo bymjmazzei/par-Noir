@@ -275,11 +275,9 @@ export function FullScreenFeed({
         scrollbarWidth: 'none', 
         msOverflowStyle: 'none', 
         WebkitOverflowScrolling: 'touch',
-        // Full viewport height - the fixed bottom nav will overlay
-        height: '100vh',
-        maxHeight: '100vh',
-        // Add bottom padding equal to bottom nav height so content doesn't get hidden behind it
-        paddingBottom: 'calc(64px + env(safe-area-inset-bottom, 0px))', // Bottom nav (h-16 = 64px) + safe area
+        // Height excludes bottom nav bar (64px) and safe area
+        height: 'calc(100vh - 64px - env(safe-area-inset-bottom, 0px))',
+        maxHeight: 'calc(100vh - 64px - env(safe-area-inset-bottom, 0px))',
         // Start at top of window
         marginTop: '0',
         paddingTop: '0',
@@ -306,10 +304,10 @@ export function FullScreenFeed({
             data-file-id={fileId}
             className="w-full snap-start flex items-center justify-center bg-black relative"
             style={{ 
-              // Full viewport height - bottom padding in parent prevents overlap
-              height: '100vh',
-              minHeight: '100vh',
-              maxHeight: '100vh',
+              // Height excludes bottom nav bar (64px) and safe area
+              height: 'calc(100vh - 64px - env(safe-area-inset-bottom, 0px))',
+              minHeight: 'calc(100vh - 64px - env(safe-area-inset-bottom, 0px))',
+              maxHeight: 'calc(100vh - 64px - env(safe-area-inset-bottom, 0px))',
               // Start at top of window
               marginTop: '0',
               paddingTop: '0',
@@ -343,8 +341,8 @@ export function FullScreenFeed({
                   src={videoBlobs.get(fileId)!}
                   className="w-full object-contain"
                   style={{ 
-                    // Full viewport height - parent padding prevents overlap with bottom nav
-                    maxHeight: '100vh',
+                    // Height excludes bottom nav bar (64px) and safe area
+                    maxHeight: 'calc(100vh - 64px - env(safe-area-inset-bottom, 0px))',
                     height: 'auto',
                     width: '100%'
                   }}
@@ -495,7 +493,7 @@ export function FullScreenFeed({
                 maxHeight: expandedCaptions.has(fileId) ? '70%' : 'auto',
                 overflowY: expandedCaptions.has(fileId) ? 'auto' : 'hidden',
                 overflowX: 'hidden',
-                bottom: 'calc(64px + env(safe-area-inset-bottom, 0px))' // Account for bottom nav bar + safe area
+                bottom: '0' // Content info is within the media container, which already excludes bottom nav
               }}
             >
               {/* Title */}
