@@ -2793,6 +2793,24 @@ class ProductionServer {
       }
     });
 
+    // DELETE /api/engagement/comments - Delete all comments (cleanup)
+    this.app.delete('/api/engagement/comments', async (req, res) => {
+      try {
+        const { EngagementService } = await import('./server/modules/engagementService');
+        
+        const result = await EngagementService.deleteAllComments();
+
+        return res.json({
+          success: true,
+          deletedCount: result.deletedCount,
+          message: `Deleted ${result.deletedCount} comments`
+        });
+      } catch (error: any) {
+        console.error('Error deleting comments:', error);
+        return res.status(500).json({ error: 'Failed to delete comments', message: error.message });
+      }
+    });
+
     // GET /api/engagement/user/:userDid - Get all likes and comments for a user
     this.app.get('/api/engagement/user/:userDid', async (req, res) => {
       try {

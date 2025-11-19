@@ -317,6 +317,33 @@ export class EngagementService {
   }
 
   /**
+   * Delete all comments (cleanup old comments)
+   */
+  static async deleteAllComments(): Promise<{ deletedCount: number }> {
+    const db = getDatabasePool();
+    
+    try {
+      // Delete all comments
+      const result = await db.query(`
+        DELETE FROM engagement 
+        WHERE type = 'comment'
+        RETURNING engagement_id
+      `);
+
+      // Also delete all comment likes
+      await db.query(`
+        DELETE FROM engagement 
+        WHERE type = 'comment_like'
+      `);
+
+      return { deletedCount: result.rowCount || 0 };
+    } catch (error) {
+      console.error('Failed to delete all comments:', error);
+      throw error;
+    }
+  }
+
+  /**
    * Like a comment
    */
   static async likeComment(fileId: string, commentId: string, userDid: string): Promise<{ liked: boolean; likes: string[] }> {
