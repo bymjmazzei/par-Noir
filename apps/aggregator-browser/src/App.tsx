@@ -1259,12 +1259,22 @@ function App() {
   // Track saved feed fileIds separately to avoid refetching
   const [savedFeedFileIds, setSavedFeedFileIds] = useState<string[]>([]);
   const savedFeedLoadingRef = useRef(false);
+  const savedFeedErrorRef = useRef<{ timestamp: number; count: number } | null>(null);
   
   // Load saved feed fileIds from API (only when user/viewing changes)
   useEffect(() => {
     if (viewingCreatorId === userState.pnIdentifier && userState.isUnlocked && userState.pnIdentifier) {
       // Prevent multiple simultaneous calls
       if (savedFeedLoadingRef.current) return;
+      
+      // If we've had recent errors, don't retry immediately (exponential backoff)
+      if (savedFeedErrorRef.current) {
+        const timeSinceError = Date.now() - savedFeedErrorRef.current.timestamp;
+        const backoffDelay = Math.min(30000 * Math.pow(2, savedFeedErrorRef.current.count), 300000); // Max 5 minutes
+        if (timeSinceError < backoffDelay) {
+          return; // Skip this call, wait for backoff
+        }
+      }
       
       savedFeedLoadingRef.current = true;
       setIsLoadingSavedFiles(true);
@@ -1276,9 +1286,21 @@ function App() {
           } else {
             setSavedFeedFileIds([]);
           }
-        } catch (error) {
-          console.error('Failed to load saved feed:', error);
+          // Clear error ref on success
+          savedFeedErrorRef.current = null;
+        } catch (error: any) {
+          // Only log if it's not a 500 error (to reduce spam)
+          if (error?.message && !error.message.includes('500')) {
+            console.error('Failed to load saved feed:', error);
+          }
           setSavedFeedFileIds([]);
+          // Track error for backoff
+          if (savedFeedErrorRef.current) {
+            savedFeedErrorRef.current.count++;
+            savedFeedErrorRef.current.timestamp = Date.now();
+          } else {
+            savedFeedErrorRef.current = { timestamp: Date.now(), count: 1 };
+          }
         } finally {
           setIsLoadingSavedFiles(false);
           savedFeedLoadingRef.current = false;
@@ -1288,6 +1310,7 @@ function App() {
       setSavedFeedFileIds([]);
       setSavedFiles([]);
       savedFeedLoadingRef.current = false;
+      savedFeedErrorRef.current = null; // Clear errors when switching away
     }
   }, [viewingCreatorId, userState.pnIdentifier, userState.isUnlocked]);
   
@@ -2363,12 +2386,22 @@ function App() {
                   try {
                     await saveToFeed(userState.pnIdentifier!, file.metadata.fileId);
                     success('Saved to your private collection!');
-                    // Refresh saved feed fileIds (the matching effect will update savedFiles)
-                    const savedFeed = await getSavedFeed(userState.pnIdentifier);
-                    if (savedFeed && savedFeed.fileIds.length > 0) {
-                      setSavedFeedFileIds(savedFeed.fileIds);
-                    } else {
-                      setSavedFeedFileIds([]);
+                    // Optimistically update the saved feed fileIds
+                    setSavedFeedFileIds(prev => {
+                      if (!prev.includes(file.metadata.fileId)) {
+                        return [...prev, file.metadata.fileId];
+                      }
+                      return prev;
+                    });
+                    // Try to refresh from API, but don't fail if it errors
+                    try {
+                      const savedFeed = await getSavedFeed(userState.pnIdentifier);
+                      if (savedFeed && savedFeed.fileIds.length > 0) {
+                        setSavedFeedFileIds(savedFeed.fileIds);
+                        savedFeedErrorRef.current = null; // Clear error on success
+                      }
+                    } catch (refreshError) {
+                      // Silently fail - we've already optimistically updated
                     }
                   } catch (error) {
                     showErrorToast('Failed to save. Please try again.');

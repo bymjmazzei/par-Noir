@@ -66,19 +66,6 @@ export function FeedEngagementSidebar({
   const normalizedCreatorId = normalizeId(creatorId);
   const normalizedUserPnId = normalizeId(userState.pnIdentifier);
   
-  // Debug logging (only for own files to avoid spam)
-  if (userState.isUnlocked && userState.pnIdentifier) {
-    console.log('🔍 [FeedEngagementSidebar] Ownership check:', {
-      creatorId,
-      normalizedCreatorId,
-      userPnIdentifier: userState.pnIdentifier,
-      normalizedUserPnId,
-      match: normalizedCreatorId === normalizedUserPnId,
-      isOwner,
-      finalIsOwner: isOwner || (normalizedCreatorId === normalizedUserPnId)
-    });
-  }
-  
   // Calculate isOwner - normalize both IDs before comparison
   const calculatedIsOwner = isOwner || (userState.isUnlocked && normalizedUserPnId && normalizedCreatorId === normalizedUserPnId);
 

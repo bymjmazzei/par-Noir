@@ -152,31 +152,11 @@ export function ProfileActionMenu({ creatorId, onViewProfile, onMessage, indexed
       const isTopPost = f.metadata.isTopPost === true;
       const matches = normalizedFileCreatorId === normalizedCreatorId;
       
-      if (isTopPost && matches) {
-        console.log('[ProfileActionMenu] Found top post:', {
-          fileId: f.metadata.fileId,
-          fileCreatorId,
-          normalizedFileCreatorId,
-          normalizedCreatorId,
-          matches,
-          isTopPost
-        });
-      }
-      
       return matches && isTopPost;
     });
     
     if (!topPost) {
-      console.log('[ProfileActionMenu] No top post found for creator:', {
-        creatorId,
-        normalizedCreatorId,
-        indexedFilesCount: indexedFiles.length,
-        sampleFiles: indexedFiles.slice(0, 3).map(f => ({
-          fileId: f.metadata.fileId,
-          creatorId: (f.metadata as any).creatorId || f.metadata.creator?.identifier?.value,
-          isTopPost: f.metadata.isTopPost
-        }))
-      });
+      // No top post found - this is normal for many creators
     }
     
     return topPost || null;
