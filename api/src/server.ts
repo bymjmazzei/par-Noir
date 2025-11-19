@@ -2706,6 +2706,47 @@ class ProductionServer {
       }
     });
 
+    // GET /api/engagement/user/:userDid - Get all likes and comments for a user
+    this.app.get('/api/engagement/user/:userDid', async (req, res) => {
+      try {
+        const { EngagementService } = await import('./server/modules/engagementService');
+        const { userDid } = req.params;
+
+        if (!userDid) {
+          return res.status(400).json({ error: 'userDid is required' });
+        }
+
+        const db = (await import('./server/utils/database')).getDatabasePool();
+        
+        // Get all files the user has liked
+        const likedResult = await db.query(`
+          SELECT DISTINCT file_id 
+          FROM engagement 
+          WHERE user_did = $1 AND type = 'like'
+        `, [userDid]);
+        
+        // Get all files the user has commented on
+        const commentedResult = await db.query(`
+          SELECT DISTINCT file_id 
+          FROM engagement 
+          WHERE user_did = $1 AND type = 'comment'
+        `, [userDid]);
+
+        const likedFileIds = likedResult.rows.map(row => row.file_id);
+        const commentedFileIds = commentedResult.rows.map(row => row.file_id);
+
+        return res.json({
+          likedFileIds,
+          commentedFileIds,
+          likedCount: likedFileIds.length,
+          commentedCount: commentedFileIds.length
+        });
+      } catch (error: any) {
+        console.error('Error getting user engagement:', error);
+        return res.status(500).json({ error: 'Failed to get user engagement', message: error.message });
+      }
+    });
+
     // POST /api/engagement/:fileId/share - Record share
     this.app.post('/api/engagement/:fileId/share', async (req, res) => {
       try {

@@ -1318,12 +1318,135 @@ function App() {
   // Load other user's liked and commented files when viewing their profile
   useEffect(() => {
     if (viewingCreatorId && viewingCreatorId !== userState.pnIdentifier) {
-      // TODO: Fetch other user's likes/comments from API
-      // For now, we'll need to query engagement data from the backend
-      // This would require an API endpoint like GET /api/engagement/user/{userId}
-      // For now, set empty arrays - will be populated when API is available
-      setViewedUserLikedFiles([]);
-      setViewedUserCommentedFiles([]);
+      (async () => {
+        try {
+          const apiEndpoint = process.env.REACT_APP_API_ENDPOINT || 'https://api.parnoir.com';
+          // Normalize the creator ID - API might expect "pn-" prefix
+          const normalizedCreatorId = viewingCreatorId.startsWith('pn-') 
+            ? viewingCreatorId 
+            : `pn-${viewingCreatorId}`;
+          
+          // Get user's engagement (likes and comments)
+          const engagementResponse = await fetch(
+            `${apiEndpoint}/api/engagement/user/${encodeURIComponent(normalizedCreatorId)}`,
+            {
+              method: 'GET',
+              headers: { 'Content-Type': 'application/json' }
+            }
+          );
+
+          if (engagementResponse.ok) {
+            const engagementData = await engagementResponse.json();
+            const likedFileIds = engagementData.likedFileIds || [];
+            const commentedFileIds = engagementData.commentedFileIds || [];
+
+            // Load files from API for liked files
+            const allLikedFiles: IndexedFile[] = [];
+            const allCommentedFiles: IndexedFile[] = [];
+
+            // Get file metadata for liked files
+            if (likedFileIds.length > 0) {
+              const apiFilesResponse = await fetch(
+                `${apiEndpoint}/api/aggregator/metadata-index`,
+                {
+                  method: 'GET',
+                  headers: { 'Content-Type': 'application/json' }
+                }
+              );
+
+              if (apiFilesResponse.ok) {
+                const apiData = await apiFilesResponse.json();
+                if (apiData.files && Array.isArray(apiData.files)) {
+                  const likedFiles = apiData.files
+                    .filter((entry: any) => likedFileIds.includes(entry.fileId))
+                    .map((entry: any) => {
+                      const metadata = entry.metadata || {};
+                      return {
+                        metadata: {
+                          ...metadata,
+                          fileId: entry.fileId || metadata.fileId,
+                          creatorId: entry.pnIdentifier || metadata.creatorId,
+                          creator: metadata.creator || {
+                            identifier: { value: entry.pnIdentifier }
+                          },
+                          author: metadata.author || {
+                            did: entry.pnIdentifier
+                          }
+                        }
+                      } as IndexedFile;
+                    });
+                  allLikedFiles.push(...likedFiles);
+                }
+              }
+            }
+
+            // Get file metadata for commented files
+            if (commentedFileIds.length > 0) {
+              const apiFilesResponse = await fetch(
+                `${apiEndpoint}/api/aggregator/metadata-index`,
+                {
+                  method: 'GET',
+                  headers: { 'Content-Type': 'application/json' }
+                }
+              );
+
+              if (apiFilesResponse.ok) {
+                const apiData = await apiFilesResponse.json();
+                if (apiData.files && Array.isArray(apiData.files)) {
+                  const commentedFiles = apiData.files
+                    .filter((entry: any) => commentedFileIds.includes(entry.fileId))
+                    .map((entry: any) => {
+                      const metadata = entry.metadata || {};
+                      return {
+                        metadata: {
+                          ...metadata,
+                          fileId: entry.fileId || metadata.fileId,
+                          creatorId: entry.pnIdentifier || metadata.creatorId,
+                          creator: metadata.creator || {
+                            identifier: { value: entry.pnIdentifier }
+                          },
+                          author: metadata.author || {
+                            did: entry.pnIdentifier
+                          }
+                        }
+                      } as IndexedFile;
+                    });
+                  allCommentedFiles.push(...commentedFiles);
+                }
+              }
+            }
+
+            // Also check already-loaded indexed files as fallback
+            const likedFromIndexed = indexedFiles.filter(f => 
+              likedFileIds.includes(f.metadata.fileId)
+            );
+            const commentedFromIndexed = indexedFiles.filter(f => 
+              commentedFileIds.includes(f.metadata.fileId)
+            );
+
+            // Combine and deduplicate
+            const combinedLiked = Array.from(
+              new Map([...allLikedFiles, ...likedFromIndexed]
+                .map(f => [f.metadata.fileId, f])).values()
+            );
+            const combinedCommented = Array.from(
+              new Map([...allCommentedFiles, ...commentedFromIndexed]
+                .map(f => [f.metadata.fileId, f])).values()
+            );
+
+            setViewedUserLikedFiles(combinedLiked);
+            setViewedUserCommentedFiles(combinedCommented);
+            console.log(`📊 Loaded ${combinedLiked.length} liked files and ${combinedCommented.length} commented files for creator ${viewingCreatorId}`);
+          } else {
+            setViewedUserLikedFiles([]);
+            setViewedUserCommentedFiles([]);
+          }
+        } catch (error) {
+          console.error('Failed to load user engagement files:', error);
+          setViewedUserLikedFiles([]);
+          setViewedUserCommentedFiles([]);
+        }
+      })();
     } else {
       setViewedUserLikedFiles([]);
       setViewedUserCommentedFiles([]);
@@ -1332,23 +1455,84 @@ function App() {
 
   // Load connections files when viewing own index
   useEffect(() => {
-    if (viewingCreatorId === userState.pnIdentifier && userState.isUnlocked && userState.pnIdentifier) {
+    if (viewingCreatorId === userState.pnIdentifier && userState.pnIdentifier) {
       (async () => {
         try {
           const { getConnections } = await import('./services/connectionService');
           const connections = await getConnections(userState.pnIdentifier);
           
-          // Get files from connected users
-          const connectionDids = connections.map(c => c.userDid);
-          const filesFromConnections = indexedFiles.filter(f => {
+          // Get connection IDs (normalize to handle both formats)
+          const normalizeIdentifier = (id: string | undefined | null): string => {
+            if (!id) return '';
+            const cleaned = id.startsWith('pn-') ? id.substring(3) : id;
+            return cleaned.trim().toLowerCase();
+          };
+          
+          const connectionIds = connections.map(c => normalizeIdentifier(c.userDid));
+          
+          // Load files from connected users from API
+          const apiEndpoint = process.env.REACT_APP_API_ENDPOINT || 'https://api.parnoir.com';
+          const allConnectionFiles: IndexedFile[] = [];
+          
+          // Query API for each connection's files
+          for (const connection of connections) {
+            try {
+              const normalizedConnectionId = connection.userDid.startsWith('pn-') 
+                ? connection.userDid 
+                : `pn-${connection.userDid}`;
+              const response = await fetch(
+                `${apiEndpoint}/api/aggregator/metadata-index?authorDid=${encodeURIComponent(normalizedConnectionId)}`,
+                {
+                  method: 'GET',
+                  headers: { 'Content-Type': 'application/json' }
+                }
+              );
+              
+              if (response.ok) {
+                const data = await response.json();
+                if (data.files && Array.isArray(data.files)) {
+                  const connectionFiles = data.files.map((entry: any) => {
+                    const metadata = entry.metadata || {};
+                    return {
+                      metadata: {
+                        ...metadata,
+                        fileId: entry.fileId || metadata.fileId,
+                        creatorId: entry.pnIdentifier || metadata.creatorId || connection.userDid,
+                        creator: metadata.creator || {
+                          identifier: { value: entry.pnIdentifier || connection.userDid }
+                        },
+                        author: metadata.author || {
+                          did: entry.pnIdentifier || connection.userDid
+                        }
+                      }
+                    } as IndexedFile;
+                  });
+                  allConnectionFiles.push(...connectionFiles);
+                }
+              }
+            } catch (err) {
+              console.warn(`Failed to load files for connection ${connection.userDid}:`, err);
+            }
+          }
+          
+          // Also check already-loaded indexed files as fallback
+          const filesFromIndexed = indexedFiles.filter(f => {
             const creatorId = f.metadata.creator?.identifier?.value || 
                              f.metadata.creator?.["@id"] || 
-                             f.metadata.author?.did;
-            return creatorId && connectionDids.includes(creatorId);
+                             f.metadata.author?.did ||
+                             f.metadata.creatorId;
+            const normalizedCreatorId = normalizeIdentifier(creatorId);
+            return normalizedCreatorId && connectionIds.includes(normalizedCreatorId);
           });
           
-          setConnectionsFiles(filesFromConnections);
-          console.log(`📊 Connections feed: ${filesFromConnections.length} files from ${connections.length} connections`);
+          // Combine and deduplicate
+          const combinedFiles = Array.from(
+            new Map([...allConnectionFiles, ...filesFromIndexed]
+              .map(f => [f.metadata.fileId, f])).values()
+          );
+          
+          setConnectionsFiles(combinedFiles);
+          console.log(`📊 Connections feed: ${combinedFiles.length} files from ${connections.length} connections (${allConnectionFiles.length} from API, ${filesFromIndexed.length} from index)`);
         } catch (error) {
           console.error('Failed to load connections files:', error);
           setConnectionsFiles([]);
@@ -1357,7 +1541,7 @@ function App() {
     } else {
       setConnectionsFiles([]);
     }
-  }, [viewingCreatorId, userState.pnIdentifier, userState.isUnlocked, indexedFiles]);
+  }, [viewingCreatorId, userState.pnIdentifier, indexedFiles]);
 
   // Helper function to load engagement data (same as in useEngagement hook)
   function loadEngagementData() {
