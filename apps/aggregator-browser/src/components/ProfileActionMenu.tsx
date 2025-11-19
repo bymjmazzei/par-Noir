@@ -416,20 +416,22 @@ export function ProfileActionMenu({ creatorId, onViewProfile, onMessage, indexed
       {isOpen && createPortal(
         <div 
           ref={menuRef}
-          className="fixed w-56 bg-neutral-800 border border-neutral-700 rounded-lg shadow-xl overflow-hidden z-[9999]"
+          className="fixed w-56 bg-red-600 border-4 border-yellow-400 rounded-lg shadow-xl overflow-hidden z-[99999]"
           style={{ 
-            display: 'block', 
-            visibility: 'visible', 
-            opacity: 1,
             top: `${menuPosition.top}px`,
-            left: `${menuPosition.left}px`
+            left: `${menuPosition.left}px`,
+            position: 'fixed',
+            display: 'block',
+            visibility: 'visible',
+            opacity: 1,
+            zIndex: 99999
           }}
           onClick={(e) => {
             e.stopPropagation();
             e.preventDefault();
           }}
         >
-          {console.log('🔍 Menu rendering, isOpen:', isOpen, 'position:', menuPosition)}
+          {console.log('🔍 Menu rendering, isOpen:', isOpen, 'position:', menuPosition, 'buttonRect:', buttonRef.current?.getBoundingClientRect())}
             {/* Header with Display Name */}
           <div className="px-4 py-3 border-b border-neutral-700">
             {isEditingName && isOwnProfile ? (
@@ -525,7 +527,6 @@ export function ProfileActionMenu({ creatorId, onViewProfile, onMessage, indexed
             <User className="h-4 w-4" />
             <span>Go to Profile</span>
           </button>
-        </div>
         </div>,
         document.body
       )}
