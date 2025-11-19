@@ -137,8 +137,36 @@ export function FeedRail({ feeds, activeFeedId, onFeedSelect, onBrowseFeeds }: F
               style={{ opacity: isActive ? 1 : 0.85 }}
             >
               {isPublicFeed ? (
-                // pN text for public feed (lowercase p, uppercase N)
-                <span className="text-base font-medium tracking-wide text-white" style={{ textTransform: 'none' }}>pN</span>
+                // pN text for public feed (lowercase p with line, uppercase N)
+                <svg 
+                  width="24" 
+                  height="20" 
+                  viewBox="0 0 24 20" 
+                  fill="none" 
+                  xmlns="http://www.w3.org/2000/svg"
+                  className="text-white"
+                >
+                  <text 
+                    x="0" 
+                    y="15" 
+                    fontSize="16" 
+                    fontFamily="system-ui, -apple-system, sans-serif" 
+                    fontWeight="500" 
+                    fill="currentColor"
+                    letterSpacing="0.05em"
+                  >
+                    pN
+                  </text>
+                  <line 
+                    x1="2" 
+                    y1="4" 
+                    x2="8" 
+                    y2="4" 
+                    stroke="currentColor" 
+                    strokeWidth="1.5" 
+                    strokeLinecap="round"
+                  />
+                </svg>
               ) : (
                 <span className="text-base font-medium uppercase tracking-wide">{feed.name}</span>
               )}
