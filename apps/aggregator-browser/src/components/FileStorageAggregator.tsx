@@ -1903,11 +1903,12 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
                         {(parseInt(file.size || '0') / 1024).toFixed(1)} KB
                       </p>
 
-                      <div className="flex items-center justify-center mt-2 pt-2 border-t border-neutral-700">
+                      <div className="flex items-center justify-center mt-2 pt-2 border-t border-neutral-700" onClick={(e) => e.stopPropagation()}>
                         <div className="relative">
                           <button
                             onClick={(e) => {
                               e.stopPropagation();
+                              e.preventDefault();
                               setOpenMenuFor(openMenuFor === file.id ? null : file.id);
                             }}
                             style={{
@@ -1945,6 +1946,8 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
                             <div
                               ref={actionMenuRef}
                               className="absolute right-0 mt-2 w-44 bg-neutral-900 border border-neutral-700 rounded-lg shadow-xl z-30 py-1"
+                              onClick={(e) => e.stopPropagation()}
+                              onMouseDown={(e) => e.stopPropagation()}
                             >
                               <button
                                 onClick={(e) => {
@@ -2106,6 +2109,8 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
                           <div
                             ref={actionMenuRef}
                             className="absolute right-0 mt-2 w-44 bg-neutral-900 border border-neutral-700 rounded-lg shadow-xl z-30 py-1"
+                            onClick={(e) => e.stopPropagation()}
+                            onMouseDown={(e) => e.stopPropagation()}
                           >
                             <button
                               onClick={(e) => {
