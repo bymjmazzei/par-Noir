@@ -2554,7 +2554,7 @@ function App() {
           
           {/* Unified feed view for all profiles */}
           {filteredMeFiles.length > 0 ? (
-            <div className="flex-1" style={{ marginTop: '48px', height: 'calc(100vh - 64px - 48px)' }}>
+            <div className="flex-1" style={{ marginTop: '48px', height: 'calc(100vh - 64px - 48px)', maxHeight: 'calc(100vh - 64px - 48px)' }}>
               <FullScreenFeed
                 files={filteredMeFiles}
                 currentIndex={currentFeedIndex}
@@ -2881,7 +2881,8 @@ function App() {
                 (horizontalSwipeRef as React.MutableRefObject<HTMLDivElement | null>).current = el;
               }
             }}
-            className="flex-1 h-full"
+            className="flex-1"
+            style={{ height: 'calc(100vh - 64px)' }}
           >
             {filteredFilesByFeed.length > 0 ? (
               <FullScreenFeed

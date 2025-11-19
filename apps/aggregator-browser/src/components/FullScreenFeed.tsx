@@ -275,13 +275,15 @@ export function FullScreenFeed({
         scrollbarWidth: 'none', 
         msOverflowStyle: 'none', 
         WebkitOverflowScrolling: 'touch',
-        height: 'calc(100vh - 64px)', // Account for bottom nav (h-16 = 64px)
-        maxHeight: 'calc(100vh - 64px)',
+        // Height accounts for bottom nav, with padding to prevent cut-off
+        height: 'calc(100vh - 64px - env(safe-area-inset-bottom, 0px))',
+        maxHeight: 'calc(100vh - 64px - env(safe-area-inset-bottom, 0px))',
+        // Add padding at bottom to ensure last item isn't cut off
+        paddingBottom: 'env(safe-area-inset-bottom, 0px)',
         // Start at top of window
         marginTop: '0',
         paddingTop: '0',
-        // On mobile, account for safe area insets
-        paddingBottom: 'env(safe-area-inset-bottom, 0px)'
+        boxSizing: 'border-box'
       }}
     >
       {files.map((indexedFile, idx) => {
@@ -304,12 +306,14 @@ export function FullScreenFeed({
             data-file-id={fileId}
             className="w-full snap-start flex items-center justify-center bg-black relative"
             style={{ 
-              height: 'calc(100vh - 64px)', // Account for bottom nav (h-16 = 64px)
-              minHeight: 'calc(100vh - 64px)',
-              maxHeight: 'calc(100vh - 64px)',
+              // Match container height to fit within viewport minus bottom nav
+              height: 'calc(100vh - 64px - env(safe-area-inset-bottom, 0px))',
+              minHeight: 'calc(100vh - 64px - env(safe-area-inset-bottom, 0px))',
+              maxHeight: 'calc(100vh - 64px - env(safe-area-inset-bottom, 0px))',
               // Start at top of window
               marginTop: '0',
-              paddingTop: '0'
+              paddingTop: '0',
+              boxSizing: 'border-box'
             }}
           >
             {/* Full-screen video */}
@@ -339,7 +343,8 @@ export function FullScreenFeed({
                   src={videoBlobs.get(fileId)!}
                   className="w-full object-contain"
                   style={{ 
-                    maxHeight: 'calc(100vh - 64px)', // Account for bottom nav
+                    // Account for bottom nav via parent padding
+                    maxHeight: 'calc(100vh - 64px - env(safe-area-inset-bottom, 0px))',
                     height: 'auto',
                     width: '100%'
                   }}
@@ -378,7 +383,8 @@ export function FullScreenFeed({
                 alt={fileName}
                 className="w-full object-contain"
                 style={{ 
-                  maxHeight: 'calc(100vh - 64px)', // Account for bottom nav
+                  // Account for bottom nav via parent padding
+                  maxHeight: 'calc(100vh - 64px - env(safe-area-inset-bottom, 0px))',
                   height: 'auto',
                   width: '100%'
                 }}
@@ -489,7 +495,7 @@ export function FullScreenFeed({
                 maxHeight: expandedCaptions.has(fileId) ? '70%' : 'auto',
                 overflowY: expandedCaptions.has(fileId) ? 'auto' : 'hidden',
                 overflowX: 'hidden',
-                bottom: '64px' // Account for bottom nav bar
+                bottom: 'calc(64px + env(safe-area-inset-bottom, 0px))' // Account for bottom nav bar + safe area
               }}
             >
               {/* Title */}
