@@ -48,6 +48,11 @@ export function ProfileActionMenu({ creatorId, onViewProfile, onMessage, indexed
 
     const handleClickOutside = (event: MouseEvent) => {
       const target = event.target as Node;
+      // Don't close if clicking on menu or button
+      if (menuRef.current?.contains(target) || buttonRef.current?.contains(target)) {
+        return;
+      }
+      // Don't close if clicking on container (which includes button)
       if (containerRef.current && !containerRef.current.contains(target)) {
         console.log('🔍 Clicked outside, closing menu');
         setIsOpen(false);
@@ -57,7 +62,7 @@ export function ProfileActionMenu({ creatorId, onViewProfile, onMessage, indexed
     // Delay to avoid immediate closure
     const timeout = setTimeout(() => {
       document.addEventListener('mousedown', handleClickOutside);
-    }, 200);
+    }, 300);
 
     return () => {
       clearTimeout(timeout);
@@ -525,7 +530,11 @@ export function ProfileActionMenu({ creatorId, onViewProfile, onMessage, indexed
               e.stopPropagation();
               e.preventDefault();
               console.log('🔍 Go to Profile clicked, calling onViewProfile');
-              onViewProfile();
+              setIsOpen(false); // Close menu first
+              // Small delay to ensure menu closes before navigation
+              setTimeout(() => {
+                onViewProfile();
+              }, 50);
             }}
             className="flex items-center space-x-2 px-4 py-2 text-white hover:bg-neutral-700 transition-colors w-full text-left"
           >
