@@ -1890,7 +1890,14 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
                   <div
                     key={file.id}
                     className="bg-neutral-800/50 rounded-lg overflow-hidden hover:bg-neutral-800 transition-colors group cursor-pointer"
-                    onClick={() => setViewingFile({ ...file, accountId: file.accountId || account.accountId })}
+                    onClick={(e) => {
+                      // Don't open file viewer if clicking on menu button or menu
+                      const target = e.target as HTMLElement;
+                      if (target.closest('[data-menu-button]') || target.closest('.menu-container')) {
+                        return;
+                      }
+                      setViewingFile({ ...file, accountId: file.accountId || account.accountId });
+                    }}
                   >
                     <div className="relative aspect-square bg-neutral-700/50 overflow-hidden">
                       {isMediaFile ? (
@@ -1925,16 +1932,21 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
                         {(parseInt(file.size || '0') / 1024).toFixed(1)} KB
                       </p>
 
-                      <div className="flex items-center justify-center mt-2 pt-2 border-t border-neutral-700" onClick={(e) => e.stopPropagation()}>
+                      <div className="flex items-center justify-center mt-2 pt-2 border-t border-neutral-700 menu-container" onClick={(e) => e.stopPropagation()}>
                         <div className="relative">
                           <button
                             data-menu-button={file.id}
+                            type="button"
                             onClick={(e) => {
                               e.stopPropagation();
                               e.preventDefault();
                               const newState = openMenuFor === file.id ? null : file.id;
-                              console.log('[FileStorageAggregator] Menu button clicked:', { fileId: file.id, currentState: openMenuFor, newState });
+                              console.log('[FileStorageAggregator] Menu button clicked (grid):', { fileId: file.id, currentState: openMenuFor, newState, willOpen: newState !== null });
                               setOpenMenuFor(newState);
+                            }}
+                            onMouseDown={(e) => {
+                              e.stopPropagation();
+                              e.preventDefault();
                             }}
                             style={{
                               width: '28px',
@@ -1970,12 +1982,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
                           {openMenuFor === file.id && (
                             <div
                               ref={actionMenuRef}
-                              className="fixed w-44 bg-neutral-900 border border-neutral-700 rounded-lg shadow-xl z-[100] py-1"
-                              style={{
-                                top: '50%',
-                                left: '50%',
-                                transform: 'translate(-50%, -50%)'
-                              }}
+                              className="absolute right-0 bottom-full mb-2 w-44 bg-neutral-900 border border-neutral-700 rounded-lg shadow-xl z-[100] py-1 menu-container"
                               onClick={(e) => {
                                 e.stopPropagation();
                                 e.preventDefault();
