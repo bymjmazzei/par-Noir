@@ -159,9 +159,9 @@ export function FeedRail({ feeds, activeFeedId, onFeedSelect, onBrowseFeeds }: F
                   </text>
                   <line 
                     x1="2" 
-                    y1="5" 
+                    y1="4" 
                     x2="8" 
-                    y2="5" 
+                    y2="4" 
                     stroke="currentColor" 
                     strokeWidth="1.5" 
                     strokeLinecap="round"
@@ -171,7 +171,7 @@ export function FeedRail({ feeds, activeFeedId, onFeedSelect, onBrowseFeeds }: F
                 <span className="text-base font-medium uppercase tracking-wide">{feed.name}</span>
               )}
               {isActive && (
-                <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-white" />
+                <span className="absolute left-0 right-0 h-0.5 bg-white" style={{ bottom: '-1px' }} />
               )}
             </button>
           );
