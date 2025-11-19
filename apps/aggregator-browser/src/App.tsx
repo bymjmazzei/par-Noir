@@ -1260,6 +1260,7 @@ function App() {
   const [savedFeedFileIds, setSavedFeedFileIds] = useState<string[]>([]);
   const savedFeedLoadingRef = useRef(false);
   const savedFeedErrorRef = useRef<{ timestamp: number; count: number } | null>(null);
+  const lastSavedFeedFetchRef = useRef<{ userDid: string; timestamp: number } | null>(null);
   
   // Load saved feed fileIds from API (only when user/viewing changes)
   useEffect(() => {
@@ -1272,7 +1273,16 @@ function App() {
         const timeSinceError = Date.now() - savedFeedErrorRef.current.timestamp;
         const backoffDelay = Math.min(30000 * Math.pow(2, savedFeedErrorRef.current.count), 300000); // Max 5 minutes
         if (timeSinceError < backoffDelay) {
-          return; // Skip this call, wait for backoff
+          // Don't retry yet - backoff period still active
+          return;
+        }
+      }
+      
+      // Prevent refetching if we just fetched for this user recently (within 5 seconds)
+      if (lastSavedFeedFetchRef.current?.userDid === userState.pnIdentifier) {
+        const timeSinceLastFetch = Date.now() - lastSavedFeedFetchRef.current.timestamp;
+        if (timeSinceLastFetch < 5000) {
+          return; // Too soon to refetch
         }
       }
       
@@ -1286,11 +1296,15 @@ function App() {
           } else {
             setSavedFeedFileIds([]);
           }
-          // Clear error ref on success
+          // Clear error ref on success and update last fetch time
           savedFeedErrorRef.current = null;
+          lastSavedFeedFetchRef.current = {
+            userDid: userState.pnIdentifier,
+            timestamp: Date.now()
+          };
         } catch (error: any) {
           // Only log if it's not a 500 error (to reduce spam)
-          if (error?.message && !error.message.includes('500')) {
+          if (error?.status !== 500) {
             console.error('Failed to load saved feed:', error);
           }
           setSavedFeedFileIds([]);
@@ -1311,6 +1325,7 @@ function App() {
       setSavedFiles([]);
       savedFeedLoadingRef.current = false;
       savedFeedErrorRef.current = null; // Clear errors when switching away
+      lastSavedFeedFetchRef.current = null;
     }
   }, [viewingCreatorId, userState.pnIdentifier, userState.isUnlocked]);
   
@@ -2393,15 +2408,24 @@ function App() {
                       }
                       return prev;
                     });
-                    // Try to refresh from API, but don't fail if it errors
-                    try {
-                      const savedFeed = await getSavedFeed(userState.pnIdentifier);
-                      if (savedFeed && savedFeed.fileIds.length > 0) {
-                        setSavedFeedFileIds(savedFeed.fileIds);
-                        savedFeedErrorRef.current = null; // Clear error on success
+                    // Don't refresh from API if we're in backoff - just use optimistic update
+                    if (!savedFeedErrorRef.current || 
+                        (Date.now() - savedFeedErrorRef.current.timestamp) >= 
+                        Math.min(30000 * Math.pow(2, savedFeedErrorRef.current.count), 300000)) {
+                      // Only refresh if not in backoff period
+                      try {
+                        const savedFeed = await getSavedFeed(userState.pnIdentifier);
+                        if (savedFeed && savedFeed.fileIds.length > 0) {
+                          setSavedFeedFileIds(savedFeed.fileIds);
+                          savedFeedErrorRef.current = null; // Clear error on success
+                          lastSavedFeedFetchRef.current = {
+                            userDid: userState.pnIdentifier,
+                            timestamp: Date.now()
+                          };
+                        }
+                      } catch (refreshError) {
+                        // Silently fail - we've already optimistically updated
                       }
-                    } catch (refreshError) {
-                      // Silently fail - we've already optimistically updated
                     }
                   } catch (error) {
                     showErrorToast('Failed to save. Please try again.');

@@ -171,9 +171,11 @@ export async function initializeDatabase(): Promise<void> {
     `);
 
     // Feeds table for curated feed management
+    // Note: feed_id is TEXT to support both UUIDs and special formats like "saved-{userDid}"
+    // For regular feeds, we generate a UUID string. For saved feeds, we use "saved-{userDid}"
     await db.query(`
       CREATE TABLE IF NOT EXISTS feeds (
-        feed_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        feed_id TEXT PRIMARY KEY DEFAULT (gen_random_uuid()::text),
         feed_name VARCHAR(255) NOT NULL,
         feed_category VARCHAR(50),
         feed_description TEXT,
@@ -187,6 +189,32 @@ export async function initializeDatabase(): Promise<void> {
         updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
       )
     `);
+
+    // Migrate existing UUID feed_id to TEXT if needed
+    try {
+      await db.query(`
+        DO $$ 
+        BEGIN
+          IF EXISTS (
+            SELECT 1 FROM information_schema.columns 
+            WHERE table_name = 'feeds' 
+            AND column_name = 'feed_id'
+            AND data_type = 'uuid'
+          ) THEN
+            -- Convert UUID to TEXT
+            ALTER TABLE feeds ALTER COLUMN feed_id TYPE TEXT USING feed_id::text;
+            -- Update foreign key constraints in feed_posts
+            ALTER TABLE feed_posts ALTER COLUMN feed_id TYPE TEXT USING feed_id::text;
+            -- Update foreign key constraints in feed_subscriptions
+            ALTER TABLE feed_subscriptions ALTER COLUMN feed_id TYPE TEXT USING feed_id::text;
+            -- Update foreign key constraints in creator_subscriber_index
+            ALTER TABLE creator_subscriber_index ALTER COLUMN feed_id TYPE TEXT USING feed_id::text;
+          END IF;
+        END $$;
+      `);
+    } catch (error) {
+      console.debug('ℹ️ feeds.feed_id migration error (may already be TEXT):', (error as Error).message);
+    }
 
     await db.query(`
       CREATE INDEX IF NOT EXISTS idx_feeds_creator_did
@@ -207,7 +235,7 @@ export async function initializeDatabase(): Promise<void> {
     await db.query(`
       CREATE TABLE IF NOT EXISTS feed_subscriptions (
         subscription_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-        feed_id UUID NOT NULL REFERENCES feeds(feed_id) ON DELETE CASCADE,
+        feed_id TEXT NOT NULL REFERENCES feeds(feed_id) ON DELETE CASCADE,
         user_did VARCHAR(255) NOT NULL,
         subscribed_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
         UNIQUE(feed_id, user_did)
@@ -228,7 +256,7 @@ export async function initializeDatabase(): Promise<void> {
     await db.query(`
       CREATE TABLE IF NOT EXISTS feed_posts (
         post_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-        feed_id UUID NOT NULL REFERENCES feeds(feed_id) ON DELETE CASCADE,
+        feed_id TEXT NOT NULL REFERENCES feeds(feed_id) ON DELETE CASCADE,
         file_id VARCHAR(255) NOT NULL,
         added_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
         added_by VARCHAR(255),
@@ -258,7 +286,7 @@ export async function initializeDatabase(): Promise<void> {
         index_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
         creator_did VARCHAR(255) NOT NULL,
         subscriber_did VARCHAR(255) NOT NULL,
-        feed_id UUID REFERENCES feeds(feed_id) ON DELETE CASCADE,
+        feed_id TEXT REFERENCES feeds(feed_id) ON DELETE CASCADE,
         subscribed_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
         synced_to_drive BOOLEAN DEFAULT FALSE,
         UNIQUE(creator_did, subscriber_did, feed_id)

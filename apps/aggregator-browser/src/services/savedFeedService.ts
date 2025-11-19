@@ -17,28 +17,34 @@ export interface SavedFeed {
  * Get user's saved feed (private curated feed)
  */
 export async function getSavedFeed(userDid: string): Promise<SavedFeed | null> {
-  try {
-    const response = await fetch(`${API_ENDPOINT}/api/feeds/saved?userDid=${userDid}`, {
-      headers: {
-        'Content-Type': 'application/json'
-      }
-    });
-
-    if (response.ok) {
-      const result = await response.json();
-      return result.feed || null;
+  const response = await fetch(`${API_ENDPOINT}/api/feeds/saved?userDid=${userDid}`, {
+    headers: {
+      'Content-Type': 'application/json'
     }
+  });
 
-    if (response.status === 404) {
-      // No saved feed exists yet
-      return null;
-    }
+  if (response.ok) {
+    const result = await response.json();
+    return result.feed || null;
+  }
 
-    throw new Error('Failed to load saved feed');
-  } catch (error) {
-    console.error('Failed to get saved feed:', error);
+  if (response.status === 404) {
+    // No saved feed exists yet - this is not an error
     return null;
   }
+
+  // For 500 or other errors, throw so backoff logic can work
+  const errorText = await response.text();
+  let errorMessage = `Failed to load saved feed: ${response.status}`;
+  try {
+    const errorJson = JSON.parse(errorText);
+    errorMessage = errorJson.message || errorMessage;
+  } catch {
+    errorMessage = errorText || errorMessage;
+  }
+  const error = new Error(errorMessage);
+  (error as any).status = response.status;
+  throw error;
 }
 
 /**
