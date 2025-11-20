@@ -4,6 +4,7 @@
  */
 
 import React, { useState, useRef, useEffect, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { X, Check, Palette, Type, Image as ImageIcon, Upload, AlignLeft, AlignCenter, AlignRight, AlignJustify, Layers, Minus, Plus as PlusIcon, Send, Bold } from 'lucide-react';
 import { TextPostData, TextPostStyle } from '../types/aggregator';
 
@@ -902,23 +903,25 @@ export function TextPostEditor({ onSave, onCancel }: TextPostEditorProps) {
               className="w-6 h-0.5"
               style={{ backgroundColor: textColor }}
             />
-            {/* Custom Color Picker Popup */}
-            {showTextColorPicker && textColorButtonRef.current && (
+            {/* Custom Color Picker Popup - Rendered via portal */}
+            {showTextColorPicker && textColorButtonRef.current && createPortal(
               <div
                 ref={textColorPickerRef}
-                className="fixed z-[100] bg-neutral-800 border border-neutral-700 rounded-lg shadow-lg p-3"
+                className="fixed bg-neutral-800 border border-neutral-700 rounded-lg shadow-lg p-3"
                 style={{
                   top: `${textColorButtonRef.current.getBoundingClientRect().bottom}px`,
                   left: `${textColorButtonRef.current.getBoundingClientRect().left + textColorButtonRef.current.getBoundingClientRect().width / 2}px`,
                   transform: 'translateX(-50%)',
-                  marginTop: '8px'
+                  marginTop: '8px',
+                  zIndex: 9999
                 }}
               >
                 <CustomColorPicker
                   color={textColor}
                   onChange={setTextColor}
                 />
-              </div>
+              </div>,
+              document.body
             )}
           </button>
 
