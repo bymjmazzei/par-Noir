@@ -4,7 +4,7 @@
  */
 
 import React, { useState, useRef, useEffect } from 'react';
-import { X, Check, Palette, Type, Image as ImageIcon, Upload, AlignLeft, AlignCenter, AlignRight, AlignJustify, Layers, Minus, Plus as PlusIcon } from 'lucide-react';
+import { X, Check, Palette, Type, Image as ImageIcon, Upload, AlignLeft, AlignCenter, AlignRight, AlignJustify, Layers, Minus, Plus as PlusIcon, Send } from 'lucide-react';
 import { TextPostData, TextPostStyle } from '../types/aggregator';
 
 interface TextPostEditorProps {
@@ -32,6 +32,7 @@ const FONT_OPTIONS = [
 
 export function TextPostEditor({ onSave, onCancel }: TextPostEditorProps) {
   const [content, setContent] = useState('');
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [fontFamily, setFontFamily] = useState('Arial');
   const [fontSize, setFontSize] = useState(48);
   const [textColor, setTextColor] = useState('#FFFFFF');
@@ -538,7 +539,7 @@ export function TextPostEditor({ onSave, onCancel }: TextPostEditorProps) {
       </div>
 
       {/* Main Railway with Icon Buttons - Sticky (above font selector, overlays media) */}
-      <div className="fixed left-0 right-0 h-14 flex items-center justify-center gap-4 px-4 z-40" style={{ bottom: 'calc(64px + 100px + 48px)' }}>
+      <div className="fixed left-0 right-0 h-14 flex items-center justify-center gap-4 px-4 z-40" style={{ bottom: 'calc(64px + 60px + 48px)' }}>
         <div className="flex items-center gap-4 overflow-x-auto" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
 
           {/* Font Size - Small A next to large A */}
@@ -649,7 +650,7 @@ export function TextPostEditor({ onSave, onCancel }: TextPostEditorProps) {
       </div>
 
       {/* Font Selector Railway - Sticky (above text input, overlays media) */}
-      <div className="fixed left-0 right-0 h-12 flex items-center justify-center z-40" style={{ bottom: 'calc(64px + 100px)' }}>
+      <div className="fixed left-0 right-0 h-12 flex items-center justify-center z-40" style={{ bottom: 'calc(64px + 60px)' }}>
         {/* Center indicator line */}
         <div 
           className="absolute left-1/2 transform -translate-x-1/2 pointer-events-none z-10"
@@ -683,31 +684,39 @@ export function TextPostEditor({ onSave, onCancel }: TextPostEditorProps) {
         </div>
       </div>
 
-      {/* Text Input - Sticky above bottom nav */}
-      <div className="fixed left-0 right-0 bg-neutral-900 border-t border-neutral-800 z-50" style={{ bottom: '64px', height: '100px' }}>
-        <div className="flex items-center gap-2 p-4 h-full">
+      {/* Text Input - Sticky above bottom nav, auto-expanding */}
+      <div 
+        className="fixed left-0 right-0 bg-neutral-900 border-t border-neutral-800 z-50" 
+        style={{ bottom: '64px' }}
+      >
+        <div className="flex items-end gap-2 p-4">
           <textarea
+            ref={textareaRef}
             value={content}
-            onChange={(e) => setContent(e.target.value)}
+            onChange={(e) => {
+              setContent(e.target.value);
+              // Auto-resize textarea
+              if (textareaRef.current) {
+                textareaRef.current.style.height = 'auto';
+                textareaRef.current.style.height = `${Math.min(textareaRef.current.scrollHeight, 200)}px`;
+              }
+            }}
             placeholder="Type your thought here..."
-            className="flex-1 bg-neutral-800 text-white rounded-lg p-3 border border-neutral-700 focus:border-blue-500 focus:outline-none resize-none min-h-[60px] max-h-[120px]"
-            rows={2}
+            className="flex-1 bg-neutral-800 text-white rounded-lg p-3 border border-neutral-700 focus:border-blue-500 focus:outline-none resize-none overflow-y-auto"
+            style={{ 
+              minHeight: '44px',
+              maxHeight: '200px',
+              lineHeight: '1.5'
+            }}
+            rows={1}
           />
-          <div className="flex items-center gap-2">
-            <button
-              onClick={onCancel}
-              className="px-4 py-2 bg-neutral-800 text-white rounded-lg hover:bg-neutral-700 transition-colors"
-            >
-              Cancel
-            </button>
-            <button
-              onClick={handleSave}
-              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2"
-            >
-              <Check className="h-4 w-4" />
-              Create
-            </button>
-          </div>
+          <button
+            onClick={handleSave}
+            className="p-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center justify-center mb-0.5"
+            disabled={!content.trim()}
+          >
+            <Send className="h-5 w-5" />
+          </button>
         </div>
       </div>
 
