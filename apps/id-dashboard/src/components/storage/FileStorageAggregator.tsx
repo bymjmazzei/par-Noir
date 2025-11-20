@@ -214,6 +214,9 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
   }, [resolvedAuth, authenticatedUser]);
 
   // Derive pN identifier asynchronously and store in ref (must be declared before getStorageIdentityCandidates)
+  // STANDARDIZED pN Identifier - Single source of truth
+  // Formula: SHA256(pnName:passcode:publicKey) → first 12 hex chars → pn-{hash}
+  // This is the ONLY method used across all implementations (web, desktop, mobile)
   const pnIdentifierRef = React.useRef<string | null>(null);
   
   React.useEffect(() => {
@@ -221,25 +224,29 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
       const currentResolvedAuth = resolvedAuthRef.current;
       const currentAuthenticatedUser = authenticatedUserRef.current;
       
-      const did = typeof currentAuthenticatedUser?.id === 'string' ? currentAuthenticatedUser.id : undefined;
-      const publicKey = currentResolvedAuth?.publicKey || currentAuthenticatedUser?.publicKey;
-      
-      if (!did || !publicKey) {
-        pnIdentifierRef.current = null;
-        return;
-      }
-      
+      // STANDARDIZED: Use VolumeIdGenerator - the ONLY method for pN identifier generation
       try {
-        // Same method as API server: SHA256(did + ":" + publicKey).substring(0, 12)
-        const combined = `${did}:${publicKey}`;
-        const encoder = new TextEncoder();
-        const utf8Bytes = encoder.encode(combined);
-        const hashBuffer = await crypto.subtle.digest('SHA-256', utf8Bytes);
-        const hashArray = Array.from(new Uint8Array(hashBuffer));
-        const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
-        const identifier = hashHex.substring(0, 12);
-        pnIdentifierRef.current = identifier;
-        console.log('[StorageCredentials] Derived pN identifier:', identifier);
+        const { VolumeIdGenerator } = await import('../../utils/crypto/volumeIdGenerator');
+        const sessionId = currentAuthenticatedUser?.id;
+        const credentials = sessionId ? SecureCredentialManager.getCredentials(sessionId) : null;
+        
+        const pnName = currentResolvedAuth?.pnName || currentAuthenticatedUser?.pnName || (currentAuthenticatedUser as any)?.username;
+        const publicKey = currentResolvedAuth?.publicKey || currentAuthenticatedUser?.publicKey;
+        
+        if (pnName && credentials?.passcode && publicKey) {
+          // STANDARDIZED FORMULA: pnName:passcode:publicKey → SHA256 → pn-{12-char-hex}
+          const identifier = await VolumeIdGenerator.generateVolumeId({
+            pnName,
+            passcode: credentials.passcode,
+            publicKey
+          });
+          // Store without 'pn-' prefix for backward compatibility with existing code
+          pnIdentifierRef.current = identifier.replace(/^pn-/, '');
+          console.log('[StorageCredentials] Derived pN identifier (standardized):', identifier);
+        } else {
+          pnIdentifierRef.current = null;
+          console.warn('[StorageCredentials] Cannot derive pN identifier - missing credentials');
+        }
       } catch (error) {
         console.error('[StorageCredentials] Error deriving pN identifier:', error);
         pnIdentifierRef.current = null;
@@ -2008,16 +2015,11 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
               console.warn('⚠️ [Metadata] Failed to generate volume ID, using fallback:', volumeIdError);
             }
             
-            // Fallback: use derived identifier from ref (consistent with other parts of the app)
-            if (!pnIdentifier && pnIdentifierRef.current) {
-              pnIdentifier = `pn-${pnIdentifierRef.current}`;
-              console.log(`✅ [Metadata] Using derived pN identifier (fallback): ${pnIdentifier}`);
-              console.warn(`⚠️ [Metadata] Using fallback method - VolumeIdGenerator preferred`);
-            }
-            
-            // Last resort fallback (shouldn't happen in normal flow)
+            // STANDARDIZED: Only use VolumeIdGenerator - no fallbacks
+            // If credentials aren't available, we cannot generate the identifier
             if (!pnIdentifier) {
-              console.warn('⚠️ [Metadata] Unable to determine pN identifier - metadata indexing may be limited');
+              console.warn('⚠️ [Metadata] Cannot generate standardized pN identifier - credentials required');
+              console.warn('⚠️ [Metadata] Metadata indexing skipped - credentials must be available');
               return;
             }
 
@@ -2349,11 +2351,12 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
         console.warn('⚠️ [loadFiles] Failed to generate pN identifier:', err);
       }
       
-      // Fallback: use derived identifier from ref (consistent with other parts of the app)
-      // This uses did:publicKey hash which is stable but not as secure as VolumeIdGenerator
-      if (!currentPnIdentifier && pnIdentifierRef.current) {
-        currentPnIdentifier = `pn-${pnIdentifierRef.current}`;
-        console.log(`✅ [loadFiles] Using derived pN identifier from ref: ${currentPnIdentifier.substring(0, 8)}...`);
+      // STANDARDIZED: Only use VolumeIdGenerator - no fallbacks
+      // If we don't have credentials, we cannot generate the identifier
+      // This ensures consistency - same credentials always produce same identifier
+      if (!currentPnIdentifier) {
+        console.warn('⚠️ [loadFiles] Cannot generate standardized pN identifier - credentials required');
+        console.warn('⚠️ [loadFiles] Files may not be found until credentials are available');
       }
       
       if (!currentPnIdentifier) {
@@ -2957,11 +2960,11 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
               passcode: credentials.passcode,
               publicKey: resolvedAuth.publicKey
             });
-            console.log('📁 [Phase 3] Generated pN identifier for metadata folder:', metadataPnIdentifier.substring(0, 8));
-          } else if (pnIdentifierRef.current) {
-            // Fallback: use derived identifier from ref
-            metadataPnIdentifier = `pn-${pnIdentifierRef.current}`;
-            console.log('📁 [Phase 3] Using derived pN identifier for metadata folder');
+            console.log('📁 [Phase 3] Generated pN identifier (standardized):', metadataPnIdentifier);
+          } else {
+            // STANDARDIZED: Only use VolumeIdGenerator - no fallbacks
+            console.warn('⚠️ [Phase 3] Cannot generate standardized pN identifier - credentials required');
+            console.warn('⚠️ [Phase 3] Metadata indexing skipped - credentials must be available');
           }
         } catch (err) {
           console.warn('Failed to generate pN identifier for metadata folder:', err);
@@ -4141,20 +4144,15 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
               console.warn(`⚠️ [Upload] Using VolumeIdGenerator identifier (${pnIdentifier}) - this is the CORRECT one`);
             }
           }
-        } else if (pnIdentifierRef.current) {
-          // Fallback: use derived identifier from ref (consistent with other parts)
-          pnIdentifier = `pn-${pnIdentifierRef.current}`;
-          console.log(`✅ [Upload] Using derived pN identifier (fallback): ${pnIdentifier}`);
-          console.warn(`⚠️ [Upload] Using fallback method - VolumeIdGenerator preferred for consistency`);
-        } else {
-          // Last resort fallback
-          console.warn('⚠️ [Upload] Unable to generate pN identifier, using default');
-          pnIdentifier = 'default';
-        }
+          } else {
+            // STANDARDIZED: Only use VolumeIdGenerator - no fallbacks
+            // If credentials aren't available, we cannot upload (identifier required)
+            throw new Error('Cannot generate pN identifier: credentials (pnName, passcode, publicKey) required. Please ensure you are fully authenticated.');
+          }
       } catch (err) {
-        // Fallback if hash generation fails
-        console.warn('Volume ID generation failed, using fallback:', err);
-        pnIdentifier = publicKey ? `pn-${publicKey.substring(0, 12).replace(/[^a-f0-9]/g, '')}` : 'default';
+        // STANDARDIZED: No fallbacks - fail if identifier cannot be generated
+        console.error('❌ [Upload] Failed to generate standardized pN identifier:', err);
+        throw new Error(`Cannot upload file: pN identifier generation failed. ${err instanceof Error ? err.message : 'Unknown error'}`);
       }
       
       const folderId = await backend.getOrCreateFolder('par Noir', pnIdentifier);
@@ -4347,14 +4345,11 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
               console.warn('⚠️ [UpdateMetadata] Failed to generate volume ID:', volumeIdError);
             }
             
-            // Fallback: use derived identifier from ref
-            if (!pnIdentifier && pnIdentifierRef.current) {
-              pnIdentifier = `pn-${pnIdentifierRef.current}`;
-            }
-            
-            // Last resort fallback
+            // STANDARDIZED: Only use VolumeIdGenerator - no fallbacks
             if (!pnIdentifier) {
-              pnIdentifier = resolvedAuth.pnName || 'default';
+              console.warn('⚠️ [UpdateMetadata] Cannot generate standardized pN identifier - credentials required');
+              console.warn('⚠️ [UpdateMetadata] Metadata update skipped - pN identifier required');
+              return;
             }
 
             // Get current metadata from fileMetadataMap or construct from file
@@ -5160,26 +5155,25 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
     void (async () => {
       let pnIdentifier: string | undefined;
 
+      // STANDARDIZED: Use VolumeIdGenerator - the ONLY method for pN identifier
+      // Formula: SHA256(pnName:passcode:publicKey) → first 12 hex chars → pn-{hash}
       try {
-        const authenticatedId = typeof authenticatedUser?.id === 'string' ? authenticatedUser.id : null;
-        if (authenticatedId && resolvedAuth.publicKey) {
-          const encoder = new TextEncoder();
-          const data = encoder.encode(`${authenticatedId}:${resolvedAuth.publicKey}`);
-          const hashBuffer = await crypto.subtle.digest('SHA-256', data);
-          const hashArray = Array.from(new Uint8Array(hashBuffer));
-          const hexHash = hashArray.map((b) => b.toString(16).padStart(2, '0')).join('');
-          pnIdentifier = `pn-${hexHash.substring(0, 12)}`.toLowerCase();
+        const { VolumeIdGenerator } = await import('../../utils/crypto/volumeIdGenerator');
+        const sessionId = authenticatedUser?.id;
+        const credentials = sessionId ? SecureCredentialManager.getCredentials(sessionId) : null;
+        
+        if (resolvedAuth?.pnName && credentials?.passcode && resolvedAuth?.publicKey) {
+          pnIdentifier = await VolumeIdGenerator.generateVolumeId({
+            pnName: resolvedAuth.pnName,
+            passcode: credentials.passcode,
+            publicKey: resolvedAuth.publicKey
+          });
+          console.log('[DesktopUnlock] Generated pN identifier (standardized):', pnIdentifier);
+        } else {
+          console.warn('[DesktopUnlock] Cannot generate standardized pN identifier - credentials required');
         }
       } catch (err) {
-        console.warn('[FileStorageAggregator] Failed to derive pnIdentifier from identity hash', err);
-      }
-
-      if (!pnIdentifier && resolvedAuth.authToken) {
-        pnIdentifier = `pn-${resolvedAuth.authToken.substring(0, 12).toLowerCase()}`;
-      }
-
-      if (!pnIdentifier && resolvedAuth.publicKey) {
-        pnIdentifier = `pn-${resolvedAuth.publicKey.substring(0, 12).replace(/[^a-f0-9]/gi, '').toLowerCase()}`;
+        console.error('[DesktopUnlock] Failed to generate standardized pN identifier:', err);
       }
 
       if (disposed) {
