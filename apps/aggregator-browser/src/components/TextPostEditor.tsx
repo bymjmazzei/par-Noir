@@ -55,6 +55,15 @@ export function TextPostEditor({ onSave, onCancel }: TextPostEditorProps) {
   const [menuPosition, setMenuPosition] = useState<{ top: number; left: number } | null>(null);
   const menuButtonRefs = useRef<Map<string, HTMLButtonElement | null>>(new Map());
 
+  // Initialize textarea height on mount
+  useEffect(() => {
+    if (textareaRef.current) {
+      const initialHeight = 44; // Single row height
+      textareaRef.current.style.height = `${initialHeight}px`;
+      setTextareaHeight(initialHeight + 32); // Add padding (16px top + 16px bottom)
+    }
+  }, []);
+
   // Center active font in font selector
   useEffect(() => {
     if (activeFontButtonRef.current && fontSelectorRef.current) {
