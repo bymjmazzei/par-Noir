@@ -531,18 +531,18 @@ export function CommentModal({ file, onClose }: CommentModalProps) {
         ) : null}
       </div>
 
-      {/* Comment Input Bar - Fixed at bottom, above bottom nav */}
+      {/* Comment Input Bar - Fixed at bottom, overlaying bottom nav */}
       {userState.isUnlocked && (
         <div 
           className="bg-neutral-900 border-t border-neutral-800" 
           style={{ 
-            bottom: '64px', 
+            bottom: 0, // Position at very bottom to overlay nav bar
             left: 0,
             right: 0,
             width: '100%',
-            height: `${commentInputHeight}px`, 
+            height: `${commentInputHeight + 64}px`, // Add 64px to cover nav bar
             backgroundColor: 'rgb(23, 23, 23)', // Explicit bg-neutral-900 color to match modal
-            zIndex: 1000000,
+            zIndex: 1000001, // Higher than bottom nav (z-[100]) and modal (999999)
             position: 'fixed',
             pointerEvents: 'auto',
             display: 'block',
@@ -571,8 +571,8 @@ export function CommentModal({ file, onClose }: CommentModalProps) {
             </div>
           </div>
           
-          {/* Text Input Area */}
-          <div className="flex items-end gap-2 px-4 pb-4">
+          {/* Text Input Area - Positioned above nav bar area */}
+          <div className="flex items-end gap-2 px-4" style={{ paddingTop: '40px', paddingBottom: '64px' }}>
             <textarea
               ref={inputRef}
               value={newComment}
