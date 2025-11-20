@@ -45,11 +45,31 @@ export function TextPostEditor({ onSave, onCancel }: TextPostEditorProps) {
   const [padding, setPadding] = useState(40);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const fontSelectorRef = useRef<HTMLDivElement>(null);
+  const activeFontButtonRef = useRef<HTMLButtonElement | null>(null);
   
   // Popup menu states
   const [openMenu, setOpenMenu] = useState<string | null>(null);
   const [menuPosition, setMenuPosition] = useState<{ top: number; left: number } | null>(null);
   const menuButtonRefs = useRef<Map<string, HTMLButtonElement | null>>(new Map());
+
+  // Center active font in font selector
+  useEffect(() => {
+    if (activeFontButtonRef.current && fontSelectorRef.current) {
+      const button = activeFontButtonRef.current;
+      const container = fontSelectorRef.current;
+      const containerRect = container.getBoundingClientRect();
+      const buttonRect = button.getBoundingClientRect();
+      const buttonCenter = buttonRect.left + buttonRect.width / 2;
+      const containerCenter = containerRect.left + containerRect.width / 2;
+      const scrollOffset = buttonCenter - containerCenter;
+      
+      container.scrollBy({
+        left: scrollOffset,
+        behavior: 'smooth'
+      });
+    }
+  }, [fontFamily]);
 
   // Preview rendering
   useEffect(() => {
@@ -630,10 +650,24 @@ export function TextPostEditor({ onSave, onCancel }: TextPostEditorProps) {
 
       {/* Font Selector Railway - Sticky (above text input, overlays media) */}
       <div className="fixed left-0 right-0 h-12 flex items-center justify-center z-40" style={{ bottom: 'calc(64px + 100px)' }}>
-        <div className="flex items-center gap-6 overflow-x-auto px-4" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
+        {/* Center indicator line */}
+        <div 
+          className="absolute left-1/2 transform -translate-x-1/2 pointer-events-none z-10"
+          style={{ 
+            width: '1px',
+            height: '100%',
+            backgroundColor: 'rgba(255, 255, 255, 0.3)'
+          }}
+        />
+        <div 
+          ref={fontSelectorRef}
+          className="flex items-center gap-6 overflow-x-auto px-4 w-full"
+          style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
+        >
           {FONT_OPTIONS.map((font) => (
             <button
               key={font.value}
+              ref={fontFamily === font.value ? activeFontButtonRef : null}
               onClick={() => setFontFamily(font.value)}
               className="px-2 py-1 transition-opacity hover:opacity-80 relative"
               style={{ 
@@ -647,15 +681,6 @@ export function TextPostEditor({ onSave, onCancel }: TextPostEditorProps) {
             </button>
           ))}
         </div>
-        {/* Center active font indicator */}
-        <div 
-          className="absolute left-1/2 transform -translate-x-1/2 pointer-events-none"
-          style={{ 
-            width: '1px',
-            height: '100%',
-            backgroundColor: 'rgba(255, 255, 255, 0.3)'
-          }}
-        />
       </div>
 
       {/* Text Input - Sticky above bottom nav */}
