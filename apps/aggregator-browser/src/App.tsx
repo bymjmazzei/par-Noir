@@ -2124,15 +2124,14 @@ function App() {
   
   // Debug: Track commentingFile changes
   useEffect(() => {
-    if (commentingFile) {
-      console.log('[App] commentingFile state changed', { 
-        hasCommentingFile: !!commentingFile,
-        commentingFileId: commentingFile?.metadata?.fileId,
-        viewingCreatorId,
-        viewMode
-      });
-    }
-  }, [commentingFile]);
+    console.log('[App] commentingFile state changed', { 
+      hasCommentingFile: !!commentingFile,
+      commentingFileId: commentingFile?.metadata?.fileId,
+      viewingCreatorId,
+      viewMode,
+      willRenderModal: !!commentingFile
+    });
+  }, [commentingFile, viewingCreatorId, viewMode]);
 
   const handleShare = useCallback(async (fileId: string) => {
     share(fileId);
@@ -3297,7 +3296,7 @@ function App() {
         )}
 
         {/* Comment Modal - Render outside conditional views to ensure it works on all pages */}
-        {commentingFile && (
+        {commentingFile ? (
           <CommentModal
             key={commentingFile.metadata.fileId} // Force remount on file change
             file={commentingFile}
@@ -3306,17 +3305,7 @@ function App() {
               setCommentingFile(null);
             }}
           />
-        )}
-        {(() => {
-          console.log('[App] Rendering CommentModal check', { 
-            hasCommentingFile: !!commentingFile,
-            commentingFileId: commentingFile?.metadata?.fileId,
-            viewingCreatorId,
-            viewMode,
-            willRender: !!commentingFile
-          });
-          return null;
-        })()}
+        ) : null}
 
         {/* Edit File Modal */}
         {editingFile && (
