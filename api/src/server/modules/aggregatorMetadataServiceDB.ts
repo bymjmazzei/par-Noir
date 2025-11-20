@@ -486,6 +486,7 @@ export class AggregatorMetadataServiceDB {
 
   /**
    * Get full index response
+   * Automatically filters out deleted files from Google Drive
    */
   async getIndexResponse(filters?: {
     tags?: string[];
@@ -493,7 +494,19 @@ export class AggregatorMetadataServiceDB {
     authorDid?: string;
     indexerId?: string;
   }): Promise<CentralIndexResponse> {
-    const files = await this.getPublicMetadata(filters);
+    let files = await this.getPublicMetadata(filters);
+    
+    // AUTOMATIC CLEANUP: Verify Google Drive files still exist
+    // Google Drive is the source of truth - remove entries for deleted files
+    if (files.length > 0) {
+      const verifiedFiles = await this.verifyGoogleDriveFilesExist(files);
+      if (verifiedFiles.length !== files.length) {
+        const removedCount = files.length - verifiedFiles.length;
+        console.log(`🗑️ [getIndexResponse] Auto-removed ${removedCount} deleted file(s) from database`);
+        files = verifiedFiles;
+      }
+    }
+    
     const stats = await this.getStats();
 
     return {
@@ -501,6 +514,100 @@ export class AggregatorMetadataServiceDB {
       updatedAt: stats.lastUpdated,
       totalFiles: files.length
     };
+  }
+
+  /**
+   * Verify Google Drive files still exist
+   * Uses public Google Drive API - no auth required for public files
+   * Returns only files that still exist
+   */
+  private async verifyGoogleDriveFilesExist(files: CentralIndexEntry[]): Promise<CentralIndexEntry[]> {
+    const verifiedFiles: CentralIndexEntry[] = [];
+    const filesToRemove: string[] = [];
+    
+    // Verify files in batches (rate limiting)
+    const batchSize = 10;
+    for (let i = 0; i < files.length; i += batchSize) {
+      const batch = files.slice(i, i + batchSize);
+      const batchPromises = batch.map(async (file) => {
+        // Only verify Google Drive files
+        if (file.metadata.backend !== 'google_drive') {
+          return file; // Keep non-Google Drive files
+        }
+        
+        const googleDriveFileId = (file.metadata as any).googleDriveFileId || file.metadata.backendFileId || file.fileId;
+        if (!googleDriveFileId) {
+          return file; // Keep if no ID to verify
+        }
+        
+        try {
+          // Try to verify file exists using Google Drive API
+          // For public files, this should work without auth
+          const response = await fetch(
+            `https://www.googleapis.com/drive/v3/files/${googleDriveFileId}?fields=id,trashed`,
+            {
+              method: 'GET',
+              // No auth header - will work for public files
+            }
+          );
+
+          if (response.status === 404) {
+            // File doesn't exist - mark for removal
+            console.log(`🗑️ [verifyGoogleDriveFilesExist] File ${googleDriveFileId} not found (404): ${file.metadata.name || 'unknown'}`);
+            filesToRemove.push(file.fileId);
+            return null;
+          }
+
+          if (response.status === 403 || response.status === 401) {
+            // Private file or auth required - assume it exists (can't verify without auth)
+            return file;
+          }
+
+          if (!response.ok) {
+            // Other error - assume file exists to avoid false positives
+            return file;
+          }
+
+          const fileData = await response.json();
+          // File exists and is not trashed
+          if (fileData.trashed) {
+            console.log(`🗑️ [verifyGoogleDriveFilesExist] File ${googleDriveFileId} is trashed: ${file.metadata.name || 'unknown'}`);
+            filesToRemove.push(file.fileId);
+            return null;
+          }
+          
+          return file; // File exists
+        } catch (error) {
+          // On error (network, CORS, etc.), assume file exists to avoid false positives
+          return file;
+        }
+      });
+      
+      const batchResults = await Promise.all(batchPromises);
+      const validFiles = batchResults.filter((file): file is CentralIndexEntry => file !== null);
+      verifiedFiles.push(...validFiles);
+      
+      // Small delay between batches to avoid rate limiting
+      if (i + batchSize < files.length) {
+        await new Promise(resolve => setTimeout(resolve, 200));
+      }
+    }
+    
+    // Remove deleted files from database
+    if (filesToRemove.length > 0) {
+      try {
+        const db = getDatabasePool();
+        await db.query(
+          `DELETE FROM aggregator_metadata WHERE file_id = ANY($1::text[])`,
+          [filesToRemove]
+        );
+        console.log(`✅ [verifyGoogleDriveFilesExist] Removed ${filesToRemove.length} deleted file(s) from database`);
+      } catch (error) {
+        console.error('❌ [verifyGoogleDriveFilesExist] Failed to remove deleted files from database:', error);
+      }
+    }
+    
+    return verifiedFiles;
   }
 
   /**
