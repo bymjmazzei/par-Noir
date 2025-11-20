@@ -1978,18 +1978,36 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
 
           if (token) {
             console.log('✅ [Metadata] Google Drive connected, loading owner index...');
-            let pnIdentifier: string;
-            if (authenticatedUser?.id && resolvedAuth?.publicKey) {
-              const combined = `${authenticatedUser.id}:${resolvedAuth.publicKey}`;
-              const encoder = new TextEncoder();
-              const data = encoder.encode(combined);
-              const hashBuffer = await crypto.subtle.digest('SHA-256', data);
-              const hashArray = Array.from(new Uint8Array(hashBuffer));
-              const hexHash = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
-              const shortHash = hexHash.substring(0, 12);
-              pnIdentifier = `pn-${shortHash}`;
-            } else {
-              pnIdentifier = resolvedAuth.pnName;
+            let pnIdentifier: string | undefined;
+            
+            // Use VolumeIdGenerator for consistent pnIdentifier generation (same as desktop app)
+            try {
+              const { VolumeIdGenerator } = await import('../../utils/crypto/volumeIdGenerator');
+              const sessionId = authenticatedUser?.id;
+              const credentials = sessionId ? SecureCredentialManager.getCredentials(sessionId) : null;
+              
+              if (resolvedAuth?.pnName && credentials?.passcode && resolvedAuth?.publicKey) {
+                pnIdentifier = await VolumeIdGenerator.generateVolumeId({
+                  pnName: resolvedAuth.pnName,
+                  passcode: credentials.passcode,
+                  publicKey: resolvedAuth.publicKey
+                });
+                console.log(`✅ [Metadata] Generated pN identifier using VolumeIdGenerator: ${pnIdentifier.substring(0, 8)}...`);
+              }
+            } catch (volumeIdError) {
+              console.warn('⚠️ [Metadata] Failed to generate volume ID, using fallback:', volumeIdError);
+            }
+            
+            // Fallback: use derived identifier from ref (consistent with other parts of the app)
+            if (!pnIdentifier && pnIdentifierRef.current) {
+              pnIdentifier = `pn-${pnIdentifierRef.current}`;
+              console.log(`✅ [Metadata] Using derived pN identifier: ${pnIdentifier.substring(0, 8)}...`);
+            }
+            
+            // Last resort fallback (shouldn't happen in normal flow)
+            if (!pnIdentifier) {
+              console.warn('⚠️ [Metadata] Unable to determine pN identifier - metadata indexing may be limited');
+              return;
             }
 
             const pnFolderId = await GoogleDriveMetadataService.getOrCreatePNFolder(token, pnIdentifier);
@@ -2309,24 +2327,11 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
         console.warn('⚠️ [loadFiles] Failed to generate pN identifier:', err);
       }
       
-      // Fallback: derive identifier from stable DID + public key (no passcode required)
-      if (!currentPnIdentifier) {
-        try {
-          const idSource = authenticatedUser?.id || resolvedAuth?.publicKey;
-          const publicKey = resolvedAuth?.publicKey || authenticatedUser?.publicKey || (authenticatedUser?.id && authenticatedUser?.id.startsWith('did:key:') ? authenticatedUser.id : undefined);
-          if (idSource && publicKey) {
-            const combined = `${idSource}:${publicKey}`;
-            const encoder = new TextEncoder();
-            const data = encoder.encode(combined);
-            const hashBuffer = await crypto.subtle.digest('SHA-256', data);
-            const hashArray = Array.from(new Uint8Array(hashBuffer));
-            const hexHash = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
-            currentPnIdentifier = `pn-${hexHash.substring(0, 12)}`;
-            console.log(`✅ [loadFiles] Using fallback pN identifier`);
-          }
-      } catch (fallbackError) {
-          console.warn('⚠️ [loadFiles] Fallback identifier generation failed:', fallbackError);
-        }
+      // Fallback: use derived identifier from ref (consistent with other parts of the app)
+      // This uses did:publicKey hash which is stable but not as secure as VolumeIdGenerator
+      if (!currentPnIdentifier && pnIdentifierRef.current) {
+        currentPnIdentifier = `pn-${pnIdentifierRef.current}`;
+        console.log(`✅ [loadFiles] Using derived pN identifier from ref: ${currentPnIdentifier.substring(0, 8)}...`);
       }
       
       if (!currentPnIdentifier) {
@@ -2916,20 +2921,25 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
         }
 
         // Index the file - pass pN identifier so metadata folder is created inside pN folder
-        // Get pN identifier for metadata folder location (same as folder naming)
+        // Get pN identifier for metadata folder location (use VolumeIdGenerator for consistency)
         let metadataPnIdentifier: string | undefined = undefined;
         try {
-          // Use the same stable identifier generation as folder naming (id + publicKey hash)
-          if (authenticatedUser?.id && resolvedAuth?.publicKey) {
-            const combined = `${authenticatedUser.id}:${resolvedAuth.publicKey}`;
-            const encoder = new TextEncoder();
-            const data = encoder.encode(combined);
-            const hashBuffer = await crypto.subtle.digest('SHA-256', data);
-            const hashArray = Array.from(new Uint8Array(hashBuffer));
-            const hexHash = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
-            const shortHash = hexHash.substring(0, 12);
-            metadataPnIdentifier = `pn-${shortHash}`;
-            console.log('📁 [Phase 3] Generated pN identifier for metadata folder');
+          const { VolumeIdGenerator } = await import('../../utils/crypto/volumeIdGenerator');
+          const sessionId = authenticatedUser?.id;
+          const credentials = sessionId ? SecureCredentialManager.getCredentials(sessionId) : null;
+          
+          if (resolvedAuth?.pnName && credentials?.passcode && resolvedAuth?.publicKey) {
+            // Use VolumeIdGenerator for consistent identifier (same as folder naming)
+            metadataPnIdentifier = await VolumeIdGenerator.generateVolumeId({
+              pnName: resolvedAuth.pnName,
+              passcode: credentials.passcode,
+              publicKey: resolvedAuth.publicKey
+            });
+            console.log('📁 [Phase 3] Generated pN identifier for metadata folder:', metadataPnIdentifier.substring(0, 8));
+          } else if (pnIdentifierRef.current) {
+            // Fallback: use derived identifier from ref
+            metadataPnIdentifier = `pn-${pnIdentifierRef.current}`;
+            console.log('📁 [Phase 3] Using derived pN identifier for metadata folder');
           }
         } catch (err) {
           console.warn('Failed to generate pN identifier for metadata folder:', err);
@@ -4079,24 +4089,33 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
       }
 
       // Get or create pN-specific folder using stable identifier
-      // We use id:publicKey hash for stable volume ID (both are stable across sessions)
+      // Use VolumeIdGenerator for consistency across all implementations (desktop, web, etc.)
+      // Format: pn-{12-char-hex-hash} from pnName:passcode:publicKey
       let pnIdentifier: string;
       try {
-        if (authenticatedUser?.id && publicKey) {
-          // Generate stable volume ID from id:publicKey (stable across sessions)
-          // Format: pn-{12-char-hex-hash} to match desktop app naming convention
-          // The id (DID) is stable, so folder name is consistent across sessions
-          const combined = `${authenticatedUser.id}:${publicKey}`;
-          const encoder = new TextEncoder();
-          const data = encoder.encode(combined);
-          const hashBuffer = await crypto.subtle.digest('SHA-256', data);
-          const hashArray = Array.from(new Uint8Array(hashBuffer));
-          const hexHash = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
-          const shortHash = hexHash.substring(0, 12);
-          pnIdentifier = `pn-${shortHash}`;
+        const { VolumeIdGenerator } = await import('../../utils/crypto/volumeIdGenerator');
+        const sessionId = authenticatedUser?.id;
+        const credentials = sessionId ? SecureCredentialManager.getCredentials(sessionId) : null;
+        
+        // Get pnName from resolvedAuth or authenticatedUser
+        const pnName = resolvedAuth?.pnName || authenticatedUser?.pnName || (authenticatedUser as any)?.username;
+        
+        if (pnName && credentials?.passcode && publicKey) {
+          // Use VolumeIdGenerator for consistent identifier (same as desktop app)
+          pnIdentifier = await VolumeIdGenerator.generateVolumeId({
+            pnName,
+            passcode: credentials.passcode,
+            publicKey
+          });
+          console.log(`✅ [Upload] Generated pN identifier using VolumeIdGenerator: ${pnIdentifier.substring(0, 8)}...`);
+        } else if (pnIdentifierRef.current) {
+          // Fallback: use derived identifier from ref (consistent with other parts)
+          pnIdentifier = `pn-${pnIdentifierRef.current}`;
+          console.log(`✅ [Upload] Using derived pN identifier: ${pnIdentifier.substring(0, 8)}...`);
         } else {
-          // Fallback to publicKey-based identifier if id unavailable
-          pnIdentifier = publicKey ? `pn-${publicKey.substring(0, 12).replace(/[^a-f0-9]/g, '')}` : 'default';
+          // Last resort fallback
+          console.warn('⚠️ [Upload] Unable to generate pN identifier, using default');
+          pnIdentifier = 'default';
         }
       } catch (err) {
         // Fallback if hash generation fails
@@ -4276,19 +4295,32 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
           const token = (backend as any).token || localStorage.getItem('google_drive_token');
           
           if (token) {
-            // Generate stable pN identifier
-            let pnIdentifier: string;
-            if (authenticatedUser?.id && resolvedAuth?.publicKey) {
-              const combined = `${authenticatedUser.id}:${resolvedAuth.publicKey}`;
-              const encoder = new TextEncoder();
-              const data = encoder.encode(combined);
-              const hashBuffer = await crypto.subtle.digest('SHA-256', data);
-              const hashArray = Array.from(new Uint8Array(hashBuffer));
-              const hexHash = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
-              const shortHash = hexHash.substring(0, 12);
-              pnIdentifier = `pn-${shortHash}`;
-            } else {
-              pnIdentifier = resolvedAuth.pnName;
+            // Generate stable pN identifier using VolumeIdGenerator for consistency
+            let pnIdentifier: string | undefined;
+            try {
+              const { VolumeIdGenerator } = await import('../../utils/crypto/volumeIdGenerator');
+              const sessionId = authenticatedUser?.id;
+              const credentials = sessionId ? SecureCredentialManager.getCredentials(sessionId) : null;
+              
+              if (resolvedAuth?.pnName && credentials?.passcode && resolvedAuth?.publicKey) {
+                pnIdentifier = await VolumeIdGenerator.generateVolumeId({
+                  pnName: resolvedAuth.pnName,
+                  passcode: credentials.passcode,
+                  publicKey: resolvedAuth.publicKey
+                });
+              }
+            } catch (volumeIdError) {
+              console.warn('⚠️ [UpdateMetadata] Failed to generate volume ID:', volumeIdError);
+            }
+            
+            // Fallback: use derived identifier from ref
+            if (!pnIdentifier && pnIdentifierRef.current) {
+              pnIdentifier = `pn-${pnIdentifierRef.current}`;
+            }
+            
+            // Last resort fallback
+            if (!pnIdentifier) {
+              pnIdentifier = resolvedAuth.pnName || 'default';
             }
 
             // Get current metadata from fileMetadataMap or construct from file
