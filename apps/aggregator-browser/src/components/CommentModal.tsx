@@ -441,12 +441,13 @@ export function CommentModal({ file, onClose }: CommentModalProps) {
         style={{ 
           zIndex: 999999,
           position: 'fixed',
-          bottom: 0,
+          bottom: userState.isUnlocked ? `${commentInputHeight}px` : '64px',
           left: 0,
           right: 0,
           width: '100%',
-          maxHeight: '90vh', 
-          paddingBottom: userState.isUnlocked ? `${commentInputHeight}px` : '64px',
+          maxHeight: userState.isUnlocked 
+            ? `calc(100vh - ${commentInputHeight}px - 64px)` 
+            : 'calc(100vh - 64px)',
           pointerEvents: 'auto',
           display: 'flex',
           visibility: 'visible',
@@ -466,7 +467,7 @@ export function CommentModal({ file, onClose }: CommentModalProps) {
         </div>
 
         {/* Comments List */}
-        <div className="flex-1 overflow-y-auto p-6 space-y-4">
+        <div className="flex-1 overflow-y-auto p-6 space-y-4" style={{ paddingBottom: '24px' }}>
           {loading ? (
             <div className="text-center py-12">
               <p className="text-text-secondary">Loading comments...</p>
@@ -486,25 +487,29 @@ export function CommentModal({ file, onClose }: CommentModalProps) {
             <p className="text-text-secondary text-sm mb-4">Connect your pN to comment</p>
             <PNConnect compact />
           </div>
-        ) : (
-          <div 
-            className="bg-neutral-900 border-t border-neutral-800" 
-            style={{ 
-              bottom: '64px', 
-              left: 0,
-              right: 0,
-              width: '100%',
-              height: `${commentInputHeight}px`, 
-              zIndex: 999999,
-              position: 'fixed',
-              pointerEvents: 'auto',
-              display: 'block',
-              visibility: 'visible',
-              opacity: 1,
-              margin: 0,
-              padding: 0
-            }}
-          >
+        ) : null}
+      </div>
+
+      {/* Comment Input Bar - Fixed at bottom, above bottom nav */}
+      {userState.isUnlocked && (
+        <div 
+          className="bg-neutral-900 border-t border-neutral-800" 
+          style={{ 
+            bottom: '64px', 
+            left: 0,
+            right: 0,
+            width: '100%',
+            height: `${commentInputHeight}px`, 
+            zIndex: 1000000,
+            position: 'fixed',
+            pointerEvents: 'auto',
+            display: 'block',
+            visibility: 'visible',
+            opacity: 1,
+            margin: 0,
+            padding: 0
+          }}
+        >
             <div className="flex items-end gap-2 p-4">
               <textarea
                 ref={inputRef}
@@ -548,9 +553,8 @@ export function CommentModal({ file, onClose }: CommentModalProps) {
                 <Send className="h-5 w-5" />
               </button>
             </div>
-          </div>
-        )}
-      </div>
+        </div>
+      )}
     </>,
     document.body
   );
