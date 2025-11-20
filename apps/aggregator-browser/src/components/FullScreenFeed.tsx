@@ -609,30 +609,28 @@ export function FullScreenFeed({
                     playsInline
                     autoPlay={visibleFileId === fileId}
                   />
+                  {/* Playback Controls */}
+                  {visibleFileId === fileId && (
+                    <div className="absolute top-4 left-4 z-20">
+                      <PlaybackControls
+                        videoElement={videoRefs.current.get(fileId) || null}
+                        isPlaying={videoPlaying.get(fileId) || false}
+                        onPlayPause={() => {
+                          const videoElement = videoRefs.current.get(fileId);
+                          if (videoElement) {
+                            if (videoElement.paused) {
+                              videoElement.play();
+                            } else {
+                              videoElement.pause();
+                            }
+                          }
+                        }}
+                      />
+                    </div>
+                  )}
                 </>
               );
             })()}
-                {/* Playback Controls */}
-                {visibleFileId === fileId && (
-                  <div className="absolute top-4 left-4 z-20">
-                    <PlaybackControls
-                      videoElement={videoRefs.current.get(fileId) || null}
-                      isPlaying={videoPlaying.get(fileId) || false}
-                      onPlayPause={() => {
-                        const videoElement = videoRefs.current.get(fileId);
-                        if (videoElement) {
-                          if (videoElement.paused) {
-                            videoElement.play();
-                          } else {
-                            videoElement.pause();
-                          }
-                        }
-                      }}
-                    />
-                  </div>
-                )}
-              </>
-            )}
             
             {/* Full-screen image */}
             {isImage && thumbnails.get(fileId) && (() => {
