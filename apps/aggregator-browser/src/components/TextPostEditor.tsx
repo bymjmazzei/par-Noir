@@ -545,16 +545,45 @@ export function TextPostEditor({ onSave, onCancel }: TextPostEditorProps) {
 
   return (
     <div className="fixed inset-0 bg-black z-50 flex flex-col">
-      {/* Full Screen Preview */}
-      <div className="flex-1 flex items-center justify-center bg-neutral-950 p-4" style={{ paddingBottom: '220px' }}>
-        <div className="w-full max-w-md aspect-[9/16] bg-neutral-900 rounded-lg overflow-hidden shadow-2xl">
-          <canvas
-            ref={canvasRef}
-            className="w-full h-full"
-            style={{ display: content.trim() ? 'block' : 'none' }}
-          />
-          {!content.trim() && (
-            <div className="w-full h-full flex items-center justify-center text-neutral-500">
+      {/* Preview - Above text input, scales with screen */}
+      <div 
+        className="fixed left-0 right-0 flex items-center justify-center z-30"
+        style={{ 
+          bottom: `calc(64px + ${textareaHeight}px + 48px + 56px)`,
+          top: '0',
+        }}
+      >
+        <div 
+          className="w-full h-full flex items-center justify-center relative"
+          style={{
+            backgroundImage: backgroundImage ? `url(${backgroundImage})` : 'none',
+            backgroundColor: backgroundImage ? 'transparent' : backgroundColor,
+            backgroundSize: 'cover',
+            backgroundPosition: 'center'
+          }}
+        >
+          {content.trim() ? (
+            <div
+              className="w-full px-8 text-center"
+              style={{
+                fontFamily: fontFamily,
+                fontSize: `clamp(24px, 5vw, ${fontSize}px)`,
+                color: textColor,
+                textAlign: textAlign as 'left' | 'center' | 'right' | 'justify',
+                textShadow: `
+                  ${dropShadowOffsetX}px 
+                  ${dropShadowOffsetY}px 
+                  ${dropShadowBlur}px 
+                  ${dropShadowColor}
+                `,
+                padding: `${padding}px`,
+                lineHeight: 1.2,
+              }}
+            >
+              {content}
+            </div>
+          ) : (
+            <div className="text-neutral-500">
               <p>Preview will appear here</p>
             </div>
           )}
