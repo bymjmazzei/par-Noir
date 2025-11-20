@@ -2081,6 +2081,21 @@ function App() {
             const normalizedOwnerId = normalizeId(fileOwnerId);
             const normalizedViewingId = normalizeId(viewingCreatorId!);
             
+            // Debug logging
+            console.log(`[Comments Tab] Checking file ${f.metadata.fileId}:`, {
+              fileOwnerId,
+              normalizedOwnerId,
+              viewingCreatorId,
+              normalizedViewingId,
+              isOwnPost: normalizedOwnerId === normalizedViewingId,
+              metadata: {
+                creator: f.metadata.creator,
+                author: f.metadata.author,
+                creatorId: f.metadata.creatorId,
+                pnIdentifier: (f as any).pnIdentifier
+              }
+            });
+            
             // Exclude own posts - only show posts from other creators that user commented on
             const isNotOwnPost = normalizedOwnerId !== normalizedViewingId;
             if (!isNotOwnPost) {
