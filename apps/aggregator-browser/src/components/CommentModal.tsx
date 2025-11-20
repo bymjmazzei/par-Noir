@@ -75,7 +75,12 @@ export function CommentModal({ file, onClose }: CommentModalProps) {
   }, [file.metadata.fileId, loadComments, getComments]);
 
   useEffect(() => {
-    inputRef.current?.focus();
+    if (inputRef.current) {
+      const initialHeight = inputRef.current.scrollHeight;
+      const paddedHeight = initialHeight + 32;
+      setCommentInputHeight(paddedHeight);
+      inputRef.current.focus();
+    }
   }, []);
 
   // Close modal when clicking outside or navigating
