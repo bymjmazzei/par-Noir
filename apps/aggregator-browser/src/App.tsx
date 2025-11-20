@@ -2065,11 +2065,32 @@ function App() {
         case 'comments':
           // Only show posts the user has commented on (excluding their own posts)
           filtered = userCommentedFiles.filter(f => {
-            const fileOwnerId = f.metadata.creator?.identifier?.value || 
+            // Look up the full file from indexedFilesMap to get pnIdentifier
+            const fullFile = indexedFilesMap.get(f.metadata.fileId) || f;
+            
+            // Prioritize pnIdentifier first, then check other fields but skip public keys
+            // Public keys start with "MII" (base64 encoded RSA public key header)
+            const isPublicKey = (id: string | undefined | null): boolean => {
+              if (!id) return false;
+              const trimmed = id.trim();
+              return trimmed.startsWith('MII') || trimmed.length > 100; // Public keys are long base64 strings
+            };
+            
+            // Try to get pnIdentifier first (it's on the file object, not in metadata)
+            let fileOwnerId = (fullFile as any).pnIdentifier || (f as any).pnIdentifier;
+            
+            // If no pnIdentifier, try other fields but skip public keys
+            if (!fileOwnerId) {
+              const candidate = f.metadata.creator?.identifier?.value || 
                                 f.metadata.creator?.["@id"] || 
                                 f.metadata.author?.did ||
-                                f.metadata.creatorId ||
-                                (f as any).pnIdentifier; // Fallback to pnIdentifier if available
+                                f.metadata.creatorId;
+              
+              // Only use if it's not a public key
+              if (candidate && !isPublicKey(candidate)) {
+                fileOwnerId = candidate;
+              }
+            }
             
             // Normalize both IDs by removing "pn-" prefix and converting to lowercase
             const normalizeId = (id: string | undefined | null): string => {
@@ -2088,11 +2109,12 @@ function App() {
               viewingCreatorId,
               normalizedViewingId,
               isOwnPost: normalizedOwnerId === normalizedViewingId,
+              hasFullFile: !!indexedFilesMap.get(f.metadata.fileId),
               metadata: {
                 creator: f.metadata.creator,
                 author: f.metadata.author,
                 creatorId: f.metadata.creatorId,
-                pnIdentifier: (f as any).pnIdentifier
+                pnIdentifier: (fullFile as any).pnIdentifier || (f as any).pnIdentifier
               }
             });
             
@@ -2155,7 +2177,7 @@ function App() {
       }
     }
     return filtered;
-  }, [isOwnIndex, mePageTab, creatorFiles, userLikedFiles, userCommentedFiles, savedFiles, connectionsFiles, viewedUserLikedFiles, viewedUserCommentedFiles, viewingCreatorId]);
+  }, [isOwnIndex, mePageTab, creatorFiles, userLikedFiles, userCommentedFiles, savedFiles, connectionsFiles, viewedUserLikedFiles, viewedUserCommentedFiles, viewingCreatorId, indexedFilesMap]);
   
   // Only log when the count actually changes - use refs to track all values to prevent unnecessary re-runs
   const prevFilteredCountRef = useRef<number>(-1);

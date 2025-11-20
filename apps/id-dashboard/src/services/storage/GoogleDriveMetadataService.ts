@@ -1119,77 +1119,8 @@ export class GoogleDriveMetadataService {
 
       index.updatedAt = new Date().toISOString();
 
-      // Save owner index file
-      const indexContent = JSON.stringify(index, null, 2);
-      const indexBlob = new Blob([indexContent], { type: 'application/json' });
-
-      // Check if index file exists
-      const searchResponse = await fetch(
-        `https://www.googleapis.com/drive/v3/files?q=name='${this.OWNER_INDEX_FILE_NAME}' and '${metadataFolderId}' in parents and trashed=false&fields=files(id)`,
-        {
-          headers: {
-            'Authorization': `Bearer ${accessToken}`
-          }
-        }
-      );
-
-      if (!searchResponse.ok) {
-        throw new Error('Failed to search for owner index file');
-      }
-
-      const searchData = await searchResponse.json();
-      const formData = new FormData();
-      
-      if (searchData.files && searchData.files.length > 0) {
-        // Update existing index
-        const fileId = searchData.files[0].id;
-
-        const updateResponse = await fetch(
-          `https://www.googleapis.com/upload/drive/v3/files/${fileId}?uploadType=media`,
-          {
-            method: 'PATCH',
-            headers: {
-              'Authorization': `Bearer ${accessToken}`,
-              'Content-Type': 'application/json; charset=UTF-8'
-            },
-            body: JSON.stringify(index)
-          }
-        );
-
-        if (!updateResponse.ok) {
-          const errorText = await updateResponse.text();
-          console.error('Failed to update owner index file:', {
-            status: updateResponse.status,
-            statusText: updateResponse.statusText,
-            errorText
-          });
-          throw new Error('Failed to update owner index file');
-        }
-      } else {
-        // Create new owner index file
-        const formData = new FormData();
-        formData.append('metadata', new Blob([JSON.stringify({
-          name: this.OWNER_INDEX_FILE_NAME,
-          parents: [metadataFolderId]
-        })], { type: 'application/json' }));
-        formData.append('file', indexBlob);
-
-        const createResponse = await fetch(
-          `https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart`,
-          {
-            method: 'POST',
-            headers: {
-              'Authorization': `Bearer ${accessToken}`
-            },
-            body: formData
-          }
-        );
-
-        if (!createResponse.ok) {
-          throw new Error('Failed to create owner index file');
-        }
-      }
-
+      // Save owner index file using helper method
+      await this.saveIndexFile(accessToken, metadataFolderId, this.OWNER_INDEX_FILE_NAME, index);
       console.log(`✅ Updated owner file index`);
     } catch (error) {
       console.error('Error updating owner file index:', error);
@@ -1301,12 +1232,23 @@ export class GoogleDriveMetadataService {
       index.updatedAt = new Date().toISOString();
 
       // Save index file
-      const indexContent = JSON.stringify(index, null, 2);
-      const indexBlob = new Blob([indexContent], { type: 'application/json' });
+      await this.saveIndexFile(accessToken, metadataFolderId, this.PUBLIC_INDEX_FILE_NAME, index);
+    } catch (error) {
+      console.error('Failed to update public file index:', error);
+      throw error;
+    }
+  }
 
-      // Check if index file exists
-      const searchResponse = await fetch(
-        `https://www.googleapis.com/drive/v3/files?q=name='${this.PUBLIC_INDEX_FILE_NAME}' and '${metadataFolderId}' in parents and trashed=false&fields=files(id)`,
+  /**
+   * Verify if a file exists in Google Drive
+   */
+  private static async verifyFileExists(
+    accessToken: string,
+    fileId: string
+  ): Promise<boolean> {
+    try {
+      const response = await fetch(
+        `https://www.googleapis.com/drive/v3/files/${fileId}?fields=id,trashed`,
         {
           headers: {
             'Authorization': `Bearer ${accessToken}`
@@ -1314,108 +1256,238 @@ export class GoogleDriveMetadataService {
         }
       );
 
-      if (!searchResponse.ok) {
-        throw new Error('Failed to search for index file');
+      if (response.status === 404) {
+        return false; // File doesn't exist
       }
 
-      const searchData = await searchResponse.json();
-      const formData = new FormData();
-      
-      if (searchData.files && searchData.files.length > 0) {
-        // Update existing index
-        const fileId = searchData.files[0].id;
+      if (!response.ok) {
+        // If we can't verify (e.g., 401), assume file exists to avoid false positives
+        console.warn(`⚠️ [verifyFileExists] Could not verify file ${fileId}: ${response.status}`);
+        return true;
+      }
 
-        const updateResponse = await fetch(
-          `https://www.googleapis.com/upload/drive/v3/files/${fileId}?uploadType=media`,
-          {
-            method: 'PATCH',
-            headers: {
-              'Authorization': `Bearer ${accessToken}`,
-              'Content-Type': 'application/json; charset=UTF-8'
-            },
-            body: JSON.stringify(index)
-          }
-        );
+      const fileData = await response.json();
+      // File exists and is not trashed
+      return !fileData.trashed;
+    } catch (error) {
+      console.warn(`⚠️ [verifyFileExists] Error verifying file ${fileId}:`, error);
+      // On error, assume file exists to avoid false positives
+      return true;
+    }
+  }
 
-        if (!updateResponse.ok) {
-          const errorText = await updateResponse.text();
-          console.error('Failed to update public index file:', {
-            status: updateResponse.status,
-            statusText: updateResponse.statusText,
-            errorText
-          });
-          throw new Error('Failed to update public index file');
-        }
+  /**
+   * Clean up orphaned entries from indexes (files that no longer exist in Google Drive)
+   * This is the source of truth - if a file doesn't exist in Google Drive, remove it from all indexes
+   */
+  static async cleanupOrphanedIndexEntries(
+    accessToken: string,
+    pnIdentifier: string
+  ): Promise<{ ownerIndexRemoved: number; publicIndexRemoved: number }> {
+    try {
+      const pnFolderId = await this.getOrCreatePNFolder(accessToken, pnIdentifier);
+      const metadataFolderId = await this.getOrCreateMetadataFolder(accessToken, pnFolderId);
 
-        // Make index file publicly readable
-        try {
-          await fetch(
-            `https://www.googleapis.com/drive/v3/files/${fileId}/permissions`,
-            {
-              method: 'POST',
-              headers: {
-                'Authorization': `Bearer ${accessToken}`,
-                'Content-Type': 'application/json'
-              },
-              body: JSON.stringify({
-                role: 'reader',
-                type: 'anyone'
-              })
+      let ownerIndexRemoved = 0;
+      let publicIndexRemoved = 0;
+
+      // Clean up owner index
+      try {
+        const ownerIndex = await this.getOwnerFileIndex(accessToken, metadataFolderId, pnIdentifier);
+        if (ownerIndex && ownerIndex.files) {
+          const originalCount = ownerIndex.files.length;
+          const verifiedFiles = [];
+
+          // Verify each file exists in Google Drive
+          for (const fileEntry of ownerIndex.files) {
+            const googleDriveFileId = fileEntry.googleDriveFileId;
+            if (googleDriveFileId) {
+              const exists = await this.verifyFileExists(accessToken, googleDriveFileId);
+              if (exists) {
+                verifiedFiles.push(fileEntry);
+              } else {
+                console.log(`🗑️ [cleanupOrphanedIndexEntries] Removing orphaned file from owner index: ${googleDriveFileId}`);
+                ownerIndexRemoved++;
+              }
+            } else {
+              // Keep entries without googleDriveFileId (might be from other backends)
+              verifiedFiles.push(fileEntry);
             }
-          );
-        } catch (permError) {
-          // Permission might already exist, ignore
-          console.warn('Failed to set public permissions:', permError);
-        }
-      } else {
-        // Create new index
-        const formData = new FormData();
-        formData.append('metadata', new Blob([JSON.stringify({
-          name: this.PUBLIC_INDEX_FILE_NAME,
-          parents: [metadataFolderId]
-        })], { type: 'application/json' }));
-        formData.append('file', indexBlob);
+          }
 
-        const createResponse = await fetch(
-          'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart',
+          if (verifiedFiles.length !== originalCount) {
+            ownerIndex.files = verifiedFiles;
+            ownerIndex.updatedAt = new Date().toISOString();
+            await this.saveIndexFile(accessToken, metadataFolderId, this.OWNER_INDEX_FILE_NAME, ownerIndex);
+            console.log(`✅ [cleanupOrphanedIndexEntries] Cleaned owner index: removed ${ownerIndexRemoved} orphaned file(s)`);
+          }
+        }
+      } catch (ownerError) {
+        console.warn('⚠️ [cleanupOrphanedIndexEntries] Failed to clean owner index:', ownerError);
+      }
+
+      // Clean up public index
+      try {
+        const publicIndex = await this.getPublicFileIndex(accessToken, metadataFolderId, pnIdentifier);
+        if (publicIndex && publicIndex.files) {
+          const originalCount = publicIndex.files.length;
+          const verifiedFiles = [];
+
+          // Verify each file exists in Google Drive
+          for (const fileEntry of publicIndex.files) {
+            const googleDriveFileId = (fileEntry as any).googleDriveFileId;
+            if (googleDriveFileId) {
+              const exists = await this.verifyFileExists(accessToken, googleDriveFileId);
+              if (exists) {
+                verifiedFiles.push(fileEntry);
+              } else {
+                console.log(`🗑️ [cleanupOrphanedIndexEntries] Removing orphaned file from public index: ${googleDriveFileId}`);
+                publicIndexRemoved++;
+              }
+            } else {
+              // Keep entries without googleDriveFileId
+              verifiedFiles.push(fileEntry);
+            }
+          }
+
+          if (verifiedFiles.length !== originalCount) {
+            publicIndex.files = verifiedFiles;
+            publicIndex.updatedAt = new Date().toISOString();
+            await this.saveIndexFile(accessToken, metadataFolderId, this.PUBLIC_INDEX_FILE_NAME, publicIndex);
+            console.log(`✅ [cleanupOrphanedIndexEntries] Cleaned public index: removed ${publicIndexRemoved} orphaned file(s)`);
+          }
+        }
+      } catch (publicError) {
+        console.warn('⚠️ [cleanupOrphanedIndexEntries] Failed to clean public index:', publicError);
+      }
+
+      return { ownerIndexRemoved, publicIndexRemoved };
+    } catch (error) {
+      console.error('❌ [cleanupOrphanedIndexEntries] Failed to cleanup indexes:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Save index file to Google Drive (helper method)
+   */
+  private static async saveIndexFile(
+    accessToken: string,
+    metadataFolderId: string,
+    fileName: string,
+    index: any
+  ): Promise<void> {
+    const indexContent = JSON.stringify(index, null, 2);
+    const indexBlob = new Blob([indexContent], { type: 'application/json' });
+
+    // Check if index file exists
+    const searchResponse = await fetch(
+      `https://www.googleapis.com/drive/v3/files?q=name='${fileName}' and '${metadataFolderId}' in parents and trashed=false&fields=files(id)`,
+      {
+        headers: {
+          'Authorization': `Bearer ${accessToken}`
+        }
+      }
+    );
+
+    if (!searchResponse.ok) {
+      throw new Error('Failed to search for index file');
+    }
+
+    const searchData = await searchResponse.json();
+    
+    if (searchData.files && searchData.files.length > 0) {
+      // Update existing index
+      const fileId = searchData.files[0].id;
+
+      const updateResponse = await fetch(
+        `https://www.googleapis.com/upload/drive/v3/files/${fileId}?uploadType=media`,
+        {
+          method: 'PATCH',
+          headers: {
+            'Authorization': `Bearer ${accessToken}`,
+            'Content-Type': 'application/json; charset=UTF-8'
+          },
+          body: JSON.stringify(index)
+        }
+      );
+
+      if (!updateResponse.ok) {
+        const errorText = await updateResponse.text();
+        console.error(`Failed to update ${fileName}:`, {
+          status: updateResponse.status,
+          statusText: updateResponse.statusText,
+          errorText
+        });
+        throw new Error(`Failed to update ${fileName}`);
+      }
+    } else {
+      // Create new index file
+      const formData = new FormData();
+      formData.append('metadata', new Blob([JSON.stringify({
+        name: fileName,
+        parents: [metadataFolderId]
+      })], { type: 'application/json' }));
+      formData.append('file', indexBlob);
+
+      const createResponse = await fetch(
+        `https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart`,
+        {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${accessToken}`
+          },
+          body: formData
+        }
+      );
+
+      if (!createResponse.ok) {
+        const errorText = await createResponse.text();
+        console.error(`Failed to create ${fileName}:`, {
+          status: createResponse.status,
+          statusText: createResponse.statusText,
+          errorText
+        });
+        throw new Error(`Failed to create ${fileName}`);
+      }
+    }
+    
+    // Make public index file publicly readable (only for public index)
+    if (fileName === this.PUBLIC_INDEX_FILE_NAME) {
+      try {
+        const searchResponse = await fetch(
+          `https://www.googleapis.com/drive/v3/files?q=name='${fileName}' and '${metadataFolderId}' in parents and trashed=false&fields=files(id)`,
           {
-            method: 'POST',
             headers: {
               'Authorization': `Bearer ${accessToken}`
-            },
-            body: formData
+            }
           }
         );
-
-        if (!createResponse.ok) {
-          throw new Error('Failed to create index file');
-        }
-
-        const fileData = await createResponse.json();
         
-        // Make index file publicly readable
-        try {
-          await fetch(
-            `https://www.googleapis.com/drive/v3/files/${fileData.id}/permissions`,
-            {
-              method: 'POST',
-              headers: {
-                'Authorization': `Bearer ${accessToken}`,
-                'Content-Type': 'application/json'
-              },
-              body: JSON.stringify({
-                role: 'reader',
-                type: 'anyone'
-              })
-            }
-          );
-        } catch (permError) {
-          console.warn('Failed to set public permissions:', permError);
+        if (searchResponse.ok) {
+          const searchData = await searchResponse.json();
+          if (searchData.files && searchData.files.length > 0) {
+            const fileId = searchData.files[0].id;
+            await fetch(
+              `https://www.googleapis.com/drive/v3/files/${fileId}/permissions`,
+              {
+                method: 'POST',
+                headers: {
+                  'Authorization': `Bearer ${accessToken}`,
+                  'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                  role: 'reader',
+                  type: 'anyone'
+                })
+              }
+            );
+          }
         }
+      } catch (permError) {
+        // Permission might already exist, ignore
+        console.warn('Failed to set public permissions:', permError);
       }
-    } catch (error) {
-      console.error('Error updating public file index:', error);
-      throw error;
     }
   }
 }

@@ -2025,6 +2025,18 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
 
             const pnFolderId = await GoogleDriveMetadataService.getOrCreatePNFolder(token, pnIdentifier);
             const metadataFolderId = await GoogleDriveMetadataService.getOrCreateMetadataFolder(token, pnFolderId);
+            
+            // AUTOMATIC CLEANUP: Verify files exist in Google Drive and remove orphaned entries
+            // Google Drive is the source of truth - if file doesn't exist there, remove from all indexes
+            try {
+              const cleanupResult = await GoogleDriveMetadataService.cleanupOrphanedIndexEntries(token, pnIdentifier);
+              if (cleanupResult.ownerIndexRemoved > 0 || cleanupResult.publicIndexRemoved > 0) {
+                console.log(`✅ [Metadata] Cleaned up indexes: removed ${cleanupResult.ownerIndexRemoved} from owner index, ${cleanupResult.publicIndexRemoved} from public index`);
+              }
+            } catch (cleanupError) {
+              console.warn('⚠️ [Metadata] Failed to cleanup orphaned index entries (non-critical):', cleanupError);
+            }
+            
             const ownerIndex = await GoogleDriveMetadataService.getOwnerFileIndex(token, metadataFolderId, pnIdentifier);
 
             if (ownerIndex && ownerIndex.files) {
@@ -2619,7 +2631,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
             }
           });
 
-          // Log orphaned entries found (for debugging)
+          // Log orphaned entries found and clean them up
           if (orphanedEntries.length > 0) {
             console.warn(`⚠️ [loadFiles] Found ${orphanedEntries.length} orphaned file(s) in owner index for ${backendId}`, {
               orphanedFiles: orphanedEntries.map(e => ({
@@ -2627,7 +2639,27 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
                 fileName: e.fileName || e.originalName
               }))
             });
-            // TODO: Optionally clean up owner index by removing orphaned entries
+            
+            // Automatically clean up orphaned entries from indexes
+            // Google Drive is the source of truth - if file doesn't exist there, remove from all indexes
+            try {
+              if (accessToken && currentPnIdentifier) {
+                const { GoogleDriveMetadataService } = await import('../../services/storage/GoogleDriveMetadataService');
+                const cleanupResult = await GoogleDriveMetadataService.cleanupOrphanedIndexEntries(
+                  accessToken,
+                  currentPnIdentifier
+                );
+                if (cleanupResult.ownerIndexRemoved > 0 || cleanupResult.publicIndexRemoved > 0) {
+                  console.log(`✅ [loadFiles] Cleaned up indexes: removed ${cleanupResult.ownerIndexRemoved} from owner index, ${cleanupResult.publicIndexRemoved} from public index`);
+                  // Reload files after cleanup to show updated list
+                  if (loadFilesRef.current) {
+                    setTimeout(() => loadFilesRef.current!(), 1000);
+                  }
+                }
+              }
+            } catch (cleanupError) {
+              console.warn('⚠️ [loadFiles] Failed to cleanup orphaned index entries:', cleanupError);
+            }
           }
         } else {
           console.debug('ℹ️ [loadFiles] Owner index empty; scanning Drive contents', { backendId });
@@ -5102,6 +5134,23 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
         console.warn('⚠️ [Delete] No access token available - file deleted but indexes may need manual cleanup');
       }
 
+      // AUTOMATIC CLEANUP: Clean up indexes after deletion
+      // Google Drive is the source of truth - file is deleted, remove from all indexes
+      try {
+        if (accessToken && currentPnIdentifier) {
+          const { GoogleDriveMetadataService } = await import('../../services/storage/GoogleDriveMetadataService');
+          const cleanupResult = await GoogleDriveMetadataService.cleanupOrphanedIndexEntries(
+            accessToken,
+            currentPnIdentifier
+          );
+          if (cleanupResult.ownerIndexRemoved > 0 || cleanupResult.publicIndexRemoved > 0) {
+            console.log(`✅ [Delete] Cleaned up indexes: removed ${cleanupResult.ownerIndexRemoved} from owner index, ${cleanupResult.publicIndexRemoved} from public index`);
+          }
+        }
+      } catch (cleanupError) {
+        console.warn('⚠️ [Delete] Index cleanup failed (non-critical):', cleanupError);
+      }
+
       // Reload files after deletion
       if (loadFilesRef.current) {
         await loadFilesRef.current();
@@ -5114,6 +5163,82 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
       setIsLoading(false);
     }
   };
+
+  // Manual refresh function to cleanup orphaned index entries
+  const handleRefreshIndexes = React.useCallback(async () => {
+    if (!authenticatedUser) {
+      setError('Must be authenticated to refresh indexes');
+      return;
+    }
+
+    try {
+      setIsLoading(true);
+      setError(null);
+
+      // Get credentials for pN identifier generation
+      const sessionId = authenticatedUser.id;
+      const credentials = SecureCredentialManager.getCredentials(sessionId);
+      const pnName = resolvedAuth?.pnName || authenticatedUser.pnName || (authenticatedUser as any)?.username;
+      const publicKey = resolvedAuth?.publicKey || authenticatedUser.publicKey;
+
+      if (!pnName || !credentials?.passcode || !publicKey) {
+        setError('Cannot refresh indexes: credentials required');
+        return;
+      }
+
+      // Generate standardized pN identifier
+      const { VolumeIdGenerator } = await import('../../utils/crypto/volumeIdGenerator');
+      const pnIdentifier = await VolumeIdGenerator.generateVolumeId({
+        pnName,
+        passcode: credentials.passcode,
+        publicKey
+      });
+
+      // Get access token from connected backend
+      const connectedBackend = driveAccounts.find(acc => connectedBackends.has(acc.backendId));
+      if (!connectedBackend) {
+        setError('No Google Drive account connected');
+        return;
+      }
+
+      const backend = aggregatorService?.getBackend(connectedBackend.backendId) as GoogleDriveBackend | null;
+      if (!backend || !backend.isConnected()) {
+        setError('Google Drive not connected');
+        return;
+      }
+
+      const accessToken = backend.getAccessToken();
+      if (!accessToken) {
+        setError('No access token available');
+        return;
+      }
+
+      // Clean up orphaned entries
+      const { GoogleDriveMetadataService } = await import('../../services/storage/GoogleDriveMetadataService');
+      const cleanupResult = await GoogleDriveMetadataService.cleanupOrphanedIndexEntries(
+        accessToken,
+        pnIdentifier
+      );
+
+      if (cleanupResult.ownerIndexRemoved > 0 || cleanupResult.publicIndexRemoved > 0) {
+        setSuccessWithTimeout(
+          `✅ Refreshed indexes: Removed ${cleanupResult.ownerIndexRemoved} orphaned file(s) from owner index, ${cleanupResult.publicIndexRemoved} from public index`
+        );
+        // Reload files to show updated list
+        if (loadFilesRef.current) {
+          await loadFilesRef.current();
+        }
+      } else {
+        setSuccessWithTimeout('✅ Indexes are up to date - no orphaned files found');
+      }
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Failed to refresh indexes';
+      console.error('❌ [RefreshIndexes] Failed:', err);
+      setError(errorMessage);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [authenticatedUser, resolvedAuth, driveAccounts, connectedBackends, aggregatorService]);
 
 
   const totalFiles = files.length;
@@ -5374,6 +5499,21 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
         </div>
       </div>
 
+      {/* Success Message */}
+      {successMessage && (
+        <div className="bg-green-500/10 border border-green-500/20 rounded-lg p-4">
+          <div className="flex items-center space-x-2">
+            <span className="text-green-400 text-sm">{successMessage}</span>
+          </div>
+          <button
+            onClick={() => setSuccessMessage(null)}
+            className="mt-2 text-xs text-green-400 hover:text-green-300 underline"
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
+
       {/* Error Display */}
       {error && (
         <div className="bg-red-500/10 border border-red-500/20 rounded-lg p-4">
@@ -5454,6 +5594,14 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
                     )}
                   </div>
                   <div className="flex items-center space-x-2">
+                    <button
+                      onClick={handleRefreshIndexes}
+                      disabled={isLoading}
+                      className="p-2 rounded text-text-secondary hover:text-text-primary transition-colors disabled:opacity-50"
+                      title="Refresh Indexes (Remove orphaned files)"
+                    >
+                      <RefreshCw className={`h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} />
+                    </button>
                     <button
                       onClick={() => {
                         setActiveBackendId(backendId);
