@@ -394,7 +394,7 @@ export function TextPostEditor({ onSave, onCancel }: TextPostEditorProps) {
                 {/* Right column: Three sliders */}
                 <div className="flex-1 space-y-2">
                   <div>
-                    <label className="text-white text-xs mb-1 block">Blur: {dropShadowBlur}px</label>
+                    <label className="text-white text-xs mb-1 block">Blur:</label>
                     <input
                       type="range"
                       min="0"
@@ -405,7 +405,7 @@ export function TextPostEditor({ onSave, onCancel }: TextPostEditorProps) {
                     />
                   </div>
                   <div>
-                    <label className="text-white text-xs mb-1 block">X: {dropShadowOffsetX}px</label>
+                    <label className="text-white text-xs mb-1 block">X:</label>
                     <input
                       type="range"
                       min="-20"
@@ -416,7 +416,7 @@ export function TextPostEditor({ onSave, onCancel }: TextPostEditorProps) {
                     />
                   </div>
                   <div>
-                    <label className="text-white text-xs mb-1 block">Y: {dropShadowOffsetY}px</label>
+                    <label className="text-white text-xs mb-1 block">Y:</label>
                     <input
                       type="range"
                       min="-20"
