@@ -681,11 +681,13 @@ export function TextPostEditor({ onSave, onCancel }: TextPostEditorProps) {
                 <button
                   ref={backgroundColorButtonRef}
                   onClick={() => setShowBackgroundColorPicker(!showBackgroundColorPicker)}
-                  className="p-2 rounded cursor-pointer relative flex items-center justify-center"
-                  style={{ backgroundColor: backgroundColor }}
-                >
-                  <div className="w-5 h-5 rounded" style={{ backgroundColor: backgroundColor }} />
-                </button>
+                  className="rounded cursor-pointer relative flex items-center justify-center"
+                  style={{ 
+                    backgroundColor: backgroundColor,
+                    width: '20px',
+                    height: '20px'
+                  }}
+                />
                 <button
                   onClick={() => fileInputRef.current?.click()}
                   className="p-2 text-white hover:opacity-80 transition-opacity flex items-center justify-center"
