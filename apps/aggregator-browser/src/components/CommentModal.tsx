@@ -514,7 +514,7 @@ export function CommentModal({ file, onClose }: CommentModalProps) {
         )}
       </div>
     </>,
-    document.body
+    portalContainer
   );
 }
 
