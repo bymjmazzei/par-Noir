@@ -517,7 +517,9 @@ export function FullScreenFeed({
               // Start at top of window
               marginTop: '0',
               paddingTop: '0',
-              boxSizing: 'border-box'
+              boxSizing: 'border-box',
+              overflow: 'hidden', // Ensure background doesn't overflow
+              position: 'relative' // Ensure proper stacking context
             }}
           >
             {/* Full-screen video */}
