@@ -380,7 +380,18 @@ export function CommentModal({ file, onClose }: CommentModalProps) {
       {/* Backdrop */}
       <div
         className="fixed inset-0 bg-black/60 transition-opacity"
-        style={{ zIndex: 9999 }}
+        style={{ 
+          zIndex: 99999, // Increased to ensure it's above everything
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          pointerEvents: 'auto',
+          display: 'block',
+          visibility: 'visible',
+          opacity: 1
+        }}
         onClick={(e) => {
           // Only close if clicking directly on the backdrop
           if (e.target === e.currentTarget) {
@@ -394,9 +405,17 @@ export function CommentModal({ file, onClose }: CommentModalProps) {
         ref={modalRef}
         className="fixed bottom-0 left-0 right-0 bg-neutral-900 rounded-t-2xl flex flex-col animate-slide-up"
         style={{ 
-          zIndex: 9999,
+          zIndex: 99999, // Increased to ensure it's above everything
+          position: 'fixed',
+          bottom: 0,
+          left: 0,
+          right: 0,
           maxHeight: '90vh', 
-          paddingBottom: userState.isUnlocked ? `${commentInputHeight}px` : '64px'
+          paddingBottom: userState.isUnlocked ? `${commentInputHeight}px` : '64px',
+          pointerEvents: 'auto',
+          display: 'flex',
+          visibility: 'visible',
+          opacity: 1
         }}
         onClick={(e) => e.stopPropagation()}
       >
@@ -434,7 +453,16 @@ export function CommentModal({ file, onClose }: CommentModalProps) {
         ) : (
           <div 
             className="fixed left-0 right-0 bg-neutral-900 border-t border-neutral-800" 
-            style={{ bottom: '64px', height: `${commentInputHeight}px`, zIndex: 10000 }}
+            style={{ 
+              bottom: '64px', 
+              height: `${commentInputHeight}px`, 
+              zIndex: 100000,
+              position: 'fixed',
+              pointerEvents: 'auto',
+              display: 'block',
+              visibility: 'visible',
+              opacity: 1
+            }}
           >
             <div className="flex items-end gap-2 p-4">
               <textarea
