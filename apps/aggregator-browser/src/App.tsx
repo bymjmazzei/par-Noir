@@ -3272,9 +3272,13 @@ function App() {
         {commentingFile && (
           <CommentModal
             file={commentingFile}
-            onClose={() => setCommentingFile(null)}
+            onClose={() => {
+              console.log('[App] CommentModal onClose called');
+              setCommentingFile(null);
+            }}
           />
         )}
+        {commentingFile && console.log('[App] CommentModal should be visible', commentingFile.metadata.fileId)}
 
         {/* Edit File Modal */}
         {editingFile && (
