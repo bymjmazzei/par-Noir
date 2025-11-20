@@ -373,7 +373,8 @@ export function CommentModal({ file, onClose }: CommentModalProps) {
     );
   };
 
-  return (
+  // Render modal via portal to ensure it's always on top and not affected by parent DOM structure
+  return createPortal(
     <>
       {/* Backdrop */}
       <div
