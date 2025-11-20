@@ -844,7 +844,7 @@ export function TextPostEditor({ onSave, onCancel }: TextPostEditorProps) {
       <div 
         className="fixed left-0 right-0 flex items-center justify-center z-30"
         style={{ 
-          bottom: `calc(64px + ${textareaHeight}px + 48px + 56px)`,
+          bottom: `calc(64px + ${textareaHeight}px)`,
           top: '0',
         }}
       >
