@@ -1992,7 +1992,17 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
                   passcode: credentials.passcode,
                   publicKey: resolvedAuth.publicKey
                 });
-                console.log(`✅ [Metadata] Generated pN identifier using VolumeIdGenerator: ${pnIdentifier.substring(0, 8)}...`);
+                console.log(`✅ [Metadata] Generated pN identifier (VolumeIdGenerator): ${pnIdentifier}`);
+                console.log(`📁 [Metadata] Expected folder: "par Noir - ${pnIdentifier}"`);
+                
+                // Also log fallback for comparison
+                if (pnIdentifierRef.current) {
+                  const fallbackId = `pn-${pnIdentifierRef.current}`;
+                  if (fallbackId !== pnIdentifier) {
+                    console.warn(`⚠️ [Metadata] Identifier mismatch! Correct: ${pnIdentifier}, Fallback: ${fallbackId}`);
+                    console.warn(`⚠️ [Metadata] Using CORRECT identifier: ${pnIdentifier}`);
+                  }
+                }
               }
             } catch (volumeIdError) {
               console.warn('⚠️ [Metadata] Failed to generate volume ID, using fallback:', volumeIdError);
@@ -2001,7 +2011,8 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
             // Fallback: use derived identifier from ref (consistent with other parts of the app)
             if (!pnIdentifier && pnIdentifierRef.current) {
               pnIdentifier = `pn-${pnIdentifierRef.current}`;
-              console.log(`✅ [Metadata] Using derived pN identifier: ${pnIdentifier.substring(0, 8)}...`);
+              console.log(`✅ [Metadata] Using derived pN identifier (fallback): ${pnIdentifier}`);
+              console.warn(`⚠️ [Metadata] Using fallback method - VolumeIdGenerator preferred`);
             }
             
             // Last resort fallback (shouldn't happen in normal flow)
@@ -2319,7 +2330,18 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
             passcode,
             publicKey
           });
-          console.log(`✅ [loadFiles] Generated pN identifier: ${currentPnIdentifier.substring(0, 8)}...`);
+          console.log(`✅ [loadFiles] Generated pN identifier (VolumeIdGenerator): ${currentPnIdentifier}`);
+          console.log(`📁 [loadFiles] Expected folder name: "par Noir - ${currentPnIdentifier}"`);
+          
+          // Also log the fallback identifier for comparison
+          if (pnIdentifierRef.current) {
+            const fallbackId = `pn-${pnIdentifierRef.current}`;
+            console.log(`ℹ️ [loadFiles] Fallback identifier (did:publicKey): ${fallbackId}`);
+            if (fallbackId !== currentPnIdentifier) {
+              console.warn(`⚠️ [loadFiles] Identifier mismatch! VolumeIdGenerator: ${currentPnIdentifier}, Fallback: ${fallbackId}`);
+              console.warn(`⚠️ [loadFiles] Using VolumeIdGenerator identifier (${currentPnIdentifier}) - this is the correct one`);
+            }
+          }
         } else {
           console.log(`⚠️ [loadFiles] Cannot generate pN identifier (missing: ${!pnName ? 'pnName ' : ''}${!publicKey ? 'publicKey ' : ''}${!passcode ? 'passcode' : ''}) - backend will search for folders directly`);
         }
@@ -4107,11 +4129,23 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
             passcode: credentials.passcode,
             publicKey
           });
-          console.log(`✅ [Upload] Generated pN identifier using VolumeIdGenerator: ${pnIdentifier.substring(0, 8)}...`);
+          console.log(`✅ [Upload] Generated pN identifier (VolumeIdGenerator): ${pnIdentifier}`);
+          console.log(`📁 [Upload] Will use folder: "par Noir - ${pnIdentifier}"`);
+          
+          // Also log the fallback identifier for comparison
+          if (pnIdentifierRef.current) {
+            const fallbackId = `pn-${pnIdentifierRef.current}`;
+            console.log(`ℹ️ [Upload] Fallback identifier (did:publicKey): ${fallbackId}`);
+            if (fallbackId !== pnIdentifier) {
+              console.warn(`⚠️ [Upload] Identifier mismatch! VolumeIdGenerator: ${pnIdentifier}, Fallback: ${fallbackId}`);
+              console.warn(`⚠️ [Upload] Using VolumeIdGenerator identifier (${pnIdentifier}) - this is the CORRECT one`);
+            }
+          }
         } else if (pnIdentifierRef.current) {
           // Fallback: use derived identifier from ref (consistent with other parts)
           pnIdentifier = `pn-${pnIdentifierRef.current}`;
-          console.log(`✅ [Upload] Using derived pN identifier: ${pnIdentifier.substring(0, 8)}...`);
+          console.log(`✅ [Upload] Using derived pN identifier (fallback): ${pnIdentifier}`);
+          console.warn(`⚠️ [Upload] Using fallback method - VolumeIdGenerator preferred for consistency`);
         } else {
           // Last resort fallback
           console.warn('⚠️ [Upload] Unable to generate pN identifier, using default');
