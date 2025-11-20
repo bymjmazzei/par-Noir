@@ -554,8 +554,8 @@ export function TextPostEditor({ onSave, onCancel }: TextPostEditorProps) {
         style={{
           top: `${menuPosition.top}px`,
           left: `${menuPosition.left}px`,
-          transform: 'translateY(-100%)', // Position above the button
-          marginTop: '-8px' // 8px gap above button
+          transform: 'translateX(-50%)', // Center horizontally
+          marginTop: '8px' // 8px gap below button
         }}
       >
         {menuContent()}
