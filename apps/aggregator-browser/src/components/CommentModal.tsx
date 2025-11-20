@@ -39,6 +39,11 @@ export function CommentModal({ file, onClose }: CommentModalProps) {
   const { userState } = useUserState();
   const { addComment, getComments, loadComments, likeComment } = useEngagement();
   const { success } = useToast();
+  
+  // Log when modal is rendered
+  useEffect(() => {
+    console.log('[CommentModal] Modal rendered', { fileId: file.metadata.fileId });
+  }, [file.metadata.fileId]);
   const [newComment, setNewComment] = useState('');
   const [comments, setComments] = useState<Comment[]>(getComments(file.metadata.fileId));
   const [loading, setLoading] = useState(false);
