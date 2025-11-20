@@ -733,7 +733,8 @@ export class AggregatorMetadataServiceDB {
         const pnIdentifier = row.pn_identifier;
         
         // Only check Google Drive files (other backends might not have index files)
-        if (backend !== 'google_drive') {
+        // Backend format is "google_drive::account-..." so check if it starts with "google_drive"
+        if (!backend || !backend.startsWith('google_drive')) {
           console.log(`ℹ️ [cleanupOrphanedFilesFromIndex] Skipping non-Google Drive file: ${fileId} (${fileName}) - backend: ${backend}`);
           continue;
         }
