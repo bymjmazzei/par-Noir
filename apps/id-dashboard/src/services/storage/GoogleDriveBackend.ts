@@ -31,11 +31,22 @@ export class GoogleDriveBackend extends AbstractStorageBackend {
         const cacheData = JSON.parse(cached);
         let validEntries = 0;
         Object.entries(cacheData).forEach(([key, value]) => {
-          // Cache will be validated when used, but we can load it
-          this.pnFolderCache.set(key, value as string);
-          validEntries++;
+          // Cache will be validated when used - if it's an old identifier, it will be cleared
+          // Only cache entries with standardized format (pn-{12-char-hex}) are kept
+          if (key.match(/^pn-[a-f0-9]{12}$/)) {
+            this.pnFolderCache.set(key, value as string);
+            validEntries++;
+          } else {
+            console.log(`🗑️ [loadFolderCache] Removing old cache entry with non-standard identifier: ${key.substring(0, 20)}...`);
+          }
         });
-        console.log(`✅ Loaded ${validEntries} folder ID(s) from cache (will validate on use)`);
+        if (validEntries > 0) {
+          console.log(`✅ Loaded ${validEntries} folder ID(s) from cache (will validate on use)`);
+        }
+        // Save cleaned cache back
+        if (validEntries !== Object.keys(cacheData).length) {
+          this.saveFolderCache();
+        }
       }
     } catch (e) {
       console.warn('Failed to load folder cache:', e);
@@ -462,19 +473,17 @@ export class GoogleDriveBackend extends AbstractStorageBackend {
       ? `${name} - ${pnIdentifier}`
       : name;
 
-    // Check cache first - but validate it's actually a pN folder, not metadata
+    // Check cache first - but validate it's actually a pN folder with the CORRECT identifier
     if (pnIdentifier && this.pnFolderCache.has(pnIdentifier)) {
       const cachedFolderId = this.pnFolderCache.get(pnIdentifier)!;
       console.log(`🔍 [getOrCreateFolder] Found cached folder ID for pN ${pnIdentifier.substring(0, 8)}...: ${cachedFolderId.substring(0, 12)}...`);
       
-      // CRITICAL: Validate the cached folder is actually a pN folder, not metadata folder
-      // BUT: If validation fails or token unavailable, skip validation and use cache anyway
-      // We'll validate it properly when listing files
+      // CRITICAL: Validate the cached folder matches the STANDARDIZED pN identifier
+      // The folder name MUST be exactly "par Noir - {pnIdentifier}" where pnIdentifier is the standardized one
       try {
         if (!this.token) {
           // No token - can't validate, but also can't use Google Drive
-          console.warn(`⚠️ [getOrCreateFolder] No Google Drive token - cannot validate cache, but unlock can proceed`);
-          // Don't return cached folder if no token - unlock shouldn't need Google Drive
+          console.warn(`⚠️ [getOrCreateFolder] No Google Drive token - cannot validate cache, clearing cache`);
           this.pnFolderCache.delete(pnIdentifier);
           this.saveFolderCache();
           // Continue to search below
@@ -485,18 +494,28 @@ export class GoogleDriveBackend extends AbstractStorageBackend {
           
           if (validateResponse.ok) {
             const folderInfo = await validateResponse.json();
+            const expectedFolderName = `par Noir - ${pnIdentifier}`;
             
-            // Validate: Must be named like "par Noir - pn-XXX" and NOT "_metadata"
+            // CRITICAL: Validate folder name matches EXACTLY the standardized identifier
+            // Validate: Must be named exactly "par Noir - pn-XXX" where XXX matches the standardized identifier
             const isMetadataFolder = folderInfo.name === '_metadata' || folderInfo.name.includes('_metadata');
-            const isPNFolder = folderInfo.name.includes('par Noir') && folderInfo.name.includes(pnIdentifier.substring(0, 8));
+            const isExactMatch = folderInfo.name === expectedFolderName;
+            const isPNFolder = folderInfo.name.includes('par Noir') && folderInfo.name.includes('pn-');
             
             if (isMetadataFolder || !isPNFolder) {
-              console.error(`❌ [getOrCreateFolder] Cached folder is WRONG! Name: "${folderInfo.name}" - Clearing cache and re-searching`);
+              console.error(`❌ [getOrCreateFolder] Cached folder is WRONG TYPE! Name: "${folderInfo.name}" - Clearing cache`);
               this.pnFolderCache.delete(pnIdentifier);
               this.saveFolderCache();
               // Continue to search below
+            } else if (!isExactMatch) {
+              // Folder exists but name doesn't match standardized identifier - clear cache
+              console.warn(`⚠️ [getOrCreateFolder] Cached folder name mismatch! Expected: "${expectedFolderName}", Found: "${folderInfo.name}" - Clearing cache`);
+              console.warn(`⚠️ [getOrCreateFolder] This indicates the pN identifier changed (standardization) - using new identifier`);
+              this.pnFolderCache.delete(pnIdentifier);
+              this.saveFolderCache();
+              // Continue to search below to find/create folder with correct identifier
             } else {
-              console.log(`✅ [getOrCreateFolder] Cached folder validated: "${folderInfo.name}"`);
+              console.log(`✅ [getOrCreateFolder] Cached folder validated: "${folderInfo.name}" matches standardized identifier`);
               return cachedFolderId;
             }
           } else {
@@ -605,7 +624,14 @@ export class GoogleDriveBackend extends AbstractStorageBackend {
       });
       
       if (validFolders.length === 0) {
-        console.error(`❌ [getOrCreateFolder] No valid pN folders found! Search returned ${searchData.files.length} folder(s) but all were invalid.`);
+          console.error(`❌ [getOrCreateFolder] No valid pN folders found! Search returned ${searchData.files.length} folder(s) but all were invalid.`);
+          console.error(`❌ [getOrCreateFolder] Expected folder name: "par Noir - ${pnIdentifier}"`);
+          console.error(`❌ [getOrCreateFolder] This may indicate a mismatch between old and new pN identifiers. Clearing cache.`);
+          // Clear cache for this identifier to force fresh search next time
+          if (pnIdentifier) {
+            this.pnFolderCache.delete(pnIdentifier);
+            this.saveFolderCache();
+          }
         console.error(`   Search query: ${searchQuery}`);
         console.error(`   All results:`, searchData.files.map((f: any) => ({ id: f.id.substring(0, 12) + '...', name: f.name })));
         // Continue to create new folder below
@@ -639,7 +665,17 @@ export class GoogleDriveBackend extends AbstractStorageBackend {
           console.error(`❌ [getOrCreateFolder] CRITICAL ERROR: Folder name doesn't match: "${folderInfo.name}"`);
           // Continue to create new folder below
         } else {
-          console.log(`✅ [getOrCreateFolder] Found VALID pN folder: "${folderInfo.name}" (ID: ${folderId.substring(0, 12)}...)`);
+          const expectedFolderName = pnIdentifier ? `par Noir - ${pnIdentifier}` : 'par Noir';
+          const isExactMatch = folderInfo.name === expectedFolderName;
+          
+          if (!isExactMatch && pnIdentifier) {
+            console.warn(`⚠️ [getOrCreateFolder] Folder name mismatch! Expected: "${expectedFolderName}", Found: "${folderInfo.name}"`);
+            console.warn(`⚠️ [getOrCreateFolder] This folder may be from an old pN identifier. Will create new folder with correct identifier.`);
+            // Don't use this folder - continue to create new one below
+            folderId = null;
+          } else {
+            console.log(`✅ [getOrCreateFolder] Found VALID pN folder: "${folderInfo.name}" (ID: ${folderId.substring(0, 12)}...)`);
+          }
           
           // IMPORTANT: Only cache pN-specific folders (not metadata folders)
           if (pnIdentifier && !parentFolderId) {
