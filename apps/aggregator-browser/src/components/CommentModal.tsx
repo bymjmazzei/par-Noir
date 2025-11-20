@@ -379,7 +379,8 @@ export function CommentModal({ file, onClose }: CommentModalProps) {
     <>
       {/* Backdrop */}
       <div
-        className="fixed inset-0 bg-black/60 z-[300] transition-opacity"
+        className="fixed inset-0 bg-black/60 transition-opacity"
+        style={{ zIndex: 9999 }}
         onClick={(e) => {
           // Only close if clicking directly on the backdrop
           if (e.target === e.currentTarget) {
@@ -391,7 +392,8 @@ export function CommentModal({ file, onClose }: CommentModalProps) {
       {/* Slide-up modal - Higher z-index than bottom nav (z-[100]) and Me page tabs (z-[100]) */}
       <div 
         ref={modalRef}
-        className="fixed bottom-0 left-0 right-0 bg-neutral-900 rounded-t-2xl z-[300] flex flex-col animate-slide-up" 
+        className="fixed bottom-0 left-0 right-0 bg-neutral-900 rounded-t-2xl flex flex-col animate-slide-up"
+        style={{ zIndex: 9999 }} 
         style={{ 
           maxHeight: '90vh', 
           paddingBottom: userState.isUnlocked ? `${commentInputHeight}px` : '64px'
@@ -431,8 +433,8 @@ export function CommentModal({ file, onClose }: CommentModalProps) {
           </div>
         ) : (
           <div 
-            className="fixed left-0 right-0 bg-neutral-900 border-t border-neutral-800 z-[310]" 
-            style={{ bottom: '64px', height: `${commentInputHeight}px` }}
+            className="fixed left-0 right-0 bg-neutral-900 border-t border-neutral-800" 
+            style={{ bottom: '64px', height: `${commentInputHeight}px`, zIndex: 10000 }}
           >
             <div className="flex items-end gap-2 p-4">
               <textarea
