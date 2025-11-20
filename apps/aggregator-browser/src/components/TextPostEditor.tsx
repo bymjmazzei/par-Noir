@@ -393,37 +393,37 @@ export function TextPostEditor({ onSave, onCancel }: TextPostEditorProps) {
                 />
                 {/* Right column: Three sliders */}
                 <div className="flex-1 space-y-2">
-                  <div>
-                    <label className="text-white text-xs mb-1 block">Blur:</label>
+                  <div className="flex items-center gap-2">
+                    <label className="text-white text-xs whitespace-nowrap">Blur:</label>
                     <input
                       type="range"
                       min="0"
                       max="50"
                       value={dropShadowBlur}
                       onChange={(e) => setDropShadowBlur(Number(e.target.value))}
-                      className="w-full"
+                      className="flex-1"
                     />
                   </div>
-                  <div>
-                    <label className="text-white text-xs mb-1 block">X:</label>
+                  <div className="flex items-center gap-2">
+                    <label className="text-white text-xs whitespace-nowrap">X:</label>
                     <input
                       type="range"
                       min="-20"
                       max="20"
                       value={dropShadowOffsetX}
                       onChange={(e) => setDropShadowOffsetX(Number(e.target.value))}
-                      className="w-full"
+                      className="flex-1"
                     />
                   </div>
-                  <div>
-                    <label className="text-white text-xs mb-1 block">Y:</label>
+                  <div className="flex items-center gap-2">
+                    <label className="text-white text-xs whitespace-nowrap">Y:</label>
                     <input
                       type="range"
                       min="-20"
                       max="20"
                       value={dropShadowOffsetY}
                       onChange={(e) => setDropShadowOffsetY(Number(e.target.value))}
-                      className="w-full"
+                      className="flex-1"
                     />
                   </div>
                 </div>
