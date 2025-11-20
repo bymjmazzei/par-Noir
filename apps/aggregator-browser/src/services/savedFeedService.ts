@@ -3,7 +3,23 @@
  * Manages private curated feeds (saved content)
  */
 
+import { PNOAuthService } from './pnOAuthService';
+
 const API_ENDPOINT = process.env.REACT_APP_API_ENDPOINT || 'https://api.parnoir.com';
+
+// Helper function to get auth headers
+function getAuthHeaders(): HeadersInit {
+  const session = PNOAuthService.loadSession();
+  const headers: HeadersInit = {
+    'Content-Type': 'application/json'
+  };
+  
+  if (session?.accessToken) {
+    headers['Authorization'] = `Bearer ${session.accessToken}`;
+  }
+  
+  return headers;
+}
 
 export interface SavedFeed {
   feedId: string;
@@ -18,9 +34,7 @@ export interface SavedFeed {
  */
 export async function getSavedFeed(userDid: string): Promise<SavedFeed | null> {
   const response = await fetch(`${API_ENDPOINT}/api/feeds/saved?userDid=${userDid}`, {
-    headers: {
-      'Content-Type': 'application/json'
-    }
+    headers: getAuthHeaders()
   });
 
   if (response.ok) {
@@ -63,9 +77,7 @@ export async function saveToFeed(
   try {
     const response = await fetch(`${API_ENDPOINT}/api/feeds/saved`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
+      headers: getAuthHeaders(),
       body: JSON.stringify({
         userDid,
         fileId
@@ -94,9 +106,7 @@ export async function removeFromSavedFeed(
   try {
     const response = await fetch(`${API_ENDPOINT}/api/feeds/saved`, {
       method: 'DELETE',
-      headers: {
-        'Content-Type': 'application/json'
-      },
+      headers: getAuthHeaders(),
       body: JSON.stringify({
         userDid,
         fileId
