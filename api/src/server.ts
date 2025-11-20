@@ -1202,14 +1202,9 @@ class ProductionServer {
         const { AggregatorMetadataServiceDB } = await import('./server/modules/aggregatorMetadataServiceDB');
         const service = AggregatorMetadataServiceDB.getInstance();
         
-        // Access the private method via type casting (for manual trigger only)
-        const cleanupMethod = (service as any).cleanupOrphanedFilesFromIndex;
-        if (cleanupMethod) {
-          await cleanupMethod.call(service);
-          return res.json({ success: true, message: 'Cleanup completed' });
-        } else {
-          return res.status(500).json({ error: 'Cleanup method not available' });
-        }
+        // Call cleanup method (now public)
+        await service.cleanupOrphanedFilesFromIndex();
+        return res.json({ success: true, message: 'Cleanup completed' });
       } catch (error: any) {
         console.error('❌ [POST /api/aggregator/cleanup] Error:', error);
         return res.status(500).json({ 

@@ -520,8 +520,10 @@ export class AggregatorMetadataServiceDB {
    * Clean up orphaned files by comparing database with public index files
    * Each user has their own public index file - if it doesn't exist or is empty, remove all their files
    * Public index files in Google Drive are the source of truth per user
+   * 
+   * @public - Made public for manual cleanup endpoint
    */
-  private async cleanupOrphanedFilesFromIndex(): Promise<void> {
+  async cleanupOrphanedFilesFromIndex(): Promise<void> {
     console.log(`🔍 [cleanupOrphanedFilesFromIndex] Starting cleanup process...`);
     try {
       const { GoogleDriveSyncService } = await import('./googleDriveSyncService');
