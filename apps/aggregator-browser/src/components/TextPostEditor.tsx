@@ -71,10 +71,11 @@ export function TextPostEditor({ onSave, onCancel }: TextPostEditorProps) {
       const container = fontSelectorRef.current;
       const containerRect = container.getBoundingClientRect();
       const buttonRect = button.getBoundingClientRect();
-      const buttonCenter = buttonRect.left + buttonRect.width / 2;
       const containerCenter = containerRect.left + containerRect.width / 2;
+      const buttonCenter = buttonRect.left + buttonRect.width / 2;
       const scrollOffset = buttonCenter - containerCenter;
       
+      // Scroll to center the button
       container.scrollBy({
         left: scrollOffset,
         behavior: 'smooth'
@@ -661,18 +662,9 @@ export function TextPostEditor({ onSave, onCancel }: TextPostEditorProps) {
 
       {/* Font Selector Railway - Sticky (above text input, overlays media) */}
       <div className="fixed left-0 right-0 h-12 flex items-center justify-center z-40" style={{ bottom: `calc(64px + ${textareaHeight}px)` }}>
-        {/* Center indicator line */}
-        <div 
-          className="absolute left-1/2 transform -translate-x-1/2 pointer-events-none z-10"
-          style={{ 
-            width: '1px',
-            height: '100%',
-            backgroundColor: 'rgba(255, 255, 255, 0.3)'
-          }}
-        />
         <div 
           ref={fontSelectorRef}
-          className="flex items-center gap-6 overflow-x-auto px-4 w-full"
+          className="flex items-center gap-6 overflow-x-auto px-4 w-full justify-center"
           style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
         >
           {FONT_OPTIONS.map((font) => (
