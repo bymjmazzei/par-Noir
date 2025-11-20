@@ -1818,15 +1818,22 @@ function App() {
           });
             break;
           case 'comments':
+            // Only show posts the user has commented on (excluding their own posts)
             currentFilteredMeFiles = userCommentedFiles.filter(f => {
               const fileOwnerId = f.metadata.creator?.identifier?.value || 
                    f.metadata.creator?.["@id"] || 
                    f.metadata.author?.did ||
                    f.metadata.creatorId;
               const normalizedOwnerId = fileOwnerId?.trim().toLowerCase() || '';
-        const normalizedViewingId = viewingCreatorId.trim().toLowerCase();
-              return normalizedOwnerId !== normalizedViewingId;
-    });
+              const normalizedViewingId = viewingCreatorId.trim().toLowerCase();
+              // Exclude own posts - only show posts from other creators that user commented on
+              const isNotOwnPost = normalizedOwnerId !== normalizedViewingId;
+              if (!isNotOwnPost) {
+                console.log(`[Comments Tab] Filtering out own post: ${f.metadata.fileId}`);
+              }
+              return isNotOwnPost;
+            });
+            console.log(`[Comments Tab] Filtered ${currentFilteredMeFiles.length} posts from ${userCommentedFiles.length} commented files for user ${viewingCreatorId}`);
             break;
           case 'saved':
             currentFilteredMeFiles = savedFiles;
@@ -2041,6 +2048,7 @@ function App() {
           });
           break;
         case 'comments':
+          // Only show posts the user has commented on (excluding their own posts)
           filtered = userCommentedFiles.filter(f => {
             const fileOwnerId = f.metadata.creator?.identifier?.value || 
                                 f.metadata.creator?.["@id"] || 
@@ -2048,8 +2056,14 @@ function App() {
                                 f.metadata.creatorId;
             const normalizedOwnerId = fileOwnerId?.trim().toLowerCase() || '';
             const normalizedViewingId = viewingCreatorId!.trim().toLowerCase();
-            return normalizedOwnerId !== normalizedViewingId;
+            // Exclude own posts - only show posts from other creators that user commented on
+            const isNotOwnPost = normalizedOwnerId !== normalizedViewingId;
+            if (!isNotOwnPost) {
+              console.log(`[Comments Tab] Filtering out own post: ${f.metadata.fileId}`);
+            }
+            return isNotOwnPost;
           });
+          console.log(`[Comments Tab] Filtered ${filtered.length} posts from ${userCommentedFiles.length} commented files for user ${viewingCreatorId}`);
           break;
         case 'saved':
           filtered = savedFiles;
