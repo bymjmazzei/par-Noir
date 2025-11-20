@@ -1772,25 +1772,6 @@ function App() {
   const [isLoadingSavedFiles, setIsLoadingSavedFiles] = useState(false);
 
   // Find file index when navigating to a specific file in creator's profile
-  // Track if files are still loading to prevent glitchy scrolling
-  const filesStabilizedRef = useRef<boolean>(false);
-  const prevFilteredMeFilesLengthRef = useRef<number>(0);
-  
-  useEffect(() => {
-    // Mark files as stabilized when the array length stops changing
-    if (filteredMeFilesMemo.length !== prevFilteredMeFilesLengthRef.current) {
-      filesStabilizedRef.current = false;
-      prevFilteredMeFilesLengthRef.current = filteredMeFilesMemo.length;
-      // Wait for array to stabilize
-      const stabilizeTimer = setTimeout(() => {
-        filesStabilizedRef.current = true;
-      }, 500);
-      return () => clearTimeout(stabilizeTimer);
-    } else {
-      filesStabilizedRef.current = true;
-    }
-  }, [filteredMeFilesMemo.length]);
-
   useEffect(() => {
     if (!visibleFileId || !viewingCreatorId) {
       isNavigatingToFileRef.current = false;
@@ -2166,6 +2147,26 @@ function App() {
   }, [viewingCreatorId, isOwnIndex, mePageTab]);
 
   const filteredMeFiles = filteredMeFilesMemo;
+
+  // Track if files are still loading to prevent glitchy scrolling
+  // Must be after filteredMeFilesMemo is defined to avoid TDZ error
+  const filesStabilizedRef = useRef<boolean>(false);
+  const prevFilteredMeFilesLengthRef = useRef<number>(0);
+  
+  useEffect(() => {
+    // Mark files as stabilized when the array length stops changing
+    if (filteredMeFilesMemo.length !== prevFilteredMeFilesLengthRef.current) {
+      filesStabilizedRef.current = false;
+      prevFilteredMeFilesLengthRef.current = filteredMeFilesMemo.length;
+      // Wait for array to stabilize
+      const stabilizeTimer = setTimeout(() => {
+        filesStabilizedRef.current = true;
+      }, 500);
+      return () => clearTimeout(stabilizeTimer);
+    } else {
+      filesStabilizedRef.current = true;
+    }
+  }, [filteredMeFilesMemo.length]);
 
   // Memoize callbacks for FeedEngagementSidebar to prevent re-renders
   const handleLike = useCallback((fileId: string) => {
