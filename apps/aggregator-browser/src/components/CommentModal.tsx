@@ -11,7 +11,6 @@ import { useUserState } from '../contexts/UserStateContext';
 import { useEngagement } from '../hooks/useEngagement';
 import { useToast } from '../hooks/useToast';
 import { PNConnect } from './PNConnect';
-import { EmojiPicker } from './EmojiPicker';
 
 interface CommentModalProps {
   file: IndexedFile;
@@ -342,45 +341,36 @@ export function CommentModal({ file, onClose }: CommentModalProps) {
                 </div>
                 
                 <div className="flex items-end gap-2">
-                  <div className="flex-1 relative">
-                    <textarea
-                      ref={replyInputRef}
-                      value={replyContent}
-                      onChange={(e) => {
-                        setReplyContent(e.target.value);
-                        // Auto-resize textarea
-                        if (replyInputRef.current) {
-                          replyInputRef.current.style.height = 'auto';
-                          const newHeight = Math.min(replyInputRef.current.scrollHeight, 200);
-                          replyInputRef.current.style.height = `${newHeight}px`;
+                  <textarea
+                    ref={replyInputRef}
+                    value={replyContent}
+                    onChange={(e) => {
+                      setReplyContent(e.target.value);
+                      // Auto-resize textarea
+                      if (replyInputRef.current) {
+                        replyInputRef.current.style.height = 'auto';
+                        const newHeight = Math.min(replyInputRef.current.scrollHeight, 200);
+                        replyInputRef.current.style.height = `${newHeight}px`;
+                      }
+                    }}
+                    placeholder="Write a reply..."
+                    className="flex-1 bg-neutral-800 text-white rounded-lg p-3 border border-neutral-700 focus:border-blue-500 focus:outline-none resize-none overflow-y-auto"
+                    style={{ 
+                      minHeight: '44px',
+                      maxHeight: '200px',
+                      lineHeight: '1.5'
+                    }}
+                    rows={1}
+                    maxLength={500}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && !e.shiftKey) {
+                        e.preventDefault();
+                        if (replyContent.trim()) {
+                          handleReplySubmit(comment.id);
                         }
-                      }}
-                      placeholder="Write a reply..."
-                      className="w-full bg-neutral-800 text-white rounded-lg p-3 pr-12 border border-neutral-700 focus:border-blue-500 focus:outline-none resize-none overflow-y-auto"
-                      style={{ 
-                        minHeight: '44px',
-                        maxHeight: '200px',
-                        lineHeight: '1.5'
-                      }}
-                      rows={1}
-                      maxLength={500}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter' && !e.shiftKey) {
-                          e.preventDefault();
-                          if (replyContent.trim()) {
-                            handleReplySubmit(comment.id);
-                          }
-                        }
-                      }}
-                    />
-                    <EmojiPicker
-                      onEmojiSelect={(emoji) => {
-                        setReplyContent(prev => prev + emoji);
-                      }}
-                      textValue={replyContent}
-                      containerRef={replyInputRef}
-                    />
-                  </div>
+                      }
+                    }}
+                  />
                   <button
                     onClick={() => {
                       setReplyingTo(null);
@@ -582,46 +572,37 @@ export function CommentModal({ file, onClose }: CommentModalProps) {
           
           {/* Text Input Area */}
           <div className="flex items-end gap-2 px-4 pb-4">
-            <div className="flex-1 relative">
-              <textarea
-                ref={inputRef}
-                value={newComment}
-                onChange={(e) => {
-                  setNewComment(e.target.value);
-                  // Auto-resize textarea
-                  if (inputRef.current) {
-                    inputRef.current.style.height = 'auto';
-                    const newHeight = Math.min(inputRef.current.scrollHeight, 200);
-                    inputRef.current.style.height = `${newHeight}px`;
-                    setCommentInputHeight(newHeight + 32 + 40); // Add padding + emoji railway height
+            <textarea
+              ref={inputRef}
+              value={newComment}
+              onChange={(e) => {
+                setNewComment(e.target.value);
+                // Auto-resize textarea
+                if (inputRef.current) {
+                  inputRef.current.style.height = 'auto';
+                  const newHeight = Math.min(inputRef.current.scrollHeight, 200);
+                  inputRef.current.style.height = `${newHeight}px`;
+                  setCommentInputHeight(newHeight + 32 + 40); // Add padding + emoji railway height
+                }
+              }}
+              placeholder="Add a comment..."
+              className="flex-1 bg-neutral-800 text-white rounded-lg p-3 border border-neutral-700 focus:border-blue-500 focus:outline-none resize-none overflow-y-auto"
+              style={{ 
+                minHeight: '44px',
+                maxHeight: '200px',
+                lineHeight: '1.5'
+              }}
+              rows={1}
+              maxLength={500}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                  e.preventDefault();
+                  if (newComment.trim()) {
+                    handleSubmit(e as any);
                   }
-                }}
-                placeholder="Add a comment..."
-                className="w-full bg-neutral-800 text-white rounded-lg p-3 pr-12 border border-neutral-700 focus:border-blue-500 focus:outline-none resize-none overflow-y-auto"
-                style={{ 
-                  minHeight: '44px',
-                  maxHeight: '200px',
-                  lineHeight: '1.5'
-                }}
-                rows={1}
-                maxLength={500}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' && !e.shiftKey) {
-                    e.preventDefault();
-                    if (newComment.trim()) {
-                      handleSubmit(e as any);
-                    }
-                  }
-                }}
-              />
-              <EmojiPicker
-                onEmojiSelect={(emoji) => {
-                  setNewComment(prev => prev + emoji);
-                }}
-                textValue={newComment}
-                containerRef={inputRef}
-              />
-            </div>
+                }
+              }}
+            />
             <button
               onClick={(e) => {
                 e.preventDefault();

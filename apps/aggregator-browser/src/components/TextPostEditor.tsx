@@ -7,7 +7,6 @@ import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { X, Check, Palette, Type, Image as ImageIcon, Upload, AlignLeft, AlignCenter, AlignRight, AlignJustify, Layers, Minus, Plus as PlusIcon, Send, Bold } from 'lucide-react';
 import { TextPostData, TextPostStyle } from '../types/aggregator';
-import { EmojiPicker } from './EmojiPicker';
 
 // Helper function to convert hex to RGB
 const hexToRgb = (hex: string): { r: number; g: number; b: number } => {
@@ -890,7 +889,7 @@ export function TextPostEditor({ onSave, onCancel }: TextPostEditorProps) {
       </div>
 
       {/* Main Railway with Icon Buttons - Sticky (above font selector, overlays media) */}
-      <div className="fixed left-0 right-0 h-14 flex items-center justify-center gap-4 px-4 z-40" style={{ bottom: `calc(64px + ${textareaHeight}px + 48px)` }}>
+      <div className="fixed left-0 right-0 h-14 flex items-center justify-center gap-4 px-4 z-40" style={{ bottom: `calc(64px + ${textareaHeight}px + 48px + 40px)` }}>
         <div className="flex items-center gap-4 overflow-x-auto" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
 
           {/* Font Size - Small A next to large A */}
@@ -1014,7 +1013,7 @@ export function TextPostEditor({ onSave, onCancel }: TextPostEditorProps) {
       </div>
 
       {/* Font Selector Railway - Sticky (above text input, overlays media) */}
-      <div className="fixed left-0 right-0 h-12 flex items-center justify-center z-40" style={{ bottom: `calc(64px + ${textareaHeight}px)` }}>
+      <div className="fixed left-0 right-0 h-12 flex items-center justify-center z-40" style={{ bottom: `calc(64px + ${textareaHeight}px + 40px)` }}>
         <div 
           ref={fontSelectorRef}
           className="flex items-center gap-6 overflow-x-auto w-full"
@@ -1070,37 +1069,28 @@ export function TextPostEditor({ onSave, onCancel }: TextPostEditorProps) {
         
         {/* Text Input Area */}
         <div className="flex items-end gap-2 px-4 pb-4">
-          <div className="flex-1 relative">
-            <textarea
-              ref={textareaRef}
-              value={content}
-              onChange={(e) => {
-                setContent(e.target.value);
-                // Auto-resize textarea
-                if (textareaRef.current) {
-                  textareaRef.current.style.height = 'auto';
-                  const newHeight = Math.min(textareaRef.current.scrollHeight, 200);
-                  textareaRef.current.style.height = `${newHeight}px`;
-                  setTextareaHeight(newHeight + 32 + 40); // Add padding + emoji railway height
-                }
-              }}
-              placeholder="Type your thought here..."
-              className="w-full bg-neutral-800 text-white rounded-lg p-3 pr-12 border border-neutral-700 focus:border-blue-500 focus:outline-none resize-none overflow-y-auto"
-              style={{ 
-                minHeight: '44px',
-                maxHeight: '200px',
-                lineHeight: '1.5'
-              }}
-              rows={1}
-            />
-            <EmojiPicker
-              onEmojiSelect={(emoji) => {
-                setContent(prev => prev + emoji);
-              }}
-              textValue={content}
-              containerRef={textareaRef}
-            />
-          </div>
+          <textarea
+            ref={textareaRef}
+            value={content}
+            onChange={(e) => {
+              setContent(e.target.value);
+              // Auto-resize textarea
+              if (textareaRef.current) {
+                textareaRef.current.style.height = 'auto';
+                const newHeight = Math.min(textareaRef.current.scrollHeight, 200);
+                textareaRef.current.style.height = `${newHeight}px`;
+                setTextareaHeight(newHeight + 32 + 40); // Add padding + emoji railway height
+              }
+            }}
+            placeholder="Type your thought here..."
+            className="flex-1 bg-neutral-800 text-white rounded-lg p-3 border border-neutral-700 focus:border-blue-500 focus:outline-none resize-none overflow-y-auto"
+            style={{ 
+              minHeight: '44px',
+              maxHeight: '200px',
+              lineHeight: '1.5'
+            }}
+            rows={1}
+          />
           <button
             onClick={handleSave}
             className="p-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center justify-center mb-0.5"
