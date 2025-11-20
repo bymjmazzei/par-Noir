@@ -3286,17 +3286,21 @@ function App() {
           />
         )}
 
-        {/* Comment Modal */}
+        {/* Comment Modal - Render outside conditional views to ensure it works on all pages */}
         {commentingFile && (
           <CommentModal
             file={commentingFile}
             onClose={() => {
-              console.log('[App] CommentModal onClose called');
+              console.log('[App] CommentModal onClose called', { viewingCreatorId, viewMode });
               setCommentingFile(null);
             }}
           />
         )}
-        {commentingFile && console.log('[App] CommentModal should be visible', commentingFile.metadata.fileId)}
+        {commentingFile && console.log('[App] CommentModal should be visible', { 
+          fileId: commentingFile.metadata.fileId, 
+          viewingCreatorId, 
+          viewMode 
+        })}
 
         {/* Edit File Modal */}
         {editingFile && (
