@@ -387,6 +387,7 @@ export interface TextPostStyle {
   fontFamily: string;
   fontSize: number; // in pixels
   textColor: string; // hex color
+  textStyle?: 'plain' | 'bold' | 'italic' | 'strikethrough'; // text decoration style
   dropShadowColor: string; // hex color
   dropShadowBlur: number; // blur radius in pixels
   dropShadowOffsetX: number; // offset in pixels

@@ -4,7 +4,7 @@
  */
 
 import React, { useState, useRef, useEffect } from 'react';
-import { X, Check, Palette, Type, Image as ImageIcon, Upload, AlignLeft, AlignCenter, AlignRight, AlignJustify, Layers, Minus, Plus as PlusIcon, Send } from 'lucide-react';
+import { X, Check, Palette, Type, Image as ImageIcon, Upload, AlignLeft, AlignCenter, AlignRight, AlignJustify, Layers, Minus, Plus as PlusIcon, Send, Bold } from 'lucide-react';
 import { TextPostData, TextPostStyle } from '../types/aggregator';
 
 interface TextPostEditorProps {
@@ -44,6 +44,7 @@ export function TextPostEditor({ onSave, onCancel }: TextPostEditorProps) {
   const [backgroundColor, setBackgroundColor] = useState('#000000');
   const [backgroundImage, setBackgroundImage] = useState<string | null>(null);
   const [textAlign, setTextAlign] = useState<'left' | 'center' | 'right' | 'justify'>('center');
+  const [textStyle, setTextStyle] = useState<'plain' | 'bold' | 'italic' | 'strikethrough'>('plain');
   const [padding, setPadding] = useState(40);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -249,6 +250,7 @@ export function TextPostEditor({ onSave, onCancel }: TextPostEditorProps) {
         backgroundColor,
         backgroundImage: backgroundImage || undefined,
         textAlign,
+        textStyle,
         padding,
       }
     };
@@ -466,6 +468,34 @@ export function TextPostEditor({ onSave, onCancel }: TextPostEditorProps) {
               </div>
             </div>
           );
+        case 'textStyle':
+          return (
+            <div className="p-2 min-w-[180px]">
+              {([
+                { value: 'plain' as const, label: 'A', style: {} },
+                { value: 'bold' as const, label: 'A', style: { fontWeight: 'bold' } },
+                { value: 'italic' as const, label: 'A', style: { fontStyle: 'italic' } },
+                { value: 'strikethrough' as const, label: 'A', style: { textDecoration: 'line-through' } },
+              ]).map(({ value, label, style }) => (
+                <button
+                  key={value}
+                  onClick={() => {
+                    setTextStyle(value);
+                    closeMenu();
+                  }}
+                  className={`w-full px-4 py-2 text-left text-white hover:bg-neutral-700 flex items-center justify-between ${
+                    textStyle === value ? 'bg-neutral-700' : ''
+                  }`}
+                  style={style}
+                >
+                  <span className="text-lg">{label}</span>
+                  {textStyle === value && (
+                    <Check className="h-4 w-4 text-blue-500" />
+                  )}
+                </button>
+              ))}
+            </div>
+          );
         case 'align':
           return (
             <div className="p-2">
@@ -569,6 +599,9 @@ export function TextPostEditor({ onSave, onCancel }: TextPostEditorProps) {
                 fontFamily: fontFamily,
                 fontSize: `clamp(24px, 5vw, ${fontSize}px)`,
                 color: textColor,
+                fontWeight: textStyle === 'bold' ? 'bold' : 'normal',
+                fontStyle: textStyle === 'italic' ? 'italic' : 'normal',
+                textDecoration: textStyle === 'strikethrough' ? 'line-through' : 'none',
                 textAlign: textAlign as 'left' | 'center' | 'right' | 'justify',
                 textShadow: `
                   ${dropShadowOffsetX}px 
