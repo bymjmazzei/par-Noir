@@ -128,7 +128,7 @@ export function FullScreenFeed({
   // Track previous index to prevent unnecessary scrolling on initial load
   const prevIndexRef = useRef<number>(-1);
   
-  // Scroll to current index when it changes
+  // Scroll to current index when it changes - use instant snap for smooth TikTok-style scrolling
   useEffect(() => {
     if (!scrollContainerRef.current) return;
     const currentFile = files[currentIndex];
@@ -140,24 +140,25 @@ export function FullScreenFeed({
     }
     prevIndexRef.current = currentIndex;
 
-    // Add a small delay to ensure DOM is ready, especially when navigating from search
-    const scrollTimer = setTimeout(() => {
+    // Use requestAnimationFrame for smooth, instant snapping
+    const scrollFrame = requestAnimationFrame(() => {
       const element = scrollContainerRef.current?.querySelector(`[data-file-id="${currentFile.metadata.fileId}"]`);
-    if (element) {
-      element.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      setVisibleFileId(currentFile.metadata.fileId);
-      
-      // Preload comments for the visible file if loadComments is available
-      if (loadComments) {
-        loadComments(currentFile.metadata.fileId).catch(err => {
-          // Silently fail - comments will be loaded when modal opens
-          console.debug('Failed to preload comments:', err);
-        });
+      if (element && scrollContainerRef.current) {
+        // Use instant scroll - CSS snap will handle the smooth snapping
+        element.scrollIntoView({ behavior: 'auto', block: 'start' });
+        setVisibleFileId(currentFile.metadata.fileId);
+        
+        // Preload comments for the visible file if loadComments is available
+        if (loadComments) {
+          loadComments(currentFile.metadata.fileId).catch(err => {
+            // Silently fail - comments will be loaded when modal opens
+            console.debug('Failed to preload comments:', err);
+          });
+        }
       }
-    }
-    }, 100);
+    });
 
-    return () => clearTimeout(scrollTimer);
+    return () => cancelAnimationFrame(scrollFrame);
   }, [currentIndex, files, loadComments]);
 
   // Rotate comments every 2 seconds with fade transitions
@@ -415,6 +416,7 @@ export function FullScreenFeed({
         scrollbarWidth: 'none', 
         msOverflowStyle: 'none', 
         WebkitOverflowScrolling: 'touch',
+        scrollBehavior: 'smooth', // Enable smooth CSS scroll snapping
         // Height excludes bottom nav bar (64px) and safe area
         height: 'calc(100vh - 64px - env(safe-area-inset-bottom, 0px))',
         maxHeight: 'calc(100vh - 64px - env(safe-area-inset-bottom, 0px))',
