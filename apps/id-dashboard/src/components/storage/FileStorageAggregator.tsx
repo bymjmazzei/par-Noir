@@ -545,12 +545,14 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
       }
     }
 
-    const safeBase = (normalizedEmail || `account-${Date.now().toString(36)}`).replace(/[^a-z0-9]+/g, '-');
+    // SECURITY: Do NOT use email in backendId - use random identifier instead
+    // This prevents email from being exposed in localStorage keys
     const uniqueSuffix =
       typeof crypto !== 'undefined' && crypto.randomUUID
       ? crypto.randomUUID().split('-')[0]
       : Math.random().toString(36).slice(2, 10);
-    const slug = `${safeBase}-${uniqueSuffix}`;
+    const timestamp = Date.now().toString(36);
+    const slug = `account-${timestamp}-${uniqueSuffix}`;
     return {
       backendId: `google_drive::${slug}`,
       keyPrefix: `google_drive_${slug}`,
@@ -3241,6 +3243,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
 
       // SECURITY: Immediately clean up any email data from localStorage
       try {
+        // Clean up email from accounts array
         const raw = localStorage.getItem(DRIVE_ACCOUNTS_STORAGE_KEY);
         if (raw) {
           const parsed = JSON.parse(raw);
@@ -3260,6 +3263,32 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
               console.log('[Security] Removed email from pn_google_drive_accounts on component load');
             }
           }
+        }
+
+        // SECURITY: Clean up localStorage keys that contain email patterns
+        // These are keys like "google_drive_bymjmazzei-gmail-com-87d29d6d_*"
+        const allKeys = Object.keys(localStorage);
+        const emailPattern = /[a-z0-9]+-gmail-com-[a-z0-9]+|@[a-z0-9]+\.[a-z]+/i;
+        let cleanedKeys = 0;
+        
+        for (const key of allKeys) {
+          // Check if key contains email pattern and is Google Drive related
+          if (key.includes('google_drive') && emailPattern.test(key)) {
+            try {
+              // Only remove credential-related keys, keep folder cache and other non-sensitive data
+              if (key.includes('_token') || key.includes('_email') || key.includes('_refresh')) {
+                localStorage.removeItem(key);
+                cleanedKeys++;
+                console.log(`[Security] Removed localStorage key containing email: ${key}`);
+              }
+            } catch (e) {
+              console.warn(`[Security] Failed to remove key ${key}:`, e);
+            }
+          }
+        }
+        
+        if (cleanedKeys > 0) {
+          console.log(`[Security] Cleaned ${cleanedKeys} localStorage keys containing email patterns`);
         }
       } catch (cleanupError) {
         console.warn('⚠️ [init] Failed to clean email from drive accounts', cleanupError);
