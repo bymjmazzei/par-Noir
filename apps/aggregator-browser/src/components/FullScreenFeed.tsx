@@ -603,10 +603,16 @@ export function FullScreenFeed({
                 onLike(fileId);
               }}
               onComment={() => {
+                console.log('[FullScreenFeed] onComment called', { fileId, indexedFile: !!indexedFile });
                 if (visibleFileId === fileId && showEngagementOverlay) {
                   setShowEngagementOverlay(false);
                 }
-                onComment(indexedFile);
+                if (onComment && indexedFile) {
+                  console.log('[FullScreenFeed] Calling onComment with file', indexedFile.metadata.fileId);
+                  onComment(indexedFile);
+                } else {
+                  console.warn('[FullScreenFeed] onComment or indexedFile is missing', { onComment: !!onComment, indexedFile: !!indexedFile });
+                }
               }}
               onShare={async () => {
                 // Directly copy link to clipboard
