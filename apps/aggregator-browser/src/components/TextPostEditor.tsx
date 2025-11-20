@@ -211,7 +211,7 @@ export function TextPostEditor({ onSave, onCancel }: TextPostEditorProps) {
     <div className="fixed inset-0 bg-black z-50 flex flex-col">
       <div className="flex-1 flex overflow-hidden">
         {/* Left Panel - Editor Controls */}
-        <div className="w-80 bg-neutral-900 border-r border-neutral-800 overflow-y-auto p-4">
+        <div className="w-80 bg-neutral-900 border-r border-neutral-800 overflow-y-auto p-4" style={{ paddingBottom: '80px' }}>
           <div className="mb-6">
             <h2 className="text-white text-lg font-semibold mb-4">Create Thought</h2>
             
@@ -417,7 +417,7 @@ export function TextPostEditor({ onSave, onCancel }: TextPostEditorProps) {
         </div>
 
         {/* Right Panel - Preview */}
-        <div className="flex-1 flex items-center justify-center bg-neutral-950 p-8">
+        <div className="flex-1 flex items-center justify-center bg-neutral-950 p-8" style={{ paddingBottom: '80px' }}>
           <div className="w-full max-w-md aspect-[9/16] bg-neutral-900 rounded-lg overflow-hidden shadow-2xl">
             <canvas
               ref={canvasRef}
@@ -433,8 +433,8 @@ export function TextPostEditor({ onSave, onCancel }: TextPostEditorProps) {
         </div>
       </div>
 
-      {/* Footer Actions */}
-      <div className="h-16 bg-neutral-900 border-t border-neutral-800 flex items-center justify-end gap-4 px-6">
+      {/* Footer Actions - Sticky */}
+      <div className="fixed bottom-0 left-0 right-0 h-16 bg-neutral-900 border-t border-neutral-800 flex items-center justify-end gap-4 px-6 z-50">
         <button
           onClick={onCancel}
           className="px-6 py-2 bg-neutral-800 text-white rounded-lg hover:bg-neutral-700 transition-colors"

@@ -5,7 +5,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
-import { Download, File, RefreshCw, AlertCircle, Lock, Globe, X, Edit, Eye, Grid, List, Plus, Cloud, MoreVertical, Share2, Star } from 'lucide-react';
+import { Download, File, RefreshCw, AlertCircle, Lock, Globe, X, Edit, Eye, Grid, List, Plus, Cloud, MoreVertical, Share2, Star, Type, Upload } from 'lucide-react';
 import { PNOAuthService } from '../services/pnOAuthService';
 import { EncryptionManager } from '../utils/encryptionManager';
 import { getEncryptionService } from '../services/encryptionService';
@@ -498,11 +498,13 @@ interface FileStorageAggregatorProps {
     accessToken?: string;
   } | null;
   hideSecureFolderSection?: boolean;
+  onOpenTextEditor?: (accountId: string) => void;
 }
 
 export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ 
   authenticatedUser, 
-  hideSecureFolderSection = false 
+  hideSecureFolderSection = false,
+  onOpenTextEditor
 }) => {
   const [isLoading, setIsLoading] = useState(false);
   const [filesByAccount, setFilesByAccount] = useState<Map<string, DriveFile[]>>(new Map());
@@ -513,9 +515,12 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
   const [viewingFile, setViewingFile] = useState<DriveFile | null>(null);
   const [openMenuFor, setOpenMenuFor] = useState<string | null>(null);
   const [menuPosition, setMenuPosition] = useState<{ top: number; left: number } | null>(null);
+  const [showAddMenuFor, setShowAddMenuFor] = useState<string | null>(null);
+  const [addMenuPosition, setAddMenuPosition] = useState<{ top: number; left: number } | null>(null);
   const fileInputRefs = useRef<Map<string, HTMLInputElement | null>>(new Map());
   const actionMenuRef = useRef<HTMLDivElement | null>(null);
   const menuButtonRefs = useRef<Map<string, HTMLButtonElement | null>>(new Map());
+  const addButtonRefs = useRef<Map<string, HTMLButtonElement | null>>(new Map());
 
   // Load cloud accounts
   useEffect(() => {
@@ -1518,6 +1523,41 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
     };
   }, [openMenuFor]);
 
+  // Close add menu when clicking outside
+  useEffect(() => {
+    if (!showAddMenuFor) return;
+    
+    const handleClickOutside = (event: MouseEvent) => {
+      const target = event.target as Node;
+      
+      // Check if click is on the add button itself
+      const addButton = addButtonRefs.current.get(showAddMenuFor);
+      if (addButton && (addButton.contains(target) || addButton === target)) {
+        return; // Don't close if clicking the button
+      }
+      
+      // Check if click is inside the menu (find by checking if it's in a menu element)
+      const menuElement = document.querySelector(`[data-add-menu="${showAddMenuFor}"]`);
+      if (menuElement && menuElement.contains(target)) {
+        return; // Don't close if clicking inside menu
+      }
+      
+      // Close menu if clicking outside
+      setShowAddMenuFor(null);
+      setAddMenuPosition(null);
+    };
+
+    // Use a delay to avoid immediate closure from the button click
+    const timeout = setTimeout(() => {
+      document.addEventListener('mousedown', handleClickOutside, true);
+    }, 200);
+
+    return () => {
+      clearTimeout(timeout);
+      document.removeEventListener('mousedown', handleClickOutside, true);
+    };
+  }, [showAddMenuFor]);
+
   const hasConnectedBackends = driveAccounts.length > 0;
 
   const handleUploadForAccount = async (accountId: string, event: React.ChangeEvent<HTMLInputElement>) => {
@@ -1821,23 +1861,73 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
                         handleUploadForAccount(account.accountId, e);
                       }}
                     />
-                    <button
-                      onClick={() => {
-                        setSelectedAccountId(account.accountId);
-                        const input = fileInputRefs.current.get(account.accountId);
-                        if (input) {
-                          input.click();
-                        } else {
-                          console.error('[FileStorageAggregator] File input not found for account:', account.accountId);
-                          setError('File input not initialized. Please refresh the page.');
-                        }
-                      }}
-                      disabled={isLoading}
-                      className="p-2 rounded bg-blue-600 text-white hover:bg-blue-500 transition-colors disabled:opacity-50 flex items-center justify-center"
-                      title="Upload File"
-                    >
-                      <Plus className="h-4 w-4" />
-                    </button>
+                    <div className="relative">
+                      <button
+                        ref={(el) => {
+                          if (el) {
+                            addButtonRefs.current.set(account.accountId, el);
+                          } else {
+                            addButtonRefs.current.delete(account.accountId);
+                          }
+                        }}
+                        onClick={(e) => {
+                          const button = e.currentTarget;
+                          const rect = button.getBoundingClientRect();
+                          setShowAddMenuFor(account.accountId);
+                          setAddMenuPosition({
+                            top: rect.bottom + 8,
+                            left: rect.left
+                          });
+                        }}
+                        disabled={isLoading}
+                        className="p-2 rounded bg-blue-600 text-white hover:bg-blue-500 transition-colors disabled:opacity-50 flex items-center justify-center"
+                        title="Add Content"
+                      >
+                        <Plus className="h-4 w-4" />
+                      </button>
+                      {showAddMenuFor === account.accountId && addMenuPosition && (
+                        <div
+                          data-add-menu={account.accountId}
+                          className="fixed z-50 bg-neutral-800 border border-neutral-700 rounded-lg shadow-lg py-1 min-w-[160px]"
+                          style={{
+                            top: `${addMenuPosition.top}px`,
+                            left: `${addMenuPosition.left}px`
+                          }}
+                        >
+                          <button
+                            onClick={() => {
+                              if (onOpenTextEditor) {
+                                onOpenTextEditor(account.accountId);
+                              }
+                              setShowAddMenuFor(null);
+                              setAddMenuPosition(null);
+                            }}
+                            className="w-full px-4 py-2 text-left text-white hover:bg-neutral-700 flex items-center gap-2 text-sm"
+                          >
+                            <Type className="h-4 w-4" />
+                            Add Thought
+                          </button>
+                          <button
+                            onClick={() => {
+                              setSelectedAccountId(account.accountId);
+                              const input = fileInputRefs.current.get(account.accountId);
+                              if (input) {
+                                input.click();
+                              } else {
+                                console.error('[FileStorageAggregator] File input not found for account:', account.accountId);
+                                setError('File input not initialized. Please refresh the page.');
+                              }
+                              setShowAddMenuFor(null);
+                              setAddMenuPosition(null);
+                            }}
+                            className="w-full px-4 py-2 text-left text-white hover:bg-neutral-700 flex items-center gap-2 text-sm"
+                          >
+                            <Upload className="h-4 w-4" />
+                            Add File
+                          </button>
+                        </div>
+                      )}
+                    </div>
                     <button
                       onClick={() => setViewMode('list')}
                       className={`p-2 rounded transition-colors flex items-center justify-center ${

@@ -9,7 +9,6 @@ import { TextPostEditor } from './TextPostEditor';
 import { useUserState } from '../contexts/UserStateContext';
 import { TextPostData } from '../types/aggregator';
 import { createTextPost } from '../services/textPostService';
-import { Type } from 'lucide-react';
 import { PNOAuthService } from '../services/pnOAuthService';
 
 const apiEndpoint = process.env.REACT_APP_API_ENDPOINT || 'https://api.parnoir.com';
@@ -130,20 +129,16 @@ export function UploadModal({ onClose, onUploadComplete }: UploadModalProps) {
         </h2>
       </div>
 
-      {/* Create Thought Button */}
-      <div className="fixed top-12 left-0 right-0 h-12 flex items-center justify-center z-[99] bg-neutral-900/80 backdrop-blur-sm border-b border-neutral-800">
-        <button
-          onClick={() => setShowTextEditor(true)}
-          className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2 text-sm font-medium"
-        >
-          <Type className="h-4 w-4" />
-          Create Thought
-        </button>
-      </div>
-
       {/* FileStorageAggregator Component */}
-      <div className="flex-1 overflow-y-auto p-6" style={{ marginTop: '96px' }}>
-        <FileStorageAggregator authenticatedUser={authenticatedUser} hideSecureFolderSection={true} />
+      <div className="flex-1 overflow-y-auto p-6" style={{ marginTop: '48px' }}>
+        <FileStorageAggregator 
+          authenticatedUser={authenticatedUser} 
+          hideSecureFolderSection={true}
+          onOpenTextEditor={(accountId) => {
+            setAccountId(accountId);
+            setShowTextEditor(true);
+          }}
+        />
       </div>
     </div>
   );
