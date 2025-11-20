@@ -518,7 +518,7 @@ export function TextPostEditor({ onSave, onCancel }: TextPostEditorProps) {
       </div>
 
       {/* Railway with Icon Buttons - Sticky (above text input) */}
-      <div className="fixed left-0 right-0 h-14 bg-neutral-900 border-t border-neutral-800 flex items-center justify-center gap-2 px-4 z-40" style={{ bottom: 'calc(64px + 80px)' }}>
+      <div className="fixed left-0 right-0 h-14 bg-neutral-900 border-t border-neutral-800 flex items-center justify-center gap-2 px-4 z-40" style={{ bottom: 'calc(64px + 100px)' }}>
         <div className="flex items-center gap-1 overflow-x-auto" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
           {/* Font Button - Shows current font name in that font */}
           <button
@@ -659,8 +659,8 @@ export function TextPostEditor({ onSave, onCancel }: TextPostEditorProps) {
       </div>
 
       {/* Text Input - Sticky above bottom nav */}
-      <div className="fixed left-0 right-0 bg-neutral-900 border-t border-neutral-800 z-50" style={{ bottom: '64px' }}>
-        <div className="flex items-center gap-2 p-4">
+      <div className="fixed left-0 right-0 bg-neutral-900 border-t border-neutral-800 z-50" style={{ bottom: '64px', height: '100px' }}>
+        <div className="flex items-center gap-2 p-4 h-full">
           <textarea
             value={content}
             onChange={(e) => setContent(e.target.value)}
