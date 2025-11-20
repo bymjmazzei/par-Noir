@@ -1,11 +1,13 @@
 /**
  * Feed Service (Frontend)
- * Connects to backend feed APIs
+ * Connects to backend feed APIs with decentralized subscription support
  */
 
 import { Feed, FeedCategory } from '../types/aggregator';
+import * as decentralizedFeed from './decentralizedFeedSubscription';
 
 const API_ENDPOINT = process.env.REACT_APP_API_ENDPOINT || 'https://api.parnoir.com';
+const USE_DECENTRALIZED = process.env.REACT_APP_USE_DECENTRALIZED !== 'false'; // Default true
 
 export interface CreateFeedRequest {
   feedName: string;
@@ -147,13 +149,22 @@ export class FeedService {
   }
 
   /**
-   * Subscribe to feed
-   * Creator stores subscriber info on their Google Drive
-   * Subscriber stores local reference (already handled by UserStateContext)
+   * Subscribe to feed - uses decentralized IPFS pubsub when available
    */
-  static async subscribeToFeed(feedId: string, userDid: string): Promise<void> {
-    // Call API - creator will store subscriber info on their Google Drive
-    // Subscriber's local reference is already stored in UserStateContext
+  static async subscribeToFeed(feedId: string, userDid: string, creatorDid?: string): Promise<void> {
+    // Try decentralized first (IPFS pubsub)
+    if (USE_DECENTRALIZED && creatorDid) {
+      try {
+        await decentralizedFeed.subscribeToFeed(userDid, creatorDid, feedId);
+        return;
+      } catch (error) {
+        console.warn('Decentralized subscribe failed, falling back to API:', error);
+      }
+    }
+    
+    // Fallback to centralized API (Google Drive)
+    // Creator stores subscriber info on their Google Drive
+    // Subscriber stores local reference (already handled by UserStateContext)
     const response = await fetch(`${API_ENDPOINT}/api/feeds/${feedId}/subscribe`, {
       method: 'POST',
       headers: {
@@ -174,13 +185,22 @@ export class FeedService {
   }
 
   /**
-   * Unsubscribe from feed
-   * Removes from creator's Google Drive and database
-   * Local reference removed by UserStateContext
+   * Unsubscribe from feed - uses decentralized when available
    */
-  static async unsubscribeFromFeed(feedId: string, userDid: string): Promise<void> {
-    // Call API - creator will remove subscriber info from their Google Drive
-    // Subscriber's local reference is already removed by UserStateContext
+  static async unsubscribeFromFeed(feedId: string, userDid: string, creatorDid?: string): Promise<void> {
+    // Try decentralized first
+    if (USE_DECENTRALIZED && creatorDid) {
+      try {
+        await decentralizedFeed.unsubscribeFromFeed(userDid, creatorDid, feedId);
+        return;
+      } catch (error) {
+        console.warn('Decentralized unsubscribe failed, falling back to API:', error);
+      }
+    }
+    
+    // Fallback to centralized API
+    // Removes from creator's Google Drive and database
+    // Local reference removed by UserStateContext
     const response = await fetch(`${API_ENDPOINT}/api/feeds/${feedId}/subscribe`, {
       method: 'DELETE',
       headers: {
