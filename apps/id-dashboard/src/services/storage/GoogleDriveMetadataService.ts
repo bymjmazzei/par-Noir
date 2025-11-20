@@ -974,8 +974,9 @@ export class GoogleDriveMetadataService {
       return null;
     }
 
+    let index: PublicFileIndex;
     try {
-      return await getResponse.json();
+      index = await getResponse.json();
     } catch {
       return {
         identifier: pnIdentifier,
@@ -983,6 +984,38 @@ export class GoogleDriveMetadataService {
         updatedAt: new Date().toISOString()
       };
     }
+
+    // AUTOMATIC CLEANUP: Verify files exist and remove orphaned entries
+    // Google Drive is the source of truth - if file doesn't exist, remove from index
+    if (index && index.files && index.files.length > 0) {
+      const originalCount = index.files.length;
+      const verifiedFiles = [];
+
+      for (const fileEntry of index.files) {
+        const googleDriveFileId = (fileEntry as any).googleDriveFileId;
+        if (googleDriveFileId) {
+          const exists = await this.verifyFileExists(accessToken, googleDriveFileId);
+          if (exists) {
+            verifiedFiles.push(fileEntry);
+          } else {
+            console.log(`🗑️ [getPublicFileIndex] Auto-removing orphaned file: ${googleDriveFileId} (${(fileEntry as any).fileName || (fileEntry as any).originalName || 'unknown'})`);
+          }
+        } else {
+          // Keep entries without googleDriveFileId
+          verifiedFiles.push(fileEntry);
+        }
+      }
+
+      // If we removed any orphaned entries, update the index file
+      if (verifiedFiles.length !== originalCount) {
+        index.files = verifiedFiles;
+        index.updatedAt = new Date().toISOString();
+        await this.saveIndexFile(accessToken, metadataFolderId, this.PUBLIC_INDEX_FILE_NAME, index);
+        console.log(`✅ [getPublicFileIndex] Auto-cleaned index: removed ${originalCount - verifiedFiles.length} orphaned file(s)`);
+      }
+    }
+
+    return index;
   }
 
   /**
@@ -1027,8 +1060,9 @@ export class GoogleDriveMetadataService {
       return null;
     }
 
+    let index: PublicFileIndex;
     try {
-      return await getResponse.json();
+      index = await getResponse.json();
     } catch {
       return {
         identifier: pnIdentifier,
@@ -1036,6 +1070,38 @@ export class GoogleDriveMetadataService {
         updatedAt: new Date().toISOString()
       };
     }
+
+    // AUTOMATIC CLEANUP: Verify files exist and remove orphaned entries
+    // Google Drive is the source of truth - if file doesn't exist, remove from index
+    if (index && index.files && index.files.length > 0) {
+      const originalCount = index.files.length;
+      const verifiedFiles = [];
+
+      for (const fileEntry of index.files) {
+        const googleDriveFileId = fileEntry.googleDriveFileId;
+        if (googleDriveFileId) {
+          const exists = await this.verifyFileExists(accessToken, googleDriveFileId);
+          if (exists) {
+            verifiedFiles.push(fileEntry);
+          } else {
+            console.log(`🗑️ [getOwnerFileIndex] Auto-removing orphaned file: ${googleDriveFileId} (${(fileEntry as any).fileName || (fileEntry as any).originalName || 'unknown'})`);
+          }
+        } else {
+          // Keep entries without googleDriveFileId (might be from other backends)
+          verifiedFiles.push(fileEntry);
+        }
+      }
+
+      // If we removed any orphaned entries, update the index file
+      if (verifiedFiles.length !== originalCount) {
+        index.files = verifiedFiles;
+        index.updatedAt = new Date().toISOString();
+        await this.saveIndexFile(accessToken, metadataFolderId, this.OWNER_INDEX_FILE_NAME, index);
+        console.log(`✅ [getOwnerFileIndex] Auto-cleaned index: removed ${originalCount - verifiedFiles.length} orphaned file(s)`);
+      }
+    }
+
+    return index;
   }
 
   /**
