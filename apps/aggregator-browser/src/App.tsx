@@ -3307,24 +3307,16 @@ function App() {
         )}
 
         {/* Comment Modal - Render outside conditional views to ensure it works on all pages */}
-        {commentingFile ? (
-          (() => {
-            console.log('[App] About to render CommentModal', { 
-              commentingFile: !!commentingFile,
-              fileId: commentingFile?.metadata?.fileId 
-            });
-            return (
-              <CommentModal
-                key={commentingFile.metadata.fileId} // Force remount on file change
-                file={commentingFile}
-                onClose={() => {
-                  console.log('[App] CommentModal onClose called', { viewingCreatorId, viewMode });
-                  setCommentingFile(null);
-                }}
-              />
-            );
-          })()
-        ) : null}
+        {commentingFile && (
+          <CommentModal
+            key={commentingFile.metadata.fileId} // Force remount on file change
+            file={commentingFile}
+            onClose={() => {
+              console.log('[App] CommentModal onClose called', { viewingCreatorId, viewMode });
+              setCommentingFile(null);
+            }}
+          />
+        )}
 
         {/* Edit File Modal */}
         {editingFile && (
