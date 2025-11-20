@@ -125,11 +125,20 @@ export function FullScreenFeed({
     return topLevelComments;
   }, [getComments]);
 
+  // Track previous index to prevent unnecessary scrolling on initial load
+  const prevIndexRef = useRef<number>(-1);
+  
   // Scroll to current index when it changes
   useEffect(() => {
     if (!scrollContainerRef.current) return;
     const currentFile = files[currentIndex];
     if (!currentFile) return;
+    
+    // Only scroll if index actually changed (prevents glitching on initial load)
+    if (prevIndexRef.current === currentIndex) {
+      return;
+    }
+    prevIndexRef.current = currentIndex;
 
     // Add a small delay to ensure DOM is ready, especially when navigating from search
     const scrollTimer = setTimeout(() => {
