@@ -518,7 +518,8 @@ export class AggregatorMetadataServiceDB {
 
   /**
    * Clean up orphaned files by comparing database with public index files
-   * Public index files in Google Drive are the source of truth
+   * Each user has their own public index file - if it doesn't exist or is empty, remove all their files
+   * Public index files in Google Drive are the source of truth per user
    */
   private async cleanupOrphanedFilesFromIndex(): Promise<void> {
     console.log(`🔍 [cleanupOrphanedFilesFromIndex] Starting cleanup process...`);
@@ -529,8 +530,11 @@ export class AggregatorMetadataServiceDB {
       const accessToken = await syncService.getAccessToken();
       console.log(`✅ [cleanupOrphanedFilesFromIndex] Got access token`);
       
-      // Get all valid file IDs from all public index files
-      const validFileIds = new Set<string>();
+      // Map of pnIdentifier -> Set of valid file IDs from that user's public index
+      const validFileIdsByUser = new Map<string, Set<string>>();
+      
+      // Also track which users have public index files (even if empty)
+      const usersWithIndexFiles = new Set<string>();
       
       // Find all pN folders
       const pnFoldersQuery = `name contains 'par Noir - pn-' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
@@ -557,6 +561,18 @@ export class AggregatorMetadataServiceDB {
       // For each pN folder, read the public index file
       for (const pnFolder of pnFolders) {
         try {
+          // Extract pnIdentifier from folder name (e.g., "par Noir - pn-83c1db813607" -> "pn-83c1db813607")
+          const pnIdentifierMatch = pnFolder.name.match(/pn-([a-zA-Z0-9]+)/);
+          const pnIdentifier = pnIdentifierMatch ? `pn-${pnIdentifierMatch[1]}` : undefined;
+          
+          if (!pnIdentifier) {
+            console.warn(`⚠️ [cleanupOrphanedFilesFromIndex] Could not extract pnIdentifier from folder name: ${pnFolder.name}`);
+            continue;
+          }
+
+          // Mark that this user has a pN folder (they might have an index file)
+          usersWithIndexFiles.add(pnIdentifier);
+
           // Find _metadata folder
           const metadataFolderQuery = `name='_metadata' and '${pnFolder.id}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`;
           const metadataFolderResponse = await fetch(
@@ -591,7 +607,13 @@ export class AggregatorMetadataServiceDB {
           if (!indexFileResponse.ok) continue;
           const indexFileData = await indexFileResponse.json() as { files?: Array<{ id: string }> };
           const indexFiles = indexFileData.files || [];
-          if (indexFiles.length === 0) continue;
+          if (indexFiles.length === 0) {
+            // User has no public index file - this is OK, just means no public files
+            console.log(`ℹ️ [cleanupOrphanedFilesFromIndex] No public index file for ${pnFolder.name} (${pnIdentifier}) - user has no public files`);
+            // Initialize empty set for this user - all their files will be removed
+            validFileIdsByUser.set(pnIdentifier, new Set<string>());
+            continue;
+          }
 
           const indexFileId = indexFiles[0].id;
           
@@ -605,12 +627,21 @@ export class AggregatorMetadataServiceDB {
             }
           );
 
-          if (!indexContentResponse.ok) continue;
+          if (!indexContentResponse.ok) {
+            console.warn(`⚠️ [cleanupOrphanedFilesFromIndex] Failed to download public index file for ${pnFolder.name} (${pnIdentifier}): ${indexContentResponse.status}`);
+            // If we can't read the index file, remove all files for this user
+            validFileIdsByUser.set(pnIdentifier, new Set<string>());
+            continue;
+          }
+          
           const indexContent = await indexContentResponse.json() as { files?: Array<{ fileId?: string; googleDriveFileId?: string; backendFileId?: string }> };
           
+          // Initialize file ID set for this user
+          const userValidFileIds = new Set<string>();
+          
           // Collect all file IDs from this index, but also verify they exist
-          if (indexContent.files) {
-            console.log(`🔍 [cleanupOrphanedFilesFromIndex] Found ${indexContent.files.length} file(s) in public index for ${pnFolder.name}`);
+          if (indexContent.files && indexContent.files.length > 0) {
+            console.log(`🔍 [cleanupOrphanedFilesFromIndex] Found ${indexContent.files.length} file(s) in public index for ${pnFolder.name} (${pnIdentifier})`);
             for (const file of indexContent.files) {
               const googleDriveFileId = file.googleDriveFileId || file.backendFileId || file.fileId;
               
@@ -630,44 +661,61 @@ export class AggregatorMetadataServiceDB {
                     const fileData = await verifyResponse.json() as { id?: string; trashed?: boolean };
                     if (!fileData.trashed) {
                       // File exists and is not trashed - add to valid set
-                      if (file.fileId) validFileIds.add(file.fileId);
-                      if (file.googleDriveFileId) validFileIds.add(file.googleDriveFileId);
-                      if (file.backendFileId) validFileIds.add(file.backendFileId);
-                      console.log(`✅ [cleanupOrphanedFilesFromIndex] File ${googleDriveFileId} verified in Google Drive`);
+                      if (file.fileId) userValidFileIds.add(file.fileId);
+                      if (file.googleDriveFileId) userValidFileIds.add(file.googleDriveFileId);
+                      if (file.backendFileId) userValidFileIds.add(file.backendFileId);
+                      console.log(`✅ [cleanupOrphanedFilesFromIndex] File ${googleDriveFileId} verified in Google Drive for ${pnIdentifier}`);
                     } else {
                       console.log(`🗑️ [cleanupOrphanedFilesFromIndex] File ${googleDriveFileId} is trashed - skipping`);
                     }
                   } else if (verifyResponse.status === 404) {
-                    console.log(`🗑️ [cleanupOrphanedFilesFromIndex] File ${googleDriveFileId} not found (404) - was in index but doesn't exist`);
+                    console.log(`🗑️ [cleanupOrphanedFilesFromIndex] File ${googleDriveFileId} not found (404) - was in index but doesn't exist for ${pnIdentifier}`);
                   } else {
-                    console.warn(`⚠️ [cleanupOrphanedFilesFromIndex] Could not verify file ${googleDriveFileId}: ${verifyResponse.status}`);
+                    console.warn(`⚠️ [cleanupOrphanedFilesFromIndex] Could not verify file ${googleDriveFileId} for ${pnIdentifier}: ${verifyResponse.status}`);
                     // On error, assume file exists (add to valid set to avoid false positives)
-                    if (file.fileId) validFileIds.add(file.fileId);
-                    if (file.googleDriveFileId) validFileIds.add(file.googleDriveFileId);
-                    if (file.backendFileId) validFileIds.add(file.backendFileId);
+                    if (file.fileId) userValidFileIds.add(file.fileId);
+                    if (file.googleDriveFileId) userValidFileIds.add(file.googleDriveFileId);
+                    if (file.backendFileId) userValidFileIds.add(file.backendFileId);
                   }
                 } catch (error) {
-                  console.warn(`⚠️ [cleanupOrphanedFilesFromIndex] Error verifying file ${googleDriveFileId}:`, error);
+                  console.warn(`⚠️ [cleanupOrphanedFilesFromIndex] Error verifying file ${googleDriveFileId} for ${pnIdentifier}:`, error);
                   // On error, assume file exists
-                  if (file.fileId) validFileIds.add(file.fileId);
-                  if (file.googleDriveFileId) validFileIds.add(file.googleDriveFileId);
-                  if (file.backendFileId) validFileIds.add(file.backendFileId);
+                  if (file.fileId) userValidFileIds.add(file.fileId);
+                  if (file.googleDriveFileId) userValidFileIds.add(file.googleDriveFileId);
+                  if (file.backendFileId) userValidFileIds.add(file.backendFileId);
                 }
               }
             }
+          } else {
+            console.log(`ℹ️ [cleanupOrphanedFilesFromIndex] Public index file for ${pnFolder.name} (${pnIdentifier}) is empty - user has no public files`);
           }
+          
+          // Store valid file IDs for this user
+          validFileIdsByUser.set(pnIdentifier, userValidFileIds);
+          console.log(`✅ [cleanupOrphanedFilesFromIndex] User ${pnIdentifier} has ${userValidFileIds.size} valid public file(s)`);
         } catch (error) {
           console.warn(`⚠️ [cleanupOrphanedFilesFromIndex] Error processing folder ${pnFolder.name}:`, error);
         }
       }
 
-      console.log(`✅ [cleanupOrphanedFilesFromIndex] Found ${validFileIds.size} valid file ID(s) in public index files`);
+      // Create combined set of all valid file IDs (across all users) for logging
+      const allValidFileIds = new Set<string>();
+      for (const fileIds of validFileIdsByUser.values()) {
+        for (const fileId of fileIds) {
+          allValidFileIds.add(fileId);
+        }
+      }
+      
+      console.log(`✅ [cleanupOrphanedFilesFromIndex] Found ${allValidFileIds.size} valid file ID(s) across ${validFileIdsByUser.size} user(s) with public index files`);
 
       // Remove files from database that aren't in the valid set
+      // Also remove files from users who don't have a public index file
       const db = getDatabasePool();
       const allFilesResult = await db.query(
-        `SELECT file_id FROM aggregator_metadata WHERE metadata->>'backend' = 'google_drive' AND metadata->>'isPublic' = 'true'`
+        `SELECT file_id, metadata->>'name' as name, metadata->>'fileId' as file_id_from_metadata, metadata->>'backendFileId' as backend_file_id, pn_identifier FROM aggregator_metadata WHERE metadata->>'backend' = 'google_drive' AND metadata->>'isPublic' = 'true'`
       );
+
+      console.log(`🔍 [cleanupOrphanedFilesFromIndex] Checking ${allFilesResult.rows.length} file(s) in database`);
 
       const orphanedFileIds: string[] = [];
       for (const row of allFilesResult.rows) {
@@ -675,11 +723,31 @@ export class AggregatorMetadataServiceDB {
         const fileName = row.name || 'unknown';
         const metadataFileId = row.file_id_from_metadata;
         const backendFileId = row.backend_file_id;
+        const pnIdentifier = row.pn_identifier;
         
-        // Check if this file ID (or any of its aliases) is in the valid set
-        const isInIndex = validFileIds.has(fileId) || 
-                         (metadataFileId && validFileIds.has(metadataFileId)) ||
-                         (backendFileId && validFileIds.has(backendFileId));
+        // If user doesn't have a public index file, remove all their files
+        if (pnIdentifier && !usersWithIndexFiles.has(pnIdentifier)) {
+          console.log(`🗑️ [cleanupOrphanedFilesFromIndex] User ${pnIdentifier} has no public index file - removing file ${fileId} (${fileName})`);
+          orphanedFileIds.push(fileId);
+          continue;
+        }
+        
+        // Get valid file IDs for this user
+        const userValidFileIds = pnIdentifier ? validFileIdsByUser.get(pnIdentifier) : null;
+        
+        // If user has no valid files (empty index), remove all their files
+        if (pnIdentifier && userValidFileIds && userValidFileIds.size === 0) {
+          console.log(`🗑️ [cleanupOrphanedFilesFromIndex] User ${pnIdentifier} has empty public index - removing file ${fileId} (${fileName})`);
+          orphanedFileIds.push(fileId);
+          continue;
+        }
+        
+        // Check if this file ID (or any of its aliases) is in the user's valid set
+        const isInIndex = userValidFileIds && (
+          userValidFileIds.has(fileId) || 
+          (metadataFileId && userValidFileIds.has(metadataFileId)) ||
+          (backendFileId && userValidFileIds.has(backendFileId))
+        );
         
         if (!isInIndex) {
           console.log(`🗑️ [cleanupOrphanedFilesFromIndex] File NOT in index: ${fileId} (${fileName}) - will be removed`);
