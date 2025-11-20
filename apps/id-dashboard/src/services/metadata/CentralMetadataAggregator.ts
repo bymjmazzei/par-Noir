@@ -239,59 +239,87 @@ export class CentralMetadataAggregator {
 
   /**
    * Verify files exist in Google Drive (client-side verification)
-   * Uses public Google Drive API - no auth required for public files
+   * Tries to verify using Google Drive API - filters out deleted files
+   * Note: This may not work for all files without auth, but will catch most deleted files
    */
   private async verifyFilesExist(files: CentralIndexEntry[]): Promise<CentralIndexEntry[]> {
-    const verifiedFiles: CentralIndexEntry[] = [];
+    if (files.length === 0) {
+      return files;
+    }
     
-    // Verify files in parallel (with rate limiting)
-    const verifyPromises = files.map(async (file) => {
-      const googleDriveFileId = file.metadata?.googleDriveFileId || file.metadata?.backendFileId;
-      
-      if (!googleDriveFileId) {
-        // No Google Drive ID - keep it (might be from other backends)
-        return file;
-      }
-      
-      try {
-        // Use public Google Drive API to check if file exists
-        // For public files, we can check without auth
-        const response = await fetch(
-          `https://www.googleapis.com/drive/v3/files/${googleDriveFileId}?fields=id,trashed`,
-          {
-            method: 'GET',
-            // No auth header - using public API
-          }
-        );
-
-        if (response.status === 404) {
-          console.log(`🗑️ [CentralMetadataAggregator] File ${googleDriveFileId} not found (404) - filtering out`);
-          return null; // File doesn't exist
-        }
-
-        if (!response.ok) {
-          // If we can't verify (e.g., 403 for private files), assume file exists
-          // This prevents false positives for private files we can't check
+    console.log(`🔍 [CentralMetadataAggregator] Verifying ${files.length} files from API...`);
+    
+    // Verify files in parallel (with rate limiting - batch of 5 at a time)
+    const verifiedFiles: CentralIndexEntry[] = [];
+    const batchSize = 5;
+    
+    for (let i = 0; i < files.length; i += batchSize) {
+      const batch = files.slice(i, i + batchSize);
+      const batchPromises = batch.map(async (file) => {
+        const googleDriveFileId = file.metadata?.googleDriveFileId || file.metadata?.backendFileId;
+        
+        if (!googleDriveFileId) {
+          // No Google Drive ID - keep it (might be from other backends)
           return file;
         }
-
-        const fileData = await response.json();
-        // File exists and is not trashed
-        if (fileData.trashed) {
-          console.log(`🗑️ [CentralMetadataAggregator] File ${googleDriveFileId} is trashed - filtering out`);
-          return null;
-        }
         
-        return file; // File exists
-      } catch (error) {
-        // On error, assume file exists to avoid false positives
-        console.warn(`⚠️ [CentralMetadataAggregator] Error verifying file ${googleDriveFileId}:`, error);
-        return file;
+        try {
+          // Try to verify file exists using Google Drive API
+          // For public files shared with "anyone with the link", this might work
+          // For private files, this will fail but we'll assume they exist
+          const response = await fetch(
+            `https://www.googleapis.com/drive/v3/files/${googleDriveFileId}?fields=id,trashed`,
+            {
+              method: 'GET',
+              // No auth header - will work for public files, fail for private (which is OK)
+            }
+          );
+
+          if (response.status === 404) {
+            console.log(`🗑️ [CentralMetadataAggregator] File ${googleDriveFileId} not found (404) - filtering out: ${file.metadata?.name || 'unknown'}`);
+            return null; // File doesn't exist
+          }
+
+          if (response.status === 403 || response.status === 401) {
+            // Private file or auth required - assume it exists (can't verify without auth)
+            return file;
+          }
+
+          if (!response.ok) {
+            // Other error - assume file exists to avoid false positives
+            return file;
+          }
+
+          const fileData = await response.json();
+          // File exists and is not trashed
+          if (fileData.trashed) {
+            console.log(`🗑️ [CentralMetadataAggregator] File ${googleDriveFileId} is trashed - filtering out: ${file.metadata?.name || 'unknown'}`);
+            return null;
+          }
+          
+          return file; // File exists
+        } catch (error) {
+          // On error (network, CORS, etc.), assume file exists to avoid false positives
+          // This is conservative - we'd rather show a file that might be deleted than hide a valid one
+          return file;
+        }
+      });
+      
+      const batchResults = await Promise.all(batchPromises);
+      const validFiles = batchResults.filter((file): file is CentralIndexEntry => file !== null);
+      verifiedFiles.push(...validFiles);
+      
+      // Small delay between batches to avoid rate limiting
+      if (i + batchSize < files.length) {
+        await new Promise(resolve => setTimeout(resolve, 100));
       }
-    });
+    }
     
-    const results = await Promise.all(verifyPromises);
-    return results.filter((file): file is CentralIndexEntry => file !== null);
+    if (verifiedFiles.length !== files.length) {
+      console.log(`✅ [CentralMetadataAggregator] Filtered ${files.length - verifiedFiles.length} deleted file(s) from API response`);
+    }
+    
+    return verifiedFiles;
   }
 }
 
