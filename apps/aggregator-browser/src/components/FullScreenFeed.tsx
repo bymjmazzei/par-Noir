@@ -128,30 +128,75 @@ export function FullScreenFeed({
   // Track previous index and file ID to prevent unnecessary scrolling
   const prevIndexRef = useRef<number>(-1);
   const prevFileIdRef = useRef<string | null>(null);
-  const isScrollingRef = useRef<boolean>(false);
+  const scrollTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const isUserScrollingRef = useRef<boolean>(false);
+  const userScrollTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   
-  // Scroll to current index when it changes - use instant snap for smooth TikTok-style scrolling
+  // Handle scroll events to detect user scrolling vs programmatic scrolling
+  useEffect(() => {
+    const container = scrollContainerRef.current;
+    if (!container) return;
+
+    const handleScroll = () => {
+      // Mark as user scrolling
+      isUserScrollingRef.current = true;
+      
+      // Clear existing timeout
+      if (userScrollTimeoutRef.current) {
+        clearTimeout(userScrollTimeoutRef.current);
+      }
+      
+      // Reset flag after scroll ends
+      userScrollTimeoutRef.current = setTimeout(() => {
+        isUserScrollingRef.current = false;
+      }, 150);
+    };
+
+    container.addEventListener('scroll', handleScroll, { passive: true });
+    
+    return () => {
+      container.removeEventListener('scroll', handleScroll);
+      if (userScrollTimeoutRef.current) {
+        clearTimeout(userScrollTimeoutRef.current);
+      }
+    };
+  }, []);
+  
+  // Scroll to current index when it changes - only if not user scrolling
   useEffect(() => {
     if (!scrollContainerRef.current) return;
     const currentFile = files[currentIndex];
     if (!currentFile) return;
     
-    // Don't scroll if already scrolling or if index/file hasn't actually changed
-    if (isScrollingRef.current) return;
+    // Don't scroll if user is actively scrolling
+    if (isUserScrollingRef.current) {
+      return;
+    }
+    
+    // Don't scroll if index/file hasn't actually changed
     if (prevIndexRef.current === currentIndex && prevFileIdRef.current === currentFile.metadata.fileId) {
       return;
     }
     
     prevIndexRef.current = currentIndex;
     prevFileIdRef.current = currentFile.metadata.fileId;
-    isScrollingRef.current = true;
 
-    // Use requestAnimationFrame for smooth, instant snapping
-    const scrollFrame = requestAnimationFrame(() => {
+    // Clear any pending scroll
+    if (scrollTimeoutRef.current) {
+      clearTimeout(scrollTimeoutRef.current);
+    }
+
+    // Use a small delay to batch rapid index changes and let CSS snap handle smoothness
+    scrollTimeoutRef.current = setTimeout(() => {
+      // Check again if user started scrolling
+      if (isUserScrollingRef.current) {
+        return;
+      }
+      
       const element = scrollContainerRef.current?.querySelector(`[data-file-id="${currentFile.metadata.fileId}"]`);
       if (element && scrollContainerRef.current) {
-        // Use instant scroll - CSS snap will handle the smooth snapping
-        element.scrollIntoView({ behavior: 'auto', block: 'start' });
+        // Use smooth scroll - CSS snap will provide the snap behavior
+        element.scrollIntoView({ behavior: 'smooth', block: 'start' });
         setVisibleFileId(currentFile.metadata.fileId);
         
         // Preload comments for the visible file if loadComments is available
@@ -161,19 +206,13 @@ export function FullScreenFeed({
             console.debug('Failed to preload comments:', err);
           });
         }
-        
-        // Reset scrolling flag after a short delay
-        setTimeout(() => {
-          isScrollingRef.current = false;
-        }, 300);
-      } else {
-        isScrollingRef.current = false;
       }
-    });
+    }, 50);
 
     return () => {
-      cancelAnimationFrame(scrollFrame);
-      isScrollingRef.current = false;
+      if (scrollTimeoutRef.current) {
+        clearTimeout(scrollTimeoutRef.current);
+      }
     };
   }, [currentIndex, files, loadComments]);
 
@@ -433,6 +472,7 @@ export function FullScreenFeed({
         msOverflowStyle: 'none', 
         WebkitOverflowScrolling: 'touch',
         scrollBehavior: 'smooth', // Enable smooth CSS scroll snapping
+        scrollSnapType: 'y mandatory', // Ensure snap behavior
         // Height excludes bottom nav bar (64px) and safe area
         height: 'calc(100vh - 64px - env(safe-area-inset-bottom, 0px))',
         maxHeight: 'calc(100vh - 64px - env(safe-area-inset-bottom, 0px))',

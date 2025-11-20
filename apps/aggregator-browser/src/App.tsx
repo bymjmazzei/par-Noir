@@ -2710,8 +2710,9 @@ function App() {
                 files={filteredMeFiles}
                 currentIndex={currentFeedIndex}
                 onIndexChange={(newIndex) => {
-                  // Only update if files are stabilized and index is within valid range and actually changed
-                  if (filesStabilizedRef.current && newIndex >= 0 && newIndex < filteredMeFiles.length && newIndex !== currentFeedIndex) {
+                  // Only update if index is within valid range and actually changed
+                  // Remove stabilization check to allow smooth scrolling
+                  if (newIndex >= 0 && newIndex < filteredMeFiles.length && newIndex !== currentFeedIndex) {
                     setCurrentFeedIndex(newIndex);
                   }
                 }}
