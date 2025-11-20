@@ -1964,6 +1964,8 @@ function App() {
   const creatorFiles = viewingCreatorId ? creatorFilesState : EMPTY_ARRAY;
   const isOwnIndex = viewingCreatorId === userState.pnIdentifier && userState.isUnlocked;
   
+  // Helper function to identify text posts (thoughts)
+
   // Memoize filteredMeFiles to prevent unnecessary recalculations
   const filteredMeFilesMemo = useMemo(() => {
     let filtered: IndexedFile[] = [];
