@@ -75,17 +75,48 @@ export async function saveToFeed(
   fileId: string
 ): Promise<SavedFeed> {
   try {
+    // Get DID from session if available (API might prefer DID over pnIdentifier)
+    const session = PNOAuthService.loadSession();
+    const userIdentifier = session?.did || userDid;
+    
+    const requestBody = {
+      userDid: userIdentifier,
+      fileId
+    };
+    
+    console.log('Saving to feed:', { userDid, userIdentifier, fileId, hasSession: !!session, hasDid: !!session?.did });
+    
     const response = await fetch(`${API_ENDPOINT}/api/feeds/saved`, {
       method: 'POST',
       headers: getAuthHeaders(),
-      body: JSON.stringify({
-        userDid,
-        fileId
-      })
+      body: JSON.stringify(requestBody)
     });
 
     if (!response.ok) {
-      throw new Error('Failed to save to feed');
+      // Try to get error message from response
+      let errorMessage = `Failed to save to feed: ${response.status}`;
+      let errorDetails: any = null;
+      try {
+        const errorText = await response.text();
+        try {
+          const errorJson = JSON.parse(errorText);
+          errorMessage = errorJson.message || errorJson.error || errorMessage;
+          errorDetails = errorJson;
+        } catch {
+          errorMessage = errorText || errorMessage;
+        }
+      } catch {
+        // If we can't parse the error, use the status
+      }
+      console.error('Save to feed error:', {
+        status: response.status,
+        statusText: response.statusText,
+        errorMessage,
+        errorDetails,
+        requestBody,
+        hasAuth: !!session?.accessToken
+      });
+      throw new Error(errorMessage);
     }
 
     const result = await response.json();
