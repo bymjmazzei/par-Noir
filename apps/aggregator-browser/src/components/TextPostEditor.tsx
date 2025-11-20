@@ -48,6 +48,7 @@ export function TextPostEditor({ onSave, onCancel }: TextPostEditorProps) {
   const [padding, setPadding] = useState(40);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const textColorInputRef = useRef<HTMLInputElement>(null);
   const fontSelectorRef = useRef<HTMLDivElement>(null);
   const activeFontButtonRef = useRef<HTMLButtonElement | null>(null);
   
@@ -371,18 +372,6 @@ export function TextPostEditor({ onSave, onCancel }: TextPostEditorProps) {
               </div>
             </div>
           );
-        case 'textColor':
-          return (
-            <div className="p-2">
-              <input
-                type="color"
-                value={textColor}
-                onChange={(e) => setTextColor(e.target.value)}
-                className="w-full h-12 rounded border border-neutral-700 cursor-pointer"
-                style={{ minWidth: '200px' }}
-              />
-            </div>
-          );
         case 'shadow':
           return (
             <div className="p-3 min-w-[280px]">
@@ -641,15 +630,7 @@ export function TextPostEditor({ onSave, onCancel }: TextPostEditorProps) {
 
           {/* Text Color - A with colored line under */}
           <button
-            ref={(el) => menuButtonRefs.current.set('textColor', el)}
-            onClick={(e) => {
-              const button = e.currentTarget;
-              if (openMenu === 'textColor') {
-                closeMenu();
-              } else {
-                openPopupMenu('textColor', button);
-              }
-            }}
+            onClick={() => textColorInputRef.current?.click()}
             className="px-2 py-1 transition-opacity hover:opacity-80 flex flex-col items-center gap-0.5"
             style={{ color: 'white' }}
           >
@@ -659,6 +640,13 @@ export function TextPostEditor({ onSave, onCancel }: TextPostEditorProps) {
               style={{ backgroundColor: textColor }}
             />
           </button>
+          <input
+            ref={textColorInputRef}
+            type="color"
+            value={textColor}
+            onChange={(e) => setTextColor(e.target.value)}
+            className="hidden"
+          />
 
           {/* Drop Shadow - A with shadow, colored line under */}
           <button
