@@ -714,9 +714,10 @@ export class AggregatorMetadataServiceDB {
       // Also remove files from users who don't have a public index file
       const db = getDatabasePool();
       
-      // Get ALL public files (not just google_drive) to check
+      // Get ALL public files (same query as getPublicMetadata uses)
+      // Use the same query structure to ensure we get the same files
       const allFilesResult = await db.query(
-        `SELECT file_id, metadata->>'name' as name, metadata->>'fileId' as file_id_from_metadata, metadata->>'backendFileId' as backend_file_id, metadata->>'backend' as backend, pn_identifier FROM aggregator_metadata WHERE metadata->>'isPublic' = 'true'`
+        `SELECT file_id, metadata, pn_identifier FROM aggregator_metadata WHERE metadata->>'isPublic' = 'true'`
       );
 
       console.log(`🔍 [cleanupOrphanedFilesFromIndex] Checking ${allFilesResult.rows.length} file(s) in database (all public files)`);
@@ -724,10 +725,11 @@ export class AggregatorMetadataServiceDB {
       const orphanedFileIds: string[] = [];
       for (const row of allFilesResult.rows) {
         const fileId = row.file_id;
-        const fileName = row.name || 'unknown';
-        const metadataFileId = row.file_id_from_metadata;
-        const backendFileId = row.backend_file_id;
-        const backend = row.backend || 'google_drive';
+        const metadata = row.metadata as PublicMetadata;
+        const fileName = metadata.name || metadata.title || 'unknown';
+        const metadataFileId = metadata.fileId;
+        const backendFileId = metadata.backendFileId;
+        const backend = metadata.backend || 'google_drive';
         const pnIdentifier = row.pn_identifier;
         
         // Only check Google Drive files (other backends might not have index files)
