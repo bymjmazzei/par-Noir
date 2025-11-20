@@ -375,8 +375,28 @@ export function CommentModal({ file, onClose }: CommentModalProps) {
   };
 
   // Render modal via portal to ensure it's always on top and not affected by parent DOM structure
-  // Use a wrapper div to ensure proper stacking context
-  const portalContainer = document.body;
+  // Create a dedicated portal container if it doesn't exist
+  useEffect(() => {
+    // Ensure portal container exists
+    let portalContainer = document.getElementById('comment-modal-portal');
+    if (!portalContainer) {
+      portalContainer = document.createElement('div');
+      portalContainer.id = 'comment-modal-portal';
+      portalContainer.style.position = 'fixed';
+      portalContainer.style.top = '0';
+      portalContainer.style.left = '0';
+      portalContainer.style.width = '100%';
+      portalContainer.style.height = '100%';
+      portalContainer.style.pointerEvents = 'none';
+      portalContainer.style.zIndex = '999999';
+      document.body.appendChild(portalContainer);
+    }
+    return () => {
+      // Don't remove on unmount - keep it for future use
+    };
+  }, []);
+  
+  const portalContainer = document.getElementById('comment-modal-portal') || document.body;
   
   return createPortal(
     <>
@@ -384,7 +404,7 @@ export function CommentModal({ file, onClose }: CommentModalProps) {
       <div
         className="fixed inset-0 bg-black/60 transition-opacity"
         style={{ 
-          zIndex: 99999, // Increased to ensure it's above everything
+          zIndex: 999999, // Maximum z-index
           position: 'fixed',
           top: 0,
           left: 0,
@@ -408,7 +428,7 @@ export function CommentModal({ file, onClose }: CommentModalProps) {
         ref={modalRef}
         className="fixed bottom-0 left-0 right-0 bg-neutral-900 rounded-t-2xl flex flex-col animate-slide-up"
         style={{ 
-          zIndex: 99999, // Increased to ensure it's above everything
+          zIndex: 999999, // Maximum z-index
           position: 'fixed',
           bottom: 0,
           left: 0,
@@ -459,7 +479,7 @@ export function CommentModal({ file, onClose }: CommentModalProps) {
             style={{ 
               bottom: '64px', 
               height: `${commentInputHeight}px`, 
-              zIndex: 100000,
+              zIndex: 999999,
               position: 'fixed',
               pointerEvents: 'auto',
               display: 'block',

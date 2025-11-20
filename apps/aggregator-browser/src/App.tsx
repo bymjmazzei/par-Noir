@@ -2601,7 +2601,13 @@ function App() {
           }}
         />
       ) : viewingCreatorId ? (
-        <div className="h-screen flex flex-col bg-black">
+        <div 
+          className="h-screen flex flex-col bg-black"
+          style={{ 
+            pointerEvents: commentingFile ? 'none' : 'auto',
+            zIndex: commentingFile ? 0 : 'auto'
+          }}
+        >
           {/* Header Railway with Tabs - Show saved tab only if owner */}
           <MePageTabsRail
             activeTab={mePageTab}
