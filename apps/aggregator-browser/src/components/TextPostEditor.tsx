@@ -561,6 +561,10 @@ export function TextPostEditor({ onSave, onCancel }: TextPostEditorProps) {
     
     const handleClickOutside = (event: MouseEvent) => {
       const target = event.target as Node;
+      const menuElement = document.querySelector('[data-menu="background"]');
+      if (menuElement && menuElement.contains(target)) {
+        return;
+      }
       if (backgroundColorButtonRef.current && (backgroundColorButtonRef.current.contains(target) || backgroundColorButtonRef.current === target)) {
         return;
       }
@@ -674,33 +678,20 @@ export function TextPostEditor({ onSave, onCancel }: TextPostEditorProps) {
           );
         case 'background':
           return (
-            <div className="p-2">
+            <div className="p-2" ref={(el) => {
+              if (el && showBackgroundColorPicker) {
+                backgroundColorPickerRef.current = el as HTMLDivElement;
+              }
+            }}>
               <div className="flex gap-2 items-center">
                 <button
                   ref={backgroundColorButtonRef}
                   onClick={() => setShowBackgroundColorPicker(!showBackgroundColorPicker)}
-                  className="w-12 h-12 rounded cursor-pointer relative"
+                  className="p-2 rounded cursor-pointer relative flex items-center justify-center"
                   style={{ backgroundColor: backgroundColor }}
-                />
-                {showBackgroundColorPicker && backgroundColorButtonRef.current && createPortal(
-                  <div
-                    ref={backgroundColorPickerRef}
-                    className="fixed bg-neutral-800 border border-neutral-700 rounded-lg shadow-lg p-3"
-                    style={{
-                      top: `${backgroundColorButtonRef.current.getBoundingClientRect().bottom}px`,
-                      left: `${backgroundColorButtonRef.current.getBoundingClientRect().left + backgroundColorButtonRef.current.getBoundingClientRect().width / 2}px`,
-                      transform: 'translateX(-50%)',
-                      marginTop: '8px',
-                      zIndex: 9999
-                    }}
-                  >
-                    <CustomColorPicker
-                      color={backgroundColor}
-                      onChange={setBackgroundColor}
-                    />
-                  </div>,
-                  document.body
-                )}
+                >
+                  <div className="w-5 h-5 rounded" style={{ backgroundColor: backgroundColor }} />
+                </button>
                 <button
                   onClick={() => fileInputRef.current?.click()}
                   className="p-2 text-white hover:opacity-80 transition-opacity flex items-center justify-center"
@@ -717,6 +708,24 @@ export function TextPostEditor({ onSave, onCancel }: TextPostEditorProps) {
                   </button>
                 )}
               </div>
+              {showBackgroundColorPicker && (
+                <div
+                  ref={backgroundColorPickerRef}
+                  className="absolute bg-neutral-800 border border-neutral-700 rounded-lg shadow-lg p-3"
+                  style={{
+                    top: '100%',
+                    left: '50%',
+                    transform: 'translateX(-50%)',
+                    marginTop: '8px',
+                    zIndex: 10000
+                  }}
+                >
+                  <CustomColorPicker
+                    color={backgroundColor}
+                    onChange={setBackgroundColor}
+                  />
+                </div>
+              )}
             </div>
           );
         case 'textStyle':
