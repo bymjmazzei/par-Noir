@@ -502,7 +502,7 @@ export function TextPostEditor({ onSave, onCancel }: TextPostEditorProps) {
   return (
     <div className="fixed inset-0 bg-black z-50 flex flex-col">
       {/* Full Screen Preview */}
-      <div className="flex-1 flex items-center justify-center bg-neutral-950 p-4" style={{ paddingBottom: '180px' }}>
+      <div className="flex-1 flex items-center justify-center bg-neutral-950 p-4" style={{ paddingBottom: '220px' }}>
         <div className="w-full max-w-md aspect-[9/16] bg-neutral-900 rounded-lg overflow-hidden shadow-2xl">
           <canvas
             ref={canvasRef}
@@ -517,25 +517,9 @@ export function TextPostEditor({ onSave, onCancel }: TextPostEditorProps) {
         </div>
       </div>
 
-      {/* Railway with Icon Buttons - Sticky (above text input, overlays media) */}
-      <div className="fixed left-0 right-0 h-14 flex items-center justify-center gap-4 px-4 z-40" style={{ bottom: 'calc(64px + 100px)' }}>
+      {/* Main Railway with Icon Buttons - Sticky (above font selector, overlays media) */}
+      <div className="fixed left-0 right-0 h-14 flex items-center justify-center gap-4 px-4 z-40" style={{ bottom: 'calc(64px + 100px + 48px)' }}>
         <div className="flex items-center gap-4 overflow-x-auto" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
-          {/* Font Button - Just shows active font name */}
-          <button
-            ref={(el) => menuButtonRefs.current.set('font', el)}
-            onClick={(e) => {
-              const button = e.currentTarget;
-              if (openMenu === 'font') {
-                closeMenu();
-              } else {
-                openPopupMenu('font', button);
-              }
-            }}
-            className="px-2 py-1 transition-opacity hover:opacity-80"
-            style={{ fontFamily: fontFamily, color: 'white' }}
-          >
-            <span className="text-sm">{fontFamily}</span>
-          </button>
 
           {/* Font Size - Small A next to large A */}
           <button
@@ -642,6 +626,36 @@ export function TextPostEditor({ onSave, onCancel }: TextPostEditorProps) {
           </button>
 
         </div>
+      </div>
+
+      {/* Font Selector Railway - Sticky (above text input, overlays media) */}
+      <div className="fixed left-0 right-0 h-12 flex items-center justify-center z-40" style={{ bottom: 'calc(64px + 100px)' }}>
+        <div className="flex items-center gap-6 overflow-x-auto px-4" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
+          {FONT_OPTIONS.map((font) => (
+            <button
+              key={font.value}
+              onClick={() => setFontFamily(font.value)}
+              className="px-2 py-1 transition-opacity hover:opacity-80 relative"
+              style={{ 
+                fontFamily: font.value, 
+                color: 'white',
+                textDecoration: fontFamily === font.value ? 'underline' : 'none',
+                textUnderlineOffset: '4px'
+              }}
+            >
+              <span className="text-sm whitespace-nowrap">{font.label}</span>
+            </button>
+          ))}
+        </div>
+        {/* Center active font indicator */}
+        <div 
+          className="absolute left-1/2 transform -translate-x-1/2 pointer-events-none"
+          style={{ 
+            width: '1px',
+            height: '100%',
+            backgroundColor: 'rgba(255, 255, 255, 0.3)'
+          }}
+        />
       </div>
 
       {/* Text Input - Sticky above bottom nav */}
