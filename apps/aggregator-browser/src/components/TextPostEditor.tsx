@@ -682,22 +682,24 @@ export function TextPostEditor({ onSave, onCancel }: TextPostEditorProps) {
                   className="w-12 h-12 rounded cursor-pointer relative"
                   style={{ backgroundColor: backgroundColor }}
                 />
-                {showBackgroundColorPicker && backgroundColorButtonRef.current && (
+                {showBackgroundColorPicker && backgroundColorButtonRef.current && createPortal(
                   <div
                     ref={backgroundColorPickerRef}
-                    className="fixed z-[100] bg-neutral-800 border border-neutral-700 rounded-lg shadow-lg p-3"
+                    className="fixed bg-neutral-800 border border-neutral-700 rounded-lg shadow-lg p-3"
                     style={{
                       top: `${backgroundColorButtonRef.current.getBoundingClientRect().bottom}px`,
                       left: `${backgroundColorButtonRef.current.getBoundingClientRect().left + backgroundColorButtonRef.current.getBoundingClientRect().width / 2}px`,
                       transform: 'translateX(-50%)',
-                      marginTop: '8px'
+                      marginTop: '8px',
+                      zIndex: 9999
                     }}
                   >
                     <CustomColorPicker
                       color={backgroundColor}
                       onChange={setBackgroundColor}
                     />
-                  </div>
+                  </div>,
+                  document.body
                 )}
                 <button
                   onClick={() => fileInputRef.current?.click()}
