@@ -4,7 +4,7 @@
  */
 
 import React, { useState, useRef, useEffect } from 'react';
-import { X, Check, Palette, Type, Image as ImageIcon, Upload, AlignLeft, AlignCenter, AlignRight, AlignJustify, Shadow, Minus, Plus as PlusIcon } from 'lucide-react';
+import { X, Check, Palette, Type, Image as ImageIcon, Upload, AlignLeft, AlignCenter, AlignRight, AlignJustify, Layers, Minus, Plus as PlusIcon } from 'lucide-react';
 import { TextPostData, TextPostStyle } from '../types/aggregator';
 
 interface TextPostEditorProps {
@@ -593,7 +593,7 @@ export function TextPostEditor({ onSave, onCancel }: TextPostEditorProps) {
               openMenu === 'shadow' ? 'bg-blue-600 text-white' : 'bg-neutral-800 text-white hover:bg-neutral-700'
             }`}
           >
-            <Shadow className="h-4 w-4" />
+            <Layers className="h-4 w-4" />
           </button>
 
           {/* Background */}
