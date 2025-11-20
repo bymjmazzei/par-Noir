@@ -9,6 +9,7 @@ import {
   StorageUserInfo,
   StorageBackendConfig
 } from '../../types/aggregator';
+import { IntegrationCredentialManager } from '../../utils/integrationCredentialManager';
 
 export class GoogleDriveBackend extends AbstractStorageBackend {
   private token: string | null = null;
@@ -84,10 +85,13 @@ export class GoogleDriveBackend extends AbstractStorageBackend {
     this.apiEndpoint = config?.apiEndpoint || null;
     this.backendId = config?.id || prefix;
     
-    // Load stored token if available
+    // SECURITY: Do not load tokens from plaintext localStorage
+    // Tokens should only be loaded from encrypted storage via loadEncryptedCredentials()
+    // when user is authenticated
     try {
-      this.token = localStorage.getItem(`${this.keyPrefix}_token`);
-      this.userEmail = localStorage.getItem(`${this.keyPrefix}_email`);
+      // Do not load from localStorage - prevents exposure of plaintext credentials
+      // this.token = localStorage.getItem(`${this.keyPrefix}_token`); // REMOVED - security risk
+      // this.userEmail = localStorage.getItem(`${this.keyPrefix}_email`); // REMOVED - security risk
       
       // Load folder cache from localStorage
       this.loadFolderCache();
@@ -107,21 +111,38 @@ export class GoogleDriveBackend extends AbstractStorageBackend {
     }
   }
 
-  async connect(credentials: { token: string; email?: string; refreshToken?: string }): Promise<void> {
+  async connect(credentials: { token: string; email?: string; refreshToken?: string; sessionId?: string }): Promise<void> {
     this.token = credentials.token;
     this.refreshToken = credentials.refreshToken || null;
     this.userEmail = credentials.email || null;
     
+    // SECURITY: Store credentials encrypted, not in plaintext localStorage
+    if (credentials.sessionId) {
+      try {
+        await IntegrationCredentialManager.storeCredentials(
+          this.backendId,
+          {
+            accessToken: credentials.token,
+            refreshToken: credentials.refreshToken || undefined,
+            email: credentials.email,
+            expiresAt: Date.now() + (3600 * 1000) // Default 1 hour expiry
+          },
+          credentials.sessionId
+        );
+      } catch (error) {
+        console.error('[GoogleDriveBackend] Failed to store encrypted credentials:', error);
+        // Fallback: still allow connection but warn
+        console.warn('[GoogleDriveBackend] Storing credentials in memory only - will be lost on refresh');
+      }
+    }
+    
+    // SECURITY: Remove any existing plaintext credentials
     try {
-      localStorage.setItem(`${this.keyPrefix}_token`, credentials.token);
-      if (credentials.email) {
-        localStorage.setItem(`${this.keyPrefix}_email`, credentials.email);
-      }
-      if (this.refreshToken) {
-        localStorage.setItem(`${this.keyPrefix}_refresh_token`, this.refreshToken);
-      }
+      localStorage.removeItem(`${this.keyPrefix}_token`);
+      localStorage.removeItem(`${this.keyPrefix}_email`);
+      localStorage.removeItem(`${this.keyPrefix}_refresh_token`);
     } catch (e) {
-      // localStorage might not be available
+      // Ignore errors
     }
     
     this.connected = true;
@@ -152,21 +173,38 @@ export class GoogleDriveBackend extends AbstractStorageBackend {
     return this.token;
   }
 
+  /**
+   * Load credentials from encrypted storage (requires authenticated session)
+   */
+  async loadEncryptedCredentials(sessionId: string): Promise<boolean> {
+    try {
+      const credentials = await IntegrationCredentialManager.getCredentials(
+        this.backendId,
+        sessionId
+      );
+      
+      if (credentials && credentials.accessToken) {
+        this.token = credentials.accessToken;
+        this.refreshToken = credentials.refreshToken || null;
+        this.userEmail = credentials.email || null;
+        this.connected = true;
+        return true;
+      }
+      return false;
+    } catch (error) {
+      console.error('[GoogleDriveBackend] Failed to load encrypted credentials:', error);
+      return false;
+    }
+  }
+
   getRefreshToken(): string | null {
     if (this.refreshToken) {
       return this.refreshToken;
     }
 
-    try {
-      const token = localStorage.getItem(`${this.keyPrefix}_refresh_token`);
-      if (token) {
-        this.refreshToken = token;
-        return token;
-      }
-      return null;
-    } catch (error) {
-      return null;
-    }
+    // SECURITY: Do not load from plaintext localStorage
+    // Credentials should be loaded via loadEncryptedCredentials() when user is authenticated
+    return null;
   }
 
   getStorageKeyPrefix(): string {
@@ -192,8 +230,9 @@ export class GoogleDriveBackend extends AbstractStorageBackend {
           const newToken = await this.refreshAccessToken(refreshToken);
           if (newToken) {
             this.token = newToken;
-            // Save new token
-            localStorage.setItem(`${this.keyPrefix}_token`, newToken);
+            // SECURITY: Save new token to encrypted storage (if session available)
+            // Note: This requires sessionId which should be passed from the caller
+            // For now, token is in memory - will be saved on next connect()
             console.log('✅ [GoogleDriveBackend] Token refreshed successfully');
             return false; // Token was refreshed, retry the request
           }
@@ -266,11 +305,9 @@ export class GoogleDriveBackend extends AbstractStorageBackend {
 
           if (tokenData.refresh_token) {
             this.refreshToken = tokenData.refresh_token;
-            try {
-              localStorage.setItem(`${this.keyPrefix}_refresh_token`, tokenData.refresh_token);
-            } catch (storageError) {
-              console.warn('⚠️ [GoogleDriveBackend] Unable to persist refreshed refresh token locally:', storageError);
-            }
+            // SECURITY: Do not store refresh token in plaintext localStorage
+            // Token will be saved to encrypted storage via FileStorageAggregator event handler
+            // or on next connect() call with sessionId
           }
 
           if (tokenData.access_token) {

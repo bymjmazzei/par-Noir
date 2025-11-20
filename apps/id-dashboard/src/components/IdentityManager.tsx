@@ -132,11 +132,14 @@ export const IdentityManager: React.FC<IdentityManagerProps> = React.memo(({
                 </div>
                 <div>
                   <h3 className="font-semibold text-gray-900 dark:text-white">
-                    {identity.displayName || identity.pnName}
+                    {identity.displayName || identity.nickname || 'User'}
                   </h3>
-                  <p className="text-sm text-gray-500 dark:text-gray-400">
-                    {identity.pnName}
-                  </p>
+                  {/* SECURITY: pnName is part of 2FA credentials - never display in UI */}
+                  {identity.email && (
+                    <p className="text-sm text-gray-500 dark:text-gray-400">
+                      {identity.email}
+                    </p>
+                  )}
                 </div>
               </div>
               

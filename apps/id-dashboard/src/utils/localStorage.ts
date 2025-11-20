@@ -1,5 +1,17 @@
-// Local Storage Utility for Identity Dashboard
-// Provides secure, encrypted storage with offline-first capabilities
+/**
+ * Local Storage Utility for Identity Dashboard
+ * Provides secure, encrypted storage with offline-first capabilities
+ * 
+ * SECURITY NOTE: This class initializes IndexedDB on the client side.
+ * While IndexedDB must be initialized client-side for browser storage,
+ * we ensure that:
+ * 1. NO plaintext credentials (pnName/passcode) are stored here
+ * 2. All sensitive data is encrypted before storage
+ * 3. This database is used only for local PWA migration, not primary storage
+ * 
+ * Primary identity storage uses IdentityProtocolDB (via SecureStorage class)
+ * which has additional security measures.
+ */
 
 interface StorageItem {
   data: any;
@@ -19,10 +31,14 @@ class SecureLocalStorage {
   private maxAge: number;
   private version: string;
   private db: IDBDatabase | null = null;
+  // SECURITY: Database name is visible in client code - this is unavoidable for IndexedDB
+  // However, no plaintext credentials are stored in this database
   private dbName = 'IdentityDashboardDB';
   private dbVersion = 1;
 
   constructor(config: StorageConfig = {}) {
+    // SECURITY: Encryption key generation is client-side - this is necessary for local encryption
+    // The key is never transmitted to any server and is only used for local data encryption
     this.encryptionKey = config.encryptionKey || this.generateKey();
     this.maxAge = config.maxAge || 30 * 24 * 60 * 60 * 1000; // 30 days
     this.version = config.version || '1.0.0';
@@ -298,17 +314,31 @@ class SecureLocalStorage {
   }
 
   // Identity-specific storage methods
+  // SECURITY: This method stores EncryptedIdentity objects only
+  // It should NEVER receive or store plaintext pnName or passcode
   async saveIdentity(identity: any): Promise<void> {
     if (!this.db) {
       throw new Error('IndexedDB not initialized');
+    }
+
+    // SECURITY: Sanitize identity data to ensure no plaintext credentials
+    // Only store encrypted identity data - never store pnName or passcode in plaintext
+    const sanitizedIdentity = { ...identity };
+    if (sanitizedIdentity.pnName) {
+      console.warn('[Security] Attempted to store pnName in IdentityDashboardDB - removing');
+      delete sanitizedIdentity.pnName;
+    }
+    if (sanitizedIdentity.passcode) {
+      console.warn('[Security] Attempted to store passcode in IdentityDashboardDB - removing');
+      delete sanitizedIdentity.passcode;
     }
 
     return new Promise((resolve, reject) => {
       const transaction = this.db!.transaction(['identities'], 'readwrite');
       const store = transaction.objectStore('identities');
       const request = store.put({
-        id: identity.id,
-        data: identity,
+        id: sanitizedIdentity.id || sanitizedIdentity.publicKey,
+        data: sanitizedIdentity,
         timestamp: Date.now()
       });
 

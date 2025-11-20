@@ -153,7 +153,7 @@ export const MainDashboard: React.FC<MainDashboardProps> = ({
                         : 'hover:bg-hover'
                     }`}
                   >
-                    <div className="font-medium text-theme-primary">{did.pnName || did.displayName}</div>
+                    <div className="font-medium text-theme-primary">{did.displayName || did.nickname || 'User'}</div>
                     <div className="text-sm text-theme-secondary">{did.id}</div>
                   </button>
                 ))}

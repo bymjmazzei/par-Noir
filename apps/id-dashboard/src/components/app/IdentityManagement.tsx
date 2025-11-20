@@ -165,7 +165,7 @@ export const IdentityManagement: React.FC<IdentityManagementProps> = ({
                 : 'hover:bg-gray-50'
             }`}
           >
-            <div className="font-medium">{identity.pnName || identity.displayName}</div>
+            <div className="font-medium">{identity.displayName || identity.nickname || 'User'}</div>
             <div className="text-sm text-gray-500">{identity.id}</div>
           </button>
         ))}

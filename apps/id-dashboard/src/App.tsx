@@ -26,6 +26,9 @@ import { cloudSyncManager } from './utils/cloudSync';
 import { SecureMetadataStorage } from './utils/secureMetadataStorage';
 import { notificationsService } from './utils/notificationsService';
 import { IPFSMetadataService } from './utils/ipfsMetadataService';
+import { SecureCredentialManager } from './utils/secureCredentialManager';
+import { SessionDataMigration } from './utils/sessionDataMigration';
+import { IntegrationCredentialManager } from './utils/integrationCredentialManager';
 // Dynamic import for DistributedIdentityManager to avoid module resolution issues
 let DistributedIdentityManager: any;
 import { LicenseVerification } from './utils/licenseVerification';
@@ -700,10 +703,17 @@ function App() {
           
           const currentMetadata = await SecureMetadataStorage.getMetadata(authenticatedUser.id);
           if (currentMetadata) {
+            // SECURITY: Retrieve credentials from SecureCredentialManager, not from state
+            const credentials = SecureCredentialManager.getCredentials(authenticatedUser.id);
+            if (!credentials) {
+              console.warn('Credentials not available for metadata decryption');
+              return;
+            }
+            
             const decryptedContent = await SecureMetadataCrypto.decryptMetadata(
               currentMetadata,
-              authenticatedUser.pnName,
-              authenticatedUser.passcode
+              credentials.pnName,
+              credentials.passcode
             );
             
             // Load attested data points
@@ -875,6 +885,27 @@ function App() {
         
         // Track page view
         analytics.trackPageView('dashboard');
+
+        // SECURITY: Run session data migration to remove pnName/passcode from IndexedDB
+        try {
+          const migrationResult = await SessionDataMigration.runMigration();
+          if (migrationResult.cleaned > 0) {
+            logDebug(`[Security] Cleaned ${migrationResult.cleaned} sessions with exposed credentials`);
+          }
+        } catch (migrationError) {
+          logError('Session data migration failed:', migrationError);
+        }
+
+        // SECURITY: Immediately clean up ALL plaintext Google Drive credentials
+        // This runs on every app load, even before user authentication
+        try {
+          const cleanupResult = await IntegrationCredentialManager.cleanupAllPlaintextCredentials();
+          if (cleanupResult.cleaned > 0) {
+            logDebug(`[Security] Cleaned ${cleanupResult.cleaned} plaintext integration credential keys from localStorage (Google Drive, Firebase, GitHub, etc.)`);
+          }
+        } catch (cleanupError) {
+          logError('Plaintext credential cleanup failed:', cleanupError);
+        }
 
         // Check for migration needs (PWA only)
         if (!migrationChecked) {
@@ -1244,57 +1275,89 @@ function App() {
 
   const handleAuthSuccess = async (session: any) => {
     try {
-      // Store the session using AuthSession interface
-      await storage.storeSession({
-        id: session.id,
-        pnName: session.pnName,
-        nickname: session.nickname,
-        accessToken: session.accessToken,
-        expiresIn: session.expiresIn,
-        authenticatedAt: session.authenticatedAt,
-        publicKey: session.publicKey || '',
-        passcode: session.passcode,
-        authToken: await deriveAuthToken(session.pnName, session.publicKey || session.id, session.passcode),
-      });
-
-      // Store passcode in sessionStorage for file decryption (only during this session)
-      // This is needed because files are encrypted and need to be decrypted on download
-      if (session.passcode) {
-        try {
-          sessionStorage.setItem('pn_session_passcode', session.passcode);
-        } catch (e) {
-          console.warn('Could not store passcode in sessionStorage:', e);
-        }
-
-        try {
-          const authEventDetail = {
-            pnName: session.pnName,
-            publicKey: session.publicKey || session.id,
-            passcode: session.passcode,
-            authToken: await deriveAuthToken(session.pnName, session.publicKey || session.id, session.passcode),
-          };
-          window.dispatchEvent(new CustomEvent('pn-auth-session', { detail: authEventDetail }));
-        } catch (eventError) {
-          console.warn('Could not dispatch pn-auth-session event:', eventError);
-        }
+      // SECURITY: Store credentials in memory only via SecureCredentialManager
+      // pnName + passcode = 2FA credentials - must remain secret
+      if (session.pnName && session.passcode) {
+        const expiresIn = (session.expiresIn || 3600) * 1000; // Convert to milliseconds
+        SecureCredentialManager.setCredentials(
+          session.id,
+          session.pnName,
+          session.passcode,
+          expiresIn
+        );
       }
 
-      // Set the authenticated user
-      setAuthenticatedUser({
+      // Store the session WITHOUT credentials
+      // SECURITY: Do not pass pnName, passcode, or authToken to storeSession
+      await storage.storeSession({
         id: session.id,
-        pnName: session.pnName,
         nickname: session.nickname,
         accessToken: session.accessToken,
         expiresIn: session.expiresIn,
         authenticatedAt: session.authenticatedAt,
         publicKey: session.publicKey || '',
-        passcode: session.passcode,
+        // authToken removed - it's derived from credentials and should not be stored
+        // pnName and passcode removed - stored in SecureCredentialManager only
+      });
+
+      // SECURITY: Do NOT store passcode in sessionStorage - use SecureCredentialManager instead
+      // Removed: sessionStorage.setItem('pn_session_passcode', session.passcode);
+
+      // SECURITY: Do NOT expose credentials in custom events
+      try {
+        const authEventDetail = {
+          // pnName and passcode removed - use SecureCredentialManager if needed
+          publicKey: session.publicKey || session.id,
+          authToken: await deriveAuthToken(session.pnName, session.publicKey || session.id, session.passcode),
+        };
+        window.dispatchEvent(new CustomEvent('pn-auth-session', { detail: authEventDetail }));
+      } catch (eventError) {
+        console.warn('Could not dispatch pn-auth-session event:', eventError);
+      }
+
+      // Set the authenticated user WITHOUT credentials
+      // Credentials are stored in SecureCredentialManager, not in state
+      setAuthenticatedUser({
+        id: session.id,
+        // pnName removed - use SecureCredentialManager.getCredentials(session.id) if needed
+        nickname: session.nickname,
+        accessToken: session.accessToken,
+        expiresIn: session.expiresIn,
+        authenticatedAt: session.authenticatedAt,
+        publicKey: session.publicKey || '',
+        // passcode removed - use SecureCredentialManager.getCredentials(session.id) if needed
         authToken: session.authToken || undefined,
       });
 
       // Set the unlocked identity for notifications
-      // pnName and passcode are secrets - passed to service but not logged
-      notificationsService.setUnlockedIdentity(session.id, session.pnName, session.passcode, session.nickname || 'User');
+      // SECURITY: pnName and passcode not passed - stored in SecureCredentialManager only
+      notificationsService.setUnlockedIdentity(session.id, session.nickname || 'User');
+
+      // SECURITY: Migrate plaintext integration credentials to encrypted storage
+      try {
+        // First, try to migrate any existing credentials
+        const migrated = await IntegrationCredentialManager.migratePlaintextCredentials(
+          'google_drive',
+          session.id
+        );
+        if (migrated) {
+          logDebug('[Security] Migrated Google Drive credentials to encrypted storage');
+        }
+        
+        // Then, clean up ALL remaining plaintext credentials (even if migration failed)
+        const cleanupResult = await IntegrationCredentialManager.cleanupAllPlaintextCredentials();
+        if (cleanupResult.cleaned > 0) {
+          logDebug(`[Security] Cleaned ${cleanupResult.cleaned} plaintext integration credential keys (Google Drive, Firebase, GitHub, etc.)`);
+        }
+      } catch (migrationError) {
+        logError('Integration credential migration failed:', migrationError);
+        // Still try to clean up plaintext credentials even if migration fails
+        try {
+          await IntegrationCredentialManager.cleanupAllPlaintextCredentials();
+        } catch (cleanupError) {
+          logError('Plaintext credential cleanup failed:', cleanupError);
+        }
+      }
 
       // Reload stored identities into the selector
       try {
@@ -1351,6 +1414,16 @@ function App() {
   const handleLogout = async () => {
     try {
       logDebug('Logging out...');
+      
+      // SECURITY: Clear all credentials from memory
+      SecureCredentialManager.clearAll();
+      
+      // SECURITY: Clear all integration credentials
+      try {
+        await IntegrationCredentialManager.clearAll();
+      } catch (error) {
+        logError('Failed to clear integration credentials:', error);
+      }
       
       // Clear the current session from storage
       await storage.clearExpiredSessions();
@@ -1530,10 +1603,16 @@ function App() {
       // 🔐 SECURE METADATA UPDATE: Update nickname in encrypted metadata
       try {
         const identityId = authenticatedUser.id || authenticatedUser.publicKey;
+        // SECURITY: Retrieve credentials from SecureCredentialManager
+        const credentials = SecureCredentialManager.getCredentials(authenticatedUser.id);
+        if (!credentials) {
+          throw new Error('Credentials not available for metadata update');
+        }
+        
         await SecureMetadataStorage.updateMetadataField(
           identityId,
-          authenticatedUser.pnName,
-          authenticatedUser.passcode, // From ID file credentials
+          credentials.pnName,
+          credentials.passcode,
           'nickname',
           newNickname
         );
@@ -1648,10 +1727,16 @@ function App() {
       // 🔐 SECURE METADATA UPDATE: Update profile picture in encrypted metadata
       try {
         const identityId = authenticatedUser.id || authenticatedUser.publicKey;
+        // SECURITY: Retrieve credentials from SecureCredentialManager
+        const credentials = SecureCredentialManager.getCredentials(authenticatedUser.id);
+        if (!credentials) {
+          throw new Error('Credentials not available for metadata update');
+        }
+        
         await SecureMetadataStorage.updateMetadataField(
           identityId,
-          authenticatedUser.pnName,
-          authenticatedUser.passcode, // From ID file credentials
+          credentials.pnName,
+          credentials.passcode,
           'profilePicture',
           newProfilePicture
         );
@@ -2350,7 +2435,7 @@ function App() {
         contactValue: custodianData.contactValue,
         expiresAt: Date.now() + (24 * 60 * 60 * 1000), // 24 hours
         identityName: authenticatedUser?.nickname || 'Unknown Identity',
-        identityUsername: authenticatedUser?.pnName || 'unknown'
+        identityUsername: authenticatedUser?.nickname || authenticatedUser?.id || 'unknown'
       };
       
       // Create deep link for custodian invitation
@@ -2991,10 +3076,16 @@ This invitation expires in 24 hours.`;
       let existingData = null;
       
       if (currentMetadata) {
+        // SECURITY: Retrieve credentials from SecureCredentialManager
+        const credentials = SecureCredentialManager.getCredentials(authenticatedUser.id);
+        if (!credentials) {
+          throw new Error('Credentials not available for metadata decryption');
+        }
+        
         const decryptedContent = await SecureMetadataCrypto.decryptMetadata(
           currentMetadata,
-          authenticatedUser.pnName,
-          authenticatedUser.passcode
+          credentials.pnName,
+          credentials.passcode
         );
         const attestedData = decryptedContent?.dataPoints?.attestedData || [];
         const existingAttestation = attestedData.find((attestation: any) => attestation.dataPointId === dataPointId);
@@ -3034,10 +3125,16 @@ This invitation expires in 24 hours.`;
         };
         
         // Update metadata with new attested data
+        // SECURITY: Retrieve credentials from SecureCredentialManager
+        const credentials = SecureCredentialManager.getCredentials(authenticatedUser.id);
+        if (!credentials) {
+          throw new Error('Credentials not available for metadata update');
+        }
+        
         await SecureMetadataStorage.updateMetadataField(
           authenticatedUser.id,
-          authenticatedUser.pnName,
-          authenticatedUser.passcode,
+          credentials.pnName,
+          credentials.passcode,
           'dataPoints',
           {
             attestedData: [attestedDataPoint]

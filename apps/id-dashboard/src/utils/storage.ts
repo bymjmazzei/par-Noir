@@ -1,4 +1,5 @@
 import { EncryptedIdentity, AuthSession } from './crypto';
+import { SecureCredentialManager } from './secureCredentialManager';
 
 export interface StoredIdentity {
   publicKey: string;
@@ -16,13 +17,16 @@ export interface StoredIdentity {
 
 export interface StoredSession {
   id: string;
+  // SECURITY: accessToken is a JWT for API calls - keeping for now but should be short-lived
+  // Consider removing if not needed for API authentication
   accessToken: string;
   expiresAt: string;
   createdAt: string;
-  pnName?: string;
+  // SECURITY: pnName and passcode are 2FA credentials - NEVER stored in IndexedDB
+  // Use SecureCredentialManager for temporary in-memory storage only
   publicKey?: string;
-  authToken?: string;
-  passcode?: string;
+  // SECURITY: authToken removed - it's derived from pnName+passcode and is sensitive
+  // authToken?: string; // REMOVED - derived from credentials
 }
 
 export interface StoredCustodian {
@@ -297,24 +301,71 @@ export class SecureStorage {
 
   /**
    * Store authentication session
+   * SECURITY: Explicitly filters out credentials even if they're in the session object
    */
   async storeSession(session: AuthSession): Promise<void> {
     if (!this.db) throw new Error('Database not initialized');
 
+    // SECURITY: Store credentials in memory only, never in IndexedDB
+    // pnName + passcode = 2FA credentials - must remain secret
+    if (session.pnName && session.passcode) {
+      const expiresIn = session.expiresIn * 1000; // Convert to milliseconds
+      SecureCredentialManager.setCredentials(
+        session.id,
+        session.pnName,
+        session.passcode,
+        expiresIn
+      );
+    }
+
+    // SECURITY: Explicitly create a clean session object, removing ALL credentials
+    // Even if the AuthSession object contains pnName/passcode/authToken, we don't store them
     const storedSession: StoredSession = {
       id: session.id,
+      // SECURITY: accessToken is a JWT for API calls - keeping for API authentication
+      // It should be short-lived and expire quickly
       accessToken: session.accessToken,
       expiresAt: new Date(Date.now() + session.expiresIn * 1000).toISOString(),
       createdAt: session.authenticatedAt,
-      pnName: session.pnName,
       publicKey: session.publicKey,
-      authToken: session.authToken,
-      passcode: session.passcode,
+      // CRITICAL: Do NOT store these fields even if they exist in session:
+      // - pnName: 2FA credential
+      // - passcode: 2FA credential  
+      // - authToken: derived from credentials
+      // These are explicitly excluded from StoredSession interface
     };
 
     return this.performTransaction('sessions', 'readwrite', (store) => {
-      store.put(storedSession);
+      // SECURITY: Create a completely new object with ONLY the fields we want
+      // This prevents IndexedDB from storing any extra fields that might exist
+      const cleanSession: any = {
+        id: storedSession.id,
+        accessToken: storedSession.accessToken,
+        expiresAt: storedSession.expiresAt,
+        createdAt: storedSession.createdAt,
+        publicKey: storedSession.publicKey,
+        // Explicitly do NOT include: pnName, passcode, authToken
+      };
+      store.put(cleanSession);
+    }).then(() => {
+      // SECURITY: Immediately clean up any credentials that might have been stored
+      // This ensures that even if something bypasses our checks, credentials are removed
+      return this.cleanupSessionCredentials(storedSession.id);
     });
+  }
+
+  /**
+   * Clean up credentials from a specific session
+   * SECURITY: Ensures no credentials are stored in IndexedDB
+   */
+  private async cleanupSessionCredentials(sessionId: string): Promise<void> {
+    try {
+      const { SessionDataMigration } = await import('./sessionDataMigration');
+      // Run migration to clean this specific session
+      await SessionDataMigration.cleanupSession(sessionId);
+    } catch (error) {
+      console.warn('[SecureStorage] Failed to cleanup session credentials:', error);
+    }
   }
 
   /**

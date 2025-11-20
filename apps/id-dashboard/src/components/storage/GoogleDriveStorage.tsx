@@ -836,14 +836,18 @@ export const GoogleDriveStorage: React.FC = () => {
     setShowOAuthModal(false);
     
     // Store token and user info in localStorage (existing behavior - don't break this)
-    localStorage.setItem('google_drive_token', token);
-    localStorage.setItem('google_drive_email', user.email);
-    localStorage.setItem('google_drive_name', user.name);
-    if (user.picture) {
-      localStorage.setItem('google_drive_picture', user.picture);
-    }
-    if (refreshToken) {
-      localStorage.setItem('google_drive_refresh_token', refreshToken);
+    // SECURITY: Do not store tokens/email in plaintext localStorage
+    // Credentials should be stored via IntegrationCredentialManager when user is authenticated
+    // For now, store in memory only - will be persisted securely on next connect
+    // localStorage.setItem('google_drive_token', token); // REMOVED - security risk
+    // localStorage.setItem('google_drive_email', user.email); // REMOVED - security risk
+    // localStorage.setItem('google_drive_name', user.name); // REMOVED - security risk
+    // SECURITY: Do not store any user data in plaintext localStorage
+    // if (user.picture) {
+    //   localStorage.setItem('google_drive_picture', user.picture); // REMOVED - security risk
+    // }
+    // if (refreshToken) {
+    //   localStorage.setItem('google_drive_refresh_token', refreshToken); // REMOVED - security risk
     }
     
     // Also store tokens server-side for browser app API access (non-blocking)

@@ -14,6 +14,8 @@ import type { CompanionMetadata } from '../../services/storage/GoogleDriveMetada
 import { AuthSession as CryptoAuthSession } from '../../types/crypto';
 import GoogleDriveIconUrl from '../../assets/icons/google-drive-logo.png?url';
 import type { ThirdPartyIndexer, IndexingPermissions } from '../../types/indexers';
+import { SecureCredentialManager } from '../../utils/secureCredentialManager';
+import { IntegrationCredentialManager } from '../../utils/integrationCredentialManager';
 
 const GOOGLE_DRIVE_ICON_URL = GoogleDriveIconUrl;
 const DRIVE_ACCOUNTS_STORAGE_KEY = 'pn_google_drive_accounts';
@@ -48,7 +50,8 @@ function normalizeVisibility(value: any): 'public' | 'private' | 'friends' {
 interface DriveAccountState {
   backendId: string;
   keyPrefix: string;
-  email: string | null;
+  // SECURITY: email removed - sensitive data should not be stored in localStorage
+  // email: string | null; // REMOVED - use encrypted storage instead
 }
 
 type StoredDriveCredential = {
@@ -67,6 +70,17 @@ interface FileStorageAggregatorProps {
 }
 
 export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ authenticatedUser, hideSecureFolderSection = false }) => {
+  // Helper function to get passcode from SecureCredentialManager
+  const getPasscodeFromSecureStorage = React.useCallback((sessionId: string | null | undefined): string | null => {
+    if (!sessionId) return null;
+    try {
+      const credentials = SecureCredentialManager.getCredentials(sessionId);
+      return credentials?.passcode || null;
+    } catch (e) {
+      return null;
+    }
+  }, []);
+
   // Cache for share tokens (fileId -> shareToken) - generated during upload for quick access
   const shareTokenCache = React.useRef<Map<string, ShareToken>>(new Map());
   const previewRetryCounts = React.useRef<Map<string, number>>(new Map());
@@ -393,11 +407,9 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
 
     let passcode = resolvedAuth?.passcode || null;
     if (!passcode) {
-      try {
-        passcode = sessionStorage.getItem('pn_session_passcode');
-      } catch (e) {
-        passcode = null;
-      }
+      // SECURITY: Get passcode from SecureCredentialManager instead of sessionStorage
+      const sessionId = authenticatedUser?.id || (authenticatedUser as any)?.publicKey || null;
+      passcode = getPasscodeFromSecureStorage(sessionId);
     }
 
     if (!pnName || !publicKey) {
@@ -416,7 +428,9 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
       return;
     }
     try {
-      const storedPasscode = sessionStorage.getItem('pn_session_passcode');
+      // SECURITY: Get passcode from SecureCredentialManager instead of sessionStorage
+      const sessionId = authenticatedUser?.id || (authenticatedUser as any)?.publicKey || null;
+      const storedPasscode = getPasscodeFromSecureStorage(sessionId);
       if (storedPasscode) {
         setResolvedAuth((prev) => (prev ? { ...prev, passcode: storedPasscode } : prev));
       }
@@ -445,7 +459,14 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
 
   function persistDriveAccounts(accounts: DriveAccountState[]) {
     try {
-      localStorage.setItem(DRIVE_ACCOUNTS_STORAGE_KEY, JSON.stringify(accounts));
+      // SECURITY: Do not store email in accounts array - it's sensitive data
+      // Only store backendId and keyPrefix (non-sensitive identifiers)
+      const sanitizedAccounts = accounts.map(account => ({
+        backendId: account.backendId,
+        keyPrefix: account.keyPrefix,
+        // email removed - security risk
+      }));
+      localStorage.setItem(DRIVE_ACCOUNTS_STORAGE_KEY, JSON.stringify(sanitizedAccounts));
     } catch (storageError) {
       console.warn('⚠️ [DriveAccounts] Unable to persist drive accounts', storageError);
     }
@@ -514,7 +535,11 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
   function resolveIdentifiersForEmail(email?: string | null) {
     const normalizedEmail = email?.toLowerCase() || null;
     if (normalizedEmail) {
-      const existing = driveAccounts.find((account) => account.email?.toLowerCase() === normalizedEmail);
+      // SECURITY: email removed from DriveAccountState - use userEmails map instead
+      const existing = driveAccounts.find((account) => {
+        const accountEmail = userEmails.get(account.backendId);
+        return accountEmail?.toLowerCase() === normalizedEmail;
+      });
       if (existing) {
         return { backendId: existing.backendId, keyPrefix: existing.keyPrefix, isNew: false };
       }
@@ -580,11 +605,9 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
 
       let metadataPasscode = resolved?.passcode || null;
       if (!metadataPasscode) {
-        try {
-          metadataPasscode = sessionStorage.getItem('pn_session_passcode');
-        } catch {
-          metadataPasscode = null;
-        }
+        // SECURITY: Get passcode from SecureCredentialManager instead of sessionStorage
+        const sessionId = authenticatedUser?.id || (authenticatedUser as any)?.publicKey || null;
+        metadataPasscode = getPasscodeFromSecureStorage(sessionId);
       }
 
       if (!metadataPnName || !metadataPasscode) {
@@ -757,6 +780,24 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
           connectedAt,
           updatedAt: nowIso,
         });
+
+        // SECURITY: Store credentials in encrypted storage (if session available)
+        if (authenticatedUser?.id) {
+          try {
+            await IntegrationCredentialManager.storeCredentials(
+              backendId,
+              {
+                accessToken: nextAccessToken,
+                refreshToken: nextRefreshToken || undefined,
+                email: resolvedEmail || undefined,
+                expiresAt: Date.now() + (3600 * 1000) // 1 hour default
+              },
+              authenticatedUser.id
+            );
+          } catch (error) {
+            console.warn('[FileStorageAggregator] Failed to store encrypted credentials:', error);
+          }
+        }
 
         purgeDuplicateBackendsForEmail(backendId, resolvedEmail ?? existingCredential?.email ?? null);
       }
@@ -1216,10 +1257,12 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
 
     if (normalizedEmailForCleanup) {
       for (const account of driveAccounts) {
+        // SECURITY: email removed from DriveAccountState - use userEmails map instead
+        const accountEmail = userEmails.get(account.backendId);
         if (
           account.backendId !== params.backendId &&
-          account.email &&
-          account.email.toLowerCase() === normalizedEmailForCleanup
+          accountEmail &&
+          accountEmail.toLowerCase() === normalizedEmailForCleanup
         ) {
           staleBackends.push(account.backendId);
         }
@@ -1641,7 +1684,9 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
       }
 
       try {
-        const passcode = sessionStorage.getItem('pn_session_passcode');
+        // SECURITY: Get passcode from SecureCredentialManager instead of sessionStorage
+        const sessionId = authenticatedUser?.id || (authenticatedUser as any)?.publicKey || null;
+        const passcode = getPasscodeFromSecureStorage(sessionId);
 
         await hydrateStorageCredentialsFromAPI();
 
@@ -1810,10 +1855,12 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
         
         let passcode: string | null = null;
         try {
-          passcode = sessionStorage.getItem('pn_session_passcode');
-          console.log('🔍 [FileStorageAggregator] Passcode from sessionStorage:', passcode ? 'found' : 'not found');
+          // SECURITY: Get passcode from SecureCredentialManager instead of sessionStorage
+          const sessionId = authenticatedUser?.id || (authenticatedUser as any)?.publicKey || null;
+          passcode = getPasscodeFromSecureStorage(sessionId);
+          console.log('🔍 [FileStorageAggregator] Passcode from SecureCredentialManager:', passcode ? 'found' : 'not found');
         } catch (e) {
-          console.warn('🔍 [FileStorageAggregator] sessionStorage not available');
+          console.warn('🔍 [FileStorageAggregator] SecureCredentialManager not available');
         }
         
         const authToken = authenticatedUser?.authToken;
@@ -1861,9 +1908,11 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
           
           let passcode: string | null = null;
           try {
-            passcode = sessionStorage.getItem('pn_session_passcode');
+            // SECURITY: Get passcode from SecureCredentialManager instead of sessionStorage
+            const sessionId = authenticatedUser?.id || (authenticatedUser as any)?.publicKey || null;
+            passcode = getPasscodeFromSecureStorage(sessionId);
           } catch (e) {
-            // sessionStorage might not be available
+            // SecureCredentialManager might not be available
           }
           
           if (pnName && publicKey) {
@@ -2207,9 +2256,11 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
           publicKey = authenticatedUser.publicKey || 
             (authenticatedUser.id && authenticatedUser.id.startsWith('did:key:') ? authenticatedUser.id : authenticatedUser.id) || null;
           try {
-            passcode = sessionStorage.getItem('pn_session_passcode');
+            // SECURITY: Get passcode from SecureCredentialManager instead of sessionStorage
+            const sessionId = authenticatedUser?.id || (authenticatedUser as any)?.publicKey || null;
+            passcode = getPasscodeFromSecureStorage(sessionId);
           } catch (e) {
-            // Ignore sessionStorage errors
+            // Ignore SecureCredentialManager errors
           }
         }
         
@@ -2226,7 +2277,9 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
                 (session.id && session.id.startsWith('did:key:') ? session.id : session.id) || null;
               if (!passcode) {
                 try {
-                  passcode = sessionStorage.getItem('pn_session_passcode');
+                  // SECURITY: Get passcode from SecureCredentialManager instead of sessionStorage
+                  const sessionId = authenticatedUser?.id || (authenticatedUser as any)?.publicKey || null;
+                  passcode = getPasscodeFromSecureStorage(sessionId);
                 } catch (e) {
                   // Ignore
                 }
@@ -3198,34 +3251,70 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
       }
 
       if (storedAccounts.length === 0) {
-        const legacyToken = localStorage.getItem('google_drive_token');
-        if (legacyToken) {
-          const legacyEmail = localStorage.getItem('google_drive_email');
-          const legacyRefresh = localStorage.getItem('google_drive_refresh_token');
-          const identifiers = resolveIdentifiersForEmail(legacyEmail);
-          await upsertDriveAccount({
-            backendId: identifiers.backendId,
-            keyPrefix: identifiers.keyPrefix,
-            token: legacyToken,
-            refreshToken: legacyRefresh,
-            email: legacyEmail
+        // SECURITY: Do not load plaintext tokens from localStorage
+        // Legacy tokens should be migrated via IntegrationCredentialManager
+        // For now, skip legacy token loading to prevent exposure
+        // const legacyToken = localStorage.getItem('google_drive_token'); // REMOVED - security risk
+        // if (legacyToken) {
+        //   const legacyEmail = localStorage.getItem('google_drive_email'); // REMOVED - security risk
+        //   const legacyRefresh = localStorage.getItem('google_drive_refresh_token'); // REMOVED - security risk
+        //   ...
+        // }
+        
+        // Instead, try to load from encrypted storage if user is authenticated
+        if (authenticatedUser?.id) {
+          try {
+            const credentials = await IntegrationCredentialManager.getCredentials(
+              'google_drive',
+              authenticatedUser.id
+            );
+            if (credentials && credentials.email) {
+              const identifiers = resolveIdentifiersForEmail(credentials.email);
+              await upsertDriveAccount({
+                backendId: identifiers.backendId,
+                keyPrefix: identifiers.keyPrefix,
+                token: credentials.accessToken,
+                refreshToken: credentials.refreshToken,
+            email: credentials.email
           });
         }
       } else {
         for (const account of storedAccounts) {
-          const token = localStorage.getItem(`${account.keyPrefix}_token`);
-          const refresh = localStorage.getItem(`${account.keyPrefix}_refresh_token`);
+          // SECURITY: Do not load tokens from plaintext localStorage
+          // Load from encrypted storage if user is authenticated
+          let token: string | null = null;
+          let refresh: string | null = null;
+          
+          if (authenticatedUser?.id) {
+            try {
+              const credentials = await IntegrationCredentialManager.getCredentials(
+                account.backendId,
+                authenticatedUser.id
+              );
+              if (credentials) {
+                token = credentials.accessToken;
+                refresh = credentials.refreshToken || null;
+              }
+            } catch (error) {
+              console.warn('[FileStorageAggregator] Failed to load encrypted credentials:', error);
+            }
+          }
+          
+          // Legacy fallback removed - security risk
+          // const token = localStorage.getItem(`${account.keyPrefix}_token`); // REMOVED
+          // const refresh = localStorage.getItem(`${account.keyPrefix}_refresh_token`); // REMOVED
 
           if (!token) {
             continue;
           }
 
+          // SECURITY: Do not pass email - it's sensitive and should be in encrypted storage only
           await upsertDriveAccount({
             backendId: account.backendId,
             keyPrefix: account.keyPrefix,
             token,
             refreshToken: refresh,
-            email: account.email
+            // email removed - should be retrieved from encrypted storage if needed
           });
         }
       }
@@ -3458,7 +3547,9 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
       let metadataPasscode = resolvedCredentials?.passcode || null;
       if (!metadataPasscode) {
         try {
-          metadataPasscode = sessionStorage.getItem('pn_session_passcode');
+          // SECURITY: Get passcode from SecureCredentialManager instead of sessionStorage
+          const sessionId = authenticatedUser?.id || (authenticatedUser as any)?.publicKey || null;
+          metadataPasscode = getPasscodeFromSecureStorage(sessionId);
         } catch (e) {
           metadataPasscode = null;
         }
@@ -3519,14 +3610,8 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
 
     await persistStorageCredentialsToAPI(payloadForPersistence || undefined);
 
-      // Persist refresh token for local fallback using scoped key prefix
-      if (tokenData.refreshToken) {
-        try {
-          localStorage.setItem(`${identifiers.keyPrefix}_refresh_token`, tokenData.refreshToken);
-        } catch (storageError) {
-          console.warn('⚠️ [handleConnectGoogleDrive] Unable to persist refresh token locally:', storageError);
-        }
-      }
+      // SECURITY: Do not store refresh token in plaintext localStorage
+      // Token is stored in encrypted storage via IntegrationCredentialManager above
 
       // Load files and quota
       await loadFiles();
@@ -3576,7 +3661,9 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
             (authenticatedUser as any)?.name ||
             null;
           
-          const passcode = sessionStorage.getItem('pn_session_passcode');
+          // SECURITY: Get passcode from SecureCredentialManager instead of sessionStorage
+          const sessionId = authenticatedUser?.id || (authenticatedUser as any)?.publicKey || null;
+          const passcode = getPasscodeFromSecureStorage(sessionId);
           
           if (effectivePnName && passcode) {
             // Sync from cloud first to get latest metadata
@@ -3802,7 +3889,9 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
       let sessionPasscode: string | null = passcodeToUse;
       if (!sessionPasscode) {
         try {
-          sessionPasscode = sessionStorage.getItem('pn_session_passcode');
+          // SECURITY: Get passcode from SecureCredentialManager instead of sessionStorage
+          const sessionId = authenticatedUser?.id || (authenticatedUser as any)?.publicKey || null;
+          sessionPasscode = getPasscodeFromSecureStorage(sessionId);
         } catch (e) {
           sessionPasscode = null;
         }
@@ -3817,7 +3906,9 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
       let sessionPasscode: string | null = passcodeToUse;
       if (!sessionPasscode) {
         try {
-          sessionPasscode = sessionStorage.getItem('pn_session_passcode');
+          // SECURITY: Get passcode from SecureCredentialManager instead of sessionStorage
+          const sessionId = authenticatedUser?.id || (authenticatedUser as any)?.publicKey || null;
+          sessionPasscode = getPasscodeFromSecureStorage(sessionId);
         } catch (e) {
           sessionPasscode = null;
         }
@@ -5206,7 +5297,8 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
         <div className="space-y-6">
           {driveAccounts.map((account, index) => {
             const backendId = account.backendId;
-            const email = account.email || userEmails.get(backendId) || `Drive ${index + 1}`;
+            // SECURITY: email removed from DriveAccountState - use userEmails map instead
+            const email = userEmails.get(backendId) || `Drive ${index + 1}`;
             const accountFiles = filesByBackend.get(backendId) || [];
             const quota = storageQuotas.get(backendId);
             const percentUsed = quota && quota.totalBytes
