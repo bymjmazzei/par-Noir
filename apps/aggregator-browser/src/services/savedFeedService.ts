@@ -33,38 +33,91 @@ export interface SavedFeed {
  * Get user's saved feed (private curated feed)
  */
 export async function getSavedFeed(userDid: string): Promise<SavedFeed | null> {
-  const response = await fetch(`${API_ENDPOINT}/api/feeds/saved?userDid=${userDid}`, {
-    headers: getAuthHeaders()
-  });
-
-  if (response.ok) {
-    const result = await response.json();
-    return result.feed || null;
-  }
-
-  if (response.status === 404) {
-    // No saved posts yet - return empty feed
-    return {
-      feedId: `saved-${userDid}`,
-      feedName: 'Saved',
-      fileIds: [],
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString()
-    };
-  }
-
-  // For 500 or other errors, throw so backoff logic can work
-  const errorText = await response.text();
-  let errorMessage = `Failed to load saved feed: ${response.status}`;
   try {
-    const errorJson = JSON.parse(errorText);
-    errorMessage = errorJson.message || errorMessage;
-  } catch {
-    errorMessage = errorText || errorMessage;
+    const response = await fetch(`${API_ENDPOINT}/api/feeds/saved?userDid=${userDid}`, {
+      headers: getAuthHeaders()
+    });
+
+    if (response.ok) {
+      const result = await response.json();
+      return result.feed || null;
+    }
+
+    if (response.status === 404) {
+      // Check local storage as fallback
+      const localFeed = getLocalSavedFeed(userDid);
+      if (localFeed) {
+        return localFeed;
+      }
+      
+      // No saved posts yet - return empty feed
+      return {
+        feedId: `saved-${userDid}`,
+        feedName: 'Saved',
+        fileIds: [],
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      };
+    }
+
+    // For 500 or other errors, try local storage as fallback
+    if (response.status === 500) {
+      const localFeed = getLocalSavedFeed(userDid);
+      if (localFeed) {
+        console.warn('API error, using local saved feed as fallback');
+        return localFeed;
+      }
+    }
+
+    // For 500 or other errors, throw so backoff logic can work
+    const errorText = await response.text();
+    let errorMessage = `Failed to load saved feed: ${response.status}`;
+    try {
+      const errorJson = JSON.parse(errorText);
+      errorMessage = errorJson.message || errorMessage;
+    } catch {
+      errorMessage = errorText || errorMessage;
+    }
+    const error = new Error(errorMessage);
+    (error as any).status = response.status;
+    throw error;
+  } catch (error) {
+    // If fetch fails entirely, try local storage
+    const localFeed = getLocalSavedFeed(userDid);
+    if (localFeed) {
+      console.warn('Network error, using local saved feed as fallback');
+      return localFeed;
+    }
+    throw error;
   }
-  const error = new Error(errorMessage);
-  (error as any).status = response.status;
-  throw error;
+}
+
+/**
+ * Get local saved feed from localStorage (fallback when API fails)
+ */
+function getLocalSavedFeed(userDid: string): SavedFeed | null {
+  try {
+    const key = `saved_feed_${userDid}`;
+    const stored = localStorage.getItem(key);
+    if (stored) {
+      return JSON.parse(stored);
+    }
+  } catch (e) {
+    console.warn('Failed to load local saved feed:', e);
+  }
+  return null;
+}
+
+/**
+ * Save to local storage (fallback when API fails)
+ */
+function saveLocalSavedFeed(userDid: string, feed: SavedFeed): void {
+  try {
+    const key = `saved_feed_${userDid}`;
+    localStorage.setItem(key, JSON.stringify(feed));
+  } catch (e) {
+    console.warn('Failed to save local saved feed:', e);
+  }
 }
 
 /**
@@ -91,6 +144,35 @@ export async function saveToFeed(
     });
 
     if (!response.ok) {
+      // If API fails with JSON error, use local storage as fallback
+      if (response.status === 500) {
+        const errorText = await response.text().catch(() => '');
+        if (errorText.includes('invalid input syntax for type json')) {
+          console.warn('API has JSON syntax error, using local storage fallback');
+          
+          // Get existing local feed or create new one
+          let localFeed = getLocalSavedFeed(userDid);
+          if (!localFeed) {
+            localFeed = {
+              feedId: `saved-${userDid}`,
+              feedName: 'Saved',
+              fileIds: [],
+              createdAt: new Date().toISOString(),
+              updatedAt: new Date().toISOString()
+            };
+          }
+          
+          // Add fileId if not already present
+          if (!localFeed.fileIds.includes(fileId)) {
+            localFeed.fileIds.push(fileId);
+            localFeed.updatedAt = new Date().toISOString();
+            saveLocalSavedFeed(userDid, localFeed);
+          }
+          
+          return localFeed;
+        }
+      }
+      
       // Try to get error message from response
       let errorMessage = `Failed to save to feed: ${response.status}`;
       let errorDetails: any = null;
@@ -142,9 +224,32 @@ export async function removeFromSavedFeed(
     });
 
     if (!response.ok) {
+      // If API fails, update local storage as fallback
+      if (response.status === 500) {
+        const errorText = await response.text().catch(() => '');
+        if (errorText.includes('invalid input syntax for type json')) {
+          console.warn('API has JSON syntax error, using local storage fallback');
+          
+          const localFeed = getLocalSavedFeed(userDid);
+          if (localFeed) {
+            localFeed.fileIds = localFeed.fileIds.filter(id => id !== fileId);
+            localFeed.updatedAt = new Date().toISOString();
+            saveLocalSavedFeed(userDid, localFeed);
+            return;
+          }
+        }
+      }
       throw new Error('Failed to remove from saved feed');
     }
   } catch (error) {
+    // If fetch fails, try local storage
+    const localFeed = getLocalSavedFeed(userDid);
+    if (localFeed) {
+      localFeed.fileIds = localFeed.fileIds.filter(id => id !== fileId);
+      localFeed.updatedAt = new Date().toISOString();
+      saveLocalSavedFeed(userDid, localFeed);
+      return;
+    }
     console.error('Failed to remove from saved feed:', error);
     throw error;
   }
