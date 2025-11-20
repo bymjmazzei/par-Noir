@@ -110,17 +110,13 @@ export function CommentModal({ file, onClose }: CommentModalProps) {
       onClose();
     };
 
-    document.addEventListener('mousedown', handleClickOutside);
+    // Use capture phase to catch clicks before they bubble
+    document.addEventListener('mousedown', handleClickOutside, true);
     document.addEventListener('keydown', handleEscape);
-    // Removed hashchange and popstate listeners - they were closing the modal unexpectedly
-    // window.addEventListener('hashchange', handleNavigation);
-    // window.addEventListener('popstate', handleNavigation);
 
     return () => {
-      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('mousedown', handleClickOutside, true);
       document.removeEventListener('keydown', handleEscape);
-      // window.removeEventListener('hashchange', handleNavigation);
-      // window.removeEventListener('popstate', handleNavigation);
     };
   }, [onClose]);
 
