@@ -374,30 +374,7 @@ export function CommentModal({ file, onClose }: CommentModalProps) {
     );
   };
 
-  // Render modal via portal to ensure it's always on top and not affected by parent DOM structure
-  // Create a dedicated portal container if it doesn't exist
-  useEffect(() => {
-    // Ensure portal container exists
-    let portalContainer = document.getElementById('comment-modal-portal');
-    if (!portalContainer) {
-      portalContainer = document.createElement('div');
-      portalContainer.id = 'comment-modal-portal';
-      portalContainer.style.position = 'fixed';
-      portalContainer.style.top = '0';
-      portalContainer.style.left = '0';
-      portalContainer.style.width = '100%';
-      portalContainer.style.height = '100%';
-      portalContainer.style.pointerEvents = 'none';
-      portalContainer.style.zIndex = '999999';
-      document.body.appendChild(portalContainer);
-    }
-    return () => {
-      // Don't remove on unmount - keep it for future use
-    };
-  }, []);
-  
-  const portalContainer = document.getElementById('comment-modal-portal') || document.body;
-  
+  // Render modal via portal directly to document.body to ensure it's always on top
   return createPortal(
     <>
       {/* Backdrop */}
@@ -534,7 +511,7 @@ export function CommentModal({ file, onClose }: CommentModalProps) {
         )}
       </div>
     </>,
-    portalContainer
+    document.body
   );
 }
 
