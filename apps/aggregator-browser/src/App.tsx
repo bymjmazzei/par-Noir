@@ -1432,6 +1432,11 @@ function App() {
           // Get file IDs that user has commented on
           const commentedFileIds = Array.from(engagementData.comments.keys());
           
+          console.log(`[User Engagement] Loaded ${likedFileIds.length} liked files and ${commentedFileIds.length} commented files for user ${userState.pnIdentifier}`);
+          if (commentedFileIds.length > 0) {
+            console.log(`[User Engagement] Commented file IDs:`, commentedFileIds);
+          }
+          
           setUserLikedFileIds(likedFileIds);
           setUserCommentedFileIds(commentedFileIds);
         } catch (error) {
@@ -1823,13 +1828,23 @@ function App() {
               const fileOwnerId = f.metadata.creator?.identifier?.value || 
                    f.metadata.creator?.["@id"] || 
                    f.metadata.author?.did ||
-                   f.metadata.creatorId;
-              const normalizedOwnerId = fileOwnerId?.trim().toLowerCase() || '';
-              const normalizedViewingId = viewingCreatorId.trim().toLowerCase();
+                   f.metadata.creatorId ||
+                   (f as any).pnIdentifier; // Fallback to pnIdentifier if available
+              
+              // Normalize both IDs by removing "pn-" prefix and converting to lowercase
+              const normalizeId = (id: string | undefined | null): string => {
+                if (!id) return '';
+                const cleaned = id.startsWith('pn-') ? id.substring(3) : id;
+                return cleaned.trim().toLowerCase();
+              };
+              
+              const normalizedOwnerId = normalizeId(fileOwnerId);
+              const normalizedViewingId = normalizeId(viewingCreatorId);
+              
               // Exclude own posts - only show posts from other creators that user commented on
               const isNotOwnPost = normalizedOwnerId !== normalizedViewingId;
               if (!isNotOwnPost) {
-                console.log(`[Comments Tab] Filtering out own post: ${f.metadata.fileId}`);
+                console.log(`[Comments Tab] Filtering out own post: ${f.metadata.fileId} (owner: ${fileOwnerId}, viewing: ${viewingCreatorId})`);
               }
               return isNotOwnPost;
             });
@@ -2053,13 +2068,23 @@ function App() {
             const fileOwnerId = f.metadata.creator?.identifier?.value || 
                                 f.metadata.creator?.["@id"] || 
                                 f.metadata.author?.did ||
-                                f.metadata.creatorId;
-            const normalizedOwnerId = fileOwnerId?.trim().toLowerCase() || '';
-            const normalizedViewingId = viewingCreatorId!.trim().toLowerCase();
+                                f.metadata.creatorId ||
+                                (f as any).pnIdentifier; // Fallback to pnIdentifier if available
+            
+            // Normalize both IDs by removing "pn-" prefix and converting to lowercase
+            const normalizeId = (id: string | undefined | null): string => {
+              if (!id) return '';
+              const cleaned = id.startsWith('pn-') ? id.substring(3) : id;
+              return cleaned.trim().toLowerCase();
+            };
+            
+            const normalizedOwnerId = normalizeId(fileOwnerId);
+            const normalizedViewingId = normalizeId(viewingCreatorId!);
+            
             // Exclude own posts - only show posts from other creators that user commented on
             const isNotOwnPost = normalizedOwnerId !== normalizedViewingId;
             if (!isNotOwnPost) {
-              console.log(`[Comments Tab] Filtering out own post: ${f.metadata.fileId}`);
+              console.log(`[Comments Tab] Filtering out own post: ${f.metadata.fileId} (owner: ${fileOwnerId}, viewing: ${viewingCreatorId})`);
             }
             return isNotOwnPost;
           });
