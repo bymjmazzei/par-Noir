@@ -608,12 +608,52 @@ export class AggregatorMetadataServiceDB {
           if (!indexContentResponse.ok) continue;
           const indexContent = await indexContentResponse.json() as { files?: Array<{ fileId?: string; googleDriveFileId?: string; backendFileId?: string }> };
           
-          // Collect all file IDs from this index
+          // Collect all file IDs from this index, but also verify they exist
           if (indexContent.files) {
+            console.log(`🔍 [cleanupOrphanedFilesFromIndex] Found ${indexContent.files.length} file(s) in public index for ${pnFolder.name}`);
             for (const file of indexContent.files) {
-              if (file.fileId) validFileIds.add(file.fileId);
-              if (file.googleDriveFileId) validFileIds.add(file.googleDriveFileId);
-              if (file.backendFileId) validFileIds.add(file.backendFileId);
+              const googleDriveFileId = file.googleDriveFileId || file.backendFileId || file.fileId;
+              
+              // Verify file actually exists in Google Drive before adding to valid set
+              if (googleDriveFileId) {
+                try {
+                  const verifyResponse = await fetch(
+                    `https://www.googleapis.com/drive/v3/files/${googleDriveFileId}?fields=id,trashed`,
+                    {
+                      headers: {
+                        'Authorization': `Bearer ${accessToken}`
+                      }
+                    }
+                  );
+                  
+                  if (verifyResponse.ok) {
+                    const fileData = await verifyResponse.json() as { id?: string; trashed?: boolean };
+                    if (!fileData.trashed) {
+                      // File exists and is not trashed - add to valid set
+                      if (file.fileId) validFileIds.add(file.fileId);
+                      if (file.googleDriveFileId) validFileIds.add(file.googleDriveFileId);
+                      if (file.backendFileId) validFileIds.add(file.backendFileId);
+                      console.log(`✅ [cleanupOrphanedFilesFromIndex] File ${googleDriveFileId} verified in Google Drive`);
+                    } else {
+                      console.log(`🗑️ [cleanupOrphanedFilesFromIndex] File ${googleDriveFileId} is trashed - skipping`);
+                    }
+                  } else if (verifyResponse.status === 404) {
+                    console.log(`🗑️ [cleanupOrphanedFilesFromIndex] File ${googleDriveFileId} not found (404) - was in index but doesn't exist`);
+                  } else {
+                    console.warn(`⚠️ [cleanupOrphanedFilesFromIndex] Could not verify file ${googleDriveFileId}: ${verifyResponse.status}`);
+                    // On error, assume file exists (add to valid set to avoid false positives)
+                    if (file.fileId) validFileIds.add(file.fileId);
+                    if (file.googleDriveFileId) validFileIds.add(file.googleDriveFileId);
+                    if (file.backendFileId) validFileIds.add(file.backendFileId);
+                  }
+                } catch (error) {
+                  console.warn(`⚠️ [cleanupOrphanedFilesFromIndex] Error verifying file ${googleDriveFileId}:`, error);
+                  // On error, assume file exists
+                  if (file.fileId) validFileIds.add(file.fileId);
+                  if (file.googleDriveFileId) validFileIds.add(file.googleDriveFileId);
+                  if (file.backendFileId) validFileIds.add(file.backendFileId);
+                }
+              }
             }
           }
         } catch (error) {
