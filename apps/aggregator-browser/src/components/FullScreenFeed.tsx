@@ -553,6 +553,9 @@ export function FullScreenFeed({
                     fontFamily: textPostData.style?.fontFamily || 'Arial',
                     fontSize: `${textPostData.style?.fontSize || 48}px`,
                     color: textPostData.style?.textColor || '#FFFFFF',
+                    fontWeight: textPostData.style?.textStyle === 'bold' ? 'bold' : 'normal',
+                    fontStyle: textPostData.style?.textStyle === 'italic' ? 'italic' : 'normal',
+                    textDecoration: textPostData.style?.textStyle === 'strikethrough' ? 'line-through' : 'none',
                     textAlign: (textPostData.style?.textAlign || 'center') as 'left' | 'center' | 'right' | 'justify',
                     textShadow: `
                       ${textPostData.style?.dropShadowOffsetX || 2}px 

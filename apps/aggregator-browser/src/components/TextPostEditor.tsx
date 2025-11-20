@@ -101,7 +101,7 @@ export function TextPostEditor({ onSave, onCancel }: TextPostEditorProps) {
     if (canvasRef.current && content.trim()) {
       renderPreview();
     }
-  }, [content, fontFamily, fontSize, textColor, dropShadowColor, dropShadowBlur, 
+  }, [content, fontFamily, fontSize, textColor, textStyle, dropShadowColor, dropShadowBlur, 
       dropShadowOffsetX, dropShadowOffsetY, backgroundColor, backgroundImage, textAlign, padding]);
 
   const renderPreview = () => {
@@ -142,8 +142,17 @@ export function TextPostEditor({ onSave, onCancel }: TextPostEditorProps) {
   const drawText = (ctx: CanvasRenderingContext2D, width: number, height: number) => {
     ctx.save();
     
-    // Set font
-    ctx.font = `${fontSize}px ${fontFamily}`;
+    // Set font with text style
+    let fontStyle = '';
+    if (textStyle === 'bold') {
+      fontStyle = 'bold ';
+    } else if (textStyle === 'italic') {
+      fontStyle = 'italic ';
+    } else if (textStyle === 'strikethrough') {
+      // Strikethrough is handled separately with a line
+      fontStyle = '';
+    }
+    ctx.font = `${fontStyle}${fontSize}px ${fontFamily}`;
     ctx.fillStyle = textColor;
     
     // Set text alignment
@@ -186,6 +195,26 @@ export function TextPostEditor({ onSave, onCancel }: TextPostEditorProps) {
       }
       
       ctx.fillText(line, x, y);
+      
+      // Draw strikethrough line if needed
+      if (textStyle === 'strikethrough') {
+        const metrics = ctx.measureText(line);
+        let lineX = x;
+        let lineWidth = metrics.width;
+        
+        if (textAlign === 'center') {
+          lineX = x - metrics.width / 2;
+        } else if (textAlign === 'right') {
+          lineX = x - metrics.width;
+        }
+        
+        ctx.strokeStyle = textColor;
+        ctx.lineWidth = Math.max(1, fontSize / 20);
+        ctx.beginPath();
+        ctx.moveTo(lineX, y);
+        ctx.lineTo(lineX + lineWidth, y);
+        ctx.stroke();
+      }
     });
     
     ctx.restore();
