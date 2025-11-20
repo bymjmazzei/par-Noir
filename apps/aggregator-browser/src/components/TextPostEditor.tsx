@@ -36,7 +36,7 @@ export function TextPostEditor({ onSave, onCancel }: TextPostEditorProps) {
   const [textareaHeight, setTextareaHeight] = useState(60); // Starting height
   const [fontFamily, setFontFamily] = useState('Arial');
   const [fontSize, setFontSize] = useState(48);
-  const [textColor, setTextColor] = useState('#FFFFFF');
+  const [textColor, setTextColor] = useState('#FFFFFF'); // Default white
   const [dropShadowColor, setDropShadowColor] = useState('#000000');
   const [dropShadowBlur, setDropShadowBlur] = useState(10);
   const [dropShadowOffsetX, setDropShadowOffsetX] = useState(2);
@@ -290,10 +290,10 @@ export function TextPostEditor({ onSave, onCancel }: TextPostEditorProps) {
   const openPopupMenu = (menuId: string, button: HTMLButtonElement) => {
     const rect = button.getBoundingClientRect();
     setOpenMenu(menuId);
-    // Open menu above the button - we'll use transform to position it above
+    // Open menu below the button, centered
     setMenuPosition({
-      top: rect.top,
-      left: rect.left
+      top: rect.bottom,
+      left: rect.left + rect.width / 2 // Center horizontally
     });
   };
 
@@ -358,21 +358,6 @@ export function TextPostEditor({ onSave, onCancel }: TextPostEditorProps) {
         case 'fontSize':
           return (
             <div className="p-4 min-w-[200px]">
-              <div className="flex items-center gap-3 mb-2">
-                <button
-                  onClick={() => setFontSize(Math.max(24, fontSize - 4))}
-                  className="p-1 rounded hover:bg-neutral-700"
-                >
-                  <Minus className="h-4 w-4 text-white" />
-                </button>
-                <span className="text-white text-sm font-medium flex-1 text-center">{fontSize}px</span>
-                <button
-                  onClick={() => setFontSize(Math.min(120, fontSize + 4))}
-                  className="p-1 rounded hover:bg-neutral-700"
-                >
-                  <PlusIcon className="h-4 w-4 text-white" />
-                </button>
-              </div>
               <input
                 type="range"
                 min="24"
@@ -385,55 +370,39 @@ export function TextPostEditor({ onSave, onCancel }: TextPostEditorProps) {
           );
         case 'textColor':
           return (
-            <div className="p-4 min-w-[200px]">
-              <div className="flex gap-2 mb-2">
-                <input
-                  type="color"
-                  value={textColor}
-                  onChange={(e) => setTextColor(e.target.value)}
-                  className="w-16 h-10 rounded border border-neutral-700 cursor-pointer"
-                />
-                <input
-                  type="text"
-                  value={textColor}
-                  onChange={(e) => setTextColor(e.target.value)}
-                  className="flex-1 bg-neutral-800 text-white rounded-lg p-2 border border-neutral-700 focus:border-blue-500 focus:outline-none text-sm"
-                  placeholder="#FFFFFF"
-                />
-              </div>
+            <div className="p-2">
+              <input
+                type="color"
+                value={textColor}
+                onChange={(e) => setTextColor(e.target.value)}
+                className="w-12 h-12 rounded border border-neutral-700 cursor-pointer"
+              />
             </div>
           );
         case 'shadow':
           return (
-            <div className="p-4 min-w-[240px]">
-              <div className="space-y-3">
-                <div className="flex gap-2">
-                  <input
-                    type="color"
-                    value={dropShadowColor}
-                    onChange={(e) => setDropShadowColor(e.target.value)}
-                    className="w-12 h-10 rounded border border-neutral-700 cursor-pointer"
-                  />
-                  <input
-                    type="text"
-                    value={dropShadowColor}
-                    onChange={(e) => setDropShadowColor(e.target.value)}
-                    className="flex-1 bg-neutral-800 text-white rounded-lg p-2 border border-neutral-700 focus:border-blue-500 focus:outline-none text-sm"
-                    placeholder="#000000"
-                  />
-                </div>
-                <div>
-                  <label className="text-white text-xs mb-1 block">Blur: {dropShadowBlur}px</label>
-                  <input
-                    type="range"
-                    min="0"
-                    max="50"
-                    value={dropShadowBlur}
-                    onChange={(e) => setDropShadowBlur(Number(e.target.value))}
-                    className="w-full"
-                  />
-                </div>
-                <div className="grid grid-cols-2 gap-2">
+            <div className="p-3 min-w-[280px]">
+              <div className="flex gap-3 items-center">
+                {/* Left column: Color box */}
+                <input
+                  type="color"
+                  value={dropShadowColor}
+                  onChange={(e) => setDropShadowColor(e.target.value)}
+                  className="w-12 h-12 rounded border border-neutral-700 cursor-pointer flex-shrink-0"
+                />
+                {/* Right column: Three sliders */}
+                <div className="flex-1 space-y-2">
+                  <div>
+                    <label className="text-white text-xs mb-1 block">Blur: {dropShadowBlur}px</label>
+                    <input
+                      type="range"
+                      min="0"
+                      max="50"
+                      value={dropShadowBlur}
+                      onChange={(e) => setDropShadowBlur(Number(e.target.value))}
+                      className="w-full"
+                    />
+                  </div>
                   <div>
                     <label className="text-white text-xs mb-1 block">X: {dropShadowOffsetX}px</label>
                     <input
@@ -462,36 +431,27 @@ export function TextPostEditor({ onSave, onCancel }: TextPostEditorProps) {
           );
         case 'background':
           return (
-            <div className="p-4 min-w-[200px]">
-              <div className="space-y-3">
-                <div className="flex gap-2">
-                  <input
-                    type="color"
-                    value={backgroundColor}
-                    onChange={(e) => setBackgroundColor(e.target.value)}
-                    className="w-12 h-10 rounded border border-neutral-700 cursor-pointer"
-                  />
-                  <input
-                    type="text"
-                    value={backgroundColor}
-                    onChange={(e) => setBackgroundColor(e.target.value)}
-                    className="flex-1 bg-neutral-800 text-white rounded-lg p-2 border border-neutral-700 focus:border-blue-500 focus:outline-none text-sm"
-                    placeholder="#000000"
-                  />
-                </div>
+            <div className="p-2">
+              <div className="flex gap-2 items-center">
+                <input
+                  type="color"
+                  value={backgroundColor}
+                  onChange={(e) => setBackgroundColor(e.target.value)}
+                  className="w-12 h-12 rounded border border-neutral-700 cursor-pointer"
+                />
                 <button
                   onClick={() => fileInputRef.current?.click()}
-                  className="w-full bg-neutral-800 text-white rounded-lg p-2 border border-neutral-700 hover:bg-neutral-700 transition-colors text-sm flex items-center justify-center gap-2"
+                  className="p-2 bg-neutral-800 text-white rounded-lg border border-neutral-700 hover:bg-neutral-700 transition-colors flex items-center justify-center"
                 >
-                  <Upload className="h-4 w-4" />
-                  Upload Image
+                  <ImageIcon className="h-5 w-5" />
                 </button>
                 {backgroundImage && (
                   <button
                     onClick={() => setBackgroundImage(null)}
-                    className="w-full bg-red-600 text-white rounded-lg p-2 text-sm hover:bg-red-700 transition-colors"
+                    className="p-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
+                    title="Remove Image"
                   >
-                    Remove Image
+                    <X className="h-4 w-4" />
                   </button>
                 )}
               </div>
@@ -499,36 +459,37 @@ export function TextPostEditor({ onSave, onCancel }: TextPostEditorProps) {
           );
         case 'textStyle':
           return (
-            <div className="p-2 min-w-[180px]">
-              {([
-                { value: 'plain' as const, label: 'A', style: {} },
-                { value: 'bold' as const, label: 'A', style: { fontWeight: 'bold' } },
-                { value: 'italic' as const, label: 'A', style: { fontStyle: 'italic' } },
-                { value: 'strikethrough' as const, label: 'A', style: { textDecoration: 'line-through' } },
-              ]).map(({ value, label, style }) => (
-                <button
-                  key={value}
-                  onClick={() => {
-                    setTextStyle(value);
-                    closeMenu();
-                  }}
-                  className={`w-full px-4 py-2 text-left text-white hover:bg-neutral-700 flex items-center justify-between ${
-                    textStyle === value ? 'bg-neutral-700' : ''
-                  }`}
-                  style={style}
-                >
-                  <span className="text-lg">{label}</span>
-                  {textStyle === value && (
-                    <Check className="h-4 w-4 text-blue-500" />
-                  )}
-                </button>
-              ))}
+            <div className="p-2">
+              <div className="flex gap-2">
+                {([
+                  { value: 'plain' as const, label: 'A', style: {} },
+                  { value: 'bold' as const, label: 'A', style: { fontWeight: 'bold' } },
+                  { value: 'italic' as const, label: 'A', style: { fontStyle: 'italic' } },
+                  { value: 'strikethrough' as const, label: 'A', style: { textDecoration: 'line-through' } },
+                ]).map(({ value, label, style }) => (
+                  <button
+                    key={value}
+                    onClick={() => {
+                      setTextStyle(value);
+                      closeMenu();
+                    }}
+                    className={`px-3 py-2 rounded border text-white hover:bg-neutral-700 transition-colors ${
+                      textStyle === value
+                        ? 'bg-blue-600 border-blue-500'
+                        : 'bg-neutral-800 border-neutral-700'
+                    }`}
+                    style={style}
+                  >
+                    <span className="text-lg">{label}</span>
+                  </button>
+                ))}
+              </div>
             </div>
           );
         case 'align':
           return (
             <div className="p-2">
-              <div className="grid grid-cols-2 gap-2">
+              <div className="flex gap-2">
                 {([
                   { value: 'left' as const, icon: AlignLeft },
                   { value: 'center' as const, icon: AlignCenter },
@@ -541,7 +502,7 @@ export function TextPostEditor({ onSave, onCancel }: TextPostEditorProps) {
                       setTextAlign(value);
                       closeMenu();
                     }}
-                    className={`p-3 rounded border flex items-center justify-center ${
+                    className={`p-2 rounded border flex items-center justify-center ${
                       textAlign === value
                         ? 'bg-blue-600 border-blue-500 text-white'
                         : 'bg-neutral-800 border-neutral-700 text-white hover:bg-neutral-700'
