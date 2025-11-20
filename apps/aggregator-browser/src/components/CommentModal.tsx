@@ -86,8 +86,13 @@ export function CommentModal({ file, onClose }: CommentModalProps) {
   // Close modal when clicking outside or navigating
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
-      if (modalRef.current && !modalRef.current.contains(event.target as Node)) {
-        onClose();
+      // Only close if clicking on the backdrop, not on any other element
+      const target = event.target as HTMLElement;
+      if (modalRef.current && !modalRef.current.contains(target)) {
+        // Check if the click is on the backdrop (the dark overlay)
+        if (target.classList.contains('bg-black') || target.classList.contains('bg-black/60')) {
+          onClose();
+        }
       }
     };
 
@@ -372,7 +377,12 @@ export function CommentModal({ file, onClose }: CommentModalProps) {
       {/* Backdrop */}
       <div
         className="fixed inset-0 bg-black/60 z-[300] transition-opacity"
-        onClick={onClose}
+        onClick={(e) => {
+          // Only close if clicking directly on the backdrop
+          if (e.target === e.currentTarget) {
+            onClose();
+          }
+        }}
       />
 
       {/* Slide-up modal - Higher z-index than bottom nav (z-[100]) and Me page tabs (z-[100]) */}
