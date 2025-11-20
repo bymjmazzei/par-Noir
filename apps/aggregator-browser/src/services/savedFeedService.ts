@@ -75,16 +75,14 @@ export async function saveToFeed(
   fileId: string
 ): Promise<SavedFeed> {
   try {
-    // Get DID from session if available (API might prefer DID over pnIdentifier)
-    const session = PNOAuthService.loadSession();
-    const userIdentifier = session?.did || userDid;
-    
+    // The API expects pnIdentifier (not DID) based on the error
+    // userDid parameter is actually the pnIdentifier from userState
     const requestBody = {
-      userDid: userIdentifier,
-      fileId
+      userDid: userDid, // This is the pnIdentifier (e.g., "83c1db813607")
+      fileId: fileId
     };
     
-    console.log('Saving to feed:', { userDid, userIdentifier, fileId, hasSession: !!session, hasDid: !!session?.did });
+    console.log('Saving to feed:', { userDid, fileId, requestBody });
     
     const response = await fetch(`${API_ENDPOINT}/api/feeds/saved`, {
       method: 'POST',
@@ -113,8 +111,7 @@ export async function saveToFeed(
         statusText: response.statusText,
         errorMessage,
         errorDetails,
-        requestBody,
-        hasAuth: !!session?.accessToken
+        requestBody
       });
       throw new Error(errorMessage);
     }
