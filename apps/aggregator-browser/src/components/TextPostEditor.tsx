@@ -357,15 +357,18 @@ export function TextPostEditor({ onSave, onCancel }: TextPostEditorProps) {
           );
         case 'fontSize':
           return (
-            <div className="p-4 min-w-[200px]">
-              <input
-                type="range"
-                min="24"
-                max="120"
-                value={fontSize}
-                onChange={(e) => setFontSize(Number(e.target.value))}
-                className="w-full"
-              />
+            <div className="p-3 min-w-[200px]">
+              <div className="flex items-center gap-2">
+                <label className="text-white text-xs whitespace-nowrap">Size:</label>
+                <input
+                  type="range"
+                  min="24"
+                  max="120"
+                  value={fontSize}
+                  onChange={(e) => setFontSize(Number(e.target.value))}
+                  className="flex-1"
+                />
+              </div>
             </div>
           );
         case 'textColor':
