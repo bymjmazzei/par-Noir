@@ -1304,15 +1304,15 @@ function App() {
       // Removed: sessionStorage.setItem('pn_session_passcode', session.passcode);
 
       // SECURITY: Do NOT expose credentials in custom events
-      try {
-        const authEventDetail = {
+        try {
+          const authEventDetail = {
           // pnName and passcode removed - use SecureCredentialManager if needed
-          publicKey: session.publicKey || session.id,
-          authToken: await deriveAuthToken(session.pnName, session.publicKey || session.id, session.passcode),
-        };
-        window.dispatchEvent(new CustomEvent('pn-auth-session', { detail: authEventDetail }));
-      } catch (eventError) {
-        console.warn('Could not dispatch pn-auth-session event:', eventError);
+            publicKey: session.publicKey || session.id,
+            authToken: await deriveAuthToken(session.pnName, session.publicKey || session.id, session.passcode),
+          };
+          window.dispatchEvent(new CustomEvent('pn-auth-session', { detail: authEventDetail }));
+        } catch (eventError) {
+          console.warn('Could not dispatch pn-auth-session event:', eventError);
       }
 
       // Set the authenticated user WITHOUT credentials

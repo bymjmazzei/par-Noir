@@ -34,14 +34,14 @@ export class GoogleDriveBackend extends AbstractStorageBackend {
           // Cache will be validated when used - if it's an old identifier, it will be cleared
           // Only cache entries with standardized format (pn-{12-char-hex}) are kept
           if (key.match(/^pn-[a-f0-9]{12}$/)) {
-            this.pnFolderCache.set(key, value as string);
-            validEntries++;
+          this.pnFolderCache.set(key, value as string);
+          validEntries++;
           } else {
             console.log(`🗑️ [loadFolderCache] Removing old cache entry with non-standard identifier: ${key.substring(0, 20)}...`);
           }
         });
         if (validEntries > 0) {
-          console.log(`✅ Loaded ${validEntries} folder ID(s) from cache (will validate on use)`);
+        console.log(`✅ Loaded ${validEntries} folder ID(s) from cache (will validate on use)`);
         }
         // Save cleaned cache back
         if (validEntries !== Object.keys(cacheData).length) {
@@ -215,7 +215,7 @@ export class GoogleDriveBackend extends AbstractStorageBackend {
 
     // SECURITY: Do not load from plaintext localStorage
     // Credentials should be loaded via loadEncryptedCredentials() when user is authenticated
-    return null;
+      return null;
   }
 
   getStorageKeyPrefix(): string {
@@ -624,7 +624,7 @@ export class GoogleDriveBackend extends AbstractStorageBackend {
       });
       
       if (validFolders.length === 0) {
-          console.error(`❌ [getOrCreateFolder] No valid pN folders found! Search returned ${searchData.files.length} folder(s) but all were invalid.`);
+        console.error(`❌ [getOrCreateFolder] No valid pN folders found! Search returned ${searchData.files.length} folder(s) but all were invalid.`);
           console.error(`❌ [getOrCreateFolder] Expected folder name: "par Noir - ${pnIdentifier}"`);
           console.error(`❌ [getOrCreateFolder] This may indicate a mismatch between old and new pN identifiers. Clearing cache.`);
           // Clear cache for this identifier to force fresh search next time
@@ -673,8 +673,8 @@ export class GoogleDriveBackend extends AbstractStorageBackend {
             console.warn(`⚠️ [getOrCreateFolder] This folder may be from an old pN identifier. Will create new folder with correct identifier.`);
             // Don't use this folder - continue to create new one below
             folderId = null;
-          } else {
-            console.log(`✅ [getOrCreateFolder] Found VALID pN folder: "${folderInfo.name}" (ID: ${folderId.substring(0, 12)}...)`);
+        } else {
+          console.log(`✅ [getOrCreateFolder] Found VALID pN folder: "${folderInfo.name}" (ID: ${folderId.substring(0, 12)}...)`);
           }
           
           // IMPORTANT: Only cache pN-specific folders (not metadata folders)

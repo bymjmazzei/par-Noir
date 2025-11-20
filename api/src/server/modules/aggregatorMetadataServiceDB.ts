@@ -568,7 +568,7 @@ export class AggregatorMetadataServiceDB {
             return file;
           }
 
-          const fileData = await response.json();
+          const fileData = await response.json() as { id?: string; trashed?: boolean };
           // File exists and is not trashed
           if (fileData.trashed) {
             console.log(`🗑️ [verifyGoogleDriveFilesExist] File ${googleDriveFileId} is trashed: ${file.metadata.name || 'unknown'}`);
