@@ -38,6 +38,7 @@ interface FullScreenFeedProps {
   onMessage?: (creatorId: string) => void;
   onSwipeLeft?: () => void; // Horizontal swipe left handler
   onSwipeRight?: () => void; // Horizontal swipe right handler
+  mePageTab?: 'all' | 'media' | 'thoughts' | 'likes' | 'comments' | 'saved' | 'connections'; // For Me page tab context
 }
 
 export function FullScreenFeed({
@@ -59,7 +60,8 @@ export function FullScreenFeed({
   onCreatorClick,
   onMessage,
   onSwipeLeft,
-  onSwipeRight
+  onSwipeRight,
+  mePageTab
 }: FullScreenFeedProps) {
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const videoRefs = useRef<Map<string, HTMLVideoElement>>(new Map());
@@ -967,6 +969,48 @@ export function FullScreenFeed({
                       hasComments: allComments && allComments.length > 0,
                       sampleComment: allComments?.[0]
                     });
+                    
+                    // If on Comments tab, show user's comment statically
+                    if (mePageTab === 'comments' && userState.pnIdentifier) {
+                      const userComment = allComments?.find((comment: any) => 
+                        comment.authorId === userState.pnIdentifier || 
+                        comment.authorId === `pn-${userState.pnIdentifier}` ||
+                        comment.authorId === userState.pnIdentifier.replace(/^pn-/, '')
+                      );
+                      
+                      if (userComment) {
+                        const likeCount = Array.isArray(userComment.likes) ? userComment.likes.length : 0;
+                        return (
+                          <div
+                            className="bg-transparent rounded-lg p-3 w-full cursor-pointer hover:bg-black/20 transition-colors"
+                            style={{
+                              opacity: 1,
+                              transition: 'background-color 200ms ease-in-out'
+                            }}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              // Open comment modal when clicking on comment
+                              onComment(indexedFile);
+                            }}
+                          >
+                            <div className="flex items-center gap-2 mb-1">
+                              <span className="text-white/90 text-xs font-semibold">
+                                {userComment.authorName || 'You'}
+                              </span>
+                              {likeCount > 0 && (
+                                <span className="text-white/70 text-xs flex items-center gap-1">
+                                  <span>❤️</span>
+                                  <span>{likeCount}</span>
+                                </span>
+                              )}
+                            </div>
+                            <p className="text-white text-sm line-clamp-2 leading-snug">
+                              {userComment.content}
+                            </p>
+                          </div>
+                        );
+                      }
+                    }
                     
                     // If no comments, don't show anything
                     if (popularComments.length === 0) {

@@ -2733,6 +2733,7 @@ function App() {
                 loadComments={loadComments}
                 getShareCount={getShareCount}
                 userState={userState}
+                mePageTab={mePageTab}
                 onCreatorClick={(creatorId) => {
                   if (creatorId !== viewingCreatorId) {
                     setViewingCreatorId(creatorId);
