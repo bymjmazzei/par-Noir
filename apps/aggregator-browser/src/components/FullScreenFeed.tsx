@@ -63,9 +63,11 @@ export function FullScreenFeed({
 }: FullScreenFeedProps) {
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const videoRefs = useRef<Map<string, HTMLVideoElement>>(new Map());
+  const imageRefs = useRef<Map<string, HTMLImageElement>>(new Map());
   const [videoBlobs, setVideoBlobs] = useState<Map<string, string>>(new Map());
   const [thumbnails, setThumbnails] = useState<Map<string, string>>(new Map());
   const [visibleFileId, setVisibleFileId] = useState<string | null>(null);
+  const [mediaDimensions, setMediaDimensions] = useState<Map<string, { width: number; height: number }>>(new Map());
   const [showEngagementOverlay, setShowEngagementOverlay] = useState(false);
   const [videoPlaying, setVideoPlaying] = useState<Map<string, boolean>>(new Map());
   const [expandedCaptions, setExpandedCaptions] = useState<Set<string>>(new Set());
@@ -519,59 +521,97 @@ export function FullScreenFeed({
             }}
           >
             {/* Full-screen video */}
-            {isVideo && videoBlobs.get(fileId) && (
-              <>
-                {/* Blurred background video */}
-                <video
-                  src={videoBlobs.get(fileId)!}
-                  className="absolute inset-0 w-full h-full object-cover"
-                  style={{ 
-                    filter: 'blur(40px)',
-                    transform: 'scale(1.1)', // Slight scale to prevent edges
-                    opacity: 0.6,
-                    zIndex: 0
-                  }}
-                  muted
-                  loop
-                  playsInline
-                  autoPlay={visibleFileId === fileId}
-                />
-                {/* Main video */}
-                <video
-                  ref={(el) => {
-                    if (el) {
-                      videoRefs.current.set(fileId, el);
-                      // Track playing state
-                      el.addEventListener('play', () => {
-                        setVideoPlaying(prev => {
-                          const newMap = new Map(prev);
-                          newMap.set(fileId, true);
-                          return newMap;
-                        });
-                      });
-                      el.addEventListener('pause', () => {
-                        setVideoPlaying(prev => {
-                          const newMap = new Map(prev);
-                          newMap.set(fileId, false);
-                          return newMap;
-                        });
-                      });
+            {isVideo && videoBlobs.get(fileId) && (() => {
+              const containerHeight = window.innerHeight - 64; // Account for bottom nav
+              const containerWidth = window.innerWidth;
+              const containerAspect = containerWidth / containerHeight;
+              const dims = mediaDimensions.get(fileId);
+              const videoAspect = dims ? dims.width / dims.height : 16/9; // Default to 16:9
+              
+              // If video is wider than container (widescreen), scale background to fill height
+              // If video is taller than container (portrait), scale background to fill width
+              const isWidescreen = videoAspect > containerAspect;
+              const backgroundStyle: React.CSSProperties = {
+                filter: 'blur(40px)',
+                opacity: 0.6,
+                zIndex: 0,
+                position: 'absolute',
+                inset: 0,
+                ...(isWidescreen 
+                  ? { 
+                      width: 'auto', 
+                      height: '100%',
+                      left: '50%',
+                      transform: 'translateX(-50%) scale(1.1)'
                     }
-                  }}
-                  src={videoBlobs.get(fileId)!}
-                  className="w-full object-contain relative z-10"
-                  style={{ 
-                    // Height excludes bottom nav bar (64px) and safe area
-                    maxHeight: 'calc(100vh - 64px - env(safe-area-inset-bottom, 0px))',
-                    height: 'auto',
-                    width: '100%'
-                  }}
-                  controls={false}
-                  muted
-                  loop
-                  playsInline
-                  autoPlay={visibleFileId === fileId}
-                />
+                  : { 
+                      height: 'auto', 
+                      width: '100%',
+                      top: '50%',
+                      transform: 'translateY(-50%) scale(1.1)'
+                    }
+                )
+              };
+
+              return (
+                <>
+                  {/* Blurred background video */}
+                  <video
+                    src={videoBlobs.get(fileId)!}
+                    className="absolute"
+                    style={backgroundStyle}
+                    muted
+                    loop
+                    playsInline
+                    autoPlay={visibleFileId === fileId}
+                  />
+                  {/* Main video */}
+                  <video
+                    ref={(el) => {
+                      if (el) {
+                        videoRefs.current.set(fileId, el);
+                        // Track dimensions when loaded
+                        el.addEventListener('loadedmetadata', () => {
+                          setMediaDimensions(prev => {
+                            const newMap = new Map(prev);
+                            newMap.set(fileId, { width: el.videoWidth, height: el.videoHeight });
+                            return newMap;
+                          });
+                        });
+                        // Track playing state
+                        el.addEventListener('play', () => {
+                          setVideoPlaying(prev => {
+                            const newMap = new Map(prev);
+                            newMap.set(fileId, true);
+                            return newMap;
+                          });
+                        });
+                        el.addEventListener('pause', () => {
+                          setVideoPlaying(prev => {
+                            const newMap = new Map(prev);
+                            newMap.set(fileId, false);
+                            return newMap;
+                          });
+                        });
+                      }
+                    }}
+                    src={videoBlobs.get(fileId)!}
+                    className="w-full object-contain relative z-10"
+                    style={{ 
+                      // Height excludes bottom nav bar (64px) and safe area
+                      maxHeight: 'calc(100vh - 64px - env(safe-area-inset-bottom, 0px))',
+                      height: 'auto',
+                      width: '100%'
+                    }}
+                    controls={false}
+                    muted
+                    loop
+                    playsInline
+                    autoPlay={visibleFileId === fileId}
+                  />
+                </>
+              );
+            })()}
                 {/* Playback Controls */}
                 {visibleFileId === fileId && (
                   <div className="absolute top-4 left-4 z-20">
@@ -595,34 +635,75 @@ export function FullScreenFeed({
             )}
             
             {/* Full-screen image */}
-            {isImage && thumbnails.get(fileId) && (
-              <>
-                {/* Blurred background image */}
-                <img
-                  src={thumbnails.get(fileId)!}
-                  alt=""
-                  className="absolute inset-0 w-full h-full object-cover"
-                  style={{ 
-                    filter: 'blur(40px)',
-                    transform: 'scale(1.1)', // Slight scale to prevent edges
-                    opacity: 0.6,
-                    zIndex: 0
-                  }}
-                />
-                {/* Main image */}
-                <img
-                  src={thumbnails.get(fileId)!}
-                  alt={fileName}
-                  className="w-full object-contain relative z-10"
-                  style={{ 
-                    // Full viewport height - parent padding prevents overlap with bottom nav
-                    maxHeight: '100vh',
-                    height: 'auto',
-                    width: '100%'
-                  }}
-                />
-              </>
-            )}
+            {isImage && thumbnails.get(fileId) && (() => {
+              const containerHeight = window.innerHeight - 64; // Account for bottom nav
+              const containerWidth = window.innerWidth;
+              const containerAspect = containerWidth / containerHeight;
+              const dims = mediaDimensions.get(fileId);
+              const imageAspect = dims ? dims.width / dims.height : 16/9; // Default to 16:9
+              
+              // If image is wider than container (widescreen), scale background to fill height
+              // If image is taller than container (portrait), scale background to fill width
+              const isWidescreen = imageAspect > containerAspect;
+              const backgroundStyle: React.CSSProperties = {
+                filter: 'blur(40px)',
+                opacity: 0.6,
+                zIndex: 0,
+                position: 'absolute',
+                inset: 0,
+                ...(isWidescreen 
+                  ? { 
+                      width: 'auto', 
+                      height: '100%',
+                      left: '50%',
+                      transform: 'translateX(-50%) scale(1.1)'
+                    }
+                  : { 
+                      height: 'auto', 
+                      width: '100%',
+                      top: '50%',
+                      transform: 'translateY(-50%) scale(1.1)'
+                    }
+                )
+              };
+
+              return (
+                <>
+                  {/* Blurred background image */}
+                  <img
+                    src={thumbnails.get(fileId)!}
+                    alt=""
+                    className="absolute"
+                    style={backgroundStyle}
+                  />
+                  {/* Main image */}
+                  <img
+                    ref={(el) => {
+                      if (el) {
+                        imageRefs.current.set(fileId, el);
+                        // Track dimensions when loaded
+                        el.addEventListener('load', () => {
+                          setMediaDimensions(prev => {
+                            const newMap = new Map(prev);
+                            newMap.set(fileId, { width: el.naturalWidth, height: el.naturalHeight });
+                            return newMap;
+                          });
+                        });
+                      }
+                    }}
+                    src={thumbnails.get(fileId)!}
+                    alt={fileName}
+                    className="w-full object-contain relative z-10"
+                    style={{ 
+                      // Full viewport height - parent padding prevents overlap with bottom nav
+                      maxHeight: '100vh',
+                      height: 'auto',
+                      width: '100%'
+                    }}
+                  />
+                </>
+              );
+            })()}
 
             {/* Loading state */}
             {((isImage || isVideo) && !thumbnails.get(fileId) && !videoBlobs.get(fileId)) && (
