@@ -684,7 +684,7 @@ export function TextPostEditor({ onSave, onCancel }: TextPostEditorProps) {
                 {showBackgroundColorPicker && backgroundColorButtonRef.current && (
                   <div
                     ref={backgroundColorPickerRef}
-                    className="fixed z-[60] bg-neutral-800 border border-neutral-700 rounded-lg shadow-lg p-3"
+                    className="fixed z-[100] bg-neutral-800 border border-neutral-700 rounded-lg shadow-lg p-3"
                     style={{
                       top: `${backgroundColorButtonRef.current.getBoundingClientRect().bottom}px`,
                       left: `${backgroundColorButtonRef.current.getBoundingClientRect().left + backgroundColorButtonRef.current.getBoundingClientRect().width / 2}px`,
@@ -906,7 +906,7 @@ export function TextPostEditor({ onSave, onCancel }: TextPostEditorProps) {
             {showTextColorPicker && textColorButtonRef.current && (
               <div
                 ref={textColorPickerRef}
-                className="fixed z-[60] bg-neutral-800 border border-neutral-700 rounded-lg shadow-lg p-3"
+                className="fixed z-[100] bg-neutral-800 border border-neutral-700 rounded-lg shadow-lg p-3"
                 style={{
                   top: `${textColorButtonRef.current.getBoundingClientRect().bottom}px`,
                   left: `${textColorButtonRef.current.getBoundingClientRect().left + textColorButtonRef.current.getBoundingClientRect().width / 2}px`,
