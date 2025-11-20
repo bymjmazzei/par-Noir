@@ -857,7 +857,7 @@ export function TextPostEditor({ onSave, onCancel }: TextPostEditorProps) {
               className="w-6 h-0.5"
               style={{ backgroundColor: textColor }}
             />
-            {/* Color Picker Popup */}
+            {/* Custom Color Picker Popup */}
             {showTextColorPicker && textColorButtonRef.current && (
               <div
                 ref={textColorPickerRef}
@@ -869,12 +869,9 @@ export function TextPostEditor({ onSave, onCancel }: TextPostEditorProps) {
                   marginTop: '8px'
                 }}
               >
-                <input
-                  type="color"
-                  value={textColor}
-                  onChange={(e) => setTextColor(e.target.value)}
-                  className="w-full h-12 rounded border border-neutral-700 cursor-pointer"
-                  style={{ minWidth: '200px' }}
+                <CustomColorPicker
+                  color={textColor}
+                  onChange={setTextColor}
                 />
               </div>
             )}
