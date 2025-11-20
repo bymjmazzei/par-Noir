@@ -85,6 +85,16 @@ function App() {
   const [showSettings, setShowSettings] = useState(false); // Show settings panel
   const [showShortcuts, setShowShortcuts] = useState(false); // Show keyboard shortcuts
   const [commentingFile, setCommentingFile] = useState<IndexedFile | null>(null); // File being commented on
+  
+  // Debug: Track commentingFile changes
+  useEffect(() => {
+    console.log('[App] commentingFile state changed', { 
+      hasCommentingFile: !!commentingFile,
+      commentingFileId: commentingFile?.metadata?.fileId,
+      viewingCreatorId,
+      viewMode
+    });
+  }, [commentingFile, viewingCreatorId, viewMode]);
   const [viewingBrandedFeed, setViewingBrandedFeed] = useState<Feed | null>(null); // Branded feed being viewed
   const [showUploadModal, setShowUploadModal] = useState(false); // Show upload modal
   const [showCreateFeedModal, setShowCreateFeedModal] = useState(false); // Show create feed modal
