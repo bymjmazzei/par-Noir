@@ -375,6 +375,9 @@ export function CommentModal({ file, onClose }: CommentModalProps) {
   };
 
   // Render modal via portal to ensure it's always on top and not affected by parent DOM structure
+  // Use a wrapper div to ensure proper stacking context
+  const portalContainer = document.body;
+  
   return createPortal(
     <>
       {/* Backdrop */}
