@@ -2601,7 +2601,7 @@ function App() {
           }}
         />
       ) : viewingCreatorId ? (
-        <div className="h-screen flex flex-col bg-black relative" style={{ zIndex: 1 }}>
+        <div className="h-screen flex flex-col bg-black">
           {/* Header Railway with Tabs - Show saved tab only if owner */}
           <MePageTabsRail
             activeTab={mePageTab}
