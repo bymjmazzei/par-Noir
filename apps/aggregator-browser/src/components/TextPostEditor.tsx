@@ -46,6 +46,9 @@ export function TextPostEditor({ onSave, onCancel }: TextPostEditorProps) {
   const [textAlign, setTextAlign] = useState<'left' | 'center' | 'right' | 'justify'>('center');
   const [textStyle, setTextStyle] = useState<'plain' | 'bold' | 'italic' | 'strikethrough'>('plain');
   const [padding, setPadding] = useState(40);
+  const [showTextColorPicker, setShowTextColorPicker] = useState(false);
+  const textColorButtonRef = useRef<HTMLButtonElement>(null);
+  const textColorPickerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const textColorInputRef = useRef<HTMLInputElement>(null);
@@ -329,6 +332,31 @@ export function TextPostEditor({ onSave, onCancel }: TextPostEditorProps) {
       document.removeEventListener('mousedown', handleClickOutside, true);
     };
   }, [openMenu]);
+
+  // Close text color picker when clicking outside
+  useEffect(() => {
+    if (!showTextColorPicker) return;
+    
+    const handleClickOutside = (event: MouseEvent) => {
+      const target = event.target as Node;
+      if (textColorButtonRef.current && (textColorButtonRef.current.contains(target) || textColorButtonRef.current === target)) {
+        return;
+      }
+      if (textColorPickerRef.current && textColorPickerRef.current.contains(target)) {
+        return;
+      }
+      setShowTextColorPicker(false);
+    };
+
+    const timeout = setTimeout(() => {
+      document.addEventListener('mousedown', handleClickOutside, true);
+    }, 200);
+
+    return () => {
+      clearTimeout(timeout);
+      document.removeEventListener('mousedown', handleClickOutside, true);
+    };
+  }, [showTextColorPicker]);
 
   const renderPopupMenu = () => {
     if (!openMenu || !menuPosition) return null;
@@ -630,8 +658,9 @@ export function TextPostEditor({ onSave, onCancel }: TextPostEditorProps) {
 
           {/* Text Color - A with colored line under */}
           <button
-            onClick={() => textColorInputRef.current?.click()}
-            className="px-2 py-1 transition-opacity hover:opacity-80 flex flex-col items-center gap-0.5"
+            ref={textColorButtonRef}
+            onClick={() => setShowTextColorPicker(!showTextColorPicker)}
+            className="px-2 py-1 transition-opacity hover:opacity-80 flex flex-col items-center gap-0.5 relative"
             style={{ color: 'white' }}
           >
             <span className="text-sm">A</span>
@@ -639,14 +668,28 @@ export function TextPostEditor({ onSave, onCancel }: TextPostEditorProps) {
               className="w-6 h-0.5"
               style={{ backgroundColor: textColor }}
             />
+            {/* Color Picker Popup */}
+            {showTextColorPicker && textColorButtonRef.current && (
+              <div
+                ref={textColorPickerRef}
+                className="fixed z-50 bg-neutral-800 border border-neutral-700 rounded-lg shadow-lg p-3"
+                style={{
+                  top: `${textColorButtonRef.current.getBoundingClientRect().bottom}px`,
+                  left: `${textColorButtonRef.current.getBoundingClientRect().left + textColorButtonRef.current.getBoundingClientRect().width / 2}px`,
+                  transform: 'translateX(-50%)',
+                  marginTop: '8px'
+                }}
+              >
+                <input
+                  type="color"
+                  value={textColor}
+                  onChange={(e) => setTextColor(e.target.value)}
+                  className="w-full h-12 rounded border border-neutral-700 cursor-pointer"
+                  style={{ minWidth: '200px' }}
+                />
+              </div>
+            )}
           </button>
-          <input
-            ref={textColorInputRef}
-            type="color"
-            value={textColor}
-            onChange={(e) => setTextColor(e.target.value)}
-            className="hidden"
-          />
 
           {/* Drop Shadow - A with shadow, colored line under */}
           <button
