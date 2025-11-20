@@ -1657,11 +1657,11 @@ function App() {
           
           const connectionIds = connections.map(c => normalizeIdentifier(c.userDid));
           
-          // Load files from connected users from API
+          // Load top post for each connection from API
           const apiEndpoint = process.env.REACT_APP_API_ENDPOINT || 'https://api.parnoir.com';
-          const allConnectionFiles: IndexedFile[] = [];
+          const connectionTopPosts: IndexedFile[] = [];
           
-          // Query API for each connection's files
+          // Query API for each connection's top post
           for (const connection of connections) {
             try {
               const normalizedConnectionId = connection.userDid.startsWith('pn-') 
@@ -1678,48 +1678,59 @@ function App() {
               if (response.ok) {
                 const data = await response.json();
                 if (data.files && Array.isArray(data.files)) {
-                  const connectionFiles = data.files.map((entry: any) => {
+                  // Find the top post for this connection
+                  const topPost = data.files.find((entry: any) => {
                     const metadata = entry.metadata || {};
-                    return {
+                    return metadata.isTopPost === true;
+                  });
+                  
+                  if (topPost) {
+                    const metadata = topPost.metadata || {};
+                    connectionTopPosts.push({
                       metadata: {
                         ...metadata,
-                        fileId: entry.fileId || metadata.fileId,
-                        creatorId: entry.pnIdentifier || metadata.creatorId || connection.userDid,
+                        fileId: topPost.fileId || metadata.fileId,
+                        creatorId: topPost.pnIdentifier || metadata.creatorId || connection.userDid,
                         creator: metadata.creator || {
-                          identifier: { value: entry.pnIdentifier || connection.userDid }
+                          identifier: { value: topPost.pnIdentifier || connection.userDid }
                         },
                         author: metadata.author || {
-                          did: entry.pnIdentifier || connection.userDid
-                        }
+                          did: topPost.pnIdentifier || connection.userDid
+                        },
+                        isTopPost: true
                       }
-                    } as IndexedFile;
-                  });
-                  allConnectionFiles.push(...connectionFiles);
+                    } as IndexedFile);
+                  }
                 }
               }
             } catch (err) {
-              console.warn(`Failed to load files for connection ${connection.userDid}:`, err);
+              console.warn(`Failed to load top post for connection ${connection.userDid}:`, err);
             }
           }
           
           // Also check already-loaded indexed files as fallback
-          const filesFromIndexed = indexedFiles.filter(f => {
+          const topPostsFromIndexed = indexedFiles.filter(f => {
             const creatorId = f.metadata.creator?.identifier?.value || 
                              f.metadata.creator?.["@id"] || 
                              f.metadata.author?.did ||
                              f.metadata.creatorId;
             const normalizedCreatorId = normalizeIdentifier(creatorId);
-            return normalizedCreatorId && connectionIds.includes(normalizedCreatorId);
+            const isTopPost = f.metadata.isTopPost === true;
+            return normalizedCreatorId && 
+                   connectionIds.includes(normalizedCreatorId) && 
+                   isTopPost;
           });
           
-          // Combine and deduplicate
-          const combinedFiles = Array.from(
-            new Map([...allConnectionFiles, ...filesFromIndexed]
-              .map(f => [f.metadata.fileId, f])).values()
+          // Combine and deduplicate (prefer API results)
+          const combinedTopPosts = Array.from(
+            new Map([
+              ...connectionTopPosts.map(f => [f.metadata.fileId, f]),
+              ...topPostsFromIndexed.map(f => [f.metadata.fileId, f])
+            ]).values()
           );
           
-          setConnectionsFiles(combinedFiles);
-          console.log(`📊 Connections feed: ${combinedFiles.length} files from ${connections.length} connections (${allConnectionFiles.length} from API, ${filesFromIndexed.length} from index)`);
+          setConnectionsFiles(combinedTopPosts);
+          console.log(`📊 Connections feed: ${combinedTopPosts.length} top posts from ${connections.length} connections`);
         } catch (error) {
           console.error('Failed to load connections files:', error);
           setConnectionsFiles([]);
@@ -2567,7 +2578,7 @@ function App() {
               setMePageTab(tab);
               setCurrentFeedIndex(0);
             }}
-            availableTabs={isOwnIndex ? ['all', 'media', 'likes', 'comments', 'saved', 'connections'] : ['all', 'media', 'likes', 'comments']}
+            availableTabs={isOwnIndex ? ['connections', 'all', 'media', 'likes', 'comments', 'saved'] : ['all', 'media', 'likes', 'comments']}
           />
           
           {/* Unified feed view for all profiles */}

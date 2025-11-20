@@ -11,7 +11,7 @@ interface MePageTabsRailProps {
   availableTabs?: ('all' | 'media' | 'likes' | 'comments' | 'saved' | 'connections')[];
 }
 
-const TABS = ['all', 'media', 'likes', 'comments', 'saved', 'connections'] as const;
+const TABS = ['connections', 'all', 'media', 'likes', 'comments', 'saved'] as const;
 const TAB_LABELS: Record<typeof TABS[number], string> = {
   all: 'ALL',
   media: 'MEDIA',
