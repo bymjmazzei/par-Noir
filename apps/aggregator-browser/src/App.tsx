@@ -2628,16 +2628,7 @@ function App() {
                     success('Liked!');
                   }
                 }}
-                onComment={(file) => {
-                  console.log('[App] Me page onComment called', { 
-                    file: file?.metadata?.fileId, 
-                    viewingCreatorId,
-                    viewMode,
-                    commentingFile: !!commentingFile 
-                  });
-                  setCommentingFile(file);
-                  console.log('[App] After setCommentingFile on Me page', { commentingFile: !!commentingFile });
-                }}
+                onComment={handleComment}
                 onShare={async (fileId) => {
                   share(fileId);
                 }}
