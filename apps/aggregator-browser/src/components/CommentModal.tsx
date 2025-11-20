@@ -48,6 +48,7 @@ export function CommentModal({ file, onClose }: CommentModalProps) {
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const replyInputRef = useRef<HTMLTextAreaElement>(null);
   const modalRef = useRef<HTMLDivElement>(null);
+  const [commentInputHeight, setCommentInputHeight] = useState(60);
 
   useEffect(() => {
     // Load comments from backend when modal opens
@@ -370,7 +371,10 @@ export function CommentModal({ file, onClose }: CommentModalProps) {
       <div 
         ref={modalRef}
         className="fixed bottom-0 left-0 right-0 bg-neutral-900 rounded-t-2xl z-[150] flex flex-col animate-slide-up" 
-        style={{ maxHeight: '90vh', paddingBottom: '64px' }}
+        style={{ 
+          maxHeight: '90vh', 
+          paddingBottom: userState.isUnlocked ? `${commentInputHeight}px` : '64px'
+        }}
         onClick={(e) => e.stopPropagation()}
       >
         {/* Handle bar */}
@@ -398,57 +402,62 @@ export function CommentModal({ file, onClose }: CommentModalProps) {
           )}
         </div>
 
-        {/* Comment Input */}
-        <div className="p-6 border-t border-neutral-700">
-          {!userState.isUnlocked ? (
-            <div className="text-center py-4">
-              <p className="text-text-secondary text-sm mb-4">Connect your pN to comment</p>
-              <PNConnect compact />
+        {/* Comment Input - Thoughts-style sticky bar */}
+        {!userState.isUnlocked ? (
+          <div className="p-6 border-t border-neutral-700 text-center">
+            <p className="text-text-secondary text-sm mb-4">Connect your pN to comment</p>
+            <PNConnect compact />
+          </div>
+        ) : (
+          <div 
+            className="fixed left-0 right-0 bg-neutral-900 border-t border-neutral-800 z-[160]" 
+            style={{ bottom: '64px', height: `${commentInputHeight}px` }}
+          >
+            <div className="flex items-end gap-2 p-4">
+              <textarea
+                ref={inputRef}
+                value={newComment}
+                onChange={(e) => {
+                  setNewComment(e.target.value);
+                  // Auto-resize textarea
+                  if (inputRef.current) {
+                    inputRef.current.style.height = 'auto';
+                    const newHeight = Math.min(inputRef.current.scrollHeight, 200);
+                    inputRef.current.style.height = `${newHeight}px`;
+                    setCommentInputHeight(newHeight + 32); // Add padding (16px top + 16px bottom)
+                  }
+                }}
+                placeholder="Add a comment..."
+                className="flex-1 bg-neutral-800 text-white rounded-lg p-3 border border-neutral-700 focus:border-blue-500 focus:outline-none resize-none overflow-y-auto"
+                style={{ 
+                  minHeight: '44px',
+                  maxHeight: '200px',
+                  lineHeight: '1.5'
+                }}
+                rows={1}
+                maxLength={500}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    if (newComment.trim()) {
+                      handleSubmit(e as any);
+                    }
+                  }
+                }}
+              />
+              <button
+                onClick={(e) => {
+                  e.preventDefault();
+                  handleSubmit(e as any);
+                }}
+                className="p-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center justify-center mb-0.5"
+                disabled={!newComment.trim()}
+              >
+                <Send className="h-5 w-5" />
+              </button>
             </div>
-          ) : (
-            <>
-              {/* Emoji Bar */}
-              <div className="flex items-center space-x-2 mb-3 pb-3 border-b border-neutral-700">
-                <span className="text-text-secondary text-xs mr-2">Quick reactions:</span>
-                {EMOJI_OPTIONS.map((emoji) => (
-                  <button
-                    key={emoji}
-                    onClick={() => handleEmojiClick(emoji)}
-                    className="text-2xl hover:scale-110 transition-transform"
-                    aria-label={`React with ${emoji}`}
-                  >
-                    {emoji}
-                  </button>
-                ))}
-              </div>
-
-              <form onSubmit={handleSubmit} className="flex items-end space-x-3">
-                <div className="flex-1">
-                  <textarea
-                    ref={inputRef}
-                    value={newComment}
-                    onChange={(e) => setNewComment(e.target.value)}
-                    placeholder="Add a comment..."
-                    className="w-full px-4 py-3 bg-neutral-800 border border-neutral-700 rounded-lg text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
-                    rows={2}
-                    maxLength={500}
-                  />
-                  <p className="text-text-secondary text-xs mt-1">
-                    {newComment.length}/500
-                  </p>
-                </div>
-                <button
-                  type="submit"
-                  disabled={!newComment.trim()}
-                  className="px-4 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center space-x-2"
-                >
-                  <Send className="h-4 w-4" />
-                  <span>Post</span>
-                </button>
-              </form>
-            </>
-          )}
-        </div>
+          </div>
+        )}
       </div>
     </>
   );
