@@ -159,11 +159,11 @@ const CustomColorPicker: React.FC<CustomColorPickerProps> = ({ color, onChange }
   const currentColorHex = rgbToHex(currentRgb.r, currentRgb.g, currentRgb.b);
 
   return (
-    <div className="flex gap-3">
+    <div className="flex gap-2">
       {/* Saturation/Brightness area */}
       <div
         ref={saturationBrightnessRef}
-        className="w-48 h-48 rounded border border-neutral-700 cursor-crosshair relative"
+        className="w-32 h-32 rounded border border-neutral-700 cursor-crosshair relative"
         style={{
           background: `linear-gradient(to top, #000, transparent), linear-gradient(to right, #fff, ${currentColorHex})`
         }}
@@ -171,7 +171,7 @@ const CustomColorPicker: React.FC<CustomColorPickerProps> = ({ color, onChange }
         onMouseDown={() => setIsDragging('sb')}
       >
         <div
-          className="absolute w-3 h-3 rounded-full border-2 border-white shadow-lg pointer-events-none"
+          className="absolute w-2.5 h-2.5 rounded-full border-2 border-white shadow-lg pointer-events-none"
           style={{
             left: `${hsl.s}%`,
             top: `${100 - hsl.l}%`,
@@ -182,7 +182,7 @@ const CustomColorPicker: React.FC<CustomColorPickerProps> = ({ color, onChange }
       {/* Hue slider */}
       <div
         ref={hueRef}
-        className="w-6 h-48 rounded border border-neutral-700 cursor-pointer relative"
+        className="w-5 h-32 rounded border border-neutral-700 cursor-pointer relative"
         style={{
           background: 'linear-gradient(to bottom, #ff0000 0%, #ffff00 17%, #00ff00 33%, #00ffff 50%, #0000ff 67%, #ff00ff 83%, #ff0000 100%)'
         }}
@@ -190,7 +190,7 @@ const CustomColorPicker: React.FC<CustomColorPickerProps> = ({ color, onChange }
         onMouseDown={() => setIsDragging('h')}
       >
         <div
-          className="absolute left-0 right-0 w-full h-1 border border-white shadow-lg pointer-events-none"
+          className="absolute left-0 right-0 w-full h-0.5 border border-white shadow-lg pointer-events-none"
           style={{
             top: `${100 - (hsl.h / 360) * 100}%`,
             transform: 'translateY(-50%)'
