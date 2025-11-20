@@ -321,31 +321,53 @@ export function CommentModal({ file, onClose }: CommentModalProps) {
             {/* Reply Input */}
             {replyingTo === comment.id && (
               <div className="mt-3 ml-8">
-                <textarea
-                  ref={replyInputRef}
-                  value={replyContent}
-                  onChange={(e) => setReplyContent(e.target.value)}
-                  placeholder="Write a reply..."
-                  className="w-full px-3 py-2 bg-neutral-800 border border-neutral-700 rounded-lg text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
-                  rows={2}
-                  maxLength={500}
-                />
-                <div className="flex items-center justify-end space-x-2 mt-2">
+                <div className="flex items-end gap-2">
+                  <textarea
+                    ref={replyInputRef}
+                    value={replyContent}
+                    onChange={(e) => {
+                      setReplyContent(e.target.value);
+                      // Auto-resize textarea
+                      if (replyInputRef.current) {
+                        replyInputRef.current.style.height = 'auto';
+                        const newHeight = Math.min(replyInputRef.current.scrollHeight, 200);
+                        replyInputRef.current.style.height = `${newHeight}px`;
+                      }
+                    }}
+                    placeholder="Write a reply..."
+                    className="flex-1 bg-neutral-800 text-white rounded-lg p-3 border border-neutral-700 focus:border-blue-500 focus:outline-none resize-none overflow-y-auto"
+                    style={{ 
+                      minHeight: '44px',
+                      maxHeight: '200px',
+                      lineHeight: '1.5'
+                    }}
+                    rows={1}
+                    maxLength={500}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && !e.shiftKey) {
+                        e.preventDefault();
+                        if (replyContent.trim()) {
+                          handleReplySubmit(comment.id);
+                        }
+                      }
+                    }}
+                  />
                   <button
                     onClick={() => {
                       setReplyingTo(null);
                       setReplyContent('');
                     }}
-                    className="px-3 py-1 text-sm text-text-secondary hover:text-white transition-colors"
+                    className="p-2 text-text-secondary hover:text-white transition-colors flex items-center justify-center"
+                    title="Cancel"
                   >
-                    Cancel
+                    <span className="text-sm">Cancel</span>
                   </button>
                   <button
                     onClick={() => handleReplySubmit(comment.id)}
                     disabled={!replyContent.trim()}
-                    className="px-4 py-1 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-sm"
+                    className="p-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center justify-center mb-0.5 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
-                    Reply
+                    <Send className="h-5 w-5" />
                   </button>
                 </div>
               </div>
