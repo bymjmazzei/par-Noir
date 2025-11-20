@@ -33,6 +33,7 @@ const FONT_OPTIONS = [
 export function TextPostEditor({ onSave, onCancel }: TextPostEditorProps) {
   const [content, setContent] = useState('');
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const [textareaHeight, setTextareaHeight] = useState(60); // Starting height
   const [fontFamily, setFontFamily] = useState('Arial');
   const [fontSize, setFontSize] = useState(48);
   const [textColor, setTextColor] = useState('#FFFFFF');
@@ -539,7 +540,7 @@ export function TextPostEditor({ onSave, onCancel }: TextPostEditorProps) {
       </div>
 
       {/* Main Railway with Icon Buttons - Sticky (above font selector, overlays media) */}
-      <div className="fixed left-0 right-0 h-14 flex items-center justify-center gap-4 px-4 z-40" style={{ bottom: 'calc(64px + 60px + 48px)' }}>
+      <div className="fixed left-0 right-0 h-14 flex items-center justify-center gap-4 px-4 z-40" style={{ bottom: `calc(64px + ${textareaHeight}px + 48px)` }}>
         <div className="flex items-center gap-4 overflow-x-auto" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
 
           {/* Font Size - Small A next to large A */}
@@ -650,7 +651,7 @@ export function TextPostEditor({ onSave, onCancel }: TextPostEditorProps) {
       </div>
 
       {/* Font Selector Railway - Sticky (above text input, overlays media) */}
-      <div className="fixed left-0 right-0 h-12 flex items-center justify-center z-40" style={{ bottom: 'calc(64px + 60px)' }}>
+      <div className="fixed left-0 right-0 h-12 flex items-center justify-center z-40" style={{ bottom: `calc(64px + ${textareaHeight}px)` }}>
         {/* Center indicator line */}
         <div 
           className="absolute left-1/2 transform -translate-x-1/2 pointer-events-none z-10"
@@ -698,7 +699,9 @@ export function TextPostEditor({ onSave, onCancel }: TextPostEditorProps) {
               // Auto-resize textarea
               if (textareaRef.current) {
                 textareaRef.current.style.height = 'auto';
-                textareaRef.current.style.height = `${Math.min(textareaRef.current.scrollHeight, 200)}px`;
+                const newHeight = Math.min(textareaRef.current.scrollHeight, 200);
+                textareaRef.current.style.height = `${newHeight}px`;
+                setTextareaHeight(newHeight + 32); // Add padding (16px top + 16px bottom)
               }
             }}
             placeholder="Type your thought here..."
