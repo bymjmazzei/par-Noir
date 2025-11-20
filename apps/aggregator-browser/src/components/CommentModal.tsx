@@ -534,14 +534,14 @@ export function CommentModal({ file, onClose }: CommentModalProps) {
       {/* Comment Input Bar - Fixed at bottom, above bottom nav */}
       {userState.isUnlocked && (
         <div 
-          className="border-t border-neutral-800" 
+          className="bg-neutral-900 border-t border-neutral-800" 
           style={{ 
             bottom: '64px', 
             left: 0,
             right: 0,
             width: '100%',
             height: `${commentInputHeight}px`, 
-            backgroundColor: '#171717', // Explicit bg-neutral-900 color
+            backgroundColor: 'rgb(23, 23, 23)', // Explicit bg-neutral-900 color to match modal
             zIndex: 1000000,
             position: 'fixed',
             pointerEvents: 'auto',
