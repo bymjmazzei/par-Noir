@@ -69,15 +69,27 @@ export function TextPostEditor({ onSave, onCancel }: TextPostEditorProps) {
     if (activeFontButtonRef.current && fontSelectorRef.current) {
       const button = activeFontButtonRef.current;
       const container = fontSelectorRef.current;
+      
+      // Get container and button positions
       const containerRect = container.getBoundingClientRect();
       const buttonRect = button.getBoundingClientRect();
+      
+      // Calculate center positions
       const containerCenter = containerRect.left + containerRect.width / 2;
       const buttonCenter = buttonRect.left + buttonRect.width / 2;
+      
+      // Calculate scroll offset needed to center the button
       const scrollOffset = buttonCenter - containerCenter;
       
+      // Get current scroll position
+      const currentScroll = container.scrollLeft;
+      
+      // Calculate new scroll position
+      const newScroll = currentScroll + scrollOffset;
+      
       // Scroll to center the button
-      container.scrollBy({
-        left: scrollOffset,
+      container.scrollTo({
+        left: newScroll,
         behavior: 'smooth'
       });
     }
@@ -664,8 +676,13 @@ export function TextPostEditor({ onSave, onCancel }: TextPostEditorProps) {
       <div className="fixed left-0 right-0 h-12 flex items-center justify-center z-40" style={{ bottom: `calc(64px + ${textareaHeight}px)` }}>
         <div 
           ref={fontSelectorRef}
-          className="flex items-center gap-6 overflow-x-auto px-4 w-full justify-center"
-          style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
+          className="flex items-center gap-6 overflow-x-auto w-full"
+          style={{ 
+            scrollbarWidth: 'none', 
+            msOverflowStyle: 'none',
+            paddingLeft: '50%',
+            paddingRight: '50%'
+          }}
         >
           {FONT_OPTIONS.map((font) => (
             <button
