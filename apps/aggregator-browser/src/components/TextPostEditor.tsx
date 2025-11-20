@@ -660,8 +660,6 @@ export function TextPostEditor({ onSave, onCancel }: TextPostEditorProps) {
                       onChange={(e) => setDropShadowOffsetX(Number(e.target.value))}
                       className="flex-1"
                     />
-                  </div>
-                  <div className="flex items-center gap-2">
                     <label className="text-white text-xs whitespace-nowrap">Y</label>
                     <input
                       type="range"
