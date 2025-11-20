@@ -4,7 +4,7 @@
  */
 
 import React, { useState, useRef, useEffect } from 'react';
-import { X, Check, Palette, Type, Image as ImageIcon, Upload } from 'lucide-react';
+import { X, Check, Palette, Type, Image as ImageIcon, Upload, AlignLeft, AlignCenter, AlignRight, AlignJustify, Shadow, Minus, Plus as PlusIcon } from 'lucide-react';
 import { TextPostData, TextPostStyle } from '../types/aggregator';
 
 interface TextPostEditorProps {
@@ -45,6 +45,11 @@ export function TextPostEditor({ onSave, onCancel }: TextPostEditorProps) {
   const [padding, setPadding] = useState(40);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  
+  // Popup menu states
+  const [openMenu, setOpenMenu] = useState<string | null>(null);
+  const [menuPosition, setMenuPosition] = useState<{ top: number; left: number } | null>(null);
+  const menuButtonRefs = useRef<Map<string, HTMLButtonElement | null>>(new Map());
 
   // Preview rendering
   useEffect(() => {
@@ -207,45 +212,91 @@ export function TextPostEditor({ onSave, onCancel }: TextPostEditorProps) {
     onSave(textPost);
   };
 
-  return (
-    <div className="fixed inset-0 bg-black z-50 flex flex-col">
-      <div className="flex-1 flex overflow-hidden">
-        {/* Left Panel - Editor Controls */}
-        <div className="w-80 bg-neutral-900 border-r border-neutral-800 overflow-y-auto p-4" style={{ paddingBottom: '80px' }}>
-          <div className="mb-6">
-            <h2 className="text-white text-lg font-semibold mb-4">Create Thought</h2>
-            
-            {/* Text Input */}
-            <div className="mb-4">
-              <label className="block text-white text-sm font-medium mb-2">Text Content</label>
-              <textarea
-                value={content}
-                onChange={(e) => setContent(e.target.value)}
-                placeholder="Type your thought here..."
-                className="w-full h-32 bg-neutral-800 text-white rounded-lg p-3 border border-neutral-700 focus:border-blue-500 focus:outline-none resize-none"
-              />
-            </div>
+  const openPopupMenu = (menuId: string, button: HTMLButtonElement) => {
+    const rect = button.getBoundingClientRect();
+    setOpenMenu(menuId);
+    setMenuPosition({
+      top: rect.bottom + 8,
+      left: rect.left
+    });
+  };
 
-            {/* Font Selection */}
-            <div className="mb-4">
-              <label className="block text-white text-sm font-medium mb-2 flex items-center gap-2">
-                <Type className="h-4 w-4" />
-                Font
-              </label>
-              <select
-                value={fontFamily}
-                onChange={(e) => setFontFamily(e.target.value)}
-                className="w-full bg-neutral-800 text-white rounded-lg p-2 border border-neutral-700 focus:border-blue-500 focus:outline-none"
-              >
-                {FONT_OPTIONS.map(font => (
-                  <option key={font.value} value={font.value}>{font.label}</option>
-                ))}
-              </select>
-            </div>
+  const closeMenu = () => {
+    setOpenMenu(null);
+    setMenuPosition(null);
+  };
 
-            {/* Font Size */}
-            <div className="mb-4">
-              <label className="block text-white text-sm font-medium mb-2">Font Size: {fontSize}px</label>
+  // Close menu when clicking outside
+  useEffect(() => {
+    if (!openMenu) return;
+    
+    const handleClickOutside = (event: MouseEvent) => {
+      const target = event.target as Node;
+      const button = menuButtonRefs.current.get(openMenu);
+      if (button && (button.contains(target) || button === target)) {
+        return;
+      }
+      const menuElement = document.querySelector(`[data-menu="${openMenu}"]`);
+      if (menuElement && menuElement.contains(target)) {
+        return;
+      }
+      closeMenu();
+    };
+
+    const timeout = setTimeout(() => {
+      document.addEventListener('mousedown', handleClickOutside, true);
+    }, 200);
+
+    return () => {
+      clearTimeout(timeout);
+      document.removeEventListener('mousedown', handleClickOutside, true);
+    };
+  }, [openMenu]);
+
+  const renderPopupMenu = () => {
+    if (!openMenu || !menuPosition) return null;
+
+    const menuContent = () => {
+      switch (openMenu) {
+        case 'font':
+          return (
+            <div className="max-h-64 overflow-y-auto">
+              {FONT_OPTIONS.map(font => (
+                <button
+                  key={font.value}
+                  onClick={() => {
+                    setFontFamily(font.value);
+                    closeMenu();
+                  }}
+                  className="w-full px-4 py-2 text-left text-white hover:bg-neutral-700 flex items-center justify-between"
+                  style={{ fontFamily: font.value }}
+                >
+                  <span>{font.label}</span>
+                  {fontFamily === font.value && (
+                    <Check className="h-4 w-4 text-blue-500" />
+                  )}
+                </button>
+              ))}
+            </div>
+          );
+        case 'fontSize':
+          return (
+            <div className="p-4 min-w-[200px]">
+              <div className="flex items-center gap-3 mb-2">
+                <button
+                  onClick={() => setFontSize(Math.max(24, fontSize - 4))}
+                  className="p-1 rounded hover:bg-neutral-700"
+                >
+                  <Minus className="h-4 w-4 text-white" />
+                </button>
+                <span className="text-white text-sm font-medium flex-1 text-center">{fontSize}px</span>
+                <button
+                  onClick={() => setFontSize(Math.min(120, fontSize + 4))}
+                  className="p-1 rounded hover:bg-neutral-700"
+                >
+                  <PlusIcon className="h-4 w-4 text-white" />
+                </button>
+              </div>
               <input
                 type="range"
                 min="24"
@@ -255,14 +306,11 @@ export function TextPostEditor({ onSave, onCancel }: TextPostEditorProps) {
                 className="w-full"
               />
             </div>
-
-            {/* Text Color */}
-            <div className="mb-4">
-              <label className="block text-white text-sm font-medium mb-2 flex items-center gap-2">
-                <Palette className="h-4 w-4" />
-                Text Color
-              </label>
-              <div className="flex gap-2">
+          );
+        case 'textColor':
+          return (
+            <div className="p-4 min-w-[200px]">
+              <div className="flex gap-2 mb-2">
                 <input
                   type="color"
                   value={textColor}
@@ -273,28 +321,28 @@ export function TextPostEditor({ onSave, onCancel }: TextPostEditorProps) {
                   type="text"
                   value={textColor}
                   onChange={(e) => setTextColor(e.target.value)}
-                  className="flex-1 bg-neutral-800 text-white rounded-lg p-2 border border-neutral-700 focus:border-blue-500 focus:outline-none"
+                  className="flex-1 bg-neutral-800 text-white rounded-lg p-2 border border-neutral-700 focus:border-blue-500 focus:outline-none text-sm"
                   placeholder="#FFFFFF"
                 />
               </div>
             </div>
-
-            {/* Drop Shadow */}
-            <div className="mb-4">
-              <label className="block text-white text-sm font-medium mb-2">Drop Shadow</label>
-              <div className="space-y-2">
+          );
+        case 'shadow':
+          return (
+            <div className="p-4 min-w-[240px]">
+              <div className="space-y-3">
                 <div className="flex gap-2">
                   <input
                     type="color"
                     value={dropShadowColor}
                     onChange={(e) => setDropShadowColor(e.target.value)}
-                    className="w-16 h-10 rounded border border-neutral-700 cursor-pointer"
+                    className="w-12 h-10 rounded border border-neutral-700 cursor-pointer"
                   />
                   <input
                     type="text"
                     value={dropShadowColor}
                     onChange={(e) => setDropShadowColor(e.target.value)}
-                    className="flex-1 bg-neutral-800 text-white rounded-lg p-2 border border-neutral-700 focus:border-blue-500 focus:outline-none"
+                    className="flex-1 bg-neutral-800 text-white rounded-lg p-2 border border-neutral-700 focus:border-blue-500 focus:outline-none text-sm"
                     placeholder="#000000"
                   />
                 </div>
@@ -311,7 +359,7 @@ export function TextPostEditor({ onSave, onCancel }: TextPostEditorProps) {
                 </div>
                 <div className="grid grid-cols-2 gap-2">
                   <div>
-                    <label className="text-white text-xs mb-1 block">Offset X: {dropShadowOffsetX}px</label>
+                    <label className="text-white text-xs mb-1 block">X: {dropShadowOffsetX}px</label>
                     <input
                       type="range"
                       min="-20"
@@ -322,7 +370,7 @@ export function TextPostEditor({ onSave, onCancel }: TextPostEditorProps) {
                     />
                   </div>
                   <div>
-                    <label className="text-white text-xs mb-1 block">Offset Y: {dropShadowOffsetY}px</label>
+                    <label className="text-white text-xs mb-1 block">Y: {dropShadowOffsetY}px</label>
                     <input
                       type="range"
                       min="-20"
@@ -335,75 +383,90 @@ export function TextPostEditor({ onSave, onCancel }: TextPostEditorProps) {
                 </div>
               </div>
             </div>
-
-            {/* Background */}
-            <div className="mb-4">
-              <label className="block text-white text-sm font-medium mb-2 flex items-center gap-2">
-                <ImageIcon className="h-4 w-4" />
-                Background
-              </label>
-              <div className="flex gap-2 mb-2">
-                <input
-                  type="color"
-                  value={backgroundColor}
-                  onChange={(e) => setBackgroundColor(e.target.value)}
-                  className="w-16 h-10 rounded border border-neutral-700 cursor-pointer"
-                />
-                <input
-                  type="text"
-                  value={backgroundColor}
-                  onChange={(e) => setBackgroundColor(e.target.value)}
-                  className="flex-1 bg-neutral-800 text-white rounded-lg p-2 border border-neutral-700 focus:border-blue-500 focus:outline-none"
-                  placeholder="#000000"
-                />
-              </div>
-              <button
-                onClick={() => fileInputRef.current?.click()}
-                className="w-full bg-neutral-800 text-white rounded-lg p-2 border border-neutral-700 hover:bg-neutral-700 transition-colors text-sm flex items-center justify-center gap-2"
-              >
-                <Upload className="h-4 w-4" />
-                Upload Background Image
-              </button>
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept="image/*"
-                onChange={handleBackgroundImageUpload}
-                className="hidden"
-              />
-              {backgroundImage && (
+          );
+        case 'background':
+          return (
+            <div className="p-4 min-w-[200px]">
+              <div className="space-y-3">
+                <div className="flex gap-2">
+                  <input
+                    type="color"
+                    value={backgroundColor}
+                    onChange={(e) => setBackgroundColor(e.target.value)}
+                    className="w-12 h-10 rounded border border-neutral-700 cursor-pointer"
+                  />
+                  <input
+                    type="text"
+                    value={backgroundColor}
+                    onChange={(e) => setBackgroundColor(e.target.value)}
+                    className="flex-1 bg-neutral-800 text-white rounded-lg p-2 border border-neutral-700 focus:border-blue-500 focus:outline-none text-sm"
+                    placeholder="#000000"
+                  />
+                </div>
                 <button
-                  onClick={() => setBackgroundImage(null)}
-                  className="mt-2 w-full bg-red-600 text-white rounded-lg p-2 text-sm hover:bg-red-700 transition-colors"
+                  onClick={() => fileInputRef.current?.click()}
+                  className="w-full bg-neutral-800 text-white rounded-lg p-2 border border-neutral-700 hover:bg-neutral-700 transition-colors text-sm flex items-center justify-center gap-2"
                 >
-                  Remove Background Image
+                  <Upload className="h-4 w-4" />
+                  Upload Image
                 </button>
-              )}
-            </div>
-
-            {/* Text Align */}
-            <div className="mb-4">
-              <label className="block text-white text-sm font-medium mb-2">Text Alignment</label>
-              <div className="grid grid-cols-4 gap-2">
-                {(['left', 'center', 'right', 'justify'] as const).map(align => (
+                {backgroundImage && (
                   <button
-                    key={align}
-                    onClick={() => setTextAlign(align)}
-                    className={`p-2 rounded border text-xs ${
-                      textAlign === align
+                    onClick={() => setBackgroundImage(null)}
+                    className="w-full bg-red-600 text-white rounded-lg p-2 text-sm hover:bg-red-700 transition-colors"
+                  >
+                    Remove Image
+                  </button>
+                )}
+              </div>
+            </div>
+          );
+        case 'align':
+          return (
+            <div className="p-2">
+              <div className="grid grid-cols-2 gap-2">
+                {([
+                  { value: 'left' as const, icon: AlignLeft },
+                  { value: 'center' as const, icon: AlignCenter },
+                  { value: 'right' as const, icon: AlignRight },
+                  { value: 'justify' as const, icon: AlignJustify },
+                ]).map(({ value, icon: Icon }) => (
+                  <button
+                    key={value}
+                    onClick={() => {
+                      setTextAlign(value);
+                      closeMenu();
+                    }}
+                    className={`p-3 rounded border flex items-center justify-center ${
+                      textAlign === value
                         ? 'bg-blue-600 border-blue-500 text-white'
                         : 'bg-neutral-800 border-neutral-700 text-white hover:bg-neutral-700'
                     }`}
                   >
-                    {align.charAt(0).toUpperCase() + align.slice(1)}
+                    <Icon className="h-5 w-5" />
                   </button>
                 ))}
               </div>
             </div>
-
-            {/* Padding */}
-            <div className="mb-6">
-              <label className="block text-white text-sm font-medium mb-2">Padding: {padding}px</label>
+          );
+        case 'padding':
+          return (
+            <div className="p-4 min-w-[200px]">
+              <div className="flex items-center gap-3 mb-2">
+                <button
+                  onClick={() => setPadding(Math.max(0, padding - 10))}
+                  className="p-1 rounded hover:bg-neutral-700"
+                >
+                  <Minus className="h-4 w-4 text-white" />
+                </button>
+                <span className="text-white text-sm font-medium flex-1 text-center">{padding}px</span>
+                <button
+                  onClick={() => setPadding(Math.min(100, padding + 10))}
+                  className="p-1 rounded hover:bg-neutral-700"
+                >
+                  <PlusIcon className="h-4 w-4 text-white" />
+                </button>
+              </div>
               <input
                 type="range"
                 min="0"
@@ -413,43 +476,224 @@ export function TextPostEditor({ onSave, onCancel }: TextPostEditorProps) {
                 className="w-full"
               />
             </div>
-          </div>
-        </div>
+          );
+        default:
+          return null;
+      }
+    };
 
-        {/* Right Panel - Preview */}
-        <div className="flex-1 flex items-center justify-center bg-neutral-950 p-8" style={{ paddingBottom: '80px' }}>
-          <div className="w-full max-w-md aspect-[9/16] bg-neutral-900 rounded-lg overflow-hidden shadow-2xl">
-            <canvas
-              ref={canvasRef}
-              className="w-full h-full"
-              style={{ display: content.trim() ? 'block' : 'none' }}
+    return (
+      <div
+        data-menu={openMenu}
+        className="fixed z-50 bg-neutral-800 border border-neutral-700 rounded-lg shadow-lg"
+        style={{
+          top: `${menuPosition.top}px`,
+          left: `${menuPosition.left}px`
+        }}
+      >
+        {menuContent()}
+      </div>
+    );
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black z-50 flex flex-col">
+      {/* Full Screen Preview */}
+      <div className="flex-1 flex items-center justify-center bg-neutral-950 p-4" style={{ paddingBottom: '200px' }}>
+        <div className="w-full max-w-md aspect-[9/16] bg-neutral-900 rounded-lg overflow-hidden shadow-2xl">
+          <canvas
+            ref={canvasRef}
+            className="w-full h-full"
+            style={{ display: content.trim() ? 'block' : 'none' }}
+          />
+          {!content.trim() && (
+            <div className="w-full h-full flex items-center justify-center text-neutral-500">
+              <p>Preview will appear here</p>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Railway with Icon Buttons - Sticky */}
+      <div className="fixed bottom-20 left-0 right-0 h-14 bg-neutral-900 border-t border-neutral-800 flex items-center justify-center gap-2 px-4 z-40">
+        <div className="flex items-center gap-1 overflow-x-auto" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
+          {/* Font Button - Shows current font name in that font */}
+          <button
+            ref={(el) => menuButtonRefs.current.set('font', el)}
+            onClick={(e) => {
+              const button = e.currentTarget;
+              if (openMenu === 'font') {
+                closeMenu();
+              } else {
+                openPopupMenu('font', button);
+              }
+            }}
+            className={`px-3 py-2 rounded-lg transition-colors flex items-center gap-2 min-w-[100px] ${
+              openMenu === 'font' ? 'bg-blue-600 text-white' : 'bg-neutral-800 text-white hover:bg-neutral-700'
+            }`}
+            style={{ fontFamily: fontFamily }}
+          >
+            <Type className="h-4 w-4 flex-shrink-0" />
+            <span className="text-sm truncate">{fontFamily}</span>
+          </button>
+
+          {/* Font Size */}
+          <button
+            ref={(el) => menuButtonRefs.current.set('fontSize', el)}
+            onClick={(e) => {
+              const button = e.currentTarget;
+              if (openMenu === 'fontSize') {
+                closeMenu();
+              } else {
+                openPopupMenu('fontSize', button);
+              }
+            }}
+            className={`px-3 py-2 rounded-lg transition-colors flex items-center gap-2 ${
+              openMenu === 'fontSize' ? 'bg-blue-600 text-white' : 'bg-neutral-800 text-white hover:bg-neutral-700'
+            }`}
+          >
+            <span className="text-sm font-bold">{fontSize}</span>
+            <span className="text-xs">px</span>
+          </button>
+
+          {/* Text Color */}
+          <button
+            ref={(el) => menuButtonRefs.current.set('textColor', el)}
+            onClick={(e) => {
+              const button = e.currentTarget;
+              if (openMenu === 'textColor') {
+                closeMenu();
+              } else {
+                openPopupMenu('textColor', button);
+              }
+            }}
+            className={`px-3 py-2 rounded-lg transition-colors flex items-center gap-2 ${
+              openMenu === 'textColor' ? 'bg-blue-600 text-white' : 'bg-neutral-800 text-white hover:bg-neutral-700'
+            }`}
+          >
+            <Palette className="h-4 w-4" />
+            <div 
+              className="w-4 h-4 rounded border border-neutral-600"
+              style={{ backgroundColor: textColor }}
             />
-            {!content.trim() && (
-              <div className="w-full h-full flex items-center justify-center text-neutral-500">
-                <p>Preview will appear here</p>
-              </div>
-            )}
+          </button>
+
+          {/* Shadow */}
+          <button
+            ref={(el) => menuButtonRefs.current.set('shadow', el)}
+            onClick={(e) => {
+              const button = e.currentTarget;
+              if (openMenu === 'shadow') {
+                closeMenu();
+              } else {
+                openPopupMenu('shadow', button);
+              }
+            }}
+            className={`px-3 py-2 rounded-lg transition-colors ${
+              openMenu === 'shadow' ? 'bg-blue-600 text-white' : 'bg-neutral-800 text-white hover:bg-neutral-700'
+            }`}
+          >
+            <Shadow className="h-4 w-4" />
+          </button>
+
+          {/* Background */}
+          <button
+            ref={(el) => menuButtonRefs.current.set('background', el)}
+            onClick={(e) => {
+              const button = e.currentTarget;
+              if (openMenu === 'background') {
+                closeMenu();
+              } else {
+                openPopupMenu('background', button);
+              }
+            }}
+            className={`px-3 py-2 rounded-lg transition-colors ${
+              openMenu === 'background' ? 'bg-blue-600 text-white' : 'bg-neutral-800 text-white hover:bg-neutral-700'
+            }`}
+          >
+            <ImageIcon className="h-4 w-4" />
+          </button>
+
+          {/* Alignment */}
+          <button
+            ref={(el) => menuButtonRefs.current.set('align', el)}
+            onClick={(e) => {
+              const button = e.currentTarget;
+              if (openMenu === 'align') {
+                closeMenu();
+              } else {
+                openPopupMenu('align', button);
+              }
+            }}
+            className={`px-3 py-2 rounded-lg transition-colors ${
+              openMenu === 'align' ? 'bg-blue-600 text-white' : 'bg-neutral-800 text-white hover:bg-neutral-700'
+            }`}
+          >
+            {textAlign === 'left' && <AlignLeft className="h-4 w-4" />}
+            {textAlign === 'center' && <AlignCenter className="h-4 w-4" />}
+            {textAlign === 'right' && <AlignRight className="h-4 w-4" />}
+            {textAlign === 'justify' && <AlignJustify className="h-4 w-4" />}
+          </button>
+
+          {/* Padding */}
+          <button
+            ref={(el) => menuButtonRefs.current.set('padding', el)}
+            onClick={(e) => {
+              const button = e.currentTarget;
+              if (openMenu === 'padding') {
+                closeMenu();
+              } else {
+                openPopupMenu('padding', button);
+              }
+            }}
+            className={`px-3 py-2 rounded-lg transition-colors flex items-center gap-2 ${
+              openMenu === 'padding' ? 'bg-blue-600 text-white' : 'bg-neutral-800 text-white hover:bg-neutral-700'
+            }`}
+          >
+            <span className="text-xs">{padding}px</span>
+          </button>
+        </div>
+      </div>
+
+      {/* Text Input - Sticky at Bottom */}
+      <div className="fixed bottom-0 left-0 right-0 bg-neutral-900 border-t border-neutral-800 z-50">
+        <div className="flex items-center gap-2 p-4">
+          <textarea
+            value={content}
+            onChange={(e) => setContent(e.target.value)}
+            placeholder="Type your thought here..."
+            className="flex-1 bg-neutral-800 text-white rounded-lg p-3 border border-neutral-700 focus:border-blue-500 focus:outline-none resize-none min-h-[60px] max-h-[120px]"
+            rows={2}
+          />
+          <div className="flex items-center gap-2">
+            <button
+              onClick={onCancel}
+              className="px-4 py-2 bg-neutral-800 text-white rounded-lg hover:bg-neutral-700 transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleSave}
+              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2"
+            >
+              <Check className="h-4 w-4" />
+              Create
+            </button>
           </div>
         </div>
       </div>
 
-      {/* Footer Actions - Sticky */}
-      <div className="fixed bottom-0 left-0 right-0 h-16 bg-neutral-900 border-t border-neutral-800 flex items-center justify-end gap-4 px-6 z-50">
-        <button
-          onClick={onCancel}
-          className="px-6 py-2 bg-neutral-800 text-white rounded-lg hover:bg-neutral-700 transition-colors"
-        >
-          Cancel
-        </button>
-        <button
-          onClick={handleSave}
-          className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2"
-        >
-          <Check className="h-4 w-4" />
-          Create Thought
-        </button>
-      </div>
+      {/* Popup Menus */}
+      {renderPopupMenu()}
+
+      {/* Hidden file input */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/*"
+        onChange={handleBackgroundImageUpload}
+        className="hidden"
+      />
     </div>
   );
 }
-
