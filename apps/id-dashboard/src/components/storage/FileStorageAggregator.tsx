@@ -5174,6 +5174,9 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
     try {
       setIsLoading(true);
       setError(null);
+      setSuccessMessage(null);
+
+      console.log('🔄 [handleRefreshIndexes] Starting index cleanup...');
 
       // Get credentials for pN identifier generation
       const sessionId = authenticatedUser.id;
@@ -5183,6 +5186,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
 
       if (!pnName || !credentials?.passcode || !publicKey) {
         setError('Cannot refresh indexes: credentials required');
+        console.error('❌ [handleRefreshIndexes] Missing credentials:', { hasPnName: !!pnName, hasPasscode: !!credentials?.passcode, hasPublicKey: !!publicKey });
         return;
       }
 
@@ -5193,6 +5197,8 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
         passcode: credentials.passcode,
         publicKey
       });
+
+      console.log(`🔍 [handleRefreshIndexes] Using pN identifier: ${pnIdentifier}`);
 
       // Get access token from connected backend
       const connectedBackend = driveAccounts.find(acc => connectedBackends.has(acc.backendId));
@@ -5213,6 +5219,8 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
         return;
       }
 
+      console.log('🧹 [handleRefreshIndexes] Cleaning up orphaned index entries...');
+
       // Clean up orphaned entries
       const { GoogleDriveMetadataService } = await import('../../services/storage/GoogleDriveMetadataService');
       const cleanupResult = await GoogleDriveMetadataService.cleanupOrphanedIndexEntries(
@@ -5220,12 +5228,15 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
         pnIdentifier
       );
 
+      console.log('✅ [handleRefreshIndexes] Cleanup complete:', cleanupResult);
+
       if (cleanupResult.ownerIndexRemoved > 0 || cleanupResult.publicIndexRemoved > 0) {
         setSuccessWithTimeout(
           `✅ Refreshed indexes: Removed ${cleanupResult.ownerIndexRemoved} orphaned file(s) from owner index, ${cleanupResult.publicIndexRemoved} from public index`
         );
         // Reload files to show updated list
         if (loadFilesRef.current) {
+          console.log('🔄 [handleRefreshIndexes] Reloading files...');
           await loadFilesRef.current();
         }
       } else {
@@ -5238,7 +5249,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
     } finally {
       setIsLoading(false);
     }
-  }, [authenticatedUser, resolvedAuth, driveAccounts, connectedBackends, aggregatorService]);
+  }, [authenticatedUser, resolvedAuth, driveAccounts, connectedBackends, aggregatorService, setSuccessWithTimeout]);
 
 
   const totalFiles = files.length;

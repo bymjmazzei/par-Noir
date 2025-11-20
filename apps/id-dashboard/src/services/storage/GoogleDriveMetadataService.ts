@@ -1257,6 +1257,7 @@ export class GoogleDriveMetadataService {
       );
 
       if (response.status === 404) {
+        console.log(`🗑️ [verifyFileExists] File ${fileId} not found (404)`);
         return false; // File doesn't exist
       }
 
@@ -1268,7 +1269,11 @@ export class GoogleDriveMetadataService {
 
       const fileData = await response.json();
       // File exists and is not trashed
-      return !fileData.trashed;
+      const exists = !fileData.trashed;
+      if (!exists) {
+        console.log(`🗑️ [verifyFileExists] File ${fileId} is trashed`);
+      }
+      return exists;
     } catch (error) {
       console.warn(`⚠️ [verifyFileExists] Error verifying file ${fileId}:`, error);
       // On error, assume file exists to avoid false positives
@@ -1299,6 +1304,7 @@ export class GoogleDriveMetadataService {
           const verifiedFiles = [];
 
           // Verify each file exists in Google Drive
+          console.log(`🔍 [cleanupOrphanedIndexEntries] Verifying ${ownerIndex.files.length} files in owner index...`);
           for (const fileEntry of ownerIndex.files) {
             const googleDriveFileId = fileEntry.googleDriveFileId;
             if (googleDriveFileId) {
@@ -1306,7 +1312,7 @@ export class GoogleDriveMetadataService {
               if (exists) {
                 verifiedFiles.push(fileEntry);
               } else {
-                console.log(`🗑️ [cleanupOrphanedIndexEntries] Removing orphaned file from owner index: ${googleDriveFileId}`);
+                console.log(`🗑️ [cleanupOrphanedIndexEntries] Removing orphaned file from owner index: ${googleDriveFileId} (${(fileEntry as any).fileName || (fileEntry as any).originalName || 'unknown'})`);
                 ownerIndexRemoved++;
               }
             } else {
@@ -1334,6 +1340,7 @@ export class GoogleDriveMetadataService {
           const verifiedFiles = [];
 
           // Verify each file exists in Google Drive
+          console.log(`🔍 [cleanupOrphanedIndexEntries] Verifying ${publicIndex.files.length} files in public index...`);
           for (const fileEntry of publicIndex.files) {
             const googleDriveFileId = (fileEntry as any).googleDriveFileId;
             if (googleDriveFileId) {
@@ -1341,7 +1348,7 @@ export class GoogleDriveMetadataService {
               if (exists) {
                 verifiedFiles.push(fileEntry);
               } else {
-                console.log(`🗑️ [cleanupOrphanedIndexEntries] Removing orphaned file from public index: ${googleDriveFileId}`);
+                console.log(`🗑️ [cleanupOrphanedIndexEntries] Removing orphaned file from public index: ${googleDriveFileId} (${(fileEntry as any).fileName || (fileEntry as any).originalName || 'unknown'})`);
                 publicIndexRemoved++;
               }
             } else {
