@@ -40,9 +40,34 @@ export function CommentModal({ file, onClose }: CommentModalProps) {
   const { addComment, getComments, loadComments, likeComment } = useEngagement();
   const { success } = useToast();
   
-  // Log when modal is rendered
+  // Log when modal is rendered and ensure it's visible
   useEffect(() => {
     console.log('[CommentModal] Modal rendered', { fileId: file.metadata.fileId });
+    // Force the modal to be visible by ensuring backdrop and modal are in DOM
+    setTimeout(() => {
+      if (backdropRef.current) {
+        console.log('[CommentModal] Backdrop element exists in DOM');
+        const styles = window.getComputedStyle(backdropRef.current);
+        console.log('[CommentModal] Backdrop computed styles:', {
+          display: styles.display,
+          visibility: styles.visibility,
+          opacity: styles.opacity,
+          zIndex: styles.zIndex,
+          position: styles.position
+        });
+      }
+      if (modalRef.current) {
+        console.log('[CommentModal] Modal element exists in DOM');
+        const styles = window.getComputedStyle(modalRef.current);
+        console.log('[CommentModal] Modal computed styles:', {
+          display: styles.display,
+          visibility: styles.visibility,
+          opacity: styles.opacity,
+          zIndex: styles.zIndex,
+          position: styles.position
+        });
+      }
+    }, 100);
   }, [file.metadata.fileId]);
   const [newComment, setNewComment] = useState('');
   const [comments, setComments] = useState<Comment[]>(getComments(file.metadata.fileId));
