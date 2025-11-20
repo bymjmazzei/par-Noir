@@ -393,8 +393,8 @@ export function CommentModal({ file, onClose }: CommentModalProps) {
       <div 
         ref={modalRef}
         className="fixed bottom-0 left-0 right-0 bg-neutral-900 rounded-t-2xl flex flex-col animate-slide-up"
-        style={{ zIndex: 9999 }} 
         style={{ 
+          zIndex: 9999,
           maxHeight: '90vh', 
           paddingBottom: userState.isUnlocked ? `${commentInputHeight}px` : '64px'
         }}
