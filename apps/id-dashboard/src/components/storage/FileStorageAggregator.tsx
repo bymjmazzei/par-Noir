@@ -739,7 +739,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
 
   // Token refresh handler - moved here after persistStorageCredentialsToAPI is declared
   React.useEffect(() => {
-    const handleTokenRefreshed = (event: Event) => {
+    const handleTokenRefreshed = async (event: Event) => {
       const detail = (event as CustomEvent<{ backendId?: string; accessToken?: string; refreshToken?: string | null; email?: string | null }>).detail;
       const backendId = detail?.backendId;
 
@@ -3275,8 +3275,12 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
                 keyPrefix: identifiers.keyPrefix,
                 token: credentials.accessToken,
                 refreshToken: credentials.refreshToken,
-            email: credentials.email
-          });
+                email: credentials.email
+              });
+            }
+          } catch (error) {
+            console.warn('[FileStorageAggregator] Failed to load encrypted credentials:', error);
+          }
         }
       } else {
         for (const account of storedAccounts) {
