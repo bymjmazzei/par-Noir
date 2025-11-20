@@ -1959,13 +1959,19 @@ function App() {
     };
   }, [visibleFileId, viewingCreatorId, mePageTab, creatorFilesState, userState.pnIdentifier, userState.isUnlocked, userLikedFiles, userCommentedFiles, viewedUserLikedFiles, viewedUserCommentedFiles, savedFiles]);
 
+  // Helper function to identify text posts (thoughts) - MUST be defined before any useMemo/useEffect that uses it
+  const isThought = (file: IndexedFile): boolean => {
+    return file.metadata.fileType === 'text' || 
+           file.metadata.fileType === 'thought' ||
+           !!(file.metadata as any).textPost ||
+           !!(file.metadata as any).thought;
+  };
+
   // Prepare data for conditional rendering
   // Use stable empty array reference to prevent unnecessary re-renders
   const creatorFiles = viewingCreatorId ? creatorFilesState : EMPTY_ARRAY;
   const isOwnIndex = viewingCreatorId === userState.pnIdentifier && userState.isUnlocked;
   
-  // Helper function to identify text posts (thoughts)
-
   // Memoize filteredMeFiles to prevent unnecessary recalculations
   const filteredMeFilesMemo = useMemo(() => {
     let filtered: IndexedFile[] = [];
@@ -2189,13 +2195,6 @@ function App() {
   const creatorFeeds = viewingCreatorId ? feeds.filter(feed => feed.creatorId === viewingCreatorId) : [];
   const uniqueFiles = viewingCreatorId ? Array.from(new Map(creatorFiles.map(f => [f.metadata.fileId, f])).values()) : [];
 
-  // Helper function to check if file is a thought (text post)
-  const isThought = (file: IndexedFile): boolean => {
-    return file.metadata.fileType === 'text' || 
-           file.metadata.fileType === 'thought' ||
-           !!(file.metadata as any).textPost ||
-           !!(file.metadata as any).thought;
-  };
 
   const handleLockUnlock = async () => {
     if (userState.isUnlocked) {
