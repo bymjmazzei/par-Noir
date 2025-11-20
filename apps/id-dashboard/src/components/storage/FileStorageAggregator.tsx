@@ -4298,6 +4298,9 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
+          ...(authenticatedUser?.accessToken && {
+            'Authorization': `Bearer ${authenticatedUser.accessToken}`
+          })
         },
         body: JSON.stringify({
           name: editForm.name,
