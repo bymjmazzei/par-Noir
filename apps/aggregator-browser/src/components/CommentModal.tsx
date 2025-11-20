@@ -4,6 +4,7 @@
  */
 
 import React, { useState, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { Send, Heart, User, Reply, ChevronDown, ChevronUp } from 'lucide-react';
 import { IndexedFile } from '../types/aggregator';
 import { useUserState } from '../contexts/UserStateContext';
@@ -477,7 +478,8 @@ export function CommentModal({ file, onClose }: CommentModalProps) {
           </div>
         )}
       </div>
-    </>
+    </>,
+    document.body
   );
 }
 
