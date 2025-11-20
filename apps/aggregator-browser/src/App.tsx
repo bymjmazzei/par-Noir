@@ -1856,11 +1856,23 @@ function App() {
         }
       }
       
+      // Apply top post pinning logic to match filteredMeFilesMemo
+      if ((mePageTab === 'all' || mePageTab === 'media' || mePageTab === 'thoughts') && currentFilteredMeFiles.length > 0) {
+        const topPostIndex = currentFilteredMeFiles.findIndex(f => f.metadata.isTopPost === true);
+        if (topPostIndex > 0) {
+          const topPost = currentFilteredMeFiles[topPostIndex];
+          currentFilteredMeFiles = [topPost, ...currentFilteredMeFiles.filter((_, i) => i !== topPostIndex)];
+        }
+      }
+      
       // First, check if file is in current filteredMeFiles
       if (currentFilteredMeFiles.length > 0) {
         const fileIndex = currentFilteredMeFiles.findIndex(f => f.metadata.fileId === visibleFileId);
         if (fileIndex !== -1) {
-          setCurrentFeedIndex(fileIndex);
+          // Only update if index actually changed to prevent unnecessary scrolling
+          if (currentFeedIndex !== fileIndex) {
+            setCurrentFeedIndex(fileIndex);
+          }
           // Track that we navigated to this file
           lastNavigatedFileIdRef.current = visibleFileId;
           lastNavigatedFileIndexRef.current = fileIndex;
@@ -1882,10 +1894,21 @@ function App() {
       // If not found in current tab, check other tabs
       // Check media tab (currentCreatorFiles)
       if (currentCreatorFiles.length > 0) {
-        const mediaIndex = currentCreatorFiles.findIndex(f => f.metadata.fileId === visibleFileId);
+        // Apply top post pinning for media tab
+        let mediaFiles = [...currentCreatorFiles];
+        const topPostIndex = mediaFiles.findIndex(f => f.metadata.isTopPost === true);
+        if (topPostIndex > 0) {
+          const topPost = mediaFiles[topPostIndex];
+          mediaFiles = [topPost, ...mediaFiles.filter((_, i) => i !== topPostIndex)];
+        }
+        
+        const mediaIndex = mediaFiles.findIndex(f => f.metadata.fileId === visibleFileId);
         if (mediaIndex !== -1) {
           setMePageTab('media');
-          setCurrentFeedIndex(mediaIndex);
+          // Only update if index actually changed
+          if (currentFeedIndex !== mediaIndex) {
+            setCurrentFeedIndex(mediaIndex);
+          }
           // Track that we navigated to this file
           lastNavigatedFileIdRef.current = visibleFileId;
           lastNavigatedFileIndexRef.current = mediaIndex;
@@ -1907,11 +1930,22 @@ function App() {
         ? Array.from(new Map([...currentCreatorFiles, ...userLikedFiles, ...userCommentedFiles].map(f => [f.metadata.fileId, f])).values())
         : Array.from(new Map([...currentCreatorFiles, ...viewedUserLikedFiles, ...viewedUserCommentedFiles].map(f => [f.metadata.fileId, f])).values());
       
-      if (allFiles.length > 0) {
-        const allIndex = allFiles.findIndex(f => f.metadata.fileId === visibleFileId);
+      // Apply top post pinning for 'all' tab
+      let allFilesPinned = [...allFiles];
+      const topPostIndexAll = allFilesPinned.findIndex(f => f.metadata.isTopPost === true);
+      if (topPostIndexAll > 0) {
+        const topPost = allFilesPinned[topPostIndexAll];
+        allFilesPinned = [topPost, ...allFilesPinned.filter((_, i) => i !== topPostIndexAll)];
+      }
+      
+      if (allFilesPinned.length > 0) {
+        const allIndex = allFilesPinned.findIndex(f => f.metadata.fileId === visibleFileId);
         if (allIndex !== -1) {
           setMePageTab('all');
-          setCurrentFeedIndex(allIndex);
+          // Only update if index actually changed
+          if (currentFeedIndex !== allIndex) {
+            setCurrentFeedIndex(allIndex);
+          }
           // Track that we navigated to this file
           lastNavigatedFileIdRef.current = visibleFileId;
           lastNavigatedFileIndexRef.current = allIndex;
@@ -1957,6 +1991,8 @@ function App() {
       clearInterval(retryTimer);
       isNavigatingToFileRef.current = false;
     };
+    // Note: currentFeedIndex is intentionally NOT in dependencies to prevent infinite loops
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visibleFileId, viewingCreatorId, mePageTab, creatorFilesState, userState.pnIdentifier, userState.isUnlocked, userLikedFiles, userCommentedFiles, viewedUserLikedFiles, viewedUserCommentedFiles, savedFiles]);
 
   // Helper function to identify text posts (thoughts) - MUST be defined before any useMemo/useEffect that uses it
