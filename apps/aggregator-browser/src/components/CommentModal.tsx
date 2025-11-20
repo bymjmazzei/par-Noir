@@ -368,14 +368,14 @@ export function CommentModal({ file, onClose }: CommentModalProps) {
     <>
       {/* Backdrop */}
       <div
-        className="fixed inset-0 bg-black/60 z-[150] transition-opacity"
+        className="fixed inset-0 bg-black/60 z-[200] transition-opacity"
         onClick={onClose}
       />
 
-      {/* Slide-up modal - Higher z-index than bottom nav (z-[100]) */}
+      {/* Slide-up modal - Higher z-index than bottom nav (z-[100]) and Me page tabs (z-[100]) */}
       <div 
         ref={modalRef}
-        className="fixed bottom-0 left-0 right-0 bg-neutral-900 rounded-t-2xl z-[150] flex flex-col animate-slide-up" 
+        className="fixed bottom-0 left-0 right-0 bg-neutral-900 rounded-t-2xl z-[200] flex flex-col animate-slide-up" 
         style={{ 
           maxHeight: '90vh', 
           paddingBottom: userState.isUnlocked ? `${commentInputHeight}px` : '64px'
@@ -415,7 +415,7 @@ export function CommentModal({ file, onClose }: CommentModalProps) {
           </div>
         ) : (
           <div 
-            className="fixed left-0 right-0 bg-neutral-900 border-t border-neutral-800 z-[160]" 
+            className="fixed left-0 right-0 bg-neutral-900 border-t border-neutral-800 z-[210]" 
             style={{ bottom: '64px', height: `${commentInputHeight}px` }}
           >
             <div className="flex items-end gap-2 p-4">
