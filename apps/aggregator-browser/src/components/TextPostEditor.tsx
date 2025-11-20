@@ -7,6 +7,7 @@ import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { X, Check, Palette, Type, Image as ImageIcon, Upload, AlignLeft, AlignCenter, AlignRight, AlignJustify, Layers, Minus, Plus as PlusIcon, Send, Bold } from 'lucide-react';
 import { TextPostData, TextPostStyle } from '../types/aggregator';
+import { EmojiPicker } from './EmojiPicker';
 
 // Helper function to convert hex to RGB
 const hexToRgb = (hex: string): { r: number; g: number; b: number } => {
@@ -1048,29 +1049,58 @@ export function TextPostEditor({ onSave, onCancel }: TextPostEditorProps) {
         className="fixed left-0 right-0 bg-neutral-900 border-t border-neutral-800 z-50" 
         style={{ bottom: '64px' }}
       >
-        <div className="flex items-end gap-2 p-4">
-          <textarea
-            ref={textareaRef}
-            value={content}
-            onChange={(e) => {
-              setContent(e.target.value);
-              // Auto-resize textarea
-              if (textareaRef.current) {
-                textareaRef.current.style.height = 'auto';
-                const newHeight = Math.min(textareaRef.current.scrollHeight, 200);
-                textareaRef.current.style.height = `${newHeight}px`;
-                setTextareaHeight(newHeight + 32); // Add padding (16px top + 16px bottom)
-              }
-            }}
-            placeholder="Type your thought here..."
-            className="flex-1 bg-neutral-800 text-white rounded-lg p-3 border border-neutral-700 focus:border-blue-500 focus:outline-none resize-none overflow-y-auto"
-            style={{ 
-              minHeight: '44px',
-              maxHeight: '200px',
-              lineHeight: '1.5'
-            }}
-            rows={1}
-          />
+        {/* Emoji Railway - Above text bar */}
+        <div className="px-4 pt-2 pb-1">
+          <div className="flex gap-2 overflow-x-auto" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
+            {['😀', '😂', '❤️', '😍', '🤔', '😮', '😢', '🔥', '👏', '💯', '👍', '👎', '🎉', '🙌', '😊', '😎', '🤗', '😴', '🤯', '🥳'].map((emoji, index) => (
+              <button
+                key={index}
+                type="button"
+                onClick={(e) => {
+                  e.preventDefault();
+                  setContent(prev => prev + emoji);
+                }}
+                className="text-xl hover:scale-110 transition-transform p-1 flex-shrink-0"
+              >
+                {emoji}
+              </button>
+            ))}
+          </div>
+        </div>
+        
+        {/* Text Input Area */}
+        <div className="flex items-end gap-2 px-4 pb-4">
+          <div className="flex-1 relative">
+            <textarea
+              ref={textareaRef}
+              value={content}
+              onChange={(e) => {
+                setContent(e.target.value);
+                // Auto-resize textarea
+                if (textareaRef.current) {
+                  textareaRef.current.style.height = 'auto';
+                  const newHeight = Math.min(textareaRef.current.scrollHeight, 200);
+                  textareaRef.current.style.height = `${newHeight}px`;
+                  setTextareaHeight(newHeight + 32 + 40); // Add padding + emoji railway height
+                }
+              }}
+              placeholder="Type your thought here..."
+              className="w-full bg-neutral-800 text-white rounded-lg p-3 pr-12 border border-neutral-700 focus:border-blue-500 focus:outline-none resize-none overflow-y-auto"
+              style={{ 
+                minHeight: '44px',
+                maxHeight: '200px',
+                lineHeight: '1.5'
+              }}
+              rows={1}
+            />
+            <EmojiPicker
+              onEmojiSelect={(emoji) => {
+                setContent(prev => prev + emoji);
+              }}
+              textValue={content}
+              containerRef={textareaRef}
+            />
+          </div>
           <button
             onClick={handleSave}
             className="p-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center justify-center mb-0.5"

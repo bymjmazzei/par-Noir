@@ -11,6 +11,7 @@ import { useUserState } from '../contexts/UserStateContext';
 import { useEngagement } from '../hooks/useEngagement';
 import { useToast } from '../hooks/useToast';
 import { PNConnect } from './PNConnect';
+import { EmojiPicker } from './EmojiPicker';
 
 interface CommentModalProps {
   file: IndexedFile;
@@ -321,37 +322,65 @@ export function CommentModal({ file, onClose }: CommentModalProps) {
             {/* Reply Input */}
             {replyingTo === comment.id && (
               <div className="mt-3 ml-8">
+                {/* Emoji Railway - Above text bar */}
+                <div className="mb-2">
+                  <div className="flex gap-2 overflow-x-auto" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
+                    {['😀', '😂', '❤️', '😍', '🤔', '😮', '😢', '🔥', '👏', '💯', '👍', '👎', '🎉', '🙌', '😊', '😎', '🤗', '😴', '🤯', '🥳'].map((emoji, index) => (
+                      <button
+                        key={index}
+                        type="button"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          setReplyContent(prev => prev + emoji);
+                        }}
+                        className="text-xl hover:scale-110 transition-transform p-1 flex-shrink-0"
+                      >
+                        {emoji}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                
                 <div className="flex items-end gap-2">
-                  <textarea
-                    ref={replyInputRef}
-                    value={replyContent}
-                    onChange={(e) => {
-                      setReplyContent(e.target.value);
-                      // Auto-resize textarea
-                      if (replyInputRef.current) {
-                        replyInputRef.current.style.height = 'auto';
-                        const newHeight = Math.min(replyInputRef.current.scrollHeight, 200);
-                        replyInputRef.current.style.height = `${newHeight}px`;
-                      }
-                    }}
-                    placeholder="Write a reply..."
-                    className="flex-1 bg-neutral-800 text-white rounded-lg p-3 border border-neutral-700 focus:border-blue-500 focus:outline-none resize-none overflow-y-auto"
-                    style={{ 
-                      minHeight: '44px',
-                      maxHeight: '200px',
-                      lineHeight: '1.5'
-                    }}
-                    rows={1}
-                    maxLength={500}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' && !e.shiftKey) {
-                        e.preventDefault();
-                        if (replyContent.trim()) {
-                          handleReplySubmit(comment.id);
+                  <div className="flex-1 relative">
+                    <textarea
+                      ref={replyInputRef}
+                      value={replyContent}
+                      onChange={(e) => {
+                        setReplyContent(e.target.value);
+                        // Auto-resize textarea
+                        if (replyInputRef.current) {
+                          replyInputRef.current.style.height = 'auto';
+                          const newHeight = Math.min(replyInputRef.current.scrollHeight, 200);
+                          replyInputRef.current.style.height = `${newHeight}px`;
                         }
-                      }
-                    }}
-                  />
+                      }}
+                      placeholder="Write a reply..."
+                      className="w-full bg-neutral-800 text-white rounded-lg p-3 pr-12 border border-neutral-700 focus:border-blue-500 focus:outline-none resize-none overflow-y-auto"
+                      style={{ 
+                        minHeight: '44px',
+                        maxHeight: '200px',
+                        lineHeight: '1.5'
+                      }}
+                      rows={1}
+                      maxLength={500}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' && !e.shiftKey) {
+                          e.preventDefault();
+                          if (replyContent.trim()) {
+                            handleReplySubmit(comment.id);
+                          }
+                        }
+                      }}
+                    />
+                    <EmojiPicker
+                      onEmojiSelect={(emoji) => {
+                        setReplyContent(prev => prev + emoji);
+                      }}
+                      textValue={replyContent}
+                      containerRef={replyInputRef}
+                    />
+                  </div>
                   <button
                     onClick={() => {
                       setReplyingTo(null);
@@ -532,7 +561,28 @@ export function CommentModal({ file, onClose }: CommentModalProps) {
             padding: 0
           }}
         >
-            <div className="flex items-end gap-2 p-4">
+          {/* Emoji Railway - Above text bar */}
+          <div className="px-4 pt-2 pb-1">
+            <div className="flex gap-2 overflow-x-auto" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
+              {['😀', '😂', '❤️', '😍', '🤔', '😮', '😢', '🔥', '👏', '💯', '👍', '👎', '🎉', '🙌', '😊', '😎', '🤗', '😴', '🤯', '🥳'].map((emoji, index) => (
+                <button
+                  key={index}
+                  type="button"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    setNewComment(prev => prev + emoji);
+                  }}
+                  className="text-xl hover:scale-110 transition-transform p-1 flex-shrink-0"
+                >
+                  {emoji}
+                </button>
+              ))}
+            </div>
+          </div>
+          
+          {/* Text Input Area */}
+          <div className="flex items-end gap-2 px-4 pb-4">
+            <div className="flex-1 relative">
               <textarea
                 ref={inputRef}
                 value={newComment}
@@ -543,11 +593,11 @@ export function CommentModal({ file, onClose }: CommentModalProps) {
                     inputRef.current.style.height = 'auto';
                     const newHeight = Math.min(inputRef.current.scrollHeight, 200);
                     inputRef.current.style.height = `${newHeight}px`;
-                    setCommentInputHeight(newHeight + 32); // Add padding (16px top + 16px bottom)
+                    setCommentInputHeight(newHeight + 32 + 40); // Add padding + emoji railway height
                   }
                 }}
                 placeholder="Add a comment..."
-                className="flex-1 bg-neutral-800 text-white rounded-lg p-3 border border-neutral-700 focus:border-blue-500 focus:outline-none resize-none overflow-y-auto"
+                className="w-full bg-neutral-800 text-white rounded-lg p-3 pr-12 border border-neutral-700 focus:border-blue-500 focus:outline-none resize-none overflow-y-auto"
                 style={{ 
                   minHeight: '44px',
                   maxHeight: '200px',
@@ -564,17 +614,25 @@ export function CommentModal({ file, onClose }: CommentModalProps) {
                   }
                 }}
               />
-              <button
-                onClick={(e) => {
-                  e.preventDefault();
-                  handleSubmit(e as any);
+              <EmojiPicker
+                onEmojiSelect={(emoji) => {
+                  setNewComment(prev => prev + emoji);
                 }}
-                className="p-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center justify-center mb-0.5"
-                disabled={!newComment.trim()}
-              >
-                <Send className="h-5 w-5" />
-              </button>
+                textValue={newComment}
+                containerRef={inputRef}
+              />
             </div>
+            <button
+              onClick={(e) => {
+                e.preventDefault();
+                handleSubmit(e as any);
+              }}
+              className="p-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center justify-center mb-0.5"
+              disabled={!newComment.trim()}
+            >
+              <Send className="h-5 w-5" />
+            </button>
+          </div>
         </div>
       )}
     </>,
