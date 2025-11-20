@@ -190,7 +190,10 @@ export function FeedEngagementSidebar({
 
       {/* Comment Button */}
       <button
-        onClick={(e) => handleAction(e, 'comment', onComment)}
+        onClick={(e) => {
+          console.log('[FeedEngagementSidebar] Comment button clicked', { onComment: !!onComment, isUnlocked: userState.isUnlocked });
+          handleAction(e, 'comment', onComment);
+        }}
         className="flex flex-col items-center space-y-1 group"
         title={!userState.isUnlocked ? 'Connect pN to comment' : 'Comment'}
       >
