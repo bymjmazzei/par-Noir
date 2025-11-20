@@ -97,21 +97,24 @@ export function CommentModal({ file, onClose }: CommentModalProps) {
       }
     };
 
-    // Close on navigation (hashchange, popstate)
-    const handleNavigation = () => {
+    // Close on navigation (hashchange, popstate) - but only if actually navigating away
+    const handleNavigation = (e: PopStateEvent | HashChangeEvent) => {
+      // Don't close if it's just a hash change for the same file
+      console.log('[CommentModal] Navigation event', e.type);
       onClose();
     };
 
     document.addEventListener('mousedown', handleClickOutside);
     document.addEventListener('keydown', handleEscape);
-    window.addEventListener('hashchange', handleNavigation);
-    window.addEventListener('popstate', handleNavigation);
+    // Removed hashchange and popstate listeners - they were closing the modal unexpectedly
+    // window.addEventListener('hashchange', handleNavigation);
+    // window.addEventListener('popstate', handleNavigation);
 
     return () => {
       document.removeEventListener('mousedown', handleClickOutside);
       document.removeEventListener('keydown', handleEscape);
-      window.removeEventListener('hashchange', handleNavigation);
-      window.removeEventListener('popstate', handleNavigation);
+      // window.removeEventListener('hashchange', handleNavigation);
+      // window.removeEventListener('popstate', handleNavigation);
     };
   }, [onClose]);
 
