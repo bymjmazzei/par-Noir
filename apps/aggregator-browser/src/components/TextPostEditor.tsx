@@ -517,10 +517,10 @@ export function TextPostEditor({ onSave, onCancel }: TextPostEditorProps) {
         </div>
       </div>
 
-      {/* Railway with Icon Buttons - Sticky (above text input) */}
-      <div className="fixed left-0 right-0 h-14 bg-neutral-900 border-t border-neutral-800 flex items-center justify-center gap-2 px-4 z-40" style={{ bottom: 'calc(64px + 100px)' }}>
-        <div className="flex items-center gap-1 overflow-x-auto" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
-          {/* Font Button - Shows current font name in that font */}
+      {/* Railway with Icon Buttons - Sticky (above text input, overlays media) */}
+      <div className="fixed left-0 right-0 h-14 flex items-center justify-center gap-4 px-4 z-40" style={{ bottom: 'calc(64px + 100px)' }}>
+        <div className="flex items-center gap-4 overflow-x-auto" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
+          {/* Font Button - Just shows active font name */}
           <button
             ref={(el) => menuButtonRefs.current.set('font', el)}
             onClick={(e) => {
@@ -531,16 +531,13 @@ export function TextPostEditor({ onSave, onCancel }: TextPostEditorProps) {
                 openPopupMenu('font', button);
               }
             }}
-            className={`px-3 py-2 rounded-lg transition-colors flex items-center gap-2 min-w-[100px] ${
-              openMenu === 'font' ? 'bg-blue-600 text-white' : 'bg-neutral-800 text-white hover:bg-neutral-700'
-            }`}
-            style={{ fontFamily: fontFamily }}
+            className="px-2 py-1 transition-opacity hover:opacity-80"
+            style={{ fontFamily: fontFamily, color: 'white' }}
           >
-            <Type className="h-4 w-4 flex-shrink-0" />
-            <span className="text-sm truncate">{fontFamily}</span>
+            <span className="text-sm">{fontFamily}</span>
           </button>
 
-          {/* Font Size */}
+          {/* Font Size - Small A next to large A */}
           <button
             ref={(el) => menuButtonRefs.current.set('fontSize', el)}
             onClick={(e) => {
@@ -551,15 +548,14 @@ export function TextPostEditor({ onSave, onCancel }: TextPostEditorProps) {
                 openPopupMenu('fontSize', button);
               }
             }}
-            className={`px-3 py-2 rounded-lg transition-colors flex items-center gap-2 ${
-              openMenu === 'fontSize' ? 'bg-blue-600 text-white' : 'bg-neutral-800 text-white hover:bg-neutral-700'
-            }`}
+            className="px-2 py-1 transition-opacity hover:opacity-80 flex items-baseline gap-1"
+            style={{ color: 'white' }}
           >
-            <span className="text-sm font-bold">{fontSize}</span>
-            <span className="text-xs">px</span>
+            <span className="text-xs">A</span>
+            <span className="text-lg font-bold">A</span>
           </button>
 
-          {/* Text Color */}
+          {/* Text Color - A with colored line under */}
           <button
             ref={(el) => menuButtonRefs.current.set('textColor', el)}
             onClick={(e) => {
@@ -570,18 +566,17 @@ export function TextPostEditor({ onSave, onCancel }: TextPostEditorProps) {
                 openPopupMenu('textColor', button);
               }
             }}
-            className={`px-3 py-2 rounded-lg transition-colors flex items-center gap-2 ${
-              openMenu === 'textColor' ? 'bg-blue-600 text-white' : 'bg-neutral-800 text-white hover:bg-neutral-700'
-            }`}
+            className="px-2 py-1 transition-opacity hover:opacity-80 flex flex-col items-center gap-0.5"
+            style={{ color: 'white' }}
           >
-            <Palette className="h-4 w-4" />
+            <span className="text-sm">A</span>
             <div 
-              className="w-4 h-4 rounded border border-neutral-600"
+              className="w-6 h-0.5"
               style={{ backgroundColor: textColor }}
             />
           </button>
 
-          {/* Shadow */}
+          {/* Drop Shadow - A with shadow, colored line under */}
           <button
             ref={(el) => menuButtonRefs.current.set('shadow', el)}
             onClick={(e) => {
@@ -592,11 +587,21 @@ export function TextPostEditor({ onSave, onCancel }: TextPostEditorProps) {
                 openPopupMenu('shadow', button);
               }
             }}
-            className={`px-3 py-2 rounded-lg transition-colors ${
-              openMenu === 'shadow' ? 'bg-blue-600 text-white' : 'bg-neutral-800 text-white hover:bg-neutral-700'
-            }`}
+            className="px-2 py-1 transition-opacity hover:opacity-80 flex flex-col items-center gap-0.5 relative"
+            style={{ color: 'white' }}
           >
-            <Layers className="h-4 w-4" />
+            <span 
+              className="text-sm relative"
+              style={{
+                textShadow: `${dropShadowOffsetX}px ${dropShadowOffsetY}px ${dropShadowBlur}px ${dropShadowColor}`
+              }}
+            >
+              A
+            </span>
+            <div 
+              className="w-6 h-0.5"
+              style={{ backgroundColor: dropShadowColor }}
+            />
           </button>
 
           {/* Background */}
@@ -610,9 +615,8 @@ export function TextPostEditor({ onSave, onCancel }: TextPostEditorProps) {
                 openPopupMenu('background', button);
               }
             }}
-            className={`px-3 py-2 rounded-lg transition-colors ${
-              openMenu === 'background' ? 'bg-blue-600 text-white' : 'bg-neutral-800 text-white hover:bg-neutral-700'
-            }`}
+            className="px-2 py-1 transition-opacity hover:opacity-80"
+            style={{ color: 'white' }}
           >
             <ImageIcon className="h-4 w-4" />
           </button>
@@ -628,9 +632,8 @@ export function TextPostEditor({ onSave, onCancel }: TextPostEditorProps) {
                 openPopupMenu('align', button);
               }
             }}
-            className={`px-3 py-2 rounded-lg transition-colors ${
-              openMenu === 'align' ? 'bg-blue-600 text-white' : 'bg-neutral-800 text-white hover:bg-neutral-700'
-            }`}
+            className="px-2 py-1 transition-opacity hover:opacity-80"
+            style={{ color: 'white' }}
           >
             {textAlign === 'left' && <AlignLeft className="h-4 w-4" />}
             {textAlign === 'center' && <AlignCenter className="h-4 w-4" />}
@@ -649,9 +652,8 @@ export function TextPostEditor({ onSave, onCancel }: TextPostEditorProps) {
                 openPopupMenu('padding', button);
               }
             }}
-            className={`px-3 py-2 rounded-lg transition-colors flex items-center gap-2 ${
-              openMenu === 'padding' ? 'bg-blue-600 text-white' : 'bg-neutral-800 text-white hover:bg-neutral-700'
-            }`}
+            className="px-2 py-1 transition-opacity hover:opacity-80"
+            style={{ color: 'white' }}
           >
             <span className="text-xs">{padding}px</span>
           </button>
