@@ -751,7 +751,7 @@ export function FullScreenFeed({
                     
                     return (
                       <div
-                        className="bg-black/60 backdrop-blur-sm rounded-lg p-3 w-full cursor-pointer hover:bg-black/70 transition-colors"
+                        className="bg-transparent rounded-lg p-3 w-full cursor-pointer hover:bg-black/20 transition-colors"
                         style={{
                           opacity,
                           transition: 'opacity 200ms ease-in-out, background-color 200ms ease-in-out'
