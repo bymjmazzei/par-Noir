@@ -372,8 +372,37 @@ export interface PublicMetadata {
   // Creator Tier
   creatorTier?: 'free' | 'feed' | 'self-hosted';
   
+  // Text Post / Thought Support
+  textPost?: TextPostData;
+  thought?: TextPostData; // Alias for textPost
+  
   // Allow any additional semantic web properties
   [key: string]: any;
+}
+
+/**
+ * Text Post Styling Configuration
+ */
+export interface TextPostStyle {
+  fontFamily: string;
+  fontSize: number; // in pixels
+  textColor: string; // hex color
+  dropShadowColor: string; // hex color
+  dropShadowBlur: number; // blur radius in pixels
+  dropShadowOffsetX: number; // offset in pixels
+  dropShadowOffsetY: number; // offset in pixels
+  backgroundColor: string; // hex color or gradient
+  backgroundImage?: string; // optional background image URL (data URL or blob URL)
+  textAlign: 'left' | 'center' | 'right' | 'justify';
+  padding: number; // padding in pixels
+}
+
+/**
+ * Text Post Data Structure
+ */
+export interface TextPostData {
+  content: string;
+  style: TextPostStyle;
 }
 
 export interface MetadataFilters {

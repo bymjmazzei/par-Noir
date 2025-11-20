@@ -1767,7 +1767,7 @@ function App() {
   const [editingFile, setEditingFile] = useState<IndexedFile | null>(null);
   
   // State for Me page tabs
-  const [mePageTab, setMePageTab] = useState<'all' | 'media' | 'likes' | 'comments' | 'saved' | 'connections'>('all');
+  const [mePageTab, setMePageTab] = useState<'all' | 'media' | 'thoughts' | 'likes' | 'comments' | 'saved' | 'connections'>('all');
   const [savedFiles, setSavedFiles] = useState<IndexedFile[]>([]);
   const [isLoadingSavedFiles, setIsLoadingSavedFiles] = useState(false);
 
@@ -1797,7 +1797,10 @@ function App() {
             );
             break;
           case 'media':
-            currentFilteredMeFiles = currentCreatorFiles;
+            currentFilteredMeFiles = currentCreatorFiles.filter(f => !isThought(f));
+            break;
+          case 'thoughts':
+            currentFilteredMeFiles = currentCreatorFiles.filter(f => isThought(f));
             break;
           case 'likes':
             currentFilteredMeFiles = userLikedFiles.filter(f => {
@@ -1837,7 +1840,10 @@ function App() {
             );
             break;
           case 'media':
-            currentFilteredMeFiles = currentCreatorFiles;
+            currentFilteredMeFiles = currentCreatorFiles.filter(f => !isThought(f));
+            break;
+          case 'thoughts':
+            currentFilteredMeFiles = currentCreatorFiles.filter(f => isThought(f));
             break;
           case 'likes':
             currentFilteredMeFiles = viewedUserLikedFiles;
@@ -1970,7 +1976,10 @@ function App() {
           );
           break;
         case 'media':
-          filtered = creatorFiles;
+          filtered = creatorFiles.filter(f => !isThought(f));
+          break;
+        case 'thoughts':
+          filtered = creatorFiles.filter(f => isThought(f));
           break;
         case 'likes':
           filtered = userLikedFiles.filter(f => {
@@ -2002,8 +2011,8 @@ function App() {
           break;
       }
       
-      // Pin top post at the top for 'all' and 'media' tabs
-      if ((mePageTab === 'all' || mePageTab === 'media') && filtered.length > 0) {
+      // Pin top post at the top for 'all', 'media', and 'thoughts' tabs
+      if ((mePageTab === 'all' || mePageTab === 'media' || mePageTab === 'thoughts') && filtered.length > 0) {
         const topPostIndex = filtered.findIndex(f => f.metadata.isTopPost === true);
         if (topPostIndex > 0) {
           const topPost = filtered[topPostIndex];
@@ -2019,7 +2028,10 @@ function App() {
           );
           break;
         case 'media':
-          filtered = creatorFiles;
+          filtered = creatorFiles.filter(f => !isThought(f));
+          break;
+        case 'thoughts':
+          filtered = creatorFiles.filter(f => isThought(f));
           break;
         case 'likes':
           filtered = viewedUserLikedFiles;
@@ -2031,8 +2043,8 @@ function App() {
           filtered = creatorFiles;
       }
       
-      // Pin top post at the top for 'all' and 'media' tabs
-      if ((mePageTab === 'all' || mePageTab === 'media') && filtered.length > 0) {
+      // Pin top post at the top for 'all', 'media', and 'thoughts' tabs
+      if ((mePageTab === 'all' || mePageTab === 'media' || mePageTab === 'thoughts') && filtered.length > 0) {
         const topPostIndex = filtered.findIndex(f => f.metadata.isTopPost === true);
         if (topPostIndex > 0) {
           const topPost = filtered[topPostIndex];
@@ -2175,6 +2187,13 @@ function App() {
   const creatorFeeds = viewingCreatorId ? feeds.filter(feed => feed.creatorId === viewingCreatorId) : [];
   const uniqueFiles = viewingCreatorId ? Array.from(new Map(creatorFiles.map(f => [f.metadata.fileId, f])).values()) : [];
 
+  // Helper function to check if file is a thought (text post)
+  const isThought = (file: IndexedFile): boolean => {
+    return file.metadata.fileType === 'text' || 
+           file.metadata.fileType === 'thought' ||
+           !!(file.metadata as any).textPost ||
+           !!(file.metadata as any).thought;
+  };
 
   const handleLockUnlock = async () => {
     if (userState.isUnlocked) {
@@ -2661,6 +2680,8 @@ function App() {
                 message={
                   mePageTab === 'media' 
                     ? 'No media yet.'
+                    : mePageTab === 'thoughts'
+                    ? 'No thoughts yet.'
                     : mePageTab === 'likes'
                     ? 'No liked posts yet.'
                     : mePageTab === 'comments'

@@ -422,7 +422,13 @@ export function FullScreenFeed({
                        (file.name || file.title || '').match(/\.(mp4|mov|avi|webm|mkv|flv|wmv)$/i);
         const isImage = file.fileType === 'image' || 
                        (file.name || file.title || '').match(/\.(jpg|jpeg|png|gif|webp|svg|bmp|ico)$/i);
+        const isTextPost = file.fileType === 'text' || 
+                          file.fileType === 'thought' ||
+                          !!(file as any).textPost ||
+                          !!(file as any).thought;
         const fileName = file.name || file.title || 'Untitled';
+        // Access textPost from metadata (it's stored in PublicMetadata)
+        const textPostData = file.textPost || (file as any).thought || (indexedFile.metadata as any).textPost;
         // Get creatorId - this is now the pN identifier (set from entry.pnIdentifier during conversion)
         const creatorId = (indexedFile.metadata as any).creatorId || 
                           file.creator?.identifier?.value || 
@@ -528,8 +534,43 @@ export function FullScreenFeed({
               </div>
             )}
 
-            {/* Non-image/video file */}
-            {!isImage && !isVideo && (
+            {/* Text Post / Thought */}
+            {isTextPost && textPostData && (
+              <div 
+                className="w-full h-full flex items-center justify-center"
+                style={{
+                  backgroundColor: textPostData.style?.backgroundColor || '#000000',
+                  backgroundImage: textPostData.style?.backgroundImage 
+                    ? `url(${textPostData.style.backgroundImage})` 
+                    : 'none',
+                  backgroundSize: 'cover',
+                  backgroundPosition: 'center',
+                }}
+              >
+                <div
+                  className="w-full px-8"
+                  style={{
+                    fontFamily: textPostData.style?.fontFamily || 'Arial',
+                    fontSize: `${textPostData.style?.fontSize || 48}px`,
+                    color: textPostData.style?.textColor || '#FFFFFF',
+                    textAlign: (textPostData.style?.textAlign || 'center') as 'left' | 'center' | 'right' | 'justify',
+                    textShadow: `
+                      ${textPostData.style?.dropShadowOffsetX || 2}px 
+                      ${textPostData.style?.dropShadowOffsetY || 2}px 
+                      ${textPostData.style?.dropShadowBlur || 10}px 
+                      ${textPostData.style?.dropShadowColor || '#000000'}
+                    `,
+                    padding: `${textPostData.style?.padding || 40}px`,
+                    lineHeight: 1.2,
+                  }}
+                >
+                  {textPostData.content || file.description || 'Thought'}
+                </div>
+              </div>
+            )}
+
+            {/* Non-image/video/text file */}
+            {!isImage && !isVideo && !isTextPost && (
               <div className="flex flex-col items-center justify-center text-neutral-500">
                 <File className="h-24 w-24 mb-4" />
                 <h3 className="text-white text-xl font-medium mb-2">{fileName}</h3>
