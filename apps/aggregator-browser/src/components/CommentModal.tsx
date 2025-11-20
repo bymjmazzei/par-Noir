@@ -375,47 +375,54 @@ export function CommentModal({ file, onClose }: CommentModalProps) {
   };
 
   // Render modal via portal directly to document.body to ensure it's always on top
+  // Use inline styles with !important to override any conflicting CSS
   return createPortal(
     <>
       {/* Backdrop */}
       <div
-        className="fixed inset-0 bg-black/60 transition-opacity"
-        style={{ 
-          zIndex: 999999, // Maximum z-index
-          position: 'fixed',
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
-          pointerEvents: 'auto',
-          display: 'block',
-          visibility: 'visible',
-          opacity: 1
-        }}
         onClick={(e) => {
           // Only close if clicking directly on the backdrop
           if (e.target === e.currentTarget) {
             onClose();
           }
         }}
+        style={{ 
+          zIndex: '999999 !important' as any,
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          width: '100%',
+          height: '100%',
+          backgroundColor: 'rgba(0, 0, 0, 0.6)',
+          pointerEvents: 'auto',
+          display: 'block',
+          visibility: 'visible',
+          opacity: 1,
+          margin: 0,
+          padding: 0
+        }}
       />
 
       {/* Slide-up modal - Higher z-index than bottom nav (z-[100]) and Me page tabs (z-[100]) */}
       <div 
         ref={modalRef}
-        className="fixed bottom-0 left-0 right-0 bg-neutral-900 rounded-t-2xl flex flex-col animate-slide-up"
+        className="bg-neutral-900 rounded-t-2xl flex flex-col animate-slide-up"
         style={{ 
-          zIndex: 999999, // Maximum z-index
+          zIndex: '999999' as any,
           position: 'fixed',
           bottom: 0,
           left: 0,
           right: 0,
+          width: '100%',
           maxHeight: '90vh', 
           paddingBottom: userState.isUnlocked ? `${commentInputHeight}px` : '64px',
           pointerEvents: 'auto',
           display: 'flex',
           visibility: 'visible',
-          opacity: 1
+          opacity: 1,
+          margin: 0
         }}
         onClick={(e) => e.stopPropagation()}
       >
@@ -452,16 +459,21 @@ export function CommentModal({ file, onClose }: CommentModalProps) {
           </div>
         ) : (
           <div 
-            className="fixed left-0 right-0 bg-neutral-900 border-t border-neutral-800" 
+            className="bg-neutral-900 border-t border-neutral-800" 
             style={{ 
               bottom: '64px', 
+              left: 0,
+              right: 0,
+              width: '100%',
               height: `${commentInputHeight}px`, 
-              zIndex: 999999,
+              zIndex: '999999' as any,
               position: 'fixed',
               pointerEvents: 'auto',
               display: 'block',
               visibility: 'visible',
-              opacity: 1
+              opacity: 1,
+              margin: 0,
+              padding: 0
             }}
           >
             <div className="flex items-end gap-2 p-4">
