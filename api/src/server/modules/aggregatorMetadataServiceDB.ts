@@ -713,11 +713,13 @@ export class AggregatorMetadataServiceDB {
       // Remove files from database that aren't in the valid set
       // Also remove files from users who don't have a public index file
       const db = getDatabasePool();
+      
+      // Get ALL public files (not just google_drive) to check
       const allFilesResult = await db.query(
-        `SELECT file_id, metadata->>'name' as name, metadata->>'fileId' as file_id_from_metadata, metadata->>'backendFileId' as backend_file_id, pn_identifier FROM aggregator_metadata WHERE metadata->>'backend' = 'google_drive' AND metadata->>'isPublic' = 'true'`
+        `SELECT file_id, metadata->>'name' as name, metadata->>'fileId' as file_id_from_metadata, metadata->>'backendFileId' as backend_file_id, metadata->>'backend' as backend, pn_identifier FROM aggregator_metadata WHERE metadata->>'isPublic' = 'true'`
       );
 
-      console.log(`🔍 [cleanupOrphanedFilesFromIndex] Checking ${allFilesResult.rows.length} file(s) in database`);
+      console.log(`🔍 [cleanupOrphanedFilesFromIndex] Checking ${allFilesResult.rows.length} file(s) in database (all public files)`);
 
       const orphanedFileIds: string[] = [];
       for (const row of allFilesResult.rows) {
@@ -725,7 +727,21 @@ export class AggregatorMetadataServiceDB {
         const fileName = row.name || 'unknown';
         const metadataFileId = row.file_id_from_metadata;
         const backendFileId = row.backend_file_id;
+        const backend = row.backend || 'google_drive';
         const pnIdentifier = row.pn_identifier;
+        
+        // Only check Google Drive files (other backends might not have index files)
+        if (backend !== 'google_drive') {
+          console.log(`ℹ️ [cleanupOrphanedFilesFromIndex] Skipping non-Google Drive file: ${fileId} (${fileName}) - backend: ${backend}`);
+          continue;
+        }
+        
+        // If no pN folders found at all, remove ALL Google Drive files
+        if (pnFolders.length === 0) {
+          console.log(`🗑️ [cleanupOrphanedFilesFromIndex] No pN folders found - removing all Google Drive files: ${fileId} (${fileName})`);
+          orphanedFileIds.push(fileId);
+          continue;
+        }
         
         // If user doesn't have a public index file, remove all their files
         if (pnIdentifier && !usersWithIndexFiles.has(pnIdentifier)) {
