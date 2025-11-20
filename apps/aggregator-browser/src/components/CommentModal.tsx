@@ -441,12 +441,12 @@ export function CommentModal({ file, onClose }: CommentModalProps) {
         style={{ 
           zIndex: 999999,
           position: 'fixed',
-          bottom: userState.isUnlocked ? `${commentInputHeight}px` : '64px',
+          bottom: userState.isUnlocked ? `${64 + commentInputHeight}px` : '64px',
           left: 0,
           right: 0,
           width: '100%',
           maxHeight: userState.isUnlocked 
-            ? `calc(100vh - ${commentInputHeight}px - 64px)` 
+            ? `calc(100vh - ${64 + commentInputHeight}px)` 
             : 'calc(100vh - 64px)',
           pointerEvents: 'auto',
           display: 'flex',
