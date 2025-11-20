@@ -2511,8 +2511,21 @@ function App() {
   };
 
   return (
-    <div className={`min-h-screen ${viewMode === 'feed' ? 'h-screen overflow-hidden bg-black' : 'bg-gradient-to-br from-neutral-900 via-neutral-800 to-neutral-900'}`}>
-      {/* Lock/Unlock Button - Top right corner, always visible on ALL screens */}
+    <>
+      {/* Comment Modal - Render OUTSIDE all conditional views to ensure it works on all pages */}
+      {commentingFile && (
+        <CommentModal
+          key={commentingFile.metadata.fileId} // Force remount on file change
+          file={commentingFile}
+          onClose={() => {
+            console.log('[App] CommentModal onClose called', { viewingCreatorId, viewMode });
+            setCommentingFile(null);
+          }}
+        />
+      )}
+      
+      <div className={`min-h-screen ${viewMode === 'feed' ? 'h-screen overflow-hidden bg-black' : 'bg-gradient-to-br from-neutral-900 via-neutral-800 to-neutral-900'}`}>
+        {/* Lock/Unlock Button - Top right corner, always visible on ALL screens */}
       <button
         onClick={handleLockUnlock}
         className="fixed top-3 right-3 z-[110] w-10 h-10 flex items-center justify-center text-white/85 hover:text-white transition-colors pointer-events-auto bg-black/50 rounded-full backdrop-blur-sm"
@@ -3306,21 +3319,6 @@ function App() {
           />
         )}
 
-        {/* Comment Modal - Render outside conditional views to ensure it works on all pages */}
-        {commentingFile ? (
-          <>
-            {console.log('[App] RENDERING CommentModal NOW', { fileId: commentingFile.metadata.fileId })}
-            <CommentModal
-              key={commentingFile.metadata.fileId} // Force remount on file change
-              file={commentingFile}
-              onClose={() => {
-                console.log('[App] CommentModal onClose called', { viewingCreatorId, viewMode });
-                setCommentingFile(null);
-              }}
-            />
-          </>
-        ) : null}
-
         {/* Edit File Modal */}
         {editingFile && (
           <EditFileModal
@@ -3405,6 +3403,7 @@ function App() {
         }}
       />
     </div>
+    </>
   );
 }
 
