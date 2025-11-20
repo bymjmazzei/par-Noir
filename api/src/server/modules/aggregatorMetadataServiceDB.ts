@@ -518,10 +518,24 @@ export class AggregatorMetadataServiceDB {
 
   /**
    * Verify Google Drive files still exist
-   * Uses public Google Drive API - no auth required for public files
-   * Returns only files that still exist
+   * Uses authenticated Google Drive API with service account
+   * Google Drive is the source of truth - deleted files are removed from database
    */
   private async verifyGoogleDriveFilesExist(files: CentralIndexEntry[]): Promise<CentralIndexEntry[]> {
+    console.log(`🔍 [verifyGoogleDriveFilesExist] Verifying ${files.length} files from Google Drive...`);
+    
+    // Get service account access token for authenticated requests
+    let accessToken: string | null = null;
+    try {
+      const { GoogleDriveSyncService } = await import('./googleDriveSyncService');
+      const syncService = GoogleDriveSyncService.getInstance();
+      accessToken = await syncService.getAccessToken();
+      console.log(`✅ [verifyGoogleDriveFilesExist] Got service account access token`);
+    } catch (error) {
+      console.warn(`⚠️ [verifyGoogleDriveFilesExist] Failed to get service account token, using unauthenticated requests:`, error);
+      // Continue without auth - will only work for public files
+    }
+    
     const verifiedFiles: CentralIndexEntry[] = [];
     const filesToRemove: string[] = [];
     
@@ -541,13 +555,20 @@ export class AggregatorMetadataServiceDB {
         }
         
         try {
-          // Try to verify file exists using Google Drive API
-          // For public files, this should work without auth
+          // Verify file exists using Google Drive API with service account auth
+          const headers: HeadersInit = {
+            'Content-Type': 'application/json',
+          };
+          
+          if (accessToken) {
+            headers['Authorization'] = `Bearer ${accessToken}`;
+          }
+          
           const response = await fetch(
             `https://www.googleapis.com/drive/v3/files/${googleDriveFileId}?fields=id,trashed`,
             {
               method: 'GET',
-              // No auth header - will work for public files
+              headers,
             }
           );
 
@@ -559,12 +580,16 @@ export class AggregatorMetadataServiceDB {
           }
 
           if (response.status === 403 || response.status === 401) {
-            // Private file or auth required - assume it exists (can't verify without auth)
+            // Permission denied - file might be private or service account doesn't have access
+            // For now, assume it exists (service account should have access to pN folders)
+            console.warn(`⚠️ [verifyGoogleDriveFilesExist] Permission denied for ${googleDriveFileId} (${response.status}): ${file.metadata.name || 'unknown'}`);
             return file;
           }
 
           if (!response.ok) {
-            // Other error - assume file exists to avoid false positives
+            // Other error - log and assume file exists to avoid false positives
+            const errorText = await response.text().catch(() => 'Unknown error');
+            console.warn(`⚠️ [verifyGoogleDriveFilesExist] Error ${response.status} for ${googleDriveFileId}: ${errorText.substring(0, 100)}`);
             return file;
           }
 
@@ -578,7 +603,8 @@ export class AggregatorMetadataServiceDB {
           
           return file; // File exists
         } catch (error) {
-          // On error (network, CORS, etc.), assume file exists to avoid false positives
+          // On error (network, etc.), log and assume file exists to avoid false positives
+          console.warn(`⚠️ [verifyGoogleDriveFilesExist] Error verifying ${googleDriveFileId}:`, error);
           return file;
         }
       });
@@ -601,10 +627,12 @@ export class AggregatorMetadataServiceDB {
           `DELETE FROM aggregator_metadata WHERE file_id = ANY($1::text[])`,
           [filesToRemove]
         );
-        console.log(`✅ [verifyGoogleDriveFilesExist] Removed ${filesToRemove.length} deleted file(s) from database`);
+        console.log(`✅ [verifyGoogleDriveFilesExist] Removed ${filesToRemove.length} deleted file(s) from database: ${filesToRemove.join(', ')}`);
       } catch (error) {
         console.error('❌ [verifyGoogleDriveFilesExist] Failed to remove deleted files from database:', error);
       }
+    } else {
+      console.log(`✅ [verifyGoogleDriveFilesExist] All ${files.length} files verified - no deletions needed`);
     }
     
     return verifiedFiles;
