@@ -521,6 +521,10 @@ export function TextPostEditor({ onSave, onCancel }: TextPostEditorProps) {
       if (openMenu === 'background' && showBackgroundColorPicker) {
         return;
       }
+      // Don't close if clicking on color picker
+      if (backgroundColorPickerRef.current && backgroundColorPickerRef.current.contains(target)) {
+        return;
+      }
       closeMenu();
     };
 
@@ -532,7 +536,7 @@ export function TextPostEditor({ onSave, onCancel }: TextPostEditorProps) {
       clearTimeout(timeout);
       document.removeEventListener('mousedown', handleClickOutside, true);
     };
-  }, [openMenu]);
+  }, [openMenu, showBackgroundColorPicker]);
 
   // Close text color picker when clicking outside
   useEffect(() => {
