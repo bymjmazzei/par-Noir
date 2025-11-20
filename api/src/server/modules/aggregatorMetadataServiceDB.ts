@@ -496,9 +496,16 @@ export class AggregatorMetadataServiceDB {
   }): Promise<CentralIndexResponse> {
     // AUTOMATIC CLEANUP: Use public index files as source of truth
     // Remove any files from database that aren't in the public index files
-    await this.cleanupOrphanedFilesFromIndex();
+    console.log(`🔍 [getIndexResponse] Starting cleanup before returning files...`);
+    try {
+      await this.cleanupOrphanedFilesFromIndex();
+    } catch (error) {
+      console.error('❌ [getIndexResponse] Cleanup failed (non-critical, continuing):', error);
+      // Continue even if cleanup fails - still return results
+    }
     
     let files = await this.getPublicMetadata(filters);
+    console.log(`📤 [getIndexResponse] Returning ${files.length} file(s) after cleanup`);
     
     const stats = await this.getStats();
 
@@ -514,10 +521,13 @@ export class AggregatorMetadataServiceDB {
    * Public index files in Google Drive are the source of truth
    */
   private async cleanupOrphanedFilesFromIndex(): Promise<void> {
+    console.log(`🔍 [cleanupOrphanedFilesFromIndex] Starting cleanup process...`);
     try {
       const { GoogleDriveSyncService } = await import('./googleDriveSyncService');
       const syncService = GoogleDriveSyncService.getInstance();
+      console.log(`🔍 [cleanupOrphanedFilesFromIndex] Getting access token...`);
       const accessToken = await syncService.getAccessToken();
+      console.log(`✅ [cleanupOrphanedFilesFromIndex] Got access token`);
       
       // Get all valid file IDs from all public index files
       const validFileIds = new Set<string>();
@@ -622,22 +632,20 @@ export class AggregatorMetadataServiceDB {
       const orphanedFileIds: string[] = [];
       for (const row of allFilesResult.rows) {
         const fileId = row.file_id;
-        if (!validFileIds.has(fileId)) {
-          // Also check if any of the metadata IDs match
-          const fileMetadata = await this.getFileMetadata(fileId);
-          if (fileMetadata) {
-            const metadataFileId = fileMetadata.metadata.fileId;
-            const backendFileId = fileMetadata.metadata.backendFileId;
-            const googleDriveFileId = (fileMetadata.metadata as any).googleDriveFileId;
-            
-            const isInIndex = validFileIds.has(metadataFileId) || 
-                             (backendFileId && validFileIds.has(backendFileId)) ||
-                             (googleDriveFileId && validFileIds.has(googleDriveFileId));
-            
-            if (!isInIndex) {
-              orphanedFileIds.push(fileId);
-            }
-          }
+        const fileName = row.name || 'unknown';
+        const metadataFileId = row.file_id_from_metadata;
+        const backendFileId = row.backend_file_id;
+        
+        // Check if this file ID (or any of its aliases) is in the valid set
+        const isInIndex = validFileIds.has(fileId) || 
+                         (metadataFileId && validFileIds.has(metadataFileId)) ||
+                         (backendFileId && validFileIds.has(backendFileId));
+        
+        if (!isInIndex) {
+          console.log(`🗑️ [cleanupOrphanedFilesFromIndex] File NOT in index: ${fileId} (${fileName}) - will be removed`);
+          orphanedFileIds.push(fileId);
+        } else {
+          console.log(`✅ [cleanupOrphanedFilesFromIndex] File in index: ${fileId} (${fileName}) - keeping`);
         }
       }
 
