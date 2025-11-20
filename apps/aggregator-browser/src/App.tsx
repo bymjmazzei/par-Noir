@@ -1728,7 +1728,7 @@ function App() {
     } else {
       setConnectionsFiles([]);
     }
-  }, [viewingCreatorId, userState.pnIdentifier, indexedFiles]);
+  }, [viewingCreatorId, userState.pnIdentifier, indexedFilesKey]);
 
   // Helper function to load engagement data (same as in useEngagement hook)
   function loadEngagementData() {
@@ -2562,12 +2562,12 @@ function App() {
           <MePageTabsRail
             activeTab={mePageTab}
             onTabSelect={(tab) => {
-              // If not owner, don't allow saved tab
-              if (!isOwnIndex && tab === 'saved') return;
+              // If not owner, don't allow saved or connections tabs
+              if (!isOwnIndex && (tab === 'saved' || tab === 'connections')) return;
               setMePageTab(tab);
               setCurrentFeedIndex(0);
             }}
-            availableTabs={isOwnIndex ? ['all', 'media', 'likes', 'comments', 'saved'] : ['all', 'media', 'likes', 'comments']}
+            availableTabs={isOwnIndex ? ['all', 'media', 'likes', 'comments', 'saved', 'connections'] : ['all', 'media', 'likes', 'comments']}
           />
           
           {/* Unified feed view for all profiles */}
