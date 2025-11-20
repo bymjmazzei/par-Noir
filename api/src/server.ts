@@ -1195,6 +1195,30 @@ class ProductionServer {
       }
     });
 
+    // POST /api/aggregator/cleanup - Manually trigger cleanup (for debugging)
+    this.app.post('/api/aggregator/cleanup', async (req, res) => {
+      try {
+        console.log('🧹 [POST /api/aggregator/cleanup] Manual cleanup triggered');
+        const { AggregatorMetadataServiceDB } = await import('./server/modules/aggregatorMetadataServiceDB');
+        const service = AggregatorMetadataServiceDB.getInstance();
+        
+        // Access the private method via type casting (for manual trigger only)
+        const cleanupMethod = (service as any).cleanupOrphanedFilesFromIndex;
+        if (cleanupMethod) {
+          await cleanupMethod.call(service);
+          return res.json({ success: true, message: 'Cleanup completed' });
+        } else {
+          return res.status(500).json({ error: 'Cleanup method not available' });
+        }
+      } catch (error: any) {
+        console.error('❌ [POST /api/aggregator/cleanup] Error:', error);
+        return res.status(500).json({ 
+          error: 'Cleanup failed',
+          message: error.message 
+        });
+      }
+    });
+
     // POST /api/aggregator/metadata-index - Submit public metadata
     this.app.post('/api/aggregator/metadata-index', async (req, res) => {
       let requestId = Math.random().toString(36).substring(7);
