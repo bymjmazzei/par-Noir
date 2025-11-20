@@ -3,9 +3,202 @@
  * Full-featured editor for creating "Thoughts" (text-based posts)
  */
 
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { X, Check, Palette, Type, Image as ImageIcon, Upload, AlignLeft, AlignCenter, AlignRight, AlignJustify, Layers, Minus, Plus as PlusIcon, Send, Bold } from 'lucide-react';
 import { TextPostData, TextPostStyle } from '../types/aggregator';
+
+// Helper function to convert hex to RGB
+const hexToRgb = (hex: string): { r: number; g: number; b: number } => {
+  const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+  return result
+    ? {
+        r: parseInt(result[1], 16),
+        g: parseInt(result[2], 16),
+        b: parseInt(result[3], 16),
+      }
+    : { r: 0, g: 0, b: 0 };
+};
+
+// Helper function to convert RGB to hex
+const rgbToHex = (r: number, g: number, b: number): string => {
+  return '#' + [r, g, b].map(x => {
+    const hex = x.toString(16);
+    return hex.length === 1 ? '0' + hex : hex;
+  }).join('');
+};
+
+// Helper function to convert RGB to HSL
+const rgbToHsl = (r: number, g: number, b: number): { h: number; s: number; l: number } => {
+  r /= 255;
+  g /= 255;
+  b /= 255;
+  const max = Math.max(r, g, b);
+  const min = Math.min(r, g, b);
+  let h = 0, s = 0;
+  const l = (max + min) / 2;
+
+  if (max !== min) {
+    const d = max - min;
+    s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+    switch (max) {
+      case r: h = ((g - b) / d + (g < b ? 6 : 0)) / 6; break;
+      case g: h = ((b - r) / d + 2) / 6; break;
+      case b: h = ((r - g) / d + 4) / 6; break;
+    }
+  }
+
+  return { h: h * 360, s: s * 100, l: l * 100 };
+};
+
+// Helper function to convert HSL to RGB
+const hslToRgb = (h: number, s: number, l: number): { r: number; g: number; b: number } => {
+  h /= 360;
+  s /= 100;
+  l /= 100;
+  let r, g, b;
+
+  if (s === 0) {
+    r = g = b = l;
+  } else {
+    const hue2rgb = (p: number, q: number, t: number) => {
+      if (t < 0) t += 1;
+      if (t > 1) t -= 1;
+      if (t < 1/6) return p + (q - p) * 6 * t;
+      if (t < 1/2) return q;
+      if (t < 2/3) return p + (q - p) * (2/3 - t) * 6;
+      return p;
+    };
+
+    const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
+    const p = 2 * l - q;
+    r = hue2rgb(p, q, h + 1/3);
+    g = hue2rgb(p, q, h);
+    b = hue2rgb(p, q, h - 1/3);
+  }
+
+  return {
+    r: Math.round(r * 255),
+    g: Math.round(g * 255),
+    b: Math.round(b * 255),
+  };
+};
+
+// Custom Color Picker Component
+interface CustomColorPickerProps {
+  color: string;
+  onChange: (color: string) => void;
+}
+
+const CustomColorPicker: React.FC<CustomColorPickerProps> = ({ color, onChange }) => {
+  const [hsl, setHsl] = useState(() => {
+    const rgb = hexToRgb(color);
+    return rgbToHsl(rgb.r, rgb.g, rgb.b);
+  });
+  const saturationBrightnessRef = useRef<HTMLDivElement>(null);
+  const hueRef = useRef<HTMLDivElement>(null);
+  const [isDragging, setIsDragging] = useState<'sb' | 'h' | null>(null);
+
+  const updateColor = useCallback((newHsl: { h: number; s: number; l: number }) => {
+    setHsl(newHsl);
+    const rgb = hslToRgb(newHsl.h, newHsl.s, newHsl.l);
+    onChange(rgbToHex(rgb.r, rgb.g, rgb.b));
+  }, [onChange]);
+
+  const handleSaturationBrightnessClick = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (!saturationBrightnessRef.current) return;
+    const rect = saturationBrightnessRef.current.getBoundingClientRect();
+    const x = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+    const y = Math.max(0, Math.min(1, (e.clientY - rect.top) / rect.height));
+    updateColor({ ...hsl, s: x * 100, l: (1 - y) * 100 });
+  };
+
+  const handleHueClick = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (!hueRef.current) return;
+    const rect = hueRef.current.getBoundingClientRect();
+    const y = Math.max(0, Math.min(1, (e.clientY - rect.top) / rect.height));
+    updateColor({ ...hsl, h: (1 - y) * 360 });
+  };
+
+  const handleMouseMove = useCallback((e: MouseEvent) => {
+    if (isDragging === 'sb' && saturationBrightnessRef.current) {
+      const rect = saturationBrightnessRef.current.getBoundingClientRect();
+      const x = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+      const y = Math.max(0, Math.min(1, (e.clientY - rect.top) / rect.height));
+      updateColor({ ...hsl, s: x * 100, l: (1 - y) * 100 });
+    } else if (isDragging === 'h' && hueRef.current) {
+      const rect = hueRef.current.getBoundingClientRect();
+      const y = Math.max(0, Math.min(1, (e.clientY - rect.top) / rect.height));
+      updateColor({ ...hsl, h: (1 - y) * 360 });
+    }
+  }, [isDragging, hsl, updateColor]);
+
+  const handleMouseUp = useCallback(() => {
+    setIsDragging(null);
+  }, []);
+
+  useEffect(() => {
+    if (isDragging) {
+      document.addEventListener('mousemove', handleMouseMove);
+      document.addEventListener('mouseup', handleMouseUp);
+      return () => {
+        document.removeEventListener('mousemove', handleMouseMove);
+        document.removeEventListener('mouseup', handleMouseUp);
+      };
+    }
+  }, [isDragging, handleMouseMove, handleMouseUp]);
+
+  // Update HSL when color prop changes externally
+  useEffect(() => {
+    const rgb = hexToRgb(color);
+    const newHsl = rgbToHsl(rgb.r, rgb.g, rgb.b);
+    setHsl(newHsl);
+  }, [color]);
+
+  const currentRgb = hslToRgb(hsl.h, 100, 50);
+  const currentColorHex = rgbToHex(currentRgb.r, currentRgb.g, currentRgb.b);
+
+  return (
+    <div className="flex gap-3">
+      {/* Saturation/Brightness area */}
+      <div
+        ref={saturationBrightnessRef}
+        className="w-48 h-48 rounded border border-neutral-700 cursor-crosshair relative"
+        style={{
+          background: `linear-gradient(to top, #000, transparent), linear-gradient(to right, #fff, ${currentColorHex})`
+        }}
+        onClick={handleSaturationBrightnessClick}
+        onMouseDown={() => setIsDragging('sb')}
+      >
+        <div
+          className="absolute w-3 h-3 rounded-full border-2 border-white shadow-lg pointer-events-none"
+          style={{
+            left: `${hsl.s}%`,
+            top: `${100 - hsl.l}%`,
+            transform: 'translate(-50%, -50%)'
+          }}
+        />
+      </div>
+      {/* Hue slider */}
+      <div
+        ref={hueRef}
+        className="w-6 h-48 rounded border border-neutral-700 cursor-pointer relative"
+        style={{
+          background: 'linear-gradient(to bottom, #ff0000 0%, #ffff00 17%, #00ff00 33%, #00ffff 50%, #0000ff 67%, #ff00ff 83%, #ff0000 100%)'
+        }}
+        onClick={handleHueClick}
+        onMouseDown={() => setIsDragging('h')}
+      >
+        <div
+          className="absolute left-0 right-0 w-full h-1 border border-white shadow-lg pointer-events-none"
+          style={{
+            top: `${100 - (hsl.h / 360) * 100}%`,
+            transform: 'translateY(-50%)'
+          }}
+        />
+      </div>
+    </div>
+  );
+};
 
 interface TextPostEditorProps {
   onSave: (textPost: TextPostData) => void;
@@ -388,7 +581,7 @@ export function TextPostEditor({ onSave, onCancel }: TextPostEditorProps) {
           return (
             <div className="p-3 min-w-[200px]">
               <div className="flex items-center gap-2">
-                <label className="text-white text-xs whitespace-nowrap">Size:</label>
+                <label className="text-white text-xs whitespace-nowrap">Size</label>
                 <input
                   type="range"
                   min="24"
@@ -414,7 +607,7 @@ export function TextPostEditor({ onSave, onCancel }: TextPostEditorProps) {
                 {/* Right column: Three sliders */}
                 <div className="flex-1 space-y-2">
                   <div className="flex items-center gap-2">
-                    <label className="text-white text-xs whitespace-nowrap">Blur:</label>
+                    <label className="text-white text-xs whitespace-nowrap">Blur</label>
                     <input
                       type="range"
                       min="0"
@@ -425,7 +618,7 @@ export function TextPostEditor({ onSave, onCancel }: TextPostEditorProps) {
                     />
                   </div>
                   <div className="flex items-center gap-2">
-                    <label className="text-white text-xs whitespace-nowrap">X:</label>
+                    <label className="text-white text-xs whitespace-nowrap">X</label>
                     <input
                       type="range"
                       min="-20"
@@ -436,7 +629,7 @@ export function TextPostEditor({ onSave, onCancel }: TextPostEditorProps) {
                     />
                   </div>
                   <div className="flex items-center gap-2">
-                    <label className="text-white text-xs whitespace-nowrap">Y:</label>
+                    <label className="text-white text-xs whitespace-nowrap">Y</label>
                     <input
                       type="range"
                       min="-20"
@@ -494,10 +687,8 @@ export function TextPostEditor({ onSave, onCancel }: TextPostEditorProps) {
                       setTextStyle(value);
                       closeMenu();
                     }}
-                    className={`px-3 py-2 rounded border text-white hover:bg-neutral-700 transition-colors ${
-                      textStyle === value
-                        ? 'bg-blue-600 border-blue-500'
-                        : 'bg-neutral-800 border-neutral-700'
+                    className={`px-3 py-2 text-white hover:opacity-80 transition-opacity ${
+                      textStyle === value ? 'opacity-100' : 'opacity-60'
                     }`}
                     style={style}
                   >
@@ -523,10 +714,8 @@ export function TextPostEditor({ onSave, onCancel }: TextPostEditorProps) {
                       setTextAlign(value);
                       closeMenu();
                     }}
-                    className={`p-2 rounded border flex items-center justify-center ${
-                      textAlign === value
-                        ? 'bg-blue-600 border-blue-500 text-white'
-                        : 'bg-neutral-800 border-neutral-700 text-white hover:bg-neutral-700'
+                    className={`p-2 text-white hover:opacity-80 transition-opacity ${
+                      textAlign === value ? 'opacity-100' : 'opacity-60'
                     }`}
                   >
                     <Icon className="h-5 w-5" />
