@@ -486,7 +486,7 @@ export class AggregatorMetadataServiceDB {
 
   /**
    * Get full index response
-   * Automatically filters out deleted files from Google Drive
+   * Automatically cleans up deleted files using public index files as source of truth
    */
   async getIndexResponse(filters?: {
     tags?: string[];
@@ -494,18 +494,11 @@ export class AggregatorMetadataServiceDB {
     authorDid?: string;
     indexerId?: string;
   }): Promise<CentralIndexResponse> {
-    let files = await this.getPublicMetadata(filters);
+    // AUTOMATIC CLEANUP: Use public index files as source of truth
+    // Remove any files from database that aren't in the public index files
+    await this.cleanupOrphanedFilesFromIndex();
     
-    // AUTOMATIC CLEANUP: Verify Google Drive files still exist
-    // Google Drive is the source of truth - remove entries for deleted files
-    if (files.length > 0) {
-      const verifiedFiles = await this.verifyGoogleDriveFilesExist(files);
-      if (verifiedFiles.length !== files.length) {
-        const removedCount = files.length - verifiedFiles.length;
-        console.log(`🗑️ [getIndexResponse] Auto-removed ${removedCount} deleted file(s) from database`);
-        files = verifiedFiles;
-      }
-    }
+    let files = await this.getPublicMetadata(filters);
     
     const stats = await this.getStats();
 
@@ -514,6 +507,152 @@ export class AggregatorMetadataServiceDB {
       updatedAt: stats.lastUpdated,
       totalFiles: files.length
     };
+  }
+
+  /**
+   * Clean up orphaned files by comparing database with public index files
+   * Public index files in Google Drive are the source of truth
+   */
+  private async cleanupOrphanedFilesFromIndex(): Promise<void> {
+    try {
+      const { GoogleDriveSyncService } = await import('./googleDriveSyncService');
+      const syncService = GoogleDriveSyncService.getInstance();
+      const accessToken = await syncService.getAccessToken();
+      
+      // Get all valid file IDs from all public index files
+      const validFileIds = new Set<string>();
+      
+      // Find all pN folders
+      const pnFoldersQuery = `name contains 'par Noir - pn-' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
+      const foldersResponse = await fetch(
+        `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(pnFoldersQuery)}&fields=files(id,name)&pageSize=100`,
+        {
+          headers: {
+            'Authorization': `Bearer ${accessToken}`,
+            'Content-Type': 'application/json'
+          }
+        }
+      );
+
+      if (!foldersResponse.ok) {
+        console.warn(`⚠️ [cleanupOrphanedFilesFromIndex] Failed to search for pN folders: ${foldersResponse.status}`);
+        return;
+      }
+
+      const foldersData = await foldersResponse.json() as { files?: Array<{ id: string; name: string }> };
+      const pnFolders = foldersData.files || [];
+      
+      console.log(`🔍 [cleanupOrphanedFilesFromIndex] Found ${pnFolders.length} pN folder(s) to check`);
+
+      // For each pN folder, read the public index file
+      for (const pnFolder of pnFolders) {
+        try {
+          // Find _metadata folder
+          const metadataFolderQuery = `name='_metadata' and '${pnFolder.id}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`;
+          const metadataFolderResponse = await fetch(
+            `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(metadataFolderQuery)}&fields=files(id)`,
+            {
+              headers: {
+                'Authorization': `Bearer ${accessToken}`,
+                'Content-Type': 'application/json'
+              }
+            }
+          );
+
+          if (!metadataFolderResponse.ok) continue;
+          const metadataFolderData = await metadataFolderResponse.json() as { files?: Array<{ id: string }> };
+          const metadataFolders = metadataFolderData.files || [];
+          if (metadataFolders.length === 0) continue;
+
+          const metadataFolderId = metadataFolders[0].id;
+          
+          // Find public-file-index.json
+          const indexFileQuery = `name='public-file-index.json' and '${metadataFolderId}' in parents and trashed=false`;
+          const indexFileResponse = await fetch(
+            `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(indexFileQuery)}&fields=files(id)`,
+            {
+              headers: {
+                'Authorization': `Bearer ${accessToken}`,
+                'Content-Type': 'application/json'
+              }
+            }
+          );
+
+          if (!indexFileResponse.ok) continue;
+          const indexFileData = await indexFileResponse.json() as { files?: Array<{ id: string }> };
+          const indexFiles = indexFileData.files || [];
+          if (indexFiles.length === 0) continue;
+
+          const indexFileId = indexFiles[0].id;
+          
+          // Download and parse the public index file
+          const indexContentResponse = await fetch(
+            `https://www.googleapis.com/drive/v3/files/${indexFileId}?alt=media`,
+            {
+              headers: {
+                'Authorization': `Bearer ${accessToken}`
+              }
+            }
+          );
+
+          if (!indexContentResponse.ok) continue;
+          const indexContent = await indexContentResponse.json() as { files?: Array<{ fileId?: string; googleDriveFileId?: string; backendFileId?: string }> };
+          
+          // Collect all file IDs from this index
+          if (indexContent.files) {
+            for (const file of indexContent.files) {
+              if (file.fileId) validFileIds.add(file.fileId);
+              if (file.googleDriveFileId) validFileIds.add(file.googleDriveFileId);
+              if (file.backendFileId) validFileIds.add(file.backendFileId);
+            }
+          }
+        } catch (error) {
+          console.warn(`⚠️ [cleanupOrphanedFilesFromIndex] Error processing folder ${pnFolder.name}:`, error);
+        }
+      }
+
+      console.log(`✅ [cleanupOrphanedFilesFromIndex] Found ${validFileIds.size} valid file ID(s) in public index files`);
+
+      // Remove files from database that aren't in the valid set
+      const db = getDatabasePool();
+      const allFilesResult = await db.query(
+        `SELECT file_id FROM aggregator_metadata WHERE metadata->>'backend' = 'google_drive' AND metadata->>'isPublic' = 'true'`
+      );
+
+      const orphanedFileIds: string[] = [];
+      for (const row of allFilesResult.rows) {
+        const fileId = row.file_id;
+        if (!validFileIds.has(fileId)) {
+          // Also check if any of the metadata IDs match
+          const fileMetadata = await this.getFileMetadata(fileId);
+          if (fileMetadata) {
+            const metadataFileId = fileMetadata.metadata.fileId;
+            const backendFileId = fileMetadata.metadata.backendFileId;
+            const googleDriveFileId = (fileMetadata.metadata as any).googleDriveFileId;
+            
+            const isInIndex = validFileIds.has(metadataFileId) || 
+                             (backendFileId && validFileIds.has(backendFileId)) ||
+                             (googleDriveFileId && validFileIds.has(googleDriveFileId));
+            
+            if (!isInIndex) {
+              orphanedFileIds.push(fileId);
+            }
+          }
+        }
+      }
+
+      if (orphanedFileIds.length > 0) {
+        await db.query(
+          `DELETE FROM aggregator_metadata WHERE file_id = ANY($1::text[])`,
+          [orphanedFileIds]
+        );
+        console.log(`🗑️ [cleanupOrphanedFilesFromIndex] Removed ${orphanedFileIds.length} orphaned file(s) from database: ${orphanedFileIds.join(', ')}`);
+      } else {
+        console.log(`✅ [cleanupOrphanedFilesFromIndex] No orphaned files found - database is clean`);
+      }
+    } catch (error) {
+      console.error('❌ [cleanupOrphanedFilesFromIndex] Failed to cleanup orphaned files:', error);
+    }
   }
 
   /**
