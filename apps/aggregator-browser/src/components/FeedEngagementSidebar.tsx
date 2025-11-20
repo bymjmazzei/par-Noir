@@ -191,8 +191,17 @@ export function FeedEngagementSidebar({
       {/* Comment Button */}
       <button
         onClick={(e) => {
-          console.log('[FeedEngagementSidebar] Comment button clicked', { onComment: !!onComment, isUnlocked: userState.isUnlocked });
-          handleAction(e, 'comment', onComment);
+          console.log('[FeedEngagementSidebar] Comment button clicked', { 
+            onComment: !!onComment, 
+            onCommentType: typeof onComment,
+            isUnlocked: userState.isUnlocked,
+            hasCallback: typeof onComment === 'function'
+          });
+          if (onComment && typeof onComment === 'function') {
+            handleAction(e, 'comment', onComment);
+          } else {
+            console.warn('[FeedEngagementSidebar] onComment is not a function:', onComment);
+          }
         }}
         className="flex flex-col items-center space-y-1 group"
         title={!userState.isUnlocked ? 'Connect pN to comment' : 'Comment'}
