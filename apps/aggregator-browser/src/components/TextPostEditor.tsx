@@ -375,7 +375,8 @@ export function TextPostEditor({ onSave, onCancel }: TextPostEditorProps) {
                 type="color"
                 value={textColor}
                 onChange={(e) => setTextColor(e.target.value)}
-                className="w-12 h-12 rounded border border-neutral-700 cursor-pointer"
+                className="w-full h-12 rounded border border-neutral-700 cursor-pointer"
+                style={{ minWidth: '200px' }}
               />
             </div>
           );
