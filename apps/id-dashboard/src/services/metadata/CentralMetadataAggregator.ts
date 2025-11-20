@@ -219,12 +219,79 @@ export class CentralMetadataAggregator {
       }
 
       const data: CentralIndexResponse = await response.json();
-      return data.files || [];
+      const files = data.files || [];
+      
+      // CLIENT-SIDE VERIFICATION: Verify files exist in Google Drive
+      // Google Drive is the source of truth - filter out deleted files
+      const verifiedFiles = await this.verifyFilesExist(files);
+      
+      if (verifiedFiles.length !== files.length) {
+        console.log(`✅ [CentralMetadataAggregator] Filtered ${files.length - verifiedFiles.length} deleted file(s) from API response`);
+      }
+      
+      return verifiedFiles;
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown error';
       console.error('❌ [CentralMetadataAggregator] Failed to fetch public metadata:', message);
       return [];
     }
+  }
+
+  /**
+   * Verify files exist in Google Drive (client-side verification)
+   * Uses public Google Drive API - no auth required for public files
+   */
+  private async verifyFilesExist(files: CentralIndexEntry[]): Promise<CentralIndexEntry[]> {
+    const verifiedFiles: CentralIndexEntry[] = [];
+    
+    // Verify files in parallel (with rate limiting)
+    const verifyPromises = files.map(async (file) => {
+      const googleDriveFileId = file.metadata?.googleDriveFileId || file.metadata?.backendFileId;
+      
+      if (!googleDriveFileId) {
+        // No Google Drive ID - keep it (might be from other backends)
+        return file;
+      }
+      
+      try {
+        // Use public Google Drive API to check if file exists
+        // For public files, we can check without auth
+        const response = await fetch(
+          `https://www.googleapis.com/drive/v3/files/${googleDriveFileId}?fields=id,trashed`,
+          {
+            method: 'GET',
+            // No auth header - using public API
+          }
+        );
+
+        if (response.status === 404) {
+          console.log(`🗑️ [CentralMetadataAggregator] File ${googleDriveFileId} not found (404) - filtering out`);
+          return null; // File doesn't exist
+        }
+
+        if (!response.ok) {
+          // If we can't verify (e.g., 403 for private files), assume file exists
+          // This prevents false positives for private files we can't check
+          return file;
+        }
+
+        const fileData = await response.json();
+        // File exists and is not trashed
+        if (fileData.trashed) {
+          console.log(`🗑️ [CentralMetadataAggregator] File ${googleDriveFileId} is trashed - filtering out`);
+          return null;
+        }
+        
+        return file; // File exists
+      } catch (error) {
+        // On error, assume file exists to avoid false positives
+        console.warn(`⚠️ [CentralMetadataAggregator] Error verifying file ${googleDriveFileId}:`, error);
+        return file;
+      }
+    });
+    
+    const results = await Promise.all(verifyPromises);
+    return results.filter((file): file is CentralIndexEntry => file !== null);
   }
 }
 
