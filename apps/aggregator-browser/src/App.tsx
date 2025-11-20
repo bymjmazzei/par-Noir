@@ -2122,7 +2122,7 @@ function App() {
     setCommentingFile(indexedFile);
   }, []);
   
-  // Debug: Track commentingFile changes
+  // Debug: Track commentingFile changes and render status
   useEffect(() => {
     console.log('[App] commentingFile state changed', { 
       hasCommentingFile: !!commentingFile,
@@ -2132,6 +2132,17 @@ function App() {
       willRenderModal: !!commentingFile
     });
   }, [commentingFile, viewingCreatorId, viewMode]);
+  
+  // Log render status
+  useEffect(() => {
+    console.log('[App] Render - CommentModal check', { 
+      commentingFile: !!commentingFile,
+      commentingFileId: commentingFile?.metadata?.fileId,
+      shouldRender: !!commentingFile,
+      viewingCreatorId,
+      viewMode
+    });
+  });
 
   const handleShare = useCallback(async (fileId: string) => {
     share(fileId);
@@ -3296,26 +3307,16 @@ function App() {
         )}
 
         {/* Comment Modal - Render outside conditional views to ensure it works on all pages */}
-        {(() => {
-          const shouldRender = !!commentingFile;
-          console.log('[App] CommentModal render check', { 
-            commentingFile: !!commentingFile,
-            commentingFileId: commentingFile?.metadata?.fileId,
-            shouldRender,
-            viewingCreatorId,
-            viewMode
-          });
-          return shouldRender && commentingFile ? (
-            <CommentModal
-              key={commentingFile.metadata.fileId} // Force remount on file change
-              file={commentingFile}
-              onClose={() => {
-                console.log('[App] CommentModal onClose called', { viewingCreatorId, viewMode });
-                setCommentingFile(null);
-              }}
-            />
-          ) : null;
-        })()}
+        {commentingFile && (
+          <CommentModal
+            key={commentingFile.metadata.fileId} // Force remount on file change
+            file={commentingFile}
+            onClose={() => {
+              console.log('[App] CommentModal onClose called', { viewingCreatorId, viewMode });
+              setCommentingFile(null);
+            }}
+          />
+        )}
 
         {/* Edit File Modal */}
         {editingFile && (
