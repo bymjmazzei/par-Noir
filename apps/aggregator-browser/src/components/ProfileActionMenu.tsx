@@ -5,9 +5,9 @@
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { createPortal } from 'react-dom';
-import { User, MessageCircle, UserPlus, Check, X, Clock, ChevronDown, Edit2, Save, X as XIcon, Pencil } from 'lucide-react';
+import { User, MessageCircle, UserPlus, Check, X, Clock, ChevronDown, Edit2, Save, X as XIcon, Pencil, UserMinus } from 'lucide-react';
 import { useUserState } from '../contexts/UserStateContext';
-import { getConnectionStatus, sendConnectionRequest, acceptConnectionRequest, rejectConnectionRequest } from '../services/connectionService';
+import { getConnectionStatus, sendConnectionRequest, acceptConnectionRequest, rejectConnectionRequest, removeConnection } from '../services/connectionService';
 import { ConnectionStatus } from '../services/connectionService';
 import { useToast } from '../hooks/useToast';
 import { decryptWithToken, ShareToken } from '../utils/tokenDecryption';
@@ -361,6 +361,22 @@ export const ProfileActionMenu = React.memo(function ProfileActionMenu({ creator
     }
   };
 
+  const handleDisconnect = async () => {
+    if (!userState.isUnlocked || !userState.pnIdentifier || !connectionStatus.connectionId) return;
+
+    setLoading(true);
+    try {
+      await removeConnection(connectionStatus.connectionId, userState.pnIdentifier);
+      setConnectionStatus({ status: 'not_connected' });
+      success('Disconnected');
+      setIsOpen(false);
+    } catch (error: any) {
+      showError(error.message || 'Failed to disconnect');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleMessage = () => {
     if (onMessage) {
       onMessage(creatorId);
@@ -403,14 +419,24 @@ export const ProfileActionMenu = React.memo(function ProfileActionMenu({ creator
   const getActionButton = () => {
     if (connectionStatus.status === 'connected') {
       return (
-        <button
-          onClick={handleMessage}
-          disabled={loading}
-          className="flex items-center space-x-2 px-4 py-2 text-white hover:bg-neutral-700 rounded-lg transition-colors w-full text-left disabled:opacity-50"
-        >
-          <MessageCircle className="h-4 w-4" />
-          <span>Message</span>
-        </button>
+        <div className="flex flex-col space-y-1 w-full">
+          <button
+            onClick={handleMessage}
+            disabled={loading}
+            className="flex items-center space-x-2 px-4 py-2 text-white hover:bg-neutral-700 rounded-lg transition-colors w-full text-left disabled:opacity-50"
+          >
+            <MessageCircle className="h-4 w-4" />
+            <span>Message</span>
+          </button>
+          <button
+            onClick={handleDisconnect}
+            disabled={loading}
+            className="flex items-center space-x-2 px-4 py-2 text-red-400 hover:bg-neutral-700 rounded-lg transition-colors w-full text-left disabled:opacity-50"
+          >
+            <UserMinus className="h-4 w-4" />
+            <span>Disconnect</span>
+          </button>
+        </div>
       );
     }
 
