@@ -556,7 +556,7 @@ export class AggregatorMetadataServiceDB {
         
         try {
           // Verify file exists using Google Drive API with service account auth
-          const headers: HeadersInit = {
+          const headers: Record<string, string> = {
             'Content-Type': 'application/json',
           };
           
