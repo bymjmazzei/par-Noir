@@ -521,6 +521,22 @@ export function FullScreenFeed({
             {/* Full-screen video */}
             {isVideo && videoBlobs.get(fileId) && (
               <>
+                {/* Blurred background video */}
+                <video
+                  src={videoBlobs.get(fileId)!}
+                  className="absolute inset-0 w-full h-full object-cover"
+                  style={{ 
+                    filter: 'blur(40px)',
+                    transform: 'scale(1.1)', // Slight scale to prevent edges
+                    opacity: 0.6,
+                    zIndex: 0
+                  }}
+                  muted
+                  loop
+                  playsInline
+                  autoPlay={visibleFileId === fileId}
+                />
+                {/* Main video */}
                 <video
                   ref={(el) => {
                     if (el) {
@@ -543,7 +559,7 @@ export function FullScreenFeed({
                     }
                   }}
                   src={videoBlobs.get(fileId)!}
-                  className="w-full object-contain"
+                  className="w-full object-contain relative z-10"
                   style={{ 
                     // Height excludes bottom nav bar (64px) and safe area
                     maxHeight: 'calc(100vh - 64px - env(safe-area-inset-bottom, 0px))',
@@ -580,17 +596,32 @@ export function FullScreenFeed({
             
             {/* Full-screen image */}
             {isImage && thumbnails.get(fileId) && (
-              <img
-                src={thumbnails.get(fileId)!}
-                alt={fileName}
-                className="w-full object-contain"
-                style={{ 
-                  // Full viewport height - parent padding prevents overlap with bottom nav
-                  maxHeight: '100vh',
-                  height: 'auto',
-                  width: '100%'
-                }}
-              />
+              <>
+                {/* Blurred background image */}
+                <img
+                  src={thumbnails.get(fileId)!}
+                  alt=""
+                  className="absolute inset-0 w-full h-full object-cover"
+                  style={{ 
+                    filter: 'blur(40px)',
+                    transform: 'scale(1.1)', // Slight scale to prevent edges
+                    opacity: 0.6,
+                    zIndex: 0
+                  }}
+                />
+                {/* Main image */}
+                <img
+                  src={thumbnails.get(fileId)!}
+                  alt={fileName}
+                  className="w-full object-contain relative z-10"
+                  style={{ 
+                    // Full viewport height - parent padding prevents overlap with bottom nav
+                    maxHeight: '100vh',
+                    height: 'auto',
+                    width: '100%'
+                  }}
+                />
+              </>
             )}
 
             {/* Loading state */}
