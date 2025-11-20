@@ -1875,8 +1875,8 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
                           const rect = button.getBoundingClientRect();
                           setShowAddMenuFor(account.accountId);
                           setAddMenuPosition({
-                            top: rect.bottom + 8,
-                            left: rect.left
+                            top: rect.bottom,
+                            left: rect.left + rect.width / 2
                           });
                         }}
                         disabled={isLoading}
@@ -1891,7 +1891,9 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
                           className="fixed z-50 bg-neutral-800 border border-neutral-700 rounded-lg shadow-lg py-1 min-w-[160px]"
                           style={{
                             top: `${addMenuPosition.top}px`,
-                            left: `${addMenuPosition.left}px`
+                            left: `${addMenuPosition.left}px`,
+                            transform: 'translateX(-50%)',
+                            marginTop: '8px'
                           }}
                         >
                           <button
