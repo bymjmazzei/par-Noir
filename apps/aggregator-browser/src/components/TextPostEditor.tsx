@@ -676,11 +676,7 @@ export function TextPostEditor({ onSave, onCancel }: TextPostEditorProps) {
           );
         case 'background':
           return (
-            <div className="p-2" ref={(el) => {
-              if (el && showBackgroundColorPicker) {
-                backgroundColorPickerRef.current = el as HTMLDivElement;
-              }
-            }}>
+            <div className="p-2">
               <div className="flex gap-2 items-center">
                 <button
                   ref={backgroundColorButtonRef}
@@ -706,23 +702,24 @@ export function TextPostEditor({ onSave, onCancel }: TextPostEditorProps) {
                   </button>
                 )}
               </div>
-              {showBackgroundColorPicker && (
+              {showBackgroundColorPicker && backgroundColorButtonRef.current && createPortal(
                 <div
                   ref={backgroundColorPickerRef}
-                  className="absolute bg-neutral-800 border border-neutral-700 rounded-lg shadow-lg p-3"
+                  className="fixed bg-neutral-800 border border-neutral-700 rounded-lg shadow-lg p-3"
                   style={{
-                    top: '100%',
-                    left: '50%',
+                    top: `${backgroundColorButtonRef.current.getBoundingClientRect().bottom}px`,
+                    left: `${backgroundColorButtonRef.current.getBoundingClientRect().left + backgroundColorButtonRef.current.getBoundingClientRect().width / 2}px`,
                     transform: 'translateX(-50%)',
                     marginTop: '8px',
-                    zIndex: 10000
+                    zIndex: 9999
                   }}
                 >
                   <CustomColorPicker
                     color={backgroundColor}
                     onChange={setBackgroundColor}
                   />
-                </div>
+                </div>,
+                document.body
               )}
             </div>
           );
