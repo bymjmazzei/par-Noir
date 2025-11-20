@@ -36,13 +36,15 @@ interface Comment {
 const EMOJI_OPTIONS = ['👍', '❤️', '😂', '😮', '😢', '🔥', '👏', '💯'];
 
 export function CommentModal({ file, onClose }: CommentModalProps) {
+  console.log('[CommentModal] Component function called', { fileId: file?.metadata?.fileId });
+  
   const { userState } = useUserState();
   const { addComment, getComments, loadComments, likeComment } = useEngagement();
   const { success } = useToast();
   
   // Log when modal is rendered and ensure it's visible
   useEffect(() => {
-    console.log('[CommentModal] Modal rendered', { fileId: file.metadata.fileId });
+    console.log('[CommentModal] Modal rendered (useEffect)', { fileId: file.metadata.fileId });
     // Force the modal to be visible by ensuring backdrop and modal are in DOM
     setTimeout(() => {
       if (backdropRef.current) {
