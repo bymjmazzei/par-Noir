@@ -1286,12 +1286,14 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
           account.backendId !== params.backendId && !staleBackends.includes(account.backendId)
       );
 
+      // SECURITY: Do NOT store email in DriveAccountState - it's sensitive data
+      // Email is stored in userEmails Map and encrypted storage only
       const next: DriveAccountState[] = [
         ...filtered,
         {
           backendId: params.backendId,
           keyPrefix: params.keyPrefix,
-          email: resolvedEmail
+          // email removed - use userEmails Map or encrypted storage instead
       }
       ];
       persistDriveAccounts(next);
@@ -3237,13 +3239,46 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
         return;
       }
 
+      // SECURITY: Immediately clean up any email data from localStorage
+      try {
+        const raw = localStorage.getItem(DRIVE_ACCOUNTS_STORAGE_KEY);
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (Array.isArray(parsed)) {
+            let hasEmail = false;
+            const cleaned = parsed.map((entry: any) => {
+              if (entry && entry.email) {
+                hasEmail = true;
+                const { email, ...rest } = entry;
+                return rest;
+              }
+              return entry;
+            });
+            
+            if (hasEmail) {
+              localStorage.setItem(DRIVE_ACCOUNTS_STORAGE_KEY, JSON.stringify(cleaned));
+              console.log('[Security] Removed email from pn_google_drive_accounts on component load');
+            }
+          }
+        }
+      } catch (cleanupError) {
+        console.warn('⚠️ [init] Failed to clean email from drive accounts', cleanupError);
+      }
+
       let storedAccounts: DriveAccountState[] = [];
       try {
         const raw = localStorage.getItem(DRIVE_ACCOUNTS_STORAGE_KEY);
         if (raw) {
           const parsed = JSON.parse(raw);
           if (Array.isArray(parsed)) {
-            storedAccounts = parsed.filter((entry) => entry && entry.backendId && entry.keyPrefix);
+            // Filter out any entries that still have email (defensive)
+            storedAccounts = parsed
+              .filter((entry) => entry && entry.backendId && entry.keyPrefix && !entry.email)
+              .map((entry: any) => ({
+                backendId: entry.backendId,
+                keyPrefix: entry.keyPrefix
+                // Explicitly exclude email
+              }));
           }
         }
       } catch (parseError) {
