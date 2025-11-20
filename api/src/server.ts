@@ -3443,11 +3443,11 @@ class ProductionServer {
         `, [savedFeedId]);
 
         if (feedResult.rows.length === 0) {
-          // Create saved feed
+          // Create saved feed - rating_range must be JSON string for PostgreSQL JSON column
           await db.query(`
             INSERT INTO feeds (feed_id, feed_name, creator_did, creator_tier, rating_range)
-            VALUES ($1, $2, $3, $4, $5)
-          `, [savedFeedId, 'Saved', userDid, 'free', ['GA', 'FF', 'T13+', 'YA16+', 'M18+', 'NSFW', 'X18+']]);
+            VALUES ($1, $2, $3, $4, $5::jsonb)
+          `, [savedFeedId, 'Saved', userDid, 'free', JSON.stringify(['GA', 'FF', 'T13+', 'YA16+', 'M18+', 'NSFW', 'X18+'])]);
 
           feedResult = await db.query(`
             SELECT feed_id, feed_name, created_at, updated_at
