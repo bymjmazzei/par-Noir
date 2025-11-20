@@ -215,8 +215,9 @@ export function TextPostEditor({ onSave, onCancel }: TextPostEditorProps) {
   const openPopupMenu = (menuId: string, button: HTMLButtonElement) => {
     const rect = button.getBoundingClientRect();
     setOpenMenu(menuId);
+    // Open menu above the button - we'll use transform to position it above
     setMenuPosition({
-      top: rect.bottom + 8,
+      top: rect.top,
       left: rect.left
     });
   };
@@ -488,7 +489,9 @@ export function TextPostEditor({ onSave, onCancel }: TextPostEditorProps) {
         className="fixed z-50 bg-neutral-800 border border-neutral-700 rounded-lg shadow-lg"
         style={{
           top: `${menuPosition.top}px`,
-          left: `${menuPosition.left}px`
+          left: `${menuPosition.left}px`,
+          transform: 'translateY(-100%)', // Position above the button
+          marginTop: '-8px' // 8px gap above button
         }}
       >
         {menuContent()}
@@ -499,7 +502,7 @@ export function TextPostEditor({ onSave, onCancel }: TextPostEditorProps) {
   return (
     <div className="fixed inset-0 bg-black z-50 flex flex-col">
       {/* Full Screen Preview */}
-      <div className="flex-1 flex items-center justify-center bg-neutral-950 p-4" style={{ paddingBottom: '200px' }}>
+      <div className="flex-1 flex items-center justify-center bg-neutral-950 p-4" style={{ paddingBottom: '180px' }}>
         <div className="w-full max-w-md aspect-[9/16] bg-neutral-900 rounded-lg overflow-hidden shadow-2xl">
           <canvas
             ref={canvasRef}
@@ -514,8 +517,8 @@ export function TextPostEditor({ onSave, onCancel }: TextPostEditorProps) {
         </div>
       </div>
 
-      {/* Railway with Icon Buttons - Sticky */}
-      <div className="fixed bottom-20 left-0 right-0 h-14 bg-neutral-900 border-t border-neutral-800 flex items-center justify-center gap-2 px-4 z-40">
+      {/* Railway with Icon Buttons - Sticky (above text input) */}
+      <div className="fixed left-0 right-0 h-14 bg-neutral-900 border-t border-neutral-800 flex items-center justify-center gap-2 px-4 z-40" style={{ bottom: 'calc(64px + 80px)' }}>
         <div className="flex items-center gap-1 overflow-x-auto" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
           {/* Font Button - Shows current font name in that font */}
           <button
@@ -655,8 +658,8 @@ export function TextPostEditor({ onSave, onCancel }: TextPostEditorProps) {
         </div>
       </div>
 
-      {/* Text Input - Sticky at Bottom */}
-      <div className="fixed bottom-0 left-0 right-0 bg-neutral-900 border-t border-neutral-800 z-50">
+      {/* Text Input - Sticky above bottom nav */}
+      <div className="fixed left-0 right-0 bg-neutral-900 border-t border-neutral-800 z-50" style={{ bottom: '64px' }}>
         <div className="flex items-center gap-2 p-4">
           <textarea
             value={content}
