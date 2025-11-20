@@ -54,6 +54,7 @@ export function CommentModal({ file, onClose }: CommentModalProps) {
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const replyInputRef = useRef<HTMLTextAreaElement>(null);
   const modalRef = useRef<HTMLDivElement>(null);
+  const backdropRef = useRef<HTMLDivElement>(null);
   const [commentInputHeight, setCommentInputHeight] = useState(60);
 
   useEffect(() => {
@@ -92,13 +93,12 @@ export function CommentModal({ file, onClose }: CommentModalProps) {
   // Close modal when clicking outside or navigating
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
-      // Only close if clicking on the backdrop, not on any other element
+      // Only close if clicking directly on the backdrop
       const target = event.target as HTMLElement;
-      if (modalRef.current && !modalRef.current.contains(target)) {
-        // Check if the click is on the backdrop (the dark overlay)
-        if (target.classList.contains('bg-black') || target.classList.contains('bg-black/60')) {
-          onClose();
-        }
+      // Check if click is on the backdrop itself (not on any child)
+      if (backdropRef.current && target === backdropRef.current) {
+        console.log('[CommentModal] Clicked on backdrop, closing modal');
+        onClose();
       }
     };
 
@@ -380,14 +380,16 @@ export function CommentModal({ file, onClose }: CommentModalProps) {
     <>
       {/* Backdrop */}
       <div
+        ref={backdropRef}
         onClick={(e) => {
           // Only close if clicking directly on the backdrop
           if (e.target === e.currentTarget) {
+            console.log('[CommentModal] Backdrop clicked, closing');
             onClose();
           }
         }}
         style={{ 
-          zIndex: '999999 !important' as any,
+          zIndex: 999999,
           position: 'fixed',
           top: 0,
           left: 0,
@@ -410,7 +412,7 @@ export function CommentModal({ file, onClose }: CommentModalProps) {
         ref={modalRef}
         className="bg-neutral-900 rounded-t-2xl flex flex-col animate-slide-up"
         style={{ 
-          zIndex: '999999' as any,
+          zIndex: 999999,
           position: 'fixed',
           bottom: 0,
           left: 0,
@@ -466,7 +468,7 @@ export function CommentModal({ file, onClose }: CommentModalProps) {
               right: 0,
               width: '100%',
               height: `${commentInputHeight}px`, 
-              zIndex: '999999' as any,
+              zIndex: 999999,
               position: 'fixed',
               pointerEvents: 'auto',
               display: 'block',
