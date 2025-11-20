@@ -641,22 +641,6 @@ export function TextPostEditor({ onSave, onCancel }: TextPostEditorProps) {
             {textAlign === 'justify' && <AlignJustify className="h-4 w-4" />}
           </button>
 
-          {/* Padding */}
-          <button
-            ref={(el) => menuButtonRefs.current.set('padding', el)}
-            onClick={(e) => {
-              const button = e.currentTarget;
-              if (openMenu === 'padding') {
-                closeMenu();
-              } else {
-                openPopupMenu('padding', button);
-              }
-            }}
-            className="px-2 py-1 transition-opacity hover:opacity-80"
-            style={{ color: 'white' }}
-          >
-            <span className="text-xs">{padding}px</span>
-          </button>
         </div>
       </div>
 
