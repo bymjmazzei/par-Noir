@@ -240,8 +240,11 @@ export function TextPostEditor({ onSave, onCancel }: TextPostEditorProps) {
   const [textStyle, setTextStyle] = useState<'plain' | 'bold' | 'italic' | 'strikethrough'>('plain');
   const [padding, setPadding] = useState(40);
   const [showTextColorPicker, setShowTextColorPicker] = useState(false);
+  const [showBackgroundColorPicker, setShowBackgroundColorPicker] = useState(false);
   const textColorButtonRef = useRef<HTMLButtonElement>(null);
   const textColorPickerRef = useRef<HTMLDivElement>(null);
+  const backgroundColorButtonRef = useRef<HTMLButtonElement>(null);
+  const backgroundColorPickerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const textColorInputRef = useRef<HTMLInputElement>(null);
@@ -551,6 +554,31 @@ export function TextPostEditor({ onSave, onCancel }: TextPostEditorProps) {
     };
   }, [showTextColorPicker]);
 
+  // Close background color picker when clicking outside
+  useEffect(() => {
+    if (!showBackgroundColorPicker) return;
+    
+    const handleClickOutside = (event: MouseEvent) => {
+      const target = event.target as Node;
+      if (backgroundColorButtonRef.current && (backgroundColorButtonRef.current.contains(target) || backgroundColorButtonRef.current === target)) {
+        return;
+      }
+      if (backgroundColorPickerRef.current && backgroundColorPickerRef.current.contains(target)) {
+        return;
+      }
+      setShowBackgroundColorPicker(false);
+    };
+
+    const timeout = setTimeout(() => {
+      document.addEventListener('mousedown', handleClickOutside, true);
+    }, 200);
+
+    return () => {
+      clearTimeout(timeout);
+      document.removeEventListener('mousedown', handleClickOutside, true);
+    };
+  }, [showBackgroundColorPicker]);
+
   const renderPopupMenu = () => {
     if (!openMenu || !menuPosition) return null;
 
@@ -647,22 +675,39 @@ export function TextPostEditor({ onSave, onCancel }: TextPostEditorProps) {
           return (
             <div className="p-2">
               <div className="flex gap-2 items-center">
-                <input
-                  type="color"
-                  value={backgroundColor}
-                  onChange={(e) => setBackgroundColor(e.target.value)}
-                  className="w-12 h-12 rounded border border-neutral-700 cursor-pointer"
+                <button
+                  ref={backgroundColorButtonRef}
+                  onClick={() => setShowBackgroundColorPicker(!showBackgroundColorPicker)}
+                  className="w-12 h-12 rounded cursor-pointer relative"
+                  style={{ backgroundColor: backgroundColor }}
                 />
+                {showBackgroundColorPicker && backgroundColorButtonRef.current && (
+                  <div
+                    ref={backgroundColorPickerRef}
+                    className="fixed z-[60] bg-neutral-800 border border-neutral-700 rounded-lg shadow-lg p-3"
+                    style={{
+                      top: `${backgroundColorButtonRef.current.getBoundingClientRect().bottom}px`,
+                      left: `${backgroundColorButtonRef.current.getBoundingClientRect().left + backgroundColorButtonRef.current.getBoundingClientRect().width / 2}px`,
+                      transform: 'translateX(-50%)',
+                      marginTop: '8px'
+                    }}
+                  >
+                    <CustomColorPicker
+                      color={backgroundColor}
+                      onChange={setBackgroundColor}
+                    />
+                  </div>
+                )}
                 <button
                   onClick={() => fileInputRef.current?.click()}
-                  className="p-2 bg-neutral-800 text-white rounded-lg border border-neutral-700 hover:bg-neutral-700 transition-colors flex items-center justify-center"
+                  className="p-2 text-white hover:opacity-80 transition-opacity flex items-center justify-center"
                 >
                   <ImageIcon className="h-5 w-5" />
                 </button>
                 {backgroundImage && (
                   <button
                     onClick={() => setBackgroundImage(null)}
-                    className="p-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
+                    className="p-2 text-white hover:opacity-80 transition-opacity"
                     title="Remove Image"
                   >
                     <X className="h-4 w-4" />
@@ -861,7 +906,7 @@ export function TextPostEditor({ onSave, onCancel }: TextPostEditorProps) {
             {showTextColorPicker && textColorButtonRef.current && (
               <div
                 ref={textColorPickerRef}
-                className="fixed z-50 bg-neutral-800 border border-neutral-700 rounded-lg shadow-lg p-3"
+                className="fixed z-[60] bg-neutral-800 border border-neutral-700 rounded-lg shadow-lg p-3"
                 style={{
                   top: `${textColorButtonRef.current.getBoundingClientRect().bottom}px`,
                   left: `${textColorButtonRef.current.getBoundingClientRect().left + textColorButtonRef.current.getBoundingClientRect().width / 2}px`,
