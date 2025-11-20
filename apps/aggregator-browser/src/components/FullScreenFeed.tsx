@@ -848,7 +848,7 @@ export function FullScreenFeed({
 
             {/* Content Info Overlay - Split into two halves */}
             <div 
-              className={`absolute left-0 right-20 p-4 md:p-6 transition-all duration-300 ${
+              className={`absolute left-0 right-20 p-4 md:p-6 transition-all duration-300 z-30 ${
                 expandedCaptions.has(fileId) 
                   ? 'bottom-0' 
                   : 'bottom-0'
@@ -857,7 +857,8 @@ export function FullScreenFeed({
                 maxHeight: expandedCaptions.has(fileId) ? '70%' : 'auto',
                 overflowY: expandedCaptions.has(fileId) ? 'auto' : 'hidden',
                 overflowX: 'hidden',
-                bottom: '0' // Content info is within the media container, which already excludes bottom nav
+                bottom: '0', // Content info is within the media container, which already excludes bottom nav
+                zIndex: 30 // Ensure it's above media (z-10) and background (z-0)
               }}
             >
               <div className="flex gap-4">
