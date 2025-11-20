@@ -517,6 +517,10 @@ export function TextPostEditor({ onSave, onCancel }: TextPostEditorProps) {
       if (menuElement && menuElement.contains(target)) {
         return;
       }
+      // Don't close menu if background color picker is open
+      if (openMenu === 'background' && showBackgroundColorPicker) {
+        return;
+      }
       closeMenu();
     };
 
@@ -680,7 +684,10 @@ export function TextPostEditor({ onSave, onCancel }: TextPostEditorProps) {
               <div className="flex gap-2 items-center">
                 <button
                   ref={backgroundColorButtonRef}
-                  onClick={() => setShowBackgroundColorPicker(!showBackgroundColorPicker)}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setShowBackgroundColorPicker(!showBackgroundColorPicker);
+                  }}
                   className="rounded cursor-pointer relative flex items-center justify-center"
                   style={{ 
                     backgroundColor: backgroundColor,
