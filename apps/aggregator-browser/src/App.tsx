@@ -1772,9 +1772,32 @@ function App() {
   const [isLoadingSavedFiles, setIsLoadingSavedFiles] = useState(false);
 
   // Find file index when navigating to a specific file in creator's profile
+  // Track if files are still loading to prevent glitchy scrolling
+  const filesStabilizedRef = useRef<boolean>(false);
+  const prevFilteredMeFilesLengthRef = useRef<number>(0);
+  
+  useEffect(() => {
+    // Mark files as stabilized when the array length stops changing
+    if (filteredMeFilesMemo.length !== prevFilteredMeFilesLengthRef.current) {
+      filesStabilizedRef.current = false;
+      prevFilteredMeFilesLengthRef.current = filteredMeFilesMemo.length;
+      // Wait for array to stabilize
+      const stabilizeTimer = setTimeout(() => {
+        filesStabilizedRef.current = true;
+      }, 500);
+      return () => clearTimeout(stabilizeTimer);
+    } else {
+      filesStabilizedRef.current = true;
+    }
+  }, [filteredMeFilesMemo.length]);
+
   useEffect(() => {
     if (!visibleFileId || !viewingCreatorId) {
       isNavigatingToFileRef.current = false;
+      // Reset to index 0 on initial load only if files are stabilized
+      if (viewingCreatorId && filesStabilizedRef.current && currentFeedIndex !== 0 && filteredMeFilesMemo.length > 0) {
+        setCurrentFeedIndex(0);
+      }
       return;
     }
     
@@ -2685,7 +2708,12 @@ function App() {
               <FullScreenFeed
                 files={filteredMeFiles}
                 currentIndex={currentFeedIndex}
-                onIndexChange={setCurrentFeedIndex}
+                onIndexChange={(newIndex) => {
+                  // Only update if files are stabilized and index is within valid range and actually changed
+                  if (filesStabilizedRef.current && newIndex >= 0 && newIndex < filteredMeFiles.length && newIndex !== currentFeedIndex) {
+                    setCurrentFeedIndex(newIndex);
+                  }
+                }}
                 onLike={(fileId) => {
                   const wasLiked = isLiked(fileId);
                   toggleLike(fileId);

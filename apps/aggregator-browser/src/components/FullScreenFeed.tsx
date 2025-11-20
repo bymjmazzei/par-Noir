@@ -125,8 +125,10 @@ export function FullScreenFeed({
     return topLevelComments;
   }, [getComments]);
 
-  // Track previous index to prevent unnecessary scrolling on initial load
+  // Track previous index and file ID to prevent unnecessary scrolling
   const prevIndexRef = useRef<number>(-1);
+  const prevFileIdRef = useRef<string | null>(null);
+  const isScrollingRef = useRef<boolean>(false);
   
   // Scroll to current index when it changes - use instant snap for smooth TikTok-style scrolling
   useEffect(() => {
@@ -134,11 +136,15 @@ export function FullScreenFeed({
     const currentFile = files[currentIndex];
     if (!currentFile) return;
     
-    // Only scroll if index actually changed (prevents glitching on initial load)
-    if (prevIndexRef.current === currentIndex) {
+    // Don't scroll if already scrolling or if index/file hasn't actually changed
+    if (isScrollingRef.current) return;
+    if (prevIndexRef.current === currentIndex && prevFileIdRef.current === currentFile.metadata.fileId) {
       return;
     }
+    
     prevIndexRef.current = currentIndex;
+    prevFileIdRef.current = currentFile.metadata.fileId;
+    isScrollingRef.current = true;
 
     // Use requestAnimationFrame for smooth, instant snapping
     const scrollFrame = requestAnimationFrame(() => {
@@ -155,10 +161,20 @@ export function FullScreenFeed({
             console.debug('Failed to preload comments:', err);
           });
         }
+        
+        // Reset scrolling flag after a short delay
+        setTimeout(() => {
+          isScrollingRef.current = false;
+        }, 300);
+      } else {
+        isScrollingRef.current = false;
       }
     });
 
-    return () => cancelAnimationFrame(scrollFrame);
+    return () => {
+      cancelAnimationFrame(scrollFrame);
+      isScrollingRef.current = false;
+    };
   }, [currentIndex, files, loadComments]);
 
   // Rotate comments every 2 seconds with fade transitions
