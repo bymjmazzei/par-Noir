@@ -3073,6 +3073,70 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
           // Non-critical - POST should have handled it, but log for debugging
         }
 
+        // CRITICAL: Update Google Drive public index file when making file public
+        // This ensures the file appears in the public index that the API syncs from
+        if (metadataPnIdentifier && file.backend) {
+          try {
+            const backend = aggregatorService?.getBackend(file.backend);
+            if (backend && backend.isConnected()) {
+              // Get access token from backend
+              const accessToken = typeof backend.getAccessToken === 'function' 
+                ? backend.getAccessToken() 
+                : (backend as any).token;
+              
+              if (accessToken) {
+                const { GoogleDriveMetadataService } = await import('../../services/storage/GoogleDriveMetadataService');
+                
+                // Get or create companion metadata file to ensure it exists
+                const companionMetadata: CompanionMetadata = {
+                  fileId: file.id,
+                  googleDriveFileId: file.backendFileId || file.id,
+                  fileName: file.name,
+                  originalName: file.originalName || file.name.replace('.encrypted', ''),
+                  mimeType: file.mimeType || 'application/octet-stream',
+                  size: parseInt(file.size || '0', 10),
+                  visibility: 'public',
+                  uploadedAt: file.aggregatedAt || new Date().toISOString(),
+                  owner: {
+                    did: resolvedAuth?.publicKey ? (resolvedAuth.publicKey.startsWith('did:') ? resolvedAuth.publicKey : `did:key:${resolvedAuth.publicKey}`) : undefined,
+                    identifier: metadataPnIdentifier
+                  },
+                  tags: publicMetadata.keywords || [],
+                  description: publicMetadata.description || '',
+                  publicToken: shareToken ? (typeof shareToken === 'string' ? shareToken : JSON.stringify(shareToken)) : undefined,
+                  engagement: publicMetadata.engagement
+                };
+                
+                // Ensure companion metadata file exists
+                await GoogleDriveMetadataService.createCompanionMetadataFile(
+                  accessToken,
+                  metadataPnIdentifier,
+                  companionMetadata
+                );
+                
+                // Update public index file - this adds the file to public-file-index.json
+                await GoogleDriveMetadataService.updatePublicFileIndex(
+                  accessToken,
+                  metadataPnIdentifier,
+                  companionMetadata
+                );
+                
+                console.log('✅ [Phase 3] Google Drive public index file updated successfully');
+              } else {
+                console.warn('⚠️ [Phase 3] No access token available to update Google Drive public index');
+              }
+            } else {
+              console.warn('⚠️ [Phase 3] Backend not connected - cannot update Google Drive public index');
+            }
+          } catch (driveIndexError) {
+            console.error('❌ [Phase 3] Failed to update Google Drive public index file (non-critical):', driveIndexError);
+            // Non-critical - API database is updated, but Google Drive index won't be in sync
+            // The API sync service will eventually sync it, but user won't see it immediately
+          }
+        } else {
+          console.warn('⚠️ [Phase 3] Missing pN identifier or backend - cannot update Google Drive public index');
+        }
+
         setFileMetadataMap(prev => {
           const next = new Map(prev);
           next.set(file.id, publicMetadata);
