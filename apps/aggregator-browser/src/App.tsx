@@ -51,6 +51,7 @@ import { CreatorFeedPage } from './components/CreatorFeedPage';
 import { Inbox } from './components/Inbox';
 import { saveToFeed, getSavedFeed } from './services/savedFeedService';
 import { getUserProfile } from './services/profileService';
+import { FileStorageAggregator } from './components/FileStorageAggregator';
 
 // Shared types - importing from id-dashboard
 // In production, these would come from a shared package
@@ -3561,6 +3562,22 @@ function App() {
               discoverFiles(undefined, true);
             }}
           />
+        )}
+
+        {/* Preload FileStorageAggregator when unlocked to load credentials immediately (hidden) */}
+        {userState.isUnlocked && userState.pnIdentifier && !showUploadModal && (
+          <div style={{ display: 'none' }}>
+            <FileStorageAggregator 
+              authenticatedUser={{
+                id: userState.pnIdentifier,
+                pnName: userState.pnName,
+                publicKey: userState.publicKey,
+                nickname: userState.nickname,
+                accessToken: userState.accessToken
+              }}
+              hideSecureFolderSection={true}
+            />
+          </div>
         )}
 
         {/* Toast Notifications */}
