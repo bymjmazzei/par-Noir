@@ -270,21 +270,10 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
       candidates.push(pnIdentifierRef.current);
     }
     
-    // Include other candidates for backward compatibility
-    // SECURITY: Only use public identifiers (DID, public key, pn identifier) - NEVER pnName
-    if (currentResolvedAuth?.publicKey) {
-      candidates.push(currentResolvedAuth.publicKey);
-    }
-    if (typeof currentAuthenticatedUser?.publicKey === 'string') {
-      candidates.push(currentAuthenticatedUser.publicKey);
-    }
-    if (typeof currentAuthenticatedUser?.id === 'string') {
-      // Only use if it's a DID or public key format, not a pn name
-      const id = currentAuthenticatedUser.id;
-      if (id.startsWith('did:') || id.startsWith('MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA') || id.length > 20) {
-        candidates.push(id);
-      }
-    }
+    // CRITICAL: REMOVED all other candidates - they cause duplicate API calls
+    // Only use standardized pn identifier: pn-{12-char-hex-hash}
+    // This is generated from pnName:passcode:publicKey using VolumeIdGenerator
+    // Same credentials always produce the same identifier, regardless of where it's generated
     // SECURITY: REMOVED - pnName is a secret credential and must NEVER be used as identityId
     // if (typeof currentResolvedAuth?.pnName === 'string') {
     //   candidates.push(currentResolvedAuth.pnName);
