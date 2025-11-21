@@ -795,7 +795,6 @@ export function FullScreenFeed({
                   className="w-full px-8"
                   style={{
                     fontFamily: textPostData?.style?.fontFamily || 'Arial',
-                    fontSize: `${textPostData?.style?.fontSize || 48}px`,
                     color: textPostData?.style?.textColor || '#FFFFFF',
                     fontWeight: textPostData?.style?.textStyle === 'bold' ? 'bold' : 'normal',
                     fontStyle: textPostData?.style?.textStyle === 'italic' ? 'italic' : 'normal',
@@ -809,6 +808,28 @@ export function FullScreenFeed({
                     `,
                     padding: `${textPostData?.style?.padding || 40}px`,
                     lineHeight: 1.2,
+                    wordWrap: 'break-word',
+                    overflowWrap: 'break-word',
+                    whiteSpace: 'pre-wrap',
+                    maxWidth: '100%',
+                    // Use user's fontSize but ensure it doesn't overflow
+                    // Calculate max based on container width and content length
+                    fontSize: (() => {
+                      const userFontSize = textPostData?.style?.fontSize || 48;
+                      const content = textPostData?.content || file.description || file.name || file.title || 'Thought';
+                      const padding = textPostData?.style?.padding || 40;
+                      const containerWidth = window.innerWidth - (padding * 2);
+                      
+                      // Estimate max font size: container width / (content length * avg char width)
+                      // Average character width is approximately fontSize * 0.6
+                      const avgCharWidth = 0.6;
+                      const maxSizeForWidth = containerWidth / Math.max(content.length * avgCharWidth, 10);
+                      
+                      // Use the smaller of user's fontSize or calculated max to prevent overflow
+                      // But ensure minimum readable size of 24px
+                      const finalSize = Math.min(userFontSize, Math.max(24, maxSizeForWidth));
+                      return `${finalSize}px`;
+                    })(),
                   }}
                 >
                   {textPostData?.content || file.description || file.name || file.title || 'Thought'}
