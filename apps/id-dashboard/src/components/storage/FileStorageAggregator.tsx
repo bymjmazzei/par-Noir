@@ -1082,11 +1082,9 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
         });
       }
 
-      // CRITICAL: Call persistStorageCredentialsToAPI but rely on debounce to prevent rapid-fire calls
-      // The debounce in persistStorageCredentialsToAPI will prevent multiple simultaneous calls
-      persistStorageCredentialsToAPI(undefined).catch((persistError) => {
-        console.warn('⚠️ [StorageCredentials] Failed to persist refreshed token snapshot:', persistError);
-      });
+      // CRITICAL: Don't persist immediately on token refresh - let auto-persist effect handle it
+      // This prevents multiple persistence calls from different sources
+      // Token refresh just updates the cache, auto-persist will sync to API
 
       ownerIndexRetryCountsRef.current.delete(backendId);
       ownerIndexWarningLoggedRef.current.delete(backendId);
@@ -2091,15 +2089,9 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
           hydrationRetryTimeoutRef.current = null;
         }
         
-        // After successfully hydrating accounts, ensure they're persisted back to API
-        // This handles the case where accounts exist locally but weren't in API
-        // Use a longer delay to avoid rapid-fire persistence calls
-        setTimeout(() => {
-          console.log('[StorageCredentials] Accounts hydrated, ensuring persistence to API...');
-          persistStorageCredentialsToAPI(undefined).catch((error) => {
-            console.error('⚠️ [StorageCredentials] Failed to persist after hydration:', error);
-          });
-        }, 5000); // Increased from 2000ms to 5000ms to reduce rapid calls
+        // CRITICAL: Don't persist immediately after hydration - let auto-persist effect handle it
+        // This prevents multiple persistence calls from different sources
+        // Hydration just loads accounts, auto-persist will sync to API
         
         break;
       } catch (error) {
@@ -2143,13 +2135,9 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
       console.log('[StorageCredentials] Hydration complete but no accounts found in API, checking local cache...');
       const cacheEntries = Array.from(driveCredentialCacheRef.current.values());
       if (cacheEntries.length > 0) {
-        console.log(`[StorageCredentials] Found ${cacheEntries.length} account(s) in local cache, attempting to persist to API...`);
-        // Wait a bit for driveAccounts state to update, then persist
-        setTimeout(() => {
-          persistStorageCredentialsToAPI(undefined).catch((error) => {
-            console.error('⚠️ [StorageCredentials] Failed to persist local accounts to API:', error);
-          });
-        }, 1000);
+        console.log(`[StorageCredentials] Found ${cacheEntries.length} account(s) in local cache - auto-persist effect will sync to API`);
+        // CRITICAL: Don't persist immediately - let auto-persist effect handle it
+        // This prevents multiple persistence calls from different sources
       }
     }
   }, [apiEndpoint, resolvedAuth?.publicKey, resolvedAuth?.pnName, authenticatedUser?.id, authenticatedUser?.pnName, authenticatedUser?.publicKey, upsertDriveAccount, persistStorageCredentialsToAPI]);
@@ -2291,11 +2279,9 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
         const storedCreds = decrypted.storageCredentials?.googleDriveAccounts || decrypted.storageCredentials?.googleDrive;
         const credsArray = Array.isArray(storedCreds) ? storedCreds : storedCreds ? [storedCreds] : [];
 
-        if (decrypted.storageCredentials) {
-          persistStorageCredentialsToAPI(decrypted.storageCredentials).catch((error) => {
-            console.warn('⚠️ [StorageCredentials] Failed to persist during load (non-blocking):', error);
-          });
-        }
+        // CRITICAL: Don't persist immediately during load - let auto-persist effect handle it
+        // This prevents multiple persistence calls from different sources
+        // Loading just restores accounts, auto-persist will sync to API
 
         // CRITICAL: Deduplicate accounts BEFORE loading to prevent duplicates
         const uniqueCredsByEmail = new Map<string, typeof credsArray[0]>();
@@ -4442,7 +4428,10 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
       console.warn('ℹ️ [handleConnectGoogleDrive] Skipping secure metadata update; session passcode unavailable');
     }
 
-    await persistStorageCredentialsToAPI(payloadForPersistence || undefined);
+    // CRITICAL: Don't persist immediately after connect - let auto-persist effect handle it
+    // This prevents multiple persistence calls from different sources
+    // Connect just adds account, auto-persist will sync to API
+    // The auto-persist effect will pick up the new account when driveAccounts.length changes
 
       // SECURITY: Do not store refresh token in plaintext localStorage
       // Token is stored in encrypted storage via IntegrationCredentialManager above
