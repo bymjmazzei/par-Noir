@@ -2580,7 +2580,8 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
                 
                 // Also log fallback for comparison
                 if (pnIdentifierRef.current) {
-                  const fallbackId = `pn-${pnIdentifierRef.current}`;
+                  // pnIdentifierRef.current already includes 'pn-' prefix, don't add it again
+                  const fallbackId = pnIdentifierRef.current.startsWith('pn-') ? pnIdentifierRef.current : `pn-${pnIdentifierRef.current}`;
                   if (fallbackId !== pnIdentifier) {
                     console.warn(`⚠️ [Metadata] Identifier mismatch! Correct: ${pnIdentifier}, Fallback: ${fallbackId}`);
                     console.warn(`⚠️ [Metadata] Using CORRECT identifier: ${pnIdentifier}`);
@@ -2925,7 +2926,8 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
           
           // Also log the fallback identifier for comparison
           if (pnIdentifierRef.current) {
-            const fallbackId = `pn-${pnIdentifierRef.current}`;
+            // pnIdentifierRef.current already includes 'pn-' prefix, don't add it again
+            const fallbackId = pnIdentifierRef.current.startsWith('pn-') ? pnIdentifierRef.current : `pn-${pnIdentifierRef.current}`;
             console.log(`ℹ️ [loadFiles] Fallback identifier (did:publicKey): ${fallbackId}`);
             if (fallbackId !== currentPnIdentifier) {
               console.warn(`⚠️ [loadFiles] Identifier mismatch! VolumeIdGenerator: ${currentPnIdentifier}, Fallback: ${fallbackId}`);
@@ -4885,7 +4887,8 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
           
           // Also log the fallback identifier for comparison
           if (pnIdentifierRef.current) {
-            const fallbackId = `pn-${pnIdentifierRef.current}`;
+            // pnIdentifierRef.current already includes 'pn-' prefix, don't add it again
+            const fallbackId = pnIdentifierRef.current.startsWith('pn-') ? pnIdentifierRef.current : `pn-${pnIdentifierRef.current}`;
             console.log(`ℹ️ [Upload] Fallback identifier (did:publicKey): ${fallbackId}`);
             if (fallbackId !== pnIdentifier) {
               console.warn(`⚠️ [Upload] Identifier mismatch! VolumeIdGenerator: ${pnIdentifier}, Fallback: ${fallbackId}`);

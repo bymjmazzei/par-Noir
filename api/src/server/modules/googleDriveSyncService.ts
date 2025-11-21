@@ -99,13 +99,15 @@ export class GoogleDriveSyncService {
 
       // Step 1: Try to find folders by scanning, but also use pN identifiers from database as fallback
       // This allows us to sync known users even if service account can't discover new folders
+      // CRITICAL: Get pn identifiers from storage_credentials table (where credentials are stored)
+      // These are the actual pn identifiers (pn-{hash}) used by users
       const { getDatabasePool } = await import('../utils/database');
       const db = getDatabasePool();
       const pnIdentifiersResult = await db.query(
-        `SELECT DISTINCT pn_identifier FROM aggregator_metadata WHERE pn_identifier IS NOT NULL`
+        `SELECT DISTINCT identity_id FROM storage_credentials WHERE identity_id LIKE 'pn-%'`
       );
-      const knownPnIdentifiers = pnIdentifiersResult.rows.map((row: { pn_identifier: string }) => row.pn_identifier as string).filter(Boolean);
-      console.log(`🔍 Found ${knownPnIdentifiers.length} known pN identifier(s) in database`);
+      const knownPnIdentifiers = pnIdentifiersResult.rows.map((row: { identity_id: string }) => row.identity_id as string).filter(Boolean);
+      console.log(`🔍 Found ${knownPnIdentifiers.length} known pN identifier(s) in database (from storage_credentials)`);
       
       // Try to find folders by scanning (for discovering new users)
       const pnFoldersQuery = `name contains 'par Noir - pn-' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
@@ -132,8 +134,10 @@ export class GoogleDriveSyncService {
       if (pnFolders.length === 0 && knownPnIdentifiers.length > 0) {
         console.log(`🔍 No folders found by scanning - trying to access folders using ${knownPnIdentifiers.length} known pN identifier(s) from database`);
         for (const pnIdentifier of knownPnIdentifiers) {
+          // CRITICAL: pnIdentifier from storage_credentials already includes 'pn-' prefix
+          // Folder name format: "par Noir - pn-{hash}"
           const folderName = `par Noir - ${pnIdentifier}`;
-          const folderQuery = `name='${folderName}' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
+          const folderQuery = `name='${folderName.replace(/'/g, "\\'")}' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
           const folderResponse = await fetch(
             `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(folderQuery)}&fields=files(id,name)&pageSize=1`,
             {

@@ -2255,7 +2255,9 @@ class ProductionServer {
         const { credentials, cid } = req.body;
 
         // SECURITY: Sanitize identityId in logs - never log pn names or short identifiers
-        const sanitizedIdentityId = identityId && identityId.length < 20 && !identityId.startsWith('did:') && !identityId.startsWith('MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA')
+        // CRITICAL: pn identifiers start with 'pn-' and are safe to log (they're hashes, not names)
+        // Only redact if it's short AND doesn't start with 'pn-' or 'did:' or public key prefix
+        const sanitizedIdentityId = identityId && identityId.length < 20 && !identityId.startsWith('pn-') && !identityId.startsWith('did:') && !identityId.startsWith('MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA')
           ? '[REDACTED - potential pn name]'
           : identityId?.substring(0, 50) + (identityId && identityId.length > 50 ? '...' : '');
 
