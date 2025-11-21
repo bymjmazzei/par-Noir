@@ -314,7 +314,7 @@ export async function createTextPost(
         keywords: metadata?.keywords || [],
         tags: metadata?.tags || [],
         fileType: 'text', // Mark as text type
-        isPublic: metadata?.isPublic ?? false,
+        isPublic: metadata?.isPublic ?? true, // Thoughts are public by default
         publicToken: shareToken ? JSON.stringify(shareToken) : undefined,
         uploadDate: new Date().toISOString(),
         textPost: textPost, // Include the full text post data
