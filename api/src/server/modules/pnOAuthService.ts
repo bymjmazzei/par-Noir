@@ -109,7 +109,9 @@ export class PNOAuthService {
       nonce: params.nonce,
       did: params.did,
       publicKey: params.publicKey, // Store public key for pN identifier derivation
-      // pN name is NOT stored - it's a secret
+      pnName: params.pnName, // Store pN name temporarily for VolumeIdGenerator (not persisted)
+      passcode: params.passcode, // Store passcode temporarily for VolumeIdGenerator (not persisted)
+      // Note: pN name and passcode are only used for pN identifier derivation, not stored long-term
       expiresAt: Date.now() + this.CODE_EXPIRY
     });
 
@@ -172,6 +174,8 @@ export class PNOAuthService {
     const refreshToken = await this.generateRefreshToken({
       did: authCode.did,
       publicKey: authCode.publicKey, // Include publicKey to derive pN identifier
+      pnName: authCode.pnName, // Include pN name for VolumeIdGenerator (if available)
+      passcode: authCode.passcode, // Include passcode for VolumeIdGenerator (if available)
       clientId: params.clientId,
       scope: authCode.scope
     });
