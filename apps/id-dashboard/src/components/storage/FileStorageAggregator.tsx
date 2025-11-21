@@ -2189,17 +2189,28 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
     // Wait for getStorageIdentityCandidates to be ready (it depends on pnIdentifier)
     // Don't call it during useEffect initialization - call it inside the async function
     const loadTokenFromMetadata = async () => {
+      // Wait for pn identifier to be ready (with retry mechanism)
+      let retries = 0;
+      const maxRetries = 10;
+      while (!pnIdentifierRef.current && retries < maxRetries) {
+        await new Promise(resolve => setTimeout(resolve, 100));
+        retries++;
+      }
+      
       // Call getStorageIdentityCandidates here, not during useEffect initialization
       // This ensures pnIdentifier is ready when accessed
       const candidates = getStorageIdentityCandidates();
       const identityId = candidates.length > 0 ? candidates[0] : null;
       if (!authenticatedUser?.id || !identityId) {
-        console.warn('⚠️ [loadTokenFromMetadata] Missing authenticated identity details', {
-          hasAuthenticatedUser: !!authenticatedUser,
-          hasId: !!authenticatedUser?.id,
-          identityId,
-          pnIdentifierReady: pnIdentifierRef.current !== null,
-        });
+        // Only log warning if we've waited and still don't have it
+        if (retries >= maxRetries) {
+          console.warn('⚠️ [loadTokenFromMetadata] Missing authenticated identity details after waiting', {
+            hasAuthenticatedUser: !!authenticatedUser,
+            hasId: !!authenticatedUser?.id,
+            identityId,
+            pnIdentifierReady: pnIdentifierRef.current !== null,
+          });
+        }
         return;
       }
 
