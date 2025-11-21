@@ -84,17 +84,23 @@ export class MetadataIndexService {
           const pnId = entry.pnIdentifier;
           const normalizedPnId = pnId && pnId.startsWith('pn-') ? pnId.substring(3) : pnId;
           
+          // Preserve textPost and thought data from metadata
+          const metadata = entry.metadata || {};
+          
           return {
             metadata: {
-              ...entry.metadata,
+              ...metadata,
+              // Explicitly preserve textPost and thought fields
+              textPost: metadata.textPost || metadata.thought,
+              thought: metadata.thought || metadata.textPost,
               // Use normalized pnIdentifier as creatorId - they're the same thing
-              creatorId: normalizedPnId || entry.metadata.creatorId,
+              creatorId: normalizedPnId || metadata.creatorId,
               // Include publicToken from entry level if it exists (API may return it at entry level)
-              publicToken: entry.publicToken || entry.metadata?.publicToken
+              publicToken: entry.publicToken || metadata.publicToken
             },
-            thumbnail: entry.metadata?.thumbnail,
+            thumbnail: metadata.thumbnail,
             // Also include publicToken at IndexedFile level for easier access
-            publicToken: entry.publicToken || entry.metadata?.publicToken,
+            publicToken: entry.publicToken || metadata.publicToken,
             // Preserve pnIdentifier from API response (use original format, not normalized)
             pnIdentifier: entry.pnIdentifier || normalizedPnId
           };

@@ -537,7 +537,18 @@ export function FullScreenFeed({
             hasTextPostData,
             hasTextFileType,
             isTextPost,
-            textPostData: textPostData ? { content: textPostData.content?.substring(0, 50), hasStyle: !!textPostData.style } : null
+            textPostData: textPostData ? { 
+              content: textPostData.content?.substring(0, 50), 
+              hasStyle: !!textPostData.style,
+              hasContent: !!textPostData.content,
+              styleKeys: textPostData.style ? Object.keys(textPostData.style) : []
+            } : null,
+            rawMetadata: {
+              hasTextPost: !!(indexedFile.metadata as any).textPost,
+              hasThought: !!(indexedFile.metadata as any).thought,
+              hasFileTextPost: !!(file as any).textPost,
+              hasFileThought: !!(file as any).thought
+            }
           });
         }
         
