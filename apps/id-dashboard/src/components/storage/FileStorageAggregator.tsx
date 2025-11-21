@@ -1282,6 +1282,9 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
     [authenticatedUser?.id, loadThirdPartyIndexers, metadataIndexService, resolvedAuth?.publicKey]
   );
 
+  // CRITICAL: Lock to prevent multiple simultaneous upserts for the same email
+  const upsertLocksRef = React.useRef<Map<string, Promise<GoogleDriveBackend | null>>>(new Map());
+
   const upsertDriveAccount = React.useCallback(async (
     params: {
       backendId: string;
@@ -1298,26 +1301,96 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
       return null;
     }
 
-    await aggregatorService.ensureInitialized();
+    // CRITICAL: Check for existing account with same email BEFORE creating new backend
+    const normalizedEmail = params.email?.toLowerCase() || null;
+    if (normalizedEmail) {
+      // Check if we already have an account with this email
+      for (const [existingBackendId, credential] of driveCredentialCacheRef.current.entries()) {
+        const existingEmail = credential.email?.toLowerCase();
+        if (existingEmail === normalizedEmail && existingBackendId !== params.backendId) {
+          console.log(`🔄 [upsertDriveAccount] Found existing account for email ${normalizedEmail}, using existing backendId: ${existingBackendId} instead of ${params.backendId}`);
+          // Use the existing backendId instead of creating a new one
+          params.backendId = existingBackendId;
+          params.keyPrefix = credential.keyPrefix;
+          break;
+        }
+      }
+      
+      // Also check driveAccounts state
+      for (const account of driveAccounts) {
+        const accountEmail = userEmails.get(account.backendId);
+        if (accountEmail?.toLowerCase() === normalizedEmail && account.backendId !== params.backendId) {
+          console.log(`🔄 [upsertDriveAccount] Found existing account in state for email ${normalizedEmail}, using existing backendId: ${account.backendId} instead of ${params.backendId}`);
+          params.backendId = account.backendId;
+          params.keyPrefix = account.keyPrefix;
+          break;
+        }
+      }
 
-    let backend = aggregatorService.getBackend(params.backendId) as GoogleDriveBackend | null;
-    if (!backend) {
-      backend = new GoogleDriveBackend({
-        id: params.backendId,
-        name: params.email || 'Google Drive',
-        storageKeyPrefix: params.keyPrefix,
-        apiEndpoint
-      });
-      aggregatorService.registerBackend(params.backendId, backend);
+      // CRITICAL: Lock to prevent multiple simultaneous upserts for the same email
+      const lockKey = normalizedEmail;
+      const existingLock = upsertLocksRef.current.get(lockKey);
+      if (existingLock) {
+        console.log(`⏳ [upsertDriveAccount] Waiting for existing upsert to complete for email: ${normalizedEmail}`);
+        return existingLock;
+      }
     }
 
-    await backend.connect({
-      token: params.token,
-      refreshToken: params.refreshToken || undefined,
-      email: params.email || undefined
-    });
+    await aggregatorService.ensureInitialized();
 
-    const resolvedEmail = params.email || backend.getEmail() || null;
+    // Create a promise for this upsert operation (with lock management)
+    const lockKey = normalizedEmail || params.backendId;
+    const upsertPromise = (async (): Promise<GoogleDriveBackend | null> => {
+      try {
+        // CRITICAL: Double-check for existing account before creating new backend
+        // This prevents race conditions where multiple calls happen simultaneously
+        if (normalizedEmail) {
+          for (const [existingBackendId, credential] of driveCredentialCacheRef.current.entries()) {
+            const existingEmail = credential.email?.toLowerCase();
+            if (existingEmail === normalizedEmail && existingBackendId !== params.backendId) {
+              console.log(`🔄 [upsertDriveAccount] Found existing account during backend creation, switching to: ${existingBackendId}`);
+              params.backendId = existingBackendId;
+              params.keyPrefix = credential.keyPrefix;
+              break;
+            }
+          }
+        }
+
+        let backend = aggregatorService.getBackend(params.backendId) as GoogleDriveBackend | null;
+        if (!backend) {
+          // CRITICAL: Final check - don't create if another backend with same email exists
+          if (normalizedEmail) {
+            for (const [registeredBackendId, registeredBackend] of Array.from(aggregatorService.getAllBackends().entries())) {
+              if (registeredBackendId !== params.backendId) {
+                const registeredEmail = (registeredBackend as any).getEmail?.()?.toLowerCase();
+                if (registeredEmail === normalizedEmail) {
+                  console.log(`🔄 [upsertDriveAccount] Found registered backend with same email, using: ${registeredBackendId}`);
+                  backend = registeredBackend as GoogleDriveBackend;
+                  params.backendId = registeredBackendId;
+                  break;
+                }
+              }
+            }
+          }
+
+          if (!backend) {
+            backend = new GoogleDriveBackend({
+              id: params.backendId,
+              name: params.email || 'Google Drive',
+              storageKeyPrefix: params.keyPrefix,
+              apiEndpoint
+            });
+            aggregatorService.registerBackend(params.backendId, backend);
+          }
+        }
+
+        await backend.connect({
+          token: params.token,
+          refreshToken: params.refreshToken || undefined,
+          email: params.email || undefined
+        });
+
+        const resolvedEmail = params.email || backend.getEmail() || null;
 
     setConnectedBackends((prev) => {
       const next = new Set(prev);
@@ -1384,14 +1457,31 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
           // email removed - use userEmails Map or encrypted storage instead
       }
       ];
-      persistDriveAccounts(next);
-      return next;
-    });
+        persistDriveAccounts(next);
+        return next;
+      });
 
-    setActiveBackendId(params.backendId);
+      setActiveBackendId(params.backendId);
 
-    return backend;
-  }, [aggregatorService, activeBackendId, apiEndpoint]);
+      return backend;
+      } catch (error) {
+        console.error('❌ [upsertDriveAccount] Error during upsert:', error);
+        throw error;
+      } finally {
+        // Clear the lock when done
+        if (normalizedEmail) {
+          upsertLocksRef.current.delete(lockKey);
+        }
+      }
+    })();
+
+    // Store the promise in the lock map
+    if (normalizedEmail) {
+      upsertLocksRef.current.set(lockKey, upsertPromise);
+    }
+
+    return upsertPromise;
+  }, [aggregatorService, activeBackendId, apiEndpoint, driveAccounts, userEmails]);
 
   const removeDriveAccount = React.useCallback((backendId: string) => {
     let nextActiveId: string | null = null;
