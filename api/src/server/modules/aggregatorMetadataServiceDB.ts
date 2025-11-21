@@ -735,12 +735,11 @@ export class AggregatorMetadataServiceDB {
       
       console.log(`✅ [cleanupOrphanedFilesFromIndex] Found ${allValidFileIds.size} valid file ID(s) across ${validFileIdsByUser.size} user(s) with accessible public index files`);
       
-      // If we couldn't access any index files (service account has no access), 
-      // we should NOT remove files - we can't verify what's valid
+      // If we couldn't access any index files (service account has no access),
+      // we'll still verify files directly by checking if they exist in Google Drive
+      // This ensures deleted files are removed even if we can't access the folder structure
       if (usersWithIndexFiles.size === 0 && pnIdentifiers.length > 0) {
-        console.log(`⚠️ [cleanupOrphanedFilesFromIndex] Service account cannot access any public index files - skipping cleanup to avoid false positives`);
-        console.log(`ℹ️ [cleanupOrphanedFilesFromIndex] Files will remain in database until service account has access or files are manually verified`);
-        return;
+        console.log(`⚠️ [cleanupOrphanedFilesFromIndex] Service account cannot access any public index files - will verify files directly instead`);
       }
 
       // Remove files from database that aren't in the valid set
@@ -817,15 +816,16 @@ export class AggregatorMetadataServiceDB {
             );
             
             if (verifyResponse.status === 404) {
-              // 404 could mean file doesn't exist OR service account doesn't have access
-              // Since service account can't see folders, 404 is unreliable
-              // Only remove if file is very old (past extended grace period)
-              if (ageMinutes >= (EXTENDED_GRACE_PERIOD_HOURS * 60)) {
-                console.log(`🗑️ [cleanupOrphanedFilesFromIndex] File ${fileToVerify} not found (404) and is ${(ageMinutes / 60).toFixed(1)} hours old - removing from database: ${fileId} (${fileName})`);
-                orphanedFileIds.push(fileId);
-              } else {
-                console.log(`⚠️ [cleanupOrphanedFilesFromIndex] File ${fileToVerify} returned 404 but is only ${(ageMinutes / 60).toFixed(1)} hours old - keeping (might be permission issue): ${fileId} (${fileName})`);
-              }
+              // 404 means file doesn't exist in Google Drive - remove it from database
+              // Even if service account can't see folders, if we can query the file directly and get 404,
+              // it means the file was deleted (service account can still query files by ID if they exist)
+              console.log(`🗑️ [cleanupOrphanedFilesFromIndex] File ${fileToVerify} not found (404) - removing from database: ${fileId} (${fileName})`);
+              orphanedFileIds.push(fileId);
+            } else if (verifyResponse.status === 403 || verifyResponse.status === 401) {
+              // Permission denied - service account doesn't have access to this file
+              // This could mean the file is private or was deleted and permissions were revoked
+              // For now, keep it in database (might be a permission issue)
+              console.log(`⚠️ [cleanupOrphanedFilesFromIndex] Permission denied for ${fileToVerify} (${verifyResponse.status}) - keeping in database (might be permission issue): ${fileId} (${fileName})`);
             } else if (!verifyResponse.ok) {
               console.log(`⚠️ [cleanupOrphanedFilesFromIndex] Could not verify file ${fileToVerify} (${verifyResponse.status}) - keeping in database: ${fileId} (${fileName})`);
               // Don't remove if we can't verify (might be permission issue)
