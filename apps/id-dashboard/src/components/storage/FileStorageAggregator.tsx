@@ -1091,9 +1091,22 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
         });
       }
 
-      // CRITICAL: Don't persist immediately on token refresh - let auto-persist effect handle it
-      // This prevents multiple persistence calls from different sources
-      // Token refresh just updates the cache, auto-persist will sync to API
+      // CRITICAL: Persist on token refresh - auto-persist is disabled
+      // Only persist if not already persisted recently (debounce)
+      const timeSinceLastPersistence = Date.now() - lastPersistenceTimeRef.current;
+      if (timeSinceLastPersistence > PERSISTENCE_DEBOUNCE_MS) {
+        try {
+          const payload = buildStorageCredentialPayload();
+          if (payload && payload.googleDriveAccounts && payload.googleDriveAccounts.length > 0) {
+            await persistStorageCredentialsToAPI(payload);
+            console.log('✅ [handleTokenRefreshed] Credentials persisted to API after token refresh');
+          }
+        } catch (persistError) {
+          console.warn('⚠️ [handleTokenRefreshed] Failed to persist credentials to API (non-critical):', persistError);
+        }
+      } else {
+        console.log(`⏭️ [handleTokenRefreshed] Skipping persistence (debounced, ${timeSinceLastPersistence}ms < ${PERSISTENCE_DEBOUNCE_MS}ms)`);
+      }
 
       ownerIndexRetryCountsRef.current.delete(backendId);
       ownerIndexWarningLoggedRef.current.delete(backendId);
@@ -1110,162 +1123,13 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
     };
   }, [aggregatorService, persistStorageCredentialsToAPI, authenticatedUser?.id]); // Removed driveAccounts and userEmails from dependencies
 
-  // CRITICAL: Track if auto-persist has already run in this session
-  const autoPersistHasRunRef = React.useRef(false);
-  const autoPersistTimeoutRef = React.useRef<NodeJS.Timeout | null>(null);
-  const autoPersistCheckIntervalRef = React.useRef<NodeJS.Timeout | null>(null);
-  const lastPersistedIdentityIdRef = React.useRef<string | null>(null); // Track which identityId we last persisted for
-
-  // Auto-persist credentials to API when driveAccounts are available - moved here after persistStorageCredentialsToAPI is declared
-  // CRITICAL: Only run ONCE per session, check periodically instead of on every driveAccounts.length change
-  React.useEffect(() => {
-    // CRITICAL: Only run ONCE per session
-    if (autoPersistHasRunRef.current) {
-      return; // Already ran, don't run again
-    }
-    
-    // CRITICAL: Get current identityId from ref to ensure consistency
-    const currentIdentityId = authenticatedUserRef.current?.id;
-    if (!currentIdentityId) {
-      console.log('[StorageCredentials] Auto-persist skipped: no authenticatedUser.id yet');
-      return; // Wait for authenticatedUser to be set
-    }
-    
-    // CRITICAL: If we've already persisted for this identityId, don't run again
-    if (lastPersistedIdentityIdRef.current === currentIdentityId) {
-      console.log('[StorageCredentials] Auto-persist skipped: already persisted for this identityId');
-      autoPersistHasRunRef.current = true; // Mark as run to prevent future attempts
-      return;
-    }
-    
-    // Clear any existing interval
-    if (autoPersistCheckIntervalRef.current) {
-      clearInterval(autoPersistCheckIntervalRef.current);
-    }
-    
-    // Check periodically for accounts instead of on every driveAccounts.length change
-    autoPersistCheckIntervalRef.current = setInterval(() => {
-      // CRITICAL: Only run ONCE per session - check FIRST before doing anything
-      if (autoPersistHasRunRef.current) {
-        if (autoPersistCheckIntervalRef.current) {
-          clearInterval(autoPersistCheckIntervalRef.current);
-          autoPersistCheckIntervalRef.current = null;
-        }
-        return;
-      }
-      
-      // CRITICAL: Block auto-persist for 30 seconds after any disconnect
-      const timeSinceDisconnect = Date.now() - disconnectTimestampRef.current;
-      if (timeSinceDisconnect < DISCONNECT_BLOCK_DURATION_MS) {
-        return; // Still blocked, check again later
-      }
-      
-      // Skip if hydration is in progress - let hydration handle persistence
-      if (hydrationInProgressRef.current) {
-        return; // Still hydrating, check again later
-      }
-      
-      // Check both driveAccounts state and cache - use ref to get current value
-      const cacheEntries = Array.from(driveCredentialCacheRef.current.values());
-      const currentDriveAccountsLength = driveAccountsRef.current.length;
-      const hasAccounts = currentDriveAccountsLength > 0 || cacheEntries.length > 0;
-      
-      if (hasAccounts) {
-        // CRITICAL: Check again AFTER detecting accounts to prevent race condition
-        if (autoPersistHasRunRef.current) {
-          return; // Another interval tick already started persistence
-        }
-        
-        // Mark as run immediately to prevent multiple calls (atomic operation)
-        autoPersistHasRunRef.current = true;
-        
-        // Clear the interval since we found accounts
-        if (autoPersistCheckIntervalRef.current) {
-          clearInterval(autoPersistCheckIntervalRef.current);
-          autoPersistCheckIntervalRef.current = null;
-        }
-        
-        console.log(`[StorageCredentials] Auto-persist effect triggered (ONCE per session)`, {
-          driveAccountsLength: currentDriveAccountsLength,
-          cacheSize: driveCredentialCacheRef.current.size,
-          hydrationSuccess: hydrationSuccessRef.current,
-          hydrationInProgress: hydrationInProgressRef.current
-        });
-        
-        // Clear any existing timeout
-        if (autoPersistTimeoutRef.current) {
-          clearTimeout(autoPersistTimeoutRef.current);
-        }
-        
-        // Longer delay to ensure hydration completes and avoid rapid-fire calls
-        autoPersistTimeoutRef.current = setTimeout(() => {
-          autoPersistTimeoutRef.current = null;
-          
-          // Double-check we're still not in disconnect block period
-          const timeSinceDisconnectCheck = Date.now() - disconnectTimestampRef.current;
-          if (timeSinceDisconnectCheck < DISCONNECT_BLOCK_DURATION_MS) {
-            console.log(`[StorageCredentials] Auto-persist cancelled: disconnect happened during delay`);
-            return;
-          }
-          
-          // Double-check hydration is still not in progress
-          if (hydrationInProgressRef.current) {
-            console.log(`[StorageCredentials] Auto-persist cancelled: hydration started during delay`);
-            return;
-          }
-          
-          // Double-check persistence lock
-          if (globalPersistenceLockRef.current || persistenceInProgressRef.current) {
-            console.log(`[StorageCredentials] Auto-persist cancelled: persistence already in progress`);
-            return;
-          }
-          
-        // CRITICAL: Get current identityId from ref at the time of persistence
-        const currentIdentityIdAtPersist = authenticatedUserRef.current?.id;
-        if (!currentIdentityIdAtPersist) {
-          console.warn('[StorageCredentials] Auto-persist cancelled: authenticatedUser.id is null at persist time');
-          return;
-        }
-        
-        // CRITICAL: If identityId changed since we scheduled this timeout, cancel it
-        if (lastPersistedIdentityIdRef.current && lastPersistedIdentityIdRef.current !== currentIdentityIdAtPersist) {
-          console.warn(`[StorageCredentials] Auto-persist cancelled: identityId changed from ${lastPersistedIdentityIdRef.current.substring(0, 20)}... to ${currentIdentityIdAtPersist.substring(0, 20)}...`);
-          return;
-        }
-        
-        const payload = buildStorageCredentialPayload();
-        const finalDriveAccountsLength = driveAccountsRef.current.length;
-        console.log(`[StorageCredentials] Auto-persisting accounts to API (ONCE per session)...`, {
-          identityId: currentIdentityIdAtPersist.substring(0, 20) + '...',
-          driveAccountsLength: finalDriveAccountsLength,
-          cacheEntriesLength: cacheEntries.length,
-          payloadHasAccounts: !!(payload?.googleDriveAccounts?.length),
-          payloadAccountsCount: payload?.googleDriveAccounts?.length || 0
-        });
-        
-        // Mark as persisted for this identityId BEFORE calling persistStorageCredentialsToAPI
-        lastPersistedIdentityIdRef.current = currentIdentityIdAtPersist;
-        
-        persistStorageCredentialsToAPI(undefined).catch((error) => {
-          console.error('⚠️ [StorageCredentials] Auto-persist failed:', error);
-          // Reset on error so we can retry
-          lastPersistedIdentityIdRef.current = null;
-        });
-        }, 8000); // Increased from 3s to 8s to ensure hydration completes and avoid rapid calls
-      }
-    }, 2000); // Check every 2 seconds for accounts
-    
-    return () => {
-      if (autoPersistCheckIntervalRef.current) {
-        clearInterval(autoPersistCheckIntervalRef.current);
-        autoPersistCheckIntervalRef.current = null;
-      }
-      if (autoPersistTimeoutRef.current) {
-        clearTimeout(autoPersistTimeoutRef.current);
-        autoPersistTimeoutRef.current = null;
-      }
-    };
-  }, []); // Empty dependency array - only run once on mount
+  // CRITICAL: DISABLED auto-persist effect - only persist on explicit user actions
+  // The auto-persist was causing 8+ PUT requests because authenticatedUser.id was changing
+  // Now we only persist when:
+  // 1. User connects a Google Drive account (handleConnectGoogleDrive)
+  // 2. User disconnects a Google Drive account (handleDisconnect)
+  // 3. Token is refreshed (handleTokenRefreshed) - but only if not already persisted recently
+  // This prevents the 8+ duplicate persistence calls
 
   const resolveShareVisibility = React.useCallback(
     (file: AggregatedFile): 'public' | 'private' => {
@@ -2160,9 +2024,8 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
           hydrationRetryTimeoutRef.current = null;
         }
         
-        // CRITICAL: Don't persist immediately after hydration - let auto-persist effect handle it
-        // This prevents multiple persistence calls from different sources
-        // Hydration just loads accounts, auto-persist will sync to API
+        // CRITICAL: Don't persist after hydration - auto-persist is disabled
+        // Hydration just loads accounts from API, no need to persist back
         
         break;
       } catch (error) {
@@ -2207,8 +2070,8 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
       const cacheEntries = Array.from(driveCredentialCacheRef.current.values());
       if (cacheEntries.length > 0) {
         console.log(`[StorageCredentials] Found ${cacheEntries.length} account(s) in local cache - auto-persist effect will sync to API`);
-        // CRITICAL: Don't persist immediately - let auto-persist effect handle it
-        // This prevents multiple persistence calls from different sources
+        // CRITICAL: Don't persist - auto-persist is disabled
+        // Accounts are loaded from cache, no need to persist
       }
     }
   }, [apiEndpoint, resolvedAuth?.publicKey, resolvedAuth?.pnName, authenticatedUser?.id, authenticatedUser?.pnName, authenticatedUser?.publicKey, upsertDriveAccount, persistStorageCredentialsToAPI]);
@@ -2350,9 +2213,8 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
         const storedCreds = decrypted.storageCredentials?.googleDriveAccounts || decrypted.storageCredentials?.googleDrive;
         const credsArray = Array.isArray(storedCreds) ? storedCreds : storedCreds ? [storedCreds] : [];
 
-        // CRITICAL: Don't persist immediately during load - let auto-persist effect handle it
-        // This prevents multiple persistence calls from different sources
-        // Loading just restores accounts, auto-persist will sync to API
+        // CRITICAL: Don't persist during load - auto-persist is disabled
+        // Loading just restores accounts from metadata, no need to persist back
 
         // CRITICAL: Deduplicate accounts BEFORE loading to prevent duplicates
         const uniqueCredsByEmail = new Map<string, typeof credsArray[0]>();
@@ -4499,10 +4361,17 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
       console.warn('ℹ️ [handleConnectGoogleDrive] Skipping secure metadata update; session passcode unavailable');
     }
 
-    // CRITICAL: Don't persist immediately after connect - let auto-persist effect handle it
-    // This prevents multiple persistence calls from different sources
-    // Connect just adds account, auto-persist will sync to API
-    // The auto-persist effect will pick up the new account when driveAccounts.length changes
+    // CRITICAL: Persist immediately after connect - auto-persist is disabled
+    // This ensures credentials are saved to API when user explicitly connects
+    try {
+      const payload = buildStorageCredentialPayload();
+      if (payload && payload.googleDriveAccounts && payload.googleDriveAccounts.length > 0) {
+        await persistStorageCredentialsToAPI(payload);
+        console.log('✅ [handleConnectGoogleDrive] Credentials persisted to API after connection');
+      }
+    } catch (persistError) {
+      console.warn('⚠️ [handleConnectGoogleDrive] Failed to persist credentials to API (non-critical):', persistError);
+    }
 
       // SECURITY: Do not store refresh token in plaintext localStorage
       // Token is stored in encrypted storage via IntegrationCredentialManager above
