@@ -512,6 +512,44 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
     [aggregatorService]
   );
 
+  // CRITICAL: Clean up duplicate cache entries by email
+  function cleanupDuplicateCacheEntries() {
+    const cache = driveCredentialCacheRef.current;
+    const emailsSeen = new Map<string, string>(); // email -> backendId
+    const toDelete: string[] = [];
+    
+    for (const [backendId, credential] of cache.entries()) {
+      if (credential.email) {
+        const normalizedEmail = credential.email.toLowerCase();
+        const existingBackendId = emailsSeen.get(normalizedEmail);
+        if (existingBackendId) {
+          // Keep the one with the most recent updatedAt
+          const existing = cache.get(existingBackendId);
+          if (existing && credential.updatedAt && existing.updatedAt) {
+            if (credential.updatedAt > existing.updatedAt) {
+              // Current entry is newer, delete the old one
+              toDelete.push(existingBackendId);
+              emailsSeen.set(normalizedEmail, backendId);
+            } else {
+              // Existing entry is newer, delete current one
+              toDelete.push(backendId);
+            }
+          } else {
+            // No updatedAt info, keep first one found
+            toDelete.push(backendId);
+          }
+        } else {
+          emailsSeen.set(normalizedEmail, backendId);
+        }
+      }
+    }
+    
+    if (toDelete.length > 0) {
+      console.log(`🧹 [cleanupDuplicateCacheEntries] Removing ${toDelete.length} duplicate cache entries`);
+      toDelete.forEach(backendId => cache.delete(backendId));
+    }
+  }
+
   function purgeDuplicateBackendsForEmail(preferredBackendId: string, email: string | null | undefined) {
     if (!email) {
         return;
@@ -604,9 +642,41 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
     if (entries.length === 0) {
       return null;
     }
+    
+    // CRITICAL: Deduplicate by email - only keep the most recent account per email
+    const accountsByEmail = new Map<string, typeof entries[0]>();
+    const accountsWithoutEmail: typeof entries = [];
+    
+    for (const entry of entries) {
+      if (entry.email) {
+        const normalizedEmail = entry.email.toLowerCase();
+        const existing = accountsByEmail.get(normalizedEmail);
+        // Keep the most recent one (by updatedAt or connectedAt)
+        if (!existing || 
+            (entry.updatedAt && existing.updatedAt && entry.updatedAt > existing.updatedAt) ||
+            (entry.connectedAt && existing.connectedAt && entry.connectedAt > existing.connectedAt)) {
+          accountsByEmail.set(normalizedEmail, entry);
+        }
+      } else {
+        // Accounts without email - keep by backendId (should be unique)
+        accountsWithoutEmail.push(entry);
+      }
+    }
+    
+    // Combine deduplicated accounts
+    const uniqueAccounts = Array.from(accountsByEmail.values()).concat(accountsWithoutEmail);
+    
+    // CRITICAL: Also deduplicate by backendId as a safety measure
+    const finalAccounts = new Map<string, typeof entries[0]>();
+    for (const account of uniqueAccounts) {
+      if (!finalAccounts.has(account.backendId)) {
+        finalAccounts.set(account.backendId, account);
+      }
+    }
+    
     const now = new Date().toISOString();
     return {
-      googleDriveAccounts: entries.map((entry) => ({
+      googleDriveAccounts: Array.from(finalAccounts.values()).map((entry) => ({
         backendId: entry.backendId,
         keyPrefix: entry.keyPrefix,
         accessToken: entry.accessToken,
@@ -691,8 +761,16 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
   const persistenceInProgressRef = React.useRef(false);
   const lastPersistenceTimeRef = React.useRef<number>(0);
   const PERSISTENCE_DEBOUNCE_MS = 5000; // Don't persist more than once every 5 seconds
+  // CRITICAL: Global lock to prevent multiple persistence calls
+  const globalPersistenceLockRef = React.useRef(false);
 
   const persistStorageCredentialsToAPI = React.useCallback(async (credentialsPayload?: any, cid?: string | null) => {
+    // CRITICAL: Global lock to prevent multiple simultaneous persistence calls
+    if (globalPersistenceLockRef.current) {
+      console.debug('⏳ [StorageCredentials] Global persistence lock active, skipping...');
+      return;
+    }
+    
     // Prevent multiple simultaneous calls
     if (persistenceInProgressRef.current) {
       console.debug('⏳ [StorageCredentials] Persistence already in progress, skipping...');
@@ -706,6 +784,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
       return;
     }
 
+    globalPersistenceLockRef.current = true;
     persistenceInProgressRef.current = true;
     lastPersistenceTimeRef.current = now;
 
@@ -718,10 +797,12 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
       
       let payload = credentialsPayload;
       if (!payload) {
+        const cacheSizeBeforeDedup = driveCredentialCacheRef.current.size;
         payload = buildStorageCredentialPayload();
         console.log('[StorageCredentials] Built payload from cache', {
           hasPayload: !!payload,
-          accountsCount: payload?.googleDriveAccounts?.length || 0
+          accountsCount: payload?.googleDriveAccounts?.length || 0,
+          cacheSizeBeforeDedup: cacheSizeBeforeDedup
         });
       }
 
@@ -782,7 +863,9 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
             error: errorText,
           });
         } else {
-          console.warn('✅ [StorageCredentials] Credentials persisted to API');
+          console.warn('✅ [StorageCredentials] Credentials persisted to API', {
+            accountsCount: payload.googleDriveAccounts.length
+          });
         }
       } catch (error) {
         // identityId is secret - not logged
@@ -791,6 +874,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
         });
       }
     } finally {
+      globalPersistenceLockRef.current = false;
       persistenceInProgressRef.current = false;
     }
   }, [buildStorageCredentialPayload, persistCredentialsToSecureMetadata, apiEndpoint, driveAccounts.length]);
@@ -1410,6 +1494,9 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
       connectedAt: params.connectedAt || existingCredential?.connectedAt || nowIso,
       updatedAt: params.updatedAt || nowIso
     });
+
+    // CRITICAL: Clean up duplicate cache entries immediately
+    cleanupDuplicateCacheEntries();
 
     purgeDuplicateBackendsForEmail(params.backendId, resolvedEmail ?? existingCredential?.email ?? null);
 
