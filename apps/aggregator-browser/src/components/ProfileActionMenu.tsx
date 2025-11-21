@@ -5,7 +5,7 @@
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { createPortal } from 'react-dom';
-import { User, MessageCircle, UserPlus, Check, X, Clock, ChevronDown, Edit2, Save, X as XIcon, Pencil, UserMinus } from 'lucide-react';
+import { User, MessageCircle, UserPlus, Check, X, Clock, ChevronDown, Edit2, Save, X as XIcon, Pencil, UserMinus, Send } from 'lucide-react';
 import { useUserState } from '../contexts/UserStateContext';
 import { getConnectionStatus, sendConnectionRequest, acceptConnectionRequest, rejectConnectionRequest, removeConnection } from '../services/connectionService';
 import { ConnectionStatus } from '../services/connectionService';
@@ -306,13 +306,16 @@ export const ProfileActionMenu = React.memo(function ProfileActionMenu({ creator
       const target = e.target as HTMLElement;
       if (!target.closest('[data-profile-menu]')) {
         setIsOpen(false);
-        setIsEditingName(false);
+        if (isEditingName) {
+          setIsEditingName(false);
+          setEditNameValue(displayName); // Reset to original value
+        }
       }
     };
 
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, [isOpen]);
+  }, [isOpen, isEditingName, displayName]);
 
   const handleConnect = async () => {
     if (!userState.isUnlocked || !userState.pnIdentifier) return;
@@ -385,7 +388,12 @@ export const ProfileActionMenu = React.memo(function ProfileActionMenu({ creator
   };
 
   const handleSaveDisplayName = async () => {
-    const newDisplayName = editNameValue.trim() || creatorId.substring(0, 8);
+    const newDisplayName = editNameValue.trim();
+    
+    if (!newDisplayName) {
+      showError('Display name cannot be empty');
+      return;
+    }
     
     if (isOwnProfile) {
       // Update own display name - save to Google Drive via API and local state
@@ -394,10 +402,12 @@ export const ProfileActionMenu = React.memo(function ProfileActionMenu({ creator
         if (userState.pnIdentifier) {
           await updateDisplayNameAPI(userState.pnIdentifier, newDisplayName);
         }
-        updateDisplayName(newDisplayName);
+        updateDisplayName(newDisplayName); // Update local state
+        setUserDisplayName(creatorId, newDisplayName); // Cache it
         setIsEditingName(false);
         success('Display name updated!');
       } catch (error: any) {
+        console.error('Failed to update display name:', error);
         showError(error.message || 'Failed to update display name');
       } finally {
         setLoading(false);
@@ -408,11 +418,6 @@ export const ProfileActionMenu = React.memo(function ProfileActionMenu({ creator
       setIsEditingName(false);
       success('Display name updated!');
     }
-  };
-
-  const handleCancelEdit = () => {
-    setIsEditingName(false);
-    setEditNameValue(displayName);
   };
 
   // Get connection action button
@@ -539,9 +544,9 @@ export const ProfileActionMenu = React.memo(function ProfileActionMenu({ creator
             {/* Header with Display Name */}
           <div className="px-4 py-3 border-b border-neutral-700">
             {isEditingName && isOwnProfile ? (
-              <div className="flex items-center space-x-2">
+              <div className="flex items-end gap-2">
                 {/* Profile Icon */}
-                <div className="w-8 h-8 rounded-full bg-black/30 backdrop-blur-sm flex items-center justify-center flex-shrink-0 overflow-hidden">
+                <div className="w-8 h-8 rounded-full bg-black/30 backdrop-blur-sm flex items-center justify-center flex-shrink-0 overflow-hidden mb-0.5">
                   {profileImageUrl && !profileImageLoading ? (
                     <img 
                       src={profileImageUrl} 
@@ -558,28 +563,31 @@ export const ProfileActionMenu = React.memo(function ProfileActionMenu({ creator
                   onChange={(e) => setEditNameValue(e.target.value)}
                   onKeyDown={(e) => {
                     if (e.key === 'Enter') {
-                      handleSaveDisplayName();
+                      e.preventDefault();
+                      if (editNameValue.trim()) {
+                        handleSaveDisplayName();
+                      }
                     } else if (e.key === 'Escape') {
-                      handleCancelEdit();
+                      setIsEditingName(false);
+                      setEditNameValue(displayName);
                     }
                   }}
-                  className="flex-1 px-2 py-1 bg-neutral-700 text-white rounded text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  className="flex-1 px-3 py-2 bg-neutral-800 text-white rounded-lg border border-neutral-700 focus:border-blue-500 focus:outline-none text-sm"
                   autoFocus
                   maxLength={50}
+                  placeholder="Enter platform name..."
                 />
                 <button
-                  onClick={handleSaveDisplayName}
-                  className="p-1 text-green-400 hover:bg-neutral-700 rounded transition-colors"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    handleSaveDisplayName();
+                  }}
+                  className="p-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center justify-center mb-0.5 disabled:opacity-50 disabled:cursor-not-allowed"
+                  disabled={!editNameValue.trim() || loading}
                   title="Save"
                 >
-                  <Save className="h-4 w-4" />
-                </button>
-                <button
-                  onClick={handleCancelEdit}
-                  className="p-1 text-red-400 hover:bg-neutral-700 rounded transition-colors"
-                  title="Cancel"
-                >
-                  <XIcon className="h-4 w-4" />
+                  <Send className="h-5 w-5" />
                 </button>
               </div>
             ) : (
