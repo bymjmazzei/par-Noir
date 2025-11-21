@@ -16,7 +16,9 @@ export interface AuthorizationCode {
   nonce?: string;
   did: string; // User's DID
   publicKey?: string; // Public key from identity file (needed to derive pN identifier)
-  // pN name is NOT stored here - it's a secret and should never be stored
+  pnName?: string; // pN name (for VolumeIdGenerator - only used for derivation, not stored)
+  passcode?: string; // Passcode (for VolumeIdGenerator - only used for derivation, not stored)
+  // Note: pN name and passcode are NOT stored - they're secrets and only used for pN identifier derivation
   expiresAt: number; // Timestamp
 }
 
@@ -84,7 +86,9 @@ export class PNOAuthService {
     nonce?: string;
     did: string;
     publicKey?: string; // Public key from identity file (needed to derive pN identifier)
-    // Note: pN name is NOT accepted here - it's a secret and should never be stored
+    pnName?: string; // pN name (for VolumeIdGenerator - only used for derivation, not stored)
+    passcode?: string; // Passcode (for VolumeIdGenerator - only used for derivation, not stored)
+    // Note: pN name and passcode are NOT stored - they're secrets and only used for pN identifier derivation
   }): string {
     const code = crypto.randomBytes(32).toString('hex');
     
@@ -154,10 +158,12 @@ export class PNOAuthService {
     authorizationCodes.delete(params.code);
 
     // Generate access token
-    // Note: pN name is NOT included - it's a secret
+    // Note: pN name and passcode are NOT included - they're secrets
     const accessToken = await this.generateAccessToken({
       did: authCode.did,
       publicKey: authCode.publicKey, // Pass publicKey for pN identifier derivation
+      pnName: authCode.pnName, // Pass pN name for VolumeIdGenerator (if available)
+      passcode: authCode.passcode, // Pass passcode for VolumeIdGenerator (if available)
       clientId: params.clientId,
       scope: authCode.scope
     });
@@ -180,19 +186,28 @@ export class PNOAuthService {
   }
 
   /**
-   * Derive pN identifier from DID + publicKey (same method as dashboard)
-   * Standard: Combine DID + publicKey, SHA-256 hash, take first 12 hex chars
-   * This matches: authenticatedUser.id + resolvedAuth.publicKey
+   * Derive pN identifier using VolumeIdGenerator (STANDARDIZED METHOD)
    * 
-   * IMPORTANT: Dashboard uses Web Crypto API (crypto.subtle.digest) which uses UTF-8 encoding
-   * We need to match this exactly using Node.js crypto with UTF-8 encoding
+   * STANDARDIZED FORMULA (used everywhere):
+   *   1. Combine: `${pnName}:${passcode}:${publicKey}`
+   *   2. Hash: SHA256(combined string)
+   *   3. Extract: First 12 characters of hex representation
+   *   4. Format: `pn-{12-char-hex-hash}`
+   * 
+   * Falls back to old method (did:publicKey) if pnName/passcode not available
    */
-  private static async derivePnIdentifier(did: string, publicKey?: string): Promise<string | undefined> {
+  private static async derivePnIdentifier(
+    did: string, 
+    publicKey?: string, 
+    pnName?: string, 
+    passcode?: string
+  ): Promise<string | undefined> {
     try {
       if (!did) {
         console.error('[OAuth] No DID provided for pN identifier derivation');
         return undefined;
       }
+      
       // Use provided publicKey if available, otherwise extract from DID
       const publicKeyToUse = publicKey || (did.startsWith('did:key:') ? did.substring(8) : undefined);
       
@@ -201,25 +216,43 @@ export class PNOAuthService {
         return undefined;
       }
       
-      // EXACT DASHBOARD METHOD:
-      // Dashboard: `${authenticatedUser.id}:${resolvedAuth.publicKey}`
-      // Then: TextEncoder.encode() → crypto.subtle.digest('SHA-256') → hex → first 12 chars
+      // CRITICAL: Use VolumeIdGenerator method if pnName and passcode are available
+      // This matches the dashboard's VolumeIdGenerator.generateVolumeId()
+      if (pnName && passcode) {
+        // STANDARDIZED: Combine credentials in exact order: pnName:passcode:publicKey
+        const combined = `${pnName}:${passcode}:${publicKeyToUse}`;
+        
+        // STANDARDIZED: Hash using SHA-256 (UTF-8 encoding)
+        const utf8Bytes = Buffer.from(combined, 'utf8');
+        const hash = crypto.createHash('sha256').update(utf8Bytes).digest('hex');
+        
+        // STANDARDIZED: Convert to hex and take first 12 characters
+        const shortHash = hash.substring(0, 12);
+        
+        // STANDARDIZED: Format: pn-{12-char-hex}
+        const pnIdentifier = `pn-${shortHash}`;
+        
+        console.log('[OAuth] pN identifier derivation (VolumeIdGenerator):');
+        console.log('  pnName:', pnName);
+        console.log('  PublicKey:', publicKeyToUse.substring(0, 50) + '...');
+        console.log('  Combined:', `${pnName}:***:${publicKeyToUse.substring(0, 20)}...`);
+        console.log('  Hash:', hash);
+        console.log('  pN Identifier:', pnIdentifier);
+        
+        return pnIdentifier;
+      }
+      
+      // FALLBACK: Old method (did:publicKey) for backward compatibility
+      // This is used when pnName/passcode are not available (e.g., refresh token flow)
       const combined = `${did}:${publicKeyToUse}`;
-      
-      // TextEncoder.encode() in browser = UTF-8 encoding
-      // Buffer.from(string, 'utf8') in Node.js = UTF-8 encoding (same thing)
       const utf8Bytes = Buffer.from(combined, 'utf8');
-      
-      // crypto.subtle.digest('SHA-256', data) in browser
-      // crypto.createHash('sha256').update(buffer).digest('hex') in Node.js (same thing)
       const hash = crypto.createHash('sha256').update(utf8Bytes).digest('hex');
+      const shortHash = hash.substring(0, 12);
+      const pnIdentifier = `pn-${shortHash}`; // Add prefix for consistency
       
-      // Take first 12 hex characters (same as dashboard)
-      const pnIdentifier = hash.substring(0, 12);
-      
-      console.log('[OAuth] pN identifier derivation:');
+      console.log('[OAuth] pN identifier derivation (fallback - did:publicKey):');
       console.log('  DID:', did);
-      console.log('  PublicKey:', publicKeyToUse);
+      console.log('  PublicKey:', publicKeyToUse.substring(0, 50) + '...');
       console.log('  Combined:', combined);
       console.log('  Hash:', hash);
       console.log('  pN Identifier:', pnIdentifier);
@@ -234,11 +267,24 @@ export class PNOAuthService {
   /**
    * Generate access token
    */
-  private static async generateAccessToken(params: { did: string; publicKey?: string; pnIdentifier?: string; clientId: string; scope: string[] }): Promise<string> {
-    // Use provided pN identifier if available, otherwise derive from DID + publicKey
+  private static async generateAccessToken(params: { 
+    did: string; 
+    publicKey?: string; 
+    pnIdentifier?: string; 
+    pnName?: string; 
+    passcode?: string; 
+    clientId: string; 
+    scope: string[] 
+  }): Promise<string> {
+    // Use provided pN identifier if available, otherwise derive using VolumeIdGenerator or fallback
     let pnIdentifier = params.pnIdentifier;
     if (!pnIdentifier && params.publicKey) {
-      pnIdentifier = await this.derivePnIdentifier(params.did, params.publicKey);
+      pnIdentifier = await this.derivePnIdentifier(
+        params.did, 
+        params.publicKey, 
+        params.pnName, 
+        params.passcode
+      );
     }
     
     const payload: TokenPayload = {
@@ -270,12 +316,21 @@ export class PNOAuthService {
   /**
    * Generate refresh token and store in database
    */
-  private static async generateRefreshToken(params: { did: string; publicKey?: string; clientId: string; scope: string[] }): Promise<string> {
+  private static async generateRefreshToken(params: { 
+    did: string; 
+    publicKey?: string; 
+    pnName?: string; 
+    passcode?: string; 
+    clientId: string; 
+    scope: string[] 
+  }): Promise<string> {
     const token = crypto.randomBytes(32).toString('hex');
     const expiresAt = new Date(Date.now() + this.REFRESH_TOKEN_EXPIRY);
     
-    // Derive pN identifier if publicKey is available
-    const pnIdentifier = params.publicKey ? await this.derivePnIdentifier(params.did, params.publicKey) : undefined;
+    // Derive pN identifier using VolumeIdGenerator if pnName/passcode available, otherwise fallback
+    const pnIdentifier = params.publicKey 
+      ? await this.derivePnIdentifier(params.did, params.publicKey, params.pnName, params.passcode) 
+      : undefined;
     
     const db = getDatabasePool();
     try {

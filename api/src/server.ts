@@ -4998,8 +4998,11 @@ class ProductionServer {
         console.log('  Full PublicKey:', public_key);
         console.log('  PublicKey length:', public_key.length);
 
+        // Extract pnName from request (client should send it after decrypting identity)
+        const pnName = req.body.pnName || req.body.pn_name;
+        
         // Generate authorization code
-        // Store public_key so we can derive pN identifier correctly (same as dashboard)
+        // Store public_key, pnName, and passcode so we can derive pN identifier using VolumeIdGenerator
         const scopes = scope ? scope.split(' ') : ['openid', 'profile'];
         const code = PNOAuthService.generateAuthorizationCode({
           clientId: client_id,
@@ -5008,7 +5011,9 @@ class ProductionServer {
           state,
           nonce,
           did,
-          publicKey: public_key // Store publicKey for pN identifier derivation
+          publicKey: public_key, // Store publicKey for pN identifier derivation
+          pnName: pnName, // Store pN name for VolumeIdGenerator (if available)
+          passcode: passcode // Store passcode for VolumeIdGenerator (temporarily, not persisted)
         });
 
         // Return authorization code
