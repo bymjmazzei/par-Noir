@@ -75,6 +75,11 @@ function App() {
   useEffect(() => {
     videoBlobsRef.current = videoBlobs;
   }, [videoBlobs]);
+  
+  // Keep thumbnailsRef in sync with thumbnails state
+  useEffect(() => {
+    thumbnailsRef.current = thumbnails;
+  }, [thumbnails]);
   const [viewMode, setViewMode] = useState<'grid' | 'feed'>('feed'); // Default to feed mode
   const [activeFeedId, setActiveFeedId] = useState<string>('public');
   const [currentFeedIndex, setCurrentFeedIndex] = useState(0); // Current file index in feed
@@ -111,6 +116,7 @@ function App() {
   const loadBulkEngagementStatsRef = useRef<((fileIds: string[]) => Promise<void>) | null>(null); // Ref for loadBulkEngagementStats function
   const loadedEngagementFileIdsRef = useRef<Set<string>>(new Set()); // Track which fileIds have had engagement stats loaded
   const videoBlobsRef = useRef<Map<string, string>>(new Map()); // Ref to track videoBlobs without causing dependency issues
+  const thumbnailsRef = useRef<Map<string, string>>(new Map()); // Ref to track thumbnails without causing dependency issues
   const loadingDisplayNameRef = useRef<Set<string>>(new Set()); // Track which user IDs are currently loading display names
   
   const metadataIndexService = getMetadataIndexService();
@@ -946,7 +952,7 @@ function App() {
                             typeof file.publicToken === 'string' && 
                             file.publicToken.trim().length > 0;
       
-      if ((!isImage && !isVideo) || !hasValidToken || thumbnails.has(file.fileId) || generatingThumbnails.has(file.fileId)) {
+      if ((!isImage && !isVideo) || !hasValidToken || thumbnailsRef.current.has(file.fileId) || generatingThumbnails.has(file.fileId)) {
         if (hasValidToken === false && (isImage || isVideo)) {
           console.warn(`⚠️ [Feed] Skipping ${file.fileId} - missing or invalid publicToken:`, {
             fileId: file.fileId,
