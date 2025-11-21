@@ -745,15 +745,18 @@ export class AggregatorMetadataServiceDB {
         if (pnFolders.length === 0) {
           console.log(`⚠️ [cleanupOrphanedFilesFromIndex] No pN folders found - verifying file exists before removing: ${fileId} (${fileName})`);
           console.log(`🔍 [cleanupOrphanedFilesFromIndex] Available IDs: fileId=${fileId}, backendFileId=${backendFileId}, metadataFileId=${metadataFileId}, googleDriveFileId=${(metadata as any).googleDriveFileId}`);
-          // Verify file exists in Google Drive - if it doesn't exist, remove it
-          // Use backendFileId first (actual Google Drive file ID), then fall back to fileId
-          // But if backendFileId is not a valid Google Drive ID format, skip verification
-          const fileToVerify = backendFileId || metadataFileId || fileId;
-          console.log(`🔍 [cleanupOrphanedFilesFromIndex] Verifying Google Drive file: ${fileToVerify}`);
           
-          // If fileToVerify looks like it might not be a Google Drive ID (e.g., contains hyphens in wrong places), skip
-          // Google Drive IDs are typically alphanumeric without special characters (except hyphens in specific patterns)
-          // But actually, Google Drive IDs can have various formats, so we'll try anyway
+          // If we don't have a backendFileId, we can't verify the file exists in Google Drive
+          // In this case, don't remove it - it might be a valid file that just doesn't have the ID set
+          if (!backendFileId) {
+            console.log(`⚠️ [cleanupOrphanedFilesFromIndex] No backendFileId available - cannot verify file exists. Keeping in database: ${fileId} (${fileName})`);
+            continue;
+          }
+          
+          // Verify file exists in Google Drive - if it doesn't exist, remove it
+          // Use backendFileId (actual Google Drive file ID)
+          const fileToVerify = backendFileId;
+          console.log(`🔍 [cleanupOrphanedFilesFromIndex] Verifying Google Drive file: ${fileToVerify}`);
           try {
             const verifyResponse = await fetch(
               `https://www.googleapis.com/drive/v3/files/${fileToVerify}?fields=id,trashed`,
@@ -789,8 +792,17 @@ export class AggregatorMetadataServiceDB {
         // If user doesn't have a public index file, verify file exists before removing
         if (pnIdentifier && !usersWithIndexFiles.has(pnIdentifier)) {
           console.log(`⚠️ [cleanupOrphanedFilesFromIndex] User ${pnIdentifier} has no public index file - verifying file exists: ${fileId} (${fileName})`);
+          
+          // If we don't have a backendFileId, we can't verify the file exists in Google Drive
+          // In this case, don't remove it - it might be a valid file that just doesn't have the ID set
+          if (!backendFileId) {
+            console.log(`⚠️ [cleanupOrphanedFilesFromIndex] No backendFileId available - cannot verify file exists. Keeping in database: ${fileId} (${fileName})`);
+            continue;
+          }
+          
           // Verify file exists in Google Drive - if it doesn't exist, remove it
-          const fileToVerify = backendFileId || metadataFileId || fileId;
+          // Use backendFileId (actual Google Drive file ID)
+          const fileToVerify = backendFileId;
           try {
             const verifyResponse = await fetch(
               `https://www.googleapis.com/drive/v3/files/${fileToVerify}?fields=id,trashed`,
@@ -829,8 +841,17 @@ export class AggregatorMetadataServiceDB {
         // If user has no valid files (empty index), verify file exists before removing
         if (pnIdentifier && userValidFileIds && userValidFileIds.size === 0) {
           console.log(`⚠️ [cleanupOrphanedFilesFromIndex] User ${pnIdentifier} has empty public index - verifying file exists: ${fileId} (${fileName})`);
+          
+          // If we don't have a backendFileId, we can't verify the file exists in Google Drive
+          // In this case, don't remove it - it might be a valid file that just doesn't have the ID set
+          if (!backendFileId) {
+            console.log(`⚠️ [cleanupOrphanedFilesFromIndex] No backendFileId available - cannot verify file exists. Keeping in database: ${fileId} (${fileName})`);
+            continue;
+          }
+          
           // Verify file exists in Google Drive - if it doesn't exist, remove it
-          const fileToVerify = backendFileId || metadataFileId || fileId;
+          // Use backendFileId (actual Google Drive file ID)
+          const fileToVerify = backendFileId;
           try {
             const verifyResponse = await fetch(
               `https://www.googleapis.com/drive/v3/files/${fileToVerify}?fields=id,trashed`,
@@ -873,7 +894,17 @@ export class AggregatorMetadataServiceDB {
         if (!isInIndex) {
           // File is not in the public index - verify it doesn't exist before removing
           console.log(`⚠️ [cleanupOrphanedFilesFromIndex] File NOT in index - verifying file exists: ${fileId} (${fileName})`);
-          const fileToVerify = backendFileId || metadataFileId || fileId;
+          
+          // If we don't have a backendFileId, we can't verify the file exists in Google Drive
+          // In this case, don't remove it - it might be a valid file that just doesn't have the ID set
+          if (!backendFileId) {
+            console.log(`⚠️ [cleanupOrphanedFilesFromIndex] No backendFileId available - cannot verify file exists. Keeping in database: ${fileId} (${fileName})`);
+            continue;
+          }
+          
+          // Verify file exists in Google Drive - if it doesn't exist, remove it
+          // Use backendFileId (actual Google Drive file ID)
+          const fileToVerify = backendFileId;
           try {
             const verifyResponse = await fetch(
               `https://www.googleapis.com/drive/v3/files/${fileToVerify}?fields=id,trashed`,
