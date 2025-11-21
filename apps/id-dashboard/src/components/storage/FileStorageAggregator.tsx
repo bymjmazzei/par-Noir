@@ -638,9 +638,42 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
   }
   
   const buildStorageCredentialPayload = React.useCallback(() => {
+    // CRITICAL: Clean up duplicates BEFORE building payload
+    cleanupDuplicateCacheEntries();
+    
     const entries = Array.from(driveCredentialCacheRef.current.values());
     if (entries.length === 0) {
       return null;
+    }
+    
+    // CRITICAL: Safety check - if cache has more than 10 entries, something is very wrong
+    if (entries.length > 10) {
+      console.error(`🚨 [buildStorageCredentialPayload] CRITICAL: Cache has ${entries.length} entries (expected max 10). Clearing duplicates aggressively.`);
+      // Keep only the most recent entry per email
+      const accountsByEmail = new Map<string, typeof entries[0]>();
+      for (const entry of entries) {
+        if (entry.email) {
+          const normalizedEmail = entry.email.toLowerCase();
+          const existing = accountsByEmail.get(normalizedEmail);
+          if (!existing || 
+              (entry.updatedAt && existing.updatedAt && entry.updatedAt > existing.updatedAt) ||
+              (entry.connectedAt && existing.connectedAt && entry.connectedAt > existing.connectedAt)) {
+            accountsByEmail.set(normalizedEmail, entry);
+          }
+        }
+      }
+      // Clear cache and repopulate with only unique accounts
+      driveCredentialCacheRef.current.clear();
+      for (const entry of accountsByEmail.values()) {
+        driveCredentialCacheRef.current.set(entry.backendId, entry);
+      }
+      // Re-fetch entries after cleanup
+      const cleanedEntries = Array.from(driveCredentialCacheRef.current.values());
+      if (cleanedEntries.length === 0) {
+        return null;
+      }
+      entries.length = 0;
+      entries.push(...cleanedEntries);
     }
     
     // CRITICAL: Deduplicate by email - only keep the most recent account per email
@@ -1754,7 +1787,49 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
           continue;
         }
 
+        // CRITICAL: Deduplicate accounts BEFORE hydrating to prevent 300+ duplicates
+        const uniqueAccountsByEmail = new Map<string, typeof accountsArray[0]>();
+        const accountsWithoutEmail: typeof accountsArray = [];
+        
         for (const account of accountsArray) {
+          if (account?.email) {
+            const normalizedEmail = account.email.toLowerCase();
+            const existing = uniqueAccountsByEmail.get(normalizedEmail);
+            // Keep the most recent one (by updatedAt or connectedAt)
+            if (!existing || 
+                (account.updatedAt && existing.updatedAt && account.updatedAt > existing.updatedAt) ||
+                (account.connectedAt && existing.connectedAt && account.connectedAt > existing.connectedAt)) {
+              uniqueAccountsByEmail.set(normalizedEmail, account);
+            }
+          } else {
+            accountsWithoutEmail.push(account);
+          }
+        }
+        
+        const deduplicatedAccounts = Array.from(uniqueAccountsByEmail.values()).concat(accountsWithoutEmail);
+        
+        // CRITICAL: Safety check - if we have more than 10 accounts, something is very wrong
+        if (deduplicatedAccounts.length > 10) {
+          console.error(`🚨 [StorageCredentials] CRITICAL: Found ${deduplicatedAccounts.length} accounts in API response (expected max 10). This indicates severe duplication. Clearing cache and using only the first account per email.`);
+          // Clear the cache completely and start fresh
+          driveCredentialCacheRef.current.clear();
+          // Only process the first unique account per email
+          const firstAccountsByEmail = new Map<string, typeof accountsArray[0]>();
+          for (const account of accountsArray) {
+            if (account?.email) {
+              const normalizedEmail = account.email.toLowerCase();
+              if (!firstAccountsByEmail.has(normalizedEmail)) {
+                firstAccountsByEmail.set(normalizedEmail, account);
+              }
+            }
+          }
+          deduplicatedAccounts.length = 0;
+          deduplicatedAccounts.push(...Array.from(firstAccountsByEmail.values()), ...accountsWithoutEmail.slice(0, 1));
+        }
+        
+        console.log(`🔄 [StorageCredentials] Hydrating ${deduplicatedAccounts.length} unique account(s) from ${accountsArray.length} total in API response`);
+
+        for (const account of deduplicatedAccounts) {
           const token = account?.accessToken;
           if (!token) {
             continue;
@@ -2001,7 +2076,29 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
           });
         }
 
+        // CRITICAL: Deduplicate accounts BEFORE loading to prevent duplicates
+        const uniqueCredsByEmail = new Map<string, typeof credsArray[0]>();
+        const credsWithoutEmail: typeof credsArray = [];
+        
         for (const creds of credsArray) {
+          if (creds?.email) {
+            const normalizedEmail = creds.email.toLowerCase();
+            const existing = uniqueCredsByEmail.get(normalizedEmail);
+            if (!existing) {
+              uniqueCredsByEmail.set(normalizedEmail, creds);
+            }
+          } else {
+            credsWithoutEmail.push(creds);
+          }
+        }
+        
+        const deduplicatedCreds = Array.from(uniqueCredsByEmail.values()).concat(credsWithoutEmail);
+        
+        if (deduplicatedCreds.length !== credsArray.length) {
+          console.log(`🔄 [loadTokenFromMetadata] Deduplicated ${credsArray.length} accounts to ${deduplicatedCreds.length} unique accounts`);
+        }
+
+        for (const creds of deduplicatedCreds) {
           const token = creds?.accessToken;
           if (!token) {
             continue;
