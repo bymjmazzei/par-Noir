@@ -26,27 +26,51 @@ export interface UserProfile {
   profileImageFileId?: string;
 }
 
+// Track ongoing profile requests to prevent duplicate calls
+const profileRequestCache = new Map<string, Promise<UserProfile>>();
+
 /**
  * Get user profile (display name and profile image fileId)
  * Accepts both pN identifiers (pn-{hash}) and DIDs (did:key:...)
  */
 export async function getUserProfile(userDid: string): Promise<UserProfile> {
-  try {
-    // API now handles both pN identifiers and DIDs
-    // No need to skip any format - let the API handle the lookup
-    const response = await fetch(`${API_ENDPOINT}/api/profile/${encodeURIComponent(userDid)}`, {
-      headers: getAuthHeaders()
-    });
-
-    if (!response.ok) {
-      return { displayName: null, profileImageFileId: null };
-    }
-
-    return await response.json();
-  } catch (error) {
-    // Silently return null - profile may not exist
-    return { displayName: null, profileImageFileId: null };
+  // Check if there's already an ongoing request for this user
+  const cachedRequest = profileRequestCache.get(userDid);
+  if (cachedRequest) {
+    return cachedRequest;
   }
+
+  const request = (async () => {
+    try {
+      // API now handles both pN identifiers and DIDs
+      // No need to skip any format - let the API handle the lookup
+      const response = await fetch(`${API_ENDPOINT}/api/profile/${encodeURIComponent(userDid)}`, {
+        headers: getAuthHeaders()
+      });
+
+      if (response.status === 429) {
+        // Rate limited - return empty profile without logging error
+        console.warn('Rate limited (429) when loading profile, skipping');
+        return { displayName: undefined, profileImageFileId: undefined };
+      }
+
+      if (!response.ok) {
+        return { displayName: undefined, profileImageFileId: undefined };
+      }
+
+      return await response.json();
+    } catch (error) {
+      // Silently return null - profile may not exist
+      return { displayName: undefined, profileImageFileId: undefined };
+    } finally {
+      // Remove from cache after request completes
+      profileRequestCache.delete(userDid);
+    }
+  })();
+
+  // Cache the request
+  profileRequestCache.set(userDid, request);
+  return request;
 }
 
 /**

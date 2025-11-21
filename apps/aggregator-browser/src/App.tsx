@@ -111,6 +111,7 @@ function App() {
   const loadBulkEngagementStatsRef = useRef<((fileIds: string[]) => Promise<void>) | null>(null); // Ref for loadBulkEngagementStats function
   const loadedEngagementFileIdsRef = useRef<Set<string>>(new Set()); // Track which fileIds have had engagement stats loaded
   const videoBlobsRef = useRef<Map<string, string>>(new Map()); // Ref to track videoBlobs without causing dependency issues
+  const loadingDisplayNameRef = useRef<Set<string>>(new Set()); // Track which user IDs are currently loading display names
   
   const metadataIndexService = getMetadataIndexService();
   const { toggleLike, share, getLikeCount, isLiked, getComments, loadComments, getShareCount, loadBulkEngagementStats } = useEngagement();
@@ -224,6 +225,13 @@ function App() {
   const loadUserDisplayName = useCallback(async (pnIdentifier: string) => {
     if (!pnIdentifier || pnIdentifier.startsWith('did:key:')) return;
     
+    // Prevent duplicate simultaneous calls for the same user
+    if (loadingDisplayNameRef.current.has(pnIdentifier)) {
+      return;
+    }
+    
+    loadingDisplayNameRef.current.add(pnIdentifier);
+    
     try {
       const profile = await getUserProfile(pnIdentifier);
       if (profile.displayName) {
@@ -232,6 +240,8 @@ function App() {
     } catch (error) {
       // Silently fail - profile may not exist yet
       console.debug('Failed to load user display name:', error);
+    } finally {
+      loadingDisplayNameRef.current.delete(pnIdentifier);
     }
   }, [updateDisplayName]);
 
@@ -305,9 +315,15 @@ function App() {
       try {
         const result = await FeedService.listFeeds({ limit: 100 });
         setFeeds(result.feeds);
-      } catch (error) {
-        console.error('Failed to load feeds:', error);
+      } catch (error: any) {
+        // Don't log 429 errors as errors - they're handled gracefully
+        if (error?.message?.includes('429') || error?.status === 429) {
+          console.warn('Rate limited when loading feeds, using empty list');
+        } else {
+          console.error('Failed to load feeds:', error);
+        }
         // Continue with empty feeds - UI will show default feeds
+        setFeeds([]);
       }
     };
 

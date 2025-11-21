@@ -85,6 +85,12 @@ export class FeedService {
 
     const response = await fetch(`${API_ENDPOINT}/api/feeds?${params.toString()}`);
 
+    if (response.status === 429) {
+      // Rate limited - return empty result instead of throwing
+      console.warn('Rate limited (429) when listing feeds, returning empty result');
+      return { feeds: [], total: 0 };
+    }
+
     if (!response.ok) {
       const error = await response.json().catch(() => ({ error: 'Failed to list feeds' }));
       throw new Error(error.error || 'Failed to list feeds');
