@@ -115,10 +115,13 @@ export function DiscoveryPage({
 
 
   // Get files filtered by top feed and niche
+  // Filtering order: 1) Niche filter, 2) Top feed filter
+  // Example: "Classics" + "All" → shows all classics
+  // Example: "Sports & Fitness" + "Classics" → shows only sports & fitness classics
   const filteredFiles = useMemo(() => {
     let filtered = [...files];
     
-    // First filter by niche if selected
+    // Step 1: Filter by niche if selected (null means "All" niches)
     if (selectedNiche) {
       filtered = filtered.filter(file => 
         file.metadata.feedCategories?.includes(selectedNiche as any) ||
@@ -129,10 +132,11 @@ export function DiscoveryPage({
       );
     }
     
-    // Then apply top feed filter
+    // Step 2: Apply top feed filter (sorts/filters the already niche-filtered results)
     switch (activeTopFeed) {
       case 'all':
-        // Show all files (already filtered by niche if selected)
+        // "All" feed: Show all files from public index (already filtered by niche if selected)
+        // No additional sorting - preserves original order from API (newest first)
         break;
       case 'trending':
         filtered = filtered.sort((a, b) => {
