@@ -552,6 +552,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
     const normalizedEmail = email?.toLowerCase() || null;
     if (normalizedEmail) {
       // SECURITY: email removed from DriveAccountState - use userEmails map instead
+      // Check both driveAccounts and driveCredentialCache for existing accounts
       const existing = driveAccounts.find((account) => {
         const accountEmail = userEmails.get(account.backendId);
         return accountEmail?.toLowerCase() === normalizedEmail;
@@ -559,10 +560,25 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
       if (existing) {
         return { backendId: existing.backendId, keyPrefix: existing.keyPrefix, isNew: false };
       }
+
+      // Also check credential cache for existing accounts with this email
+      for (const [backendId, credential] of driveCredentialCacheRef.current.entries()) {
+        const cachedEmail = credential.email?.toLowerCase();
+        if (cachedEmail === normalizedEmail) {
+          // Check if this backendId is already in driveAccounts
+          const accountInState = driveAccounts.find(acc => acc.backendId === backendId);
+          if (accountInState) {
+            return { backendId, keyPrefix: accountInState.keyPrefix, isNew: false };
+          }
+          // If not in state but in cache, use the cached keyPrefix
+          return { backendId, keyPrefix: credential.keyPrefix, isNew: false };
+        }
+      }
     }
 
     // SECURITY: Do NOT use email in backendId - use random identifier instead
     // This prevents email from being exposed in localStorage keys
+    // Only create new identifier if no existing account found
     const uniqueSuffix =
       typeof crypto !== 'undefined' && crypto.randomUUID
       ? crypto.randomUUID().split('-')[0]
@@ -671,51 +687,73 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
     [authenticatedUser?.id, authenticatedUser?.pnName, getResolvedAuthCredentials]
   );
 
+  // Guard to prevent multiple simultaneous persistence calls
+  const persistenceInProgressRef = React.useRef(false);
+  const lastPersistenceTimeRef = React.useRef<number>(0);
+  const PERSISTENCE_DEBOUNCE_MS = 5000; // Don't persist more than once every 5 seconds
+
   const persistStorageCredentialsToAPI = React.useCallback(async (credentialsPayload?: any, cid?: string | null) => {
-    console.log('[StorageCredentials] persistStorageCredentialsToAPI called', {
-      hasPayload: !!credentialsPayload,
-      driveAccountsLength: driveAccounts.length,
-      cacheSize: driveCredentialCacheRef.current.size
-    });
-    
-    let payload = credentialsPayload;
-    if (!payload) {
-      payload = buildStorageCredentialPayload();
-      console.log('[StorageCredentials] Built payload from cache', {
-        hasPayload: !!payload,
-        accountsCount: payload?.googleDriveAccounts?.length || 0
-      });
-    }
-
-    if (
-      !payload ||
-      !Array.isArray(payload.googleDriveAccounts) ||
-      payload.googleDriveAccounts.length === 0
-    ) {
-      console.warn('⚠️ [StorageCredentials] No Google Drive accounts available; skipping API persistence', {
-        payloadExists: !!payload,
-        isArray: Array.isArray(payload?.googleDriveAccounts),
-        accountsLength: payload?.googleDriveAccounts?.length || 0
-      });
+    // Prevent multiple simultaneous calls
+    if (persistenceInProgressRef.current) {
+      console.debug('⏳ [StorageCredentials] Persistence already in progress, skipping...');
       return;
     }
 
-    await persistCredentialsToSecureMetadata(payload);
-
-    const identityCandidates = getStorageIdentityCandidates();
-    console.log('[StorageCredentials] Identity candidates:', identityCandidates);
-
-    if (identityCandidates.length === 0) {
-      console.warn('⚠️ [StorageCredentials] No identity candidates available for persistence');
+    // Debounce rapid calls
+    const now = Date.now();
+    if (now - lastPersistenceTimeRef.current < PERSISTENCE_DEBOUNCE_MS) {
+      console.debug('⏳ [StorageCredentials] Persistence debounced (too soon after last call)');
       return;
     }
 
-    const seen = new Set<string>();
-    for (const identityId of identityCandidates) {
-      if (!identityId || seen.has(identityId)) {
-        continue;
+    persistenceInProgressRef.current = true;
+    lastPersistenceTimeRef.current = now;
+
+    try {
+      console.log('[StorageCredentials] persistStorageCredentialsToAPI called', {
+        hasPayload: !!credentialsPayload,
+        driveAccountsLength: driveAccounts.length,
+        cacheSize: driveCredentialCacheRef.current.size
+      });
+      
+      let payload = credentialsPayload;
+      if (!payload) {
+        payload = buildStorageCredentialPayload();
+        console.log('[StorageCredentials] Built payload from cache', {
+          hasPayload: !!payload,
+          accountsCount: payload?.googleDriveAccounts?.length || 0
+        });
       }
-      seen.add(identityId);
+
+      if (
+        !payload ||
+        !Array.isArray(payload.googleDriveAccounts) ||
+        payload.googleDriveAccounts.length === 0
+      ) {
+        console.warn('⚠️ [StorageCredentials] No Google Drive accounts available; skipping API persistence', {
+          payloadExists: !!payload,
+          isArray: Array.isArray(payload?.googleDriveAccounts),
+          accountsLength: payload?.googleDriveAccounts?.length || 0
+        });
+        return;
+      }
+
+      await persistCredentialsToSecureMetadata(payload);
+
+      const identityCandidates = getStorageIdentityCandidates();
+      console.log('[StorageCredentials] Identity candidates:', identityCandidates);
+
+      if (identityCandidates.length === 0) {
+        console.warn('⚠️ [StorageCredentials] No identity candidates available for persistence');
+        return;
+      }
+
+      const seen = new Set<string>();
+      for (const identityId of identityCandidates) {
+        if (!identityId || seen.has(identityId)) {
+          continue;
+        }
+        seen.add(identityId);
 
       try {
         // Log identityId for debugging (normally secret)
@@ -752,6 +790,8 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
           error: error?.message || error,
         });
       }
+    } finally {
+      persistenceInProgressRef.current = false;
     }
   }, [buildStorageCredentialPayload, persistCredentialsToSecureMetadata, apiEndpoint, driveAccounts.length]);
 
@@ -1550,12 +1590,13 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
         
         // After successfully hydrating accounts, ensure they're persisted back to API
         // This handles the case where accounts exist locally but weren't in API
+        // Use a longer delay to avoid rapid-fire persistence calls
         setTimeout(() => {
           console.log('[StorageCredentials] Accounts hydrated, ensuring persistence to API...');
           persistStorageCredentialsToAPI(undefined).catch((error) => {
             console.error('⚠️ [StorageCredentials] Failed to persist after hydration:', error);
           });
-        }, 2000);
+        }, 5000); // Increased from 2000ms to 5000ms to reduce rapid calls
         
         break;
       } catch (error) {
