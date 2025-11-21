@@ -902,11 +902,16 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
 
       await persistCredentialsToSecureMetadata(payload);
 
-      // CRITICAL: Use ONLY the authenticated user's ID - don't loop through multiple identityIds
-      // Multiple identityIds cause duplicate accounts in the API
-      const identityId = authenticatedUser?.id;
+      // CRITICAL: Use ONLY the authenticated user's ID from ref (current value) - don't use prop directly
+      // The prop can change, causing multiple calls with different identityIds
+      // Using the ref ensures we always use the CURRENT value at the time of the API call
+      const identityId = authenticatedUserRef.current?.id;
       if (!identityId) {
-        console.warn('⚠️ [StorageCredentials] No authenticated user ID available for persistence');
+        console.warn('⚠️ [StorageCredentials] No authenticated user ID available for persistence', {
+          authenticatedUserRefExists: !!authenticatedUserRef.current,
+          authenticatedUserPropExists: !!authenticatedUser,
+          authenticatedUserPropId: authenticatedUser?.id
+        });
         globalPersistenceLockRef.current = false;
         persistenceInProgressRef.current = false;
         return;
@@ -914,6 +919,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
 
       try {
         console.log('📤 [StorageCredentials] Persisting credentials to API...', {
+          identityId: identityId.substring(0, 20) + '...', // Log first 20 chars for debugging
           identityIdLength: identityId?.length,
           hasCid: !!cid,
           accountsCount: payload.googleDriveAccounts.length
@@ -1108,6 +1114,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
   const autoPersistHasRunRef = React.useRef(false);
   const autoPersistTimeoutRef = React.useRef<NodeJS.Timeout | null>(null);
   const autoPersistCheckIntervalRef = React.useRef<NodeJS.Timeout | null>(null);
+  const lastPersistedIdentityIdRef = React.useRef<string | null>(null); // Track which identityId we last persisted for
 
   // Auto-persist credentials to API when driveAccounts are available - moved here after persistStorageCredentialsToAPI is declared
   // CRITICAL: Only run ONCE per session, check periodically instead of on every driveAccounts.length change
@@ -1115,6 +1122,20 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
     // CRITICAL: Only run ONCE per session
     if (autoPersistHasRunRef.current) {
       return; // Already ran, don't run again
+    }
+    
+    // CRITICAL: Get current identityId from ref to ensure consistency
+    const currentIdentityId = authenticatedUserRef.current?.id;
+    if (!currentIdentityId) {
+      console.log('[StorageCredentials] Auto-persist skipped: no authenticatedUser.id yet');
+      return; // Wait for authenticatedUser to be set
+    }
+    
+    // CRITICAL: If we've already persisted for this identityId, don't run again
+    if (lastPersistedIdentityIdRef.current === currentIdentityId) {
+      console.log('[StorageCredentials] Auto-persist skipped: already persisted for this identityId');
+      autoPersistHasRunRef.current = true; // Mark as run to prevent future attempts
+      return;
     }
     
     // Clear any existing interval
@@ -1199,17 +1220,37 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
             return;
           }
           
-          const payload = buildStorageCredentialPayload();
-          const finalDriveAccountsLength = driveAccountsRef.current.length;
-          console.log(`[StorageCredentials] Auto-persisting accounts to API (ONCE per session)...`, {
-            driveAccountsLength: finalDriveAccountsLength,
-            cacheEntriesLength: cacheEntries.length,
-            payloadHasAccounts: !!(payload?.googleDriveAccounts?.length),
-            payloadAccountsCount: payload?.googleDriveAccounts?.length || 0
-          });
-          persistStorageCredentialsToAPI(undefined).catch((error) => {
-            console.error('⚠️ [StorageCredentials] Auto-persist failed:', error);
-          });
+        // CRITICAL: Get current identityId from ref at the time of persistence
+        const currentIdentityIdAtPersist = authenticatedUserRef.current?.id;
+        if (!currentIdentityIdAtPersist) {
+          console.warn('[StorageCredentials] Auto-persist cancelled: authenticatedUser.id is null at persist time');
+          return;
+        }
+        
+        // CRITICAL: If identityId changed since we scheduled this timeout, cancel it
+        if (lastPersistedIdentityIdRef.current && lastPersistedIdentityIdRef.current !== currentIdentityIdAtPersist) {
+          console.warn(`[StorageCredentials] Auto-persist cancelled: identityId changed from ${lastPersistedIdentityIdRef.current.substring(0, 20)}... to ${currentIdentityIdAtPersist.substring(0, 20)}...`);
+          return;
+        }
+        
+        const payload = buildStorageCredentialPayload();
+        const finalDriveAccountsLength = driveAccountsRef.current.length;
+        console.log(`[StorageCredentials] Auto-persisting accounts to API (ONCE per session)...`, {
+          identityId: currentIdentityIdAtPersist.substring(0, 20) + '...',
+          driveAccountsLength: finalDriveAccountsLength,
+          cacheEntriesLength: cacheEntries.length,
+          payloadHasAccounts: !!(payload?.googleDriveAccounts?.length),
+          payloadAccountsCount: payload?.googleDriveAccounts?.length || 0
+        });
+        
+        // Mark as persisted for this identityId BEFORE calling persistStorageCredentialsToAPI
+        lastPersistedIdentityIdRef.current = currentIdentityIdAtPersist;
+        
+        persistStorageCredentialsToAPI(undefined).catch((error) => {
+          console.error('⚠️ [StorageCredentials] Auto-persist failed:', error);
+          // Reset on error so we can retry
+          lastPersistedIdentityIdRef.current = null;
+        });
         }, 8000); // Increased from 3s to 8s to ensure hydration completes and avoid rapid calls
       }
     }, 2000); // Check every 2 seconds for accounts
