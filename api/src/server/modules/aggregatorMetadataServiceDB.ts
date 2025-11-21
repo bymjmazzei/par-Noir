@@ -87,23 +87,39 @@ export class AggregatorMetadataServiceDB {
 
   /**
    * Remove metadata from central index
+   * Accepts either fileId (pN file ID) or backendFileId (Google Drive file ID)
    */
-  async removeMetadata(fileId: string): Promise<boolean> {
+  async removeMetadata(fileIdOrBackendFileId: string): Promise<boolean> {
     const db = getDatabasePool();
 
     try {
-      const result = await db.query(
+      // Try to remove by file_id first (most common case)
+      let result = await db.query(
         'DELETE FROM aggregator_metadata WHERE file_id = $1',
-        [fileId]
+        [fileIdOrBackendFileId]
       );
 
-      const removed = (result.rowCount ?? 0) > 0;
+      let removed = (result.rowCount ?? 0) > 0;
+
+      // If not found by file_id, try to find by backendFileId in metadata JSON
+      if (!removed) {
+        result = await db.query(
+          `DELETE FROM aggregator_metadata 
+           WHERE metadata->>'backendFileId' = $1 
+              OR metadata->>'fileId' = $1`,
+          [fileIdOrBackendFileId]
+        );
+        removed = (result.rowCount ?? 0) > 0;
+      }
+
       if (removed) {
-        console.log(`🗑️ Removed metadata for file: ${fileId}`);
+        console.log(`🗑️ Removed metadata for file: ${fileIdOrBackendFileId}`);
+      } else {
+        console.log(`ℹ️ File ${fileIdOrBackendFileId} was not found in database metadata index`);
       }
       return removed;
     } catch (error) {
-      console.error(`❌ Failed to remove metadata for file ${fileId}:`, error);
+      console.error(`❌ Failed to remove metadata for file ${fileIdOrBackendFileId}:`, error);
       throw error;
     }
   }

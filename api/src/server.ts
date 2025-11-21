@@ -4590,46 +4590,38 @@ class ProductionServer {
         const accountId = req.query.accountId as string | undefined;
         const { googleDriveProxyService } = await import('./server/modules/googleDriveProxy');
         
+        // CRITICAL: Remove from database metadata index FIRST (before deleting from Drive)
+        // This ensures the file is removed from the public feed even if Drive deletion fails
+        // The database is the source of truth for the public feed
+        let dbRemoved = false;
+        try {
+          const { AggregatorMetadataServiceDB } = await import('./server/modules/aggregatorMetadataServiceDB');
+          const metadataService = AggregatorMetadataServiceDB.getInstance();
+          // removeMetadata accepts both fileId (pN file ID) and backendFileId (Google Drive file ID)
+          dbRemoved = await metadataService.removeMetadata(fileId);
+          if (dbRemoved) {
+            console.log(`✅ [DeleteFile] Removed file ${fileId} from database metadata index (public feed)`);
+          } else {
+            console.log(`ℹ️ [DeleteFile] File ${fileId} was not in database metadata index (may have been private or not indexed)`);
+          }
+        } catch (dbError: any) {
+          console.error(`❌ [DeleteFile] Failed to remove from database metadata index:`, dbError?.message || dbError);
+          // Continue with Drive deletion even if database removal fails
+        }
+        
         // Delete file from Google Drive
         await googleDriveProxyService.deleteFile(userIdentifier, fileId, accountId);
         console.log(`✅ [DeleteFile] Deleted file ${fileId} from Google Drive`);
         
-        // Remove from database metadata index (critical - this is what the public feed reads from)
-        try {
-          const { AggregatorMetadataServiceDB } = await import('./server/modules/aggregatorMetadataServiceDB');
-          const metadataService = AggregatorMetadataServiceDB.getInstance();
-          const removed = await metadataService.removeMetadata(fileId);
-          if (removed) {
-            console.log(`✅ [DeleteFile] Removed file ${fileId} from database metadata index`);
-          } else {
-            console.log(`ℹ️ [DeleteFile] File ${fileId} was not in database metadata index (may have been private)`);
-          }
-        } catch (dbError: any) {
-          console.error(`❌ [DeleteFile] Failed to remove from database metadata index:`, dbError?.message || dbError);
-          // Don't fail the delete if database cleanup fails - file is already deleted from Drive
-        }
-        
-        // Clean up indexes: remove from owner index and public index
+        // Clean up indexes: remove from owner index and public index (non-critical)
+        // Note: Database metadata removal above is the critical part - this is just for Google Drive index files
         if (pnIdentifier) {
           try {
-            const identifierCandidates: string[] = [];
-            if (tokenPayload.pnIdentifier) {
-              identifierCandidates.push(tokenPayload.pnIdentifier);
-            }
-            if (tokenPayload.did) {
-              identifierCandidates.push(tokenPayload.did);
-              if (tokenPayload.did.startsWith('did:key:')) {
-                const keyPart = tokenPayload.did.substring(8);
-                if (keyPart) {
-                  identifierCandidates.push(keyPart);
-                }
-              }
-            }
-            
-            const accessToken = await googleDriveProxyService.getAccessToken(userIdentifier, accountId, identifierCandidates);
+            const accessToken = await googleDriveProxyService.getAccessToken(userIdentifier, accountId);
             
             // Get pN folder and metadata folder
-            const pnFolderName = `par Noir - pn-${pnIdentifier}`;
+            // pnIdentifier already includes 'pn-' prefix, use it directly
+            const pnFolderName = `par Noir - ${pnIdentifier}`;
             const folderSearchQuery = `name='${pnFolderName.replace(/'/g, "\\'")}' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
             const folderSearchUrl = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(folderSearchQuery)}&fields=files(id,name)&pageSize=1`;
             
@@ -4676,22 +4668,16 @@ class ProductionServer {
               }
             }
           } catch (indexCleanupError: any) {
-            // Don't fail the delete if index cleanup fails - file is already deleted from Drive
-            console.warn(`⚠️ [DeleteFile] Index cleanup failed (non-critical):`, indexCleanupError?.message || indexCleanupError);
+            // Don't fail the delete if index cleanup fails - file is already deleted from Drive and database
+            console.warn(`⚠️ [DeleteFile] Google Drive index cleanup failed (non-critical):`, indexCleanupError?.message || indexCleanupError);
           }
         }
         
-        // Also remove from database metadata index
-        try {
-          const { AggregatorMetadataServiceDB } = await import('./server/modules/aggregatorMetadataServiceDB');
-          const service = AggregatorMetadataServiceDB.getInstance();
-          await service.removeMetadata(fileId);
-          console.log(`✅ [DeleteFile] Removed file ${fileId} from database metadata index`);
-        } catch (dbError: any) {
-          console.warn(`⚠️ [DeleteFile] Failed to remove from database (non-critical):`, dbError?.message || dbError);
-        }
-        
-        return res.json({ success: true, fileId });
+        return res.json({ 
+          success: true, 
+          fileId,
+          removedFromDatabase: dbRemoved 
+        });
       } catch (error: any) {
         console.error('Error deleting Google Drive file:', error);
         return res.status(500).json({
