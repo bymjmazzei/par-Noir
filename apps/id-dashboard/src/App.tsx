@@ -5827,6 +5827,13 @@ This invitation expires in 24 hours.`;
                     </div>
                   )}
 
+                  {/* Always mount FileStorageAggregator to preload credentials (hidden when not active) */}
+                  {activeTab !== 'storage' && authenticatedUser && (
+                    <div style={{ display: 'none' }}>
+                      <FileStorageAggregator authenticatedUser={authenticatedUser} hideSecureFolderSection={true} />
+                    </div>
+                  )}
+
                   {/* Developer Portal Tab */}
                   {activeTab === 'developer' && (
                     <DeveloperPortal />
