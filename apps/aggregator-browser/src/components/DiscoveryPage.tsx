@@ -178,12 +178,45 @@ export function DiscoveryPage({
     return file.thumbnail || '/placeholder-thumbnail.png';
   };
 
-  // Helper to get creator ID from file metadata
+  // Helper to get creator ID from file metadata (prefer pN identifier over DID)
   const getCreatorId = (file: IndexedFile): string => {
-    return file.metadata.creator?.identifier?.value || 
-           file.metadata.creator?.["@id"] || 
-           file.metadata.author?.did ||
-           'Unknown';
+    // Try to get pN identifier first, then fall back to DID
+    const creatorId = file.metadata.creator?.identifier?.value || 
+                      file.metadata.creator?.["@id"] || 
+                      file.metadata.author?.did ||
+                      'Unknown';
+    return creatorId;
+  };
+  
+  // Helper to get creator display name from metadata
+  const getCreatorDisplayName = (file: IndexedFile, creatorId: string): string => {
+    // First try to get username from author metadata
+    const username = file.metadata.author?.username;
+    if (username) {
+      const displayName = getDisplayName(creatorId, username);
+      // If we got a username, use it even if it's the same as creatorId
+      if (displayName && displayName !== creatorId) {
+        return displayName;
+      }
+      // If username exists but displayName is still creatorId, use username directly
+      if (username) {
+        return username;
+      }
+    }
+    
+    // Try to get name from creator metadata
+    const creatorName = (file.metadata.creator as any)?.name || 
+                       (file.metadata.creator as any)?.displayName;
+    if (creatorName) {
+      return getDisplayName(creatorId, creatorName) || creatorName;
+    }
+    
+    // Use getDisplayName which will check cache and fallback to creatorId
+    const displayName = getDisplayName(creatorId);
+    
+    // If displayName is still the full DID/creatorId, return it as-is
+    // The app should fetch and cache platform names, but for now we show the ID
+    return displayName;
   };
 
   const getDisplayItems = () => {
@@ -215,13 +248,14 @@ export function DiscoveryPage({
     // Show filtered files
     return filteredFiles.map(file => {
       const creatorId = getCreatorId(file);
+      const displayName = getCreatorDisplayName(file, creatorId);
       return {
         type: 'file' as const,
         id: file.metadata.fileId,
         item: file,
         thumbnail: getThumbnail(file),
         title: file.metadata.name || file.metadata.title || 'Untitled',
-        subtitle: getDisplayName(creatorId),
+        subtitle: displayName,
         metadata: '',
         engagement: {
           likes: file.metadata.engagement?.likes || 0,
@@ -249,19 +283,23 @@ export function DiscoveryPage({
   // Center active top feed option on screen
   React.useEffect(() => {
     if (topFeedRailRef.current) {
-      const activeButton = topFeedRailRef.current.querySelector(`[data-top-feed="${activeTopFeed}"]`) as HTMLElement;
-      if (activeButton) {
-        const container = topFeedRailRef.current;
-        const containerWidth = container.clientWidth;
-        const buttonLeft = activeButton.offsetLeft;
-        const buttonWidth = activeButton.offsetWidth;
-        const scrollLeft = buttonLeft - (containerWidth / 2) + (buttonWidth / 2);
-        
-        container.scrollTo({
-          left: Math.max(0, scrollLeft),
-          behavior: 'smooth'
-        });
-      }
+      // Use setTimeout to ensure DOM is updated
+      setTimeout(() => {
+        const activeButton = topFeedRailRef.current?.querySelector(`[data-top-feed="${activeTopFeed}"]`) as HTMLElement;
+        if (activeButton && topFeedRailRef.current) {
+          const container = topFeedRailRef.current;
+          const containerWidth = container.clientWidth;
+          const buttonLeft = activeButton.offsetLeft;
+          const buttonWidth = activeButton.offsetWidth;
+          const screenWidth = window.innerWidth;
+          const scrollLeft = buttonLeft - (screenWidth / 2) + (buttonWidth / 2);
+          
+          container.scrollTo({
+            left: Math.max(0, scrollLeft),
+            behavior: 'smooth'
+          });
+        }
+      }, 100);
     }
   }, [activeTopFeed]);
 
@@ -271,11 +309,12 @@ export function DiscoveryPage({
       <div className="sticky top-0 z-10 bg-neutral-900 border-b border-neutral-700">
         <div 
           ref={topFeedRailRef}
-          className="flex items-center space-x-6 overflow-x-auto scrollbar-hide py-3 px-4"
+          className="flex items-center space-x-6 overflow-x-auto scrollbar-hide py-3"
           style={{
             scrollbarWidth: 'none',
             msOverflowStyle: 'none',
-            justifyContent: 'center'
+            paddingLeft: '50%',
+            paddingRight: '50%'
           }}
         >
           {(['all', 'trending', 'featured', 'classics', 'new-creators'] as TopFeedOption[]).map((option) => {
@@ -288,7 +327,7 @@ export function DiscoveryPage({
                 key={option}
                 data-top-feed={option}
                 onClick={() => setActiveTopFeed(option)}
-                className={`whitespace-nowrap transition-all ${
+                className={`whitespace-nowrap transition-all flex-shrink-0 ${
                   isActive
                     ? 'font-bold text-white'
                     : 'text-neutral-400 hover:text-white'
@@ -304,7 +343,7 @@ export function DiscoveryPage({
         </div>
 
         {/* Niche Feed Railway - Separate railway underneath, text only, active centered and underlined */}
-        <div className="mt-3 flex items-center justify-center space-x-4 overflow-x-auto scrollbar-hide pb-2">
+        <div className="mt-3 flex items-center space-x-3 sm:space-x-4 overflow-x-auto scrollbar-hide pb-2 px-4">
           {Object.values(FEED_CATEGORIES)
             .filter(cat => cat.id !== 'adults-only' || userState.preferences.ageVerified)
             .map(category => {
@@ -313,7 +352,7 @@ export function DiscoveryPage({
                 <button
                   key={category.id}
                   onClick={() => setSelectedNiche(isActive ? null : category.id)}
-                  className={`whitespace-nowrap transition-all text-sm ${
+                  className={`whitespace-nowrap transition-all text-xs sm:text-sm flex-shrink-0 px-2 ${
                     isActive
                       ? 'text-white underline'
                       : 'text-neutral-400 hover:text-white'
