@@ -37,19 +37,22 @@ export class GoogleDriveProxyService {
   async getAccessToken(userDid: string, accountId?: string, additionalCandidates?: string[]): Promise<string> {
     console.log(`[GoogleDriveProxy] getAccessToken called with userDid: ${userDid}, accountId: ${accountId}`);
     
-    // Try multiple identifier candidates (credentials might be stored under different identifiers)
-    // This handles cases where credentials were stored with a different identifier format
-    const identifierCandidates = [
-      userDid, // Try the provided identifier first
-      ...(additionalCandidates || []), // Try any additional candidates passed in
-    ];
+    // CRITICAL: Use ONLY the pn identifier (first candidate)
+    // Dashboard stores credentials under pn identifier only, so we should only try that
+    // The additionalCandidates array should only contain the pn identifier
+    const pnIdentifier = userDid?.startsWith('pn-') ? userDid : (additionalCandidates?.[0] || userDid);
     
-    // Also try the identifier without any prefix if it has one
-    if (userDid.includes('pn-')) {
-      identifierCandidates.push(userDid.replace('pn-', ''));
+    if (!pnIdentifier || !pnIdentifier.startsWith('pn-')) {
+      console.error(`[GoogleDriveProxy] Invalid pn identifier: ${pnIdentifier}. Expected format: pn-{hash}`);
+      throw new Error('Google Drive not connected. Please connect in the dashboard.');
     }
     
-    // Try to find credentials using any of the candidates
+    // CRITICAL: Only try the pn identifier - no fallback to DID or public key
+    const identifierCandidates = [pnIdentifier];
+    
+    console.log(`[GoogleDriveProxy] Using pn identifier only: ${pnIdentifier}`);
+    
+    // Try to find credentials using only the pn identifier
     const credentialsRecord = await storageCredentialsService.findCredentialsByIdentityCandidates(identifierCandidates);
     
     if (!credentialsRecord) {
@@ -185,7 +188,8 @@ export class GoogleDriveProxyService {
           };
         }
         
-        await storageCredentialsService.upsertCredentials(userDid, credentials);
+        // CRITICAL: Use the pn identifier from the credentials record, not userDid
+        await storageCredentialsService.upsertCredentials(credentialsRecord.identityId, credentials);
         
         return refreshedToken.access_token;
       } catch (error: any) {
@@ -261,7 +265,10 @@ export class GoogleDriveProxyService {
       console.log(`[GoogleDriveProxy] Got 401 from Google Drive API, forcing token refresh and retrying...`);
       
       // Force refresh by getting credentials and updating expires_at to past
-      const credentialsRecord = await storageCredentialsService.findCredentialsByIdentityCandidates([userDid, ...(additionalCandidates || [])]);
+      // CRITICAL: Use only pn identifier
+      const pnIdentifier = userDid?.startsWith('pn-') ? userDid : (additionalCandidates?.[0] || userDid);
+      const identifierCandidates = pnIdentifier?.startsWith('pn-') ? [pnIdentifier] : [];
+      const credentialsRecord = await storageCredentialsService.findCredentialsByIdentityCandidates(identifierCandidates);
       if (credentialsRecord) {
         const credentials = credentialsRecord.credentials;
         let account: GoogleDriveToken | null = null;

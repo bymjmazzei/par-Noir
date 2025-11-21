@@ -4147,37 +4147,23 @@ class ProductionServer {
           });
         }
 
-        // Use pN identifier from token if available, otherwise fall back to DID
-        // Credentials might be stored under different identifiers, so we'll try multiple candidates
+        // CRITICAL: Use ONLY pn identifier - dashboard stores credentials under pn identifier only
+        // Dashboard's getStorageIdentityCandidates() returns only the pn identifier
         const pnIdentifier = tokenPayload.pnIdentifier; // Use pN identifier for folder search
-        const userIdentifier = tokenPayload.pnIdentifier || tokenPayload.did; // Use for credential lookup
+        const userIdentifier = tokenPayload.pnIdentifier; // Use ONLY pn identifier for credential lookup
         
-        // Build list of identifier candidates to try (matching dashboard's getStorageIdentityCandidates logic)
-        // Dashboard stores credentials under the FIRST candidate from getStorageIdentityCandidates()
-        // which is the derived pN identifier, then falls back to other candidates
-        const identifierCandidates: string[] = [];
-        
-        // 1. Add pN identifier from token FIRST (this is what dashboard uses as primary candidate)
-        if (tokenPayload.pnIdentifier) {
-          identifierCandidates.push(tokenPayload.pnIdentifier);
+        if (!pnIdentifier) {
+          return res.status(400).json({
+            error: 'pnIdentifier required',
+            error_description: 'Token must include pnIdentifier for storage access'
+          });
         }
         
-        // 2. Add full DID (dashboard includes authenticatedUser.id as a candidate)
-        if (tokenPayload.did) {
-          identifierCandidates.push(tokenPayload.did);
-          
-          // If DID is in format "did:key:xxxxx", also try just "xxxxx" (the publicKey part)
-          // Dashboard sometimes uses publicKey directly
-          if (tokenPayload.did.startsWith('did:key:')) {
-            const keyPart = tokenPayload.did.substring(8); // Remove "did:key:" prefix
-            if (keyPart) {
-              identifierCandidates.push(keyPart);
-            }
-          }
-        }
+        // CRITICAL: Only use pn identifier - no fallback to DID or public key
+        // This prevents multiple API calls with different identifiers
+        const identifierCandidates: string[] = [pnIdentifier];
         
-        console.log(`[DriveFiles] Token payload - pnIdentifier: ${tokenPayload.pnIdentifier}, did: ${tokenPayload.did}`);
-        console.log(`[DriveFiles] Will try identifier candidates (in order): ${identifierCandidates.join(', ')}`);
+        console.log(`[DriveFiles] Using pn identifier only: ${pnIdentifier}`);
         
         const { googleDriveProxyService } = await import('./server/modules/googleDriveProxy');
         
@@ -4312,10 +4298,16 @@ class ProductionServer {
           });
         }
 
-        // Use pN identifier from token if available, otherwise fall back to DID
-        // Credentials are stored under pN identifier, not DID
-        const userIdentifier = tokenPayload.pnIdentifier || tokenPayload.did;
-        console.log(`[Upload] Using identifier: ${userIdentifier} (pnIdentifier: ${tokenPayload.pnIdentifier}, did: ${tokenPayload.did})`);
+        // CRITICAL: Use ONLY pn identifier - dashboard stores credentials under pn identifier only
+        const pnIdentifier = tokenPayload.pnIdentifier;
+        if (!pnIdentifier) {
+          return res.status(400).json({
+            error: 'pnIdentifier required',
+            error_description: 'Token must include pnIdentifier for storage access'
+          });
+        }
+        const userIdentifier = pnIdentifier;
+        console.log(`[Upload] Using pn identifier only: ${pnIdentifier}`);
         
         const { googleDriveProxyService } = await import('./server/modules/googleDriveProxy');
         
@@ -4330,30 +4322,17 @@ class ProductionServer {
           });
         }
 
-        // Build list of identifier candidates to try (matching GET endpoint logic)
-        const identifierCandidates: string[] = [];
-        if (tokenPayload.pnIdentifier) {
-          identifierCandidates.push(tokenPayload.pnIdentifier);
-        }
-        if (tokenPayload.did) {
-          identifierCandidates.push(tokenPayload.did);
-          if (tokenPayload.did.startsWith('did:key:')) {
-            const keyPart = tokenPayload.did.substring(8);
-            if (keyPart) {
-              identifierCandidates.push(keyPart);
-            }
-          }
-        }
+        // CRITICAL: Only use pn identifier - no fallback to DID or public key
+        const identifierCandidates: string[] = [pnIdentifier];
 
         // If no parents specified, find the pN folder and upload there
         let finalParents = parents;
         if (!finalParents || finalParents.length === 0) {
-          const pnIdentifier = tokenPayload.pnIdentifier;
           if (pnIdentifier && accountId) {
             try {
               let accessToken: string | null = null;
               try {
-                accessToken = await googleDriveProxyService.getAccessToken(userIdentifier, accountId, identifierCandidates);
+                accessToken = await googleDriveProxyService.getAccessToken(pnIdentifier, accountId, identifierCandidates);
               } catch (tokenError: any) {
                 console.warn(`[Upload] Could not get access token for folder search:`, tokenError?.message || tokenError);
               }
@@ -4458,23 +4437,18 @@ class ProductionServer {
           });
         }
 
-        // Use pN identifier from token if available, otherwise fall back to DID
-        const userIdentifier = tokenPayload.pnIdentifier || tokenPayload.did;
+        // CRITICAL: Use ONLY pn identifier - dashboard stores credentials under pn identifier only
+        const pnIdentifier = tokenPayload.pnIdentifier;
+        if (!pnIdentifier) {
+          return res.status(400).json({
+            error: 'pnIdentifier required',
+            error_description: 'Token must include pnIdentifier for storage access'
+          });
+        }
+        const userIdentifier = pnIdentifier;
         
-        // Build list of identifier candidates to try (matching dashboard's getStorageIdentityCandidates logic)
-        const identifierCandidates: string[] = [];
-        if (tokenPayload.pnIdentifier) {
-          identifierCandidates.push(tokenPayload.pnIdentifier);
-        }
-        if (tokenPayload.did) {
-          identifierCandidates.push(tokenPayload.did);
-          if (tokenPayload.did.startsWith('did:key:')) {
-            const keyPart = tokenPayload.did.substring(8);
-            if (keyPart) {
-              identifierCandidates.push(keyPart);
-            }
-          }
-        }
+        // CRITICAL: Only use pn identifier - no fallback to DID or public key
+        const identifierCandidates: string[] = [pnIdentifier];
         
         const { fileId } = req.params;
         const { googleDriveProxyService } = await import('./server/modules/googleDriveProxy');
