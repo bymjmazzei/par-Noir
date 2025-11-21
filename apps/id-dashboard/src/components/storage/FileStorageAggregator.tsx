@@ -5881,8 +5881,27 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
 
       // AUTOMATIC CLEANUP: Clean up indexes after deletion
       // Google Drive is the source of truth - file is deleted, remove from all indexes
+      // NOTE: This cleanup is non-critical - database is already cleaned up by API
+      // Only run if we have a valid token (skip if expired to avoid errors)
       try {
         if (accessToken) {
+          // Check if token is likely expired by trying a simple Google Drive API call first
+          // This prevents unnecessary cleanup attempts with expired tokens
+          let tokenValid = false;
+          try {
+            const testResponse = await fetch('https://www.googleapis.com/drive/v3/about?fields=user', {
+              headers: { 'Authorization': `Bearer ${accessToken}` }
+            });
+            tokenValid = testResponse.ok;
+          } catch {
+            tokenValid = false;
+          }
+          
+          if (!tokenValid) {
+            console.log('ℹ️ [Delete] Token expired - skipping Google Drive index cleanup (database already cleaned)');
+            return; // Skip cleanup if token is invalid
+          }
+          
           // Generate pN identifier for cleanup
           let pnIdentifierForCleanup: string | undefined = undefined;
           try {
@@ -5915,7 +5934,8 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
           }
         }
       } catch (cleanupError) {
-        console.warn('⚠️ [Delete] Index cleanup failed (non-critical):', cleanupError);
+        // Cleanup is non-critical - database is already cleaned, Google Drive indexes are secondary
+        console.log('ℹ️ [Delete] Index cleanup skipped (non-critical):', cleanupError instanceof Error ? cleanupError.message : cleanupError);
       }
 
       // Reload files after deletion

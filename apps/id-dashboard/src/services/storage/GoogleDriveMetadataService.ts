@@ -703,7 +703,11 @@ export class GoogleDriveMetadataService {
     );
 
     if (!searchResponse.ok) {
-      throw new Error('Failed to search for pN folder');
+      // Handle expired/invalid token gracefully
+      if (searchResponse.status === 401 || searchResponse.status === 403) {
+        throw new Error(`Token expired or invalid (${searchResponse.status}) - cannot access Google Drive folders`);
+      }
+      throw new Error(`Failed to search for pN folder: ${searchResponse.status} ${searchResponse.statusText}`);
     }
 
     const searchData = await searchResponse.json();
@@ -1359,8 +1363,20 @@ export class GoogleDriveMetadataService {
     pnIdentifier: string
   ): Promise<{ ownerIndexRemoved: number; publicIndexRemoved: number }> {
     try {
-      const pnFolderId = await this.getOrCreatePNFolder(accessToken, pnIdentifier);
-      const metadataFolderId = await this.getOrCreateMetadataFolder(accessToken, pnFolderId);
+      let pnFolderId: string;
+      let metadataFolderId: string;
+      
+      try {
+        pnFolderId = await this.getOrCreatePNFolder(accessToken, pnIdentifier);
+        metadataFolderId = await this.getOrCreateMetadataFolder(accessToken, pnFolderId);
+      } catch (folderError: any) {
+        // If token is expired, skip cleanup gracefully
+        if (folderError?.message?.includes('Token expired') || folderError?.message?.includes('401') || folderError?.message?.includes('403')) {
+          console.log('ℹ️ [cleanupOrphanedIndexEntries] Token expired - skipping cleanup (non-critical)');
+          return { ownerIndexRemoved: 0, publicIndexRemoved: 0 };
+        }
+        throw folderError;
+      }
 
       let ownerIndexRemoved = 0;
       let publicIndexRemoved = 0;
