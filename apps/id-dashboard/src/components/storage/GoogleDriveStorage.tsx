@@ -65,7 +65,10 @@ export const GoogleDriveStorage: React.FC = () => {
               // Check if credentials already exist server-side
               try {
                 const response = await fetch(`${process.env.REACT_APP_API_ENDPOINT || 'https://api.parnoir.com'}/api/storage/credentials/${encodeURIComponent(pnIdentifier)}`);
-                if (response.ok) {
+                if (response.status === 404) {
+                  // No credentials stored yet - this is expected for new users
+                  // Proceed with migration attempt
+                } else if (response.ok) {
                   const data = await response.json();
                   // If credentials exist and have googleDrive tokens, skip migration
                   if (data.credentials?.googleDrive?.access_token) {
