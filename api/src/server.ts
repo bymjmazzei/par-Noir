@@ -163,13 +163,16 @@ class ProductionServer {
       if (req.path.startsWith('/api/aggregator/')) {
         return next();
       }
-      // Apply lenient limiter for read-only endpoints
+      // Apply lenient limiter for read-only endpoints and bulk operations
       if (
-        req.method === 'GET' && (
+        (req.method === 'GET' && (
           req.path.startsWith('/api/profile/') ||
           req.path.startsWith('/api/feeds') ||
           req.path.startsWith('/api/engagement/')
-        )
+        )) ||
+        (req.method === 'POST' && (
+          req.path === '/api/engagement/bulk-stats'
+        ))
       ) {
         return readOnlyLimiter(req, res, next);
       }
