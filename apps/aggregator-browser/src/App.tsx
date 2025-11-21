@@ -50,6 +50,7 @@ import { SearchResults } from './components/SearchResults';
 import { CreatorFeedPage } from './components/CreatorFeedPage';
 import { Inbox } from './components/Inbox';
 import { saveToFeed, getSavedFeed } from './services/savedFeedService';
+import { getUserProfile } from './services/profileService';
 
 // Shared types - importing from id-dashboard
 // In production, these would come from a shared package
@@ -129,9 +130,20 @@ function App() {
               PNOAuthService.saveSession(updatedSession);
               setUnlocked(pnIdentifier);
               
-              // Set display name to nickname if not already set
-              if (userInfo.nickname && !userState.preferences.displayName) {
-                updateDisplayName(userInfo.nickname);
+              // Load display name from API (preferred) or use nickname as fallback
+              try {
+                const profile = await getUserProfile(pnIdentifier);
+                if (profile.displayName) {
+                  updateDisplayName(profile.displayName);
+                } else if (userInfo.nickname && !userState.preferences.displayName) {
+                  // Fallback to nickname if no display name in profile
+                  updateDisplayName(userInfo.nickname);
+                }
+              } catch (error) {
+                // If API call fails, fallback to nickname
+                if (userInfo.nickname && !userState.preferences.displayName) {
+                  updateDisplayName(userInfo.nickname);
+                }
               }
             }
           }
@@ -157,9 +169,20 @@ function App() {
               setViewingCreatorId(userInfo.pn_identifier);
               setActiveBottomTab('index');
               
-              // Set display name to nickname if not already set
-              if (userInfo.nickname && !userState.preferences.displayName) {
-                updateDisplayName(userInfo.nickname);
+              // Load display name from API (preferred) or use nickname as fallback
+              try {
+                const profile = await getUserProfile(userInfo.pn_identifier);
+                if (profile.displayName) {
+                  updateDisplayName(profile.displayName);
+                } else if (userInfo.nickname && !userState.preferences.displayName) {
+                  // Fallback to nickname if no display name in profile
+                  updateDisplayName(userInfo.nickname);
+                }
+              } catch (error) {
+                // If API call fails, fallback to nickname
+                if (userInfo.nickname && !userState.preferences.displayName) {
+                  updateDisplayName(userInfo.nickname);
+                }
               }
             } else {
               showErrorToast('Unable to load your pN identifier from API');
@@ -183,6 +206,21 @@ function App() {
     userState.preferences.subscribedFeedIds
   );
 
+  // Load user's own display name from API
+  const loadUserDisplayName = useCallback(async (pnIdentifier: string) => {
+    if (!pnIdentifier || pnIdentifier.startsWith('did:key:')) return;
+    
+    try {
+      const profile = await getUserProfile(pnIdentifier);
+      if (profile.displayName) {
+        updateDisplayName(profile.displayName);
+      }
+    } catch (error) {
+      // Silently fail - profile may not exist yet
+      console.debug('Failed to load user display name:', error);
+    }
+  }, [updateDisplayName]);
+
   // Validate OAuth session on mount and sync with user state
   useEffect(() => {
     const session = PNOAuthService.loadSession();
@@ -196,13 +234,26 @@ function App() {
         // Session exists but DID doesn't match, sync it
         console.log('🔐 Syncing user state with OAuth session');
         // Use pN identifier from session if available, otherwise use DID
-        setUnlocked(session.pnIdentifier || session.did);
+        const pnId = session.pnIdentifier || session.did;
+        setUnlocked(pnId);
+        // Load display name from API
+        if (pnId && !pnId.startsWith('did:key:')) {
+          loadUserDisplayName(pnId);
+        }
+      } else if (userState.pnIdentifier && !userState.preferences.displayName) {
+        // User is unlocked but no display name loaded - load it from API
+        loadUserDisplayName(userState.pnIdentifier);
       }
     } else if (session && PNOAuthService.isSessionValid(session) && session.did) {
       // If UI says locked but valid session exists, unlock the user
       console.log('🔐 Valid OAuth session found, unlocking user');
       // Use pN identifier from session if available, otherwise use DID
-      setUnlocked(session.pnIdentifier || session.did);
+      const pnId = session.pnIdentifier || session.did;
+      setUnlocked(pnId);
+      // Load display name from API
+      if (pnId && !pnId.startsWith('did:key:')) {
+        loadUserDisplayName(pnId);
+      }
     }
   }, []); // Only run on mount
 
@@ -2449,9 +2500,20 @@ function App() {
                 if (userInfo.pn_identifier && !userInfo.pn_identifier.startsWith('did:key:')) {
                   setUnlocked(userInfo.pn_identifier);
                   
-                  // Set display name to nickname if not already set
-                  if (userInfo.nickname && !userState.preferences.displayName) {
-                    updateDisplayName(userInfo.nickname);
+                  // Load display name from API (preferred) or use nickname as fallback
+                  try {
+                    const profile = await getUserProfile(userInfo.pn_identifier);
+                    if (profile.displayName) {
+                      updateDisplayName(profile.displayName);
+                    } else if (userInfo.nickname && !userState.preferences.displayName) {
+                      // Fallback to nickname if no display name in profile
+                      updateDisplayName(userInfo.nickname);
+                    }
+                  } catch (error) {
+                    // If API call fails, fallback to nickname
+                    if (userInfo.nickname && !userState.preferences.displayName) {
+                      updateDisplayName(userInfo.nickname);
+                    }
                   }
                 } else {
                   // No pN identifier yet - this shouldn't happen but handle gracefully

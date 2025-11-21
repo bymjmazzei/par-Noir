@@ -741,22 +741,24 @@ export class AggregatorMetadataServiceDB {
           continue;
         }
         
-        // If no pN folders found at all, don't remove files - folders might not be shared with service account yet
-        // Instead, verify each file exists in Google Drive before removing
+        // If no pN folders found at all, the service account likely doesn't have access to user folders
+        // In this case, we cannot reliably verify files exist, so we should be very conservative
+        // Only remove files that are very old (days, not minutes) and return 404
         if (pnFolders.length === 0) {
-          // GRACE PERIOD: Don't remove files that were just added (within last 10 minutes)
+          // EXTENDED GRACE PERIOD: Don't remove files that were added recently (within last 24 hours)
           // This gives time for files to be properly shared with the service account
+          // If service account can't see folders, we can't verify files reliably
           const updatedAt = row.updated_at as Date;
           const now = new Date();
           const ageMinutes = updatedAt ? (now.getTime() - updatedAt.getTime()) / (1000 * 60) : Infinity;
-          const GRACE_PERIOD_MINUTES = 10;
+          const EXTENDED_GRACE_PERIOD_HOURS = 24; // 24 hours when service account can't see folders
           
-          if (ageMinutes < GRACE_PERIOD_MINUTES) {
-            console.log(`⏳ [cleanupOrphanedFilesFromIndex] File ${fileId} (${fileName}) was added ${ageMinutes.toFixed(1)} minutes ago - grace period active, skipping verification`);
+          if (ageMinutes < (EXTENDED_GRACE_PERIOD_HOURS * 60)) {
+            console.log(`⏳ [cleanupOrphanedFilesFromIndex] File ${fileId} (${fileName}) was added ${(ageMinutes / 60).toFixed(1)} hours ago - extended grace period active (service account can't see folders), skipping verification`);
             continue;
           }
           
-          console.log(`⚠️ [cleanupOrphanedFilesFromIndex] No pN folders found - verifying file exists before removing: ${fileId} (${fileName})`);
+          console.log(`⚠️ [cleanupOrphanedFilesFromIndex] No pN folders found - service account may not have access. Verifying file exists before removing (file is ${(ageMinutes / 60).toFixed(1)} hours old): ${fileId} (${fileName})`);
           console.log(`🔍 [cleanupOrphanedFilesFromIndex] Available IDs: fileId=${fileId}, backendFileId=${backendFileId}, metadataFileId=${metadataFileId}, googleDriveFileId=${(metadata as any).googleDriveFileId}`);
           
           // If we don't have a backendFileId, we can't verify the file exists in Google Drive
@@ -768,6 +770,8 @@ export class AggregatorMetadataServiceDB {
           
           // Verify file exists in Google Drive - if it doesn't exist, remove it
           // Use backendFileId (actual Google Drive file ID)
+          // NOTE: 404 might mean file doesn't exist OR service account doesn't have access
+          // So we only remove if file is old (past grace period) AND returns 404
           const fileToVerify = backendFileId;
           console.log(`🔍 [cleanupOrphanedFilesFromIndex] Verifying Google Drive file: ${fileToVerify}`);
           try {

@@ -28,7 +28,7 @@ export function DiscoveryPage({
   onFeedClick,
   onCreatorClick
 }: DiscoveryPageProps) {
-  const { userState } = useUserState();
+  const { userState, getDisplayName } = useUserState();
   const [activeCategory, setActiveCategory] = useState<DiscoveryCategory>('trending');
   const [selectedNiche, setSelectedNiche] = useState<string | null>(null);
   const [showInfo, setShowInfo] = useState<string | null>(null);
@@ -129,29 +129,43 @@ export function DiscoveryPage({
     return file.thumbnail || '/placeholder-thumbnail.png';
   };
 
+  // Helper to get creator ID from file metadata
+  const getCreatorId = (file: IndexedFile): string => {
+    return file.metadata.creator?.identifier?.value || 
+           file.metadata.creator?.["@id"] || 
+           file.metadata.author?.did ||
+           'Unknown';
+  };
+
   const getDisplayItems = () => {
     switch (activeCategory) {
       case 'trending':
-        return trendingFiles.map(file => ({
-          type: 'file' as const,
-          id: file.metadata.fileId,
-          item: file,
-          thumbnail: getThumbnail(file),
-          title: file.metadata.name || file.metadata.title || 'Untitled',
-          subtitle: file.metadata.creator?.identifier?.value || 'Unknown',
-          metadata: `${(file.metadata.engagement?.likes || 0).toLocaleString()} likes`
-        }));
+        return trendingFiles.map(file => {
+          const creatorId = getCreatorId(file);
+          return {
+            type: 'file' as const,
+            id: file.metadata.fileId,
+            item: file,
+            thumbnail: getThumbnail(file),
+            title: file.metadata.name || file.metadata.title || 'Untitled',
+            subtitle: getDisplayName(creatorId),
+            metadata: `${(file.metadata.engagement?.likes || 0).toLocaleString()} likes`
+          };
+        });
       
       case 'new-creators':
-        return newCreators.map(creator => ({
-          type: 'creator' as const,
-          id: creator.creatorId,
-          item: creator.file,
-          thumbnail: getThumbnail(creator.file),
-          title: creator.creatorId.substring(0, 16) + '...',
-          subtitle: `${creator.fileCount} posts`,
-          metadata: 'New Creator'
-        }));
+        return newCreators.map(creator => {
+          const creatorDisplayName = getDisplayName(creator.creatorId);
+          return {
+            type: 'creator' as const,
+            id: creator.creatorId,
+            item: creator.file,
+            thumbnail: getThumbnail(creator.file),
+            title: creatorDisplayName,
+            subtitle: `${creator.fileCount} posts`,
+            metadata: 'New Creator'
+          };
+        });
       
       case 'featured':
         return featuredFeeds.map(feed => ({
@@ -165,26 +179,32 @@ export function DiscoveryPage({
         }));
       
       case 'classics':
-        return classics.map(file => ({
-          type: 'file' as const,
-          id: file.metadata.fileId,
-          item: file,
-          thumbnail: getThumbnail(file),
-          title: file.metadata.name || file.metadata.title || 'Untitled',
-          subtitle: file.metadata.creator?.identifier?.value || 'Unknown',
-          metadata: new Date(file.metadata.uploadDate).toLocaleDateString()
-        }));
+        return classics.map(file => {
+          const creatorId = getCreatorId(file);
+          return {
+            type: 'file' as const,
+            id: file.metadata.fileId,
+            item: file,
+            thumbnail: getThumbnail(file),
+            title: file.metadata.name || file.metadata.title || 'Untitled',
+            subtitle: getDisplayName(creatorId),
+            metadata: new Date(file.metadata.uploadDate).toLocaleDateString()
+          };
+        });
       
       case 'niches':
-        return nicheFiles.map(file => ({
-          type: 'file' as const,
-          id: file.metadata.fileId,
-          item: file,
-          thumbnail: getThumbnail(file),
-          title: file.metadata.name || file.metadata.title || 'Untitled',
-          subtitle: file.metadata.creator?.identifier?.value || 'Unknown',
-          metadata: ''
-        }));
+        return nicheFiles.map(file => {
+          const creatorId = getCreatorId(file);
+          return {
+            type: 'file' as const,
+            id: file.metadata.fileId,
+            item: file,
+            thumbnail: getThumbnail(file),
+            title: file.metadata.name || file.metadata.title || 'Untitled',
+            subtitle: getDisplayName(creatorId),
+            metadata: ''
+          };
+        });
       
       default:
         return [];
