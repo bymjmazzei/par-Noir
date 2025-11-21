@@ -99,7 +99,7 @@ export class GoogleDriveSyncService {
 
       // Step 1: Try to find folders by scanning, but also use pN identifiers from database as fallback
       // This allows us to sync known users even if service account can't discover new folders
-      const { getDatabasePool } = await import('../../database');
+      const { getDatabasePool } = await import('../utils/database');
       const db = getDatabasePool();
       const pnIdentifiersResult = await db.query(
         `SELECT DISTINCT pn_identifier FROM aggregator_metadata WHERE pn_identifier IS NOT NULL`
