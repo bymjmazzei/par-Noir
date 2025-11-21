@@ -3,7 +3,7 @@
  * YouTube-style grid view for discovering creators and content
  */
 
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { IndexedFile, Feed } from '../types/aggregator';
 import { FEED_CATEGORIES } from '../constants/feedCategories';
 import { Info, Heart, MessageCircle, Share2, Bookmark } from 'lucide-react';
@@ -34,7 +34,8 @@ export function DiscoveryPage({
   const [activeTopFeed, setActiveTopFeed] = useState<TopFeedOption>('all');
   const [selectedNiche, setSelectedNiche] = useState<NicheFeedOption>(null);
   const [showInfo, setShowInfo] = useState<string | null>(null);
-  const [fetchedCreators, setFetchedCreators] = useState<Set<string>>(new Set());
+  // Use ref to track fetched creators to avoid re-fetching (persists across renders)
+  const fetchedCreatorsRef = useRef<Set<string>>(new Set());
 
   // Get trending files (most engagement)
   const trendingFiles = useMemo(() => {
@@ -242,7 +243,7 @@ export function DiscoveryPage({
     // The platform name should be fetched and cached by the useEffect above
     if (displayName === creatorId) {
       // Check if this creator is being fetched
-      if (fetchedCreators.has(creatorId)) {
+      if (fetchedCreatorsRef.current.has(creatorId)) {
         // Still loading - return the DID for now, it will update when profile loads
         return creatorId;
       }
@@ -341,8 +342,8 @@ export function DiscoveryPage({
           return false;
         }
         
-        // Skip if already being fetched
-        if (fetchedCreators.has(creatorId)) {
+        // Skip if already being fetched (use ref to persist across renders)
+        if (fetchedCreatorsRef.current.has(creatorId)) {
           return false;
         }
         
@@ -354,12 +355,17 @@ export function DiscoveryPage({
         return true;
       });
       
+      // If no creators to fetch, exit early
+      if (creatorsToFetch.length === 0) {
+        return;
+      }
+      
       // Fetch profiles with a small delay between each to avoid rate limiting
       for (let i = 0; i < creatorsToFetch.length; i++) {
         const creatorId = creatorsToFetch[i];
         
-        // Mark as being fetched
-        setFetchedCreators(prev => new Set(prev).add(creatorId));
+        // Mark as being fetched (use ref to persist across renders)
+        fetchedCreatorsRef.current.add(creatorId);
         
         // Add delay between requests (except first one)
         if (i > 0) {
@@ -370,7 +376,7 @@ export function DiscoveryPage({
           .then(profile => {
             if (profile?.displayName) {
               setUserDisplayName(creatorId, profile.displayName);
-              // Force re-render by updating version
+              // Force re-render by updating version (but don't include in deps to avoid loop)
               setDisplayNamesVersion(prev => prev + 1);
             }
           })
@@ -382,8 +388,9 @@ export function DiscoveryPage({
     };
     
     fetchProfiles();
+    // Only depend on files.length and pnIdentifier - not userDisplayNames to avoid loops
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [files.length, userState.preferences.userDisplayNames, userState.pnIdentifier, setUserDisplayName, displayNamesVersion]);
+  }, [files.length, userState.pnIdentifier, setUserDisplayName]);
 
   // Ref for top feed railway container
   const topFeedRailRef = React.useRef<HTMLDivElement>(null);
