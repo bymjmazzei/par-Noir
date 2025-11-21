@@ -6497,29 +6497,31 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
                                     ref={(node) => {
                                       if (node) {
                                         actionMenuRef.current = node;
-                                        // Position menu above button using fixed positioning to avoid overflow clipping
+                                        // Position menu directly over the tile container
                                         // Use requestAnimationFrame to ensure node is rendered before calculating position
                                         requestAnimationFrame(() => {
-                                          // Find the button that triggered this menu
-                                          const button = node.parentElement?.querySelector('button[title="File actions"]') as HTMLElement;
-                                          if (button && node) {
-                                            const rect = button.getBoundingClientRect();
+                                          // Find the tile container (the parent div with the grid item)
+                                          const tileContainer = node.closest('.bg-neutral-800\\/50') as HTMLElement;
+                                          if (tileContainer && node) {
+                                            const tileRect = tileContainer.getBoundingClientRect();
                                             const menuWidth = 176; // w-44 = 11rem = 176px
                                             const menuHeight = node.offsetHeight || 200; // fallback estimate
                                             
                                             node.style.position = 'fixed';
                                             
-                                            // Position above button: top of menu = top of button - menu height - spacing
-                                            const topPosition = rect.top - menuHeight - 8;
-                                            node.style.top = `${Math.max(8, topPosition)}px`; // Ensure at least 8px from top
+                                            // Position menu over the tile: center it horizontally on the tile
+                                            // left = tile.left + (tile.width / 2) - (menu.width / 2)
+                                            const leftPosition = tileRect.left + (tileRect.width / 2) - (menuWidth / 2);
                                             
-                                            // Align right edge of menu with right edge of button
-                                            // But ensure menu stays within viewport
-                                            const leftPosition = rect.right - menuWidth;
+                                            // Ensure menu stays within viewport
                                             const minLeft = 8; // Minimum 8px from left edge
                                             const maxLeft = window.innerWidth - menuWidth - 8; // Maximum to keep menu on screen
-                                            
                                             node.style.left = `${Math.max(minLeft, Math.min(leftPosition, maxLeft))}px`;
+                                            
+                                            // Position above the tile: top of menu = top of tile - menu height - spacing
+                                            const topPosition = tileRect.top - menuHeight - 8;
+                                            node.style.top = `${Math.max(8, topPosition)}px`; // Ensure at least 8px from top
+                                            
                                             node.style.right = 'auto';
                                             node.style.bottom = 'auto';
                                           }
