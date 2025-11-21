@@ -59,11 +59,20 @@ const aggregatorLimiter = rateLimit({
   legacyHeaders: false,
 });
 
-// Authentication rate limiting
+// Authentication rate limiting (for login/auth endpoints)
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 5, // limit each IP to 5 auth requests per windowMs
+  max: 20, // Increased from 5 to 20 - OAuth token exchange can happen multiple times during setup
   message: 'Too many authentication attempts, please try again later.',
+});
+
+// OAuth token exchange rate limiting (more lenient - users may need multiple attempts during setup)
+const oauthTokenLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 30, // Allow more OAuth token exchanges (users may connect multiple accounts)
+  message: 'Too many OAuth token requests, please try again later.',
+  standardHeaders: true,
+  legacyHeaders: false,
 });
 
 class ProductionServer {
@@ -3875,7 +3884,8 @@ class ProductionServer {
     });
 
     // POST /api/auth/google-oauth/token - Exchange authorization code for tokens
-    this.app.post('/api/auth/google-oauth/token', async (req, res) => {
+    // Use more lenient rate limiter for OAuth token exchange (users may connect multiple accounts)
+    this.app.post('/api/auth/google-oauth/token', oauthTokenLimiter, async (req, res) => {
       try {
         const { code, redirectUri } = req.body;
         
