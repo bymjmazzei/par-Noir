@@ -31,6 +31,10 @@ export class FileAggregatorService {
     return Array.from(this.backends.entries()).map(([id, backend]) => ({ id, backend }));
   }
 
+  getAllBackends(): Map<string, StorageBackend> {
+    return this.backends;
+  }
+
   async getAggregatedStorageQuota(): Promise<Map<string, any>> {
     await this.ensureInitialized();
     const result = new Map<string, any>();

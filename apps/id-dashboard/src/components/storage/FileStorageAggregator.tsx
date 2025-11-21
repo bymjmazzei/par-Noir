@@ -1837,7 +1837,9 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
         if (response.status === 404) {
           hydrationMissingCandidatesRef.current.add(candidateId);
           // candidateId (identityId) is secret - not logged
-          console.debug('ℹ️ [StorageCredentials] No stored credentials found for identity (404)');
+          // 404 is expected if credentials haven't been stored yet (e.g., user connected before persistence was implemented)
+          // User will need to reconnect to store credentials properly
+          console.debug('ℹ️ [StorageCredentials] No stored credentials found for identity (404) - user may need to reconnect');
           continue;
         }
 
