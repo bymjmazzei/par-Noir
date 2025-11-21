@@ -59,6 +59,21 @@ const aggregatorLimiter = rateLimit({
   legacyHeaders: false,
 });
 
+// Lenient rate limiter for read-heavy endpoints (profile, feeds, engagement GET requests)
+const readOnlyLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: (req) => {
+    // Very high limit for read-only endpoints - frontend makes many requests on page load
+    if (req.headers.authorization) {
+      return 3000; // 3000 requests per 15 minutes for authenticated users
+    }
+    return 1500; // 1500 requests per 15 minutes for unauthenticated requests
+  },
+  message: 'Too many requests from this IP, please try again later.',
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
 // Authentication rate limiting (for login/auth endpoints)
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
@@ -142,10 +157,21 @@ class ProductionServer {
 
     // Rate limiting - apply general limiter to most routes
     // Aggregator endpoints get a more lenient limiter (applied specifically)
+    // Read-only endpoints (profile, feeds, engagement GET) get an even more lenient limiter
     this.app.use((req, res, next) => {
       // Skip rate limiting for aggregator endpoints (they get their own limiter)
       if (req.path.startsWith('/api/aggregator/')) {
         return next();
+      }
+      // Apply lenient limiter for read-only endpoints
+      if (
+        req.method === 'GET' && (
+          req.path.startsWith('/api/profile/') ||
+          req.path.startsWith('/api/feeds') ||
+          req.path.startsWith('/api/engagement/')
+        )
+      ) {
+        return readOnlyLimiter(req, res, next);
       }
       limiter(req, res, next);
     });
