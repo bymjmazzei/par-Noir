@@ -1273,6 +1273,85 @@ function App() {
     }
   };
 
+  // Load top post from public index and use as profile image
+  const loadTopPostAsProfileImage = async (userId: string) => {
+    try {
+      const apiEndpoint = import.meta.env.VITE_API_ENDPOINT || 'https://api.parnoir.com';
+      
+      // Fetch public index
+      const response = await fetch(`${apiEndpoint}/api/aggregator/metadata-index`);
+      if (!response.ok) {
+        logDebug('Failed to fetch public index for top post');
+        return;
+      }
+
+      const data = await response.json();
+      const files = data.files || [];
+
+      // Find files with isTopPost: true owned by this user
+      // Need to normalize userId to pn identifier format
+      const pnIdentifier = userId.startsWith('pn-') ? userId : `pn-${userId}`;
+      
+      const topPosts = files.filter((file: any) => {
+        // Check if file is top post and owned by this user
+        const isTopPost = file.isTopPost === true;
+        const isOwnedByUser = file.pnIdentifier === pnIdentifier || 
+                              file.owner === userId || 
+                              file.owner === pnIdentifier;
+        const isImage = file.mimeType?.startsWith('image/') || 
+                       /\.(jpg|jpeg|png|gif|webp|svg|bmp|ico)$/i.test(file.name || '');
+        
+        return isTopPost && isOwnedByUser && isImage;
+      });
+
+      if (topPosts.length === 0) {
+        logDebug('No top post found for user');
+        return;
+      }
+
+      // Use the first top post
+      const topPost = topPosts[0];
+      
+      // Get thumbnail URL - construct from fileId and publicToken
+      let thumbnailUrl: string | null = null;
+      
+      if (topPost.publicToken && topPost.backendFileId) {
+        // Use public token to access thumbnail
+        thumbnailUrl = `${apiEndpoint}/api/drive/files/${topPost.backendFileId}?thumbnail=true&token=${topPost.publicToken}`;
+      } else if (topPost.fileId) {
+        // Fallback: try with fileId
+        thumbnailUrl = `${apiEndpoint}/api/drive/files/${topPost.fileId}?thumbnail=true`;
+      }
+
+      if (thumbnailUrl) {
+        // Update authenticated user's profile picture
+        setAuthenticatedUser((prev: any) => {
+          if (!prev) return prev;
+          return { ...prev, profilePicture: thumbnailUrl };
+        });
+
+        // Update selected DID's profile picture
+        setSelectedDID((prev: any) => {
+          if (!prev || prev.id !== userId) return prev;
+          return { ...prev, profilePicture: thumbnailUrl };
+        });
+
+        // Update dids array
+        setDids((prev: any[]) => 
+          prev.map(did => 
+            did.id === userId 
+              ? { ...did, profilePicture: thumbnailUrl }
+              : did
+          )
+        );
+
+        logDebug('✅ Top post loaded as profile image');
+      }
+    } catch (error) {
+      logDebug('Failed to load top post as profile image:', error);
+    }
+  };
+
   const handleAuthSuccess = async (session: any) => {
     try {
       // SECURITY: Store credentials in memory only via SecureCredentialManager
@@ -1393,6 +1472,13 @@ function App() {
         logDebug('Reloaded', didInfos.length, 'stored identities into selector');
       } catch (error) {
         logError('Failed to reload stored identities:', error);
+      }
+
+      // Fetch top post from public index to use as profile image
+      try {
+        await loadTopPostAsProfileImage(session.id);
+      } catch (topPostError) {
+        logDebug('Failed to load top post as profile image (non-blocking):', topPostError);
       }
 
       // Show success
@@ -5092,6 +5178,7 @@ This invitation expires in 24 hours.`;
                     >
                                         <ThemeAwareProfileImage
                     className="w-full h-full object-cover"
+                    profilePicture={selectedDID?.profilePicture || authenticatedUser?.profilePicture}
                   />
                       {/* Edit Profile Picture Button for Default Avatar */}
                       <button
