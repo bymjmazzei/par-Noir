@@ -1662,11 +1662,6 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
       }
       ];
         persistDriveAccounts(next);
-        console.log(`✅ [upsertDriveAccount] Updated driveAccounts state: ${next.length} account(s)`, {
-          backendId: params.backendId,
-          email: resolvedEmail ? `${resolvedEmail.substring(0, 3)}***` : 'no email',
-          totalAccounts: next.length
-        });
         return next;
       });
 
@@ -2051,7 +2046,6 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
         for (const account of accountsToActuallyHydrate) {
           const token = account?.accessToken;
           if (!token) {
-            console.warn('⚠️ [StorageCredentials] Skipping account without access token');
             continue;
           }
           const email = account?.email || null;
@@ -2062,15 +2056,8 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
             ? { backendId: storedBackendId, keyPrefix: storedKeyPrefix, isNew: false }
             : resolveIdentifiersForEmail(email);
 
-          console.log(`🔄 [StorageCredentials] Hydrating account:`, {
-            backendId: identifiers.backendId,
-            hasToken: !!token,
-            hasRefreshToken: !!refreshToken,
-            email: email ? `${email.substring(0, 3)}***` : 'no email'
-          });
-
           try {
-            const backend = await upsertDriveAccount({
+            await upsertDriveAccount({
               backendId: identifiers.backendId,
               keyPrefix: identifiers.keyPrefix,
               token,
@@ -2079,12 +2066,6 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
               connectedAt: account?.connectedAt,
               updatedAt: account?.updatedAt
             });
-            
-            if (backend) {
-              console.log(`✅ [StorageCredentials] Successfully hydrated account: ${identifiers.backendId}`);
-            } else {
-              console.warn(`⚠️ [StorageCredentials] upsertDriveAccount returned null for: ${identifiers.backendId}`);
-            }
           } catch (upsertError) {
             console.warn('⚠️ [StorageCredentials] Failed to reconnect Google Drive account from API payload', {
               email,
@@ -6182,53 +6163,19 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
               </div>
             </div>
           <div className="flex items-center space-x-3">
-            {/* Show connected accounts */}
-            {driveAccounts.length > 0 && (
-              <div className="flex items-center space-x-2 mr-3">
-                {driveAccounts.map((account) => {
-                  const email = userEmails.get(account.backendId);
-                  const isConnected = connectedBackends.has(account.backendId);
-                  return (
-                    <div
-                      key={account.backendId}
-                      className="flex items-center space-x-2 px-3 py-1.5 bg-blue-600/20 border border-blue-500/40 rounded-lg"
-                      title={email ? `Connected: ${email}` : 'Google Drive connected'}
-                    >
-                      <img
-                        src={GOOGLE_DRIVE_ICON_URL}
-                        alt="Google Drive"
-                        className="h-4 w-4"
-                        loading="lazy"
-                      />
-                      {email && (
-                        <span className="text-xs text-text-secondary truncate max-w-[120px]">
-                          {email}
-                        </span>
-                      )}
-                      {isConnected && (
-                        <div className="w-2 h-2 bg-green-400 rounded-full" title="Connected" />
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-            {/* Connect button - show if no accounts or if not all accounts are connected */}
-            {(!driveAccounts.length || !Array.from(connectedBackends).some(id => driveAccounts.some(acc => acc.backendId === id))) && (
               <button
                 onClick={handleConnectGoogleDrive}
-                className={`p-2 rounded-lg border border-blue-500/40 bg-blue-600/10 hover:bg-blue-600/20 transition-colors ${isLoading ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
+              className={`p-2 rounded-lg border border-blue-500/40 bg-blue-600/10 hover:bg-blue-600/20 transition-colors ${isLoading ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
                 disabled={isLoading}
-                title="Connect Google Drive"
-              >
-                <img
-                  src={GOOGLE_DRIVE_ICON_URL}
-                  alt="Google Drive"
-                  className="h-6 w-6"
-                  loading="lazy"
-                />
+              title={connectedBackends.has('google_drive') ? 'Google Drive connected' : 'Connect Google Drive'}
+            >
+              <img
+                src={GOOGLE_DRIVE_ICON_URL}
+                alt="Google Drive"
+                className="h-6 w-6"
+                loading="lazy"
+              />
               </button>
-            )}
           </div>
         </div>
       </div>
