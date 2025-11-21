@@ -490,13 +490,17 @@ export function FullScreenFeed({
                        (file.name || file.title || '').match(/\.(mp4|mov|avi|webm|mkv|flv|wmv)$/i);
         const isImage = file.fileType === 'image' || 
                        (file.name || file.title || '').match(/\.(jpg|jpeg|png|gif|webp|svg|bmp|ico)$/i);
-        const isTextPost = file.fileType === 'text' || 
-                          file.fileType === 'thought' ||
-                          !!(file as any).textPost ||
-                          !!(file as any).thought;
+        // Check for text post in metadata (fileType is stored in PublicMetadata)
+        const isTextPost = indexedFile.metadata.fileType === 'text' || 
+                          indexedFile.metadata.fileType === 'thought' ||
+                          !!(indexedFile.metadata as any).textPost ||
+                          !!(indexedFile.metadata as any).thought;
         const fileName = file.name || file.title || 'Untitled';
         // Access textPost from metadata (it's stored in PublicMetadata)
-        const textPostData = file.textPost || (file as any).thought || (indexedFile.metadata as any).textPost;
+        const textPostData = (indexedFile.metadata as any).textPost || 
+                            (indexedFile.metadata as any).thought ||
+                            (file as any).textPost ||
+                            (file as any).thought;
         // Get creatorId - this is now the pN identifier (set from entry.pnIdentifier during conversion)
         const creatorId = (indexedFile.metadata as any).creatorId || 
                           file.creator?.identifier?.value || 

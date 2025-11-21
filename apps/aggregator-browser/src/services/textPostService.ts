@@ -309,7 +309,7 @@ export async function createTextPost(
         'Authorization': `Bearer ${accessToken}`
       },
       body: JSON.stringify({
-        name: metadata?.title || textPost.content.substring(0, 50) || 'Thought',
+        name: metadata?.title || textPost.content || 'Thought',
         description: metadata?.description || textPost.content,
         keywords: metadata?.keywords || [],
         tags: metadata?.tags || [],
