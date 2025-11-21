@@ -538,40 +538,49 @@ export class AggregatorMetadataServiceDB {
       // Also track which users have public index files (even if empty)
       const usersWithIndexFiles = new Set<string>();
       
-      // Find all pN folders
-      const pnFoldersQuery = `name contains 'par Noir - pn-' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
-      const foldersResponse = await fetch(
-        `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(pnFoldersQuery)}&fields=files(id,name)&pageSize=100`,
-        {
-          headers: {
-            'Authorization': `Bearer ${accessToken}`,
-            'Content-Type': 'application/json'
-          }
-        }
+      // NEW APPROACH: Use pN identifiers from database to directly access public index files
+      // This is more reliable than searching for folders (which service account might not see)
+      const db = getDatabasePool();
+      const pnIdentifiersResult = await db.query(
+        `SELECT DISTINCT pn_identifier FROM aggregator_metadata WHERE metadata->>'isPublic' = 'true' AND pn_identifier IS NOT NULL`
       );
-
-      if (!foldersResponse.ok) {
-        console.warn(`⚠️ [cleanupOrphanedFilesFromIndex] Failed to search for pN folders: ${foldersResponse.status}`);
-        return;
-      }
-
-      const foldersData = await foldersResponse.json() as { files?: Array<{ id: string; name: string }> };
-      const pnFolders = foldersData.files || [];
       
-      console.log(`🔍 [cleanupOrphanedFilesFromIndex] Found ${pnFolders.length} pN folder(s) to check`);
-
-      // For each pN folder, read the public index file
-      for (const pnFolder of pnFolders) {
+      const pnIdentifiers = pnIdentifiersResult.rows.map(row => row.pn_identifier as string).filter(Boolean);
+      console.log(`🔍 [cleanupOrphanedFilesFromIndex] Found ${pnIdentifiers.length} unique pN identifier(s) in database`);
+      
+      // For each pN identifier, try to read the public index file directly
+      // Path structure: "par Noir - {pnIdentifier}" / "_metadata" / "public-file-index.json"
+      for (const pnIdentifier of pnIdentifiers) {
         try {
-          // Extract pnIdentifier from folder name (e.g., "par Noir - pn-83c1db813607" -> "pn-83c1db813607")
-          const pnIdentifierMatch = pnFolder.name.match(/pn-([a-zA-Z0-9]+)/);
-          const pnIdentifier = pnIdentifierMatch ? `pn-${pnIdentifierMatch[1]}` : undefined;
-          
-          if (!pnIdentifier) {
-            console.warn(`⚠️ [cleanupOrphanedFilesFromIndex] Could not extract pnIdentifier from folder name: ${pnFolder.name}`);
+          // Try to find the pN folder by name
+          const folderName = `par Noir - ${pnIdentifier}`;
+          const pnFoldersQuery = `name='${folderName}' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
+          const foldersResponse = await fetch(
+            `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(pnFoldersQuery)}&fields=files(id,name)&pageSize=1`,
+            {
+              headers: {
+                'Authorization': `Bearer ${accessToken}`,
+                'Content-Type': 'application/json'
+              }
+            }
+          );
+
+          if (!foldersResponse.ok) {
+            console.warn(`⚠️ [cleanupOrphanedFilesFromIndex] Failed to search for folder "${folderName}" (${foldersResponse.status}) - service account may not have access`);
+            // Continue to next identifier - can't access this user's folders
             continue;
           }
 
+          const foldersData = await foldersResponse.json() as { files?: Array<{ id: string; name: string }> };
+          const pnFolders = foldersData.files || [];
+          
+          if (pnFolders.length === 0) {
+            console.log(`ℹ️ [cleanupOrphanedFilesFromIndex] Folder "${folderName}" not found - service account may not have access to ${pnIdentifier}`);
+            // Continue to next identifier - can't access this user's folders
+            continue;
+          }
+
+          const pnFolder = pnFolders[0];
           // Mark that this user has a pN folder (they might have an index file)
           usersWithIndexFiles.add(pnIdentifier);
 
@@ -708,11 +717,18 @@ export class AggregatorMetadataServiceDB {
         }
       }
       
-      console.log(`✅ [cleanupOrphanedFilesFromIndex] Found ${allValidFileIds.size} valid file ID(s) across ${validFileIdsByUser.size} user(s) with public index files`);
+      console.log(`✅ [cleanupOrphanedFilesFromIndex] Found ${allValidFileIds.size} valid file ID(s) across ${validFileIdsByUser.size} user(s) with accessible public index files`);
+      
+      // If we couldn't access any index files (service account has no access), 
+      // we should NOT remove files - we can't verify what's valid
+      if (usersWithIndexFiles.size === 0 && pnIdentifiers.length > 0) {
+        console.log(`⚠️ [cleanupOrphanedFilesFromIndex] Service account cannot access any public index files - skipping cleanup to avoid false positives`);
+        console.log(`ℹ️ [cleanupOrphanedFilesFromIndex] Files will remain in database until service account has access or files are manually verified`);
+        return;
+      }
 
       // Remove files from database that aren't in the valid set
       // Also remove files from users who don't have a public index file
-      const db = getDatabasePool();
       
       // Get ALL public files (same query as getPublicMetadata uses)
       // Use the same query structure to ensure we get the same files
