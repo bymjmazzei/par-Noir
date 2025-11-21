@@ -762,12 +762,12 @@ export function FullScreenFeed({
             )}
 
             {/* Text Post / Thought */}
-            {isTextPost && textPostData && (
+            {isTextPost && (
               <div 
                 className="w-full h-full flex items-center justify-center"
                 style={{
-                  backgroundColor: textPostData.style?.backgroundColor || '#000000',
-                  backgroundImage: textPostData.style?.backgroundImage 
+                  backgroundColor: textPostData?.style?.backgroundColor || '#000000',
+                  backgroundImage: textPostData?.style?.backgroundImage 
                     ? `url(${textPostData.style.backgroundImage})` 
                     : 'none',
                   backgroundSize: 'cover',
@@ -777,24 +777,24 @@ export function FullScreenFeed({
                 <div
                   className="w-full px-8"
                   style={{
-                    fontFamily: textPostData.style?.fontFamily || 'Arial',
-                    fontSize: `${textPostData.style?.fontSize || 48}px`,
-                    color: textPostData.style?.textColor || '#FFFFFF',
-                    fontWeight: textPostData.style?.textStyle === 'bold' ? 'bold' : 'normal',
-                    fontStyle: textPostData.style?.textStyle === 'italic' ? 'italic' : 'normal',
-                    textDecoration: textPostData.style?.textStyle === 'strikethrough' ? 'line-through' : 'none',
-                    textAlign: (textPostData.style?.textAlign || 'center') as 'left' | 'center' | 'right' | 'justify',
+                    fontFamily: textPostData?.style?.fontFamily || 'Arial',
+                    fontSize: `${textPostData?.style?.fontSize || 48}px`,
+                    color: textPostData?.style?.textColor || '#FFFFFF',
+                    fontWeight: textPostData?.style?.textStyle === 'bold' ? 'bold' : 'normal',
+                    fontStyle: textPostData?.style?.textStyle === 'italic' ? 'italic' : 'normal',
+                    textDecoration: textPostData?.style?.textStyle === 'strikethrough' ? 'line-through' : 'none',
+                    textAlign: (textPostData?.style?.textAlign || 'center') as 'left' | 'center' | 'right' | 'justify',
                     textShadow: `
-                      ${textPostData.style?.dropShadowOffsetX || 2}px 
-                      ${textPostData.style?.dropShadowOffsetY || 2}px 
-                      ${textPostData.style?.dropShadowBlur || 10}px 
-                      ${textPostData.style?.dropShadowColor || '#000000'}
+                      ${textPostData?.style?.dropShadowOffsetX || 2}px 
+                      ${textPostData?.style?.dropShadowOffsetY || 2}px 
+                      ${textPostData?.style?.dropShadowBlur || 10}px 
+                      ${textPostData?.style?.dropShadowColor || '#000000'}
                     `,
-                    padding: `${textPostData.style?.padding || 40}px`,
+                    padding: `${textPostData?.style?.padding || 40}px`,
                     lineHeight: 1.2,
                   }}
                 >
-                  {textPostData.content || file.description || 'Thought'}
+                  {textPostData?.content || file.description || file.name || file.title || 'Thought'}
                 </div>
               </div>
             )}
