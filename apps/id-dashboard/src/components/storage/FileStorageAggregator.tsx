@@ -6493,7 +6493,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
                                         actionMenuRef.current = node;
                                       }
                                     }}
-                                    className="absolute right-0 mt-2 w-44 bg-neutral-900 border border-neutral-700 rounded-lg shadow-xl z-30 py-1"
+                                    className="absolute right-0 mt-2 w-44 bg-neutral-900 border border-neutral-700 rounded-lg shadow-xl z-[100] py-1"
                                   >
                                     <button
                                       onClick={(e) => {
@@ -6655,7 +6655,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
                                       actionMenuRef.current = node;
                                     }
                                   }}
-                                  className="absolute right-0 mt-2 w-44 bg-neutral-900 border border-neutral-700 rounded-lg shadow-xl z-30 py-1"
+                                  className="absolute right-0 mt-2 w-44 bg-neutral-900 border border-neutral-700 rounded-lg shadow-xl z-[100] py-1"
                                 >
                             <button
                               onClick={(e) => {
