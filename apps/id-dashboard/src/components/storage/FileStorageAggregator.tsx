@@ -129,7 +129,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
     category: '',
     locationName: '',
     locationAddress: '',
-    license: ''
+    license: 'all-rights-reserved'
   });
   const [openMenuFor, setOpenMenuFor] = useState<string | null>(null);
   const actionMenuRef = React.useRef<HTMLDivElement | null>(null);
@@ -4987,7 +4987,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
     
     // Extract license (can be object with name or string)
     const license = (metadata as any)?.license || (metadata as any)?.schema?.license || '';
-    const licenseString = typeof license === 'object' && license?.name ? license.name : (typeof license === 'string' ? license : '');
+    const licenseString = typeof license === 'object' && license?.name ? license.name : (typeof license === 'string' ? license : '') || 'all-rights-reserved';
     
     setEditForm({
       name: metadata?.name || file.encrypted ? file.originalName || file.name.replace('.encrypted', '') : file.name,
@@ -5258,7 +5258,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
         category: '',
         locationName: '',
         locationAddress: '',
-        license: ''
+        license: 'all-rights-reserved'
       });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to update metadata');
@@ -6746,7 +6746,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
         category: '',
         locationName: '',
         locationAddress: '',
-        license: ''
+        license: 'all-rights-reserved'
       });
           }}
         >
@@ -6767,7 +6767,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
         category: '',
         locationName: '',
         locationAddress: '',
-        license: ''
+        license: 'all-rights-reserved'
       });
                 }}
                 className="text-text-secondary hover:text-text-primary transition-colors"
@@ -6931,7 +6931,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
         category: '',
         locationName: '',
         locationAddress: '',
-        license: ''
+        license: 'all-rights-reserved'
       });
                   }}
                   className="px-4 py-2 text-sm font-medium text-text-secondary hover:text-text-primary transition-colors"

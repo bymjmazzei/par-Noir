@@ -12,6 +12,7 @@ import { getEncryptionService } from '../services/encryptionService';
 import { FEED_CATEGORIES, FEED_CATEGORY_LIST } from '../constants/feedCategories';
 import { LICENSE_TYPES } from '../constants/licenses';
 import { FeedCategory } from '../types/aggregator';
+import { useUserState } from '../contexts/UserStateContext';
 
 const apiEndpoint = process.env.REACT_APP_API_ENDPOINT || 'https://api.parnoir.com';
 
@@ -509,6 +510,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
   hideSecureFolderSection = false,
   onOpenTextEditor
 }) => {
+  const { userState } = useUserState();
   const [isLoading, setIsLoading] = useState(false);
   const [filesByAccount, setFilesByAccount] = useState<Map<string, DriveFile[]>>(new Map());
   const [error, setError] = useState<string | null>(null);
@@ -833,7 +835,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
     category: '',
     locationName: '',
     locationAddress: '',
-    license: ''
+    license: 'all-rights-reserved'
   });
   const [fileMetadataMap, setFileMetadataMap] = useState<Map<string, any>>(new Map());
 
@@ -954,7 +956,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
     
     // Extract license (can be object with name or string)
     const license = metadata?.license || metadata?.schema?.license || '';
-    const licenseString = typeof license === 'object' && license?.name ? license.name : (typeof license === 'string' ? license : '');
+    const licenseString = typeof license === 'object' && license?.name ? license.name : (typeof license === 'string' ? license : '') || 'all-rights-reserved';
     
     setEditForm({
       name: metadata?.name || (file.name.endsWith('.encrypted') ? file.name.replace('.encrypted', '') : file.name),
@@ -2402,7 +2404,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
                       category: '',
                       locationName: '',
                       locationAddress: '',
-                      license: ''
+                      license: 'all-rights-reserved'
                     });
                   }}
                   className="px-4 py-2 text-sm font-medium text-text-secondary hover:text-text-primary transition-colors"
