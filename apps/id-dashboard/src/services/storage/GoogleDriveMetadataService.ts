@@ -1453,71 +1453,71 @@ export class GoogleDriveMetadataService {
     fileName: string,
     index: any
   ): Promise<void> {
-    const indexContent = JSON.stringify(index, null, 2);
-    const indexBlob = new Blob([indexContent], { type: 'application/json' });
+      const indexContent = JSON.stringify(index, null, 2);
+      const indexBlob = new Blob([indexContent], { type: 'application/json' });
 
-    // Check if index file exists
-    const searchResponse = await fetch(
+      // Check if index file exists
+      const searchResponse = await fetch(
       `https://www.googleapis.com/drive/v3/files?q=name='${fileName}' and '${metadataFolderId}' in parents and trashed=false&fields=files(id)`,
-      {
-        headers: {
-          'Authorization': `Bearer ${accessToken}`
-        }
-      }
-    );
-
-    if (!searchResponse.ok) {
-      throw new Error('Failed to search for index file');
-    }
-
-    const searchData = await searchResponse.json();
-    
-    if (searchData.files && searchData.files.length > 0) {
-      // Update existing index
-      const fileId = searchData.files[0].id;
-
-      const updateResponse = await fetch(
-        `https://www.googleapis.com/upload/drive/v3/files/${fileId}?uploadType=media`,
         {
-          method: 'PATCH',
-          headers: {
-            'Authorization': `Bearer ${accessToken}`,
-            'Content-Type': 'application/json; charset=UTF-8'
-          },
-          body: JSON.stringify(index)
-        }
-      );
-
-      if (!updateResponse.ok) {
-        const errorText = await updateResponse.text();
-        console.error(`Failed to update ${fileName}:`, {
-          status: updateResponse.status,
-          statusText: updateResponse.statusText,
-          errorText
-        });
-        throw new Error(`Failed to update ${fileName}`);
-      }
-    } else {
-      // Create new index file
-      const formData = new FormData();
-      formData.append('metadata', new Blob([JSON.stringify({
-        name: fileName,
-        parents: [metadataFolderId]
-      })], { type: 'application/json' }));
-      formData.append('file', indexBlob);
-
-      const createResponse = await fetch(
-        `https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart`,
-        {
-          method: 'POST',
           headers: {
             'Authorization': `Bearer ${accessToken}`
-          },
-          body: formData
+          }
         }
       );
 
-      if (!createResponse.ok) {
+      if (!searchResponse.ok) {
+        throw new Error('Failed to search for index file');
+      }
+
+      const searchData = await searchResponse.json();
+      
+      if (searchData.files && searchData.files.length > 0) {
+        // Update existing index
+        const fileId = searchData.files[0].id;
+
+        const updateResponse = await fetch(
+          `https://www.googleapis.com/upload/drive/v3/files/${fileId}?uploadType=media`,
+          {
+            method: 'PATCH',
+            headers: {
+              'Authorization': `Bearer ${accessToken}`,
+              'Content-Type': 'application/json; charset=UTF-8'
+            },
+            body: JSON.stringify(index)
+          }
+        );
+
+        if (!updateResponse.ok) {
+          const errorText = await updateResponse.text();
+        console.error(`Failed to update ${fileName}:`, {
+            status: updateResponse.status,
+            statusText: updateResponse.statusText,
+            errorText
+          });
+        throw new Error(`Failed to update ${fileName}`);
+        }
+      } else {
+      // Create new index file
+        const formData = new FormData();
+        formData.append('metadata', new Blob([JSON.stringify({
+        name: fileName,
+          parents: [metadataFolderId]
+        })], { type: 'application/json' }));
+        formData.append('file', indexBlob);
+
+        const createResponse = await fetch(
+        `https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart`,
+          {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${accessToken}`
+            },
+            body: formData
+          }
+        );
+
+        if (!createResponse.ok) {
         const errorText = await createResponse.text();
         console.error(`Failed to create ${fileName}:`, {
           status: createResponse.status,
@@ -1544,26 +1544,26 @@ export class GoogleDriveMetadataService {
           const searchData = await searchResponse.json();
           if (searchData.files && searchData.files.length > 0) {
             const fileId = searchData.files[0].id;
-            await fetch(
+          await fetch(
               `https://www.googleapis.com/drive/v3/files/${fileId}/permissions`,
-              {
-                method: 'POST',
-                headers: {
-                  'Authorization': `Bearer ${accessToken}`,
-                  'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
-                  role: 'reader',
-                  type: 'anyone'
-                })
-              }
-            );
+            {
+              method: 'POST',
+              headers: {
+                'Authorization': `Bearer ${accessToken}`,
+                'Content-Type': 'application/json'
+              },
+              body: JSON.stringify({
+                role: 'reader',
+                type: 'anyone'
+              })
+            }
+          );
           }
         }
-      } catch (permError) {
+        } catch (permError) {
         // Permission might already exist, ignore
-        console.warn('Failed to set public permissions:', permError);
-      }
+          console.warn('Failed to set public permissions:', permError);
+        }
     }
   }
 }

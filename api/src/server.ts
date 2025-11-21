@@ -2254,7 +2254,12 @@ class ProductionServer {
         const { identityId } = req.params;
         const { credentials, cid } = req.body;
 
-        console.log(`[StorageCredentials PUT] Received request for identityId: ${identityId}`);
+        // SECURITY: Sanitize identityId in logs - never log pn names or short identifiers
+        const sanitizedIdentityId = identityId && identityId.length < 20 && !identityId.startsWith('did:') && !identityId.startsWith('MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA')
+          ? '[REDACTED - potential pn name]'
+          : identityId?.substring(0, 50) + (identityId && identityId.length > 50 ? '...' : '');
+
+        console.log(`[StorageCredentials PUT] Received request for identityId: ${sanitizedIdentityId}`);
         console.log(`[StorageCredentials PUT] Credentials structure:`, {
           hasGoogleDriveAccounts: !!credentials?.googleDriveAccounts,
           googleDriveAccountsLength: Array.isArray(credentials?.googleDriveAccounts) ? credentials.googleDriveAccounts.length : 0,
@@ -2273,7 +2278,8 @@ class ProductionServer {
         const { storageCredentialsService } = await import('./server/modules/storageCredentialsService');
         const record = await storageCredentialsService.upsertCredentials(identityId, credentials, cid);
         
-        console.log(`[StorageCredentials PUT] Successfully saved credentials for identityId: ${identityId}`);
+        // SECURITY: Use sanitized identityId in logs
+        console.log(`[StorageCredentials PUT] Successfully saved credentials for identityId: ${sanitizedIdentityId}`);
 
         return res.json({
           success: true,

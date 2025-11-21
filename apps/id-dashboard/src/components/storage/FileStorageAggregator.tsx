@@ -259,6 +259,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
   
   // Use a function declaration (not const arrow function) so it's hoisted and available during initialization
   // This function reads from refs to avoid circular dependency issues
+  // SECURITY: NEVER include pnName in identity candidates - it's a secret credential
   function getStorageIdentityCandidates(): string[] {
     const candidates: string[] = [];
     const currentResolvedAuth = resolvedAuthRef.current;
@@ -270,6 +271,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
     }
     
     // Include other candidates for backward compatibility
+    // SECURITY: Only use public identifiers (DID, public key, pn identifier) - NEVER pnName
     if (currentResolvedAuth?.publicKey) {
       candidates.push(currentResolvedAuth.publicKey);
     }
@@ -277,17 +279,23 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
       candidates.push(currentAuthenticatedUser.publicKey);
     }
     if (typeof currentAuthenticatedUser?.id === 'string') {
-      candidates.push(currentAuthenticatedUser.id);
+      // Only use if it's a DID or public key format, not a pn name
+      const id = currentAuthenticatedUser.id;
+      if (id.startsWith('did:') || id.startsWith('MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA') || id.length > 20) {
+        candidates.push(id);
+      }
     }
-    if (typeof currentResolvedAuth?.pnName === 'string') {
-      candidates.push(currentResolvedAuth.pnName);
-    }
-    if (typeof currentAuthenticatedUser?.pnName === 'string') {
-      candidates.push(currentAuthenticatedUser.pnName);
-    }
-    if (typeof (currentAuthenticatedUser as any)?.username === 'string') {
-      candidates.push((currentAuthenticatedUser as any).username);
-    }
+    // SECURITY: REMOVED - pnName is a secret credential and must NEVER be used as identityId
+    // if (typeof currentResolvedAuth?.pnName === 'string') {
+    //   candidates.push(currentResolvedAuth.pnName);
+    // }
+    // if (typeof currentAuthenticatedUser?.pnName === 'string') {
+    //   candidates.push(currentAuthenticatedUser.pnName);
+    // }
+    // SECURITY: REMOVED - username might be pnName, so don't use it
+    // if (typeof (currentAuthenticatedUser as any)?.username === 'string') {
+    //   candidates.push((currentAuthenticatedUser as any).username);
+    // }
     return Array.from(new Set(candidates.filter((value) => value && value.trim().length > 0)));
   }
 
