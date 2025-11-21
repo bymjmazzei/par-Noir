@@ -731,9 +731,29 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
       }
     }
     
+    const finalAccountsArray = Array.from(finalAccounts.values());
+    
+    // CRITICAL: HARD LIMIT - Only ONE account should exist per pN
+    // If we have more than 1, something is very wrong - keep only the most recent one
+    if (finalAccountsArray.length > 1) {
+      console.error(`🚨 [buildStorageCredentialPayload] CRITICAL: Cache has ${finalAccountsArray.length} accounts (expected max 1). Keeping only the most recent one.`);
+      // Sort by updatedAt or connectedAt, keep only the most recent
+      finalAccountsArray.sort((a, b) => {
+        const aTime = a.updatedAt || a.connectedAt || '';
+        const bTime = b.updatedAt || b.connectedAt || '';
+        return bTime.localeCompare(aTime); // Most recent first
+      });
+      finalAccountsArray.length = 1; // Keep only first (most recent)
+      
+      // Clear cache and repopulate with only the one account
+      driveCredentialCacheRef.current.clear();
+      const accountToKeep = finalAccountsArray[0];
+      driveCredentialCacheRef.current.set(accountToKeep.backendId, accountToKeep);
+    }
+    
     const now = new Date().toISOString();
     return {
-      googleDriveAccounts: Array.from(finalAccounts.values()).map((entry) => ({
+      googleDriveAccounts: finalAccountsArray.map((entry) => ({
         backendId: entry.backendId,
         keyPrefix: entry.keyPrefix,
         accessToken: entry.accessToken,
@@ -1861,50 +1881,82 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
             ? [storedAccounts]
             : [];
 
+        console.log(`🔍 [StorageCredentials] API returned ${accountsArray.length} account(s) in response`);
+
         if (accountsArray.length === 0) {
           // candidateId (identityId) is secret - not logged
           console.warn('ℹ️ [StorageCredentials] Credentials payload contained no Google Drive accounts');
           continue;
         }
 
-        // CRITICAL: Deduplicate accounts BEFORE hydrating to prevent 300+ duplicates
+        // CRITICAL: HARD LIMIT - If API has more than 2 accounts, something is VERY wrong
+        // Clear everything and start fresh with only ONE account
+        if (accountsArray.length > 2) {
+          console.error(`🚨 [StorageCredentials] CRITICAL: API returned ${accountsArray.length} accounts (expected max 2). This is a severe bug. Clearing ALL accounts and starting fresh.`);
+          
+          // Clear cache completely
+          driveCredentialCacheRef.current.clear();
+          
+          // Clear driveAccounts state
+          setDriveAccounts([]);
+          persistDriveAccounts([]);
+          
+          // Clear API storage - send empty array to API
+          try {
+            const identityCandidates = getStorageIdentityCandidates();
+            for (const identityId of identityCandidates) {
+              if (!identityId) continue;
+              await fetch(`${apiEndpoint}/api/storage/credentials/${encodeURIComponent(identityId)}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  credentials: { googleDriveAccounts: [] },
+                  cid: null,
+                }),
+              }).catch(() => {});
+            }
+            console.log(`✅ [StorageCredentials] Cleared ${accountsArray.length} accounts from API storage`);
+          } catch (clearError) {
+            console.error('❌ [StorageCredentials] Failed to clear API storage:', clearError);
+          }
+          
+          // Don't hydrate anything - user needs to reconnect manually
+          hydrationInProgressRef.current = false;
+          return;
+        }
+
+        // CRITICAL: Deduplicate accounts BEFORE hydrating - only ONE account per email maximum
         const uniqueAccountsByEmail = new Map<string, typeof accountsArray[0]>();
         const accountsWithoutEmail: typeof accountsArray = [];
         
         for (const account of accountsArray) {
           if (account?.email) {
             const normalizedEmail = account.email.toLowerCase();
-            const existing = uniqueAccountsByEmail.get(normalizedEmail);
-            // Keep the most recent one (by updatedAt or connectedAt)
-            if (!existing || 
-                (account.updatedAt && existing.updatedAt && account.updatedAt > existing.updatedAt) ||
-                (account.connectedAt && existing.connectedAt && account.connectedAt > existing.connectedAt)) {
+            // Only keep ONE account per email - the most recent one
+            if (!uniqueAccountsByEmail.has(normalizedEmail)) {
               uniqueAccountsByEmail.set(normalizedEmail, account);
+            } else {
+              const existing = uniqueAccountsByEmail.get(normalizedEmail)!;
+              // Keep the most recent one (by updatedAt or connectedAt)
+              if ((account.updatedAt && existing.updatedAt && account.updatedAt > existing.updatedAt) ||
+                  (account.connectedAt && existing.connectedAt && account.connectedAt > existing.connectedAt)) {
+                uniqueAccountsByEmail.set(normalizedEmail, account);
+              }
             }
           } else {
-            accountsWithoutEmail.push(account);
+            // Only keep ONE account without email
+            if (accountsWithoutEmail.length === 0) {
+              accountsWithoutEmail.push(account);
+            }
           }
         }
         
         const deduplicatedAccounts = Array.from(uniqueAccountsByEmail.values()).concat(accountsWithoutEmail);
         
-        // CRITICAL: Safety check - if we have more than 10 accounts, something is very wrong
-        if (deduplicatedAccounts.length > 10) {
-          console.error(`🚨 [StorageCredentials] CRITICAL: Found ${deduplicatedAccounts.length} accounts in API response (expected max 10). This indicates severe duplication. Clearing cache and using only the first account per email.`);
-          // Clear the cache completely and start fresh
-          driveCredentialCacheRef.current.clear();
-          // Only process the first unique account per email
-          const firstAccountsByEmail = new Map<string, typeof accountsArray[0]>();
-          for (const account of accountsArray) {
-            if (account?.email) {
-              const normalizedEmail = account.email.toLowerCase();
-              if (!firstAccountsByEmail.has(normalizedEmail)) {
-                firstAccountsByEmail.set(normalizedEmail, account);
-              }
-            }
-          }
-          deduplicatedAccounts.length = 0;
-          deduplicatedAccounts.push(...Array.from(firstAccountsByEmail.values()), ...accountsWithoutEmail.slice(0, 1));
+        // CRITICAL: Final safety check - if we still have more than 1 account, something is wrong
+        if (deduplicatedAccounts.length > 1) {
+          console.error(`🚨 [StorageCredentials] After deduplication, still have ${deduplicatedAccounts.length} accounts (expected max 1). Keeping only the first one.`);
+          deduplicatedAccounts.length = 1;
         }
         
         console.log(`🔄 [StorageCredentials] Hydrating ${deduplicatedAccounts.length} unique account(s) from ${accountsArray.length} total in API response`);
