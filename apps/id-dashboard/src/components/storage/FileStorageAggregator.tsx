@@ -2207,11 +2207,11 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
         // Only log warning if we've waited and still don't have it
         if (retries >= maxRetries) {
           console.warn('⚠️ [loadTokenFromMetadata] Missing authenticated identity details after waiting', {
-            hasAuthenticatedUser: !!authenticatedUser,
-            hasId: !!authenticatedUser?.id,
-            identityId,
+          hasAuthenticatedUser: !!authenticatedUser,
+          hasId: !!authenticatedUser?.id,
+          identityId,
             pnIdentifierReady: pnIdentifierRef.current !== null,
-          });
+        });
         }
         return;
       }
@@ -5838,9 +5838,35 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
           });
 
           if (response.ok) {
-            console.log('✅ [Delete] Indexes updated successfully');
+            const result = await response.json().catch(() => ({}));
+            console.log('✅ [Delete] Indexes updated successfully', result);
           } else if (response.status === 401) {
-            console.warn('⚠️ [Delete] Index cleanup skipped (token expired) - file deleted but indexes may need manual cleanup');
+            // Token expired - but API should still remove from database
+            // Try to parse response to see if database removal succeeded
+            try {
+              const result = await response.json().catch(() => ({}));
+              if (result.removedFromDatabase) {
+                console.log('✅ [Delete] File removed from database (token expired but cleanup succeeded)');
+              } else {
+                console.warn('⚠️ [Delete] Token expired - attempting direct database removal...');
+                // Fallback: Try to remove from database directly via metadata-index endpoint
+                try {
+                  const dbResponse = await fetch(`${apiEndpoint}/api/aggregator/metadata-index/${file.backendFileId}`, {
+                    method: 'DELETE',
+                    headers: {
+                      'Authorization': `Bearer ${accessToken}` // Still try with expired token
+                    }
+                  });
+                  if (dbResponse.ok) {
+                    console.log('✅ [Delete] File removed from database via fallback endpoint');
+                  }
+                } catch (fallbackError) {
+                  console.warn('⚠️ [Delete] Fallback database removal also failed:', fallbackError);
+                }
+              }
+            } catch (parseError) {
+              console.warn('⚠️ [Delete] Could not parse response (token expired) - file deleted but database may need manual cleanup');
+            }
           } else {
             const errorText = await response.text().catch(() => 'Unknown error');
             console.warn('⚠️ [Delete] Index cleanup failed (non-critical):', errorText);
