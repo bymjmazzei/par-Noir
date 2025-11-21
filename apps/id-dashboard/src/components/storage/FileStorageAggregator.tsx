@@ -241,8 +241,9 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
             passcode: credentials.passcode,
             publicKey
           });
-          // Store without 'pn-' prefix for backward compatibility with existing code
-          pnIdentifierRef.current = identifier.replace(/^pn-/, '');
+          // CRITICAL: Store WITH 'pn-' prefix - this is the standardized format
+          // API expects pn-{hash} format, not just {hash}
+          pnIdentifierRef.current = identifier; // Keep full format: pn-{12-char-hex}
           console.log('[StorageCredentials] Derived pN identifier (standardized):', identifier);
         } else {
         pnIdentifierRef.current = null;
@@ -1791,7 +1792,15 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
           endpoint: apiEndpoint,
         });
 
-        const response = await fetch(`${apiEndpoint}/api/storage/credentials/${encodeURIComponent(candidateId)}`);
+        // CRITICAL: Use ONLY pn identifier - candidateId should already be pn identifier from getStorageIdentityCandidates
+        // But double-check it's actually a pn identifier format
+        const pnId = candidateId.startsWith('pn-') ? candidateId : null;
+        if (!pnId) {
+          console.warn(`⚠️ [StorageCredentials] Skipping non-pn identifier candidate: ${candidateId.substring(0, 20)}...`);
+          hydrationMissingCandidatesRef.current.add(candidateId);
+          continue;
+        }
+        const response = await fetch(`${apiEndpoint}/api/storage/credentials/${encodeURIComponent(pnId)}`);
         if (response.status === 404) {
           hydrationMissingCandidatesRef.current.add(candidateId);
           // candidateId (identityId) is secret - not logged
@@ -1873,10 +1882,11 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
           
           // Clear API storage - send empty array to API
           try {
+            // CRITICAL: Use ONLY pn identifier - getStorageIdentityCandidates now returns only pn identifier
             const identityCandidates = getStorageIdentityCandidates();
-            for (const identityId of identityCandidates) {
-              if (!identityId) continue;
-              await fetch(`${apiEndpoint}/api/storage/credentials/${encodeURIComponent(identityId)}`, {
+            const pnId = identityCandidates.length > 0 && identityCandidates[0]?.startsWith('pn-') ? identityCandidates[0] : null;
+            if (pnId) {
+              await fetch(`${apiEndpoint}/api/storage/credentials/${encodeURIComponent(pnId)}`, {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -1884,6 +1894,8 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
                   cid: null,
                 }),
               }).catch(() => {});
+            } else {
+              console.warn('⚠️ [StorageCredentials] No pn identifier available for clearing API storage');
             }
             console.log(`✅ [StorageCredentials] Cleared ${accountsArray.length} accounts from API storage`);
           } catch (clearError) {
@@ -4531,20 +4543,15 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
         
         // Even if payload is empty (no accounts left), we need to persist it to clear the API
         // This ensures the disconnected account is removed from API storage
+        // CRITICAL: Use ONLY pn identifier - getStorageIdentityCandidates now returns only pn identifier
         const identityCandidates = getStorageIdentityCandidates();
+        const pnId = identityCandidates.length > 0 && identityCandidates[0]?.startsWith('pn-') ? identityCandidates[0] : null;
         
-        if (identityCandidates.length > 0) {
-          const seen = new Set<string>();
-          for (const identityId of identityCandidates) {
-            if (!identityId || seen.has(identityId)) {
-              continue;
-            }
-            seen.add(identityId);
-            
-            try {
-              // Send current payload (may be empty if all accounts disconnected)
-              // CRITICAL: Always send the deduplicated payload, even if it's empty
-              const response = await fetch(`${apiEndpoint}/api/storage/credentials/${encodeURIComponent(identityId)}`, {
+        if (pnId) {
+          try {
+            // Send current payload (may be empty if all accounts disconnected)
+            // CRITICAL: Always send the deduplicated payload, even if it's empty
+            const response = await fetch(`${apiEndpoint}/api/storage/credentials/${encodeURIComponent(pnId)}`, {
                 method: 'PUT',
                 headers: {
                   'Content-Type': 'application/json',
@@ -4568,9 +4575,8 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
             } catch (apiError) {
               console.error('❌ [handleDisconnect] Failed to update API storage credentials:', apiError);
             }
-          }
         } else {
-          console.warn('⚠️ [handleDisconnect] No identity candidates available for API update');
+          console.warn('⚠️ [handleDisconnect] No pn identifier available for API update');
         }
       } catch (apiError) {
         console.error('❌ [handleDisconnect] Failed to update API storage credentials:', apiError);
@@ -4583,11 +4589,12 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
       // Try to update API even on error
       try {
         const payload = buildStorageCredentialPayload();
+        // CRITICAL: Use ONLY pn identifier - getStorageIdentityCandidates now returns only pn identifier
         const identityCandidates = getStorageIdentityCandidates();
+        const pnId = identityCandidates.length > 0 && identityCandidates[0]?.startsWith('pn-') ? identityCandidates[0] : null;
         
-        if (identityCandidates.length > 0) {
-          const identityId = identityCandidates[0];
-          await fetch(`${apiEndpoint}/api/storage/credentials/${encodeURIComponent(identityId)}`, {
+        if (pnId) {
+          await fetch(`${apiEndpoint}/api/storage/credentials/${encodeURIComponent(pnId)}`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -4595,6 +4602,8 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
               cid: null,
             }),
           });
+        } else {
+          console.warn('⚠️ [handleDisconnect] No pn identifier available for API update after error');
         }
       } catch (apiError) {
         console.error('❌ [handleDisconnect] Failed to update API after error:', apiError);
