@@ -796,6 +796,18 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
   }, [buildStorageCredentialPayload, persistCredentialsToSecureMetadata, apiEndpoint, driveAccounts.length]);
 
   // Token refresh handler - moved here after persistStorageCredentialsToAPI is declared
+  // CRITICAL: Use refs for driveAccounts and userEmails to avoid re-registering event listener
+  const driveAccountsRef = React.useRef(driveAccounts);
+  const userEmailsRefForTokenRefresh = React.useRef(userEmails);
+  
+  React.useEffect(() => {
+    driveAccountsRef.current = driveAccounts;
+  }, [driveAccounts]);
+  
+  React.useEffect(() => {
+    userEmailsRefForTokenRefresh.current = userEmails;
+  }, [userEmails]);
+
   React.useEffect(() => {
     const handleTokenRefreshed = async (event: Event) => {
       const detail = (event as CustomEvent<{ backendId?: string; accessToken?: string; refreshToken?: string | null; email?: string | null }>).detail;
@@ -811,17 +823,18 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
       }
 
       const existingCredential = driveCredentialCacheRef.current.get(backendId);
+      const currentDriveAccounts = driveAccountsRef.current; // Use ref instead of state
       const account =
-        driveAccounts.find((entry) => entry.backendId === backendId) || null;
+        currentDriveAccounts.find((entry) => entry.backendId === backendId) || null;
       const keyPrefix =
         account?.keyPrefix ||
         existingCredential?.keyPrefix ||
         `google_drive_${backendId.replace(/[^a-z0-9]+/gi, '-')}`;
+      const currentUserEmails = userEmailsRefForTokenRefresh.current; // Use ref instead of state
       const resolvedEmail =
         detail?.email ??
         existingCredential?.email ??
-        account?.email ??
-        userEmailsRef.current.get(backendId) ??
+        currentUserEmails.get(backendId) ??
         null;
       const connectedAt = existingCredential?.connectedAt || new Date().toISOString();
       const nowIso = new Date().toISOString();
@@ -883,13 +896,14 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
             if (entry.backendId === backendId) {
               return false;
             }
-            if (entry.email && entry.email.toLowerCase() === normalized) {
+            const entryEmail = userEmailsRefForTokenRefresh.current.get(entry.backendId);
+            if (entryEmail && entryEmail.toLowerCase() === normalized) {
               return false;
             }
             return true;
           });
 
-          const next = [...filtered, { backendId, keyPrefix, email: resolvedEmail }];
+          const next = [...filtered, { backendId, keyPrefix }];
           persistDriveAccounts(next);
           return next;
         });
@@ -901,6 +915,8 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
         });
       }
 
+      // CRITICAL: Call persistStorageCredentialsToAPI but rely on debounce to prevent rapid-fire calls
+      // The debounce in persistStorageCredentialsToAPI will prevent multiple simultaneous calls
       persistStorageCredentialsToAPI(undefined).catch((persistError) => {
         console.warn('⚠️ [StorageCredentials] Failed to persist refreshed token snapshot:', persistError);
       });
@@ -918,14 +934,22 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
     return () => {
       window.removeEventListener('google-drive-token-refreshed', handleTokenRefreshed as EventListener);
     };
-  }, [aggregatorService, driveAccounts, persistStorageCredentialsToAPI]);
+  }, [aggregatorService, persistStorageCredentialsToAPI, authenticatedUser?.id]); // Removed driveAccounts and userEmails from dependencies
 
   // Auto-persist credentials to API when driveAccounts are available - moved here after persistStorageCredentialsToAPI is declared
+  // CRITICAL: Only run auto-persist when hydration is complete and not in progress
   React.useEffect(() => {
+    // Skip if hydration is in progress - let hydration handle persistence
+    if (hydrationInProgressRef.current) {
+      console.log(`[StorageCredentials] Auto-persist skipped: hydration in progress`);
+      return;
+    }
+    
     console.log(`[StorageCredentials] Auto-persist effect triggered`, {
       driveAccountsLength: driveAccounts.length,
       cacheSize: driveCredentialCacheRef.current.size,
-      hydrationSuccess: hydrationSuccessRef.current
+      hydrationSuccess: hydrationSuccessRef.current,
+      hydrationInProgress: hydrationInProgressRef.current
     });
     
     // Check both driveAccounts state and cache
@@ -933,8 +957,14 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
     const hasAccounts = driveAccounts.length > 0 || cacheEntries.length > 0;
     
     if (hasAccounts) {
-      // Delay to ensure everything is initialized
+      // Longer delay to ensure hydration completes and avoid rapid-fire calls
       const timeoutId = setTimeout(() => {
+        // Double-check hydration is still not in progress
+        if (hydrationInProgressRef.current) {
+          console.log(`[StorageCredentials] Auto-persist cancelled: hydration started during delay`);
+          return;
+        }
+        
         const payload = buildStorageCredentialPayload();
         console.log(`[StorageCredentials] Auto-persisting accounts to API...`, {
           driveAccountsLength: driveAccounts.length,
@@ -945,7 +975,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
         persistStorageCredentialsToAPI(undefined).catch((error) => {
           console.error('⚠️ [StorageCredentials] Auto-persist failed:', error);
         });
-      }, 3000); // 3 second delay to ensure hydration completes
+      }, 8000); // Increased from 3s to 8s to ensure hydration completes and avoid rapid calls
       return () => clearTimeout(timeoutId);
     } else {
       console.log(`[StorageCredentials] Skipping auto-persist: no accounts found in state or cache`);
