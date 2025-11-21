@@ -5,8 +5,8 @@
 
 import React, { useState, useMemo } from 'react';
 import { IndexedFile, Feed } from '../types/aggregator';
-import { FEED_CATEGORIES, FeedCategoryInfo } from '../constants/feedCategories';
-import { Info, TrendingUp, Sparkles, Star, Clock, Users } from 'lucide-react';
+import { FEED_CATEGORIES } from '../constants/feedCategories';
+import { Info, Heart, MessageCircle, Share2, Bookmark } from 'lucide-react';
 import { useUserState } from '../contexts/UserStateContext';
 
 interface DiscoveryPageProps {
@@ -18,7 +18,8 @@ interface DiscoveryPageProps {
   onCreatorClick: (creatorId: string) => void;
 }
 
-type DiscoveryCategory = 'trending' | 'new-creators' | 'featured' | 'classics' | 'niches';
+type TopFeedOption = 'all' | 'trending' | 'featured' | 'classics' | 'new-creators';
+type NicheFeedOption = string | null; // Feed category ID
 
 export function DiscoveryPage({
   files,
@@ -29,8 +30,8 @@ export function DiscoveryPage({
   onCreatorClick
 }: DiscoveryPageProps) {
   const { userState, getDisplayName } = useUserState();
-  const [activeCategory, setActiveCategory] = useState<DiscoveryCategory>('trending');
-  const [selectedNiche, setSelectedNiche] = useState<string | null>(null);
+  const [activeTopFeed, setActiveTopFeed] = useState<TopFeedOption>('all');
+  const [selectedNiche, setSelectedNiche] = useState<NicheFeedOption>(null);
   const [showInfo, setShowInfo] = useState<string | null>(null);
 
   // Get trending files (most engagement)
@@ -50,7 +51,14 @@ export function DiscoveryPage({
 
   // Get new creators (recent uploads from new creators)
   const newCreators = useMemo(() => {
-    const creatorMap = new Map<string, { files: IndexedFile[]; latestUpload: Date }>();
+    const creatorMap = new Map<string, { 
+      files: IndexedFile[]; 
+      latestUpload: Date;
+      totalViews7Days: number;
+      primaryNiche: string | null;
+    }>();
+    
+    const sevenDaysAgo = Date.now() - (7 * 24 * 60 * 60 * 1000);
     
     files.forEach(file => {
       const creatorId = file.metadata.creator?.identifier?.value || 
@@ -61,13 +69,30 @@ export function DiscoveryPage({
       const uploadDate = new Date(file.metadata.uploadDate);
       const existing = creatorMap.get(creatorId);
       
+      // Calculate views in last 7 days
+      const fileViews = file.metadata.engagement?.views || 0;
+      const fileUploadTime = uploadDate.getTime();
+      const views7Days = fileUploadTime >= sevenDaysAgo ? fileViews : 0;
+      
+      // Determine primary niche from file categories
+      const fileNiche = file.metadata.feedCategories?.[0] || 
+                       file.metadata.category || 
+                       null;
+      
       if (!existing || uploadDate > existing.latestUpload) {
         creatorMap.set(creatorId, {
           files: [file],
-          latestUpload: uploadDate
+          latestUpload: uploadDate,
+          totalViews7Days: views7Days,
+          primaryNiche: fileNiche
         });
       } else {
         existing.files.push(file);
+        existing.totalViews7Days += views7Days;
+        // Update primary niche if this file has more engagement
+        if (fileNiche && fileViews > (existing.files[0].metadata.engagement?.views || 0)) {
+          existing.primaryNiche = fileNiche;
+        }
       }
     });
 
@@ -78,48 +103,72 @@ export function DiscoveryPage({
       .map(([creatorId, data]) => ({
         creatorId,
         file: data.files[0], // Use first file as thumbnail
-        fileCount: data.files.length
+        fileCount: data.files.length,
+        totalViews7Days: data.totalViews7Days,
+        primaryNiche: data.primaryNiche
       }));
   }, [files]);
 
-  // Get featured feeds (subscribed feeds with most content)
-  const featuredFeeds = useMemo(() => {
-    return [...feeds]
-      .filter(feed => feed.postCount && feed.postCount > 0)
-      .sort((a, b) => (b.postCount || 0) - (a.postCount || 0))
-      .slice(0, 20);
-  }, [feeds]);
 
-  // Get classics (oldest files with high engagement)
-  const classics = useMemo(() => {
-    return [...files]
-      .filter(file => {
-        const uploadDate = new Date(file.metadata.uploadDate);
-        const daysOld = (Date.now() - uploadDate.getTime()) / (1000 * 60 * 60 * 24);
-        return daysOld > 30; // At least 30 days old
-      })
-      .sort((a, b) => {
-        const aEngagement = (a.metadata.engagement?.likes || 0) + 
-                           (a.metadata.engagement?.comments || 0);
-        const bEngagement = (b.metadata.engagement?.likes || 0) + 
-                           (b.metadata.engagement?.comments || 0);
-        return bEngagement - aEngagement;
-      })
-      .slice(0, 20);
-  }, [files]);
-
-  // Get files by niche category
-  const nicheFiles = useMemo(() => {
-    if (!selectedNiche) return [];
+  // Get files filtered by top feed and niche
+  const filteredFiles = useMemo(() => {
+    let filtered = [...files];
     
-    return files.filter(file => 
-      file.metadata.feedCategories?.includes(selectedNiche as any) ||
-      file.metadata.feedIds?.some(feedId => {
-        const feed = feeds.find(f => f.feedId === feedId);
-        return feed?.feedCategory === selectedNiche;
-      })
-    );
-  }, [files, feeds, selectedNiche]);
+    // First filter by niche if selected
+    if (selectedNiche) {
+      filtered = filtered.filter(file => 
+        file.metadata.feedCategories?.includes(selectedNiche as any) ||
+        file.metadata.feedIds?.some(feedId => {
+          const feed = feeds.find(f => f.feedId === feedId);
+          return feed?.feedCategory === selectedNiche;
+        })
+      );
+    }
+    
+    // Then apply top feed filter
+    switch (activeTopFeed) {
+      case 'all':
+        // Show all files (already filtered by niche if selected)
+        break;
+      case 'trending':
+        filtered = filtered.sort((a, b) => {
+          const aEngagement = (a.metadata.engagement?.likes || 0) + 
+                             (a.metadata.engagement?.comments || 0) + 
+                             (a.metadata.engagement?.shares || 0);
+          const bEngagement = (b.metadata.engagement?.likes || 0) + 
+                             (b.metadata.engagement?.comments || 0) + 
+                             (b.metadata.engagement?.shares || 0);
+          return bEngagement - aEngagement;
+        }).slice(0, 100);
+        break;
+      case 'featured':
+        // Featured feeds with most content
+        const featuredFeedIds = feeds
+          .filter(feed => feed.postCount && feed.postCount > 0)
+          .sort((a, b) => (b.postCount || 0) - (a.postCount || 0))
+          .slice(0, 10)
+          .map(f => f.feedId);
+        filtered = filtered.filter(file => 
+          file.metadata.feedIds?.some(feedId => featuredFeedIds.includes(feedId))
+        );
+        break;
+      case 'classics':
+        filtered = filtered.filter(file => {
+          const uploadDate = new Date(file.metadata.uploadDate);
+          const daysOld = (Date.now() - uploadDate.getTime()) / (1000 * 60 * 60 * 24);
+          return daysOld > 30; // At least 30 days old
+        }).sort((a, b) => {
+          const aEngagement = (a.metadata.engagement?.likes || 0) + 
+                             (a.metadata.engagement?.comments || 0);
+          const bEngagement = (b.metadata.engagement?.likes || 0) + 
+                             (b.metadata.engagement?.comments || 0);
+          return bEngagement - aEngagement;
+        }).slice(0, 100);
+        break;
+    }
+    
+    return filtered;
+  }, [files, feeds, selectedNiche, activeTopFeed]);
 
   // Helper to get thumbnail URL for a file
   const getThumbnail = (file: IndexedFile): string => {
@@ -138,77 +187,50 @@ export function DiscoveryPage({
   };
 
   const getDisplayItems = () => {
-    switch (activeCategory) {
-      case 'trending':
-        return trendingFiles.map(file => {
-          const creatorId = getCreatorId(file);
-          return {
-            type: 'file' as const,
-            id: file.metadata.fileId,
-            item: file,
-            thumbnail: getThumbnail(file),
-            title: file.metadata.name || file.metadata.title || 'Untitled',
-            subtitle: getDisplayName(creatorId),
-            metadata: `${(file.metadata.engagement?.likes || 0).toLocaleString()} likes`
-          };
-        });
-      
-      case 'new-creators':
-        return newCreators.map(creator => {
-          const creatorDisplayName = getDisplayName(creator.creatorId);
-          return {
-            type: 'creator' as const,
-            id: creator.creatorId,
-            item: creator.file,
-            thumbnail: getThumbnail(creator.file),
-            title: creatorDisplayName,
-            subtitle: `${creator.fileCount} posts`,
-            metadata: 'New Creator'
-          };
-        });
-      
-      case 'featured':
-        return featuredFeeds.map(feed => ({
-          type: 'feed' as const,
-          id: feed.feedId,
-          item: feed,
-          thumbnail: feed.branding?.avatar || '/placeholder-thumbnail.png',
-          title: feed.feedName,
-          subtitle: feed.feedDescription || '',
-          metadata: `${feed.postCount || 0} posts`
-        }));
-      
-      case 'classics':
-        return classics.map(file => {
-          const creatorId = getCreatorId(file);
-          return {
-            type: 'file' as const,
-            id: file.metadata.fileId,
-            item: file,
-            thumbnail: getThumbnail(file),
-            title: file.metadata.name || file.metadata.title || 'Untitled',
-            subtitle: getDisplayName(creatorId),
-            metadata: new Date(file.metadata.uploadDate).toLocaleDateString()
-          };
-        });
-      
-      case 'niches':
-        return nicheFiles.map(file => {
-          const creatorId = getCreatorId(file);
-          return {
-            type: 'file' as const,
-            id: file.metadata.fileId,
-            item: file,
-            thumbnail: getThumbnail(file),
-            title: file.metadata.name || file.metadata.title || 'Untitled',
-            subtitle: getDisplayName(creatorId),
-            metadata: ''
-          };
-        });
-      
-      default:
-        return [];
+    // Show new creators in a separate section
+    if (activeTopFeed === 'new-creators') {
+      return newCreators.map(creator => {
+        const creatorDisplayName = getDisplayName(creator.creatorId);
+        const nicheName = creator.primaryNiche 
+          ? FEED_CATEGORIES[creator.primaryNiche as keyof typeof FEED_CATEGORIES]?.name || creator.primaryNiche
+          : null;
+        return {
+          type: 'creator' as const,
+          id: creator.creatorId,
+          item: creator.file,
+          thumbnail: getThumbnail(creator.file),
+          title: creatorDisplayName,
+          subtitle: `${creator.totalViews7Days.toLocaleString()} views (7 days)`,
+          metadata: nicheName || 'Creator',
+          engagement: {
+            likes: creator.file.metadata.engagement?.likes || 0,
+            comments: creator.file.metadata.engagement?.comments || 0,
+            shares: creator.file.metadata.engagement?.shares || 0,
+            saves: (creator.file.metadata.engagement as any)?.saves || 0
+          }
+        };
+      });
     }
+    
+    // Show filtered files
+    return filteredFiles.map(file => {
+      const creatorId = getCreatorId(file);
+      return {
+        type: 'file' as const,
+        id: file.metadata.fileId,
+        item: file,
+        thumbnail: getThumbnail(file),
+        title: file.metadata.name || file.metadata.title || 'Untitled',
+        subtitle: getDisplayName(creatorId),
+        metadata: '',
+        engagement: {
+          likes: file.metadata.engagement?.likes || 0,
+          comments: file.metadata.engagement?.comments || 0,
+          shares: file.metadata.engagement?.shares || 0,
+          saves: (file.metadata.engagement as any)?.saves || 0
+        }
+      };
+    });
   };
 
   const handleItemClick = (item: any) => {
@@ -221,107 +243,92 @@ export function DiscoveryPage({
     }
   };
 
+  // Ref for top feed railway container
+  const topFeedRailRef = React.useRef<HTMLDivElement>(null);
+  
+  // Center active top feed option on screen
+  React.useEffect(() => {
+    if (topFeedRailRef.current) {
+      const activeButton = topFeedRailRef.current.querySelector(`[data-top-feed="${activeTopFeed}"]`) as HTMLElement;
+      if (activeButton) {
+        const container = topFeedRailRef.current;
+        const containerWidth = container.clientWidth;
+        const buttonLeft = activeButton.offsetLeft;
+        const buttonWidth = activeButton.offsetWidth;
+        const scrollLeft = buttonLeft - (containerWidth / 2) + (buttonWidth / 2);
+        
+        container.scrollTo({
+          left: Math.max(0, scrollLeft),
+          behavior: 'smooth'
+        });
+      }
+    }
+  }, [activeTopFeed]);
+
   return (
     <div className="h-full overflow-y-auto bg-neutral-900">
-      {/* Category Tabs */}
-      <div className="sticky top-0 z-10 bg-neutral-900 border-b border-neutral-700 px-4 py-3">
-        <div className="flex items-center space-x-2 overflow-x-auto scrollbar-hide">
-          <button
-            onClick={() => {
-              setActiveCategory('trending');
-              setSelectedNiche(null);
-            }}
-            className={`flex items-center space-x-2 px-4 py-2 rounded-full whitespace-nowrap transition-colors ${
-              activeCategory === 'trending'
-                ? 'bg-blue-600 text-white'
-                : 'bg-neutral-800 text-neutral-400 hover:bg-neutral-700'
-            }`}
-          >
-            <TrendingUp className="h-4 w-4" />
-            <span>Trending</span>
-          </button>
-          
-          <button
-            onClick={() => {
-              setActiveCategory('new-creators');
-              setSelectedNiche(null);
-            }}
-            className={`flex items-center space-x-2 px-4 py-2 rounded-full whitespace-nowrap transition-colors ${
-              activeCategory === 'new-creators'
-                ? 'bg-blue-600 text-white'
-                : 'bg-neutral-800 text-neutral-400 hover:bg-neutral-700'
-            }`}
-          >
-            <Sparkles className="h-4 w-4" />
-            <span>New Creators</span>
-          </button>
-          
-          <button
-            onClick={() => {
-              setActiveCategory('featured');
-              setSelectedNiche(null);
-            }}
-            className={`flex items-center space-x-2 px-4 py-2 rounded-full whitespace-nowrap transition-colors ${
-              activeCategory === 'featured'
-                ? 'bg-blue-600 text-white'
-                : 'bg-neutral-800 text-neutral-400 hover:bg-neutral-700'
-            }`}
-          >
-            <Star className="h-4 w-4" />
-            <span>Featured</span>
-          </button>
-          
-          <button
-            onClick={() => {
-              setActiveCategory('classics');
-              setSelectedNiche(null);
-            }}
-            className={`flex items-center space-x-2 px-4 py-2 rounded-full whitespace-nowrap transition-colors ${
-              activeCategory === 'classics'
-                ? 'bg-blue-600 text-white'
-                : 'bg-neutral-800 text-neutral-400 hover:bg-neutral-700'
-            }`}
-          >
-            <Clock className="h-4 w-4" />
-            <span>Classics</span>
-          </button>
-          
-          <button
-            onClick={() => {
-              setActiveCategory('niches');
-              setSelectedNiche(null);
-            }}
-            className={`flex items-center space-x-2 px-4 py-2 rounded-full whitespace-nowrap transition-colors ${
-              activeCategory === 'niches'
-                ? 'bg-blue-600 text-white'
-                : 'bg-neutral-800 text-neutral-400 hover:bg-neutral-700'
-            }`}
-          >
-            <Users className="h-4 w-4" />
-            <span>Niches</span>
-          </button>
+      {/* Top Feed Railway - Text only, no backgrounds, active option bold and centered */}
+      <div className="sticky top-0 z-10 bg-neutral-900 border-b border-neutral-700">
+        <div 
+          ref={topFeedRailRef}
+          className="flex items-center space-x-6 overflow-x-auto scrollbar-hide py-3 px-4"
+          style={{
+            scrollbarWidth: 'none',
+            msOverflowStyle: 'none',
+            justifyContent: 'center'
+          }}
+        >
+          {(['all', 'trending', 'featured', 'classics', 'new-creators'] as TopFeedOption[]).map((option) => {
+            const isActive = activeTopFeed === option;
+            const label = option === 'all' ? 'All' : 
+                         option === 'new-creators' ? 'New Creators' :
+                         option.charAt(0).toUpperCase() + option.slice(1);
+            return (
+              <button
+                key={option}
+                data-top-feed={option}
+                onClick={() => setActiveTopFeed(option)}
+                className={`whitespace-nowrap transition-all ${
+                  isActive
+                    ? 'font-bold text-white'
+                    : 'text-neutral-400 hover:text-white'
+                }`}
+                style={{
+                  textAlign: 'center'
+                }}
+              >
+                {label}
+              </button>
+            );
+          })}
         </div>
 
-        {/* Niche Subcategories */}
-        {activeCategory === 'niches' && (
-          <div className="mt-3 flex items-center space-x-2 overflow-x-auto scrollbar-hide">
-            {Object.values(FEED_CATEGORIES)
-              .filter(cat => cat.id !== 'adults-only' || userState.preferences.ageVerified)
-              .map(category => (
+        {/* Niche Feed Railway - Separate railway underneath, text only, active centered and underlined */}
+        <div className="mt-3 flex items-center justify-center space-x-4 overflow-x-auto scrollbar-hide pb-2">
+          {Object.values(FEED_CATEGORIES)
+            .filter(cat => cat.id !== 'adults-only' || userState.preferences.ageVerified)
+            .map(category => {
+              const isActive = selectedNiche === category.id;
+              return (
                 <button
                   key={category.id}
-                  onClick={() => setSelectedNiche(selectedNiche === category.id ? null : category.id)}
-                  className={`px-3 py-1.5 rounded-full text-sm whitespace-nowrap transition-colors ${
-                    selectedNiche === category.id
-                      ? 'bg-blue-600 text-white'
-                      : 'bg-neutral-800 text-neutral-400 hover:bg-neutral-700'
+                  onClick={() => setSelectedNiche(isActive ? null : category.id)}
+                  className={`whitespace-nowrap transition-all text-sm ${
+                    isActive
+                      ? 'text-white underline'
+                      : 'text-neutral-400 hover:text-white'
                   }`}
+                  style={{
+                    textAlign: 'center',
+                    textDecoration: isActive ? 'underline' : 'none',
+                    textUnderlineOffset: '4px'
+                  }}
                 >
                   {category.name}
                 </button>
-              ))}
-          </div>
-        )}
+              );
+            })}
+        </div>
       </div>
 
       {/* Grid Layout */}
@@ -383,13 +390,43 @@ export function DiscoveryPage({
                 {item.title}
               </h3>
 
-              {/* Subtitle */}
-              <p className="text-neutral-400 text-xs line-clamp-1">
+              {/* Subtitle - Platform Name */}
+              <p className="text-neutral-400 text-xs line-clamp-1 mt-1">
                 {item.subtitle}
               </p>
 
-              {/* Metadata */}
-              {item.metadata && (
+              {/* Engagement Bar - Icons with numbers overlaid */}
+              {item.engagement && (
+                <div className="flex items-center justify-start space-x-3 mt-2">
+                  <div className="relative flex items-center">
+                    <Heart className="h-3.5 w-3.5 text-neutral-400" />
+                    <span className="absolute -top-1 -right-1 text-[10px] font-medium text-white bg-neutral-800 rounded-full px-1 min-w-[14px] text-center">
+                      {item.engagement.likes > 0 ? (item.engagement.likes > 999 ? '999+' : item.engagement.likes.toLocaleString()) : ''}
+                    </span>
+                  </div>
+                  <div className="relative flex items-center">
+                    <MessageCircle className="h-3.5 w-3.5 text-neutral-400" />
+                    <span className="absolute -top-1 -right-1 text-[10px] font-medium text-white bg-neutral-800 rounded-full px-1 min-w-[14px] text-center">
+                      {item.engagement.comments > 0 ? (item.engagement.comments > 999 ? '999+' : item.engagement.comments.toLocaleString()) : ''}
+                    </span>
+                  </div>
+                  <div className="relative flex items-center">
+                    <Share2 className="h-3.5 w-3.5 text-neutral-400" />
+                    <span className="absolute -top-1 -right-1 text-[10px] font-medium text-white bg-neutral-800 rounded-full px-1 min-w-[14px] text-center">
+                      {item.engagement.shares > 0 ? (item.engagement.shares > 999 ? '999+' : item.engagement.shares.toLocaleString()) : ''}
+                    </span>
+                  </div>
+                  <div className="relative flex items-center">
+                    <Bookmark className="h-3.5 w-3.5 text-neutral-400" />
+                    <span className="absolute -top-1 -right-1 text-[10px] font-medium text-white bg-neutral-800 rounded-full px-1 min-w-[14px] text-center">
+                      {item.engagement.saves > 0 ? (item.engagement.saves > 999 ? '999+' : item.engagement.saves.toLocaleString()) : ''}
+                    </span>
+                  </div>
+                </div>
+              )}
+
+              {/* Metadata - For new creators, show niche identifier */}
+              {item.metadata && item.type === 'creator' && (
                 <p className="text-neutral-500 text-xs mt-1">
                   {item.metadata}
                 </p>
