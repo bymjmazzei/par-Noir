@@ -2342,9 +2342,48 @@ class ProductionServer {
           return res.status(400).json({ error: 'Missing identityId parameter' });
         }
 
-        console.log(`[StorageAccounts] Fetching credentials for: ${identityId}`);
+        // CRITICAL: Normalize identityId to pn identifier format
+        // Browser app may send DID, pn identifier hash, or full pn identifier
+        // For storage accounts, we need the pn identifier (pn-{hash})
+        let pnIdentifier: string;
+        if (identityId.startsWith('pn-')) {
+          // Already in correct format
+          pnIdentifier = identityId;
+        } else if (identityId.startsWith('did:key:')) {
+          // DID format - we can't convert this to pn identifier without additional info
+          // But credentials are stored under pn identifier, so we need to get it from the token
+          // For now, try to get it from the Authorization header token
+          const authHeader = req.headers.authorization;
+          if (authHeader && authHeader.startsWith('Bearer ')) {
+            const token = authHeader.substring(7);
+            try {
+              const { PNOAuthService } = await import('./server/modules/pnOAuthService');
+              const tokenPayload = PNOAuthService.validateAccessToken(token);
+              if (tokenPayload?.pnIdentifier) {
+                pnIdentifier = tokenPayload.pnIdentifier;
+              } else {
+                // Fallback: return empty accounts if we can't determine pn identifier
+                console.warn(`[StorageAccounts] Cannot determine pn identifier from DID: ${identityId}`);
+                return res.json({ success: true, accounts: [] });
+              }
+            } catch (tokenError) {
+              console.warn(`[StorageAccounts] Failed to validate token:`, tokenError);
+              return res.json({ success: true, accounts: [] });
+            }
+          } else {
+            // No token provided, can't determine pn identifier
+            console.warn(`[StorageAccounts] No Authorization header provided for DID: ${identityId}`);
+            return res.json({ success: true, accounts: [] });
+          }
+        } else {
+          // Assume it's a pn identifier hash (without 'pn-' prefix)
+          pnIdentifier = `pn-${identityId}`;
+        }
+
+        console.log(`[StorageAccounts] Normalized identityId ${identityId} to pn identifier: ${pnIdentifier}`);
+        console.log(`[StorageAccounts] Fetching credentials for: ${pnIdentifier}`);
         const { storageCredentialsService } = await import('./server/modules/storageCredentialsService');
-        const record = await storageCredentialsService.getCredentials(identityId);
+        const record = await storageCredentialsService.getCredentials(pnIdentifier);
         console.log(`[StorageAccounts] Credentials service returned:`, record ? 'record found' : 'null');
 
         if (!record) {
@@ -2356,7 +2395,7 @@ class ProductionServer {
         }
 
         const credentials = record.credentials;
-        console.log(`[StorageAccounts] Found credentials record for ${identityId}`);
+        console.log(`[StorageAccounts] Found credentials record for ${pnIdentifier}`);
         console.log(`[StorageAccounts] Credentials keys:`, Object.keys(credentials || {}));
         console.log(`[StorageAccounts] Credentials structure (full):`, JSON.stringify(credentials, null, 2));
         
@@ -2395,7 +2434,7 @@ class ProductionServer {
         // Process each Google Drive account
         for (let i = 0; i < googleDriveAccounts.length; i++) {
           const account = googleDriveAccounts[i];
-          const accountId = account?.backendId || account?.keyPrefix || `${identityId}_${i}`;
+          const accountId = account?.backendId || account?.keyPrefix || `${pnIdentifier}_${i}`;
           
           console.log(`[StorageAccounts] Processing account ${i + 1}:`, {
             accountId,
