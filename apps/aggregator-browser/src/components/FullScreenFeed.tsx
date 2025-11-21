@@ -955,10 +955,6 @@ export function FullScreenFeed({
                     const allComments = getComments(fileId);
                     const popularComments = getPopularComments(fileId);
                     
-                    // LiveComments state update (logging removed - was too verbose)
-                      sampleComment: allComments?.[0]
-                    });
-                    
                     // If on Comments tab, show user's comment statically
                     if (mePageTab === 'comments' && userState.pnIdentifier) {
                       const userComment = allComments?.find((comment: any) => 
