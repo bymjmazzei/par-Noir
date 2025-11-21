@@ -6491,9 +6491,17 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
                                     ref={(node) => {
                                       if (node) {
                                         actionMenuRef.current = node;
+                                        // Position menu above button using fixed positioning to avoid overflow clipping
+                                        const button = node.parentElement?.querySelector('button');
+                                        if (button) {
+                                          const rect = button.getBoundingClientRect();
+                                          node.style.position = 'fixed';
+                                          node.style.bottom = `${window.innerHeight - rect.top + 8}px`;
+                                          node.style.right = `${window.innerWidth - rect.right}px`;
+                                        }
                                       }
                                     }}
-                                    className="absolute right-0 mt-2 w-44 bg-neutral-900 border border-neutral-700 rounded-lg shadow-xl z-[100] py-1"
+                                    className="w-44 bg-neutral-900 border border-neutral-700 rounded-lg shadow-xl z-[100] py-1"
                                   >
                                     <button
                                       onClick={(e) => {
