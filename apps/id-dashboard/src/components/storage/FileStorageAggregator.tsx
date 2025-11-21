@@ -258,34 +258,60 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
     derivePnIdentifier();
   }, [resolvedAuth, authenticatedUser]);
   
+  // Helper function to generate pn identifier synchronously if available, or return null
+  // This ensures we always use the standardized pn identifier format
+  async function getPnIdentifier(): Promise<string | null> {
+    // First check if we already have it cached
+    if (pnIdentifierRef.current) {
+      return pnIdentifierRef.current;
+    }
+    
+    // If not cached, try to generate it on-demand
+    const currentResolvedAuth = resolvedAuthRef.current;
+    const currentAuthenticatedUser = authenticatedUserRef.current;
+    const sessionId = currentAuthenticatedUser?.id;
+    const credentials = sessionId ? SecureCredentialManager.getCredentials(sessionId) : null;
+    
+    const pnName = currentResolvedAuth?.pnName || currentAuthenticatedUser?.pnName || (currentAuthenticatedUser as any)?.username;
+    const publicKey = currentResolvedAuth?.publicKey || currentAuthenticatedUser?.publicKey;
+    
+    if (pnName && credentials?.passcode && publicKey) {
+      try {
+        const { VolumeIdGenerator } = await import('../../utils/crypto/volumeIdGenerator');
+        const identifier = await VolumeIdGenerator.generateVolumeId({
+          pnName,
+          passcode: credentials.passcode,
+          publicKey
+        });
+        // Cache it for future use
+        pnIdentifierRef.current = identifier;
+        return identifier;
+      } catch (error) {
+        console.error('[StorageCredentials] Error generating pn identifier on-demand:', error);
+        return null;
+      }
+    }
+    
+    return null;
+  }
+
   // Use a function declaration (not const arrow function) so it's hoisted and available during initialization
   // This function reads from refs to avoid circular dependency issues
+  // CRITICAL: Returns ONLY the standardized pn identifier - no other candidates
   // SECURITY: NEVER include pnName in identity candidates - it's a secret credential
   function getStorageIdentityCandidates(): string[] {
     const candidates: string[] = [];
-    const currentResolvedAuth = resolvedAuthRef.current;
-    const currentAuthenticatedUser = authenticatedUserRef.current;
     
-    // Add derived pN identifier FIRST (this is what browser app uses)
-    if (pnIdentifierRef.current) {
+    // CRITICAL: Use ONLY the standardized pn identifier
+    // If pnIdentifierRef is not set yet, return empty array (don't fall back to other identifiers)
+    // This prevents duplicate API calls with different identityIds
+    if (pnIdentifierRef.current && pnIdentifierRef.current.startsWith('pn-')) {
       candidates.push(pnIdentifierRef.current);
     }
     
-    // CRITICAL: REMOVED all other candidates - they cause duplicate API calls
+    // REMOVED: All other candidates (DID, public key, pn name) - they cause duplicate API calls
     // Only use standardized pn identifier: pn-{12-char-hex-hash}
-    // This is generated from pnName:passcode:publicKey using VolumeIdGenerator
-    // Same credentials always produce the same identifier, regardless of where it's generated
-    // SECURITY: REMOVED - pnName is a secret credential and must NEVER be used as identityId
-    // if (typeof currentResolvedAuth?.pnName === 'string') {
-    //   candidates.push(currentResolvedAuth.pnName);
-    // }
-    // if (typeof currentAuthenticatedUser?.pnName === 'string') {
-    //   candidates.push(currentAuthenticatedUser.pnName);
-    // }
-    // SECURITY: REMOVED - username might be pnName, so don't use it
-    // if (typeof (currentAuthenticatedUser as any)?.username === 'string') {
-    //   candidates.push((currentAuthenticatedUser as any).username);
-    // }
+    
     return Array.from(new Set(candidates.filter((value) => value && value.trim().length > 0)));
   }
 
