@@ -9,6 +9,9 @@ import { Download, File, RefreshCw, AlertCircle, Lock, Globe, X, Edit, Eye, Grid
 import { PNOAuthService } from '../services/pnOAuthService';
 import { EncryptionManager } from '../utils/encryptionManager';
 import { getEncryptionService } from '../services/encryptionService';
+import { FEED_CATEGORIES, FEED_CATEGORY_LIST } from '../constants/feedCategories';
+import { LICENSE_TYPES } from '../constants/licenses';
+import { FeedCategory } from '../types/aggregator';
 
 const apiEndpoint = process.env.REACT_APP_API_ENDPOINT || 'https://api.parnoir.com';
 
@@ -818,13 +821,10 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
     description: string;
     tags: string;
     genre: string;
-    category: string;
+    category: FeedCategory | '';
     locationName: string;
     locationAddress: string;
-    locationLat: string;
-    locationLng: string;
     license: string;
-    language: string;
   }>({
     name: '',
     description: '',
@@ -833,10 +833,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
     category: '',
     locationName: '',
     locationAddress: '',
-    locationLat: '',
-    locationLng: '',
-    license: '',
-    language: ''
+    license: ''
   });
   const [fileMetadataMap, setFileMetadataMap] = useState<Map<string, any>>(new Map());
 
@@ -946,36 +943,28 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
     const locationName = location?.name || '';
     const locationAddress = location?.address ? 
       `${location.address.addressLocality || ''}${location.address.addressRegion ? ', ' + location.address.addressRegion : ''}${location.address.addressCountry ? ', ' + location.address.addressCountry : ''}`.trim() : '';
-    const locationLat = location?.geo?.latitude?.toString() || '';
-    const locationLng = location?.geo?.longitude?.toString() || '';
     
     // Extract genre (can be array or string)
     const genre = metadata?.genre || metadata?.schema?.genre || [];
     const genreString = Array.isArray(genre) ? genre.join(', ') : (typeof genre === 'string' ? genre : '');
     
-    // Extract category
-    const category = metadata?.category || metadata?.schema?.category || '';
+    // Extract category (prefer feedCategories, fallback to category)
+    const feedCategories = metadata?.feedCategories || [];
+    const category = feedCategories.length > 0 ? feedCategories[0] : (metadata?.category || '');
     
     // Extract license (can be object with name or string)
     const license = metadata?.license || metadata?.schema?.license || '';
     const licenseString = typeof license === 'object' && license?.name ? license.name : (typeof license === 'string' ? license : '');
-    
-    // Extract language (can be array or string)
-    const language = metadata?.inLanguage || metadata?.schema?.inLanguage || '';
-    const languageString = Array.isArray(language) ? language.join(', ') : (typeof language === 'string' ? language : '');
     
     setEditForm({
       name: metadata?.name || (file.name.endsWith('.encrypted') ? file.name.replace('.encrypted', '') : file.name),
       description: metadata?.description || '',
       tags: (metadata?.keywords || metadata?.tags || []).join(', '),
       genre: genreString,
-      category: category,
+      category: category as FeedCategory | '',
       locationName: locationName,
       locationAddress: locationAddress,
-      locationLat: locationLat,
-      locationLng: locationLng,
-      license: licenseString,
-      language: languageString
+      license: licenseString
     });
     setEditingFile(file);
   };
@@ -1005,9 +994,16 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
         .map(g => g.trim())
         .filter(g => g.length > 0);
 
-      // Build location object if provided
+      // Validate required category
+      if (!editForm.category) {
+        setError('Category is required');
+        setIsLoading(false);
+        return;
+      }
+
+      // Build location object if provided (without lat/lng)
       let locationCreated = undefined;
-      if (editForm.locationName || editForm.locationAddress || editForm.locationLat || editForm.locationLng) {
+      if (editForm.locationName || editForm.locationAddress) {
         locationCreated = {
           '@type': 'Place',
           ...(editForm.locationName && { name: editForm.locationName }),
@@ -1018,22 +1014,9 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
               addressRegion: editForm.locationAddress.split(',')[1]?.trim() || '',
               addressCountry: editForm.locationAddress.split(',')[2]?.trim() || ''
             }
-          }),
-          ...((editForm.locationLat || editForm.locationLng) && {
-            geo: {
-              '@type': 'GeoCoordinates',
-              ...(editForm.locationLat && { latitude: parseFloat(editForm.locationLat) }),
-              ...(editForm.locationLng && { longitude: parseFloat(editForm.locationLng) })
-            }
           })
         };
       }
-
-      // Parse language from comma-separated string or single value
-      const language = editForm.language
-        .split(',')
-        .map(l => l.trim())
-        .filter(l => l.length > 0);
 
       // Update via API endpoint
       const response = await fetch(`${apiEndpoint}/api/aggregator/metadata-index/${editingFile.id}`, {
@@ -1048,10 +1031,10 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
           keywords: tags,
           tags: tags,
           genre: genre.length > 0 ? genre : undefined,
+          feedCategories: editForm.category ? [editForm.category as FeedCategory] : undefined,
           category: editForm.category || undefined,
           locationCreated: locationCreated,
-          license: editForm.license || undefined,
-          inLanguage: language.length > 0 ? (language.length === 1 ? language[0] : language) : undefined
+          license: editForm.license || undefined
         }),
       });
 
@@ -1078,10 +1061,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
         category: '',
         locationName: '',
         locationAddress: '',
-        locationLat: '',
-        locationLng: '',
-        license: '',
-        language: ''
+        license: ''
       });
     } catch (err: any) {
       const errorMessage = err instanceof Error ? err.message : 'Failed to update metadata';
@@ -2234,10 +2214,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
               category: '',
               locationName: '',
               locationAddress: '',
-              locationLat: '',
-              locationLng: '',
-              license: '',
-              language: ''
+              license: ''
             });
           }}
         >
@@ -2316,6 +2293,28 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
                 <div className="space-y-4">
                   <div>
                     <label className="block text-sm font-medium text-text-secondary mb-1">
+                      Category <span className="text-red-400">*</span>
+                    </label>
+                    <select
+                      value={editForm.category}
+                      onChange={(e) => setEditForm({ ...editForm, category: e.target.value as FeedCategory | '' })}
+                      className="w-full px-3 py-2 bg-neutral-700 border border-neutral-600 rounded-lg text-text-primary focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      required
+                    >
+                      <option value="">Select a category</option>
+                      {FEED_CATEGORY_LIST
+                        .filter(cat => cat.id !== 'adults-only' || userState.preferences.ageVerified)
+                        .map(category => (
+                          <option key={category.id} value={category.id}>
+                            {category.name}
+                          </option>
+                        ))}
+                    </select>
+                    <p className="text-xs text-text-secondary mt-1">Required: Select the niche category for this content</p>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-text-secondary mb-1">
                       Genre (comma-separated)
                     </label>
                     <input
@@ -2324,19 +2323,6 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
                       onChange={(e) => setEditForm({ ...editForm, genre: e.target.value })}
                       className="w-full px-3 py-2 bg-neutral-700 border border-neutral-600 rounded-lg text-text-primary focus:outline-none focus:ring-2 focus:ring-blue-500"
                       placeholder="photography, art, documentation"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-text-secondary mb-1">
-                      Category
-                    </label>
-                    <input
-                      type="text"
-                      value={editForm.category}
-                      onChange={(e) => setEditForm({ ...editForm, category: e.target.value })}
-                      className="w-full px-3 py-2 bg-neutral-700 border border-neutral-600 rounded-lg text-text-primary focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      placeholder="Main category"
                     />
                   </div>
                 </div>
@@ -2372,34 +2358,6 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
                     />
                   </div>
 
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-sm font-medium text-text-secondary mb-1">
-                        Latitude
-                      </label>
-                      <input
-                        type="number"
-                        step="any"
-                        value={editForm.locationLat}
-                        onChange={(e) => setEditForm({ ...editForm, locationLat: e.target.value })}
-                        className="w-full px-3 py-2 bg-neutral-700 border border-neutral-600 rounded-lg text-text-primary focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        placeholder="40.785091"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-text-secondary mb-1">
-                        Longitude
-                      </label>
-                      <input
-                        type="number"
-                        step="any"
-                        value={editForm.locationLng}
-                        onChange={(e) => setEditForm({ ...editForm, locationLng: e.target.value })}
-                        className="w-full px-3 py-2 bg-neutral-700 border border-neutral-600 rounded-lg text-text-primary focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        placeholder="-73.968285"
-                      />
-                    </div>
-                  </div>
                 </div>
               </div>
 
@@ -2411,34 +2369,24 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
                     <label className="block text-sm font-medium text-text-secondary mb-1">
                       License
                     </label>
-                    <input
-                      type="text"
+                    <select
                       value={editForm.license}
                       onChange={(e) => setEditForm({ ...editForm, license: e.target.value })}
                       className="w-full px-3 py-2 bg-neutral-700 border border-neutral-600 rounded-lg text-text-primary focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      placeholder="e.g., CC BY 4.0, All Rights Reserved"
-                    />
+                    >
+                      <option value="">Select a license</option>
+                      {LICENSE_TYPES.map(license => (
+                        <option key={license.value} value={license.value}>
+                          {license.label} - {license.description}
+                        </option>
+                      ))}
+                    </select>
+                    {editForm.license && (
+                      <p className="text-xs text-text-secondary mt-1">
+                        {LICENSE_TYPES.find(l => l.value === editForm.license)?.description}
+                      </p>
+                    )}
                   </div>
-                </div>
-              </div>
-
-              <div className="border-t border-neutral-700 pt-4 mt-4">
-                <h4 className="text-sm font-semibold text-text-primary mb-3">Language</h4>
-                
-                <div>
-                  <label className="block text-sm font-medium text-text-secondary mb-1">
-                    Language (ISO 639-1 code, comma-separated)
-                  </label>
-                  <input
-                    type="text"
-                    value={editForm.language}
-                    onChange={(e) => setEditForm({ ...editForm, language: e.target.value })}
-                    className="w-full px-3 py-2 bg-neutral-700 border border-neutral-600 rounded-lg text-text-primary focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    placeholder="en, es, fr"
-                  />
-                  <p className="text-xs text-text-secondary mt-1">
-                    Use ISO 639-1 language codes (e.g., en, es, fr, de)
-                  </p>
                 </div>
               </div>
 
