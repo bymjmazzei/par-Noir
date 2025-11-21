@@ -345,6 +345,8 @@ export function DiscoveryPage({
 
   // Ref for top feed railway container
   const topFeedRailRef = React.useRef<HTMLDivElement>(null);
+  // Ref for niche feed railway container
+  const nicheFeedRailRef = React.useRef<HTMLDivElement>(null);
   
   // Center active top feed option on screen
   React.useEffect(() => {
@@ -368,6 +370,28 @@ export function DiscoveryPage({
       }, 100);
     }
   }, [activeTopFeed]);
+
+  // Center active niche feed option on screen
+  React.useEffect(() => {
+    if (nicheFeedRailRef.current) {
+      // Use setTimeout to ensure DOM is updated
+      setTimeout(() => {
+        const activeButton = nicheFeedRailRef.current?.querySelector(`[data-niche-feed="${selectedNiche || 'all'}"]`) as HTMLElement;
+        if (activeButton && nicheFeedRailRef.current) {
+          const container = nicheFeedRailRef.current;
+          const buttonLeft = activeButton.offsetLeft;
+          const buttonWidth = activeButton.offsetWidth;
+          const screenWidth = window.innerWidth;
+          const scrollLeft = buttonLeft - (screenWidth / 2) + (buttonWidth / 2);
+          
+          container.scrollTo({
+            left: Math.max(0, scrollLeft),
+            behavior: 'smooth'
+          });
+        }
+      }, 100);
+    }
+  }, [selectedNiche]);
 
   return (
     <div className="h-full overflow-y-auto bg-neutral-900">
@@ -409,9 +433,19 @@ export function DiscoveryPage({
         </div>
 
         {/* Niche Feed Railway - Separate railway underneath, text only, active centered and underlined */}
-        <div className="mt-3 flex items-center space-x-3 sm:space-x-4 overflow-x-auto scrollbar-hide pb-2 px-4">
+        <div 
+          ref={nicheFeedRailRef}
+          className="mt-3 flex items-center space-x-3 sm:space-x-4 overflow-x-auto scrollbar-hide pb-2"
+          style={{
+            scrollbarWidth: 'none',
+            msOverflowStyle: 'none',
+            paddingLeft: '50%',
+            paddingRight: '50%'
+          }}
+        >
           {/* All button */}
           <button
+            data-niche-feed="all"
             onClick={() => setSelectedNiche(null)}
             className={`whitespace-nowrap transition-all text-xs sm:text-sm flex-shrink-0 px-2 ${
               selectedNiche === null
@@ -434,6 +468,7 @@ export function DiscoveryPage({
               return (
                 <button
                   key={category.id}
+                  data-niche-feed={category.id}
                   onClick={() => setSelectedNiche(isActive ? null : category.id)}
                   className={`whitespace-nowrap transition-all text-xs sm:text-sm flex-shrink-0 px-2 ${
                     isActive
