@@ -226,15 +226,29 @@ export function DiscoveryPage({
     // Use getDisplayName which will check cache and fallback to creatorId
     const displayName = getDisplayName(creatorId);
     
-    // If displayName is still the full DID/creatorId, show a shortened version
+    // If displayName is still the full DID/creatorId, check if we're still loading
+    // Don't show shortened version - wait for profile to load
     // The platform name should be fetched and cached by the useEffect above
-    if (displayName === creatorId && creatorId.length > 20) {
-      // Show shortened version while waiting for profile to load
-      return creatorId.substring(0, 12) + '...';
+    if (displayName === creatorId) {
+      // Check if this creator is being fetched
+      if (fetchedCreators.has(creatorId)) {
+        // Still loading - return the DID for now, it will update when profile loads
+        return creatorId;
+      }
+      // Not being fetched yet - return DID (will be fetched soon)
+      return creatorId;
     }
     
     return displayName;
   };
+
+  // Force re-render when display names are updated
+  const [displayNamesVersion, setDisplayNamesVersion] = useState(0);
+  
+  // Watch for changes in userDisplayNames to trigger re-render
+  useEffect(() => {
+    setDisplayNamesVersion(prev => prev + 1);
+  }, [userState.preferences.userDisplayNames]);
 
   const getDisplayItems = () => {
     // Show new creators in a separate section
@@ -332,16 +346,17 @@ export function DiscoveryPage({
         .then(profile => {
           if (profile?.displayName) {
             setUserDisplayName(creatorId, profile.displayName);
+            // Force re-render by updating version
+            setDisplayNamesVersion(prev => prev + 1);
           }
         })
         .catch((error) => {
-          // Silently fail - profile may not exist
-          // The profile service might skip DIDs, which is fine
-          console.debug('Failed to fetch profile for creator:', creatorId.substring(0, 20) + '...');
+          // Silently fail - profile may not exist or API may not be available
+          // The DID will be displayed until profile is loaded
         });
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [files.length, userState.preferences.userDisplayNames, userState.pnIdentifier, setUserDisplayName]);
+  }, [files.length, userState.preferences.userDisplayNames, userState.pnIdentifier, setUserDisplayName, displayNamesVersion]);
 
   // Ref for top feed railway container
   const topFeedRailRef = React.useRef<HTMLDivElement>(null);

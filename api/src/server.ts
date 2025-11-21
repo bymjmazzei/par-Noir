@@ -6046,6 +6046,15 @@ class ProductionServer {
 
         const profile = await ProfileService.getProfile(userAccessToken, metadataFolderId);
 
+        // Log for debugging
+        if (NODE_ENV === 'development') {
+          console.log(`[Profile API] Retrieved profile for ${pnIdentifier}:`, {
+            hasProfile: !!profile,
+            displayName: profile?.displayName || 'null',
+            profileImageFileId: profile?.profileImageFileId || 'null'
+          });
+        }
+
         return res.json({
           displayName: profile?.displayName || null,
           profileImageFileId: profile?.profileImageFileId || null
