@@ -6474,6 +6474,12 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
                             <div className="flex items-center justify-end mt-2 pt-2 border-t border-neutral-700">
                               <div className="relative">
                               <button
+                                ref={(btn) => {
+                                  if (btn && openMenuFor === file.backendFileId) {
+                                    // Store button ref for menu positioning
+                                    (btn as any).__menuButton = true;
+                                  }
+                                }}
                                 onClick={(e) => {
                                   e.stopPropagation();
                                     setOpenMenuFor((prev) =>
@@ -6494,14 +6500,19 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
                                         // Position menu above button using fixed positioning to avoid overflow clipping
                                         // Use requestAnimationFrame to ensure node is rendered before calculating position
                                         requestAnimationFrame(() => {
-                                          const button = node.parentElement?.querySelector('button');
+                                          // Find the button that triggered this menu
+                                          const button = node.parentElement?.querySelector('button[title="File actions"]') as HTMLElement;
                                           if (button && node) {
                                             const rect = button.getBoundingClientRect();
+                                            const menuWidth = 176; // w-44 = 11rem = 176px
                                             node.style.position = 'fixed';
                                             // Position above button: top of menu = top of button - menu height - spacing
                                             const menuHeight = node.offsetHeight || 200; // fallback estimate
                                             node.style.top = `${rect.top - menuHeight - 8}px`;
-                                            node.style.right = `${window.innerWidth - rect.right}px`;
+                                            // Align right edge of menu with right edge of button
+                                            // left = button.right - menu.width
+                                            node.style.left = `${rect.right - menuWidth}px`;
+                                            node.style.right = 'auto';
                                             node.style.bottom = 'auto';
                                           }
                                         });
