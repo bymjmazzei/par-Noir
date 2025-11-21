@@ -2232,6 +2232,17 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
         const sessionId = authenticatedUser?.id || (authenticatedUser as any)?.publicKey || null;
         const passcode = getPasscodeFromSecureStorage(sessionId);
 
+        // CRITICAL: Ensure pn identifier is generated BEFORE hydration
+        // This prevents hydration from using public key/DID/pn name
+        if (!pnIdentifierRef.current || !pnIdentifierRef.current.startsWith('pn-')) {
+          const pnId = await getPnIdentifier();
+          if (!pnId) {
+            console.warn('⚠️ [handleConnectGoogleDrive] Cannot generate pn identifier - skipping hydration');
+          } else {
+            pnIdentifierRef.current = pnId;
+          }
+        }
+
         await hydrateStorageCredentialsFromAPI();
 
         const { SecureMetadataStorage } = await import('../../utils/secureMetadataStorage');

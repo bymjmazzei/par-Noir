@@ -43,44 +43,66 @@ export const GoogleDriveStorage: React.FC = () => {
         
         if (token && authenticatedUserStr) {
           const authenticatedUser = JSON.parse(authenticatedUserStr);
-          const userDid = authenticatedUser.id || authenticatedUser.did || authenticatedUser.publicKey;
           
-          if (userDid) {
-            // Check if credentials already exist server-side
-            try {
-              const response = await fetch(`${process.env.REACT_APP_API_ENDPOINT || 'https://api.parnoir.com'}/api/storage/credentials/${userDid}`);
-              if (response.ok) {
-                const data = await response.json();
-                // If credentials exist and have googleDrive tokens, skip migration
-                if (data.credentials?.googleDrive?.access_token) {
-                  console.log('✅ Google Drive tokens already stored server-side');
-                  return;
+          // CRITICAL: Use ONLY standardized pn identifier - never use DID/public key/pn name
+          // Generate pn identifier from credentials
+          try {
+            const { VolumeIdGenerator } = await import('../../utils/crypto/volumeIdGenerator');
+            const { SecureCredentialManager } = await import('../../utils/secureCredentialManager');
+            
+            const sessionId = authenticatedUser.id || authenticatedUser.publicKey || null;
+            const credentials = sessionId ? SecureCredentialManager.getCredentials(sessionId) : null;
+            const pnName = authenticatedUser.pnName || authenticatedUser.username;
+            const publicKey = authenticatedUser.publicKey;
+            
+            if (pnName && credentials?.passcode && publicKey) {
+              const pnIdentifier = await VolumeIdGenerator.generateVolumeId({
+                pnName,
+                passcode: credentials.passcode,
+                publicKey
+              });
+              
+              // Check if credentials already exist server-side
+              try {
+                const response = await fetch(`${process.env.REACT_APP_API_ENDPOINT || 'https://api.parnoir.com'}/api/storage/credentials/${encodeURIComponent(pnIdentifier)}`);
+                if (response.ok) {
+                  const data = await response.json();
+                  // If credentials exist and have googleDrive tokens, skip migration
+                  if (data.credentials?.googleDrive?.access_token) {
+                    console.log('✅ Google Drive tokens already stored server-side');
+                    return;
+                  }
                 }
+              } catch (err) {
+                // If check fails, proceed with migration attempt
               }
-            } catch (err) {
-              // If check fails, proceed with migration attempt
+              
+              // Store tokens server-side using standardized pn identifier
+              const credentialsPayload = {
+                googleDrive: {
+                  access_token: token,
+                  refresh_token: refreshToken || undefined,
+                  token_type: 'Bearer',
+                  expires_in: 3600,
+                  expires_at: Date.now() + (3600 * 1000)
+                }
+              };
+              
+              await fetch(`${process.env.REACT_APP_API_ENDPOINT || 'https://api.parnoir.com'}/api/storage/credentials/${encodeURIComponent(pnIdentifier)}`, {
+                method: 'PUT',
+                headers: {
+                  'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ credentials: credentialsPayload }),
+              });
+              
+              console.log('✅ Migrated Google Drive tokens to server-side storage using pn identifier');
+            } else {
+              console.warn('⚠️ [GoogleDriveStorage] Cannot generate pn identifier for migration - missing credentials');
             }
-            
-            // Store tokens server-side
-            const credentials = {
-              googleDrive: {
-                access_token: token,
-                refresh_token: refreshToken || undefined,
-                token_type: 'Bearer',
-                expires_in: 3600,
-                expires_at: Date.now() + (3600 * 1000)
-              }
-            };
-            
-            await fetch(`${process.env.REACT_APP_API_ENDPOINT || 'https://api.parnoir.com'}/api/storage/credentials/${userDid}`, {
-              method: 'PUT',
-              headers: {
-                'Content-Type': 'application/json',
-              },
-              body: JSON.stringify({ credentials }),
-            });
-            
-            console.log('✅ Migrated Google Drive tokens to server-side storage');
+          } catch (err) {
+            console.warn('⚠️ [GoogleDriveStorage] Failed to migrate tokens - pn identifier generation failed:', err);
+            // Non-critical - user can reconnect if needed
           }
         }
       } catch (err) {
@@ -856,31 +878,53 @@ export const GoogleDriveStorage: React.FC = () => {
       const authenticatedUserStr = localStorage.getItem('authenticated_user');
       if (authenticatedUserStr) {
         const authenticatedUser = JSON.parse(authenticatedUserStr);
-        const userDid = authenticatedUser.id || authenticatedUser.did || authenticatedUser.publicKey;
         
-        if (userDid) {
-          // Store Google Drive credentials server-side
-          const credentials = {
-            googleDrive: {
-              access_token: token,
-              refresh_token: refreshToken,
-              token_type: 'Bearer',
-              expires_in: 3600, // Default 1 hour, will be refreshed as needed
-              expires_at: Date.now() + (3600 * 1000)
-            }
-          };
+        // CRITICAL: Use ONLY standardized pn identifier - never use DID/public key/pn name
+        // Generate pn identifier from credentials
+        try {
+          const { VolumeIdGenerator } = await import('../../utils/crypto/volumeIdGenerator');
+          const { SecureCredentialManager } = await import('../../utils/secureCredentialManager');
           
-          // Call API to store credentials (non-blocking - don't wait for response)
-          fetch(`${process.env.REACT_APP_API_ENDPOINT || 'https://api.parnoir.com'}/api/storage/credentials/${userDid}`, {
-            method: 'PUT',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({ credentials }),
-          }).catch(err => {
-            console.warn('Failed to store Google Drive credentials server-side:', err);
-            // Non-critical - dashboard still works with localStorage
-          });
+          const sessionId = authenticatedUser.id || authenticatedUser.publicKey || null;
+          const credentials = sessionId ? SecureCredentialManager.getCredentials(sessionId) : null;
+          const pnName = authenticatedUser.pnName || authenticatedUser.username;
+          const publicKey = authenticatedUser.publicKey;
+          
+          if (pnName && credentials?.passcode && publicKey) {
+            const pnIdentifier = await VolumeIdGenerator.generateVolumeId({
+              pnName,
+              passcode: credentials.passcode,
+              publicKey
+            });
+            
+            // Store Google Drive credentials server-side using standardized pn identifier
+            const credentialsPayload = {
+              googleDrive: {
+                access_token: token,
+                refresh_token: refreshToken,
+                token_type: 'Bearer',
+                expires_in: 3600, // Default 1 hour, will be refreshed as needed
+                expires_at: Date.now() + (3600 * 1000)
+              }
+            };
+            
+            // Call API to store credentials (non-blocking - don't wait for response)
+            fetch(`${process.env.REACT_APP_API_ENDPOINT || 'https://api.parnoir.com'}/api/storage/credentials/${encodeURIComponent(pnIdentifier)}`, {
+              method: 'PUT',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({ credentials: credentialsPayload }),
+            }).catch(err => {
+              console.warn('Failed to store Google Drive credentials server-side:', err);
+              // Non-critical - dashboard still works with localStorage
+            });
+          } else {
+            console.warn('⚠️ [GoogleDriveStorage] Cannot generate pn identifier - missing credentials');
+          }
+        } catch (err) {
+          console.warn('⚠️ [GoogleDriveStorage] Failed to store credentials - pn identifier generation failed:', err);
+          // Non-critical - dashboard still works with localStorage
         }
       }
     } catch (err) {
