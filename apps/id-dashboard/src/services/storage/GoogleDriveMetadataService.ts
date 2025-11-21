@@ -938,7 +938,8 @@ export class GoogleDriveMetadataService {
   static async getPublicFileIndex(
     accessToken: string,
     metadataFolderId: string,
-    pnIdentifier: string
+    pnIdentifier: string,
+    skipCleanup: boolean = false
   ): Promise<PublicFileIndex | null> {
     const searchResponse = await fetch(
       `https://www.googleapis.com/drive/v3/files?q=name='${this.PUBLIC_INDEX_FILE_NAME}' and '${metadataFolderId}' in parents and trashed=false&fields=files(id)`,
@@ -987,7 +988,8 @@ export class GoogleDriveMetadataService {
 
     // AUTOMATIC CLEANUP: Verify files exist and remove orphaned entries
     // Google Drive is the source of truth - if file doesn't exist, remove from index
-    if (index && index.files && index.files.length > 0) {
+    // Skip cleanup when updating the index to avoid removing files we're about to add
+    if (!skipCleanup && index && index.files && index.files.length > 0) {
       const originalCount = index.files.length;
       const verifiedFiles = [];
 
@@ -1206,7 +1208,8 @@ export class GoogleDriveMetadataService {
       const pnFolderId = await this.getOrCreatePNFolder(accessToken, pnIdentifier);
       const metadataFolderId = await this.getOrCreateMetadataFolder(accessToken, pnFolderId);
 
-      let index = await this.getPublicFileIndex(accessToken, metadataFolderId, pnIdentifier);
+      // Skip cleanup when updating - we're adding/updating a file, so don't remove it
+      let index = await this.getPublicFileIndex(accessToken, metadataFolderId, pnIdentifier, true);
       
       if (!index) {
         index = {
