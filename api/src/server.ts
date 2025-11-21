@@ -4179,15 +4179,15 @@ class ProductionServer {
         let finalQuery = query;
         if (!finalQuery && pnIdentifier && accountId) {
           // Try to find the pN folder first, then query files in it
-          // Folder name format: "par Noir - pn-{identifier}" or "par Noir - {identifier}"
-          // Use the pN identifier (not DID) for folder naming
-          const pnFolderName = `par Noir - pn-${pnIdentifier}`;
+          // Folder name format: "par Noir - pn-{hash}" where pnIdentifier already includes "pn-" prefix
+          // pnIdentifier is already in format "pn-{hash}", so use it directly
+          const pnFolderName = `par Noir - ${pnIdentifier}`;
           try {
             // Search for the folder - use a direct Google Drive API call to avoid credential lookup issues
             // Wrap in try-catch to handle credential errors gracefully
             let accessToken: string | null = null;
             try {
-              accessToken = await googleDriveProxyService.getAccessToken(userIdentifier, accountId, identifierCandidates);
+              accessToken = await googleDriveProxyService.getAccessToken(userIdentifier, accountId);
             } catch (tokenError: any) {
               console.warn(`[DriveFiles] Could not get access token for folder search:`, tokenError?.message || tokenError);
               // Continue without folder filter - will list all files and client will filter
@@ -5782,8 +5782,11 @@ class ProductionServer {
         const { googleDriveProxyService } = await import('./server/modules/googleDriveProxy');
         const { storageCredentialsService } = await import('./server/modules/storageCredentialsService');
 
-        // Get user's credentials
-        const userCredentials = await storageCredentialsService.getCredentials(userDid);
+        // CRITICAL: Normalize userDid to pn identifier format
+        const pnIdentifier = userDid.startsWith('pn-') ? userDid : `pn-${userDid}`;
+
+        // Get user's credentials using normalized pn identifier
+        const userCredentials = await storageCredentialsService.getCredentials(pnIdentifier);
         if (!userCredentials?.credentials) {
           return res.status(404).json({ error: 'User credentials not found' });
         }
@@ -5797,7 +5800,8 @@ class ProductionServer {
 
         const account = googleDriveAccounts[0];
         const accountId = (account as any).accountId || (account as any).id;
-        const userAccessToken = await googleDriveProxyService.getAccessToken(userDid, accountId, [userDid]);
+        // Use normalized pn identifier for access token retrieval
+        const userAccessToken = await googleDriveProxyService.getAccessToken(pnIdentifier, accountId);
 
         // Find metadata folder
         const folderQuery = `name='Metadata' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
@@ -5847,8 +5851,11 @@ class ProductionServer {
         const { googleDriveProxyService } = await import('./server/modules/googleDriveProxy');
         const { storageCredentialsService } = await import('./server/modules/storageCredentialsService');
 
-        // Get user's credentials
-        const userCredentials = await storageCredentialsService.getCredentials(userDid);
+        // CRITICAL: Normalize userDid to pn identifier format
+        const pnIdentifier = userDid.startsWith('pn-') ? userDid : `pn-${userDid}`;
+
+        // Get user's credentials using normalized pn identifier
+        const userCredentials = await storageCredentialsService.getCredentials(pnIdentifier);
         if (!userCredentials?.credentials) {
           return res.status(404).json({ error: 'User credentials not found' });
         }
@@ -5862,7 +5869,8 @@ class ProductionServer {
 
         const account = googleDriveAccounts[0];
         const accountId = (account as any).accountId || (account as any).id;
-        const userAccessToken = await googleDriveProxyService.getAccessToken(userDid, accountId, [userDid]);
+        // Use normalized pn identifier for access token retrieval
+        const userAccessToken = await googleDriveProxyService.getAccessToken(pnIdentifier, accountId);
 
         // Find metadata folder - try both '_metadata' and 'Metadata'
         let metadataFolderId: string | null = null;
@@ -5917,8 +5925,13 @@ class ProductionServer {
         const { googleDriveProxyService } = await import('./server/modules/googleDriveProxy');
         const { storageCredentialsService } = await import('./server/modules/storageCredentialsService');
 
-        // Get user's credentials
-        const userCredentials = await storageCredentialsService.getCredentials(userDid);
+        // CRITICAL: Normalize userDid to pn identifier format
+        // Accept both formats: "pn-{hash}" or just "{hash}"
+        // Browser app may send just the hash part (e.g., "7c1f0cf425b5")
+        const pnIdentifier = userDid.startsWith('pn-') ? userDid : `pn-${userDid}`;
+
+        // Get user's credentials using normalized pn identifier
+        const userCredentials = await storageCredentialsService.getCredentials(pnIdentifier);
         if (!userCredentials?.credentials) {
           return res.json({ displayName: null, profileImageFileId: null });
         }
@@ -5932,7 +5945,8 @@ class ProductionServer {
 
         const account = googleDriveAccounts[0];
         const accountId = (account as any).accountId || (account as any).id;
-        const userAccessToken = await googleDriveProxyService.getAccessToken(userDid, accountId, [userDid]);
+        // Use normalized pn identifier for access token retrieval
+        const userAccessToken = await googleDriveProxyService.getAccessToken(pnIdentifier, accountId);
 
         // Find metadata folder
         const folderQuery = `name='Metadata' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
@@ -6114,8 +6128,11 @@ class ProductionServer {
         const { googleDriveProxyService } = await import('./server/modules/googleDriveProxy');
         const { storageCredentialsService } = await import('./server/modules/storageCredentialsService');
 
-        // Get user's credentials
-        const userCredentials = await storageCredentialsService.getCredentials(userDid);
+        // CRITICAL: Normalize userDid to pn identifier format
+        const pnIdentifier = userDid.startsWith('pn-') ? userDid : `pn-${userDid}`;
+
+        // Get user's credentials using normalized pn identifier
+        const userCredentials = await storageCredentialsService.getCredentials(pnIdentifier);
         if (!userCredentials?.credentials) {
           return res.status(404).json({ error: 'User credentials not found' });
         }
@@ -6129,7 +6146,8 @@ class ProductionServer {
 
         const account = googleDriveAccounts[0];
         const accountId = (account as any).accountId || (account as any).id;
-        const userAccessToken = await googleDriveProxyService.getAccessToken(userDid, accountId, [userDid]);
+        // Use normalized pn identifier for access token retrieval
+        const userAccessToken = await googleDriveProxyService.getAccessToken(pnIdentifier, accountId);
 
         // Find metadata folder
         const folderQuery = `name='Metadata' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
@@ -6232,8 +6250,11 @@ class ProductionServer {
         const { googleDriveProxyService } = await import('./server/modules/googleDriveProxy');
         const { storageCredentialsService } = await import('./server/modules/storageCredentialsService');
 
-        // Get user's credentials
-        const userCredentials = await storageCredentialsService.getCredentials(userDid);
+        // CRITICAL: Normalize userDid to pn identifier format
+        const pnIdentifier = userDid.startsWith('pn-') ? userDid : `pn-${userDid}`;
+
+        // Get user's credentials using normalized pn identifier
+        const userCredentials = await storageCredentialsService.getCredentials(pnIdentifier);
         if (!userCredentials?.credentials) {
           return res.status(404).json({ error: 'User credentials not found' });
         }
@@ -6247,7 +6268,8 @@ class ProductionServer {
 
         const account = googleDriveAccounts[0];
         const accountId = (account as any).accountId || (account as any).id;
-        const userAccessToken = await googleDriveProxyService.getAccessToken(userDid, accountId, [userDid]);
+        // Use normalized pn identifier for access token retrieval
+        const userAccessToken = await googleDriveProxyService.getAccessToken(pnIdentifier, accountId);
 
         // Find metadata folder
         const folderQuery = `name='Metadata' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
@@ -6481,8 +6503,11 @@ class ProductionServer {
         const { googleDriveProxyService } = await import('./server/modules/googleDriveProxy');
         const { storageCredentialsService } = await import('./server/modules/storageCredentialsService');
 
-        // Get user's credentials
-        const userCredentials = await storageCredentialsService.getCredentials(userDid);
+        // CRITICAL: Normalize userDid to pn identifier format
+        const pnIdentifier = userDid.startsWith('pn-') ? userDid : `pn-${userDid}`;
+
+        // Get user's credentials using normalized pn identifier
+        const userCredentials = await storageCredentialsService.getCredentials(pnIdentifier);
         if (!userCredentials?.credentials) {
           return res.status(404).json({ error: 'User credentials not found' });
         }
@@ -6496,7 +6521,8 @@ class ProductionServer {
 
         const account = googleDriveAccounts[0];
         const accountId = (account as any).accountId || (account as any).id;
-        const userAccessToken = await googleDriveProxyService.getAccessToken(userDid, accountId, [userDid]);
+        // Use normalized pn identifier for access token retrieval
+        const userAccessToken = await googleDriveProxyService.getAccessToken(pnIdentifier, accountId);
 
         // Find metadata folder
         const folderQuery = `name='Metadata' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
