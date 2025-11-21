@@ -339,6 +339,9 @@ export class PNOAuthService {
     return session.expiresAt > Date.now();
   }
 
+  // Track ongoing token refresh to prevent concurrent refreshes
+  private static refreshPromise: Promise<string | null> | null = null;
+
   /**
    * Get a valid access token, refreshing if necessary
    * @param forceRefresh - If true, force a token refresh even if token hasn't expired
@@ -360,29 +363,42 @@ export class PNOAuthService {
         return null;
       }
 
-      try {
-        console.log(`[PNOAuth] Refreshing access token (expired: ${isExpired}, forced: ${forceRefresh})`);
-        const tokenResponse = await this.refreshAccessToken(session.refreshToken);
-        
-        // Update session with new token
-        const updatedSession: AuthSession = {
-          ...session,
-          accessToken: tokenResponse.access_token,
-          expiresAt: Date.now() + (tokenResponse.expires_in * 1000),
-          refreshToken: tokenResponse.refresh_token || session.refreshToken
-        };
-        
-        this.saveSession(updatedSession);
-        console.log('[PNOAuth] Token refreshed successfully');
-        
-        return tokenResponse.access_token;
-      } catch (error: any) {
-        console.error('[PNOAuth] Failed to refresh token:', error);
-        // Don't clear session immediately - let user try to reconnect
-        // The session will be cleared when they try to use it again
-        console.warn('[PNOAuth] Refresh token invalid or expired. User needs to re-authenticate.');
-        return null;
+      // If a refresh is already in progress, wait for it instead of starting a new one
+      if (this.refreshPromise) {
+        return this.refreshPromise;
       }
+
+      // Start a new refresh
+      this.refreshPromise = (async () => {
+        try {
+          console.log(`[PNOAuth] Refreshing access token (expired: ${isExpired}, forced: ${forceRefresh})`);
+          const tokenResponse = await this.refreshAccessToken(session.refreshToken!);
+          
+          // Update session with new token
+          const updatedSession: AuthSession = {
+            ...session,
+            accessToken: tokenResponse.access_token,
+            expiresAt: Date.now() + (tokenResponse.expires_in * 1000),
+            refreshToken: tokenResponse.refresh_token || session.refreshToken
+          };
+          
+          this.saveSession(updatedSession);
+          console.log('[PNOAuth] Token refreshed successfully');
+          
+          return tokenResponse.access_token;
+        } catch (error: any) {
+          console.error('[PNOAuth] Failed to refresh token:', error);
+          // Don't clear session immediately - let user try to reconnect
+          // The session will be cleared when they try to use it again
+          console.warn('[PNOAuth] Refresh token invalid or expired. User needs to re-authenticate.');
+          return null;
+        } finally {
+          // Clear the promise so future refreshes can proceed
+          this.refreshPromise = null;
+        }
+      })();
+
+      return this.refreshPromise;
     }
 
     // Token is valid, return it (logging removed - was too verbose)
