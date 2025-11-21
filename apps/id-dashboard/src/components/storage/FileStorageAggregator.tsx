@@ -3580,24 +3580,24 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
           console.warn('Failed to generate pN identifier for metadata folder:', err);
         }
 
-        // Index the file (will use pN identifier to create metadata folder inside pN folder)
-        // Token is included in publicMetadata.publicToken
-        console.log('📤 [Phase 3] Submitting metadata to index...', {
+        // OPTIMIZATION: Run API metadata operations in parallel
+        // POST and PUT are independent and can execute simultaneously
+        const targetFileId = publicMetadata.fileId || file.backendFileId || file.id;
+        console.log('📤 [Phase 3] Submitting metadata to index (parallel operations)...', {
           fileId: file.id,
+          targetFileId,
           hasToken: !!publicMetadata.publicToken,
           tokenLength: publicMetadata.publicToken?.length || 0
         });
-        await metadataIndexService.indexFile(file, publicMetadata, metadataPnIdentifier);
-        console.log('✅ [Phase 3] Metadata indexed with token');
-
-        // CRITICAL: Also call PUT endpoint to explicitly update isPublic in database
-        // This ensures the database is updated even if POST didn't properly update existing entry
-        try {
-          const targetFileId = publicMetadata.fileId || file.backendFileId || file.id;
-          console.log('🔄 [Phase 3] Updating isPublic via PUT endpoint...', { targetFileId, isPublic: publicMetadata.isPublic });
-          
-          const { retry: retryHelper } = await import('../../utils/helpers');
-          const putResponse = await retryHelper(
+        
+        const { retry: retryHelper } = await import('../../utils/helpers');
+        
+        // Run POST and PUT in parallel - they're independent operations
+        const [indexResult, putResult] = await Promise.allSettled([
+          // POST to submit metadata
+          metadataIndexService.indexFile(file, publicMetadata, metadataPnIdentifier),
+          // PUT to explicitly update isPublic (ensures database is updated even if POST didn't properly update existing entry)
+          retryHelper(
             async () => {
               const res = await fetch(
                 `${apiEndpoint}/api/aggregator/metadata-index/${encodeURIComponent(targetFileId)}${authenticatedUser?.accessToken ? `?accountId=${encodeURIComponent(file.backend || '')}` : ''}`,
@@ -3641,12 +3641,22 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
             },
             3, // maxAttempts
             2000 // baseDelay (2 seconds)
-          );
-          
-          const putResult = await putResponse.json();
-          console.log('✅ [Phase 3] PUT endpoint updated isPublic successfully', putResult);
-        } catch (putError) {
-          console.error('❌ [Phase 3] Failed to update isPublic via PUT endpoint (non-critical):', putError);
+          )
+        ]);
+        
+        // Log results
+        if (indexResult.status === 'fulfilled') {
+          console.log('✅ [Phase 3] Metadata indexed with token');
+        } else {
+          console.error('❌ [Phase 3] Failed to index metadata:', indexResult.reason);
+        }
+        
+        if (putResult.status === 'fulfilled') {
+          const putResponse = putResult.value;
+          const putData = await putResponse.json().catch(() => ({}));
+          console.log('✅ [Phase 3] PUT endpoint updated isPublic successfully', putData);
+        } else {
+          console.error('❌ [Phase 3] Failed to update isPublic via PUT endpoint (non-critical):', putResult.reason);
           // Non-critical - POST should have handled it, but log for debugging
         }
 
@@ -3704,44 +3714,53 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
                   engagement: publicMetadata.engagement
                 };
                 
-                console.log('📝 [Phase 3] Creating/updating companion metadata file...', {
+                console.log('📝 [Phase 3] Creating/updating companion metadata file and indexes...', {
                   fileId: companionMetadata.fileId,
                   googleDriveFileId: companionMetadata.googleDriveFileId,
                   fileName: companionMetadata.fileName,
                   visibility: companionMetadata.visibility
                 });
                 
-                // Ensure companion metadata file exists
-                await GoogleDriveMetadataService.createCompanionMetadataFile(
-                  accessToken,
-                  metadataPnIdentifier,
-                  companionMetadata
-                );
-                
-                console.log('✅ [Phase 3] Companion metadata file created/updated successfully');
-                
-                // Also update owner index to ensure file is tracked
-                try {
-                  await GoogleDriveMetadataService.updateOwnerFileIndex(
+                // OPTIMIZATION: Run all Google Drive operations in parallel
+                // These operations are independent and can execute simultaneously
+                const [companionResult, ownerIndexResult, publicIndexResult] = await Promise.allSettled([
+                  GoogleDriveMetadataService.createCompanionMetadataFile(
                     accessToken,
                     metadataPnIdentifier,
                     companionMetadata
-                  );
-                  console.log('✅ [Phase 3] Owner index updated successfully');
-                } catch (ownerIndexError) {
-                  console.warn('⚠️ [Phase 3] Failed to update owner index (non-critical):', ownerIndexError);
+                  ),
+                  GoogleDriveMetadataService.updateOwnerFileIndex(
+                    accessToken,
+                    metadataPnIdentifier,
+                    companionMetadata
+                  ).catch(err => {
+                    console.warn('⚠️ [Phase 3] Failed to update owner index (non-critical):', err);
+                    throw err; // Re-throw to mark as rejected in Promise.allSettled
+                  }),
+                  GoogleDriveMetadataService.updatePublicFileIndex(
+                    accessToken,
+                    metadataPnIdentifier,
+                    companionMetadata
+                  )
+                ]);
+                
+                // Log results
+                if (companionResult.status === 'fulfilled') {
+                  console.log('✅ [Phase 3] Companion metadata file created/updated successfully');
+                } else {
+                  console.error('❌ [Phase 3] Failed to create companion metadata file:', companionResult.reason);
                 }
                 
-                // Update public index file - this adds the file to public-file-index.json
-                console.log('📝 [Phase 3] Updating public index file...');
-                await GoogleDriveMetadataService.updatePublicFileIndex(
-                  accessToken,
-                  metadataPnIdentifier,
-                  companionMetadata
-                );
+                if (ownerIndexResult.status === 'fulfilled') {
+                  console.log('✅ [Phase 3] Owner index updated successfully');
+                }
                 
-                console.log('✅ [Phase 3] Google Drive public index file updated successfully');
-                setSuccessMessage('File made public and added to public index!');
+                if (publicIndexResult.status === 'fulfilled') {
+                  console.log('✅ [Phase 3] Public index file updated successfully');
+                  setSuccessMessage('File made public and added to public index!');
+                } else {
+                  console.error('❌ [Phase 3] Failed to update public index:', publicIndexResult.reason);
+                }
               } else {
                 console.warn('⚠️ [Phase 3] No access token available to update Google Drive public index');
                 setError('Failed to update public index: No access token available');

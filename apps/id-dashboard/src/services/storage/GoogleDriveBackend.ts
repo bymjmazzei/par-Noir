@@ -1070,40 +1070,48 @@ export class GoogleDriveBackend extends AbstractStorageBackend {
                }
              };
 
-        await GoogleDriveMetadataService.createCompanionMetadataFile(
-          this.token,
-          metadata.pnIdentifier,
-          companionMetadata
-        );
-        console.log('✅ [uploadFile] Companion metadata file created successfully');
-
-        // Always update owner index (contains ALL files for the owner)
-        try {
-          await GoogleDriveMetadataService.updateOwnerFileIndex(
+        // OPTIMIZATION: Run all metadata operations in parallel
+        // These operations are independent and can execute simultaneously
+        const [companionResult, ownerIndexResult, publicIndexResult] = await Promise.allSettled([
+          GoogleDriveMetadataService.createCompanionMetadataFile(
             this.token,
             metadata.pnIdentifier,
             companionMetadata
-          );
-          console.log('✅ [uploadFile] Owner file index updated successfully');
-        } catch (ownerIndexError) {
-          console.warn('⚠️ [uploadFile] Failed to update owner index (non-critical):', ownerIndexError);
+          ),
+          GoogleDriveMetadataService.updateOwnerFileIndex(
+            this.token,
+            metadata.pnIdentifier,
+            companionMetadata
+          ).catch(err => {
+            console.warn('⚠️ [uploadFile] Failed to update owner index (non-critical):', err);
+            throw err; // Re-throw to mark as rejected in Promise.allSettled
+          }),
+          GoogleDriveMetadataService.updatePublicFileIndex(
+            this.token,
+            metadata.pnIdentifier,
+            companionMetadata
+          )
+        ]);
+
+        // Log results
+        if (companionResult.status === 'fulfilled') {
+          console.log('✅ [uploadFile] Companion metadata file created successfully');
+        } else {
+          console.error('❌ [uploadFile] Failed to create companion metadata file:', companionResult.reason);
         }
 
-        // Always call updatePublicFileIndex - it will add if public, remove if not
-        // This ensures the index stays in sync with file visibility
-        try {
-          await GoogleDriveMetadataService.updatePublicFileIndex(
-            this.token,
-            metadata.pnIdentifier,
-            companionMetadata
-          );
+        if (ownerIndexResult.status === 'fulfilled') {
+          console.log('✅ [uploadFile] Owner file index updated successfully');
+        }
+
+        if (publicIndexResult.status === 'fulfilled') {
           if (companionMetadata.visibility === 'public') {
             console.log('✅ [uploadFile] Public file index updated successfully');
           } else {
             console.log('✅ [uploadFile] File removed from public index (not public)');
           }
-        } catch (indexError) {
-          console.error('❌ [uploadFile] Failed to update public file index:', indexError);
+        } else {
+          console.error('❌ [uploadFile] Failed to update public file index:', publicIndexResult.reason);
         }
       } catch (metadataError) {
         console.error('❌ [uploadFile] Failed to create companion metadata file:', metadataError);
