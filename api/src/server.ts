@@ -1097,9 +1097,14 @@ class ProductionServer {
     });
 
     // Authentication endpoints with rate limiting (skip OPTIONS for CORS preflight)
+    // OAuth token endpoint has its own more lenient limiter, so exclude it
     this.app.use('/api/auth', (req, res, next) => {
       if (req.method === 'OPTIONS') {
         return next(); // Skip rate limiting for OPTIONS requests
+      }
+      // Skip rate limiting for OAuth token endpoint (it has its own limiter)
+      if (req.path === '/api/auth/google-oauth/token' && req.method === 'POST') {
+        return next();
       }
       authLimiter(req, res, next);
     });
