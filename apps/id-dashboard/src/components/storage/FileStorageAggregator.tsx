@@ -1662,10 +1662,22 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
     };
   }, []);
 
+  // CRITICAL: Track when disconnect happens to prevent immediate re-hydration
+  const disconnectTimestampRef = React.useRef<number>(0);
+  const DISCONNECT_HYDRATION_DELAY_MS = 5000; // Don't hydrate for 5 seconds after disconnect
+
   const hydrateStorageCredentialsFromAPI = React.useCallback(async () => {
     if (hydrationInProgressRef.current) {
       return;
     }
+    
+    // CRITICAL: Don't hydrate immediately after disconnect
+    const timeSinceDisconnect = Date.now() - disconnectTimestampRef.current;
+    if (timeSinceDisconnect < DISCONNECT_HYDRATION_DELAY_MS) {
+      console.log(`⏭️ [StorageCredentials] Skipping hydration - ${timeSinceDisconnect}ms since last disconnect (waiting ${DISCONNECT_HYDRATION_DELAY_MS}ms)`);
+      return;
+    }
+    
     hydrationInProgressRef.current = true;
 
     if (hydrationSuccessRef.current) {
@@ -1829,7 +1841,31 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
         
         console.log(`🔄 [StorageCredentials] Hydrating ${deduplicatedAccounts.length} unique account(s) from ${accountsArray.length} total in API response`);
 
+        // CRITICAL: Only hydrate accounts that aren't already in the cache
+        // This prevents re-adding disconnected accounts
+        const accountsToHydrate: typeof deduplicatedAccounts = [];
+        const currentCacheEmails = new Set<string>();
+        
+        // Build set of emails already in cache
+        for (const [cachedBackendId, cachedCredential] of driveCredentialCacheRef.current.entries()) {
+          if (cachedCredential.email) {
+            currentCacheEmails.add(cachedCredential.email.toLowerCase());
+          }
+        }
+        
+        // Only hydrate accounts that aren't already in cache
         for (const account of deduplicatedAccounts) {
+          const email = account?.email || null;
+          if (email && currentCacheEmails.has(email.toLowerCase())) {
+            console.log(`⏭️ [StorageCredentials] Skipping hydration for ${email} - already in cache`);
+            continue;
+          }
+          accountsToHydrate.push(account);
+        }
+        
+        console.log(`🔄 [StorageCredentials] Actually hydrating ${accountsToHydrate.length} new account(s) (${deduplicatedAccounts.length - accountsToHydrate.length} skipped - already in cache)`);
+
+        for (const account of accountsToHydrate) {
           const token = account?.accessToken;
           if (!token) {
             continue;
@@ -4255,6 +4291,9 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
         console.log(`✅ [handleDisconnect] Backend ${backendId} disconnected`);
       }
       
+      // CRITICAL: Mark disconnect timestamp to prevent immediate re-hydration
+      disconnectTimestampRef.current = Date.now();
+      
       // Remove account from state FIRST (before updating API/metadata)
       // This ensures buildStorageCredentialPayload() excludes the removed account
       removeDriveAccount(backendId);
@@ -4356,6 +4395,9 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
       try {
         console.log('🔄 [handleDisconnect] Updating API storage credentials to remove account...');
         
+        // CRITICAL: Clean up cache BEFORE building payload to ensure duplicates are removed
+        cleanupDuplicateCacheEntries();
+        
         // Build payload from current state (after removal)
         const payload = buildStorageCredentialPayload();
         
@@ -4373,6 +4415,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
             
             try {
               // Send current payload (may be empty if all accounts disconnected)
+              // CRITICAL: Always send the deduplicated payload, even if it's empty
               const response = await fetch(`${apiEndpoint}/api/storage/credentials/${encodeURIComponent(identityId)}`, {
                 method: 'PUT',
                 headers: {
@@ -4391,7 +4434,8 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
                   error: errorText,
                 });
               } else {
-                console.log('✅ [handleDisconnect] API storage credentials updated (account removed)');
+                const accountsCount = payload?.googleDriveAccounts?.length || 0;
+                console.log(`✅ [handleDisconnect] API storage credentials updated (account removed). Current accounts: ${accountsCount}`);
               }
             } catch (apiError) {
               console.error('❌ [handleDisconnect] Failed to update API storage credentials:', apiError);
