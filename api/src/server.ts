@@ -5943,13 +5943,24 @@ class ProductionServer {
           return res.status(404).json({ error: 'Metadata folder not found. Please ensure you have a folder named "_metadata" or "Metadata" in your Google Drive.' });
         }
 
-        // Update display name
+        // Update display name in Google Drive
         await ProfileService.updateDisplayName(
           userAccessToken,
           metadataFolderId,
           userDid,
           displayName
         );
+
+        // Also save to database for fast lookups
+        const db = (await import('./server/utils/database')).getDatabasePool();
+        await db.query(`
+          INSERT INTO user_profiles (pn_identifier, display_name, updated_at)
+          VALUES ($1, $2, NOW())
+          ON CONFLICT (pn_identifier) 
+          DO UPDATE SET 
+            display_name = EXCLUDED.display_name,
+            updated_at = NOW()
+        `, [pnIdentifier, displayName]);
 
         return res.json({ success: true });
       } catch (error: any) {
@@ -6008,6 +6019,29 @@ class ProductionServer {
           return res.json({ displayName: null, profileImageFileId: null });
         }
 
+        // First, try to get from database (fast lookup)
+        const dbProfileResult = await db.query(`
+          SELECT display_name, profile_image_file_id, updated_at
+          FROM user_profiles
+          WHERE pn_identifier = $1
+        `, [pnIdentifier]);
+
+        if (dbProfileResult.rows.length > 0) {
+          const dbProfile = dbProfileResult.rows[0];
+          // Log for debugging
+          if (NODE_ENV === 'development') {
+            console.log(`[Profile API] Retrieved profile from database for ${pnIdentifier}:`, {
+              displayName: dbProfile.display_name || 'null',
+              profileImageFileId: dbProfile.profile_image_file_id || 'null'
+            });
+          }
+          return res.json({
+            displayName: dbProfile.display_name || null,
+            profileImageFileId: dbProfile.profile_image_file_id || null
+          });
+        }
+
+        // Fallback to Google Drive if not in database
         // Get user's credentials using normalized pn identifier
         const userCredentials = await storageCredentialsService.getCredentials(pnIdentifier);
         if (!userCredentials?.credentials) {
@@ -6026,29 +6060,47 @@ class ProductionServer {
         // Use normalized pn identifier for access token retrieval
         const userAccessToken = await googleDriveProxyService.getAccessToken(pnIdentifier, accountId);
 
-        // Find metadata folder
-        const folderQuery = `name='Metadata' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
-        const folderUrl = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(folderQuery)}&fields=files(id)&pageSize=1`;
-        const folderResponse = await fetch(folderUrl, {
-          headers: { 'Authorization': `Bearer ${userAccessToken}` }
-        });
+        // Find metadata folder - try both '_metadata' and 'Metadata'
+        let metadataFolderId: string | null = null;
+        
+        for (const folderName of ['_metadata', 'Metadata']) {
+          const folderQuery = `name='${folderName}' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
+          const folderUrl = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(folderQuery)}&fields=files(id)&pageSize=1`;
+          const folderResponse = await fetch(folderUrl, {
+            headers: { 'Authorization': `Bearer ${userAccessToken}` }
+          });
 
-        if (!folderResponse.ok) {
-          return res.json({ displayName: null, profileImageFileId: null });
+          if (folderResponse.ok) {
+            const folderData = await folderResponse.json() as { files?: Array<{ id: string }> };
+            if (folderData.files && folderData.files.length > 0) {
+              metadataFolderId = folderData.files[0].id;
+              break;
+            }
+          }
         }
 
-        const folderData = await folderResponse.json() as { files?: Array<{ id: string }> };
-        if (!folderData.files || folderData.files.length === 0) {
+        if (!metadataFolderId) {
           return res.json({ displayName: null, profileImageFileId: null });
         }
-
-        const metadataFolderId = folderData.files[0].id;
 
         const profile = await ProfileService.getProfile(userAccessToken, metadataFolderId);
 
+        // If we got a profile from Google Drive, save it to database for next time
+        if (profile?.displayName) {
+          await db.query(`
+            INSERT INTO user_profiles (pn_identifier, display_name, profile_image_file_id, updated_at)
+            VALUES ($1, $2, $3, NOW())
+            ON CONFLICT (pn_identifier) 
+            DO UPDATE SET 
+              display_name = EXCLUDED.display_name,
+              profile_image_file_id = EXCLUDED.profile_image_file_id,
+              updated_at = NOW()
+          `, [pnIdentifier, profile.displayName, profile.profileImageFileId || null]);
+        }
+
         // Log for debugging
         if (NODE_ENV === 'development') {
-          console.log(`[Profile API] Retrieved profile for ${pnIdentifier}:`, {
+          console.log(`[Profile API] Retrieved profile from Google Drive for ${pnIdentifier}:`, {
             hasProfile: !!profile,
             displayName: profile?.displayName || 'null',
             profileImageFileId: profile?.profileImageFileId || 'null'

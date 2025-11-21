@@ -509,6 +509,27 @@ export async function initializeDatabase(): Promise<void> {
       ON oauth_refresh_tokens(expires_at)
     `);
 
+    // User profiles table - indexes pnIdentifier to displayName for fast lookups
+    await db.query(`
+      CREATE TABLE IF NOT EXISTS user_profiles (
+        pn_identifier VARCHAR(255) PRIMARY KEY,
+        display_name VARCHAR(255),
+        profile_image_file_id VARCHAR(255),
+        updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+      )
+    `);
+
+    await db.query(`
+      CREATE INDEX IF NOT EXISTS idx_user_profiles_pn_identifier
+      ON user_profiles(pn_identifier)
+    `);
+
+    await db.query(`
+      CREATE INDEX IF NOT EXISTS idx_user_profiles_updated_at
+      ON user_profiles(updated_at DESC)
+    `);
+
     // Clean up expired refresh tokens periodically (via application logic)
     // The cleanup will happen in the service layer
 
