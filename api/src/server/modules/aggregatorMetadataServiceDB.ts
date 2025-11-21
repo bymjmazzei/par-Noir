@@ -785,8 +785,15 @@ export class AggregatorMetadataServiceDB {
             );
             
             if (verifyResponse.status === 404) {
-              console.log(`🗑️ [cleanupOrphanedFilesFromIndex] File ${fileToVerify} not found (404) - removing from database: ${fileId} (${fileName})`);
-              orphanedFileIds.push(fileId);
+              // 404 could mean file doesn't exist OR service account doesn't have access
+              // Since service account can't see folders, 404 is unreliable
+              // Only remove if file is very old (past extended grace period)
+              if (ageMinutes >= (EXTENDED_GRACE_PERIOD_HOURS * 60)) {
+                console.log(`🗑️ [cleanupOrphanedFilesFromIndex] File ${fileToVerify} not found (404) and is ${(ageMinutes / 60).toFixed(1)} hours old - removing from database: ${fileId} (${fileName})`);
+                orphanedFileIds.push(fileId);
+              } else {
+                console.log(`⚠️ [cleanupOrphanedFilesFromIndex] File ${fileToVerify} returned 404 but is only ${(ageMinutes / 60).toFixed(1)} hours old - keeping (might be permission issue): ${fileId} (${fileName})`);
+              }
             } else if (!verifyResponse.ok) {
               console.log(`⚠️ [cleanupOrphanedFilesFromIndex] Could not verify file ${fileToVerify} (${verifyResponse.status}) - keeping in database: ${fileId} (${fileName})`);
               // Don't remove if we can't verify (might be permission issue)
