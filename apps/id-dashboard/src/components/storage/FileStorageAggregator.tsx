@@ -900,60 +900,49 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
 
       await persistCredentialsToSecureMetadata(payload);
 
-      const identityCandidates = getStorageIdentityCandidates();
-      console.log('[StorageCredentials] Identity candidates:', identityCandidates);
-
-      if (identityCandidates.length === 0) {
-        console.warn('⚠️ [StorageCredentials] No identity candidates available for persistence');
+      // CRITICAL: Use ONLY the authenticated user's ID - don't loop through multiple identityIds
+      // Multiple identityIds cause duplicate accounts in the API
+      const identityId = authenticatedUser?.id;
+      if (!identityId) {
+        console.warn('⚠️ [StorageCredentials] No authenticated user ID available for persistence');
         globalPersistenceLockRef.current = false;
         persistenceInProgressRef.current = false;
         return;
       }
 
-      const seen = new Set<string>();
-      for (const identityId of identityCandidates) {
-        if (!identityId || seen.has(identityId)) {
-          continue;
-        }
-        seen.add(identityId);
+      try {
+        console.log('📤 [StorageCredentials] Persisting credentials to API...', {
+          identityIdLength: identityId?.length,
+          hasCid: !!cid,
+          accountsCount: payload.googleDriveAccounts.length
+        });
 
-        try {
-          // Log identityId for debugging (normally secret)
-          console.log('📤 [StorageCredentials] Persisting credentials to API...', {
-            identityId: identityId,
-            identityIdLength: identityId?.length,
-            hasCid: !!cid,
+        const response = await fetch(`${apiEndpoint}/api/storage/credentials/${encodeURIComponent(identityId)}`, {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            credentials: payload,
+            cid: cid ?? null,
+          }),
+        });
+
+        if (!response.ok) {
+          const errorText = await response.text().catch(() => 'Unknown error');
+          console.warn('⚠️ [StorageCredentials] Failed to persist credentials to API:', {
+            status: response.status,
+            error: errorText,
           });
-
-          const response = await fetch(`${apiEndpoint}/api/storage/credentials/${encodeURIComponent(identityId)}`, {
-            method: 'PUT',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-              credentials: payload,
-              cid: cid ?? null,
-            }),
-          });
-
-          if (!response.ok) {
-            const errorText = await response.text().catch(() => 'Unknown error');
-            // identityId is secret - not logged
-            console.warn('⚠️ [StorageCredentials] Failed to persist credentials to API:', {
-              status: response.status,
-              error: errorText,
-            });
-          } else {
-            console.warn('✅ [StorageCredentials] Credentials persisted to API', {
-              accountsCount: payload.googleDriveAccounts.length
-            });
-          }
-        } catch (error) {
-          // identityId is secret - not logged
-          console.warn('⚠️ [StorageCredentials] API persistence failed (non-blocking):', {
-            error: error?.message || error,
+        } else {
+          console.log('✅ [StorageCredentials] Credentials persisted to API', {
+            accountsCount: payload.googleDriveAccounts.length
           });
         }
+      } catch (error) {
+        console.warn('⚠️ [StorageCredentials] API persistence failed (non-blocking):', {
+          error: error?.message || error,
+        });
       }
     } finally {
       globalPersistenceLockRef.current = false;
