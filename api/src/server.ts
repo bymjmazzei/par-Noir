@@ -4150,7 +4150,6 @@ class ProductionServer {
         // CRITICAL: Use ONLY pn identifier - dashboard stores credentials under pn identifier only
         // Dashboard's getStorageIdentityCandidates() returns only the pn identifier
         const pnIdentifier = tokenPayload.pnIdentifier; // Use pN identifier for folder search
-        const userIdentifier = tokenPayload.pnIdentifier; // Use ONLY pn identifier for credential lookup
         
         if (!pnIdentifier) {
           return res.status(400).json({
@@ -4158,6 +4157,9 @@ class ProductionServer {
             error_description: 'Token must include pnIdentifier for storage access'
           });
         }
+        
+        // After validation, pnIdentifier is guaranteed to be defined
+        const userIdentifier: string = pnIdentifier; // Use ONLY pn identifier for credential lookup
         
         // CRITICAL: Only use pn identifier - no fallback to DID or public key
         // This prevents multiple API calls with different identifiers
@@ -4445,7 +4447,8 @@ class ProductionServer {
             error_description: 'Token must include pnIdentifier for storage access'
           });
         }
-        const userIdentifier = pnIdentifier;
+        // After validation, pnIdentifier is guaranteed to be defined
+        const userIdentifier: string = pnIdentifier;
         
         // CRITICAL: Only use pn identifier - no fallback to DID or public key
         const identifierCandidates: string[] = [pnIdentifier];
