@@ -1985,7 +1985,48 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
         
         console.log(`🔄 [StorageCredentials] Actually hydrating ${accountsToHydrate.length} new account(s) (${deduplicatedAccounts.length - accountsToHydrate.length} skipped - already in cache)`);
 
+        // CRITICAL: Before hydrating, check if ANY account with this email already exists in aggregatorService
+        // If it does, SKIP hydration entirely - don't create duplicate backends
+        const accountsToActuallyHydrate: typeof accountsToHydrate = [];
+        const registeredBackends = aggregatorService?.getAllBackends() || new Map();
+        
         for (const account of accountsToHydrate) {
+          const accountEmail = account?.email?.toLowerCase();
+          if (accountEmail) {
+            // Check if aggregatorService already has a backend with this email
+            let accountExists = false;
+            for (const [backendId, backend] of registeredBackends.entries()) {
+              if (backend instanceof GoogleDriveBackend) {
+                const backendEmail = backend.getEmail()?.toLowerCase();
+                if (backendEmail === accountEmail) {
+                  console.log(`⏭️ [StorageCredentials] SKIPPING hydration: Account with email ${accountEmail} already exists in aggregatorService (backendId: ${backendId})`);
+                  accountExists = true;
+                  break;
+                }
+              }
+            }
+            if (!accountExists) {
+              accountsToActuallyHydrate.push(account);
+            }
+          } else {
+            // Account without email - only hydrate if we have no accounts at all
+            if (accountsToActuallyHydrate.length === 0 && registeredBackends.size === 0) {
+              accountsToActuallyHydrate.push(account);
+            } else {
+              console.log(`⏭️ [StorageCredentials] SKIPPING hydration: Account without email (only hydrate if no accounts exist)`);
+            }
+          }
+        }
+
+        console.log(`🔄 [StorageCredentials] After aggregatorService check: Actually hydrating ${accountsToActuallyHydrate.length} account(s) (${accountsToHydrate.length - accountsToActuallyHydrate.length} skipped - already in aggregatorService)`);
+
+        // CRITICAL: Only hydrate ONE account maximum - if API has 500 accounts, we only want ONE
+        if (accountsToActuallyHydrate.length > 1) {
+          console.error(`🚨 [StorageCredentials] CRITICAL: After all checks, still have ${accountsToActuallyHydrate.length} accounts to hydrate. Keeping only the first one.`);
+          accountsToActuallyHydrate.length = 1;
+        }
+
+        for (const account of accountsToActuallyHydrate) {
           const token = account?.accessToken;
           if (!token) {
             continue;
