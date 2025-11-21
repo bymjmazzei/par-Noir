@@ -39,6 +39,8 @@ interface FullScreenFeedProps {
   onSwipeLeft?: () => void; // Horizontal swipe left handler
   onSwipeRight?: () => void; // Horizontal swipe right handler
   mePageTab?: 'all' | 'media' | 'thoughts' | 'likes' | 'comments' | 'saved' | 'connections'; // For Me page tab context
+  thumbnails?: Map<string, string>; // Optional: pre-generated thumbnails from parent
+  videoBlobs?: Map<string, string>; // Optional: pre-loaded video blobs from parent
 }
 
 export function FullScreenFeed({
@@ -61,13 +63,28 @@ export function FullScreenFeed({
   onMessage,
   onSwipeLeft,
   onSwipeRight,
-  mePageTab
+  mePageTab,
+  thumbnails: externalThumbnails,
+  videoBlobs: externalVideoBlobs
 }: FullScreenFeedProps) {
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const videoRefs = useRef<Map<string, HTMLVideoElement>>(new Map());
   const imageRefs = useRef<Map<string, HTMLImageElement>>(new Map());
-  const [videoBlobs, setVideoBlobs] = useState<Map<string, string>>(new Map());
-  const [thumbnails, setThumbnails] = useState<Map<string, string>>(new Map());
+  const [videoBlobs, setVideoBlobs] = useState<Map<string, string>>(externalVideoBlobs || new Map());
+  const [thumbnails, setThumbnails] = useState<Map<string, string>>(externalThumbnails || new Map());
+  
+  // Sync external thumbnails/videoBlobs when they change
+  useEffect(() => {
+    if (externalThumbnails) {
+      setThumbnails(externalThumbnails);
+    }
+  }, [externalThumbnails]);
+  
+  useEffect(() => {
+    if (externalVideoBlobs) {
+      setVideoBlobs(externalVideoBlobs);
+    }
+  }, [externalVideoBlobs]);
   const [visibleFileId, setVisibleFileId] = useState<string | null>(null);
   const [mediaDimensions, setMediaDimensions] = useState<Map<string, { width: number; height: number }>>(new Map());
   const [showEngagementOverlay, setShowEngagementOverlay] = useState(false);
@@ -309,8 +326,13 @@ export function FullScreenFeed({
     };
   }, [visibleFileId, getPopularComments]);
 
-  // Load video blobs and thumbnails for visible files
+  // Load video blobs and thumbnails for visible files (only if not provided externally)
   useEffect(() => {
+    // Skip if thumbnails/videoBlobs are provided externally - they're already loaded
+    if (externalThumbnails || externalVideoBlobs) {
+      return;
+    }
+    
     const loadMedia = async () => {
       // Load current file and adjacent files
       const indicesToLoad = [
@@ -372,7 +394,7 @@ export function FullScreenFeed({
     };
 
     loadMedia();
-  }, [currentIndex, files, videoBlobs, thumbnails]);
+  }, [currentIndex, files, externalThumbnails, externalVideoBlobs]); // Removed videoBlobs and thumbnails from deps to prevent loops
 
   // Auto-play video when it becomes visible
   useEffect(() => {

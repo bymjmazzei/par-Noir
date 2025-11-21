@@ -2875,6 +2875,8 @@ function App() {
               <FullScreenFeed
                 files={filteredMeFiles}
                 currentIndex={currentFeedIndex}
+                thumbnails={thumbnails}
+                videoBlobs={videoBlobs}
                 onIndexChange={(newIndex) => {
                   // Only update if index is within valid range and actually changed
                   // Remove stabilization check to allow smooth scrolling
@@ -3215,6 +3217,8 @@ function App() {
               <FullScreenFeed
                 files={filteredFilesByFeed}
                 currentIndex={currentFeedIndex}
+                thumbnails={thumbnails}
+                videoBlobs={videoBlobs}
                 onIndexChange={setCurrentFeedIndex}
                 onSwipeLeft={handleNextFeed}
                 onSwipeRight={handlePreviousFeed}
