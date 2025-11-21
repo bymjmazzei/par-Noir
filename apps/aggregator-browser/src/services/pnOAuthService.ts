@@ -93,6 +93,7 @@ export class PNOAuthService {
     passcode: string;
     publicKey: string;
     did: string;
+    pnName?: string; // pN name (extracted from decrypted identity)
     scope?: string[];
     state?: string;
     nonce?: string;
@@ -115,7 +116,8 @@ export class PNOAuthService {
         encrypted_identity: params.encryptedIdentity,
         passcode: params.passcode,
         public_key: params.publicKey,
-        did: params.did
+        did: params.did,
+        pnName: params.pnName // Send pN name for VolumeIdGenerator
       })
     });
 
@@ -238,13 +240,15 @@ export class PNOAuthService {
     passcode: string;
     publicKey: string;
     did: string;
+    pnName?: string; // pN name (extracted from decrypted identity, if available)
   }): Promise<AuthSession> {
     // Step 1: Authenticate and get authorization code
     const { code } = await this.authenticate({
       encryptedIdentity: params.encryptedIdentity,
       passcode: params.passcode,
       publicKey: params.publicKey,
-      did: params.did
+      did: params.did,
+      pnName: params.pnName // Pass pN name for VolumeIdGenerator (if available)
     });
 
     // Step 2: Exchange code for tokens
