@@ -333,39 +333,55 @@ export function DiscoveryPage({
     });
     
     // Fetch display names for creators that aren't cached and haven't been fetched yet
-    uniqueCreatorIds.forEach(creatorId => {
-      // Skip if already cached
-      if (userState.preferences.userDisplayNames?.[creatorId]) {
-        return;
+    // Batch with delays to avoid rate limiting
+    const fetchProfiles = async () => {
+      const creatorsToFetch = Array.from(uniqueCreatorIds).filter(creatorId => {
+        // Skip if already cached
+        if (userState.preferences.userDisplayNames?.[creatorId]) {
+          return false;
+        }
+        
+        // Skip if already being fetched
+        if (fetchedCreators.has(creatorId)) {
+          return false;
+        }
+        
+        // Skip if it's the current user (they already have their display name)
+        if (creatorId === userState.pnIdentifier) {
+          return false;
+        }
+        
+        return true;
+      });
+      
+      // Fetch profiles with a small delay between each to avoid rate limiting
+      for (let i = 0; i < creatorsToFetch.length; i++) {
+        const creatorId = creatorsToFetch[i];
+        
+        // Mark as being fetched
+        setFetchedCreators(prev => new Set(prev).add(creatorId));
+        
+        // Add delay between requests (except first one)
+        if (i > 0) {
+          await new Promise(resolve => setTimeout(resolve, 200)); // 200ms delay between requests
+        }
+        
+        getUserProfile(creatorId)
+          .then(profile => {
+            if (profile?.displayName) {
+              setUserDisplayName(creatorId, profile.displayName);
+              // Force re-render by updating version
+              setDisplayNamesVersion(prev => prev + 1);
+            }
+          })
+          .catch((error) => {
+            // Silently fail - profile may not exist or API may not be available
+            // The DID will be displayed until profile is loaded
+          });
       }
-      
-      // Skip if already being fetched
-      if (fetchedCreators.has(creatorId)) {
-        return;
-      }
-      
-      // Skip if it's the current user (they already have their display name)
-      if (creatorId === userState.pnIdentifier) {
-        return;
-      }
-      
-      // Mark as being fetched
-      setFetchedCreators(prev => new Set(prev).add(creatorId));
-      
-      // Fetch profile asynchronously
-      getUserProfile(creatorId)
-        .then(profile => {
-          if (profile?.displayName) {
-            setUserDisplayName(creatorId, profile.displayName);
-            // Force re-render by updating version
-            setDisplayNamesVersion(prev => prev + 1);
-          }
-        })
-        .catch((error) => {
-          // Silently fail - profile may not exist or API may not be available
-          // The DID will be displayed until profile is loaded
-        });
-    });
+    };
+    
+    fetchProfiles();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [files.length, userState.preferences.userDisplayNames, userState.pnIdentifier, setUserDisplayName, displayNamesVersion]);
 

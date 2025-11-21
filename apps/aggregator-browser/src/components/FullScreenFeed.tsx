@@ -491,16 +491,38 @@ export function FullScreenFeed({
         const isImage = file.fileType === 'image' || 
                        (file.name || file.title || '').match(/\.(jpg|jpeg|png|gif|webp|svg|bmp|ico)$/i);
         // Check for text post in metadata (fileType is stored in PublicMetadata)
-        const isTextPost = indexedFile.metadata.fileType === 'text' || 
+        // Debug: log file structure to understand why thoughts aren't rendering
+        const hasTextPostData = !!(indexedFile.metadata as any).textPost || !!(indexedFile.metadata as any).thought;
+        const isTextPost = file.fileType === 'text' || 
+                          file.fileType === 'thought' ||
+                          indexedFile.metadata.fileType === 'text' || 
                           indexedFile.metadata.fileType === 'thought' ||
-                          !!(indexedFile.metadata as any).textPost ||
-                          !!(indexedFile.metadata as any).thought;
+                          hasTextPostData;
+        
+        if (hasTextPostData && !isTextPost) {
+          console.log('[FullScreenFeed] Found textPost data but isTextPost is false:', {
+            fileId,
+            fileType: file.fileType,
+            metadataFileType: indexedFile.metadata.fileType,
+            hasTextPost: !!(indexedFile.metadata as any).textPost,
+            hasThought: !!(indexedFile.metadata as any).thought
+          });
+        }
+        
         const fileName = file.name || file.title || 'Untitled';
         // Access textPost from metadata (it's stored in PublicMetadata)
         const textPostData = (indexedFile.metadata as any).textPost || 
                             (indexedFile.metadata as any).thought ||
                             (file as any).textPost ||
                             (file as any).thought;
+        
+        if (isTextPost && !textPostData) {
+          console.warn('[FullScreenFeed] isTextPost is true but no textPostData found:', {
+            fileId,
+            fileType: file.fileType,
+            metadata: indexedFile.metadata
+          });
+        }
         // Get creatorId - this is now the pN identifier (set from entry.pnIdentifier during conversion)
         const creatorId = (indexedFile.metadata as any).creatorId || 
                           file.creator?.identifier?.value || 
