@@ -389,8 +389,9 @@ export function DiscoveryPage({
     
     fetchProfiles();
     // Only depend on files.length and pnIdentifier - not userDisplayNames to avoid loops
+    // setUserDisplayName is stable from context, so we don't need it in deps
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [files.length, userState.pnIdentifier, setUserDisplayName]);
+  }, [files.length, userState.pnIdentifier]);
 
   // Ref for top feed railway container
   const topFeedRailRef = React.useRef<HTMLDivElement>(null);

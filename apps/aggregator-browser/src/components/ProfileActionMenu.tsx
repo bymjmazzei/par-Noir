@@ -113,12 +113,23 @@ export const ProfileActionMenu = React.memo(function ProfileActionMenu({ creator
 
   // Load profile data (display name) from API
   // Note: Profile image now comes from top post, not profileImageFileId
+  // Track which profiles we've already loaded to prevent re-fetching
+  const loadedProfilesRef = useRef<Set<string>>(new Set());
+  
   useEffect(() => {
     if (!creatorId || !isValidPnIdentifier(creatorId)) return;
+    
+    // Skip if we've already loaded this profile
+    if (loadedProfilesRef.current.has(creatorId)) {
+      return;
+    }
 
     const loadProfileData = async () => {
       try {
         const profile = await getUserProfile(creatorId);
+        
+        // Mark as loaded
+        loadedProfilesRef.current.add(creatorId);
         
         if (profile.displayName) {
           setExternalDisplayName(profile.displayName);
@@ -132,7 +143,7 @@ export const ProfileActionMenu = React.memo(function ProfileActionMenu({ creator
     };
 
     loadProfileData();
-  }, [creatorId, setUserDisplayName]);
+  }, [creatorId]); // Removed setUserDisplayName from deps - it's stable from context
 
   // Create a stable key for indexedFiles based on fileIds to prevent unnecessary recalculations
   const indexedFilesKey = useMemo(() => {

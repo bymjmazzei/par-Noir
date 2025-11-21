@@ -28,12 +28,21 @@ export interface UserProfile {
 
 // Track ongoing profile requests to prevent duplicate calls
 const profileRequestCache = new Map<string, Promise<UserProfile>>();
+// Cache successful profile results to avoid re-fetching
+const profileResultCache = new Map<string, { profile: UserProfile; timestamp: number }>();
+const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
 
 /**
  * Get user profile (display name and profile image fileId)
  * Accepts both pN identifiers (pn-{hash}) and DIDs (did:key:...)
  */
 export async function getUserProfile(userDid: string): Promise<UserProfile> {
+  // Check if we have a cached result that's still valid
+  const cachedResult = profileResultCache.get(userDid);
+  if (cachedResult && Date.now() - cachedResult.timestamp < CACHE_DURATION) {
+    return cachedResult.profile;
+  }
+
   // Check if there's already an ongoing request for this user
   const cachedRequest = profileRequestCache.get(userDid);
   if (cachedRequest) {
@@ -49,21 +58,37 @@ export async function getUserProfile(userDid: string): Promise<UserProfile> {
       });
 
       if (response.status === 429) {
-        // Rate limited - return empty profile without logging error
+        // Rate limited - return cached result if available, otherwise empty profile
+        if (cachedResult) {
+          return cachedResult.profile;
+        }
         console.warn('Rate limited (429) when loading profile, skipping');
         return { displayName: undefined, profileImageFileId: undefined };
       }
 
       if (!response.ok) {
+        // Return cached result if available, otherwise empty
+        if (cachedResult) {
+          return cachedResult.profile;
+        }
         return { displayName: undefined, profileImageFileId: undefined };
       }
 
-      return await response.json();
+      const profile = await response.json();
+      
+      // Cache successful result
+      profileResultCache.set(userDid, { profile, timestamp: Date.now() });
+      
+      return profile;
     } catch (error) {
-      // Silently return null - profile may not exist
+      // Return cached result if available, otherwise empty
+      if (cachedResult) {
+        return cachedResult.profile;
+      }
+      // Silently return empty - profile may not exist
       return { displayName: undefined, profileImageFileId: undefined };
     } finally {
-      // Remove from cache after request completes
+      // Remove from request cache after request completes
       profileRequestCache.delete(userDid);
     }
   })();
