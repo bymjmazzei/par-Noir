@@ -5262,14 +5262,36 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
       // AUTOMATIC CLEANUP: Clean up indexes after deletion
       // Google Drive is the source of truth - file is deleted, remove from all indexes
       try {
-        if (accessToken && currentPnIdentifier) {
-          const { GoogleDriveMetadataService } = await import('../../services/storage/GoogleDriveMetadataService');
-          const cleanupResult = await GoogleDriveMetadataService.cleanupOrphanedIndexEntries(
-            accessToken,
-            currentPnIdentifier
-          );
-          if (cleanupResult.ownerIndexRemoved > 0 || cleanupResult.publicIndexRemoved > 0) {
-            console.log(`✅ [Delete] Cleaned up indexes: removed ${cleanupResult.ownerIndexRemoved} from owner index, ${cleanupResult.publicIndexRemoved} from public index`);
+        if (accessToken) {
+          // Generate pN identifier for cleanup
+          let pnIdentifierForCleanup: string | undefined = undefined;
+          try {
+            const { VolumeIdGenerator } = await import('../../utils/crypto/volumeIdGenerator');
+            const sessionId = authenticatedUser?.id;
+            const credentials = sessionId ? SecureCredentialManager.getCredentials(sessionId) : null;
+            
+            if (resolvedAuth?.pnName && credentials?.passcode && resolvedAuth?.publicKey) {
+              pnIdentifierForCleanup = await VolumeIdGenerator.generateVolumeId({
+                pnName: resolvedAuth.pnName,
+                passcode: credentials.passcode,
+                publicKey: resolvedAuth.publicKey
+              });
+            }
+          } catch (idError) {
+            console.warn('⚠️ [Delete] Failed to generate pN identifier for cleanup:', idError);
+          }
+          
+          if (pnIdentifierForCleanup) {
+            const { GoogleDriveMetadataService } = await import('../../services/storage/GoogleDriveMetadataService');
+            const cleanupResult = await GoogleDriveMetadataService.cleanupOrphanedIndexEntries(
+              accessToken,
+              pnIdentifierForCleanup
+            );
+            if (cleanupResult.ownerIndexRemoved > 0 || cleanupResult.publicIndexRemoved > 0) {
+              console.log(`✅ [Delete] Cleaned up indexes: removed ${cleanupResult.ownerIndexRemoved} from owner index, ${cleanupResult.publicIndexRemoved} from public index`);
+            }
+          } else {
+            console.warn('⚠️ [Delete] Cannot generate pN identifier for cleanup - skipping index cleanup');
           }
         }
       } catch (cleanupError) {
