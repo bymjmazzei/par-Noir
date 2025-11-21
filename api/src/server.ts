@@ -4620,8 +4620,8 @@ class ProductionServer {
         
         // Delete file from Google Drive (if not already deleted)
         try {
-          await googleDriveProxyService.deleteFile(userIdentifier, fileId, accountId);
-          console.log(`✅ [DeleteFile] Deleted file ${fileId} from Google Drive`);
+        await googleDriveProxyService.deleteFile(userIdentifier, fileId, accountId);
+        console.log(`✅ [DeleteFile] Deleted file ${fileId} from Google Drive`);
         } catch (driveError: any) {
           // File might already be deleted - that's okay, database is already cleaned up
           console.log(`ℹ️ [DeleteFile] Google Drive deletion failed (file may already be deleted):`, driveError?.message || driveError);
@@ -5972,11 +5972,41 @@ class ProductionServer {
         const { ProfileService } = await import('./server/modules/profileService');
         const { googleDriveProxyService } = await import('./server/modules/googleDriveProxy');
         const { storageCredentialsService } = await import('./server/modules/storageCredentialsService');
+        const db = (await import('./server/utils/database')).getDatabasePool();
 
-        // CRITICAL: Normalize userDid to pn identifier format
-        // Accept both formats: "pn-{hash}" or just "{hash}"
-        // Browser app may send just the hash part (e.g., "7c1f0cf425b5")
-        const pnIdentifier = userDid.startsWith('pn-') ? userDid : `pn-${userDid}`;
+        let pnIdentifier: string | null = null;
+
+        // Check if userDid is already a pn identifier format
+        if (userDid.startsWith('pn-') || (!userDid.startsWith('did:') && userDid.length < 50)) {
+          // Normalize pn identifier format
+          pnIdentifier = userDid.startsWith('pn-') ? userDid : `pn-${userDid}`;
+        } else {
+          // userDid is a DID - look up the pn identifier from aggregator metadata
+          // Search for files where the creator DID matches
+          const didLookupQuery = `
+            SELECT DISTINCT pn_identifier
+            FROM aggregator_metadata
+            WHERE (
+              metadata->'creator'->'identifier'->>'value' = $1
+              OR metadata->'creator'->>'@id' = $1
+              OR metadata->'author'->>'did' = $1
+            )
+            LIMIT 1
+          `;
+          
+          const didLookupResult = await db.query(didLookupQuery, [userDid]);
+          
+          if (didLookupResult.rows.length > 0) {
+            pnIdentifier = didLookupResult.rows[0].pn_identifier;
+          } else {
+            // If no match found, return null profile
+            return res.json({ displayName: null, profileImageFileId: null });
+          }
+        }
+
+        if (!pnIdentifier) {
+          return res.json({ displayName: null, profileImageFileId: null });
+        }
 
         // Get user's credentials using normalized pn identifier
         const userCredentials = await storageCredentialsService.getCredentials(pnIdentifier);

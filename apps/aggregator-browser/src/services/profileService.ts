@@ -28,14 +28,12 @@ export interface UserProfile {
 
 /**
  * Get user profile (display name and profile image fileId)
+ * Accepts both pN identifiers (pn-{hash}) and DIDs (did:key:...)
  */
 export async function getUserProfile(userDid: string): Promise<UserProfile> {
   try {
-    // Skip if it's a DID or public key
-    if (userDid.startsWith('did:key:') || userDid.length > 200) {
-      return { displayName: null, profileImageFileId: null };
-    }
-
+    // API now handles both pN identifiers and DIDs
+    // No need to skip any format - let the API handle the lookup
     const response = await fetch(`${API_ENDPOINT}/api/profile/${encodeURIComponent(userDid)}`, {
       headers: getAuthHeaders()
     });
