@@ -2349,6 +2349,15 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
 
         if (credsArray.length > 0) {
           await loadStorageQuota();
+          
+          // CRITICAL: Load files immediately after credentials are restored
+          // This ensures Google Drive sync happens in background, not when storage tab opens
+          try {
+            await loadFiles();
+            console.log('✅ [loadTokenFromMetadata] Files loaded after credentials restored from metadata');
+          } catch (loadErr) {
+            console.warn('⚠️ [loadTokenFromMetadata] Failed to load files after metadata restore (non-blocking):', loadErr);
+          }
         }
 
         hasRestoredFromMetadataRef.current = authenticatedUser.id;
