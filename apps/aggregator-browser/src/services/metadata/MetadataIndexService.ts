@@ -66,7 +66,7 @@ export class MetadataIndexService {
       // aggregatedEntries are CentralIndexEntry objects from the API
       // Backend already filters for public files, so we trust what the API returns
       // But we also check: isPublic !== false OR has publicToken (means it's meant to be public)
-      console.log(`🔍 [MetadataIndexService] Processing ${aggregatedEntries.length} entries from API`);
+      // Processing entries from API (logging removed - was too verbose)
       
       let files: IndexedFile[] = aggregatedEntries
         .filter((entry: any) => {
@@ -74,26 +74,8 @@ export class MetadataIndexService {
           const isPublic = metadata.isPublic;
           const hasPublicToken = metadata.publicToken != null;
           
-          // Debug logging for first entry
-          if (aggregatedEntries.indexOf(entry) === 0) {
-            console.log('🔍 [MetadataIndexService] Sample entry:', {
-              fileId: metadata.fileId,
-              isPublic,
-              hasPublicToken,
-              name: metadata.name
-            });
-          }
-          
           // Include if: isPublic is true/undefined/null OR has publicToken
           const shouldInclude = isPublic !== false || hasPublicToken;
-          
-          if (!shouldInclude && aggregatedEntries.indexOf(entry) < 3) {
-            console.log(`⚠️ [MetadataIndexService] Filtered out entry:`, {
-              fileId: metadata.fileId,
-              isPublic,
-              hasPublicToken
-            });
-          }
           
           return shouldInclude;
         })
@@ -101,16 +83,6 @@ export class MetadataIndexService {
           // Normalize pnIdentifier - remove "pn-" prefix if present
           const pnId = entry.pnIdentifier;
           const normalizedPnId = pnId && pnId.startsWith('pn-') ? pnId.substring(3) : pnId;
-          
-          // Debug logging for first entry
-          if (aggregatedEntries.indexOf(entry) === 0) {
-            console.log('🔍 [MetadataIndexService] Setting creatorId:', {
-              rawPnIdentifier: pnId,
-              normalizedPnId,
-              existingCreatorId: entry.metadata.creatorId,
-              finalCreatorId: normalizedPnId || entry.metadata.creatorId
-            });
-          }
           
           return {
             metadata: {
@@ -126,7 +98,7 @@ export class MetadataIndexService {
           };
         });
       
-      console.log(`✅ [MetadataIndexService] After initial filtering: ${files.length} files`);
+      // After initial filtering (logging removed - was too verbose)
 
       // Apply filters
       const beforeFilters = files.length;
@@ -205,7 +177,7 @@ export class MetadataIndexService {
         }
       }
       
-      console.log(`✅ [MetadataIndexService] After all filters: ${files.length} files (was ${beforeFilters} before filters)`);
+      // After all filters (logging removed - was too verbose)
       if (beforeFilters > files.length) {
         console.log(`⚠️ [MetadataIndexService] Filtered out ${beforeFilters - files.length} files due to filters:`, filters);
       }

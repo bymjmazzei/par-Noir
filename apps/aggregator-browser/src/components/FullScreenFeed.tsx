@@ -229,10 +229,7 @@ export function FullScreenFeed({
     // Check comments with a small delay to allow them to load
     const checkComments = () => {
       const popularComments = getPopularComments(visibleFileId);
-      console.log(`[LiveComments] Rotation effect for ${visibleFileId}:`, {
-        popularCommentsCount: popularComments.length,
-        comments: popularComments.map(c => ({ id: c.id, content: c.content?.substring(0, 20), likes: c.likes?.length || 0 }))
-      });
+      // Rotation effect check (logging removed - was too verbose)
       
       if (popularComments.length === 0) {
         // Reset state if no comments
@@ -958,15 +955,7 @@ export function FullScreenFeed({
                     const allComments = getComments(fileId);
                     const popularComments = getPopularComments(fileId);
                     
-                    // Debug: log to help diagnose (always log for now)
-                    console.log(`[LiveComments] File ${fileId}:`, {
-                      allCommentsCount: allComments?.length || 0,
-                      popularCommentsCount: popularComments.length,
-                      visibleFileId,
-                      fileIdMatches: visibleFileId === fileId,
-                      currentIndex: currentCommentIndex.get(fileId),
-                      opacity: commentOpacity.get(fileId),
-                      hasComments: allComments && allComments.length > 0,
+                    // LiveComments state update (logging removed - was too verbose)
                       sampleComment: allComments?.[0]
                     });
                     

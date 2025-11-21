@@ -385,7 +385,7 @@ export class PNOAuthService {
       }
     }
 
-    console.log('[PNOAuth] Using existing valid token');
+    // Token is valid, return it (logging removed - was too verbose)
     return session.accessToken;
   }
 

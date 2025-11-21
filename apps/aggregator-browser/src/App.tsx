@@ -51,7 +51,6 @@ import { CreatorFeedPage } from './components/CreatorFeedPage';
 import { Inbox } from './components/Inbox';
 import { saveToFeed, getSavedFeed } from './services/savedFeedService';
 import { getUserProfile } from './services/profileService';
-import { FileStorageAggregator } from './components/FileStorageAggregator';
 
 // Shared types - importing from id-dashboard
 // In production, these would come from a shared package
@@ -2321,16 +2320,7 @@ function App() {
     });
   }, [commentingFile, viewingCreatorId, viewMode]);
   
-  // Log render status
-  useEffect(() => {
-    console.log('[App] Render - CommentModal check', { 
-      commentingFile: !!commentingFile,
-      commentingFileId: commentingFile?.metadata?.fileId,
-      shouldRender: !!commentingFile,
-      viewingCreatorId,
-      viewMode
-    });
-  });
+  // CommentModal render logic (logging removed - was too verbose)
 
   const handleShare = useCallback(async (fileId: string) => {
     share(fileId);
@@ -2617,16 +2607,10 @@ function App() {
           }
           
           pollCount++;
-          if (pollCount % 20 === 0) { // Log every second (20 * 50ms)
-            console.log(`[OAuth Polling] Check #${pollCount}, popup closed: ${popup.closed}`);
-          }
+          // OAuth polling (logging removed - was too verbose, only log errors)
           
           const pending = localStorage.getItem('pn_oauth_pending');
           const latestKey = localStorage.getItem('pn_oauth_latest_key');
-          
-          if (pollCount % 20 === 0) {
-            console.log(`[OAuth Polling] pending=${pending}, latestKey=${latestKey}`);
-          }
           
           if (pending === 'true') {
             if (latestKey) {
@@ -2668,17 +2652,11 @@ function App() {
                     window.removeEventListener('message', messageListener);
                     window.removeEventListener('storage', storageListener);
                     return;
-                  } else if (pollCount % 20 === 0) {
-                    console.log(`[OAuth Polling] Callback data too old: ${age}ms`);
                   }
                 } catch (e) {
                   console.error('Failed to parse OAuth callback:', e);
                 }
-              } else if (pollCount % 20 === 0) {
-                console.log(`[OAuth Polling] No data found for key: ${latestKey}`);
               }
-            } else if (pollCount % 20 === 0) {
-              console.log('[OAuth Polling] Pending=true but no latestKey');
             }
           }
         }, 50); // Poll every 50ms for fastest detection
@@ -3562,22 +3540,6 @@ function App() {
               discoverFiles(undefined, true);
             }}
           />
-        )}
-
-        {/* Preload FileStorageAggregator when unlocked to load credentials immediately (hidden) */}
-        {userState.isUnlocked && userState.pnIdentifier && !showUploadModal && (
-          <div style={{ display: 'none' }}>
-            <FileStorageAggregator 
-              authenticatedUser={{
-                id: userState.pnIdentifier,
-                pnName: userState.pnName,
-                publicKey: userState.publicKey,
-                nickname: userState.nickname,
-                accessToken: userState.accessToken
-              }}
-              hideSecureFolderSection={true}
-            />
-          </div>
         )}
 
         {/* Toast Notifications */}

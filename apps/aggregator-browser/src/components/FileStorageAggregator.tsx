@@ -550,24 +550,6 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
           if (accounts.length > 0 && !selectedAccountId) {
             setSelectedAccountId(accounts[0].accountId);
           }
-          
-          // CRITICAL: Load files immediately after accounts are loaded
-          // This ensures Google Drive sync happens in background, not when upload modal opens
-          if (accounts.length > 0) {
-            try {
-              // Load files for all accounts in background
-              for (const account of accounts) {
-                try {
-                  await loadFilesForAccount(account.accountId);
-                } catch (err) {
-                  console.warn(`⚠️ [FileStorageAggregator] Failed to preload files for account ${account.accountId} (non-blocking):`, err);
-                }
-              }
-              console.log('✅ [FileStorageAggregator] Files preloaded after accounts loaded');
-            } catch (loadErr) {
-              console.warn('⚠️ [FileStorageAggregator] Failed to preload files after accounts loaded (non-blocking):', loadErr);
-            }
-          }
         }
       } catch (err) {
         console.error('[FileStorageAggregator] Failed to load accounts:', err);

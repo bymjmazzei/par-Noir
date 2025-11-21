@@ -63,26 +63,12 @@ export class EncryptionManager {
       const encoder = new TextEncoder();
       const combinedData = encoder.encode(combined);
       
-      console.log('🔐 [EncryptionManager] Decryption parameters:', {
-        pnId: pnId.substring(0, 30) + '...',
-        publicKey: publicKey.substring(0, 50) + '...',
-        publicKeyLength: publicKey.length,
-        combined: combined.substring(0, 80) + '...',
-        combinedLength: combined.length,
-        saltLength: salt.length,
-        ivLength: iv.length,
-        encryptedDataLength: encryptedData.length
-      });
-      
       // Hash the combined identity (same process as encryption)
       const hashBuffer = await crypto.subtle.digest('SHA-256', combinedData);
       const hashArray = Array.from(new Uint8Array(hashBuffer));
       const hashedKeyMaterial = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
       
-      console.log('🔐 [EncryptionManager] Key derivation:', {
-        hashedKeyMaterial: hashedKeyMaterial.substring(0, 64) + '...',
-        hashedKeyMaterialLength: hashedKeyMaterial.length
-      });
+      // Decryption parameters logging removed - too verbose and security sensitive
       
       const key = await this.deriveKey(hashedKeyMaterial, salt);
       const ivBuffer = this.base64ToArrayBuffer(iv);
@@ -95,7 +81,7 @@ export class EncryptionManager {
         dataBuffer
       );
       
-      console.log('✅ [EncryptionManager] Decryption successful');
+      // Decryption successful (logging removed - was too verbose)
       return new Uint8Array(decryptedBuffer);
     } catch (error: any) {
       console.error('❌ [EncryptionManager] Decryption failed:', {
