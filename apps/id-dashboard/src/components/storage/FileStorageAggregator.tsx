@@ -589,20 +589,11 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
   function resolveIdentifiersForEmail(email?: string | null) {
     const normalizedEmail = email?.toLowerCase() || null;
     if (normalizedEmail) {
-      // SECURITY: email removed from DriveAccountState - use userEmails map instead
-      // Check both driveAccounts and driveCredentialCache for existing accounts
-      const existing = driveAccounts.find((account) => {
-        const accountEmail = userEmails.get(account.backendId);
-        return accountEmail?.toLowerCase() === normalizedEmail;
-      });
-      if (existing) {
-        return { backendId: existing.backendId, keyPrefix: existing.keyPrefix, isNew: false };
-      }
-
-      // Also check credential cache for existing accounts with this email
+      // CRITICAL: Check cache FIRST - it's the most up-to-date source
       for (const [backendId, credential] of driveCredentialCacheRef.current.entries()) {
         const cachedEmail = credential.email?.toLowerCase();
         if (cachedEmail === normalizedEmail) {
+          console.log(`✅ [resolveIdentifiersForEmail] Found existing account in cache for ${normalizedEmail}: ${backendId}`);
           // Check if this backendId is already in driveAccounts
           const accountInState = driveAccounts.find(acc => acc.backendId === backendId);
           if (accountInState) {
@@ -612,11 +603,44 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
           return { backendId, keyPrefix: credential.keyPrefix, isNew: false };
         }
       }
+      
+      // Also check driveAccounts state and userEmails map
+      const existing = driveAccounts.find((account) => {
+        const accountEmail = userEmails.get(account.backendId);
+        return accountEmail?.toLowerCase() === normalizedEmail;
+      });
+      if (existing) {
+        console.log(`✅ [resolveIdentifiersForEmail] Found existing account in state for ${normalizedEmail}: ${existing.backendId}`);
+        return { backendId: existing.backendId, keyPrefix: existing.keyPrefix, isNew: false };
+      }
+      
+      // CRITICAL: Also check aggregatorService for registered backends
+      if (aggregatorService) {
+        try {
+          const allBackends = aggregatorService.getAllBackends();
+          for (const [registeredBackendId, backend] of allBackends.entries()) {
+            if (registeredBackendId.startsWith('google_drive::')) {
+              const backendEmail = (backend as any).getEmail?.()?.toLowerCase();
+              if (backendEmail === normalizedEmail) {
+                console.log(`✅ [resolveIdentifiersForEmail] Found existing backend in aggregatorService for ${normalizedEmail}: ${registeredBackendId}`);
+                // Find keyPrefix from cache or state
+                const cachedCredential = driveCredentialCacheRef.current.get(registeredBackendId);
+                const stateAccount = driveAccounts.find(acc => acc.backendId === registeredBackendId);
+                const keyPrefix = stateAccount?.keyPrefix || cachedCredential?.keyPrefix || `google_drive_${registeredBackendId.replace('google_drive::', '')}`;
+                return { backendId: registeredBackendId, keyPrefix, isNew: false };
+              }
+            }
+          }
+        } catch (error) {
+          console.warn('⚠️ [resolveIdentifiersForEmail] Error checking aggregatorService:', error);
+        }
+      }
     }
 
     // SECURITY: Do NOT use email in backendId - use random identifier instead
     // This prevents email from being exposed in localStorage keys
-    // Only create new identifier if no existing account found
+    // Only create new identifier if NO existing account found ANYWHERE
+    console.log(`🆕 [resolveIdentifiersForEmail] No existing account found for ${normalizedEmail || 'no email'}, creating new identifier`);
     const uniqueSuffix =
       typeof crypto !== 'undefined' && crypto.randomUUID
       ? crypto.randomUUID().split('-')[0]
@@ -1703,7 +1727,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
   // CRITICAL: Track when disconnect happens to prevent immediate re-hydration and re-connection
   const disconnectTimestampRef = React.useRef<number>(0);
   const disconnectedBackendIdsRef = React.useRef<Set<string>>(new Set());
-  const DISCONNECT_BLOCK_DURATION_MS = 30000; // Block ALL account operations for 30 seconds after disconnect
+  const DISCONNECT_BLOCK_DURATION_MS = 10000; // Block re-adding disconnected accounts for 10 seconds (reduced from 30s to not block unlock)
 
   const hydrateStorageCredentialsFromAPI = React.useCallback(async () => {
     if (hydrationInProgressRef.current) {
