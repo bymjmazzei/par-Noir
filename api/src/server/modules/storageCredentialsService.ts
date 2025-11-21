@@ -70,6 +70,58 @@ export class StorageCredentialsService {
       throw new Error('credentials payload is required');
     }
 
+    // CRITICAL: Deduplicate Google Drive accounts before storing
+    // Only ONE account per pN should exist - if client sends more, deduplicate aggressively
+    if (credentials?.googleDriveAccounts && Array.isArray(credentials.googleDriveAccounts)) {
+      const accounts = credentials.googleDriveAccounts;
+      
+      if (accounts.length > 1) {
+        console.warn(`🚨 [StorageCredentials] API received ${accounts.length} Google Drive accounts (expected max 1). Deduplicating...`);
+        
+        // Deduplicate by email - only ONE account per email
+        const accountsByEmail = new Map<string, typeof accounts[0]>();
+        const accountsWithoutEmail: typeof accounts = [];
+        
+        for (const account of accounts) {
+          if (account?.email) {
+            const normalizedEmail = account.email.toLowerCase();
+            if (!accountsByEmail.has(normalizedEmail)) {
+              accountsByEmail.set(normalizedEmail, account);
+            } else {
+              // Keep the most recent one
+              const existing = accountsByEmail.get(normalizedEmail)!;
+              const accountTime = account.updatedAt || account.connectedAt || '';
+              const existingTime = existing.updatedAt || existing.connectedAt || '';
+              if (accountTime > existingTime) {
+                accountsByEmail.set(normalizedEmail, account);
+              }
+            }
+          } else {
+            // Only keep ONE account without email
+            if (accountsWithoutEmail.length === 0) {
+              accountsWithoutEmail.push(account);
+            }
+          }
+        }
+        
+        const deduplicatedAccounts = Array.from(accountsByEmail.values()).concat(accountsWithoutEmail);
+        
+        // CRITICAL: If still more than 1 account, keep only the most recent one
+        if (deduplicatedAccounts.length > 1) {
+          console.error(`🚨 [StorageCredentials] After deduplication, still have ${deduplicatedAccounts.length} accounts. Keeping only the most recent one.`);
+          deduplicatedAccounts.sort((a, b) => {
+            const aTime = a.updatedAt || a.connectedAt || '';
+            const bTime = b.updatedAt || b.connectedAt || '';
+            return bTime.localeCompare(aTime); // Most recent first
+          });
+          deduplicatedAccounts.length = 1; // Keep only first (most recent)
+        }
+        
+        credentials.googleDriveAccounts = deduplicatedAccounts;
+        console.log(`✅ [StorageCredentials] Deduplicated ${accounts.length} accounts down to ${deduplicatedAccounts.length} account(s)`);
+      }
+    }
+
     const db = getDatabasePool();
     const serialized = JSON.stringify(credentials);
     const encryptedPayload = this.encryptPayload(serialized);
