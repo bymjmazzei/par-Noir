@@ -6505,13 +6505,21 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
                                           if (button && node) {
                                             const rect = button.getBoundingClientRect();
                                             const menuWidth = 176; // w-44 = 11rem = 176px
-                                            node.style.position = 'fixed';
-                                            // Position above button: top of menu = top of button - menu height - spacing
                                             const menuHeight = node.offsetHeight || 200; // fallback estimate
-                                            node.style.top = `${rect.top - menuHeight - 8}px`;
+                                            
+                                            node.style.position = 'fixed';
+                                            
+                                            // Position above button: top of menu = top of button - menu height - spacing
+                                            const topPosition = rect.top - menuHeight - 8;
+                                            node.style.top = `${Math.max(8, topPosition)}px`; // Ensure at least 8px from top
+                                            
                                             // Align right edge of menu with right edge of button
-                                            // left = button.right - menu.width
-                                            node.style.left = `${rect.right - menuWidth}px`;
+                                            // But ensure menu stays within viewport
+                                            const leftPosition = rect.right - menuWidth;
+                                            const minLeft = 8; // Minimum 8px from left edge
+                                            const maxLeft = window.innerWidth - menuWidth - 8; // Maximum to keep menu on screen
+                                            
+                                            node.style.left = `${Math.max(minLeft, Math.min(leftPosition, maxLeft))}px`;
                                             node.style.right = 'auto';
                                             node.style.bottom = 'auto';
                                           }
