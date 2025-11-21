@@ -716,8 +716,9 @@ export class AggregatorMetadataServiceDB {
       
       // Get ALL public files (same query as getPublicMetadata uses)
       // Use the same query structure to ensure we get the same files
+      // Include updated_at to check if file was recently added (grace period)
       const allFilesResult = await db.query(
-        `SELECT file_id, metadata, pn_identifier FROM aggregator_metadata WHERE metadata->>'isPublic' = 'true'`
+        `SELECT file_id, metadata, pn_identifier, updated_at FROM aggregator_metadata WHERE metadata->>'isPublic' = 'true'`
       );
 
       console.log(`🔍 [cleanupOrphanedFilesFromIndex] Checking ${allFilesResult.rows.length} file(s) in database (all public files)`);
@@ -743,6 +744,18 @@ export class AggregatorMetadataServiceDB {
         // If no pN folders found at all, don't remove files - folders might not be shared with service account yet
         // Instead, verify each file exists in Google Drive before removing
         if (pnFolders.length === 0) {
+          // GRACE PERIOD: Don't remove files that were just added (within last 10 minutes)
+          // This gives time for files to be properly shared with the service account
+          const updatedAt = row.updated_at as Date;
+          const now = new Date();
+          const ageMinutes = updatedAt ? (now.getTime() - updatedAt.getTime()) / (1000 * 60) : Infinity;
+          const GRACE_PERIOD_MINUTES = 10;
+          
+          if (ageMinutes < GRACE_PERIOD_MINUTES) {
+            console.log(`⏳ [cleanupOrphanedFilesFromIndex] File ${fileId} (${fileName}) was added ${ageMinutes.toFixed(1)} minutes ago - grace period active, skipping verification`);
+            continue;
+          }
+          
           console.log(`⚠️ [cleanupOrphanedFilesFromIndex] No pN folders found - verifying file exists before removing: ${fileId} (${fileName})`);
           console.log(`🔍 [cleanupOrphanedFilesFromIndex] Available IDs: fileId=${fileId}, backendFileId=${backendFileId}, metadataFileId=${metadataFileId}, googleDriveFileId=${(metadata as any).googleDriveFileId}`);
           
@@ -791,6 +804,17 @@ export class AggregatorMetadataServiceDB {
         
         // If user doesn't have a public index file, verify file exists before removing
         if (pnIdentifier && !usersWithIndexFiles.has(pnIdentifier)) {
+          // GRACE PERIOD: Don't remove files that were just added (within last 10 minutes)
+          const updatedAt = row.updated_at as Date;
+          const now = new Date();
+          const ageMinutes = updatedAt ? (now.getTime() - updatedAt.getTime()) / (1000 * 60) : Infinity;
+          const GRACE_PERIOD_MINUTES = 10;
+          
+          if (ageMinutes < GRACE_PERIOD_MINUTES) {
+            console.log(`⏳ [cleanupOrphanedFilesFromIndex] File ${fileId} (${fileName}) was added ${ageMinutes.toFixed(1)} minutes ago - grace period active, skipping verification`);
+            continue;
+          }
+          
           console.log(`⚠️ [cleanupOrphanedFilesFromIndex] User ${pnIdentifier} has no public index file - verifying file exists: ${fileId} (${fileName})`);
           
           // If we don't have a backendFileId, we can't verify the file exists in Google Drive
@@ -840,6 +864,17 @@ export class AggregatorMetadataServiceDB {
         
         // If user has no valid files (empty index), verify file exists before removing
         if (pnIdentifier && userValidFileIds && userValidFileIds.size === 0) {
+          // GRACE PERIOD: Don't remove files that were just added (within last 10 minutes)
+          const updatedAt = row.updated_at as Date;
+          const now = new Date();
+          const ageMinutes = updatedAt ? (now.getTime() - updatedAt.getTime()) / (1000 * 60) : Infinity;
+          const GRACE_PERIOD_MINUTES = 10;
+          
+          if (ageMinutes < GRACE_PERIOD_MINUTES) {
+            console.log(`⏳ [cleanupOrphanedFilesFromIndex] File ${fileId} (${fileName}) was added ${ageMinutes.toFixed(1)} minutes ago - grace period active, skipping verification`);
+            continue;
+          }
+          
           console.log(`⚠️ [cleanupOrphanedFilesFromIndex] User ${pnIdentifier} has empty public index - verifying file exists: ${fileId} (${fileName})`);
           
           // If we don't have a backendFileId, we can't verify the file exists in Google Drive
@@ -892,6 +927,17 @@ export class AggregatorMetadataServiceDB {
         );
         
         if (!isInIndex) {
+          // GRACE PERIOD: Don't remove files that were just added (within last 10 minutes)
+          const updatedAt = row.updated_at as Date;
+          const now = new Date();
+          const ageMinutes = updatedAt ? (now.getTime() - updatedAt.getTime()) / (1000 * 60) : Infinity;
+          const GRACE_PERIOD_MINUTES = 10;
+          
+          if (ageMinutes < GRACE_PERIOD_MINUTES) {
+            console.log(`⏳ [cleanupOrphanedFilesFromIndex] File ${fileId} (${fileName}) was added ${ageMinutes.toFixed(1)} minutes ago - grace period active, skipping verification`);
+            continue;
+          }
+          
           // File is not in the public index - verify it doesn't exist before removing
           console.log(`⚠️ [cleanupOrphanedFilesFromIndex] File NOT in index - verifying file exists: ${fileId} (${fileName})`);
           
