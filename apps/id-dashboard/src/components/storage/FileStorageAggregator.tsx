@@ -844,23 +844,25 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
   const persistStorageCredentialsToAPI = React.useCallback(async (credentialsPayload?: any, cid?: string | null) => {
     // CRITICAL: Global lock to prevent multiple simultaneous persistence calls
     if (globalPersistenceLockRef.current) {
-      console.debug('⏳ [StorageCredentials] Global persistence lock active, skipping...');
+      console.warn('🚫 [StorageCredentials] BLOCKED: Global persistence lock active, skipping...');
       return;
     }
     
     // Prevent multiple simultaneous calls
     if (persistenceInProgressRef.current) {
-      console.debug('⏳ [StorageCredentials] Persistence already in progress, skipping...');
+      console.warn('🚫 [StorageCredentials] BLOCKED: Persistence already in progress, skipping...');
       return;
     }
 
     // Debounce rapid calls
     const now = Date.now();
-    if (now - lastPersistenceTimeRef.current < PERSISTENCE_DEBOUNCE_MS) {
-      console.debug('⏳ [StorageCredentials] Persistence debounced (too soon after last call)');
+    const timeSinceLastCall = now - lastPersistenceTimeRef.current;
+    if (timeSinceLastCall < PERSISTENCE_DEBOUNCE_MS) {
+      console.warn(`🚫 [StorageCredentials] BLOCKED: Persistence debounced (${timeSinceLastCall}ms < ${PERSISTENCE_DEBOUNCE_MS}ms since last call)`);
       return;
     }
 
+    console.log(`🔒 [StorageCredentials] ACQUIRING lock - setting globalPersistenceLockRef and persistenceInProgressRef to true`);
     globalPersistenceLockRef.current = true;
     persistenceInProgressRef.current = true;
     lastPersistenceTimeRef.current = now;
@@ -945,6 +947,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
         });
       }
     } finally {
+      console.log(`🔓 [StorageCredentials] RELEASING lock - setting globalPersistenceLockRef and persistenceInProgressRef to false`);
       globalPersistenceLockRef.current = false;
       persistenceInProgressRef.current = false;
     }
@@ -1121,7 +1124,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
     
     // Check periodically for accounts instead of on every driveAccounts.length change
     autoPersistCheckIntervalRef.current = setInterval(() => {
-      // CRITICAL: Only run ONCE per session
+      // CRITICAL: Only run ONCE per session - check FIRST before doing anything
       if (autoPersistHasRunRef.current) {
         if (autoPersistCheckIntervalRef.current) {
           clearInterval(autoPersistCheckIntervalRef.current);
@@ -1147,7 +1150,12 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
       const hasAccounts = currentDriveAccountsLength > 0 || cacheEntries.length > 0;
       
       if (hasAccounts) {
-        // Mark as run immediately to prevent multiple calls
+        // CRITICAL: Check again AFTER detecting accounts to prevent race condition
+        if (autoPersistHasRunRef.current) {
+          return; // Another interval tick already started persistence
+        }
+        
+        // Mark as run immediately to prevent multiple calls (atomic operation)
         autoPersistHasRunRef.current = true;
         
         // Clear the interval since we found accounts
