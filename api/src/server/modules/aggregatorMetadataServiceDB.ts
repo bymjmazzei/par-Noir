@@ -705,7 +705,7 @@ export class AggregatorMetadataServiceDB {
           validFileIdsByUser.set(pnIdentifier, userValidFileIds);
           console.log(`✅ [cleanupOrphanedFilesFromIndex] User ${pnIdentifier} has ${userValidFileIds.size} valid public file(s)`);
         } catch (error) {
-          console.warn(`⚠️ [cleanupOrphanedFilesFromIndex] Error processing folder ${pnFolder.name}:`, error);
+          console.warn(`⚠️ [cleanupOrphanedFilesFromIndex] Error processing pN identifier ${pnIdentifier}:`, error);
         }
       }
 
@@ -757,10 +757,10 @@ export class AggregatorMetadataServiceDB {
           continue;
         }
         
-        // If no pN folders found at all, the service account likely doesn't have access to user folders
-        // In this case, we cannot reliably verify files exist, so we should be very conservative
-        // Only remove files that are very old (days, not minutes) and return 404
-        if (pnFolders.length === 0) {
+        // If we couldn't access any index files (service account has no access),
+        // we should NOT remove files - we can't verify what's valid
+        // This check is already done at the top level, but keep this as a safety check
+        if (usersWithIndexFiles.size === 0 && pnIdentifiers.length > 0) {
           // EXTENDED GRACE PERIOD: Don't remove files that were added recently (within last 24 hours)
           // This gives time for files to be properly shared with the service account
           // If service account can't see folders, we can't verify files reliably
