@@ -3075,14 +3075,34 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
 
         // CRITICAL: Update Google Drive public index file when making file public
         // This ensures the file appears in the public index that the API syncs from
+        console.log('🔍 [Phase 3] Checking if Google Drive public index update is needed...', {
+          hasMetadataPnIdentifier: !!metadataPnIdentifier,
+          metadataPnIdentifier: metadataPnIdentifier ? `${metadataPnIdentifier.substring(0, 8)}...` : null,
+          hasBackend: !!file.backend,
+          backend: file.backend,
+          fileId: file.id,
+          backendFileId: file.backendFileId
+        });
+        
         if (metadataPnIdentifier && file.backend) {
           try {
             const backend = aggregatorService?.getBackend(file.backend);
+            console.log('🔍 [Phase 3] Backend lookup result:', {
+              backendFound: !!backend,
+              backendId: file.backend,
+              isConnected: backend ? backend.isConnected() : false
+            });
+            
             if (backend && backend.isConnected()) {
               // Get access token from backend
               const accessToken = typeof backend.getAccessToken === 'function' 
                 ? backend.getAccessToken() 
                 : (backend as any).token;
+              
+              console.log('🔍 [Phase 3] Access token check:', {
+                hasAccessToken: !!accessToken,
+                tokenLength: accessToken ? accessToken.length : 0
+              });
               
               if (accessToken) {
                 const { GoogleDriveMetadataService } = await import('../../services/storage/GoogleDriveMetadataService');
@@ -3107,6 +3127,13 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
                   engagement: publicMetadata.engagement
                 };
                 
+                console.log('📝 [Phase 3] Creating/updating companion metadata file...', {
+                  fileId: companionMetadata.fileId,
+                  googleDriveFileId: companionMetadata.googleDriveFileId,
+                  fileName: companionMetadata.fileName,
+                  visibility: companionMetadata.visibility
+                });
+                
                 // Ensure companion metadata file exists
                 await GoogleDriveMetadataService.createCompanionMetadataFile(
                   accessToken,
@@ -3114,7 +3141,22 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
                   companionMetadata
                 );
                 
+                console.log('✅ [Phase 3] Companion metadata file created/updated successfully');
+                
+                // Also update owner index to ensure file is tracked
+                try {
+                  await GoogleDriveMetadataService.updateOwnerFileIndex(
+                    accessToken,
+                    metadataPnIdentifier,
+                    companionMetadata
+                  );
+                  console.log('✅ [Phase 3] Owner index updated successfully');
+                } catch (ownerIndexError) {
+                  console.warn('⚠️ [Phase 3] Failed to update owner index (non-critical):', ownerIndexError);
+                }
+                
                 // Update public index file - this adds the file to public-file-index.json
+                console.log('📝 [Phase 3] Updating public index file...');
                 await GoogleDriveMetadataService.updatePublicFileIndex(
                   accessToken,
                   metadataPnIdentifier,
@@ -3122,19 +3164,37 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
                 );
                 
                 console.log('✅ [Phase 3] Google Drive public index file updated successfully');
+                setSuccessMessage('File made public and added to public index!');
               } else {
                 console.warn('⚠️ [Phase 3] No access token available to update Google Drive public index');
+                setError('Failed to update public index: No access token available');
               }
             } else {
-              console.warn('⚠️ [Phase 3] Backend not connected - cannot update Google Drive public index');
+              console.warn('⚠️ [Phase 3] Backend not connected - cannot update Google Drive public index', {
+                backendFound: !!backend,
+                isConnected: backend ? backend.isConnected() : false
+              });
+              setError('Failed to update public index: Backend not connected');
             }
           } catch (driveIndexError) {
-            console.error('❌ [Phase 3] Failed to update Google Drive public index file (non-critical):', driveIndexError);
+            console.error('❌ [Phase 3] Failed to update Google Drive public index file:', driveIndexError);
+            const errorMessage = driveIndexError instanceof Error ? driveIndexError.message : String(driveIndexError);
+            console.error('❌ [Phase 3] Error details:', {
+              message: errorMessage,
+              stack: driveIndexError instanceof Error ? driveIndexError.stack : undefined
+            });
+            setError(`Failed to update public index: ${errorMessage}`);
             // Non-critical - API database is updated, but Google Drive index won't be in sync
             // The API sync service will eventually sync it, but user won't see it immediately
           }
         } else {
-          console.warn('⚠️ [Phase 3] Missing pN identifier or backend - cannot update Google Drive public index');
+          console.warn('⚠️ [Phase 3] Missing pN identifier or backend - cannot update Google Drive public index', {
+            hasMetadataPnIdentifier: !!metadataPnIdentifier,
+            hasBackend: !!file.backend,
+            metadataPnIdentifier: metadataPnIdentifier ? `${metadataPnIdentifier.substring(0, 8)}...` : null,
+            backend: file.backend
+          });
+          setError('Failed to update public index: Missing pN identifier or backend');
         }
 
         setFileMetadataMap(prev => {
