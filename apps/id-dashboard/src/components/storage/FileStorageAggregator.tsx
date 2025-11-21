@@ -232,8 +232,8 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
         const credentials = sessionId ? SecureCredentialManager.getCredentials(sessionId) : null;
         
         const pnName = currentResolvedAuth?.pnName || currentAuthenticatedUser?.pnName || (currentAuthenticatedUser as any)?.username;
-        const publicKey = currentResolvedAuth?.publicKey || currentAuthenticatedUser?.publicKey;
-        
+      const publicKey = currentResolvedAuth?.publicKey || currentAuthenticatedUser?.publicKey;
+      
         if (pnName && credentials?.passcode && publicKey) {
           // STANDARDIZED FORMULA: pnName:passcode:publicKey → SHA256 → pn-{12-char-hex}
           const identifier = await VolumeIdGenerator.generateVolumeId({
@@ -245,7 +245,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
           pnIdentifierRef.current = identifier.replace(/^pn-/, '');
           console.log('[StorageCredentials] Derived pN identifier (standardized):', identifier);
         } else {
-          pnIdentifierRef.current = null;
+        pnIdentifierRef.current = null;
           console.warn('[StorageCredentials] Cannot derive pN identifier - missing credentials');
         }
       } catch (error) {
@@ -3526,13 +3526,13 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
             );
             if (credentials && credentials.email) {
               const identifiers = resolveIdentifiersForEmail(credentials.email);
-              await upsertDriveAccount({
-                backendId: identifiers.backendId,
-                keyPrefix: identifiers.keyPrefix,
+          await upsertDriveAccount({
+            backendId: identifiers.backendId,
+            keyPrefix: identifiers.keyPrefix,
                 token: credentials.accessToken,
                 refreshToken: credentials.refreshToken,
                 email: credentials.email
-              });
+          });
             }
           } catch (error) {
             console.warn('[FileStorageAggregator] Failed to load encrypted credentials:', error);
@@ -4301,11 +4301,11 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
               console.warn(`⚠️ [Upload] Using VolumeIdGenerator identifier (${pnIdentifier}) - this is the CORRECT one`);
             }
           }
-          } else {
+        } else {
             // STANDARDIZED: Only use VolumeIdGenerator - no fallbacks
             // If credentials aren't available, we cannot upload (identifier required)
             throw new Error('Cannot generate pN identifier: credentials (pnName, passcode, publicKey) required. Please ensure you are fully authenticated.');
-          }
+        }
       } catch (err) {
         // STANDARDIZED: No fallbacks - fail if identifier cannot be generated
         console.error('❌ [Upload] Failed to generate standardized pN identifier:', err);

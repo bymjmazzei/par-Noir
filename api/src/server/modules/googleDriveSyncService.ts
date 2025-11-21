@@ -97,7 +97,17 @@ export class GoogleDriveSyncService {
       const accessToken = await this.getAccessToken();
       const metadataService = AggregatorMetadataServiceDB.getInstance();
 
-      // Step 1: Find all folders matching "par Noir - pn-*"
+      // Step 1: Try to find folders by scanning, but also use pN identifiers from database as fallback
+      // This allows us to sync known users even if service account can't discover new folders
+      const { getDatabasePool } = await import('../database');
+      const db = getDatabasePool();
+      const pnIdentifiersResult = await db.query(
+        `SELECT DISTINCT pn_identifier FROM aggregator_metadata WHERE pn_identifier IS NOT NULL`
+      );
+      const knownPnIdentifiers = pnIdentifiersResult.rows.map(row => row.pn_identifier as string).filter(Boolean);
+      console.log(`🔍 Found ${knownPnIdentifiers.length} known pN identifier(s) in database`);
+      
+      // Try to find folders by scanning (for discovering new users)
       const pnFoldersQuery = `name contains 'par Noir - pn-' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
       const foldersResponse = await fetch(
         `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(pnFoldersQuery)}&fields=files(id,name)&pageSize=100`,
@@ -109,14 +119,42 @@ export class GoogleDriveSyncService {
         }
       );
 
-      if (!foldersResponse.ok) {
-        throw new Error(`Failed to search for pN folders: ${foldersResponse.status}`);
+      let pnFolders: Array<{ id: string; name: string }> = [];
+      if (foldersResponse.ok) {
+        const foldersData = await foldersResponse.json() as { files?: Array<{ id: string; name: string }> };
+        pnFolders = foldersData.files || [];
+        console.log(`🔍 Found ${pnFolders.length} pN folder(s) by scanning Google Drive`);
+      } else {
+        console.warn(`⚠️ Failed to search for pN folders: ${foldersResponse.status} - will try using known pN identifiers from database`);
       }
-
-      const foldersData = await foldersResponse.json() as { files?: Array<{ id: string; name: string }> };
-      const pnFolders = foldersData.files || [];
       
-      console.log(`🔍 Found ${pnFolders.length} pN folder(s) to scan`);
+      // If we found folders by scanning, use those. Otherwise, try to access folders using known pN identifiers
+      if (pnFolders.length === 0 && knownPnIdentifiers.length > 0) {
+        console.log(`🔍 No folders found by scanning - trying to access folders using ${knownPnIdentifiers.length} known pN identifier(s) from database`);
+        for (const pnIdentifier of knownPnIdentifiers) {
+          const folderName = `par Noir - ${pnIdentifier}`;
+          const folderQuery = `name='${folderName}' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
+          const folderResponse = await fetch(
+            `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(folderQuery)}&fields=files(id,name)&pageSize=1`,
+            {
+              headers: {
+                'Authorization': `Bearer ${accessToken}`,
+                'Content-Type': 'application/json'
+              }
+            }
+          );
+          
+          if (folderResponse.ok) {
+            const folderData = await folderResponse.json() as { files?: Array<{ id: string; name: string }> };
+            if (folderData.files && folderData.files.length > 0) {
+              pnFolders.push(folderData.files[0]);
+              console.log(`✅ Found folder for known pN identifier: ${pnIdentifier}`);
+            }
+          }
+        }
+      }
+      
+      console.log(`🔍 Total pN folder(s) to scan: ${pnFolders.length}`);
 
       // If no folders found, we still need to run cleanup to remove orphaned files
       // (in case folders were deleted from Google Drive)
