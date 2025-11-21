@@ -6492,13 +6492,19 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
                                       if (node) {
                                         actionMenuRef.current = node;
                                         // Position menu above button using fixed positioning to avoid overflow clipping
-                                        const button = node.parentElement?.querySelector('button');
-                                        if (button) {
-                                          const rect = button.getBoundingClientRect();
-                                          node.style.position = 'fixed';
-                                          node.style.bottom = `${window.innerHeight - rect.top + 8}px`;
-                                          node.style.right = `${window.innerWidth - rect.right}px`;
-                                        }
+                                        // Use requestAnimationFrame to ensure node is rendered before calculating position
+                                        requestAnimationFrame(() => {
+                                          const button = node.parentElement?.querySelector('button');
+                                          if (button && node) {
+                                            const rect = button.getBoundingClientRect();
+                                            node.style.position = 'fixed';
+                                            // Position above button: top of menu = top of button - menu height - spacing
+                                            const menuHeight = node.offsetHeight || 200; // fallback estimate
+                                            node.style.top = `${rect.top - menuHeight - 8}px`;
+                                            node.style.right = `${window.innerWidth - rect.right}px`;
+                                            node.style.bottom = 'auto';
+                                          }
+                                        });
                                       }
                                     }}
                                     className="w-44 bg-neutral-900 border border-neutral-700 rounded-lg shadow-xl z-[100] py-1"
