@@ -902,30 +902,54 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
 
       await persistCredentialsToSecureMetadata(payload);
 
-      // CRITICAL: Use ONLY the authenticated user's ID from ref (current value) - don't use prop directly
-      // The prop can change, causing multiple calls with different identityIds
-      // Using the ref ensures we always use the CURRENT value at the time of the API call
-      const identityId = authenticatedUserRef.current?.id;
-      if (!identityId) {
-        console.warn('⚠️ [StorageCredentials] No authenticated user ID available for persistence', {
-          authenticatedUserRefExists: !!authenticatedUserRef.current,
-          authenticatedUserPropExists: !!authenticatedUser,
-          authenticatedUserPropId: authenticatedUser?.id
+      // CRITICAL: Use STANDARDIZED pn identifier for all API calls
+      // This ensures consistency - same credentials always produce same identifier
+      // Generate pn identifier from pnName:passcode:publicKey
+      const currentUser = authenticatedUserRef.current;
+      if (!currentUser?.publicKey) {
+        console.warn('⚠️ [StorageCredentials] No publicKey available for pn identifier generation', {
+          authenticatedUserRefExists: !!currentUser,
+          hasPublicKey: !!currentUser?.publicKey
         });
         globalPersistenceLockRef.current = false;
         persistenceInProgressRef.current = false;
         return;
       }
 
+      // Get credentials from SecureCredentialManager to generate pn identifier
+      const sessionId = currentUser.id || currentUser.publicKey;
+      const credentials = SecureCredentialManager.getCredentials(sessionId);
+      if (!credentials) {
+        console.warn('⚠️ [StorageCredentials] No credentials available for pn identifier generation', {
+          sessionId: sessionId?.substring(0, 20) + '...',
+          hasCredentials: false
+        });
+        globalPersistenceLockRef.current = false;
+        persistenceInProgressRef.current = false;
+        return;
+      }
+
+      // Generate standardized pn identifier
+      const { VolumeIdGenerator } = await import('../../utils/crypto/volumeIdGenerator');
+      const pnIdentifier = await VolumeIdGenerator.generateVolumeId({
+        pnName: credentials.pnName,
+        passcode: credentials.passcode,
+        publicKey: currentUser.publicKey
+      });
+
+      console.log('📤 [StorageCredentials] Using STANDARDIZED pn identifier for API persistence', {
+        pnIdentifier: pnIdentifier,
+        publicKeyLength: currentUser.publicKey?.length
+      });
+
       try {
         console.log('📤 [StorageCredentials] Persisting credentials to API...', {
-          identityId: identityId.substring(0, 20) + '...', // Log first 20 chars for debugging
-          identityIdLength: identityId?.length,
+          pnIdentifier: pnIdentifier,
           hasCid: !!cid,
           accountsCount: payload.googleDriveAccounts.length
         });
 
-        const response = await fetch(`${apiEndpoint}/api/storage/credentials/${encodeURIComponent(identityId)}`, {
+        const response = await fetch(`${apiEndpoint}/api/storage/credentials/${encodeURIComponent(pnIdentifier)}`, {
           method: 'PUT',
           headers: {
             'Content-Type': 'application/json',
