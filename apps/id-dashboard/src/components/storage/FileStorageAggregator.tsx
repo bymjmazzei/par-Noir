@@ -939,6 +939,18 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
         return;
       }
 
+      // CRITICAL: Block token refresh for disconnected accounts
+      if (disconnectedBackendIdsRef.current.has(backendId)) {
+        const timeSinceDisconnect = Date.now() - disconnectTimestampRef.current;
+        if (timeSinceDisconnect < DISCONNECT_BLOCK_DURATION_MS) {
+          console.log(`🚫 [handleTokenRefreshed] BLOCKED: Token refresh for disconnected backendId ${backendId} (${timeSinceDisconnect}ms ago)`);
+          return;
+        } else {
+          // Remove from block list after block duration expires
+          disconnectedBackendIdsRef.current.delete(backendId);
+        }
+      }
+
       const existingCredential = driveCredentialCacheRef.current.get(backendId);
       const currentDriveAccounts = driveAccountsRef.current; // Use ref instead of state
       const account =
@@ -1056,6 +1068,13 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
   // Auto-persist credentials to API when driveAccounts are available - moved here after persistStorageCredentialsToAPI is declared
   // CRITICAL: Only run auto-persist when hydration is complete and not in progress
   React.useEffect(() => {
+    // CRITICAL: Block auto-persist for 30 seconds after any disconnect
+    const timeSinceDisconnect = Date.now() - disconnectTimestampRef.current;
+    if (timeSinceDisconnect < DISCONNECT_BLOCK_DURATION_MS) {
+      console.log(`[StorageCredentials] Auto-persist BLOCKED: ${timeSinceDisconnect}ms since last disconnect (waiting ${DISCONNECT_BLOCK_DURATION_MS}ms)`);
+      return;
+    }
+    
     // Skip if hydration is in progress - let hydration handle persistence
     if (hydrationInProgressRef.current) {
       console.log(`[StorageCredentials] Auto-persist skipped: hydration in progress`);
@@ -1076,6 +1095,13 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
     if (hasAccounts) {
       // Longer delay to ensure hydration completes and avoid rapid-fire calls
       const timeoutId = setTimeout(() => {
+        // Double-check we're still not in disconnect block period
+        const timeSinceDisconnectCheck = Date.now() - disconnectTimestampRef.current;
+        if (timeSinceDisconnectCheck < DISCONNECT_BLOCK_DURATION_MS) {
+          console.log(`[StorageCredentials] Auto-persist cancelled: disconnect happened during delay`);
+          return;
+        }
+        
         // Double-check hydration is still not in progress
         if (hydrationInProgressRef.current) {
           console.log(`[StorageCredentials] Auto-persist cancelled: hydration started during delay`);
@@ -1418,6 +1444,18 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
       return null;
     }
 
+    // CRITICAL: Block re-adding accounts that were just disconnected
+    if (disconnectedBackendIdsRef.current.has(params.backendId)) {
+      const timeSinceDisconnect = Date.now() - disconnectTimestampRef.current;
+      if (timeSinceDisconnect < DISCONNECT_BLOCK_DURATION_MS) {
+        console.log(`🚫 [upsertDriveAccount] BLOCKED: Attempted to re-add disconnected backendId ${params.backendId} (${timeSinceDisconnect}ms ago)`);
+        return null;
+      } else {
+        // Remove from block list after block duration expires
+        disconnectedBackendIdsRef.current.delete(params.backendId);
+      }
+    }
+
     // CRITICAL: Check for existing account with same email BEFORE creating new backend
     const normalizedEmail = params.email?.toLowerCase() || null;
     if (normalizedEmail) {
@@ -1662,19 +1700,20 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
     };
   }, []);
 
-  // CRITICAL: Track when disconnect happens to prevent immediate re-hydration
+  // CRITICAL: Track when disconnect happens to prevent immediate re-hydration and re-connection
   const disconnectTimestampRef = React.useRef<number>(0);
-  const DISCONNECT_HYDRATION_DELAY_MS = 5000; // Don't hydrate for 5 seconds after disconnect
+  const disconnectedBackendIdsRef = React.useRef<Set<string>>(new Set());
+  const DISCONNECT_BLOCK_DURATION_MS = 30000; // Block ALL account operations for 30 seconds after disconnect
 
   const hydrateStorageCredentialsFromAPI = React.useCallback(async () => {
     if (hydrationInProgressRef.current) {
       return;
     }
     
-    // CRITICAL: Don't hydrate immediately after disconnect
+    // CRITICAL: Don't hydrate for 30 seconds after disconnect
     const timeSinceDisconnect = Date.now() - disconnectTimestampRef.current;
-    if (timeSinceDisconnect < DISCONNECT_HYDRATION_DELAY_MS) {
-      console.log(`⏭️ [StorageCredentials] Skipping hydration - ${timeSinceDisconnect}ms since last disconnect (waiting ${DISCONNECT_HYDRATION_DELAY_MS}ms)`);
+    if (timeSinceDisconnect < DISCONNECT_BLOCK_DURATION_MS) {
+      console.log(`⏭️ [StorageCredentials] Hydration BLOCKED - ${timeSinceDisconnect}ms since last disconnect (waiting ${DISCONNECT_BLOCK_DURATION_MS}ms)`);
       return;
     }
     
@@ -4291,13 +4330,14 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
         console.log(`✅ [handleDisconnect] Backend ${backendId} disconnected`);
       }
       
-      // CRITICAL: Mark disconnect timestamp to prevent immediate re-hydration
+      // CRITICAL: Mark disconnect timestamp and backendId to prevent immediate re-connection
       disconnectTimestampRef.current = Date.now();
+      disconnectedBackendIdsRef.current.add(backendId);
       
       // Remove account from state FIRST (before updating API/metadata)
       // This ensures buildStorageCredentialPayload() excludes the removed account
       removeDriveAccount(backendId);
-      console.log(`✅ [handleDisconnect] Account ${backendId} removed from dashboard state`);
+      console.log(`✅ [handleDisconnect] Account ${backendId} removed from dashboard state and blocked for ${DISCONNECT_BLOCK_DURATION_MS}ms`);
       
       // Remove account from encrypted metadata storage
       // This prevents it from being restored after lock/unlock
