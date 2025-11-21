@@ -2198,7 +2198,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
           hasAuthenticatedUser: !!authenticatedUser,
           hasId: !!authenticatedUser?.id,
           identityId,
-          pnIdentifierReady: pnIdentifier !== null,
+          pnIdentifierReady: pnIdentifierRef.current !== null,
         });
         return;
       }
