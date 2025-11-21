@@ -3,11 +3,12 @@
  * YouTube-style grid view for discovering creators and content
  */
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { IndexedFile, Feed } from '../types/aggregator';
 import { FEED_CATEGORIES } from '../constants/feedCategories';
 import { Info, Heart, MessageCircle, Share2, Bookmark } from 'lucide-react';
 import { useUserState } from '../contexts/UserStateContext';
+import { getUserProfile } from '../services/profileService';
 
 interface DiscoveryPageProps {
   files: IndexedFile[];
@@ -29,10 +30,11 @@ export function DiscoveryPage({
   onFeedClick,
   onCreatorClick
 }: DiscoveryPageProps) {
-  const { userState, getDisplayName } = useUserState();
+  const { userState, getDisplayName, setUserDisplayName } = useUserState();
   const [activeTopFeed, setActiveTopFeed] = useState<TopFeedOption>('all');
   const [selectedNiche, setSelectedNiche] = useState<NicheFeedOption>(null);
   const [showInfo, setShowInfo] = useState<string | null>(null);
+  const [fetchedCreators, setFetchedCreators] = useState<Set<string>>(new Set());
 
   // Get trending files (most engagement)
   const trendingFiles = useMemo(() => {
@@ -276,6 +278,52 @@ export function DiscoveryPage({
       onCreatorClick(item.id);
     }
   };
+
+  // Fetch display names for creators that don't have cached names
+  useEffect(() => {
+    const uniqueCreatorIds = new Set<string>();
+    
+    // Collect unique creator IDs from files
+    files.forEach(file => {
+      const creatorId = getCreatorId(file);
+      if (creatorId && creatorId !== 'Unknown') {
+        uniqueCreatorIds.add(creatorId);
+      }
+    });
+    
+    // Fetch display names for creators that aren't cached and haven't been fetched yet
+    uniqueCreatorIds.forEach(creatorId => {
+      // Skip if already cached
+      if (userState.preferences.userDisplayNames?.[creatorId]) {
+        return;
+      }
+      
+      // Skip if already being fetched
+      if (fetchedCreators.has(creatorId)) {
+        return;
+      }
+      
+      // Skip if it's the current user (they already have their display name)
+      if (creatorId === userState.pnIdentifier) {
+        return;
+      }
+      
+      // Mark as being fetched
+      setFetchedCreators(prev => new Set(prev).add(creatorId));
+      
+      // Fetch profile asynchronously
+      getUserProfile(creatorId)
+        .then(profile => {
+          if (profile.displayName) {
+            setUserDisplayName(creatorId, profile.displayName);
+          }
+        })
+        .catch(() => {
+          // Silently fail - profile may not exist
+        });
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [files.length, userState.preferences.userDisplayNames, userState.pnIdentifier, setUserDisplayName]);
 
   // Ref for top feed railway container
   const topFeedRailRef = React.useRef<HTMLDivElement>(null);
