@@ -725,10 +725,11 @@ export class AggregatorMetadataServiceDB {
       const orphanedFileIds: string[] = [];
       for (const row of allFilesResult.rows) {
         const fileId = row.file_id;
-        const metadata = row.metadata as PublicMetadata;
+        const metadata = row.metadata as PublicMetadata & { googleDriveFileId?: string };
         const fileName = metadata.name || metadata.title || 'unknown';
         const metadataFileId = metadata.fileId;
-        const backendFileId = metadata.backendFileId;
+        // Try multiple possible fields for Google Drive file ID
+        const backendFileId = (metadata as any).googleDriveFileId || metadata.backendFileId;
         const backend = metadata.backend || 'google_drive';
         const pnIdentifier = row.pn_identifier;
         
@@ -743,8 +744,16 @@ export class AggregatorMetadataServiceDB {
         // Instead, verify each file exists in Google Drive before removing
         if (pnFolders.length === 0) {
           console.log(`⚠️ [cleanupOrphanedFilesFromIndex] No pN folders found - verifying file exists before removing: ${fileId} (${fileName})`);
+          console.log(`🔍 [cleanupOrphanedFilesFromIndex] Available IDs: fileId=${fileId}, backendFileId=${backendFileId}, metadataFileId=${metadataFileId}, googleDriveFileId=${(metadata as any).googleDriveFileId}`);
           // Verify file exists in Google Drive - if it doesn't exist, remove it
+          // Use backendFileId first (actual Google Drive file ID), then fall back to fileId
+          // But if backendFileId is not a valid Google Drive ID format, skip verification
           const fileToVerify = backendFileId || metadataFileId || fileId;
+          console.log(`🔍 [cleanupOrphanedFilesFromIndex] Verifying Google Drive file: ${fileToVerify}`);
+          
+          // If fileToVerify looks like it might not be a Google Drive ID (e.g., contains hyphens in wrong places), skip
+          // Google Drive IDs are typically alphanumeric without special characters (except hyphens in specific patterns)
+          // But actually, Google Drive IDs can have various formats, so we'll try anyway
           try {
             const verifyResponse = await fetch(
               `https://www.googleapis.com/drive/v3/files/${fileToVerify}?fields=id,trashed`,
