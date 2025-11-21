@@ -1675,7 +1675,11 @@ class ProductionServer {
           inLanguage,
           isPublic,
           publicToken,
-          isTopPost
+          isTopPost,
+          textPost,
+          thought,
+          fileType,
+          contentRating
         } = req.body;
 
         if (!fileId) {
@@ -1746,11 +1750,14 @@ class ProductionServer {
               backendFileId: fileId,
               backend: 'google_drive',
               name: name || driveFile.name?.replace(/\.encrypted$/i, '') || fileId,
-              fileType: driveFile.mimeType?.startsWith('image/') ? 'image' : 
-                        driveFile.mimeType?.startsWith('video/') ? 'video' : 'other',
+              fileType: fileType || (driveFile.mimeType?.startsWith('image/') ? 'image' : 
+                        driveFile.mimeType?.startsWith('video/') ? 'video' : 'other'),
               uploadDate: driveFile.createdTime || new Date().toISOString(),
               isPublic: isPublic || false,
               ...(publicToken && { publicToken }),
+              ...(textPost && { textPost }),
+              ...(thought && { thought }),
+              ...(contentRating && { contentRating }),
               "@context": ['https://schema.org/', 'https://parnoir.com/ns/v1#'],
               "@id": `https://parnoir.com/resource/${fileId}`,
               engagement: {
@@ -1778,9 +1785,12 @@ class ProductionServer {
               backendFileId: fileId,
               backend: 'google_drive',
               name: name || fileId,
-              fileType: 'other',
+              fileType: fileType || 'other',
               uploadDate: new Date().toISOString(),
               isPublic: isPublic || false,
+              ...(textPost && { textPost }),
+              ...(thought && { thought }),
+              ...(contentRating && { contentRating }),
               "@context": ['https://schema.org/', 'https://parnoir.com/ns/v1#'],
               "@id": `https://parnoir.com/resource/${fileId}`,
               engagement: {
@@ -1819,7 +1829,11 @@ class ProductionServer {
           category,
           locationCreated,
           license,
-          inLanguage
+          inLanguage,
+          fileType,
+          textPost,
+          thought,
+          contentRating
         });
 
         // Also update isPublic if provided
@@ -1835,7 +1849,12 @@ class ProductionServer {
             const updatedMetadata = {
               ...current.metadata,
               isPublic: isPublic,
-              ...(publicToken && { publicToken })
+              ...(publicToken && { publicToken }),
+              // Preserve textPost and thought when updating isPublic
+              ...(textPost && { textPost }),
+              ...(thought && { thought }),
+              ...(fileType && { fileType }),
+              ...(contentRating && { contentRating })
             };
             const db = (await import('./server/utils/database')).getDatabasePool();
             await db.query(

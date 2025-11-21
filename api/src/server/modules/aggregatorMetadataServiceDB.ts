@@ -735,7 +735,7 @@ export class AggregatorMetadataServiceDB {
       
       console.log(`✅ [cleanupOrphanedFilesFromIndex] Found ${allValidFileIds.size} valid file ID(s) across ${validFileIdsByUser.size} user(s) with accessible public index files`);
       
-      // If we couldn't access any index files (service account has no access),
+      // If we couldn't access any index files (service account has no access), 
       // we'll still verify files directly by checking if they exist in Google Drive
       // This ensures deleted files are removed even if we can't access the folder structure
       if (usersWithIndexFiles.size === 0 && pnIdentifiers.length > 0) {
@@ -820,7 +820,7 @@ export class AggregatorMetadataServiceDB {
               // Even if service account can't see folders, if we can query the file directly and get 404,
               // it means the file was deleted (service account can still query files by ID if they exist)
               console.log(`🗑️ [cleanupOrphanedFilesFromIndex] File ${fileToVerify} not found (404) - removing from database: ${fileId} (${fileName})`);
-              orphanedFileIds.push(fileId);
+                orphanedFileIds.push(fileId);
             } else if (verifyResponse.status === 403 || verifyResponse.status === 401) {
               // Permission denied - service account doesn't have access to this file
               // This could mean the file is private or was deleted and permissions were revoked
@@ -1309,6 +1309,10 @@ export class AggregatorMetadataServiceDB {
       locationCreated?: any;
       license?: string;
       inLanguage?: string | string[];
+      fileType?: string;
+      textPost?: any;
+      thought?: any;
+      contentRating?: string;
     }
   ): Promise<PublicMetadata | null> {
     const db = getDatabasePool();
@@ -1333,6 +1337,10 @@ export class AggregatorMetadataServiceDB {
         ...(updates.keywords && { keywords: updates.keywords }),
         // Keep legacy tags for backward compatibility
         ...(updates.tags && { tags: updates.tags, keywords: updates.tags }),
+        ...(updates.fileType && { fileType: updates.fileType }),
+        ...(updates.textPost && { textPost: updates.textPost }),
+        ...(updates.thought && { thought: updates.thought }),
+        ...(updates.contentRating && { contentRating: updates.contentRating }),
         // Update schema.org fields (merge with existing schema)
         schema: {
           ...existingSchema,
