@@ -873,6 +873,8 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
           isArray: Array.isArray(payload?.googleDriveAccounts),
           accountsLength: payload?.googleDriveAccounts?.length || 0
         });
+        globalPersistenceLockRef.current = false;
+        persistenceInProgressRef.current = false;
         return;
       }
 
@@ -883,6 +885,8 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
 
       if (identityCandidates.length === 0) {
         console.warn('⚠️ [StorageCredentials] No identity candidates available for persistence');
+        globalPersistenceLockRef.current = false;
+        persistenceInProgressRef.current = false;
         return;
       }
 
@@ -893,42 +897,43 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
         }
         seen.add(identityId);
 
-      try {
-        // Log identityId for debugging (normally secret)
-        console.log('📤 [StorageCredentials] Persisting credentials to API...', {
-          identityId: identityId,
-          identityIdLength: identityId?.length,
-          hasCid: !!cid,
-        });
-
-        const response = await fetch(`${apiEndpoint}/api/storage/credentials/${encodeURIComponent(identityId)}`, {
-          method: 'PUT',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            credentials: payload,
-            cid: cid ?? null,
-          }),
-        });
-
-        if (!response.ok) {
-          const errorText = await response.text().catch(() => 'Unknown error');
-          // identityId is secret - not logged
-          console.warn('⚠️ [StorageCredentials] Failed to persist credentials to API:', {
-            status: response.status,
-            error: errorText,
+        try {
+          // Log identityId for debugging (normally secret)
+          console.log('📤 [StorageCredentials] Persisting credentials to API...', {
+            identityId: identityId,
+            identityIdLength: identityId?.length,
+            hasCid: !!cid,
           });
-        } else {
-          console.warn('✅ [StorageCredentials] Credentials persisted to API', {
-            accountsCount: payload.googleDriveAccounts.length
+
+          const response = await fetch(`${apiEndpoint}/api/storage/credentials/${encodeURIComponent(identityId)}`, {
+            method: 'PUT',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              credentials: payload,
+              cid: cid ?? null,
+            }),
+          });
+
+          if (!response.ok) {
+            const errorText = await response.text().catch(() => 'Unknown error');
+            // identityId is secret - not logged
+            console.warn('⚠️ [StorageCredentials] Failed to persist credentials to API:', {
+              status: response.status,
+              error: errorText,
+            });
+          } else {
+            console.warn('✅ [StorageCredentials] Credentials persisted to API', {
+              accountsCount: payload.googleDriveAccounts.length
+            });
+          }
+        } catch (error) {
+          // identityId is secret - not logged
+          console.warn('⚠️ [StorageCredentials] API persistence failed (non-blocking):', {
+            error: error?.message || error,
           });
         }
-      } catch (error) {
-        // identityId is secret - not logged
-        console.warn('⚠️ [StorageCredentials] API persistence failed (non-blocking):', {
-          error: error?.message || error,
-        });
       }
     } finally {
       globalPersistenceLockRef.current = false;
