@@ -1103,6 +1103,10 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
     };
   }, [aggregatorService, persistStorageCredentialsToAPI, authenticatedUser?.id]); // Removed driveAccounts and userEmails from dependencies
 
+  // CRITICAL: Track if auto-persist is already scheduled to prevent multiple calls
+  const autoPersistScheduledRef = React.useRef(false);
+  const autoPersistTimeoutRef = React.useRef<NodeJS.Timeout | null>(null);
+
   // Auto-persist credentials to API when driveAccounts are available - moved here after persistStorageCredentialsToAPI is declared
   // CRITICAL: Only run auto-persist when hydration is complete and not in progress
   React.useEffect(() => {
@@ -1119,6 +1123,12 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
       return;
     }
     
+    // CRITICAL: Skip if persistence is already scheduled
+    if (autoPersistScheduledRef.current) {
+      console.log(`[StorageCredentials] Auto-persist skipped: already scheduled`);
+      return;
+    }
+    
     console.log(`[StorageCredentials] Auto-persist effect triggered`, {
       driveAccountsLength: driveAccounts.length,
       cacheSize: driveCredentialCacheRef.current.size,
@@ -1131,8 +1141,20 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
     const hasAccounts = driveAccounts.length > 0 || cacheEntries.length > 0;
     
     if (hasAccounts) {
+      // Mark as scheduled
+      autoPersistScheduledRef.current = true;
+      
+      // Clear any existing timeout
+      if (autoPersistTimeoutRef.current) {
+        clearTimeout(autoPersistTimeoutRef.current);
+      }
+      
       // Longer delay to ensure hydration completes and avoid rapid-fire calls
-      const timeoutId = setTimeout(() => {
+      autoPersistTimeoutRef.current = setTimeout(() => {
+        // Reset scheduled flag
+        autoPersistScheduledRef.current = false;
+        autoPersistTimeoutRef.current = null;
+        
         // Double-check we're still not in disconnect block period
         const timeSinceDisconnectCheck = Date.now() - disconnectTimestampRef.current;
         if (timeSinceDisconnectCheck < DISCONNECT_BLOCK_DURATION_MS) {
@@ -1143,6 +1165,12 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
         // Double-check hydration is still not in progress
         if (hydrationInProgressRef.current) {
           console.log(`[StorageCredentials] Auto-persist cancelled: hydration started during delay`);
+          return;
+        }
+        
+        // Double-check persistence lock
+        if (globalPersistenceLockRef.current || persistenceInProgressRef.current) {
+          console.log(`[StorageCredentials] Auto-persist cancelled: persistence already in progress`);
           return;
         }
         
@@ -1157,7 +1185,14 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
           console.error('⚠️ [StorageCredentials] Auto-persist failed:', error);
         });
       }, 8000); // Increased from 3s to 8s to ensure hydration completes and avoid rapid calls
-      return () => clearTimeout(timeoutId);
+      
+      return () => {
+        if (autoPersistTimeoutRef.current) {
+          clearTimeout(autoPersistTimeoutRef.current);
+          autoPersistTimeoutRef.current = null;
+        }
+        autoPersistScheduledRef.current = false;
+      };
     } else {
       console.log(`[StorageCredentials] Skipping auto-persist: no accounts found in state or cache`);
     }
