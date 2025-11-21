@@ -2402,10 +2402,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
                       category: '',
                       locationName: '',
                       locationAddress: '',
-                      locationLat: '',
-                      locationLng: '',
-                      license: '',
-                      language: ''
+                      license: ''
                     });
                   }}
                   className="px-4 py-2 text-sm font-medium text-text-secondary hover:text-text-primary transition-colors"
