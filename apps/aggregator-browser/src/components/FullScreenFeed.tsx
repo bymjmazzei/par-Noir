@@ -491,38 +491,35 @@ export function FullScreenFeed({
         const isImage = file.fileType === 'image' || 
                        (file.name || file.title || '').match(/\.(jpg|jpeg|png|gif|webp|svg|bmp|ico)$/i);
         // Check for text post in metadata (fileType is stored in PublicMetadata)
-        // Debug: log file structure to understand why thoughts aren't rendering
-        const hasTextPostData = !!(indexedFile.metadata as any).textPost || !!(indexedFile.metadata as any).thought;
-        const isTextPost = file.fileType === 'text' || 
-                          file.fileType === 'thought' ||
-                          indexedFile.metadata.fileType === 'text' || 
-                          indexedFile.metadata.fileType === 'thought' ||
-                          hasTextPostData;
-        
-        if (hasTextPostData && !isTextPost) {
-          console.log('[FullScreenFeed] Found textPost data but isTextPost is false:', {
-            fileId,
-            fileType: file.fileType,
-            metadataFileType: indexedFile.metadata.fileType,
-            hasTextPost: !!(indexedFile.metadata as any).textPost,
-            hasThought: !!(indexedFile.metadata as any).thought
-          });
-        }
-        
-        const fileName = file.name || file.title || 'Untitled';
-        // Access textPost from metadata (it's stored in PublicMetadata)
+        // Access textPost from metadata first (it's stored in PublicMetadata)
         const textPostData = (indexedFile.metadata as any).textPost || 
                             (indexedFile.metadata as any).thought ||
                             (file as any).textPost ||
                             (file as any).thought;
         
-        if (isTextPost && !textPostData) {
-          console.warn('[FullScreenFeed] isTextPost is true but no textPostData found:', {
+        // Check fileType and textPost data presence
+        const hasTextPostData = !!textPostData;
+        const hasTextFileType = file.fileType === 'text' || 
+                               file.fileType === 'thought' ||
+                               indexedFile.metadata.fileType === 'text' || 
+                               indexedFile.metadata.fileType === 'thought';
+        
+        const isTextPost = hasTextFileType || hasTextPostData;
+        
+        // Debug logging for thoughts
+        if (hasTextFileType || hasTextPostData) {
+          console.log('[FullScreenFeed] Thought detected:', {
             fileId,
             fileType: file.fileType,
-            metadata: indexedFile.metadata
+            metadataFileType: indexedFile.metadata.fileType,
+            hasTextPostData,
+            hasTextFileType,
+            isTextPost,
+            textPostData: textPostData ? { content: textPostData.content?.substring(0, 50), hasStyle: !!textPostData.style } : null
           });
         }
+        
+        const fileName = file.name || file.title || 'Untitled';
         // Get creatorId - this is now the pN identifier (set from entry.pnIdentifier during conversion)
         const creatorId = (indexedFile.metadata as any).creatorId || 
                           file.creator?.identifier?.value || 

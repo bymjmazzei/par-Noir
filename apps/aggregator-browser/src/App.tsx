@@ -131,20 +131,23 @@ function App() {
               setUnlocked(pnIdentifier);
               
               // Load display name from API (preferred) or use nickname as fallback
-              try {
-                const profile = await getUserProfile(pnIdentifier);
-                if (profile.displayName) {
-                  updateDisplayName(profile.displayName);
-                } else if (userInfo.nickname && !userState.preferences.displayName) {
-                  // Fallback to nickname if no display name in profile
-                  updateDisplayName(userInfo.nickname);
+              // Add delay to avoid rate limiting when OAuth window opens
+              setTimeout(async () => {
+                try {
+                  const profile = await getUserProfile(pnIdentifier);
+                  if (profile.displayName) {
+                    updateDisplayName(profile.displayName);
+                  } else if (userInfo.nickname && !userState.preferences.displayName) {
+                    // Fallback to nickname if no display name in profile
+                    updateDisplayName(userInfo.nickname);
+                  }
+                } catch (error) {
+                  // If API call fails, fallback to nickname
+                  if (userInfo.nickname && !userState.preferences.displayName) {
+                    updateDisplayName(userInfo.nickname);
+                  }
                 }
-              } catch (error) {
-                // If API call fails, fallback to nickname
-                if (userInfo.nickname && !userState.preferences.displayName) {
-                  updateDisplayName(userInfo.nickname);
-                }
-              }
+              }, 1000);
             }
           }
         } catch (error) {
@@ -170,20 +173,23 @@ function App() {
               setActiveBottomTab('index');
               
               // Load display name from API (preferred) or use nickname as fallback
-              try {
-                const profile = await getUserProfile(userInfo.pn_identifier);
-                if (profile.displayName) {
-                  updateDisplayName(profile.displayName);
-                } else if (userInfo.nickname && !userState.preferences.displayName) {
-                  // Fallback to nickname if no display name in profile
-                  updateDisplayName(userInfo.nickname);
+              // Add delay to avoid rate limiting when OAuth window opens
+              setTimeout(async () => {
+                try {
+                  const profile = await getUserProfile(userInfo.pn_identifier);
+                  if (profile.displayName) {
+                    updateDisplayName(profile.displayName);
+                  } else if (userInfo.nickname && !userState.preferences.displayName) {
+                    // Fallback to nickname if no display name in profile
+                    updateDisplayName(userInfo.nickname);
+                  }
+                } catch (error) {
+                  // If API call fails, fallback to nickname
+                  if (userInfo.nickname && !userState.preferences.displayName) {
+                    updateDisplayName(userInfo.nickname);
+                  }
                 }
-              } catch (error) {
-                // If API call fails, fallback to nickname
-                if (userInfo.nickname && !userState.preferences.displayName) {
-                  updateDisplayName(userInfo.nickname);
-                }
-              }
+              }, 1000);
             } else {
               showErrorToast('Unable to load your pN identifier from API');
             }
@@ -236,9 +242,9 @@ function App() {
         // Use pN identifier from session if available, otherwise use DID
         const pnId = session.pnIdentifier || session.did;
         setUnlocked(pnId);
-        // Load display name from API
+        // Load display name from API (with delay to avoid rate limiting)
         if (pnId && !pnId.startsWith('did:key:')) {
-          loadUserDisplayName(pnId);
+          setTimeout(() => loadUserDisplayName(pnId), 500);
         }
       } else if (userState.pnIdentifier && !userState.preferences.displayName) {
         // User is unlocked but no display name loaded - load it from API
@@ -250,9 +256,9 @@ function App() {
       // Use pN identifier from session if available, otherwise use DID
       const pnId = session.pnIdentifier || session.did;
       setUnlocked(pnId);
-      // Load display name from API
+      // Load display name from API (with delay to avoid rate limiting)
       if (pnId && !pnId.startsWith('did:key:')) {
-        loadUserDisplayName(pnId);
+        setTimeout(() => loadUserDisplayName(pnId), 500);
       }
     }
   }, []); // Only run on mount
