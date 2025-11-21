@@ -63,7 +63,9 @@ export function DiscoveryPage({
     const sevenDaysAgo = Date.now() - (7 * 24 * 60 * 60 * 1000);
     
     files.forEach(file => {
-      const creatorId = file.metadata.creator?.identifier?.value || 
+      // Prefer pnIdentifier from API, then fall back to metadata fields
+      const creatorId = file.pnIdentifier ||
+                       file.metadata.creator?.identifier?.value || 
                        file.metadata.creator?.["@id"] || 
                        file.metadata.author?.did;
       if (!creatorId) return;
