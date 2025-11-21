@@ -70,6 +70,11 @@ function App() {
   const [generatingThumbnails, setGeneratingThumbnails] = useState<Set<string>>(new Set()); // Track which thumbnails are being generated
   const [videoPlaying, setVideoPlaying] = useState<Map<string, boolean>>(new Map()); // Track which videos are playing
   const [videoBlobs, setVideoBlobs] = useState<Map<string, string>>(new Map()); // Store video URLs for playback
+  
+  // Keep videoBlobsRef in sync with videoBlobs state
+  useEffect(() => {
+    videoBlobsRef.current = videoBlobs;
+  }, [videoBlobs]);
   const [viewMode, setViewMode] = useState<'grid' | 'feed'>('feed'); // Default to feed mode
   const [activeFeedId, setActiveFeedId] = useState<string>('public');
   const [currentFeedIndex, setCurrentFeedIndex] = useState(0); // Current file index in feed
@@ -103,6 +108,9 @@ function App() {
   const isNavigatingToFileRef = useRef<boolean>(false); // Track if we're navigating to a specific file
   const lastNavigatedFileIdRef = useRef<string | null>(null); // Track the last file we navigated to
   const lastNavigatedFileIndexRef = useRef<number | null>(null); // Track the index we navigated to
+  const loadBulkEngagementStatsRef = useRef<((fileIds: string[]) => Promise<void>) | null>(null); // Ref for loadBulkEngagementStats function
+  const loadedEngagementFileIdsRef = useRef<Set<string>>(new Set()); // Track which fileIds have had engagement stats loaded
+  const videoBlobsRef = useRef<Map<string, string>>(new Map()); // Ref to track videoBlobs without causing dependency issues
   
   const metadataIndexService = getMetadataIndexService();
   const { toggleLike, share, getLikeCount, isLiked, getComments, loadComments, getShareCount, loadBulkEngagementStats } = useEngagement();
@@ -342,17 +350,34 @@ function App() {
   }, [userState.isUnlocked, userState.pnIdentifier]);
 
   // Load bulk engagement stats when files are loaded
+  // Store loadBulkEngagementStats in ref to avoid dependency issues
   useEffect(() => {
-    if (indexedFiles.length > 0) {
+    loadBulkEngagementStatsRef.current = loadBulkEngagementStats;
+  }, [loadBulkEngagementStats]);
+
+  useEffect(() => {
+    if (indexedFiles.length > 0 && loadBulkEngagementStatsRef.current) {
       const fileIds = indexedFiles.map(file => file.metadata.fileId);
-      // Load engagement stats in batches to avoid overwhelming the API
-      const batchSize = 50;
-      for (let i = 0; i < fileIds.length; i += batchSize) {
-        const batch = fileIds.slice(i, i + batchSize);
-        loadBulkEngagementStats(batch);
+      // Only load engagement stats for files we haven't loaded yet
+      const newFileIds = fileIds.filter(id => !loadedEngagementFileIdsRef.current.has(id));
+      
+      if (newFileIds.length > 0) {
+        // Mark all new files as being loaded
+        newFileIds.forEach(id => loadedEngagementFileIdsRef.current.add(id));
+        
+        // Load engagement stats in batches to avoid overwhelming the API
+        const batchSize = 50;
+        for (let i = 0; i < newFileIds.length; i += batchSize) {
+          const batch = newFileIds.slice(i, i + batchSize);
+          loadBulkEngagementStatsRef.current(batch).catch(error => {
+            // If request fails, remove from loaded set so we can retry
+            console.warn('Failed to load engagement stats, will retry:', error);
+            batch.forEach(id => loadedEngagementFileIdsRef.current.delete(id));
+          });
+        }
       }
     }
-  }, [indexedFiles.length, loadBulkEngagementStats]); // Only reload when count changes
+  }, [indexedFiles.length]); // Only reload when count changes
 
   // Initialize from URL params - only on mount and when file param changes
   const hasInitializedFromURLRef = useRef<boolean>(false);
@@ -828,7 +853,7 @@ function App() {
           const file = indexedFile.metadata;
           const isVideo = file.fileType === 'video' || 
                          (file.name || file.title || '').match(/\.(mp4|mov|avi|webm|mkv|flv|wmv)$/i);
-          if (isVideo && file.publicToken && !videoBlobs.has(file.fileId)) {
+          if (isVideo && file.publicToken && !videoBlobsRef.current.has(file.fileId)) {
             (async () => {
               try {
                 let token: ShareToken;
@@ -859,7 +884,7 @@ function App() {
       setIsLoading(false);
       isDiscoveringRef.current = false;
     }
-  }, [filters, searchQuery, userState.preferences.maxRating, activeFeedId, viewMode, videoBlobs]);
+  }, [filters, searchQuery, userState.preferences.maxRating, activeFeedId, viewMode]);
   
   // Store discoverFiles in ref so it can be called from OAuth callback
   useEffect(() => {

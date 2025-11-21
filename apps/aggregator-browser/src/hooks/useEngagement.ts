@@ -130,6 +130,12 @@ export function useEngagement() {
         })
       });
 
+      if (response.status === 429) {
+        // Rate limited - don't retry immediately, just log and return
+        console.warn('Rate limited (429) when loading bulk engagement stats, skipping');
+        return;
+      }
+
       if (response.ok) {
         const result = await response.json();
         const { stats, likedFiles } = result;

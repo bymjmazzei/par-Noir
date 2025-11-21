@@ -39,7 +39,12 @@ export function NotificationBell({ onNotificationClick }: NotificationBellProps)
       try {
         const count = await NotificationService.getUnreadCount(userState.pnIdentifier!);
         setUnreadCount(count);
-      } catch (error) {
+      } catch (error: any) {
+        // Don't log 429 errors as errors, just skip this poll
+        if (error?.message?.includes('429') || error?.status === 429) {
+          console.warn('Rate limited when loading unread count, skipping this poll');
+          return;
+        }
         console.error('Failed to load unread count:', error);
       }
     };
@@ -67,6 +72,11 @@ export function NotificationBell({ onNotificationClick }: NotificationBellProps)
       const count = result.notifications.filter(n => !n.read).length;
       setUnreadCount(count);
     } catch (error: any) {
+      // Don't show error for 429 rate limiting
+      if (error?.message?.includes('429') || error?.status === 429) {
+        console.warn('Rate limited when loading notifications');
+        return;
+      }
       console.error('Failed to load notifications:', error);
       showError(error.message || 'Failed to load notifications');
     } finally {
