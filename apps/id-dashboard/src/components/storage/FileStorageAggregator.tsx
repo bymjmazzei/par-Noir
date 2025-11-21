@@ -1101,100 +1101,122 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
     };
   }, [aggregatorService, persistStorageCredentialsToAPI, authenticatedUser?.id]); // Removed driveAccounts and userEmails from dependencies
 
-  // CRITICAL: Track if auto-persist is already scheduled to prevent multiple calls
-  const autoPersistScheduledRef = React.useRef(false);
+  // CRITICAL: Track if auto-persist has already run in this session
+  const autoPersistHasRunRef = React.useRef(false);
   const autoPersistTimeoutRef = React.useRef<NodeJS.Timeout | null>(null);
+  const autoPersistCheckIntervalRef = React.useRef<NodeJS.Timeout | null>(null);
 
   // Auto-persist credentials to API when driveAccounts are available - moved here after persistStorageCredentialsToAPI is declared
-  // CRITICAL: Only run auto-persist when hydration is complete and not in progress
+  // CRITICAL: Only run ONCE per session, check periodically instead of on every driveAccounts.length change
   React.useEffect(() => {
-    // CRITICAL: Block auto-persist for 30 seconds after any disconnect
-    const timeSinceDisconnect = Date.now() - disconnectTimestampRef.current;
-    if (timeSinceDisconnect < DISCONNECT_BLOCK_DURATION_MS) {
-      console.log(`[StorageCredentials] Auto-persist BLOCKED: ${timeSinceDisconnect}ms since last disconnect (waiting ${DISCONNECT_BLOCK_DURATION_MS}ms)`);
-      return;
+    // CRITICAL: Only run ONCE per session
+    if (autoPersistHasRunRef.current) {
+      return; // Already ran, don't run again
     }
     
-    // Skip if hydration is in progress - let hydration handle persistence
-    if (hydrationInProgressRef.current) {
-      console.log(`[StorageCredentials] Auto-persist skipped: hydration in progress`);
-      return;
+    // Clear any existing interval
+    if (autoPersistCheckIntervalRef.current) {
+      clearInterval(autoPersistCheckIntervalRef.current);
     }
     
-    // CRITICAL: Skip if persistence is already scheduled
-    if (autoPersistScheduledRef.current) {
-      console.log(`[StorageCredentials] Auto-persist skipped: already scheduled`);
-      return;
-    }
-    
-    console.log(`[StorageCredentials] Auto-persist effect triggered`, {
-      driveAccountsLength: driveAccounts.length,
-      cacheSize: driveCredentialCacheRef.current.size,
-      hydrationSuccess: hydrationSuccessRef.current,
-      hydrationInProgress: hydrationInProgressRef.current
-    });
-    
-    // Check both driveAccounts state and cache
-    const cacheEntries = Array.from(driveCredentialCacheRef.current.values());
-    const hasAccounts = driveAccounts.length > 0 || cacheEntries.length > 0;
-    
-    if (hasAccounts) {
-      // Mark as scheduled
-      autoPersistScheduledRef.current = true;
-      
-      // Clear any existing timeout
-      if (autoPersistTimeoutRef.current) {
-        clearTimeout(autoPersistTimeoutRef.current);
+    // Check periodically for accounts instead of on every driveAccounts.length change
+    autoPersistCheckIntervalRef.current = setInterval(() => {
+      // CRITICAL: Only run ONCE per session
+      if (autoPersistHasRunRef.current) {
+        if (autoPersistCheckIntervalRef.current) {
+          clearInterval(autoPersistCheckIntervalRef.current);
+          autoPersistCheckIntervalRef.current = null;
+        }
+        return;
       }
       
-      // Longer delay to ensure hydration completes and avoid rapid-fire calls
-      autoPersistTimeoutRef.current = setTimeout(() => {
-        // Reset scheduled flag
-        autoPersistScheduledRef.current = false;
-        autoPersistTimeoutRef.current = null;
-        
-        // Double-check we're still not in disconnect block period
-        const timeSinceDisconnectCheck = Date.now() - disconnectTimestampRef.current;
-        if (timeSinceDisconnectCheck < DISCONNECT_BLOCK_DURATION_MS) {
-          console.log(`[StorageCredentials] Auto-persist cancelled: disconnect happened during delay`);
-          return;
-        }
-        
-        // Double-check hydration is still not in progress
-        if (hydrationInProgressRef.current) {
-          console.log(`[StorageCredentials] Auto-persist cancelled: hydration started during delay`);
-          return;
-        }
-        
-        // Double-check persistence lock
-        if (globalPersistenceLockRef.current || persistenceInProgressRef.current) {
-          console.log(`[StorageCredentials] Auto-persist cancelled: persistence already in progress`);
-          return;
-        }
-        
-        const payload = buildStorageCredentialPayload();
-        console.log(`[StorageCredentials] Auto-persisting accounts to API...`, {
-          driveAccountsLength: driveAccounts.length,
-          cacheEntriesLength: cacheEntries.length,
-          payloadHasAccounts: !!(payload?.googleDriveAccounts?.length),
-          payloadAccountsCount: payload?.googleDriveAccounts?.length || 0
-        });
-        persistStorageCredentialsToAPI(undefined).catch((error) => {
-          console.error('⚠️ [StorageCredentials] Auto-persist failed:', error);
-        });
-      }, 8000); // Increased from 3s to 8s to ensure hydration completes and avoid rapid calls
+      // CRITICAL: Block auto-persist for 30 seconds after any disconnect
+      const timeSinceDisconnect = Date.now() - disconnectTimestampRef.current;
+      if (timeSinceDisconnect < DISCONNECT_BLOCK_DURATION_MS) {
+        return; // Still blocked, check again later
+      }
       
-      return () => {
+      // Skip if hydration is in progress - let hydration handle persistence
+      if (hydrationInProgressRef.current) {
+        return; // Still hydrating, check again later
+      }
+      
+      // Check both driveAccounts state and cache - use ref to get current value
+      const cacheEntries = Array.from(driveCredentialCacheRef.current.values());
+      const currentDriveAccountsLength = driveAccountsRef.current.length;
+      const hasAccounts = currentDriveAccountsLength > 0 || cacheEntries.length > 0;
+      
+      if (hasAccounts) {
+        // Mark as run immediately to prevent multiple calls
+        autoPersistHasRunRef.current = true;
+        
+        // Clear the interval since we found accounts
+        if (autoPersistCheckIntervalRef.current) {
+          clearInterval(autoPersistCheckIntervalRef.current);
+          autoPersistCheckIntervalRef.current = null;
+        }
+        
+        console.log(`[StorageCredentials] Auto-persist effect triggered (ONCE per session)`, {
+          driveAccountsLength: currentDriveAccountsLength,
+          cacheSize: driveCredentialCacheRef.current.size,
+          hydrationSuccess: hydrationSuccessRef.current,
+          hydrationInProgress: hydrationInProgressRef.current
+        });
+        
+        // Clear any existing timeout
         if (autoPersistTimeoutRef.current) {
           clearTimeout(autoPersistTimeoutRef.current);
-          autoPersistTimeoutRef.current = null;
         }
-        autoPersistScheduledRef.current = false;
-      };
-    } else {
-      console.log(`[StorageCredentials] Skipping auto-persist: no accounts found in state or cache`);
-    }
-  }, [driveAccounts.length, persistStorageCredentialsToAPI, buildStorageCredentialPayload]);
+        
+        // Longer delay to ensure hydration completes and avoid rapid-fire calls
+        autoPersistTimeoutRef.current = setTimeout(() => {
+          autoPersistTimeoutRef.current = null;
+          
+          // Double-check we're still not in disconnect block period
+          const timeSinceDisconnectCheck = Date.now() - disconnectTimestampRef.current;
+          if (timeSinceDisconnectCheck < DISCONNECT_BLOCK_DURATION_MS) {
+            console.log(`[StorageCredentials] Auto-persist cancelled: disconnect happened during delay`);
+            return;
+          }
+          
+          // Double-check hydration is still not in progress
+          if (hydrationInProgressRef.current) {
+            console.log(`[StorageCredentials] Auto-persist cancelled: hydration started during delay`);
+            return;
+          }
+          
+          // Double-check persistence lock
+          if (globalPersistenceLockRef.current || persistenceInProgressRef.current) {
+            console.log(`[StorageCredentials] Auto-persist cancelled: persistence already in progress`);
+            return;
+          }
+          
+          const payload = buildStorageCredentialPayload();
+          const finalDriveAccountsLength = driveAccountsRef.current.length;
+          console.log(`[StorageCredentials] Auto-persisting accounts to API (ONCE per session)...`, {
+            driveAccountsLength: finalDriveAccountsLength,
+            cacheEntriesLength: cacheEntries.length,
+            payloadHasAccounts: !!(payload?.googleDriveAccounts?.length),
+            payloadAccountsCount: payload?.googleDriveAccounts?.length || 0
+          });
+          persistStorageCredentialsToAPI(undefined).catch((error) => {
+            console.error('⚠️ [StorageCredentials] Auto-persist failed:', error);
+          });
+        }, 8000); // Increased from 3s to 8s to ensure hydration completes and avoid rapid calls
+      }
+    }, 2000); // Check every 2 seconds for accounts
+    
+    return () => {
+      if (autoPersistCheckIntervalRef.current) {
+        clearInterval(autoPersistCheckIntervalRef.current);
+        autoPersistCheckIntervalRef.current = null;
+      }
+      if (autoPersistTimeoutRef.current) {
+        clearTimeout(autoPersistTimeoutRef.current);
+        autoPersistTimeoutRef.current = null;
+      }
+    };
+  }, []); // Empty dependency array - only run once on mount
 
   const resolveShareVisibility = React.useCallback(
     (file: AggregatedFile): 'public' | 'private' => {
