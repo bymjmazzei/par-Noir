@@ -96,6 +96,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
   const [isLoading, setIsLoading] = useState(false);
   const [files, setFiles] = useState<AggregatedFile[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [connectedBackends, setConnectedBackends] = useState<Set<string>>(new Set());
   const [userEmails, setUserEmails] = useState<Map<string, string>>(new Map());
   const userEmailsRef = React.useRef(userEmails);
