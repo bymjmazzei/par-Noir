@@ -6505,11 +6505,10 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
                                           if (tileContainer && node) {
                                             const tileRect = tileContainer.getBoundingClientRect();
                                             const menuWidth = 176; // w-44 = 11rem = 176px
-                                            const menuHeight = node.offsetHeight || 200; // fallback estimate
                                             
                                             node.style.position = 'fixed';
                                             
-                                            // Position menu over the tile: center it horizontally on the tile
+                                            // Position menu OVER the tile: center it horizontally on the tile
                                             // left = tile.left + (tile.width / 2) - (menu.width / 2)
                                             const leftPosition = tileRect.left + (tileRect.width / 2) - (menuWidth / 2);
                                             
@@ -6518,9 +6517,15 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
                                             const maxLeft = window.innerWidth - menuWidth - 8; // Maximum to keep menu on screen
                                             node.style.left = `${Math.max(minLeft, Math.min(leftPosition, maxLeft))}px`;
                                             
-                                            // Position above the tile: top of menu = top of tile - menu height - spacing
-                                            const topPosition = tileRect.top - menuHeight - 8;
-                                            node.style.top = `${Math.max(8, topPosition)}px`; // Ensure at least 8px from top
+                                            // Position menu OVER the tile: center it vertically on the tile
+                                            // top = tile.top + (tile.height / 2) - (menu.height / 2)
+                                            const menuHeight = node.offsetHeight || 200; // fallback estimate
+                                            const topPosition = tileRect.top + (tileRect.height / 2) - (menuHeight / 2);
+                                            
+                                            // Ensure menu stays within viewport
+                                            const minTop = 8; // Minimum 8px from top edge
+                                            const maxTop = window.innerHeight - menuHeight - 8; // Maximum to keep menu on screen
+                                            node.style.top = `${Math.max(minTop, Math.min(topPosition, maxTop))}px`;
                                             
                                             node.style.right = 'auto';
                                             node.style.bottom = 'auto';
