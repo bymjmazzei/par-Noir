@@ -87,6 +87,42 @@ export interface PublicMetadata {
     blocked?: string[];
     updatedAt?: string;
   };
+
+  // Text Post / Thought Support
+  textPost?: {
+    content: string;
+    style?: {
+      backgroundColor?: string;
+      backgroundImage?: string;
+      fontFamily?: string;
+      fontSize?: number;
+      textColor?: string;
+      textStyle?: 'bold' | 'italic' | 'strikethrough';
+      textAlign?: 'left' | 'center' | 'right' | 'justify';
+      dropShadowOffsetX?: number;
+      dropShadowOffsetY?: number;
+      dropShadowBlur?: number;
+      dropShadowColor?: string;
+      padding?: number;
+    };
+  };
+  thought?: {
+    content: string;
+    style?: {
+      backgroundColor?: string;
+      backgroundImage?: string;
+      fontFamily?: string;
+      fontSize?: number;
+      textColor?: string;
+      textStyle?: 'bold' | 'italic' | 'strikethrough';
+      textAlign?: 'left' | 'center' | 'right' | 'justify';
+      dropShadowOffsetX?: number;
+      dropShadowOffsetY?: number;
+      dropShadowBlur?: number;
+      dropShadowColor?: string;
+      padding?: number;
+    };
+  };
 }
 
 export interface CentralIndexEntry {

@@ -547,7 +547,13 @@ export function FullScreenFeed({
               hasTextPost: !!(indexedFile.metadata as any).textPost,
               hasThought: !!(indexedFile.metadata as any).thought,
               hasFileTextPost: !!(file as any).textPost,
-              hasFileThought: !!(file as any).thought
+              hasFileThought: !!(file as any).thought,
+              // Show actual values to debug
+              textPostValue: (indexedFile.metadata as any).textPost,
+              thoughtValue: (indexedFile.metadata as any).thought,
+              fullMetadataKeys: Object.keys(indexedFile.metadata),
+              // Sample of metadata to see structure
+              metadataSample: JSON.stringify(indexedFile.metadata).substring(0, 500)
             }
           });
         }
