@@ -1786,12 +1786,19 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
     }
     hydrationRateLimitLoggedRef.current = false;
 
-    const identityCandidates = getStorageIdentityCandidates();
-
-    if (identityCandidates.length === 0) {
-      console.warn('⚠️ [StorageCredentials] No identity candidates available for hydration');
-      return;
+    // CRITICAL: Generate pn identifier if not already available
+    // This ensures we always use the standardized identifier
+    let pnId = pnIdentifierRef.current;
+    if (!pnId || !pnId.startsWith('pn-')) {
+      pnId = await getPnIdentifier();
+      if (!pnId) {
+        console.warn('⚠️ [StorageCredentials] Cannot generate pn identifier for hydration - missing credentials');
+        return;
+      }
     }
+    
+    // Use only the pn identifier - no other candidates
+    const identityCandidates = [pnId];
 
     let hydrated = false;
     let lastError: unknown = null;
