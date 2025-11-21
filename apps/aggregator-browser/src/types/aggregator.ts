@@ -428,6 +428,7 @@ export interface IndexedFile {
   metadata: PublicMetadata;
   thumbnail?: string;
   publicToken?: string; // Public token for decryption (may be at file level or in metadata)
+  pnIdentifier?: string; // pN identifier of the file owner (from aggregator metadata)
 }
 
 // ============================================================================

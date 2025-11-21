@@ -94,7 +94,9 @@ export class MetadataIndexService {
             },
             thumbnail: entry.metadata?.thumbnail,
             // Also include publicToken at IndexedFile level for easier access
-            publicToken: entry.publicToken || entry.metadata?.publicToken
+            publicToken: entry.publicToken || entry.metadata?.publicToken,
+            // Preserve pnIdentifier from API response (use original format, not normalized)
+            pnIdentifier: entry.pnIdentifier || normalizedPnId
           };
         });
       

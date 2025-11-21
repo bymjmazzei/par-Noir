@@ -182,7 +182,12 @@ export function DiscoveryPage({
 
   // Helper to get creator ID from file metadata (prefer pN identifier over DID)
   const getCreatorId = (file: IndexedFile): string => {
-    // Try to get pN identifier first, then fall back to DID
+    // First try to use pnIdentifier from the file (most reliable)
+    if (file.pnIdentifier) {
+      return file.pnIdentifier;
+    }
+    
+    // Then try to get pN identifier from metadata
     const creatorId = file.metadata.creator?.identifier?.value || 
                       file.metadata.creator?.["@id"] || 
                       file.metadata.author?.did ||

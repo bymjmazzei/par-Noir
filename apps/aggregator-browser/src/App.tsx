@@ -1171,7 +1171,9 @@ function App() {
                     author: metadata.author || {
                       did: entry.pnIdentifier || viewingCreatorId
                     }
-                }
+                  },
+                  // Preserve pnIdentifier from API response
+                  pnIdentifier: entry.pnIdentifier
                 } as IndexedFile;
               });
               console.log(`📊 Loaded ${apiFiles.length} files from API for user ${viewingCreatorId} (filtered from ${data.files.length} total files)`);
