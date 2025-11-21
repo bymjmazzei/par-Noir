@@ -192,11 +192,17 @@ export function DiscoveryPage({
   
   // Helper to get creator display name from metadata
   const getCreatorDisplayName = (file: IndexedFile, creatorId: string): string => {
-    // First try to get username from author metadata
+    // First check the cache - this should have the platform name from profile icon editor
+    const cachedDisplayName = userState.preferences.userDisplayNames?.[creatorId];
+    if (cachedDisplayName) {
+      return cachedDisplayName;
+    }
+    
+    // Try to get username from author metadata
     const username = file.metadata.author?.username;
     if (username) {
       const displayName = getDisplayName(creatorId, username);
-      // If we got a username, use it even if it's the same as creatorId
+      // If we got a username and it's different from creatorId, use it
       if (displayName && displayName !== creatorId) {
         return displayName;
       }
@@ -210,14 +216,23 @@ export function DiscoveryPage({
     const creatorName = (file.metadata.creator as any)?.name || 
                        (file.metadata.creator as any)?.displayName;
     if (creatorName) {
-      return getDisplayName(creatorId, creatorName) || creatorName;
+      const displayName = getDisplayName(creatorId, creatorName);
+      if (displayName && displayName !== creatorId) {
+        return displayName;
+      }
+      return creatorName;
     }
     
     // Use getDisplayName which will check cache and fallback to creatorId
     const displayName = getDisplayName(creatorId);
     
-    // If displayName is still the full DID/creatorId, return it as-is
-    // The app should fetch and cache platform names, but for now we show the ID
+    // If displayName is still the full DID/creatorId, show a shortened version
+    // The platform name should be fetched and cached by the useEffect above
+    if (displayName === creatorId && creatorId.length > 20) {
+      // Show shortened version while waiting for profile to load
+      return creatorId.substring(0, 12) + '...';
+    }
+    
     return displayName;
   };
 
@@ -225,7 +240,8 @@ export function DiscoveryPage({
     // Show new creators in a separate section
     if (activeTopFeed === 'new-creators') {
       return newCreators.map(creator => {
-        const creatorDisplayName = getDisplayName(creator.creatorId);
+        // Use the same display name logic as media tiles
+        const creatorDisplayName = getCreatorDisplayName(creator.file, creator.creatorId);
         const nicheName = creator.primaryNiche 
           ? FEED_CATEGORIES[creator.primaryNiche as keyof typeof FEED_CATEGORIES]?.name || creator.primaryNiche
           : null;
@@ -314,12 +330,14 @@ export function DiscoveryPage({
       // Fetch profile asynchronously
       getUserProfile(creatorId)
         .then(profile => {
-          if (profile.displayName) {
+          if (profile?.displayName) {
             setUserDisplayName(creatorId, profile.displayName);
           }
         })
-        .catch(() => {
+        .catch((error) => {
           // Silently fail - profile may not exist
+          // The profile service might skip DIDs, which is fine
+          console.debug('Failed to fetch profile for creator:', creatorId.substring(0, 20) + '...');
         });
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -392,6 +410,23 @@ export function DiscoveryPage({
 
         {/* Niche Feed Railway - Separate railway underneath, text only, active centered and underlined */}
         <div className="mt-3 flex items-center space-x-3 sm:space-x-4 overflow-x-auto scrollbar-hide pb-2 px-4">
+          {/* All button */}
+          <button
+            onClick={() => setSelectedNiche(null)}
+            className={`whitespace-nowrap transition-all text-xs sm:text-sm flex-shrink-0 px-2 ${
+              selectedNiche === null
+                ? 'text-white underline'
+                : 'text-neutral-400 hover:text-white'
+            }`}
+            style={{
+              textAlign: 'center',
+              textDecoration: selectedNiche === null ? 'underline' : 'none',
+              textUnderlineOffset: '4px'
+            }}
+          >
+            All
+          </button>
+          
           {Object.values(FEED_CATEGORIES)
             .filter(cat => cat.id !== 'adults-only' || userState.preferences.ageVerified)
             .map(category => {
