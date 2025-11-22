@@ -164,19 +164,37 @@ export class ZKPDataPointsService {
     try {
       // Parse the ZKP proof (it's base64 encoded JSON)
       const proofData = JSON.parse(atob(zkpProof));
+      console.log('[ZKP Verify] Proof data structure:', {
+        type: proofData.type,
+        proofType: proofData.proofType,
+        verificationLevel: proofData.verificationLevel,
+        ageRange: proofData.ageRange,
+        hasAgeRange: !!proofData.ageRange,
+        keys: Object.keys(proofData)
+      });
       
       // Basic verification logic
       // In production, this would use proper cryptographic ZKP verification
       if (condition.startsWith('age >= ')) {
         const minAge = parseInt(condition.replace('age >= ', ''), 10);
+        console.log('[ZKP Verify] Checking age condition:', { condition, minAge });
         
         // Check if proof type matches
         if (proofData.type === 'age_verification' || proofData.proofType === 'age_verification') {
           // Verify the proof cryptographically (simplified for now)
           // In production, use proper ZKP verification library
+          const calculatedAge = this.calculateAgeFromRange(proofData.ageRange);
           const isValid = proofData.verificationLevel === 'verified' && 
                          proofData.ageRange && 
-                         this.calculateAgeFromRange(proofData.ageRange) >= minAge;
+                         calculatedAge >= minAge;
+          
+          console.log('[ZKP Verify] Age verification result:', {
+            verificationLevel: proofData.verificationLevel,
+            ageRange: proofData.ageRange,
+            calculatedAge,
+            minAge,
+            isValid
+          });
           
           return {
             isValid,
@@ -184,18 +202,30 @@ export class ZKPDataPointsService {
             verifiedAt: proofData.timestamp || proofData.verifiedAt,
             expiresAt: proofData.expiresAt
           };
+        } else {
+          console.log('[ZKP Verify] Proof type mismatch:', {
+            expected: 'age_verification',
+            actualType: proofData.type,
+            actualProofType: proofData.proofType
+          });
         }
       }
 
       // For other conditions, return basic validation
+      const isValid = proofData.verificationLevel === 'verified';
+      console.log('[ZKP Verify] General verification result:', {
+        verificationLevel: proofData.verificationLevel,
+        isValid
+      });
+      
       return {
-        isValid: proofData.verificationLevel === 'verified',
+        isValid,
         condition,
         verifiedAt: proofData.timestamp || proofData.verifiedAt,
         expiresAt: proofData.expiresAt
       };
     } catch (error: any) {
-      console.error('Error verifying ZKP proof:', error);
+      console.error('[ZKP Verify] Error verifying ZKP proof:', error);
       return {
         isValid: false,
         condition,
