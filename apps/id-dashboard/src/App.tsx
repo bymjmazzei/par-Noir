@@ -3187,10 +3187,10 @@ This invitation expires in 24 hours.`;
           throw new Error('Credentials not available for metadata update');
         }
         
-        // Load existing attested data to merge, not overwrite
-        console.log('🔄 [DataPointInput] Loading existing metadata...');
+        // Load existing metadata to merge, not overwrite
+        console.log('[DataPointInput] Loading existing metadata...');
         const currentMetadata = await SecureMetadataStorage.getMetadata(authenticatedUser.id);
-        let existingAttestedData: any[] = [];
+        let existingDataPoints: any = null;
         
         if (currentMetadata) {
           const { SecureMetadataCrypto } = await import('./utils/secureMetadata');
@@ -3199,30 +3199,34 @@ This invitation expires in 24 hours.`;
             credentials.pnName,
             credentials.passcode
           );
-          existingAttestedData = decryptedContent?.dataPoints?.attestedData || [];
-          console.log('🔄 [DataPointInput] Found existing attested data:', {
-            count: existingAttestedData.length,
-            dataPointIds: existingAttestedData.map((item: any) => item.dataPointId)
+          existingDataPoints = decryptedContent?.dataPoints || null;
+          console.log('[DataPointInput] Found existing dataPoints:', {
+            hasDataPoints: !!existingDataPoints,
+            hasAttestedData: !!existingDataPoints?.attestedData,
+            attestedDataCount: existingDataPoints?.attestedData?.length || 0
           });
         } else {
-          console.log('🔄 [DataPointInput] No existing metadata found, creating new');
+          console.log('[DataPointInput] No existing metadata found, creating new');
         }
         
-        // Merge: replace if same dataPointId exists, otherwise append
+        // Merge: preserve all existing dataPoints fields, only update attestedData
+        const existingAttestedData = existingDataPoints?.attestedData || [];
         const updatedAttestedData = existingAttestedData.filter(
           (item: any) => item.dataPointId !== dataPointId
         );
         updatedAttestedData.push(attestedDataPoint);
         
-        console.log('🔄 [DataPointInput] Saving attested data:', {
+        // Merge the entire dataPoints object to preserve other fields
+        const updatedDataPoints = {
+          ...existingDataPoints,
+          attestedData: updatedAttestedData
+        };
+        
+        console.log('[DataPointInput] Saving attested data:', {
           dataPointId,
           totalAttestedDataPoints: updatedAttestedData.length,
           existingCount: existingAttestedData.length,
-          newDataPoint: {
-            dataPointId: attestedDataPoint.dataPointId,
-            attestedAt: attestedDataPoint.attestedAt,
-            hasUserData: !!attestedDataPoint.userData
-          }
+          preservingOtherFields: !!existingDataPoints
         });
         
         await SecureMetadataStorage.updateMetadataField(
@@ -3230,12 +3234,10 @@ This invitation expires in 24 hours.`;
           credentials.pnName,
           credentials.passcode,
           'dataPoints',
-          {
-            attestedData: updatedAttestedData
-          }
+          updatedDataPoints
         );
         
-        console.log('✅ [DataPointInput] Metadata saved successfully');
+        console.log('[DataPointInput] Metadata saved successfully');
 
         // Sync ZKP data point to API server (Google Drive)
         try {
