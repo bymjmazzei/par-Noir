@@ -6747,6 +6747,147 @@ class ProductionServer {
       }
     });
 
+    // PUT /api/users/:pnIdentifier/preferences - Save user preferences to Google Drive
+    this.app.put('/api/users/:pnIdentifier/preferences', async (req, res) => {
+      try {
+        const { pnIdentifier } = req.params;
+        const preferences = req.body;
+
+        if (!pnIdentifier) {
+          return res.status(400).json({ error: 'pnIdentifier is required' });
+        }
+
+        const { PreferencesService } = await import('./server/modules/preferencesService');
+        const { googleDriveProxyService } = await import('./server/modules/googleDriveProxy');
+        const { storageCredentialsService } = await import('./server/modules/storageCredentialsService');
+
+        // Normalize pn identifier
+        const normalizedPnIdentifier = pnIdentifier.startsWith('pn-') ? pnIdentifier : `pn-${pnIdentifier}`;
+
+        // Get user's credentials
+        const userCredentials = await storageCredentialsService.getCredentials(normalizedPnIdentifier);
+        if (!userCredentials?.credentials) {
+          return res.status(404).json({ error: 'User credentials not found' });
+        }
+
+        const googleDriveAccounts = userCredentials.credentials.googleDriveAccounts || 
+          (userCredentials.credentials.googleDrive ? [userCredentials.credentials.googleDrive] : []);
+        
+        if (googleDriveAccounts.length === 0) {
+          return res.status(404).json({ error: 'User has no Google Drive connected' });
+        }
+
+        const account = googleDriveAccounts[0];
+        const accountId = (account as any).accountId || (account as any).id;
+        const userAccessToken = await googleDriveProxyService.getAccessToken(normalizedPnIdentifier, accountId);
+
+        // Find metadata folder
+        const folderQuery = `name='Metadata' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
+        const folderUrl = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(folderQuery)}&fields=files(id)&pageSize=1`;
+        const folderResponse = await fetch(folderUrl, {
+          headers: { 'Authorization': `Bearer ${userAccessToken}` }
+        });
+
+        if (!folderResponse.ok) {
+          return res.status(404).json({ error: 'Metadata folder not found' });
+        }
+
+        const folderData = await folderResponse.json() as { files?: Array<{ id: string }> };
+        if (!folderData.files || folderData.files.length === 0) {
+          return res.status(404).json({ error: 'Metadata folder not found' });
+        }
+
+        const metadataFolderId = folderData.files[0].id;
+
+        // Update preferences file
+        const updatedPreferences = await PreferencesService.updatePreferencesFile(
+          userAccessToken,
+          metadataFolderId,
+          normalizedPnIdentifier,
+          preferences
+        );
+
+        return res.json({ success: true, preferences: updatedPreferences });
+      } catch (error: any) {
+        console.error('Error saving preferences:', error);
+        return res.status(500).json({
+          error: 'Failed to save preferences',
+          error_description: error.message || 'Failed to save preferences'
+        });
+      }
+    });
+
+    // GET /api/users/:pnIdentifier/preferences - Get user preferences from Google Drive
+    this.app.get('/api/users/:pnIdentifier/preferences', async (req, res) => {
+      try {
+        const { pnIdentifier } = req.params;
+
+        if (!pnIdentifier) {
+          return res.status(400).json({ error: 'pnIdentifier is required' });
+        }
+
+        const { PreferencesService } = await import('./server/modules/preferencesService');
+        const { googleDriveProxyService } = await import('./server/modules/googleDriveProxy');
+        const { storageCredentialsService } = await import('./server/modules/storageCredentialsService');
+
+        // Normalize pn identifier
+        const normalizedPnIdentifier = pnIdentifier.startsWith('pn-') ? pnIdentifier : `pn-${pnIdentifier}`;
+
+        // Get user's credentials
+        const userCredentials = await storageCredentialsService.getCredentials(normalizedPnIdentifier);
+        if (!userCredentials?.credentials) {
+          return res.status(404).json({ error: 'User credentials not found' });
+        }
+
+        const googleDriveAccounts = userCredentials.credentials.googleDriveAccounts || 
+          (userCredentials.credentials.googleDrive ? [userCredentials.credentials.googleDrive] : []);
+        
+        if (googleDriveAccounts.length === 0) {
+          return res.status(404).json({ error: 'User has no Google Drive connected' });
+        }
+
+        const account = googleDriveAccounts[0];
+        const accountId = (account as any).accountId || (account as any).id;
+        const userAccessToken = await googleDriveProxyService.getAccessToken(normalizedPnIdentifier, accountId);
+
+        // Find metadata folder
+        const folderQuery = `name='Metadata' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
+        const folderUrl = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(folderQuery)}&fields=files(id)&pageSize=1`;
+        const folderResponse = await fetch(folderUrl, {
+          headers: { 'Authorization': `Bearer ${userAccessToken}` }
+        });
+
+        if (!folderResponse.ok) {
+          return res.status(404).json({ error: 'Metadata folder not found' });
+        }
+
+        const folderData = await folderResponse.json() as { files?: Array<{ id: string }> };
+        if (!folderData.files || folderData.files.length === 0) {
+          return res.status(404).json({ error: 'Metadata folder not found' });
+        }
+
+        const metadataFolderId = folderData.files[0].id;
+
+        // Get preferences file
+        const preferences = await PreferencesService.getPreferencesFile(
+          userAccessToken,
+          metadataFolderId
+        );
+
+        if (!preferences) {
+          return res.json({ preferences: null });
+        }
+
+        return res.json({ preferences });
+      } catch (error: any) {
+        console.error('Error getting preferences:', error);
+        return res.status(500).json({
+          error: 'Failed to get preferences',
+          error_description: error.message || 'Failed to get preferences'
+        });
+      }
+    });
+
     this.app.get('/api/notifications', async (req, res) => {
       try {
         const userDid = req.headers['x-user-did'] as string || req.query.userDid as string;
