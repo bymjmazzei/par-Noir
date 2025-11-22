@@ -292,10 +292,11 @@ export function TextPostEditor({ onSave, onCancel }: TextPostEditorProps) {
       // Calculate new scroll position
       const newScroll = currentScroll + scrollOffset;
       
-      // Scroll to center the button
+      // Scroll to center the button (use instant scroll on mobile for better performance)
+      const isMobile = window.innerWidth < 768;
       container.scrollTo({
         left: newScroll,
-        behavior: 'smooth'
+        behavior: isMobile ? 'auto' : 'smooth'
       });
     }
   }, [fontFamily]);
@@ -1090,30 +1091,31 @@ export function TextPostEditor({ onSave, onCancel }: TextPostEditorProps) {
       <div className="fixed left-0 right-0 h-12 flex items-center justify-center z-40" style={{ bottom: `calc(64px + ${textareaHeight}px + 40px)` }}>
         <div 
           ref={fontSelectorRef}
-          className="flex items-center gap-6 overflow-x-auto w-full"
+          className="flex items-center overflow-x-auto w-full px-4"
           style={{ 
             scrollbarWidth: 'none', 
             msOverflowStyle: 'none',
-            paddingLeft: '50%',
-            paddingRight: '50%'
+            WebkitOverflowScrolling: 'touch'
           }}
         >
-          {FONT_OPTIONS.map((font) => (
-            <button
-              key={font.value}
-              ref={fontFamily === font.value ? activeFontButtonRef : null}
-              onClick={() => setFontFamily(font.value)}
-              className="px-2 py-1 transition-opacity hover:opacity-80 relative"
-              style={{ 
-                fontFamily: font.value, 
-                color: 'white',
-                textDecoration: fontFamily === font.value ? 'underline' : 'none',
-                textUnderlineOffset: '4px'
-              }}
-            >
-              <span className="text-sm whitespace-nowrap">{font.label}</span>
-            </button>
-          ))}
+          <div className="flex items-center gap-4 min-w-max">
+            {FONT_OPTIONS.map((font) => (
+              <button
+                key={font.value}
+                ref={fontFamily === font.value ? activeFontButtonRef : null}
+                onClick={() => setFontFamily(font.value)}
+                className="px-3 py-1 transition-opacity hover:opacity-80 relative flex-shrink-0"
+                style={{ 
+                  fontFamily: font.value, 
+                  color: 'white',
+                  textDecoration: fontFamily === font.value ? 'underline' : 'none',
+                  textUnderlineOffset: '4px'
+                }}
+              >
+                <span className="text-sm whitespace-nowrap">{font.label}</span>
+              </button>
+            ))}
+          </div>
         </div>
       </div>
 
