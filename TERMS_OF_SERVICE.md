@@ -90,11 +90,11 @@ You agree not to:
 
 ## 🛡️ **Intellectual Property**
 
-### **Open Source License**
-- **MIT License**: The Identity Protocol software is licensed under MIT License
-- **Source Code**: Source code is available for review and modification
-- **Contributions**: Community contributions are welcome
-- **Attribution**: Proper attribution is required for modifications
+### **Software License**
+- **All Rights Reserved**: The Identity Protocol software is provided under "All Rights Reserved, free to use"
+- **Free to Use**: This software is provided free of charge for personal and commercial use
+- **No Redistribution**: You may not redistribute, modify, or create derivative works without permission
+- **Source Code**: Source code is available for review, but all rights are reserved
 
 ### **Your Content**
 - **Your Ownership**: You retain ownership of your identity data
@@ -224,7 +224,7 @@ You agree not to:
 1. **Decentralized Service**: No central control over your data
 2. **User Ownership**: You own and control your identity data
 3. **Security Responsibility**: You are responsible for your security
-4. **Open Source**: Software is open source under MIT license
+4. **All Rights Reserved**: Software is provided free to use but all rights are reserved
 5. **Privacy First**: No collection of personal information
 6. **Legal Compliance**: Use must comply with applicable laws
 7. **Limited Liability**: We have limited liability for damages

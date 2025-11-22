@@ -889,7 +889,7 @@ We welcome contributions! Please see our [Contributing Guide](../../CONTRIBUTING
 
 ## 📄 License
 
-MIT License - see [LICENSE](../../LICENSE) for details.
+All Rights Reserved, free to use - see [LICENSE](../../LICENSE) for details.
 
 ## 🆘 Support
 

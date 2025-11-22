@@ -124,12 +124,12 @@ const TermsOfService: React.FC = () => {
             <section className="mb-8">
               <h2 className="text-2xl font-semibold text-text-primary mb-4">🛡️ Intellectual Property</h2>
               
-              <h3 className="text-xl font-semibold text-text-primary mb-3">Open Source License</h3>
+              <h3 className="text-xl font-semibold text-text-primary mb-3">Software License</h3>
               <ul className="list-disc list-inside text-text-secondary mb-6 space-y-2">
-                <li><strong>MIT License:</strong> The Identity Protocol software is licensed under MIT License</li>
-                <li><strong>Source Code:</strong> Source code is available for review and modification</li>
-                <li><strong>Contributions:</strong> Community contributions are welcome</li>
-                <li><strong>Attribution:</strong> Proper attribution is required for modifications</li>
+                <li><strong>All Rights Reserved:</strong> The Identity Protocol software is provided under "All Rights Reserved, free to use"</li>
+                <li><strong>Free to Use:</strong> This software is provided free of charge for personal and commercial use</li>
+                <li><strong>No Redistribution:</strong> You may not redistribute, modify, or create derivative works without permission</li>
+                <li><strong>Source Code:</strong> Source code is available for review, but all rights are reserved</li>
               </ul>
 
               <h3 className="text-xl font-semibold text-text-primary mb-3">Your Content</h3>
@@ -185,7 +185,7 @@ const TermsOfService: React.FC = () => {
                 <li><strong>Decentralized Service:</strong> No central control over your data</li>
                 <li><strong>User Ownership:</strong> You own and control your identity data</li>
                 <li><strong>Security Responsibility:</strong> You are responsible for your security</li>
-                <li><strong>Open Source:</strong> Software is open source under MIT license</li>
+                <li><strong>All Rights Reserved:</strong> Software is provided free to use but all rights are reserved</li>
                 <li><strong>Privacy First:</strong> No collection of personal information</li>
                 <li><strong>Legal Compliance:</strong> Use must comply with applicable laws</li>
                 <li><strong>Limited Liability:</strong> We have limited liability for damages</li>

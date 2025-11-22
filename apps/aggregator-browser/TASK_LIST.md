@@ -111,7 +111,7 @@
   - [ ] Automatic API key assignment
   - [ ] Everyone gets API key automatically (inactive by default)
   - [ ] Activate by registering and sharing identity information
-  - [ ] Remove specific license types, just "open source"
+  - [ ] Update licensing to "All Rights Reserved, free to use" model
 - [ ] API infrastructure updates
   - [ ] OAuth authentication API for third parties
   - [ ] API for requesting persistent identity data points

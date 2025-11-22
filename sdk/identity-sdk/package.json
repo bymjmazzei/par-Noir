@@ -19,7 +19,7 @@
     "universal"
   ],
   "author": "Identity Protocol Team",
-  "license": "MIT",
+  "license": "UNLICENSED",
   "dependencies": {
     "@identity-protocol/identity-core": "file:../../core/identity-core"
   },

@@ -49,5 +49,6 @@ Please read our contributing guidelines and ensure all tests pass before submitt
 
 ## License
 
-This project is licensed under the MIT License.
+All Rights Reserved. This software is provided free of charge for personal and commercial use. 
+See [LICENSE](./LICENSE) for full terms.
 # Test deployment

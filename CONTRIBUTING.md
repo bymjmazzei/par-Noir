@@ -9,7 +9,7 @@ Par Noir is a decentralized identity management system that enables users to cre
 ### **Key Principles**
 - **Privacy First**: User data stays on their devices
 - **Decentralized**: No central control or servers
-- **Open Source**: Transparent and auditable code
+- **Transparent**: Source code available for review (All Rights Reserved)
 - **Security Focused**: Military-grade cryptography
 - **User Control**: Users own and control their data
 
