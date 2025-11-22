@@ -46,9 +46,8 @@ export function ContentPreferences({ onClose, feeds }: ContentPreferencesProps) 
     return isSubscribedToCategory(categoryId);
   };
 
-  // Toggle subscription to a niche category
+  // Toggle subscription to a niche category - saves to Google Drive like connections
   const handleCategoryToggle = async (categoryId: string) => {
-    console.log('Category toggle clicked:', categoryId);
     if (!userState.isUnlocked || !userState.pnIdentifier) {
       alert('Please unlock your pN to manage feed subscriptions');
       return;
@@ -57,69 +56,51 @@ export function ContentPreferences({ onClose, feeds }: ContentPreferencesProps) 
     setIsLoading(true);
     try {
       const isSubscribed = isCategorySubscribed(categoryId);
-      console.log('Is subscribed to category:', isSubscribed);
-
-      // Get all feeds in this category
-      const categoryFeeds = getFeedsForCategory(categoryId);
+      const session = PNOAuthService.loadSession();
       
+      if (!session?.accessToken) {
+        alert('Please authenticate to save preferences');
+        return;
+      }
+
+      // Update local state first
       if (isSubscribed) {
-        // Unsubscribe from all feeds in category
         unsubscribeFromCategory(categoryId);
-        console.log('Unsubscribed from category:', categoryId);
-        
-        // Unsubscribe from each feed in the category via API
-        const session = PNOAuthService.loadSession();
-        if (session?.accessToken && userState.pnIdentifier) {
-          const apiEndpoint = process.env.REACT_APP_API_ENDPOINT || 'https://api.parnoir.com';
-          const headers: HeadersInit = {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${session.accessToken}`
-          };
-
-          // Unsubscribe from each feed
-          for (const feed of categoryFeeds) {
-            try {
-              await fetch(`${apiEndpoint}/api/feeds/${feed.feedId}/subscribe`, {
-                method: 'DELETE',
-                headers,
-                body: JSON.stringify({ userDid: userState.pnIdentifier })
-              });
-            } catch (error) {
-              console.warn(`Failed to unsubscribe from feed ${feed.feedId}:`, error);
-            }
-          }
-        }
       } else {
-        // Subscribe to all feeds in category
         subscribeToCategory(categoryId);
-        console.log('Subscribed to category:', categoryId);
-        
-        // Subscribe to each feed in the category via API
-        const session = PNOAuthService.loadSession();
-        if (session?.accessToken && userState.pnIdentifier) {
-          const apiEndpoint = process.env.REACT_APP_API_ENDPOINT || 'https://api.parnoir.com';
-          const headers: HeadersInit = {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${session.accessToken}`
-          };
+      }
 
-          // Subscribe to each feed
-          for (const feed of categoryFeeds) {
-            try {
-              await fetch(`${apiEndpoint}/api/feeds/${feed.feedId}/subscribe`, {
-                method: 'POST',
-                headers,
-                body: JSON.stringify({ userDid: userState.pnIdentifier })
-              });
-            } catch (error) {
-              console.warn(`Failed to subscribe to feed ${feed.feedId}:`, error);
-            }
-          }
-        }
+      // Save to Google Drive via API (like connections)
+      const apiEndpoint = process.env.REACT_APP_API_ENDPOINT || 'https://api.parnoir.com';
+      const currentCategories = userState.preferences.subscribedCategories || [];
+      const updatedCategories = isSubscribed
+        ? currentCategories.filter(id => id !== categoryId)
+        : [...currentCategories, categoryId];
+
+      const response = await fetch(`${apiEndpoint}/api/users/${userState.pnIdentifier}/preferences`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session.accessToken}`
+        },
+        body: JSON.stringify({
+          subscribedCategories: updatedCategories
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error(`Failed to save preferences: ${response.status}`);
       }
     } catch (error: any) {
       console.error('Failed to toggle category subscription:', error);
-      alert(`Failed to toggle subscription: ${error?.message || 'Unknown error'}`);
+      alert(`Failed to save subscription: ${error?.message || 'Unknown error'}`);
+      // Revert local state on error
+      const isSubscribed = isCategorySubscribed(categoryId);
+      if (isSubscribed) {
+        subscribeToCategory(categoryId);
+      } else {
+        unsubscribeFromCategory(categoryId);
+      }
     } finally {
       setIsLoading(false);
     }
