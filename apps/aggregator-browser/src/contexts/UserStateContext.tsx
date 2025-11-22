@@ -113,7 +113,7 @@ export function UserStateProvider({ children }: { children: ReactNode }) {
 
     const loadPreferencesFromDrive = async () => {
       try {
-        const { PNOAuthService } = await import('./pnOAuthService');
+        const { PNOAuthService } = await import('../services/pnOAuthService');
         const session = PNOAuthService.loadSession();
         if (!session?.accessToken) {
           return;
