@@ -624,15 +624,27 @@ function App() {
       return indexedFiles;
     }
     if (activeFeedId === 'curated') {
-      // Curated feed = all files from subscribed feeds, filtered by content rating
+      // Curated feed = all files from subscribed categories (niche feeds), filtered by content rating
+      const subscribedCategories = userState.preferences.subscribedCategories;
       const subscribedFeedIds = userState.preferences.subscribedFeedIds;
-      if (subscribedFeedIds.length === 0) {
+      
+      if (subscribedCategories.length === 0 && subscribedFeedIds.length === 0) {
         return []; // Empty curated feed if no subscriptions
       }
+      
       return indexedFiles.filter(file => {
-        // Must be in a subscribed feed
-        const inSubscribedFeed = file.metadata.feedIds?.some(feedId => subscribedFeedIds.includes(feedId));
-        if (!inSubscribedFeed) return false;
+        // Check if file matches subscribed categories
+        const fileCategories = file.metadata.feedCategories || [];
+        const matchesCategory = subscribedCategories.length > 0 && 
+          fileCategories.some(cat => subscribedCategories.includes(cat));
+        
+        // Check if file is in a subscribed feed
+        const inSubscribedFeed = subscribedFeedIds.length > 0 &&
+          file.metadata.feedIds?.some(feedId => subscribedFeedIds.includes(feedId));
+        
+        // Must match at least one subscription (category or feed)
+        if (!matchesCategory && !inSubscribedFeed) return false;
+        
         // Must meet content rating requirement
         return isFileRatingAcceptable(file);
       });

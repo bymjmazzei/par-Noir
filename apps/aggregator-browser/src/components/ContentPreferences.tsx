@@ -9,8 +9,8 @@ import { X, Settings, Globe, Shield, ChevronDown } from 'lucide-react';
 import { useUserState } from '../contexts/UserStateContext';
 import { FEED_CATEGORIES, FEED_CATEGORY_LIST } from '../constants/feedCategories';
 import { Feed, ContentRating } from '../types/aggregator';
-import { FeedService } from '../services/feedService';
 import { CONTENT_RATINGS, RATING_ORDER } from '../constants/contentRatings';
+import { PNOAuthService } from '../services/pnOAuthService';
 
 interface ContentPreferencesProps {
   onClose: () => void;
@@ -18,7 +18,7 @@ interface ContentPreferencesProps {
 }
 
 export function ContentPreferences({ onClose, feeds }: ContentPreferencesProps) {
-  const { userState, subscribeToFeed, unsubscribeFromFeed, isSubscribedToFeed, updateMaxRating, setAgeVerified } = useUserState();
+  const { userState, subscribeToCategory, unsubscribeFromCategory, isSubscribedToCategory, updateMaxRating, setAgeVerified } = useUserState();
   const [isLoading, setIsLoading] = useState(false);
   const [showRatingDropdown, setShowRatingDropdown] = useState(false);
   const ratingDropdownRef = useRef<HTMLDivElement>(null);
@@ -41,13 +41,12 @@ export function ContentPreferences({ onClose, feeds }: ContentPreferencesProps) 
     return feedsByCategory[categoryId] || [];
   };
 
-  // Check if user is subscribed to any feed in a category
+  // Check if user is subscribed to a category
   const isCategorySubscribed = (categoryId: string): boolean => {
-    const categoryFeeds = getFeedsForCategory(categoryId);
-    return categoryFeeds.some(feed => isSubscribedToFeed(feed.feedId));
+    return isSubscribedToCategory(categoryId);
   };
 
-  // Toggle subscription to all feeds in a category
+  // Toggle subscription to a niche category
   const handleCategoryToggle = async (categoryId: string) => {
     console.log('Category toggle clicked:', categoryId);
     if (!userState.isUnlocked || !userState.pnIdentifier) {
@@ -55,77 +54,78 @@ export function ContentPreferences({ onClose, feeds }: ContentPreferencesProps) 
       return;
     }
 
-    const categoryFeeds = getFeedsForCategory(categoryId);
-    console.log('Category feeds found:', categoryFeeds.length, categoryFeeds);
-    
-    if (categoryFeeds.length === 0) {
-      console.warn('No feeds available for category:', categoryId);
-      alert('No feeds available in this category yet');
-      return;
-    }
-
     setIsLoading(true);
     try {
       const isSubscribed = isCategorySubscribed(categoryId);
-      console.log('Is subscribed:', isSubscribed);
+      console.log('Is subscribed to category:', isSubscribed);
 
       if (isSubscribed) {
-        // Unsubscribe from all feeds in this category
-        for (const feed of categoryFeeds) {
-          if (isSubscribedToFeed(feed.feedId)) {
-            try {
-              console.log('Unsubscribing from feed:', feed.feedId);
-              await FeedService.unsubscribeFromFeed(
-                feed.feedId, 
-                userState.pnIdentifier!,
-                feed.creatorId
-              );
-              unsubscribeFromFeed(feed.feedId);
-              console.log('Successfully unsubscribed from feed:', feed.feedId);
-            } catch (error: any) {
-              console.error(`Failed to unsubscribe from feed ${feed.feedId}:`, error);
-              alert(`Failed to unsubscribe from ${feed.feedName}: ${error?.message || 'Unknown error'}`);
-            }
+        // Unsubscribe from category
+        try {
+          // Save to cloud storage via API
+          const session = PNOAuthService.loadSession();
+          const headers: HeadersInit = {
+            'Content-Type': 'application/json'
+          };
+          
+          if (session?.accessToken) {
+            headers['Authorization'] = `Bearer ${session.accessToken}`;
           }
+
+          const apiEndpoint = process.env.REACT_APP_API_ENDPOINT || 'https://api.parnoir.com';
+          const response = await fetch(`${apiEndpoint}/api/users/${userState.pnIdentifier}/preferences`, {
+            method: 'PUT',
+            headers,
+            body: JSON.stringify({
+              subscribedCategories: userState.preferences.subscribedCategories.filter(id => id !== categoryId)
+            })
+          });
+
+          if (response.ok) {
+            unsubscribeFromCategory(categoryId);
+            console.log('Successfully unsubscribed from category:', categoryId);
+          } else {
+            throw new Error('Failed to save category subscription to cloud storage');
+          }
+        } catch (error: any) {
+          console.error(`Failed to unsubscribe from category ${categoryId}:`, error);
+          // Still update UI even if API fails (optimistic update)
+          unsubscribeFromCategory(categoryId);
+          alert(`Failed to save subscription: ${error?.message || 'Unknown error'}`);
         }
       } else {
-        // Subscribe to all feeds in this category
-        let successCount = 0;
-        let errorCount = 0;
-        const errors: string[] = [];
-        
-        for (const feed of categoryFeeds) {
-          if (!isSubscribedToFeed(feed.feedId)) {
-            try {
-              console.log('Subscribing to feed:', feed.feedId, feed.feedName);
-              await FeedService.subscribeToFeed(
-                feed.feedId, 
-                userState.pnIdentifier!,
-                feed.creatorId
-              );
-              // Update UI state
-              subscribeToFeed(feed.feedId);
-              successCount++;
-              console.log('Successfully subscribed to feed:', feed.feedId);
-            } catch (error: any) {
-              console.error(`Failed to subscribe to feed ${feed.feedId}:`, error);
-              errorCount++;
-              errors.push(`${feed.feedName}: ${error?.message || 'Unknown error'}`);
-            }
-          } else {
-            console.log('Already subscribed to feed:', feed.feedId);
+        // Subscribe to category
+        try {
+          // Save to cloud storage via API
+          const session = PNOAuthService.loadSession();
+          const headers: HeadersInit = {
+            'Content-Type': 'application/json'
+          };
+          
+          if (session?.accessToken) {
+            headers['Authorization'] = `Bearer ${session.accessToken}`;
           }
-        }
-        
-        if (successCount > 0) {
-          console.log(`Successfully subscribed to ${successCount} feed(s) in category ${categoryId}`);
-        }
-        if (errorCount > 0) {
-          console.warn(`Failed to subscribe to ${errorCount} feed(s) in category ${categoryId}`);
-          alert(`Failed to subscribe to some feeds:\n${errors.join('\n')}`);
-        } else if (successCount === 0 && categoryFeeds.length > 0) {
-          // All feeds were already subscribed
-          console.log('All feeds in category were already subscribed');
+
+          const apiEndpoint = process.env.REACT_APP_API_ENDPOINT || 'https://api.parnoir.com';
+          const response = await fetch(`${apiEndpoint}/api/users/${userState.pnIdentifier}/preferences`, {
+            method: 'PUT',
+            headers,
+            body: JSON.stringify({
+              subscribedCategories: [...userState.preferences.subscribedCategories, categoryId]
+            })
+          });
+
+          if (response.ok) {
+            subscribeToCategory(categoryId);
+            console.log('Successfully subscribed to category:', categoryId);
+          } else {
+            throw new Error('Failed to save category subscription to cloud storage');
+          }
+        } catch (error: any) {
+          console.error(`Failed to subscribe to category ${categoryId}:`, error);
+          // Still update UI even if API fails (optimistic update)
+          subscribeToCategory(categoryId);
+          alert(`Failed to save subscription: ${error?.message || 'Unknown error'}`);
         }
       }
     } catch (error: any) {
@@ -192,9 +192,7 @@ export function ContentPreferences({ onClose, feeds }: ContentPreferencesProps) 
                   {FEED_CATEGORY_LIST.filter(cat => 
                     cat.id !== 'adults-only' || userState.preferences.ageVerified
                   ).map(category => {
-                    const categoryFeeds = getFeedsForCategory(category.id);
                     const isSubscribed = isCategorySubscribed(category.id);
-                    const hasFeeds = categoryFeeds.length > 0;
 
                     return (
                       <button
@@ -202,32 +200,23 @@ export function ContentPreferences({ onClose, feeds }: ContentPreferencesProps) 
                         onClick={(e) => {
                           e.preventDefault();
                           e.stopPropagation();
-                          if (hasFeeds && !isLoading && userState.isUnlocked) {
+                          if (!isLoading && userState.isUnlocked) {
                             handleCategoryToggle(category.id);
-                          } else if (!hasFeeds) {
-                            console.log('No feeds available for category:', category.id);
                           } else if (!userState.isUnlocked) {
                             alert('Please unlock your pN to manage feed subscriptions');
                           }
                         }}
-                        disabled={!hasFeeds || isLoading || !userState.isUnlocked}
+                        disabled={isLoading || !userState.isUnlocked}
                         className={`p-3 rounded-lg transition-all text-left ${
                           isSubscribed
                             ? 'bg-blue-500/20 border-2 border-blue-500 text-white'
                             : 'bg-neutral-800/50 border-2 border-transparent hover:bg-neutral-800 text-white'
-                        } ${!hasFeeds || !userState.isUnlocked ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
+                        } ${!userState.isUnlocked ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
                       >
                         <div className="font-medium text-sm mb-1">{category.name}</div>
-                        {hasFeeds && (
-                          <div className="text-xs text-text-secondary">
-                            {categoryFeeds.length} feed{categoryFeeds.length !== 1 ? 's' : ''}
-                          </div>
-                        )}
-                        {!hasFeeds && (
-                          <div className="text-xs text-yellow-400">
-                            No feeds yet
-                          </div>
-                        )}
+                        <div className="text-xs text-text-secondary">
+                          {isSubscribed ? 'Subscribed' : 'Click to subscribe'}
+                        </div>
                       </button>
                     );
                   })}

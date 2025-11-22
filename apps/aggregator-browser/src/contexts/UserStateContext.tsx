@@ -10,7 +10,8 @@ export interface UserPreferences {
   maxRating: ContentRating;
   ageVerified: boolean;
   verifiedAge?: number;
-  subscribedFeedIds: string[];
+  subscribedFeedIds: string[]; // Individual feed subscriptions
+  subscribedCategories: string[]; // Niche category subscriptions (for curated feed)
   displayName?: string; // User's display name (defaults to nickname)
   profileImageFileId?: string; // FileId of profile image
   userDisplayNames?: Record<string, string>; // Map of creatorId -> displayName (for other users)
@@ -31,6 +32,9 @@ interface UserStateContextType {
   subscribeToFeed: (feedId: string) => void;
   unsubscribeFromFeed: (feedId: string) => void;
   isSubscribedToFeed: (feedId: string) => boolean;
+  subscribeToCategory: (categoryId: string) => void;
+  unsubscribeFromCategory: (categoryId: string) => void;
+  isSubscribedToCategory: (categoryId: string) => boolean;
   updateDisplayName: (displayName: string) => void;
   updateProfileImageFileId: (fileId: string) => void;
   setUserDisplayName: (creatorId: string, displayName: string) => void;
@@ -40,7 +44,8 @@ interface UserStateContextType {
 const defaultPreferences: UserPreferences = {
   maxRating: 'T13+',
   ageVerified: false,
-  subscribedFeedIds: []
+  subscribedFeedIds: [],
+  subscribedCategories: []
 };
 
 const defaultUserState: UserState = {
@@ -139,6 +144,35 @@ export function UserStateProvider({ children }: { children: ReactNode }) {
     return userState.preferences.subscribedFeedIds.includes(feedId);
   };
 
+  const subscribeToCategory = (categoryId: string) => {
+    setUserState(prev => {
+      if (prev.preferences.subscribedCategories.includes(categoryId)) {
+        return prev; // Already subscribed
+      }
+      return {
+        ...prev,
+        preferences: {
+          ...prev.preferences,
+          subscribedCategories: [...prev.preferences.subscribedCategories, categoryId]
+        }
+      };
+    });
+  };
+
+  const unsubscribeFromCategory = (categoryId: string) => {
+    setUserState(prev => ({
+      ...prev,
+      preferences: {
+        ...prev.preferences,
+        subscribedCategories: prev.preferences.subscribedCategories.filter(id => id !== categoryId)
+      }
+    }));
+  };
+
+  const isSubscribedToCategory = (categoryId: string): boolean => {
+    return userState.preferences.subscribedCategories.includes(categoryId);
+  };
+
   const updateDisplayName = (displayName: string) => {
     setUserState(prev => ({
       ...prev,
@@ -199,6 +233,9 @@ export function UserStateProvider({ children }: { children: ReactNode }) {
         subscribeToFeed,
         unsubscribeFromFeed,
         isSubscribedToFeed,
+        subscribeToCategory,
+        unsubscribeFromCategory,
+        isSubscribedToCategory,
         updateDisplayName,
         updateProfileImageFileId,
         setUserDisplayName,
