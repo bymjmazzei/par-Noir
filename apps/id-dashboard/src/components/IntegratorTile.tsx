@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { ChevronDown, ChevronUp } from 'lucide-react';
-import { StandardDataPoint } from '../types/standardDataPoints';
+import { StandardDataPoint, STANDARD_DATA_POINTS } from '../types/standardDataPoints';
 
 interface IntegratorTileProps {
   toolId: string;
@@ -29,7 +29,6 @@ export const IntegratorTile: React.FC<IntegratorTileProps> = ({
 
   // Get all available data points (excluding sensitive ones)
   const getAvailableDataPoints = (): StandardDataPoint[] => {
-    const { STANDARD_DATA_POINTS } = require('../types/standardDataPoints');
     return Object.values(STANDARD_DATA_POINTS).filter(
       (dp: StandardDataPoint) => 
         // NEVER allow access to pN File, pN Name, or passcode
