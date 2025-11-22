@@ -3114,13 +3114,14 @@ This invitation expires in 24 hours.`;
       
       const dataPointId = currentDataPoint?.id;
       if (dataPointId && proofs.length > 0) {
+        const proof = proofs[0];
         const attestedDataPoint = {
           dataPointId,
           attestedAt: new Date().toISOString(),
           attestedBy: authenticatedUser.id,
           dataType: 'attested', // User attests the data is true
           userData,
-          zkpToken: proofs[0].proof, // Store the ZKP token
+          zkpToken: proof.proof, // Store the ZKP token
           expiresAt: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString() // 1 year
         };
         
@@ -3140,6 +3141,74 @@ This invitation expires in 24 hours.`;
             attestedData: [attestedDataPoint]
           }
         );
+
+        // Sync ZKP data point to API server (Google Drive)
+        try {
+          // Derive pnIdentifier using VolumeIdGenerator (same as FileStorageAggregator)
+          const { VolumeIdGenerator } = await import('./utils/crypto/volumeIdGenerator');
+          const pnIdentifier = await VolumeIdGenerator.generateVolumeId({
+            pnName: credentials.pnName,
+            passcode: credentials.passcode,
+            publicKey: authenticatedUser.publicKey || ''
+          });
+
+          const apiEndpoint = import.meta.env.VITE_API_ENDPOINT || process.env.REACT_APP_API_ENDPOINT || 'https://api.parnoir.com';
+          
+          // Get access token - try to get from OAuth service if available
+          let authToken = authenticatedUser.accessToken || authenticatedUser.authToken;
+          
+          // If no token, try to get from OAuth service
+          if (!authToken) {
+            try {
+              const { PNOAuthService } = await import('../aggregator-browser/src/services/pnOAuthService');
+              const session = PNOAuthService.loadSession();
+              authToken = session?.accessToken;
+            } catch (e) {
+              // OAuth service not available in dashboard, that's okay
+            }
+          }
+
+          if (authToken) {
+            // Convert dashboard format to API format
+            const zkpDataPoint = {
+              dataPointId: dataPointId,
+              proofType: mapDataPointIdToProofType(dataPointId),
+              zkpProof: proof.proof,
+              signature: proof.signature || proof.proof, // Use signature if available, otherwise proof
+              verifiedAt: proof.timestamp || new Date().toISOString(),
+              expiresAt: proof.expiresAt || attestedDataPoint.expiresAt,
+              verificationLevel: proof.verificationLevel || 'basic',
+              metadata: {
+                provider: 'user_attested',
+                fraudPreventionScore: undefined
+              }
+            };
+
+            const response = await fetch(
+              `${apiEndpoint}/api/users/${pnIdentifier}/zkp-data-points/${dataPointId}`,
+              {
+                method: 'PUT',
+                headers: {
+                  'Content-Type': 'application/json',
+                  'Authorization': `Bearer ${authToken}`
+                },
+                body: JSON.stringify(zkpDataPoint)
+              }
+            );
+
+            if (response.ok) {
+              console.log(`✅ Synced ZKP data point ${dataPointId} to API`);
+            } else {
+              const errorText = await response.text();
+              console.warn(`⚠️ Failed to sync ZKP data point ${dataPointId}:`, response.status, errorText);
+            }
+          } else {
+            console.warn('No access token available to sync ZKP data point. Data stored locally only.');
+          }
+        } catch (error) {
+          console.error('Error syncing ZKP data point to API:', error);
+          // Don't throw - local storage succeeded, API sync is optional
+        }
         
         // Refresh attested data points
         const attestedIds = new Set([...attestedDataPoints, dataPointId]);
