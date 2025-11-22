@@ -213,24 +213,40 @@ export function UserStateProvider({ children }: { children: ReactNode }) {
           );
 
           if (verifyResponse.ok) {
-            const { verification } = await verifyResponse.json();
-            if (verification.isValid) {
+            const verifyData = await verifyResponse.json();
+            console.log('[Age ZKP Check] Verify response:', verifyData);
+            const { verification } = verifyData;
+            console.log('[Age ZKP Check] Verification result:', verification);
+            
+            if (verification && verification.isValid) {
                 // Age ZKP is shared and valid (age >= 18) - allow 18+ and NSFW content
                 // GA content is always available (no age check needed)
-              setUserState(prev => ({
-                ...prev,
-                preferences: {
-                  ...prev.preferences,
-                  ageVerified: true,
+              setUserState(prev => {
+                const newState = {
+                  ...prev,
+                  preferences: {
+                    ...prev.preferences,
+                    ageVerified: true,
                     verifiedAge: 18, // Minimum age, not actual age
                     // Allow 18+ and NSFW if age ZKP is shared and valid
                     // Don't override if user has already set a higher rating
                     maxRating: prev.preferences.maxRating === 'GA' ? 'NSFW' : prev.preferences.maxRating
-                }
-              }));
-                console.log('✅ Age ZKP shared and verified (age >= 18) - 18+ and NSFW content now accessible');
-              }
+                  }
+                };
+                console.log('✅ Age ZKP shared and verified (age >= 18) - 18+ and NSFW content now accessible. New state:', newState);
+                return newState;
+              });
+            } else {
+              console.warn('[Age ZKP Check] Verification failed or invalid:', verification);
             }
+          } else {
+            const errorText = await verifyResponse.text().catch(() => 'Unknown error');
+            console.warn('[Age ZKP Check] Verify request failed:', {
+              status: verifyResponse.status,
+              statusText: verifyResponse.statusText,
+              error: errorText
+            });
+          }
           } else if (retryCount < 2) {
             // Retry after a delay - permissions might still be storing
             console.log(`ℹ️ Age ZKP not found yet, retrying in ${(retryCount + 1) * 2} seconds...`);
