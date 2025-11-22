@@ -7,6 +7,7 @@ import React, { useRef, useEffect, useCallback } from 'react';
 import { Feed } from '../types/aggregator';
 import { useUserState } from '../contexts/UserStateContext';
 import { Globe, Sparkles } from 'lucide-react';
+import { FEED_CATEGORIES } from '../constants/feedCategories';
 
 export interface FeedRailItem {
   feedId: string;
@@ -214,30 +215,44 @@ export function buildFeedRailItems(
     });
   }
 
-  // Then add ARTS, SPORTS, MUSIC
-  items.push(
-    {
-      feedId: 'arts',
-      name: 'ARTS',
-      isActive: activeFeedId === 'arts'
-    },
-    {
-      feedId: 'sports',
-      name: 'SPORTS',
-      isActive: activeFeedId === 'sports'
-    },
-    {
-      feedId: 'music',
-      name: 'MUSIC',
-      isActive: activeFeedId === 'music'
-    }
-  );
+  // Add subscribed niche category feeds (virtual feeds based on categories)
+  // Only show categories where user has subscribed to at least one feed
+  if (isUnlocked && subscribedFeedIds.length > 0) {
+    // Get unique categories from subscribed feeds
+    const subscribedCategories = new Set<string>();
+    subscribedFeedIds.forEach(feedId => {
+      const feed = feeds.find(f => f.feedId === feedId);
+      if (feed?.feedCategory) {
+        subscribedCategories.add(feed.feedCategory);
+      }
+    });
+    
+    // Add niche category feeds to rail (sorted by category name for consistency)
+    Array.from(subscribedCategories)
+      .sort((a, b) => {
+        const catA = FEED_CATEGORIES[a as keyof typeof FEED_CATEGORIES];
+        const catB = FEED_CATEGORIES[b as keyof typeof FEED_CATEGORIES];
+        return (catA?.name || a).localeCompare(catB?.name || b);
+      })
+      .forEach(categoryId => {
+        const categoryInfo = FEED_CATEGORIES[categoryId as keyof typeof FEED_CATEGORIES];
+        if (categoryInfo) {
+          items.push({
+            feedId: `niche-${categoryId}`, // Use "niche-" prefix to identify category feeds
+            name: categoryInfo.name.toUpperCase(),
+            isActive: activeFeedId === `niche-${categoryId}`
+          });
+        }
+      });
+  }
 
-  // Add subscribed feeds (only if user is unlocked)
+  // Add individual subscribed feeds (only if user is unlocked)
+  // These are feeds that don't belong to a category or are additional feeds
   if (isUnlocked && subscribedFeedIds.length > 0) {
     subscribedFeedIds.forEach(feedId => {
       const feed = feeds.find(f => f.feedId === feedId);
-      if (feed) {
+      // Only add if feed doesn't have a category (or category already shown above)
+      if (feed && !feed.feedCategory) {
         items.push({
           feedId: feed.feedId,
           name: feed.feedName,

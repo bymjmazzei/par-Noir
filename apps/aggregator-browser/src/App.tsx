@@ -641,6 +641,28 @@ function App() {
       // Discovery page - return empty for now (will be implemented in Phase 3)
       return [];
     }
+    
+    // Handle niche category feeds (virtual feeds based on categories)
+    if (activeFeedId.startsWith('niche-')) {
+      const categoryId = activeFeedId.replace('niche-', '');
+      let filtered = indexedFiles.filter(file => {
+        // Check if file has this category in its feedCategories
+        const fileCategories = file.metadata.feedCategories || [];
+        if (fileCategories.includes(categoryId as any)) {
+          return true;
+        }
+        // Also check if file is in a feed with this category
+        const fileFeedIds = file.metadata.feedIds || [];
+        const fileFeeds = feeds.filter(f => fileFeedIds.includes(f.feedId));
+        return fileFeeds.some(feed => feed.feedCategory === categoryId);
+      });
+      
+      if (userState.isUnlocked) {
+        filtered = filtered.filter(isFileRatingAcceptable);
+      }
+      return filtered;
+    }
+    
     // Individual feed: filter by content rating if user is unlocked
     let filtered = indexedFiles.filter(file => 
       file.metadata.feedIds?.includes(activeFeedId)
@@ -649,7 +671,7 @@ function App() {
       filtered = filtered.filter(isFileRatingAcceptable);
     }
     return filtered;
-  }, [indexedFiles, activeFeedId, userState.preferences.subscribedFeedIds, userState.preferences.maxRating, userState.isUnlocked]);
+  }, [indexedFiles, activeFeedId, userState.preferences.subscribedFeedIds, userState.preferences.maxRating, userState.isUnlocked, feeds]);
 
   // Navigation handlers (memoized)
 
@@ -839,20 +861,28 @@ function App() {
       await metadataIndexService.initialize();
       
       // Build filters with rating preferences and feed filtering
-      // NOTE: 'curated' and 'discovery' are virtual feeds - don't filter by feedId for these
+      // NOTE: 'curated', 'discovery', and 'niche-*' are virtual feeds - don't filter by feedId for these
       // They are filtered client-side in filteredFilesByFeed
+      const isVirtualFeed = activeFeedId === 'public' || 
+                            activeFeedId === 'curated' || 
+                            activeFeedId === 'discovery';
+      const isNicheCategoryFeed = activeFeedId.startsWith('niche-');
+      
       const finalFilters: MetadataFilters = {
         ...filters,
         ...searchFilters,
         ...(searchQuery ? { tags: searchQuery.split(',').map(t => t.trim()).filter(Boolean) } : {}),
         // DON'T apply rating filter to public feed - public feed shows all public files
-        // Only apply rating filter to non-public feeds (but not virtual feeds like 'curated' or 'discovery')
-        ...(activeFeedId === 'public' || activeFeedId === 'curated' || activeFeedId === 'discovery' 
+        // Only apply rating filter to non-public feeds (but not virtual feeds)
+        ...(activeFeedId === 'public' || isVirtualFeed || isNicheCategoryFeed
           ? {} 
           : { maxRating: userState.preferences.maxRating }),
         // Filter by active feed (but not for virtual feeds)
-        ...(activeFeedId === 'public' || activeFeedId === 'curated' || activeFeedId === 'discovery' 
+        // For niche category feeds, filter by feedCategory instead of feedId
+        ...(isVirtualFeed
           ? {} 
+          : isNicheCategoryFeed
+          ? { feedCategory: activeFeedId.replace('niche-', '') as any }
           : { feedId: activeFeedId })
       };
       

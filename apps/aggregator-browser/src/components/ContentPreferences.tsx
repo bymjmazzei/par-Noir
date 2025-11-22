@@ -49,6 +49,7 @@ export function ContentPreferences({ onClose, feeds }: ContentPreferencesProps) 
 
   // Toggle subscription to all feeds in a category
   const handleCategoryToggle = async (categoryId: string) => {
+    console.log('Category toggle clicked:', categoryId);
     if (!userState.isUnlocked || !userState.pnIdentifier) {
       alert('Please unlock your pN to manage feed subscriptions');
       return;
@@ -57,7 +58,9 @@ export function ContentPreferences({ onClose, feeds }: ContentPreferencesProps) 
     setIsLoading(true);
     try {
       const categoryFeeds = getFeedsForCategory(categoryId);
+      console.log('Category feeds found:', categoryFeeds.length, categoryFeeds);
       const isSubscribed = isCategorySubscribed(categoryId);
+      console.log('Is subscribed:', isSubscribed);
 
       if (isSubscribed) {
         // Unsubscribe from all feeds in this category
@@ -162,13 +165,23 @@ export function ContentPreferences({ onClose, feeds }: ContentPreferencesProps) 
                     return (
                       <button
                         key={category.id}
-                        onClick={() => hasFeeds && !isLoading && handleCategoryToggle(category.id)}
-                        disabled={!hasFeeds || isLoading}
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          if (hasFeeds && !isLoading && userState.isUnlocked) {
+                            handleCategoryToggle(category.id);
+                          } else if (!hasFeeds) {
+                            console.log('No feeds available for category:', category.id);
+                          } else if (!userState.isUnlocked) {
+                            alert('Please unlock your pN to manage feed subscriptions');
+                          }
+                        }}
+                        disabled={!hasFeeds || isLoading || !userState.isUnlocked}
                         className={`p-3 rounded-lg transition-all text-left ${
                           isSubscribed
                             ? 'bg-blue-500/20 border-2 border-blue-500 text-white'
                             : 'bg-neutral-800/50 border-2 border-transparent hover:bg-neutral-800 text-white'
-                        } ${!hasFeeds ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
+                        } ${!hasFeeds || !userState.isUnlocked ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
                       >
                         <div className="font-medium text-sm mb-1">{category.name}</div>
                         {hasFeeds && (

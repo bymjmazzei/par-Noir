@@ -6,6 +6,7 @@
 import { useMemo, useCallback } from 'react';
 import { Feed } from '../types/aggregator';
 import { useUserState } from '../contexts/UserStateContext';
+import { FEED_CATEGORIES } from '../constants/feedCategories';
 
 export interface FeedNavigationItem {
   feedId: string;
@@ -48,20 +49,52 @@ export function useFeedNavigation(
         index: 1
       });
 
-      // 3. Subscribed Feeds
+      // 3. Subscribed Niche Category Feeds (virtual feeds based on categories)
+      if (subscribedFeedIds.length > 0) {
+        // Get unique categories from subscribed feeds
+        const subscribedCategories = new Set<string>();
+        subscribedFeedIds.forEach(feedId => {
+          const feed = feeds.find(f => f.feedId === feedId);
+          if (feed?.feedCategory) {
+            subscribedCategories.add(feed.feedCategory);
+          }
+        });
+        
+        // Add niche category feeds to hierarchy (sorted by category name for consistency)
+        Array.from(subscribedCategories)
+          .sort((a, b) => {
+            const catA = FEED_CATEGORIES[a as keyof typeof FEED_CATEGORIES];
+            const catB = FEED_CATEGORIES[b as keyof typeof FEED_CATEGORIES];
+            return (catA?.name || a).localeCompare(catB?.name || b);
+          })
+          .forEach((categoryId, idx) => {
+            const categoryInfo = FEED_CATEGORIES[categoryId as keyof typeof FEED_CATEGORIES];
+            if (categoryInfo) {
+              hierarchy.push({
+                feedId: `niche-${categoryId}`,
+                name: categoryInfo.name,
+                type: 'niche',
+                index: 2 + idx
+              });
+            }
+          });
+      }
+
+      // 4. Individual Subscribed Feeds (feeds without categories or additional feeds)
       subscribedFeedIds.forEach((feedId, idx) => {
         const feed = feeds.find(f => f.feedId === feedId);
-        if (feed) {
+        // Only add if feed doesn't have a category (or category already shown above)
+        if (feed && !feed.feedCategory) {
           hierarchy.push({
             feedId: feed.feedId,
             name: feed.feedName,
             type: 'subscribed',
-            index: 2 + idx
+            index: hierarchy.length
           });
         }
       });
 
-      // 4. Discovery Page
+      // 5. Discovery Page
       hierarchy.push({
         feedId: 'discovery',
         name: 'Discovery',
