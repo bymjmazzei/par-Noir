@@ -151,6 +151,15 @@ export class SecureMetadataStorage {
       const currentMetadata = await this.getMetadata(identityId);
       
       if (currentMetadata) {
+        // Log what we're updating
+        if (field === 'dataPoints' && process.env.NODE_ENV === 'development') {
+          console.log('[SecureMetadataStorage] Updating dataPoints:', {
+            valueType: typeof value,
+            valueKeys: Object.keys(value || {}),
+            attestedDataCount: (value as any)?.attestedData?.length || 0
+          });
+        }
+        
         // Update the field
         const updatedMetadata = await SecureMetadataCrypto.updateMetadataField(
           currentMetadata,

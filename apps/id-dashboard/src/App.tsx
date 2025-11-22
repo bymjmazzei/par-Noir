@@ -3257,7 +3257,17 @@ This invitation expires in 24 hours.`;
           existingCount: existingAttestedData.length,
           preservingOtherFields: !!existingDataPoints,
           updatedDataPointsKeys: Object.keys(updatedDataPoints),
-          attestedDataInUpdate: updatedDataPoints.attestedData?.length || 0
+          attestedDataInUpdate: updatedDataPoints.attestedData?.length || 0,
+          updatedDataPointsFull: JSON.stringify(updatedDataPoints, null, 2)
+        });
+        
+        // Log what we're about to save
+        console.log('[DataPointInput] About to call updateMetadataField with:', {
+          identityId: authenticatedUser.id,
+          field: 'dataPoints',
+          valueType: typeof updatedDataPoints,
+          valueKeys: Object.keys(updatedDataPoints),
+          attestedDataCount: updatedDataPoints.attestedData?.length || 0
         });
         
         await SecureMetadataStorage.updateMetadataField(
