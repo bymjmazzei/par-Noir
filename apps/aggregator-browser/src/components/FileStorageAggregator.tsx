@@ -1797,10 +1797,10 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
 
             return (
               <div key={account.accountId} className="bg-neutral-900/60 border border-neutral-700 rounded-xl p-6">
-                <div className="flex items-start justify-between mb-4">
-                  <div className="flex items-center space-x-3">
-                    <Cloud className="h-5 w-5 text-blue-400" />
-                    <span className="text-white font-semibold truncate max-w-xs">
+                <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 mb-4">
+                  <div className="flex items-center space-x-3 flex-1 min-w-0">
+                    <Cloud className="h-5 w-5 text-blue-400 flex-shrink-0" />
+                    <span className="text-white font-semibold truncate">
                       {account.email || account.displayName || `Drive ${index + 1}`}
                     </span>
                     <button
@@ -1808,12 +1808,12 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
                         // Disconnect - just remove from UI for now (would need API endpoint)
                         setDriveAccounts(prev => prev.filter(a => a.accountId !== account.accountId));
                       }}
-                      className="text-red-400 hover:text-red-300 text-sm"
+                      className="text-red-400 hover:text-red-300 text-sm flex-shrink-0"
                     >
                       Disconnect
                     </button>
                   </div>
-                  <div className="flex items-center space-x-2">
+                  <div className="flex items-center space-x-2 flex-shrink-0">
                     <button
                       onClick={() => {
                         loadFilesForAccount(account.accountId);
