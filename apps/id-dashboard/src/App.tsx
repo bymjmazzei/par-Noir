@@ -5478,7 +5478,13 @@ This invitation expires in 24 hours.`;
                                             </div>
                                             <div className="flex items-center space-x-3">
                                               <button
-                                                onClick={() => handleRequestDataPoint(dataPointId)}
+                                                onClick={(e) => {
+                                                  e.preventDefault();
+                                                  e.stopPropagation();
+                                                  console.log('🔄 [App] Age attestation button clicked', { dataPointId });
+                                                  handleRequestDataPoint(dataPointId);
+                                                }}
+                                                type="button"
                                                 className={`text-xs font-medium px-3 py-1 border rounded transition-colors ${
                                                   hasVerified
                                                     ? 'text-green-600 border-green-600 hover:bg-green-600 hover:text-white'
