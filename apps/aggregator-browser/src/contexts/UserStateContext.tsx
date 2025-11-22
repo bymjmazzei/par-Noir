@@ -151,6 +151,7 @@ export function UserStateProvider({ children }: { children: ReactNode }) {
   }, [userState.isUnlocked, userState.pnIdentifier]);
 
   // Check ZKP age verification when user unlocks
+  // Also retry after a delay to account for async permission storage
   useEffect(() => {
     if (!userState.isUnlocked || !userState.pnIdentifier) {
       return;
@@ -161,11 +162,15 @@ export function UserStateProvider({ children }: { children: ReactNode }) {
       return;
     }
 
-    const checkZKPAgeVerification = async () => {
+    const checkZKPAgeVerification = async (retryCount = 0) => {
       try {
         const { PNOAuthService } = await import('../services/pnOAuthService');
         const session = PNOAuthService.loadSession();
         if (!session?.accessToken) {
+          // Retry after a delay if no session yet (might be initializing)
+          if (retryCount < 3) {
+            setTimeout(() => checkZKPAgeVerification(retryCount + 1), 1000 * (retryCount + 1));
+          }
           return;
         }
 
@@ -222,20 +227,44 @@ export function UserStateProvider({ children }: { children: ReactNode }) {
                 console.log('✅ Age ZKP shared and verified (age >= 18) - 18+ and NSFW content now accessible');
               }
             }
+          } else if (retryCount < 2) {
+            // Retry after a delay - permissions might still be storing
+            console.log(`ℹ️ Age ZKP not found yet, retrying in ${(retryCount + 1) * 2} seconds...`);
+            setTimeout(() => checkZKPAgeVerification(retryCount + 1), 2000 * (retryCount + 1));
+          } else {
+            console.log('ℹ️ Age ZKP not shared - only GA content available');
           }
         } else if (zkpResponse.status === 404) {
           // User hasn't granted access to age ZKP or doesn't have it
-          // GA content is still available (no age check needed)
-          console.log('ℹ️ Age ZKP not shared - only GA content available');
+          // Retry once in case permissions are still being stored
+          if (retryCount < 1) {
+            setTimeout(() => checkZKPAgeVerification(retryCount + 1), 2000);
+          } else {
+            console.log('ℹ️ Age ZKP not shared - only GA content available');
+          }
         } else {
           console.warn('Failed to check ZKP age verification:', zkpResponse.status);
         }
       } catch (error) {
         console.error('Error checking ZKP age verification:', error);
+        // Retry on error
+        if (retryCount < 2) {
+          setTimeout(() => checkZKPAgeVerification(retryCount + 1), 2000 * (retryCount + 1));
+        }
       }
     };
 
+    // Initial check
     checkZKPAgeVerification();
+    
+    // Also check again after a delay to account for async permission storage
+    const delayedCheck = setTimeout(() => {
+      if (!userState.preferences.ageVerified) {
+        checkZKPAgeVerification(1);
+      }
+    }, 3000);
+
+    return () => clearTimeout(delayedCheck);
   }, [userState.isUnlocked, userState.pnIdentifier, userState.preferences.ageVerified]);
 
   const setUnlocked = (pnIdentifier: string) => {

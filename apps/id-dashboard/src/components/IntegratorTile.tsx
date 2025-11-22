@@ -80,19 +80,20 @@ export const IntegratorTile: React.FC<IntegratorTileProps> = ({
                     className="flex items-center justify-between p-3 bg-secondary rounded border border-border"
                   >
                     <div className="flex-1">
-                      <div className="text-xs font-medium text-text-primary">{dataPoint.name}</div>
+                      <div className="text-xs font-medium text-text-primary">
+                        {dataPoint.name}
+                        {!isRequired && <span className="text-blue-600 ml-1">(Optional)</span>}
+                      </div>
                       <div className="text-xs text-text-secondary mt-1">{dataPoint.description}</div>
                     </div>
                     
                     <div className="flex items-center gap-3">
-                      {/* Required/Optional indicator (read-only, set by third party) */}
-                      <span className={`text-xs px-2 py-1 rounded border ${
-                        isRequired 
-                          ? 'text-red-600 border-red-300' 
-                          : 'text-blue-600 border-blue-300'
-                      }`}>
-                        {isRequired ? 'Required' : 'Optional'}
-                      </span>
+                      {/* Required indicator (read-only, set by third party) */}
+                      {isRequired && (
+                        <span className="text-xs px-2 py-1 rounded border text-red-600 border-red-300">
+                          Required
+                        </span>
+                      )}
                       
                       {/* Share status dropdown for optional fields, always "Shared" for required */}
                       {isRequired ? (
@@ -107,10 +108,11 @@ export const IntegratorTile: React.FC<IntegratorTileProps> = ({
                             onToggleDataPoint(dataPoint.id, shared);
                           }}
                           disabled={isLocked}
-                          className="text-xs border border-border rounded px-2 py-1 bg-white text-text-primary disabled:opacity-50 disabled:cursor-not-allowed"
+                          className="text-xs border border-border rounded px-2 py-1 bg-background text-text-primary disabled:opacity-50 disabled:cursor-not-allowed"
+                          style={{ color: '#e5e7eb' }}
                         >
-                          <option value="not_shared">Not Shared</option>
-                          <option value="shared">Shared</option>
+                          <option value="not_shared" style={{ color: '#1f2937', backgroundColor: '#ffffff' }}>Not Shared</option>
+                          <option value="shared" style={{ color: '#1f2937', backgroundColor: '#ffffff' }}>Shared</option>
                         </select>
                       )}
                       

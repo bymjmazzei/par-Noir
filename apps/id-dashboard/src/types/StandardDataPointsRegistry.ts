@@ -6,7 +6,7 @@ export const STANDARD_DATA_POINTS: Record<string, StandardDataPoint> = {
   // ===== CORE IDENTITY VERIFICATION =====
   'age_attestation': {
     id: 'age_attestation',
-    name: 'Age Attestation',
+    name: 'Age',
     description: 'Attest to your age for age-restricted services',
     category: 'verification',
     dataType: 'date',
