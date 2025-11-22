@@ -5267,6 +5267,7 @@ class ProductionServer {
                           const existingBrowserApp = permissions['browser-app'];
                           
                           // Merge data points - add age_attestation if sharing, remove if not
+                          // dataPoints array reflects what user has granted (can change)
                           let dataPoints = existingBrowserApp?.dataPoints || [];
                           if (shareAge && !dataPoints.includes('age_attestation')) {
                             dataPoints = [...dataPoints, 'age_attestation'];
@@ -5274,14 +5275,16 @@ class ProductionServer {
                             dataPoints = dataPoints.filter(dp => dp !== 'age_attestation');
                           }
                           
+                          // Static: requiredDataPoints and optionalDataPoints are always the same
+                          // These are defined by the third party and never change
                           permissions['browser-app'] = {
                             toolId: 'browser-app',
                             toolName: 'par Noir Browser',
                             toolDescription: 'Official par Noir browser application for browsing and discovering encrypted content',
                             permissions: existingBrowserApp?.permissions || ['openid', 'profile', 'cloud:read'],
-                            dataPoints: dataPoints,
-                            requiredDataPoints: existingBrowserApp?.requiredDataPoints || [],
-                            optionalDataPoints: existingBrowserApp?.optionalDataPoints || ['age_attestation'],
+                            dataPoints: dataPoints, // User's granted permissions (can change)
+                            requiredDataPoints: [], // Static: No required data points for browser
+                            optionalDataPoints: ['age_attestation'], // Static: Age is always optional
                             grantedAt: existingBrowserApp?.grantedAt || new Date().toISOString(),
                             status: 'active' as const
                           };

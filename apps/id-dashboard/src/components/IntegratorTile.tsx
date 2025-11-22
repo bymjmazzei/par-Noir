@@ -26,15 +26,20 @@ export const IntegratorTile: React.FC<IntegratorTileProps> = ({
   const [isExpanded, setIsExpanded] = useState(false);
 
   // Get all available data points (excluding sensitive ones)
+  // Show ALL requested data points (required + optional), not just granted ones
+  // This allows users to see and manage all permissions granularly
   const getAvailableDataPoints = (): StandardDataPoint[] => {
+    // Combine required and optional data points to get all requested data points
+    const allRequestedDataPoints = [...new Set([...requiredDataPoints, ...optionalDataPoints])];
+    
     return Object.values(STANDARD_DATA_POINTS).filter(
       (dp: StandardDataPoint) => 
         // NEVER allow access to pN File, pN Name, or passcode
         dp.id !== 'pn_file' && 
         dp.id !== 'pn_name' && 
         dp.id !== 'passcode' &&
-        // Only show data points that are in the tool's requested list
-        dataPoints.includes(dp.id)
+        // Show all data points that are requested by the tool (required or optional)
+        allRequestedDataPoints.includes(dp.id)
     );
   };
 
@@ -95,10 +100,10 @@ export const IntegratorTile: React.FC<IntegratorTileProps> = ({
                         </span>
                       )}
                       
-                      {/* Share status dropdown for optional fields, always "Shared" for required */}
+                      {/* Share status: Required are always shared and locked, optional can be toggled */}
                       {isRequired ? (
-                        <span className="text-xs text-text-primary px-2 py-1 border border-border rounded">
-                          Shared
+                        <span className="text-xs text-text-primary px-2 py-1 border border-border rounded opacity-75">
+                          Shared (Locked)
                         </span>
                       ) : (
                         <select
@@ -116,7 +121,7 @@ export const IntegratorTile: React.FC<IntegratorTileProps> = ({
                         </select>
                       )}
                       
-                      {isLocked && (
+                      {isLocked && !isRequired && (
                         <span className="text-xs text-text-secondary">Locked</span>
                       )}
                     </div>

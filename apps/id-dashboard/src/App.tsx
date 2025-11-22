@@ -738,24 +738,41 @@ function App() {
         if (response.ok) {
           const { permissions } = await response.json();
           if (permissions && Object.keys(permissions).length > 0) {
-            setPrivacySettings(prev => ({
-              ...prev,
-              toolPermissions: {
-                ...prev.toolPermissions,
-                ...permissions,
-                // Ensure browser-app is always present (pN owned platform)
-                'browser-app': permissions['browser-app'] || prev.toolPermissions['browser-app'] || {
+            setPrivacySettings(prev => {
+              const mergedPermissions: Record<string, any> = { ...permissions };
+              
+              // Ensure browser-app always has static required/optional data points
+              // These are defined by the third party and never change
+              if (mergedPermissions['browser-app']) {
+                mergedPermissions['browser-app'] = {
+                  ...mergedPermissions['browser-app'],
+                  // Static: These are always the same, defined by browser-app
+                  requiredDataPoints: [], // No required data points for browser
+                  optionalDataPoints: ['age_attestation'], // Age is always optional
+                  // dataPoints array reflects what user has granted (can change)
+                };
+              } else {
+                // Initialize if not present
+                mergedPermissions['browser-app'] = {
                   toolName: 'par Noir Browser',
                   toolDescription: 'Official par Noir browser application for browsing and discovering encrypted content',
                   permissions: ['openid', 'profile', 'zkp:age_attestation', 'cloud:read'],
                   dataPoints: [],
-                  requiredDataPoints: [],
-                  optionalDataPoints: ['age_attestation'],
+                  requiredDataPoints: [], // Static
+                  optionalDataPoints: ['age_attestation'], // Static
                   grantedAt: new Date().toISOString(),
                   status: 'active' as const
-                }
+                };
               }
-            }));
+              
+              return {
+                ...prev,
+                toolPermissions: {
+                  ...prev.toolPermissions,
+                  ...mergedPermissions
+                }
+              };
+            });
             console.log('[App] Loaded third-party permissions from Google Drive:', Object.keys(permissions));
           }
         } else if (response.status !== 404) {
@@ -771,33 +788,35 @@ function App() {
 
   // Initialize browser-app tool permissions (hard-coded pN owned third party)
   // Always initialize browser-app - it's a pN owned platform
+  // Static required/optional data points are always present regardless of user choices
   useEffect(() => {
     if (authenticatedUser?.id) {
       setPrivacySettings(prev => {
-        // Only initialize if not already present
-        if (prev.toolPermissions['browser-app']) {
-          return prev;
-        }
+        const existingBrowserApp = prev.toolPermissions['browser-app'];
+        
+        // Always ensure browser-app has static required/optional data points
+        // These are defined by the third party and never change
+        const browserAppPermission = {
+          toolName: 'par Noir Browser',
+          toolDescription: 'Official par Noir browser application for browsing and discovering encrypted content',
+          permissions: ['openid', 'profile', 'zkp:age_attestation', 'cloud:read'],
+          dataPoints: existingBrowserApp?.dataPoints || [], // User's granted permissions (can change)
+          requiredDataPoints: [], // Static: No required data points for browser
+          optionalDataPoints: ['age_attestation'], // Static: Age is always optional
+          grantedAt: existingBrowserApp?.grantedAt || new Date().toISOString(),
+          status: 'active' as const
+        };
         
         return {
           ...prev,
           toolPermissions: {
             ...prev.toolPermissions,
-            'browser-app': {
-              toolName: 'par Noir Browser',
-              toolDescription: 'Official par Noir browser application for browsing and discovering encrypted content',
-              permissions: ['openid', 'profile', 'zkp:age_attestation', 'cloud:read'],
-              dataPoints: [], // Start with empty - user chooses to share age ZKP
-              requiredDataPoints: [], // No required data points
-              optionalDataPoints: ['age_attestation'], // Age is optional
-              grantedAt: new Date().toISOString(),
-              status: 'active' as const
-            }
+            'browser-app': browserAppPermission
           },
           dataPoints: {
             ...prev.dataPoints,
             'age_attestation': {
-              label: 'Age Attestation',
+              label: 'Age',
               description: 'Attest to your age for age-restricted services',
               category: 'verification' as const,
               requestedBy: ['browser-app'],
