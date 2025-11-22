@@ -85,11 +85,13 @@ export function UserStateProvider({ children }: { children: ReactNode }) {
             parsed.preferences.maxRating = ratingMap[oldRating] || 'GA';
           }
         }
+        console.log('Loaded user state from localStorage, subscribedCategories:', parsed.preferences?.subscribedCategories);
         return parsed;
       }
     } catch (e) {
       console.warn('Failed to load user state from localStorage:', e);
     }
+    console.log('Using default user state');
     return defaultUserState;
   });
 
@@ -97,6 +99,7 @@ export function UserStateProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     try {
       localStorage.setItem('pn_user_state', JSON.stringify(userState));
+      console.log('Saved user state to localStorage, subscribedCategories:', userState.preferences.subscribedCategories);
     } catch (e) {
       console.warn('Failed to save user state to localStorage:', e);
     }
@@ -172,15 +175,20 @@ export function UserStateProvider({ children }: { children: ReactNode }) {
     setUserState(prev => {
       const currentCategories = prev.preferences.subscribedCategories || [];
       if (currentCategories.includes(categoryId)) {
+        console.log('Already subscribed to category:', categoryId);
         return prev; // Already subscribed
       }
-      return {
+      const newCategories = [...currentCategories, categoryId];
+      console.log('Subscribing to category:', categoryId, 'New categories:', newCategories);
+      const newState = {
         ...prev,
         preferences: {
           ...prev.preferences,
-          subscribedCategories: [...currentCategories, categoryId]
+          subscribedCategories: newCategories
         }
       };
+      console.log('New user state:', JSON.stringify(newState.preferences.subscribedCategories));
+      return newState;
     });
   };
 
