@@ -68,9 +68,13 @@ export class ZKPDataPointsService {
 
       if (response.ok) {
         const responseData = await response.json();
-        // Handle both { success: true, dataPoints: [...] } and direct array responses
-        const dataPoints = Array.isArray(responseData) ? responseData : (responseData.dataPoints || []);
-        return Array.isArray(dataPoints) ? dataPoints.map((dp: any) => dp.dataPointId || dp) : [];
+        // API returns { success: true, dataPoints: [...] }
+        const dataPoints = responseData.dataPoints || [];
+        if (!Array.isArray(dataPoints)) {
+          console.error('Invalid dataPoints format:', responseData);
+          return [];
+        }
+        return dataPoints.map((dp: any) => dp.dataPointId);
       } else if (response.status === 404) {
         // No data points yet - return empty array
         return [];
