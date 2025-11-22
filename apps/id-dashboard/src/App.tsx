@@ -719,11 +719,15 @@ function App() {
             // Load attested data points
             if (decryptedContent?.dataPoints?.attestedData) {
               const attestedIds = new Set(decryptedContent.dataPoints.attestedData.map((item: any) => item.dataPointId));
+              console.log('🔄 [App] Loaded attested data points from storage:', Array.from(attestedIds));
               setAttestedDataPoints(attestedIds);
+            } else {
+              console.log('🔄 [App] No attested data points found in storage');
             }
           }
         }
       } catch (error) {
+        console.error('❌ [App] Error loading attested data points:', error);
       }
     };
     
@@ -3165,15 +3169,55 @@ This invitation expires in 24 hours.`;
           throw new Error('Credentials not available for metadata update');
         }
         
+        // Load existing attested data to merge, not overwrite
+        console.log('🔄 [DataPointInput] Loading existing metadata...');
+        const currentMetadata = await SecureMetadataStorage.getMetadata(authenticatedUser.id);
+        let existingAttestedData: any[] = [];
+        
+        if (currentMetadata) {
+          const { SecureMetadataCrypto } = await import('./utils/secureMetadata');
+          const decryptedContent = await SecureMetadataCrypto.decryptMetadata(
+            currentMetadata,
+            credentials.pnName,
+            credentials.passcode
+          );
+          existingAttestedData = decryptedContent?.dataPoints?.attestedData || [];
+          console.log('🔄 [DataPointInput] Found existing attested data:', {
+            count: existingAttestedData.length,
+            dataPointIds: existingAttestedData.map((item: any) => item.dataPointId)
+          });
+        } else {
+          console.log('🔄 [DataPointInput] No existing metadata found, creating new');
+        }
+        
+        // Merge: replace if same dataPointId exists, otherwise append
+        const updatedAttestedData = existingAttestedData.filter(
+          (item: any) => item.dataPointId !== dataPointId
+        );
+        updatedAttestedData.push(attestedDataPoint);
+        
+        console.log('🔄 [DataPointInput] Saving attested data:', {
+          dataPointId,
+          totalAttestedDataPoints: updatedAttestedData.length,
+          existingCount: existingAttestedData.length,
+          newDataPoint: {
+            dataPointId: attestedDataPoint.dataPointId,
+            attestedAt: attestedDataPoint.attestedAt,
+            hasUserData: !!attestedDataPoint.userData
+          }
+        });
+        
         await SecureMetadataStorage.updateMetadataField(
           authenticatedUser.id,
           credentials.pnName,
           credentials.passcode,
           'dataPoints',
           {
-            attestedData: [attestedDataPoint]
+            attestedData: updatedAttestedData
           }
         );
+        
+        console.log('✅ [DataPointInput] Metadata saved successfully');
 
         // Sync ZKP data point to API server (Google Drive)
         try {
@@ -3245,9 +3289,56 @@ This invitation expires in 24 hours.`;
           // Don't throw - local storage succeeded, API sync is optional
         }
         
-        // Refresh attested data points
-        const attestedIds = new Set([...attestedDataPoints, dataPointId]);
-        setAttestedDataPoints(attestedIds);
+        // Refresh attested data points from storage to ensure UI is up to date
+        // Wait a bit to ensure metadata is fully written
+        await new Promise(resolve => setTimeout(resolve, 100));
+        
+        console.log('🔄 [DataPointInput] Reloading attested data points from storage...');
+        try {
+          const { SecureMetadataStorage } = await import('./utils/secureMetadataStorage');
+          const { SecureMetadataCrypto } = await import('./utils/secureMetadata');
+          
+          const reloadedMetadata = await SecureMetadataStorage.getMetadata(authenticatedUser.id);
+          if (reloadedMetadata) {
+            const credentials = SecureCredentialManager.getCredentials(authenticatedUser.id);
+            if (credentials) {
+              const decryptedContent = await SecureMetadataCrypto.decryptMetadata(
+                reloadedMetadata,
+                credentials.pnName,
+                credentials.passcode
+              );
+              
+              console.log('🔄 [DataPointInput] Decrypted metadata:', {
+                hasDataPoints: !!decryptedContent?.dataPoints,
+                hasAttestedData: !!decryptedContent?.dataPoints?.attestedData,
+                attestedDataCount: decryptedContent?.dataPoints?.attestedData?.length || 0
+              });
+              
+              if (decryptedContent?.dataPoints?.attestedData) {
+                const attestedIds = new Set(decryptedContent.dataPoints.attestedData.map((item: any) => item.dataPointId));
+                console.log('✅ [DataPointInput] Reloaded attested data points:', Array.from(attestedIds));
+                setAttestedDataPoints(attestedIds);
+              } else {
+                // Fallback: just add the current one
+                console.log('⚠️ [DataPointInput] No attested data in storage after save, using fallback');
+                const attestedIds = new Set([...attestedDataPoints, dataPointId]);
+                setAttestedDataPoints(attestedIds);
+              }
+            } else {
+              console.warn('⚠️ [DataPointInput] No credentials available for reload');
+            }
+          } else {
+            console.warn('⚠️ [DataPointInput] No metadata found after save');
+            // Fallback: just add the current one
+            const attestedIds = new Set([...attestedDataPoints, dataPointId]);
+            setAttestedDataPoints(attestedIds);
+          }
+        } catch (error) {
+          console.error('❌ [DataPointInput] Error reloading attested data points:', error);
+          // Fallback: just add the current one
+          const attestedIds = new Set([...attestedDataPoints, dataPointId]);
+          setAttestedDataPoints(attestedIds);
+        }
       }
       
       setSuccessWithTimeout(`Successfully attested ${currentDataPoint?.name}!`);
