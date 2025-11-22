@@ -6781,23 +6781,56 @@ class ProductionServer {
         const accountId = (account as any).accountId || (account as any).id;
         const userAccessToken = await googleDriveProxyService.getAccessToken(normalizedPnIdentifier, accountId);
 
-        // Find metadata folder
+        // Find or create metadata folder (same as connections)
         const folderQuery = `name='Metadata' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
         const folderUrl = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(folderQuery)}&fields=files(id)&pageSize=1`;
-        const folderResponse = await fetch(folderUrl, {
+        let folderResponse = await fetch(folderUrl, {
           headers: { 'Authorization': `Bearer ${userAccessToken}` }
         });
 
-        if (!folderResponse.ok) {
-          return res.status(404).json({ error: 'Metadata folder not found' });
+        let metadataFolderId: string;
+        if (folderResponse.ok) {
+          const folderData = await folderResponse.json() as { files?: Array<{ id: string }> };
+          if (folderData.files && folderData.files.length > 0) {
+            metadataFolderId = folderData.files[0].id;
+          } else {
+            // Create Metadata folder if it doesn't exist
+            const createFolderResponse = await fetch('https://www.googleapis.com/drive/v3/files', {
+              method: 'POST',
+              headers: {
+                'Authorization': `Bearer ${userAccessToken}`,
+                'Content-Type': 'application/json'
+              },
+              body: JSON.stringify({
+                name: 'Metadata',
+                mimeType: 'application/vnd.google-apps.folder'
+              })
+            });
+            if (!createFolderResponse.ok) {
+              return res.status(500).json({ error: 'Failed to create Metadata folder' });
+            }
+            const createdFolder = await createFolderResponse.json() as { id: string };
+            metadataFolderId = createdFolder.id;
+          }
+        } else {
+          // Create Metadata folder if search fails
+          const createFolderResponse = await fetch('https://www.googleapis.com/drive/v3/files', {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${userAccessToken}`,
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+              name: 'Metadata',
+              mimeType: 'application/vnd.google-apps.folder'
+            })
+          });
+          if (!createFolderResponse.ok) {
+            return res.status(500).json({ error: 'Failed to create Metadata folder' });
+          }
+          const createdFolder = await createFolderResponse.json() as { id: string };
+          metadataFolderId = createdFolder.id;
         }
-
-        const folderData = await folderResponse.json() as { files?: Array<{ id: string }> };
-        if (!folderData.files || folderData.files.length === 0) {
-          return res.status(404).json({ error: 'Metadata folder not found' });
-        }
-
-        const metadataFolderId = folderData.files[0].id;
 
         // Update preferences file
         const updatedPreferences = await PreferencesService.updatePreferencesFile(
