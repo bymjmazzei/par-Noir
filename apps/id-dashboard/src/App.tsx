@@ -1273,85 +1273,6 @@ function App() {
     }
   };
 
-  // Load top post from public index and use as profile image
-  const loadTopPostAsProfileImage = async (userId: string) => {
-    try {
-      const apiEndpoint = import.meta.env.VITE_API_ENDPOINT || 'https://api.parnoir.com';
-      
-      // Fetch public index
-      const response = await fetch(`${apiEndpoint}/api/aggregator/metadata-index`);
-      if (!response.ok) {
-        logDebug('Failed to fetch public index for top post');
-        return;
-      }
-
-      const data = await response.json();
-      const files = data.files || [];
-
-      // Find files with isTopPost: true owned by this user
-      // Need to normalize userId to pn identifier format
-      const pnIdentifier = userId.startsWith('pn-') ? userId : `pn-${userId}`;
-      
-      const topPosts = files.filter((file: any) => {
-        // Check if file is top post and owned by this user
-        const isTopPost = file.isTopPost === true;
-        const isOwnedByUser = file.pnIdentifier === pnIdentifier || 
-                              file.owner === userId || 
-                              file.owner === pnIdentifier;
-        const isImage = file.mimeType?.startsWith('image/') || 
-                       /\.(jpg|jpeg|png|gif|webp|svg|bmp|ico)$/i.test(file.name || '');
-        
-        return isTopPost && isOwnedByUser && isImage;
-      });
-
-      if (topPosts.length === 0) {
-        logDebug('No top post found for user');
-        return;
-      }
-
-      // Use the first top post
-      const topPost = topPosts[0];
-      
-      // Get thumbnail URL - construct from fileId and publicToken
-      let thumbnailUrl: string | null = null;
-      
-      if (topPost.publicToken && topPost.backendFileId) {
-        // Use public token to access thumbnail
-        thumbnailUrl = `${apiEndpoint}/api/drive/files/${topPost.backendFileId}?thumbnail=true&token=${topPost.publicToken}`;
-      } else if (topPost.fileId) {
-        // Fallback: try with fileId
-        thumbnailUrl = `${apiEndpoint}/api/drive/files/${topPost.fileId}?thumbnail=true`;
-      }
-
-      if (thumbnailUrl) {
-        // Update authenticated user's profile picture
-        setAuthenticatedUser((prev: any) => {
-          if (!prev) return prev;
-          return { ...prev, profilePicture: thumbnailUrl };
-        });
-
-        // Update selected DID's profile picture
-        setSelectedDID((prev: any) => {
-          if (!prev || prev.id !== userId) return prev;
-          return { ...prev, profilePicture: thumbnailUrl };
-        });
-
-        // Update dids array
-        setDids((prev: any[]) => 
-          prev.map(did => 
-            did.id === userId 
-              ? { ...did, profilePicture: thumbnailUrl }
-              : did
-          )
-        );
-
-        logDebug('✅ Top post loaded as profile image');
-      }
-    } catch (error) {
-      logDebug('Failed to load top post as profile image:', error);
-    }
-  };
-
   const handleAuthSuccess = async (session: any) => {
     try {
       // SECURITY: Store credentials in memory only via SecureCredentialManager
@@ -1472,13 +1393,6 @@ function App() {
         logDebug('Reloaded', didInfos.length, 'stored identities into selector');
       } catch (error) {
         logError('Failed to reload stored identities:', error);
-      }
-
-      // Fetch top post from public index to use as profile image
-      try {
-        await loadTopPostAsProfileImage(session.id);
-      } catch (topPostError) {
-        logDebug('Failed to load top post as profile image (non-blocking):', topPostError);
       }
 
       // Show success
@@ -5178,7 +5092,6 @@ This invitation expires in 24 hours.`;
                     >
                                         <ThemeAwareProfileImage
                     className="w-full h-full object-cover"
-                    profilePicture={selectedDID?.profilePicture || authenticatedUser?.profilePicture}
                   />
                       {/* Edit Profile Picture Button for Default Avatar */}
                       <button
@@ -5914,13 +5827,6 @@ This invitation expires in 24 hours.`;
                     </div>
                   )}
 
-                  {/* Always mount FileStorageAggregator to preload credentials (hidden when not active) */}
-                  {activeTab !== 'storage' && authenticatedUser && (
-                    <div style={{ display: 'none' }}>
-                      <FileStorageAggregator authenticatedUser={authenticatedUser} hideSecureFolderSection={true} />
-                    </div>
-                  )}
-
                   {/* Developer Portal Tab */}
                   {activeTab === 'developer' && (
                     <DeveloperPortal />
@@ -6288,9 +6194,9 @@ This invitation expires in 24 hours.`;
       <IdentityVerificationModal
         isOpen={showVerificationModal}
         onClose={() => setShowVerificationModal(false)}
-        onVerificationComplete={(verifiedData) => {
+        onVerificationComplete={async (verifiedData) => {
           // Remove existing attested data points that will be replaced by verified data
-          const verifiedDataPointIds = verifiedData.dataPoints.map(dp => dp.id);
+          const verifiedDataPointIds = Object.keys(verifiedData.dataPoints);
           const updatedAttestedDataPoints = new Set(attestedDataPoints);
           const updatedVerifiedDataPoints = new Set(verifiedDataPoints);
           
@@ -6309,6 +6215,69 @@ This invitation expires in 24 hours.`;
           console.log('Verification completed:', verifiedData);
           console.log('Updated attested data points:', Array.from(updatedAttestedDataPoints));
           console.log('Updated verified data points:', Array.from(updatedVerifiedDataPoints));
+
+          // Sync ZKP data points to API server (Google Drive)
+          if (authenticatedUser?.id) {
+            try {
+              // Get pnIdentifier - check if it's already in pn- format, otherwise construct it
+              const pnIdentifier = authenticatedUser.id.startsWith('pn-') 
+                ? authenticatedUser.id 
+                : `pn-${authenticatedUser.id.replace(/^pn-/, '')}`;
+
+              const apiEndpoint = import.meta.env.VITE_API_ENDPOINT || process.env.REACT_APP_API_ENDPOINT || 'https://api.parnoir.com';
+              
+              // Get access token - the dashboard might need to use OAuth service
+              // For now, try to get from authenticatedUser, but this might need OAuth integration
+              const authToken = authenticatedUser.accessToken || authenticatedUser.authToken;
+              
+              if (!authToken) {
+                console.warn('No access token available to sync ZKP data points. ZKP data will be stored locally only.');
+                return;
+              }
+
+              // Sync each ZKP data point to the API
+              for (const [dataPointId, dataPoint] of Object.entries(verifiedData.dataPoints)) {
+                try {
+                  // Convert dashboard format to API format
+                  const zkpDataPoint = {
+                    dataPointId: dataPoint.dataPointId || dataPointId,
+                    proofType: mapDataPointIdToProofType(dataPointId),
+                    zkpProof: dataPoint.zkpProof,
+                    signature: dataPoint.zkpProof, // Use proof as signature if no separate signature
+                    verifiedAt: dataPoint.verifiedAt || verifiedData.verifiedAt,
+                    expiresAt: dataPoint.expiresAt || dataPoint.expirationDate,
+                    verificationLevel: dataPoint.verificationLevel || verifiedData.verificationLevel,
+                    metadata: {
+                      provider: verifiedData.provider || 'veriff',
+                      fraudPreventionScore: verifiedData.fraudPrevention?.riskScore
+                    }
+                  };
+
+                  const response = await fetch(
+                    `${apiEndpoint}/api/users/${pnIdentifier}/zkp-data-points/${dataPointId}`,
+                    {
+                      method: 'PUT',
+                      headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${authToken}`
+                      },
+                      body: JSON.stringify(zkpDataPoint)
+                    }
+                  );
+
+                  if (response.ok) {
+                    console.log(`✅ Synced ZKP data point ${dataPointId} to API`);
+                  } else {
+                    console.warn(`⚠️ Failed to sync ZKP data point ${dataPointId}:`, response.status);
+                  }
+                } catch (error) {
+                  console.error(`Error syncing ZKP data point ${dataPointId}:`, error);
+                }
+              }
+            } catch (error) {
+              console.error('Error syncing ZKP data points to API:', error);
+            }
+          }
         }}
         identityId={selectedStoredIdentity?.id || 'default'}
       />
