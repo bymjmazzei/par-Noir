@@ -67,8 +67,10 @@ export class ZKPDataPointsService {
       );
 
       if (response.ok) {
-        const dataPoints = await response.json();
-        return dataPoints.map((dp: any) => dp.dataPointId);
+        const responseData = await response.json();
+        // Handle both { success: true, dataPoints: [...] } and direct array responses
+        const dataPoints = Array.isArray(responseData) ? responseData : (responseData.dataPoints || []);
+        return Array.isArray(dataPoints) ? dataPoints.map((dp: any) => dp.dataPointId || dp) : [];
       } else if (response.status === 404) {
         // No data points yet - return empty array
         return [];
@@ -108,7 +110,9 @@ export class ZKPDataPointsService {
       );
 
       if (response.ok) {
-        return await response.json();
+        const responseData = await response.json();
+        // Handle both { success: true, proof: {...} } and direct object responses
+        return responseData.proof || responseData;
       } else if (response.status === 404) {
         return null;
       } else {
