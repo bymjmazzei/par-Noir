@@ -718,46 +718,35 @@ function App() {
             console.warn('[App] Error checking localStorage:', e);
           }
           
-          const { SecureMetadataStorage } = await import('./utils/secureMetadataStorage');
-          const { SecureMetadataCrypto } = await import('./utils/secureMetadata');
-          
-          const currentMetadata = await SecureMetadataStorage.getMetadata(authenticatedUser.id);
-          console.log('[App] Metadata found:', !!currentMetadata);
-          
-          if (currentMetadata) {
-            // SECURITY: Retrieve credentials from SecureCredentialManager, not from state
-            const credentials = SecureCredentialManager.getCredentials(authenticatedUser.id);
-            if (!credentials) {
-              console.warn('[App] Credentials not available for metadata decryption');
-              return;
-            }
-            
-            console.log('[App] Decrypting metadata...');
-            const decryptedContent = await SecureMetadataCrypto.decryptMetadata(
-              currentMetadata,
-              credentials.pnName,
-              credentials.passcode
+          // Load attested data points from API server (Google Drive) - NO localStorage
+          const credentials = SecureCredentialManager.getCredentials(authenticatedUser.id);
+          if (!credentials) {
+            console.warn('[App] Credentials not available');
+            setAttestedDataPoints(new Set());
+            return;
+          }
+
+          const authToken = authenticatedUser.accessToken || authenticatedUser.authToken;
+          if (!authToken) {
+            console.warn('[App] No access token available');
+            setAttestedDataPoints(new Set());
+            return;
+          }
+
+          try {
+            const { ZKPDataPointsService } = await import('./utils/zkpDataPointsService');
+            const dataPointIds = await ZKPDataPointsService.getAllDataPoints(
+              authenticatedUser.id,
+              credentials,
+              authToken,
+              authenticatedUser.publicKey
             );
-            
-            console.log('[App] Decrypted content:', {
-              hasDataPoints: !!decryptedContent?.dataPoints,
-              hasAttestedData: !!decryptedContent?.dataPoints?.attestedData,
-              attestedDataCount: decryptedContent?.dataPoints?.attestedData?.length || 0,
-              attestedDataIds: decryptedContent?.dataPoints?.attestedData?.map((item: any) => item.dataPointId) || []
-            });
-            
-            // Load attested data points
-            if (decryptedContent?.dataPoints?.attestedData && decryptedContent.dataPoints.attestedData.length > 0) {
-              const attestedIds = new Set(decryptedContent.dataPoints.attestedData.map((item: any) => item.dataPointId));
-              console.log('[App] Loaded attested data points from storage:', Array.from(attestedIds));
-              setAttestedDataPoints(attestedIds);
-            } else {
-              console.log('[App] No attested data points found in storage');
-              setAttestedDataPoints(new Set()); // Clear any stale state
-            }
-          } else {
-            console.log('[App] No metadata found for user');
-            setAttestedDataPoints(new Set()); // Clear any stale state
+
+            console.log('[App] Loaded attested data points from API:', dataPointIds);
+            setAttestedDataPoints(new Set(dataPointIds));
+          } catch (error) {
+            console.error('[App] Error loading attested data points from API:', error);
+            setAttestedDataPoints(new Set()); // Clear on error
           }
         } else {
           console.log('[App] No authenticated user, clearing attested data points');
@@ -3133,30 +3122,36 @@ This invitation expires in 24 hours.`;
         return;
       }
 
-      // Check if user has already attested this data point
-      const { SecureMetadataStorage } = await import('./utils/secureMetadataStorage');
-      const { SecureMetadataCrypto } = await import('./utils/secureMetadata');
-      
-      const currentMetadata = await SecureMetadataStorage.getMetadata(authenticatedUser.id);
+      // Check if user has already attested this data point - from API server (Google Drive)
       let existingData = null;
       
-      if (currentMetadata) {
-        // SECURITY: Retrieve credentials from SecureCredentialManager
-        const credentials = SecureCredentialManager.getCredentials(authenticatedUser.id);
-        if (!credentials) {
-          throw new Error('Credentials not available for metadata decryption');
-        }
-        
-        const decryptedContent = await SecureMetadataCrypto.decryptMetadata(
-          currentMetadata,
-          credentials.pnName,
-          credentials.passcode
-        );
-        const attestedData = decryptedContent?.dataPoints?.attestedData || [];
-        const existingAttestation = attestedData.find((attestation: any) => attestation.dataPointId === dataPointId);
-        
-        if (existingAttestation) {
-          existingData = existingAttestation.userData;
+      const credentials = SecureCredentialManager.getCredentials(authenticatedUser.id);
+      if (!credentials) {
+        console.warn('[App] Credentials not available for checking existing data point');
+      } else {
+        const authToken = authenticatedUser.accessToken || authenticatedUser.authToken;
+        if (authToken) {
+          try {
+            // Check API server (Google Drive) for existing data point - NO localStorage
+            const { ZKPDataPointsService } = await import('./utils/zkpDataPointsService');
+            const existingDataPoint = await ZKPDataPointsService.getDataPoint(
+              authenticatedUser.id,
+              credentials,
+              authToken,
+              dataPointId,
+              authenticatedUser.publicKey
+            );
+            
+            if (existingDataPoint) {
+              // Note: API only returns ZKP proof, not userData for privacy
+              // The userData is not stored in the API for security reasons
+              // If you need to show existing data, it should be retrieved from a different source
+              console.log('[App] Found existing data point in API:', existingDataPoint.dataPointId);
+            }
+          } catch (error) {
+            console.warn('[App] Error checking for existing data point:', error);
+            // Continue without existing data
+          }
         }
       }
       
@@ -3188,267 +3183,87 @@ This invitation expires in 24 hours.`;
       dataPointId: currentDataPoint?.id,
       hasUserData: !!userData 
     });
+    
     try {
-      // Store attested data in metadata
-      const { SecureMetadataStorage } = await import('./utils/secureMetadataStorage');
-      
       const dataPointId = currentDataPoint?.id;
-      console.log('🔄 [DataPointInput] Processing data point:', dataPointId);
-      if (dataPointId && proofs.length > 0) {
-        const proof = proofs[0];
-        const attestedDataPoint = {
-          dataPointId,
-          attestedAt: new Date().toISOString(),
-          attestedBy: authenticatedUser.id,
-          dataType: 'attested', // User attests the data is true
-          userData,
-          zkpToken: proof.proof, // Store the ZKP token
-          expiresAt: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString() // 1 year
-        };
-        
-        // Update metadata with new attested data
-        // SECURITY: Retrieve credentials from SecureCredentialManager
-        const credentials = SecureCredentialManager.getCredentials(authenticatedUser.id);
-        if (!credentials) {
-          throw new Error('Credentials not available for metadata update');
-        }
-        
-        // Load existing metadata to merge, not overwrite
-        console.log('[DataPointInput] Loading existing metadata...');
-        const currentMetadata = await SecureMetadataStorage.getMetadata(authenticatedUser.id);
-        let existingDataPoints: any = null;
-        
-        if (currentMetadata) {
-          const { SecureMetadataCrypto } = await import('./utils/secureMetadata');
-          const decryptedContent = await SecureMetadataCrypto.decryptMetadata(
-            currentMetadata,
-            credentials.pnName,
-            credentials.passcode
-          );
-          existingDataPoints = decryptedContent?.dataPoints || null;
-          console.log('[DataPointInput] Found existing dataPoints:', {
-            hasDataPoints: !!existingDataPoints,
-            hasAttestedData: !!existingDataPoints?.attestedData,
-            attestedDataCount: existingDataPoints?.attestedData?.length || 0
-          });
-        } else {
-          console.log('[DataPointInput] No existing metadata found, creating new');
-        }
-        
-        // Merge: preserve all existing dataPoints fields, only update attestedData
-        const existingAttestedData = existingDataPoints?.attestedData || [];
-        const updatedAttestedData = existingAttestedData.filter(
-          (item: any) => item.dataPointId !== dataPointId
-        );
-        updatedAttestedData.push(attestedDataPoint);
-        
-        // Merge the entire dataPoints object to preserve other fields
-        // If existingDataPoints is null, create a new object with just attestedData
-        const updatedDataPoints = existingDataPoints ? {
-          ...existingDataPoints,
-          attestedData: updatedAttestedData
-        } : {
-          attestedData: updatedAttestedData
-        };
-        
-        console.log('[DataPointInput] Saving attested data:', {
-          dataPointId,
-          totalAttestedDataPoints: updatedAttestedData.length,
-          existingCount: existingAttestedData.length,
-          preservingOtherFields: !!existingDataPoints,
-          updatedDataPointsKeys: Object.keys(updatedDataPoints),
-          attestedDataInUpdate: updatedDataPoints.attestedData?.length || 0,
-          updatedDataPointsFull: JSON.stringify(updatedDataPoints, null, 2)
-        });
-        
-        // Log what we're about to save
-        console.log('[DataPointInput] About to call updateMetadataField with:', {
-          identityId: authenticatedUser.id,
-          field: 'dataPoints',
-          valueType: typeof updatedDataPoints,
-          valueKeys: Object.keys(updatedDataPoints),
-          attestedDataCount: updatedDataPoints.attestedData?.length || 0
-        });
-        
-        await SecureMetadataStorage.updateMetadataField(
-          authenticatedUser.id,
-          credentials.pnName,
-          credentials.passcode,
-          'dataPoints',
-          updatedDataPoints
-        );
-        
-        console.log('[DataPointInput] Metadata saved successfully');
-        
-        // Wait a moment for localStorage to sync
-        await new Promise(resolve => setTimeout(resolve, 200));
-        
-        // Verify the save worked by reading it back immediately
-        try {
-          const verifyMetadata = await SecureMetadataStorage.getMetadata(authenticatedUser.id);
-          if (verifyMetadata) {
-            const { SecureMetadataCrypto } = await import('./utils/secureMetadata');
-            const verifyDecrypted = await SecureMetadataCrypto.decryptMetadata(
-              verifyMetadata,
-              credentials.pnName,
-              credentials.passcode
-            );
-            const verifyAttestedData = verifyDecrypted?.dataPoints?.attestedData || [];
-            const verifyIds = verifyAttestedData.map((item: any) => item.dataPointId);
-            console.log('[DataPointInput] VERIFICATION - Read back from storage:', {
-              found: verifyIds.includes(dataPointId),
-              allIds: verifyIds,
-              count: verifyAttestedData.length,
-              dataPointIdLookingFor: dataPointId,
-              decryptedHasDataPoints: !!verifyDecrypted?.dataPoints,
-              decryptedDataPointsKeys: verifyDecrypted?.dataPoints ? Object.keys(verifyDecrypted.dataPoints) : []
-            });
-            
-            if (!verifyIds.includes(dataPointId)) {
-              console.error('[DataPointInput] ERROR - Data was NOT saved correctly!', {
-                savedDataPointId: dataPointId,
-                foundIds: verifyIds,
-                fullAttestedData: verifyAttestedData
-              });
-            } else {
-              console.log('[DataPointInput] SUCCESS - Data verified in storage!');
-            }
-          } else {
-            console.error('[DataPointInput] ERROR - Could not read metadata back after save!');
-          }
-        } catch (verifyError) {
-          console.error('[DataPointInput] ERROR - Verification failed:', verifyError);
-        }
-
-        // Sync ZKP data point to API server (Google Drive)
-        try {
-          // Derive pnIdentifier using VolumeIdGenerator (same as FileStorageAggregator)
-          const { VolumeIdGenerator } = await import('./utils/crypto/volumeIdGenerator');
-          const pnIdentifier = await VolumeIdGenerator.generateVolumeId({
-            pnName: credentials.pnName,
-            passcode: credentials.passcode,
-            publicKey: authenticatedUser.publicKey || ''
-          });
-
-          const apiEndpoint = import.meta.env.VITE_API_ENDPOINT || process.env.REACT_APP_API_ENDPOINT || 'https://api.parnoir.com';
-          
-          // Get access token - try to get from OAuth service if available
-          let authToken = authenticatedUser.accessToken || authenticatedUser.authToken;
-          
-          // If no token, try to get from OAuth service
-          // Note: OAuth service is not available in dashboard context, skip this
-          // The token should come from authenticatedUser.accessToken or authenticatedUser.authToken
-
-          if (authToken) {
-            // Convert dashboard format to API format
-            const zkpDataPoint = {
-              dataPointId: dataPointId,
-              proofType: mapDataPointIdToProofType(dataPointId),
-              zkpProof: proof.proof,
-              signature: proof.signature || proof.proof, // Use signature if available, otherwise proof
-              verifiedAt: proof.timestamp || new Date().toISOString(),
-              expiresAt: proof.expiresAt || attestedDataPoint.expiresAt,
-              verificationLevel: proof.verificationLevel || 'basic',
-              metadata: {
-                provider: 'user_attested',
-                fraudPreventionScore: undefined
-              }
-            };
-
-            console.log('🔄 [ZKP Sync] Sending request to API...', {
-              url: `${apiEndpoint}/api/users/${pnIdentifier}/zkp-data-points/${dataPointId}`,
-              dataPointId,
-              hasProof: !!zkpDataPoint.zkpProof
-            });
-
-            const response = await fetch(
-              `${apiEndpoint}/api/users/${pnIdentifier}/zkp-data-points/${dataPointId}`,
-              {
-                method: 'PUT',
-                headers: {
-                  'Content-Type': 'application/json',
-                  'Authorization': `Bearer ${authToken}`
-                },
-                body: JSON.stringify(zkpDataPoint)
-              }
-            );
-
-            console.log('🔄 [ZKP Sync] API response status:', response.status);
-
-            if (response.ok) {
-              const result = await response.json();
-              console.log(`✅ [ZKP Sync] Successfully synced ZKP data point ${dataPointId} to API`, result);
-            } else {
-              const errorText = await response.text();
-              console.error(`❌ [ZKP Sync] Failed to sync ZKP data point ${dataPointId}:`, response.status, errorText);
-            }
-          } else {
-            console.warn('⚠️ [ZKP Sync] No access token available to sync ZKP data point. Data stored locally only.');
-          }
-        } catch (error) {
-          console.error('❌ [ZKP Sync] Error syncing ZKP data point to API:', error);
-          // Don't throw - local storage succeeded, API sync is optional
-        }
-        
-        // Refresh attested data points from storage to ensure UI is up to date
-        // Wait a bit to ensure metadata is fully written
-        await new Promise(resolve => setTimeout(resolve, 100));
-        
-        console.log('🔄 [DataPointInput] Reloading attested data points from storage...');
-        try {
-          const { SecureMetadataStorage } = await import('./utils/secureMetadataStorage');
-          const { SecureMetadataCrypto } = await import('./utils/secureMetadata');
-          
-          const reloadedMetadata = await SecureMetadataStorage.getMetadata(authenticatedUser.id);
-          if (reloadedMetadata) {
-            const credentials = SecureCredentialManager.getCredentials(authenticatedUser.id);
-            if (credentials) {
-              const decryptedContent = await SecureMetadataCrypto.decryptMetadata(
-                reloadedMetadata,
-                credentials.pnName,
-                credentials.passcode
-              );
-              
-              console.log('🔄 [DataPointInput] Decrypted metadata:', {
-                hasDataPoints: !!decryptedContent?.dataPoints,
-                hasAttestedData: !!decryptedContent?.dataPoints?.attestedData,
-                attestedDataCount: decryptedContent?.dataPoints?.attestedData?.length || 0
-              });
-              
-              if (decryptedContent?.dataPoints?.attestedData) {
-                const attestedIds = new Set(decryptedContent.dataPoints.attestedData.map((item: any) => item.dataPointId));
-                console.log('✅ [DataPointInput] Reloaded attested data points:', Array.from(attestedIds));
-                setAttestedDataPoints(attestedIds);
-              } else {
-                // Fallback: just add the current one
-                console.log('⚠️ [DataPointInput] No attested data in storage after save, using fallback');
-                const attestedIds = new Set([...attestedDataPoints, dataPointId]);
-                setAttestedDataPoints(attestedIds);
-              }
-            } else {
-              console.warn('⚠️ [DataPointInput] No credentials available for reload');
-            }
-          } else {
-            console.warn('⚠️ [DataPointInput] No metadata found after save');
-            // Fallback: just add the current one
-            const attestedIds = new Set([...attestedDataPoints, dataPointId]);
-            setAttestedDataPoints(attestedIds);
-          }
-        } catch (error) {
-          console.error('❌ [DataPointInput] Error reloading attested data points:', error);
-          // Fallback: just add the current one
-          const attestedIds = new Set([...attestedDataPoints, dataPointId]);
-          setAttestedDataPoints(attestedIds);
-        }
+      if (!dataPointId || proofs.length === 0) {
+        throw new Error('Invalid data point or proof');
       }
+
+      const proof = proofs[0];
+      const credentials = SecureCredentialManager.getCredentials(authenticatedUser.id);
+      if (!credentials) {
+        throw new Error('Credentials not available');
+      }
+
+      const authToken = authenticatedUser.accessToken || authenticatedUser.authToken;
+      if (!authToken) {
+        throw new Error('No access token available. Please re-authenticate.');
+      }
+
+      // Convert to API format
+      const { ZKPDataPointsService } = await import('./utils/zkpDataPointsService');
       
+      const zkpDataPoint = {
+        dataPointId: dataPointId,
+        proofType: mapDataPointIdToProofType(dataPointId),
+        zkpProof: proof.proof,
+        signature: proof.signature || proof.proof,
+        verifiedAt: proof.timestamp || new Date().toISOString(),
+        expiresAt: proof.expiresAt || new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString(),
+        verificationLevel: proof.verificationLevel || 'basic',
+        metadata: {
+          provider: 'user_attested',
+          fraudPreventionScore: undefined
+        }
+      };
+
+      // Save directly to API server (Google Drive) - NO localStorage
+      console.log('🔄 [ZKP Save] Saving directly to API server (Google Drive)...');
+      await ZKPDataPointsService.saveDataPoint(
+        authenticatedUser.id,
+        credentials,
+        authToken,
+        zkpDataPoint,
+        authenticatedUser.publicKey
+      );
+
+      // Wait for Google Drive to sync
+      await new Promise(resolve => setTimeout(resolve, 500));
+
+      // Verify by reading back from API
+      console.log('🔄 [ZKP Verify] Verifying save...');
+      const verified = await ZKPDataPointsService.hasDataPoint(
+        authenticatedUser.id,
+        credentials,
+        authToken,
+        dataPointId,
+        authenticatedUser.publicKey
+      );
+
+      if (!verified) {
+        throw new Error('Verification failed - data point not found after save');
+      }
+
+      // Reload all data points from API
+      const allDataPointIds = await ZKPDataPointsService.getAllDataPoints(
+        authenticatedUser.id,
+        credentials,
+        authToken,
+        authenticatedUser.publicKey
+      );
+      
+      console.log('✅ [ZKP] Successfully saved and verified. All data points:', allDataPointIds);
+      setAttestedDataPoints(new Set(allDataPointIds));
+
       setSuccessWithTimeout(`Successfully attested ${currentDataPoint?.name}!`);
       setTimeout(() => setSuccessWithTimeout(null), 5000);
       setShowDataPointInputModal(false);
       setCurrentDataPoint(null);
       setCurrentDataPointExistingData(null);
     } catch (error) {
-      setError('Failed to store attested data');
+      console.error('❌ [DataPointInput] Error:', error);
+      setError(`Failed to save data point: ${error instanceof Error ? error.message : String(error)}`);
       setTimeout(() => setError(null), 9000);
     }
   };
