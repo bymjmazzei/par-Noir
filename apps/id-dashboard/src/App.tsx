@@ -697,42 +697,60 @@ function App() {
   useEffect(() => {
     const loadAttestedDataPoints = async () => {
       try {
-        if (authenticatedUser) {
+        if (authenticatedUser?.id) {
+          console.log('[App] Loading attested data points for user:', authenticatedUser.id);
           const { SecureMetadataStorage } = await import('./utils/secureMetadataStorage');
           const { SecureMetadataCrypto } = await import('./utils/secureMetadata');
           
           const currentMetadata = await SecureMetadataStorage.getMetadata(authenticatedUser.id);
+          console.log('[App] Metadata found:', !!currentMetadata);
+          
           if (currentMetadata) {
             // SECURITY: Retrieve credentials from SecureCredentialManager, not from state
             const credentials = SecureCredentialManager.getCredentials(authenticatedUser.id);
             if (!credentials) {
-              console.warn('Credentials not available for metadata decryption');
+              console.warn('[App] Credentials not available for metadata decryption');
               return;
             }
             
+            console.log('[App] Decrypting metadata...');
             const decryptedContent = await SecureMetadataCrypto.decryptMetadata(
               currentMetadata,
               credentials.pnName,
               credentials.passcode
             );
             
+            console.log('[App] Decrypted content:', {
+              hasDataPoints: !!decryptedContent?.dataPoints,
+              hasAttestedData: !!decryptedContent?.dataPoints?.attestedData,
+              attestedDataCount: decryptedContent?.dataPoints?.attestedData?.length || 0
+            });
+            
             // Load attested data points
             if (decryptedContent?.dataPoints?.attestedData) {
               const attestedIds = new Set(decryptedContent.dataPoints.attestedData.map((item: any) => item.dataPointId));
-              console.log('🔄 [App] Loaded attested data points from storage:', Array.from(attestedIds));
+              console.log('[App] Loaded attested data points from storage:', Array.from(attestedIds));
               setAttestedDataPoints(attestedIds);
             } else {
-              console.log('🔄 [App] No attested data points found in storage');
+              console.log('[App] No attested data points found in storage');
+              setAttestedDataPoints(new Set()); // Clear any stale state
             }
+          } else {
+            console.log('[App] No metadata found for user');
+            setAttestedDataPoints(new Set()); // Clear any stale state
           }
+        } else {
+          console.log('[App] No authenticated user, clearing attested data points');
+          setAttestedDataPoints(new Set());
         }
       } catch (error) {
-        console.error('❌ [App] Error loading attested data points:', error);
+        console.error('[App] Error loading attested data points:', error);
+        setAttestedDataPoints(new Set()); // Clear on error
       }
     };
     
     loadAttestedDataPoints();
-  }, [authenticatedUser]);
+  }, [authenticatedUser?.id]); // Only depend on the ID, not the whole object
   
   // Debug success state changes
   useEffect(() => {
