@@ -83,7 +83,6 @@ export class PreferencesService {
     const now = new Date().toISOString();
     const updatedPreferences: UserPreferences = {
       identifier,
-      updatedAt: now,
       ...existingPreferences,
       ...preferences,
       updatedAt: now
