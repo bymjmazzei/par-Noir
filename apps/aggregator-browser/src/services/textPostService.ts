@@ -269,13 +269,19 @@ export async function createTextPost(
       reader.readAsDataURL(encryptedBlob);
     });
 
+    // Get fresh access token right before upload to ensure it's valid
+    const uploadToken = await PNOAuthService.getValidAccessToken();
+    if (!uploadToken) {
+      throw new Error('No valid access token for upload');
+    }
+
     // Upload encrypted file
     const encryptedFileName = `${fileName}.encrypted`;
     const uploadResponse = await fetch(`${apiEndpoint}/api/drive/files`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${accessToken}`
+        'Authorization': `Bearer ${uploadToken}`
       },
       body: JSON.stringify({
         fileData: base64File,
@@ -300,13 +306,19 @@ export async function createTextPost(
     const fileId = uploadedFile.id;
     console.log('✅ [TextPost] File uploaded successfully, fileId:', fileId);
 
+    // Get fresh access token right before metadata update to ensure it's valid
+    const metadataToken = await PNOAuthService.getValidAccessToken();
+    if (!metadataToken) {
+      throw new Error('No valid access token for metadata update');
+    }
+
     // Create metadata entry with text post data
     console.log('📝 [TextPost] Creating metadata entry with text post data...');
     const metadataResponse = await fetch(`${apiEndpoint}/api/aggregator/metadata-index/${fileId}`, {
       method: 'PUT',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${accessToken}`
+        'Authorization': `Bearer ${metadataToken}`
       },
       body: JSON.stringify({
         name: metadata?.title || textPost.content || 'Thought',
