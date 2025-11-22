@@ -51,6 +51,7 @@ import { CreatorFeedPage } from './components/CreatorFeedPage';
 import { Inbox } from './components/Inbox';
 import { saveToFeed, getSavedFeed } from './services/savedFeedService';
 import { getUserProfile } from './services/profileService';
+import { isRatingAcceptable } from './constants/contentRatings';
 
 // Shared types - importing from id-dashboard
 // In production, these would come from a shared package
@@ -603,27 +604,52 @@ function App() {
 
   // Memoize filtered files by active feed
   const filteredFilesByFeed = useMemo(() => {
+    const maxRating = userState.preferences.maxRating;
+    
+    // Helper to check if file's content rating is acceptable
+    const isFileRatingAcceptable = (file: IndexedFile): boolean => {
+      const fileRating = file.metadata.contentRating as string | undefined;
+      if (!fileRating) {
+        // If no rating specified, allow it (default to most restrictive)
+        return true;
+      }
+      return isRatingAcceptable(fileRating as any, maxRating);
+    };
+
     if (activeFeedId === 'public') {
+      // Public feed: filter by content rating if user is unlocked
+      if (userState.isUnlocked) {
+        return indexedFiles.filter(isFileRatingAcceptable);
+      }
       return indexedFiles;
     }
     if (activeFeedId === 'curated') {
-      // Curated feed = all files from subscribed feeds
+      // Curated feed = all files from subscribed feeds, filtered by content rating
       const subscribedFeedIds = userState.preferences.subscribedFeedIds;
       if (subscribedFeedIds.length === 0) {
         return []; // Empty curated feed if no subscriptions
       }
-      return indexedFiles.filter(file => 
-        file.metadata.feedIds?.some(feedId => subscribedFeedIds.includes(feedId))
-      );
+      return indexedFiles.filter(file => {
+        // Must be in a subscribed feed
+        const inSubscribedFeed = file.metadata.feedIds?.some(feedId => subscribedFeedIds.includes(feedId));
+        if (!inSubscribedFeed) return false;
+        // Must meet content rating requirement
+        return isFileRatingAcceptable(file);
+      });
     }
     if (activeFeedId === 'discovery') {
       // Discovery page - return empty for now (will be implemented in Phase 3)
       return [];
     }
-    return indexedFiles.filter(file => 
+    // Individual feed: filter by content rating if user is unlocked
+    let filtered = indexedFiles.filter(file => 
       file.metadata.feedIds?.includes(activeFeedId)
     );
-  }, [indexedFiles, activeFeedId, userState.preferences.subscribedFeedIds]);
+    if (userState.isUnlocked) {
+      filtered = filtered.filter(isFileRatingAcceptable);
+    }
+    return filtered;
+  }, [indexedFiles, activeFeedId, userState.preferences.subscribedFeedIds, userState.preferences.maxRating, userState.isUnlocked]);
 
   // Navigation handlers (memoized)
 
@@ -2993,6 +3019,7 @@ function App() {
       ) : showUploadModal ? (
         <div className="h-screen w-full bg-neutral-900" style={{ paddingBottom: '64px' }}>
           <UploadModal
+            feeds={feeds}
             onClose={() => {
               setShowUploadModal(false);
               setActiveBottomTab('home');
@@ -3605,6 +3632,7 @@ function App() {
         {/* Upload Modal */}
         {showUploadModal && (
           <UploadModal
+            feeds={feeds}
             onClose={() => setShowUploadModal(false)}
             onUploadComplete={() => {
               // Refresh files after upload

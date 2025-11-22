@@ -6,22 +6,28 @@
 import React, { useState, useEffect } from 'react';
 import { FileStorageAggregator } from './FileStorageAggregator';
 import { TextPostEditor } from './TextPostEditor';
+import { ContentPreferences } from './ContentPreferences';
 import { useUserState } from '../contexts/UserStateContext';
-import { TextPostData } from '../types/aggregator';
+import { TextPostData, Feed } from '../types/aggregator';
 import { createTextPost } from '../services/textPostService';
 import { PNOAuthService } from '../services/pnOAuthService';
+import { Settings } from 'lucide-react';
+import { FeedService } from '../services/feedService';
 
 const apiEndpoint = process.env.REACT_APP_API_ENDPOINT || 'https://api.parnoir.com';
 
 interface UploadModalProps {
+  feeds?: Feed[];
   onClose: () => void;
   onUploadComplete?: () => void;
 }
 
-export function UploadModal({ onClose, onUploadComplete }: UploadModalProps) {
+export function UploadModal({ feeds: propsFeeds, onClose, onUploadComplete }: UploadModalProps) {
   const { userState } = useUserState();
   const [showTextEditor, setShowTextEditor] = useState(false);
+  const [showContentPreferences, setShowContentPreferences] = useState(false);
   const [accountId, setAccountId] = useState<string | null>(null);
+  const [feeds, setFeeds] = useState<Feed[]>(propsFeeds || []);
   
   // Convert browser app's userState to dashboard's authenticatedUser format
   const authenticatedUser = userState.isUnlocked && userState.pnIdentifier ? {
@@ -70,6 +76,23 @@ export function UploadModal({ onClose, onUploadComplete }: UploadModalProps) {
 
     loadAccounts();
   }, [authenticatedUser?.id]);
+
+  // Load feeds for content preferences if not provided as prop
+  useEffect(() => {
+    if (propsFeeds && propsFeeds.length > 0) {
+      setFeeds(propsFeeds);
+      return;
+    }
+    const loadFeeds = async () => {
+      try {
+        const feedList = await FeedService.listFeeds();
+        setFeeds(feedList.feeds || []);
+      } catch (error) {
+        console.error('Failed to load feeds:', error);
+      }
+    };
+    loadFeeds();
+  }, [propsFeeds]);
 
   const handleTextPostSave = async (textPost: TextPostData) => {
     if (!authenticatedUser?.id) {
@@ -120,13 +143,21 @@ export function UploadModal({ onClose, onUploadComplete }: UploadModalProps) {
 
   return (
     <div className="h-full w-full bg-neutral-900 flex flex-col overflow-y-auto" style={{ paddingBottom: '64px' }}>
-      {/* Railway Header */}
+      {/* Railway Header with Settings Button */}
       <div 
-        className="fixed top-0 left-0 right-0 h-12 flex items-center justify-center z-[100] bg-transparent"
+        className="fixed top-0 left-0 right-0 h-12 flex items-center justify-between px-4 z-[100] bg-transparent"
       >
+        <button
+          onClick={() => setShowContentPreferences(true)}
+          className="p-2 text-white/85 hover:text-white transition-colors"
+          title="Content Preferences"
+        >
+          <Settings className="h-5 w-5" />
+        </button>
         <h2 className="text-sm font-medium uppercase tracking-wide text-white">
           Upload from Secure Cloud
         </h2>
+        <div className="w-9" /> {/* Spacer for centering */}
       </div>
 
       {/* FileStorageAggregator Component */}
@@ -140,6 +171,14 @@ export function UploadModal({ onClose, onUploadComplete }: UploadModalProps) {
           }}
         />
       </div>
+
+      {/* Content Preferences Modal */}
+      {showContentPreferences && (
+        <ContentPreferences
+          feeds={feeds}
+          onClose={() => setShowContentPreferences(false)}
+        />
+      )}
     </div>
   );
 }
