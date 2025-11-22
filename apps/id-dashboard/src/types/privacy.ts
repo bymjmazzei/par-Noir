@@ -24,6 +24,8 @@ export interface GlobalPrivacySettings {
       toolDescription: string;
       permissions: string[];
       dataPoints: string[]; // Which data points this tool can access
+      requiredDataPoints: string[]; // Data points marked as required by the tool
+      optionalDataPoints: string[]; // Data points marked as optional by the tool
       grantedAt: string;
       expiresAt?: string;
       status: 'active' | 'pending' | 'revoked';

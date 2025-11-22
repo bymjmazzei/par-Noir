@@ -5156,8 +5156,162 @@ class ProductionServer {
       }
     });
 
+    // GET /oauth/zkp-data-points - Get ZKP data points for third-party tools
+    // Returns ZKP proofs for data points that the third party has access to
+    // NEVER returns pN File, pN Name, or passcode
+    this.app.get('/oauth/zkp-data-points', async (req, res) => {
+      try {
+        const authHeader = req.headers.authorization;
+        if (!authHeader || !authHeader.startsWith('Bearer ')) {
+          return res.status(401).json({
+            error: 'invalid_token',
+            error_description: 'Missing or invalid authorization header'
+          });
+        }
+
+        const accessToken = authHeader.substring(7);
+        const tokenPayload = PNOAuthService.validateAccessToken(accessToken);
+
+        if (!tokenPayload) {
+          return res.status(401).json({
+            error: 'invalid_token',
+            error_description: 'Invalid or expired access token'
+          });
+        }
+
+        // Get pN identifier from token
+        const pnIdentifier = tokenPayload.pnIdentifier;
+        if (!pnIdentifier) {
+          return res.status(400).json({
+            error: 'invalid_request',
+            error_description: 'pN identifier not found in token'
+          });
+        }
+
+        // Get requested data points from query parameter or token scopes
+        const requestedDataPoints = req.query.data_points 
+          ? (req.query.data_points as string).split(',').map((dp: string) => dp.trim())
+          : (tokenPayload.scope || [])
+              .filter((scope: string) => scope.startsWith('zkp:') || scope.startsWith('data_point:'))
+              .map((scope: string) => scope.replace(/^(zkp:|data_point:)/, ''));
+
+        // NEVER allow access to sensitive data points
+        const BLOCKED_DATA_POINTS = ['pn_file', 'pn_name', 'passcode', 'pnIdentifier'];
+        const allowedDataPoints = requestedDataPoints.filter(
+          (dp: string) => !BLOCKED_DATA_POINTS.includes(dp)
+        );
+
+        if (allowedDataPoints.length === 0) {
+          return res.json({ success: true, dataPoints: [] });
+        }
+
+        // Get Google Drive access token for the user
+        const { googleDriveProxyService } = await import('./server/modules/googleDriveProxy');
+        const { storageCredentialsService } = await import('./server/modules/storageCredentialsService');
+        
+        // Normalize pn identifier
+        const normalizedPnIdentifier = pnIdentifier.startsWith('pn-') ? pnIdentifier : `pn-${pnIdentifier}`;
+        
+        // Get user's credentials
+        const userCredentials = await storageCredentialsService.getCredentials(normalizedPnIdentifier);
+        if (!userCredentials?.credentials) {
+          return res.status(404).json({ error: 'User credentials not found' });
+        }
+
+        const googleDriveAccounts = userCredentials.credentials.googleDriveAccounts || 
+          (userCredentials.credentials.googleDrive ? [userCredentials.credentials.googleDrive] : []);
+        
+        if (googleDriveAccounts.length === 0) {
+          return res.status(404).json({ error: 'User has no Google Drive connected' });
+        }
+
+        const account = googleDriveAccounts[0];
+        const accountId = (account as any).accountId || (account as any).id;
+        const userAccessToken = await googleDriveProxyService.getAccessToken(normalizedPnIdentifier, accountId);
+
+        // Find pN folder and _metadata folder
+        const pnFolderName = `par Noir - ${pnIdentifier}`;
+        const pnFolderSearchQuery = `name='${pnFolderName.replace(/'/g, "\\'")}' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
+        const pnFolderSearchUrl = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(pnFolderSearchQuery)}&fields=files(id,name)&pageSize=1`;
+        
+        const pnFolderResponse = await fetch(pnFolderSearchUrl, {
+          headers: { 'Authorization': `Bearer ${userAccessToken}` }
+        });
+
+        let pnFolderId: string | null = null;
+        if (pnFolderResponse.ok) {
+          const pnFolderData = await pnFolderResponse.json() as { files?: Array<{ id: string; name: string }> };
+          if (pnFolderData.files && pnFolderData.files.length > 0) {
+            pnFolderId = pnFolderData.files[0].id;
+          }
+        }
+
+        if (!pnFolderId) {
+          return res.status(404).json({ error: 'pN folder not found' });
+        }
+
+        // Find _metadata folder
+        const metadataFolderName = '_metadata';
+        const metadataSearchQuery = `name='${metadataFolderName}' and '${pnFolderId}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`;
+        const metadataSearchUrl = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(metadataSearchQuery)}&fields=files(id)&pageSize=1`;
+        
+        const metadataFolderResponse = await fetch(metadataSearchUrl, {
+          headers: { 'Authorization': `Bearer ${userAccessToken}` }
+        });
+
+        if (!metadataFolderResponse.ok) {
+          return res.status(404).json({ error: '_metadata folder not found' });
+        }
+
+        const metadataFolderData = await metadataFolderResponse.json() as { files?: Array<{ id: string }> };
+        if (!metadataFolderData.files || metadataFolderData.files.length === 0) {
+          return res.status(404).json({ error: '_metadata folder not found' });
+        }
+
+        const metadataFolderId = metadataFolderData.files[0].id;
+
+        // Get ZKP proofs for requested data points
+        const ZKPDataPointsService = (await import('./server/modules/zkpDataPointsService')).ZKPDataPointsService;
+        const zkpDataPoints: any[] = [];
+
+        for (const dataPointId of allowedDataPoints) {
+          try {
+            const proof = await ZKPDataPointsService.getDataPointProof(
+              userAccessToken,
+              metadataFolderId,
+              dataPointId
+            );
+            
+            if (proof) {
+              zkpDataPoints.push({
+                dataPointId: proof.dataPointId,
+                proofType: proof.proofType,
+                zkpProof: proof.zkpProof,
+                verifiedAt: proof.verifiedAt,
+                expiresAt: proof.expiresAt,
+                verificationLevel: proof.verificationLevel
+                // NEVER include: encryptedUserData, signature, or any actual user data
+              });
+            }
+          } catch (error) {
+            console.warn(`Failed to get ZKP proof for ${dataPointId}:`, error);
+            // Continue with other data points
+          }
+        }
+
+        return res.json({ success: true, dataPoints: zkpDataPoints });
+      } catch (error: any) {
+        console.error('Error getting ZKP data points:', error);
+        return res.status(500).json({
+          error: 'server_error',
+          error_description: error.message || 'Failed to retrieve ZKP data points'
+        });
+      }
+    });
+
     // GET /oauth/userinfo - User info endpoint
     // Returns user information based on access token
+    // NEVER returns pN File, pN Name, or passcode
     this.app.get('/oauth/userinfo', async (req, res) => {
       try {
         const authHeader = req.headers.authorization;
@@ -5242,14 +5396,29 @@ class ProductionServer {
           console.log(`✅ [Userinfo] Using publicKey extracted from DID`);
         }
 
-        // Return user info based on token payload
-        return res.json({
+        // NEVER return pN File, pN Name, or passcode to third parties
+        // These are sensitive credentials that should never be exposed via OAuth
+        
+        // Get requested scopes from token
+        const scopes = tokenPayload.scope || [];
+        const requestedDataPoints = scopes.filter((scope: string) => 
+          scope.startsWith('data_point:') || scope.startsWith('zkp:')
+        );
+
+        // Build response with only allowed data
+        const userInfo: any = {
           sub: tokenPayload.did,
           did: tokenPayload.did,
-          pn_name: tokenPayload.pnName || undefined,
-          pn_identifier: pnIdentifier, // pN identifier from OAuth
-          public_key: publicKey // Public key for file decryption
-        });
+          pn_identifier: pnIdentifier, // pN identifier is safe to share (it's public)
+          // NEVER include: pn_name, pn_file, passcode
+        };
+
+        // Only include public_key if explicitly requested and authorized
+        if (scopes.includes('public_key') && publicKey) {
+          userInfo.public_key = publicKey;
+        }
+
+        return res.json(userInfo);
       } catch (error: any) {
         console.error('Userinfo error:', error);
         return res.status(500).json({

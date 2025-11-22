@@ -18,6 +18,7 @@ import { GlobalPrivacySettings } from './types/privacy';
 import { STANDARD_DATA_POINTS, DATA_POINT_CATEGORIES, ZKPGenerator } from './types/standardDataPoints';
 import { DataPointInputModal } from './components/DataPointInputModal';
 import { PermissionTile } from './components/PermissionTile';
+import { IntegratorTile } from './components/IntegratorTile';
 
 import { MigrationManager, WebIdentityData, MigrationResult } from './utils/migration';
 
@@ -3061,6 +3062,66 @@ This invitation expires in 24 hours.`;
     setShowToolSettingsModal(true);
   };
 
+  const handleToggleToolDataPoint = (toolId: string, dataPointId: string, enabled: boolean) => {
+    const tool = privacySettings.toolPermissions[toolId];
+    if (!tool) return;
+
+    const newDataPoints = enabled
+      ? [...tool.dataPoints, dataPointId]
+      : tool.dataPoints.filter(dp => dp !== dataPointId);
+
+    // Remove from required/optional lists if disabled
+    const newRequiredDataPoints = enabled
+      ? tool.requiredDataPoints || []
+      : (tool.requiredDataPoints || []).filter(dp => dp !== dataPointId);
+    const newOptionalDataPoints = enabled
+      ? tool.optionalDataPoints || []
+      : (tool.optionalDataPoints || []).filter(dp => dp !== dataPointId);
+
+    const newSettings = {
+      ...privacySettings,
+      toolPermissions: {
+        ...privacySettings.toolPermissions,
+        [toolId]: {
+          ...tool,
+          dataPoints: newDataPoints,
+          requiredDataPoints: newRequiredDataPoints,
+          optionalDataPoints: newOptionalDataPoints
+        }
+      }
+    };
+    setPrivacySettings(newSettings);
+  };
+
+  const handleSetToolDataPointRequired = (toolId: string, dataPointId: string, required: boolean) => {
+    const tool = privacySettings.toolPermissions[toolId];
+    if (!tool) return;
+
+    const currentRequired = tool.requiredDataPoints || [];
+    const currentOptional = tool.optionalDataPoints || [];
+
+    const newRequiredDataPoints = required
+      ? [...currentRequired.filter(dp => dp !== dataPointId), dataPointId]
+      : currentRequired.filter(dp => dp !== dataPointId);
+    
+    const newOptionalDataPoints = required
+      ? currentOptional.filter(dp => dp !== dataPointId)
+      : [...currentOptional.filter(dp => dp !== dataPointId), dataPointId];
+
+    const newSettings = {
+      ...privacySettings,
+      toolPermissions: {
+        ...privacySettings.toolPermissions,
+        [toolId]: {
+          ...tool,
+          requiredDataPoints: newRequiredDataPoints,
+          optionalDataPoints: newOptionalDataPoints
+        }
+      }
+    };
+    setPrivacySettings(newSettings);
+  };
+
   const handleDeactivateTool = (toolId: string) => {
     const newSettings = {
       ...privacySettings,
@@ -5601,98 +5662,26 @@ This invitation expires in 24 hours.`;
                               <p className="text-xs">When you connect tools, you'll be able to manage their individual permissions here</p>
                             </div>
                           ) : (
-                            <div className="space-y-4">
+                            <div className="space-y-3">
                               {Object.entries(privacySettings.toolPermissions).map(([toolId, tool]) => (
-                                <div key={toolId} className="border border-border rounded-lg p-4">
-                                  <div className="flex items-center justify-between mb-4">
-                                    <div className="flex-1">
-                                      <div className="font-medium text-sm flex items-center gap-2">
-                                        {tool.toolName}
-                                                                    <span className={`text-xs px-2 py-1 rounded-full ${
-                              tool.status === 'active' 
-                                ? 'bg-primary/10 text-primary' 
-                                : 'bg-secondary text-text-secondary'
-                            }`}>
-                                          {tool.status}
-                                        </span>
-                                      </div>
-                                      <div className="text-xs text-text-secondary mt-1">{tool.toolDescription}</div>
-                                      <div className="text-xs text-text-secondary mt-1">
-                                        {tool.dataPoints.length} data points • Connected {new Date(tool.grantedAt).toLocaleDateString()}
-                                      </div>
-                                    </div>
-                                    <div className="flex items-center space-x-2">
-                                      <button
-                                        onClick={() => handleOpenToolSettings(toolId)}
-                                        className="text-primary hover:text-primary-dark text-xs font-medium px-3 py-1 border border-primary rounded hover:bg-primary hover:text-white transition-colors"
-                                      >
-                                        Manage
-                                      </button>
-                                      <button
-                                        onClick={() => handleDeactivateTool(toolId)}
-                                        className="text-red-600 hover:text-red-800 text-xs font-medium px-3 py-1 border border-red-600 rounded hover:bg-red-600 hover:text-white transition-colors"
-                                      >
-                                        {tool.status === 'active' ? 'Deactivate' : 'Delete'}
-                                      </button>
-                                    </div>
-                                  </div>
-                                  
-                                  {/* Tool-specific data point permissions */}
-                                  <div className="space-y-2">
-                                    <h6 className="text-xs font-medium text-text-primary">Data Point Permissions:</h6>
-                                    {tool.dataPoints.map((dataPointId: string) => {
-                                      const dataPoint = STANDARD_DATA_POINTS[dataPointId];
-                                      const isGloballyEnabled = privacySettings.dataPoints[dataPointId]?.globalSetting !== false;
-                                      const isLocked = isGloballyEnabled;
-                                      
-                                      return dataPoint ? (
-                                        <div key={dataPointId} className="flex items-center justify-between p-2 bg-secondary rounded border">
-                                          <div className="flex-1">
-                                            <div className="text-xs font-medium">{dataPoint.name}</div>
-                                            <div className="text-xs text-text-secondary">{dataPoint.description}</div>
-                                          </div>
-                                          <div className="flex items-center space-x-3">
-                                            <select
-                                              className="text-xs border border-gray-300 rounded px-2 py-1"
-                                              disabled={isLocked}
-                                              defaultValue="optional"
-                                            >
-                                              <option value="optional">Optional</option>
-                                              <option value="required">Required</option>
-                                            </select>
-                                    <button
-                                      onClick={() => {
-                                                // Update third-party specific setting
-                                                // This would integrate with the specific third-party service's API
-                                              }}
-                                              disabled={isLocked}
-                                              className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors border-2 ${
-                                                !isLocked 
-                                                  ? 'bg-primary border-primary' 
-                                                  : 'bg-white border-border'
-                                              }`}
-                                            >
-                                              <span
-                                                className={`inline-block h-4 w-4 transform rounded-full shadow-sm transition-transform ${
-                                                  !isLocked 
-                                                    ? 'bg-white translate-x-6' 
-                                                    : 'bg-gray-600 translate-x-1'
-                                                }`}
-                                              />
-                                    </button>
-                                            {isLocked && (
-                                                                              <span className="text-xs text-text-secondary ml-2">
-                                  {isGloballyEnabled ? 'Global' : 'Locked'}
-                                </span>
-                                )}
-                                          </div>
-                                        </div>
-                                      ) : null;
-                                    })}
-                                  </div>
-                              </div>
-                            ))}
-                          </div>
+                                <IntegratorTile
+                                  key={toolId}
+                                  toolId={toolId}
+                                  toolName={tool.toolName}
+                                  toolDescription={tool.toolDescription}
+                                  dataPoints={tool.dataPoints || []}
+                                  requiredDataPoints={tool.requiredDataPoints || []}
+                                  optionalDataPoints={tool.optionalDataPoints || []}
+                                  onToggleDataPoint={(dataPointId, enabled) => 
+                                    handleToggleToolDataPoint(toolId, dataPointId, enabled)
+                                  }
+                                  onSetRequired={(dataPointId, required) => 
+                                    handleSetToolDataPointRequired(toolId, dataPointId, required)
+                                  }
+                                  globalDataPointSettings={privacySettings.dataPoints}
+                                />
+                              ))}
+                            </div>
                           )}
                           </div>
                           )}
