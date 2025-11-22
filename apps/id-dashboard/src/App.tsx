@@ -3174,15 +3174,8 @@ This invitation expires in 24 hours.`;
           let authToken = authenticatedUser.accessToken || authenticatedUser.authToken;
           
           // If no token, try to get from OAuth service
-          if (!authToken) {
-            try {
-              const { PNOAuthService } = await import('../aggregator-browser/src/services/pnOAuthService');
-              const session = PNOAuthService.loadSession();
-              authToken = session?.accessToken;
-            } catch (e) {
-              // OAuth service not available in dashboard, that's okay
-            }
-          }
+          // Note: OAuth service is not available in dashboard context, skip this
+          // The token should come from authenticatedUser.accessToken or authenticatedUser.authToken
 
           if (authToken) {
             // Convert dashboard format to API format
@@ -3227,6 +3220,9 @@ This invitation expires in 24 hours.`;
               const errorText = await response.text();
               console.error(`❌ [ZKP Sync] Failed to sync ZKP data point ${dataPointId}:`, response.status, errorText);
             }
+          } else {
+            console.warn('⚠️ [ZKP Sync] No access token available to sync ZKP data point. Data stored locally only.');
+          }
         } catch (error) {
           console.error('❌ [ZKP Sync] Error syncing ZKP data point to API:', error);
           // Don't throw - local storage succeeded, API sync is optional
