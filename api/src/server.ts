@@ -7852,10 +7852,23 @@ class ProductionServer {
           metadataFolderId
         );
 
+        // For browser-app, ensure static required/optional data points are preserved
+        // These are defined by the third party and should never change
+        let finalPermission = permission;
+        if (toolId === 'browser-app') {
+          finalPermission = {
+            ...permission,
+            // Static: These are always the same, defined by browser-app
+            requiredDataPoints: [], // No required data points for browser
+            optionalDataPoints: ['age_attestation'], // Age is always optional
+            // dataPoints array reflects what user has granted (can change)
+          };
+        }
+
         // Update permissions
         const updatedPermissions = {
           ...existingPermissions,
-          [toolId]: permission
+          [toolId]: finalPermission
         };
 
         // Store permissions
