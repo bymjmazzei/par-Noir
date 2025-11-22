@@ -254,6 +254,10 @@ export function ContentPreferences({ onClose, feeds }: ContentPreferencesProps) 
                   <div className="absolute z-10 w-full mt-2 bg-neutral-900 border border-neutral-700 rounded-lg shadow-lg overflow-hidden max-h-80 overflow-y-auto">
                     {RATING_ORDER.map((rating) => {
                       const ratingInfo = CONTENT_RATINGS[rating];
+                      if (!ratingInfo) {
+                        console.warn(`Rating ${rating} not found in CONTENT_RATINGS`);
+                        return null;
+                      }
                       const isSelected = userState.preferences.maxRating === rating;
                       const isDisabled = ratingInfo.requiresVerification && !userState.preferences.ageVerified;
                       
