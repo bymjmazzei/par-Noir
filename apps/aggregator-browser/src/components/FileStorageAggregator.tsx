@@ -1813,7 +1813,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
                       Disconnect
                     </button>
                   </div>
-                  <div className="flex items-center space-x-2 flex-shrink-0">
+                  <div className="flex items-center space-x-2 flex-shrink-0 self-end sm:self-auto">
                     <button
                       onClick={() => {
                         loadFilesForAccount(account.accountId);
