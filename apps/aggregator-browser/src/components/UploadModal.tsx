@@ -145,22 +145,25 @@ export function UploadModal({ feeds: propsFeeds, onClose, onUploadComplete }: Up
     <div className="h-full w-full bg-neutral-900 flex flex-col overflow-y-auto" style={{ paddingBottom: '64px' }}>
       {/* Railway Header with Settings Button */}
       <div 
-        className="fixed top-0 left-0 right-0 h-12 flex items-center justify-between px-4 z-[100] bg-neutral-900/95 backdrop-blur-sm border-b border-neutral-800"
+        className="fixed top-0 left-0 right-0 h-12 flex items-center justify-between px-4 z-[100] bg-neutral-900 border-b border-neutral-800"
+        style={{ position: 'fixed', top: 0, left: 0, right: 0, zIndex: 100 }}
       >
-        <div className="w-9 h-9" /> {/* Spacer for centering - same size as button */}
-        <h2 className="text-sm font-medium uppercase tracking-wide text-white">
+        <div className="w-9 h-9 flex-shrink-0" /> {/* Spacer for centering - same size as button */}
+        <h2 className="text-sm font-medium uppercase tracking-wide text-white flex-1 text-center">
           Upload from Secure Cloud
         </h2>
         <button
-          onClick={() => {
-            console.log('Settings button clicked');
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            console.log('Settings button clicked!', { showContentPreferences });
             setShowContentPreferences(true);
           }}
-          className="w-9 h-9 p-2 text-white hover:text-white transition-colors flex items-center justify-center rounded hover:bg-neutral-800"
+          className="w-9 h-9 p-2 text-white bg-blue-600 hover:bg-blue-700 transition-colors flex items-center justify-center rounded flex-shrink-0"
           title="Content Preferences"
-          style={{ zIndex: 101 }}
+          style={{ zIndex: 101, minWidth: '36px', minHeight: '36px' }}
         >
-          <Settings className="h-5 w-5" />
+          <Settings className="h-5 w-5 text-white" />
         </button>
       </div>
 
