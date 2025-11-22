@@ -57,6 +57,73 @@ export const STANDARD_DATA_POINTS: Record<string, StandardDataPoint> = {
     examples: ['Identity verification', 'Name verification', 'Compliance requirements']
   },
 
+  'pn_identifier': {
+    id: 'pn_identifier',
+    name: 'pN Identifier',
+    description: 'Your unique par Noir identifier',
+    category: 'verification',
+    dataType: 'string',
+    zkpType: 'identity_verification',
+    validation: { required: true },
+    requiredFields: ['pnIdentifier'],
+    defaultPrivacy: 'public',
+    examples: ['Identity verification', 'Account identification']
+  },
+
+  'first_name': {
+    id: 'first_name',
+    name: 'First Name',
+    description: 'Your first name',
+    category: 'verification',
+    dataType: 'string',
+    zkpType: 'identity_verification',
+    validation: { required: true },
+    requiredFields: ['firstName'],
+    defaultPrivacy: 'private',
+    examples: ['Identity verification', 'Name verification']
+  },
+
+  'middle_name': {
+    id: 'middle_name',
+    name: 'Middle Name',
+    description: 'Your middle name',
+    category: 'verification',
+    dataType: 'string',
+    zkpType: 'identity_verification',
+    validation: { required: false },
+    requiredFields: [],
+    optionalFields: ['middleName'],
+    defaultPrivacy: 'private',
+    examples: ['Identity verification', 'Name verification']
+  },
+
+  'last_name': {
+    id: 'last_name',
+    name: 'Last Name',
+    description: 'Your last name',
+    category: 'verification',
+    dataType: 'string',
+    zkpType: 'identity_verification',
+    validation: { required: true },
+    requiredFields: ['lastName'],
+    defaultPrivacy: 'private',
+    examples: ['Identity verification', 'Name verification']
+  },
+
+  'suffix': {
+    id: 'suffix',
+    name: 'Suffix',
+    description: 'Name suffix (e.g., Jr., Sr., III)',
+    category: 'verification',
+    dataType: 'string',
+    zkpType: 'identity_verification',
+    validation: { required: false },
+    requiredFields: [],
+    optionalFields: ['suffix'],
+    defaultPrivacy: 'private',
+    examples: ['Identity verification', 'Name verification']
+  },
+
   // ===== LOCATION & GEOGRAPHY =====
   'location_verification': {
     id: 'location_verification',

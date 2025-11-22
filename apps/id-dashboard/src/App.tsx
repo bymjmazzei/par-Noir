@@ -17,6 +17,7 @@ import usePWA from './hooks/usePWA';
 import { GlobalPrivacySettings } from './types/privacy';
 import { STANDARD_DATA_POINTS, DATA_POINT_CATEGORIES, ZKPGenerator } from './types/standardDataPoints';
 import { DataPointInputModal } from './components/DataPointInputModal';
+import { PermissionTile } from './components/PermissionTile';
 
 import { MigrationManager, WebIdentityData, MigrationResult } from './utils/migration';
 
@@ -3143,10 +3144,23 @@ This invitation expires in 24 hours.`;
             );
             
             if (existingDataPoint) {
-              // Note: API only returns ZKP proof, not userData for privacy
-              // The userData is not stored in the API for security reasons
-              // If you need to show existing data, it should be retrieved from a different source
               console.log('[App] Found existing data point in API:', existingDataPoint.dataPointId);
+              
+              // Decrypt userData if available for editing
+              if (existingDataPoint.encryptedUserData) {
+                try {
+                  const decryptedUserDataJson = await IdentityCrypto.decrypt(
+                    existingDataPoint.encryptedUserData,
+                    authenticatedUser.publicKey || '',
+                    credentials.passcode
+                  );
+                  existingData = JSON.parse(decryptedUserDataJson);
+                  console.log('[App] Decrypted existing userData for editing:', existingData);
+                } catch (error) {
+                  console.warn('[App] Failed to decrypt userData, will show empty form:', error);
+                  existingData = null;
+                }
+              }
             }
           } catch (error) {
             console.warn('[App] Error checking for existing data point:', error);
@@ -3204,6 +3218,21 @@ This invitation expires in 24 hours.`;
       // Convert to API format
       const { ZKPDataPointsService } = await import('./utils/zkpDataPointsService');
       
+      // Encrypt userData for storage (so it can be retrieved for editing)
+      let encryptedUserData: string | undefined;
+      if (userData && Object.keys(userData).length > 0) {
+        try {
+          const userDataJson = JSON.stringify(userData);
+          encryptedUserData = await IdentityCrypto.encrypt(
+            userDataJson,
+            authenticatedUser.publicKey || '',
+            credentials.passcode
+          );
+        } catch (error) {
+          console.warn('Failed to encrypt userData, continuing without it:', error);
+        }
+      }
+      
       const zkpDataPoint = {
         dataPointId: dataPointId,
         proofType: mapDataPointIdToProofType(dataPointId),
@@ -3215,7 +3244,8 @@ This invitation expires in 24 hours.`;
         metadata: {
           provider: 'user_attested',
           fraudPreventionScore: undefined
-        }
+        },
+        encryptedUserData: encryptedUserData
       };
 
       // Save directly to API server (Google Drive) - NO localStorage
@@ -5456,101 +5486,22 @@ This invitation expires in 24 hours.`;
                               <CheckCircle className="w-4 h-4 text-green-500" />
                               Active Data Point Permissions
                             </h5>
-                                                            <div className="space-y-4">
-                                {Object.entries(DATA_POINT_CATEGORIES).map(([categoryKey, categoryName]) => {
-                                  const categoryDataPoints = Object.entries(STANDARD_DATA_POINTS).filter(
-                                    ([_, dataPoint]) => dataPoint.category === categoryKey
-                                  );
-                                  
-                                  if (categoryDataPoints.length === 0) return null;
-                                  
-                                  return (
-                                    <div key={categoryKey} className="space-y-3">
-                                      <h6 className="text-sm font-medium text-text-primary border-b border-border pb-2">
-                                        {categoryName}
-                                      </h6>
-                                      {categoryDataPoints.map(([dataPointId, dataPoint]) => {
-                                        const isGloballyEnabled = privacySettings.dataPoints[dataPointId]?.globalSetting !== false;
-                                        const isLocked = false;
-                                        
-                                        // Check if user has attested or verified this data point
-                                        const hasAttested = attestedDataPoints.has(dataPointId);
-                                        const hasVerified = verifiedDataPoints.has(dataPointId);
-                                        
-                                        return (
-                                          <div key={dataPointId} className="flex items-center justify-between p-3 border border-border rounded-lg">
-                                            <div className="flex items-center gap-3">
-                                              <div className="font-medium text-sm">
-                                                {dataPoint.name} 
-                                                {hasVerified && <span className="text-green-600 font-semibold"> (verified)</span>}
-                                                {hasAttested && !hasVerified && <span className="text-blue-600"> (attested)</span>}
-                                              </div>
-                                              {isGloballyEnabled && (
-                                                <span className="text-xs bg-primary/10 text-primary px-2 py-1 rounded-full">
-                                                  Active
-                                                </span>
-                                              )}
-                                              {isLocked && (
-                                                <span className="text-xs bg-secondary text-text-secondary px-2 py-1 rounded-full">
-                                                  Locked
-                                                </span>
-                                              )}
-                                            </div>
-                                            <div className="flex items-center space-x-3">
-                                              <button
-                                                onClick={(e) => {
-                                                  e.preventDefault();
-                                                  e.stopPropagation();
-                                                  console.log('🔄 [App] Age attestation button clicked', { dataPointId });
-                                                  handleRequestDataPoint(dataPointId);
-                                                }}
-                                                type="button"
-                                                className={`text-xs font-medium px-3 py-1 border rounded transition-colors ${
-                                                  hasVerified
-                                                    ? 'text-green-600 border-green-600 hover:bg-green-600 hover:text-white'
-                                                    : hasAttested
-                                                    ? 'text-primary border-primary hover:bg-primary hover:text-white'
-                                                    : 'text-green-600 border-green-600 hover:bg-green-600 hover:text-white'
-                                                }`}
-                                              >
-                                                {hasVerified ? 'Verified' : hasAttested ? 'Edit' : '+'}
-                                              </button>
-                                              <button
-                                                onClick={() => setPrivacySettings({
-                                                  ...privacySettings,
-                                                  dataPoints: {
-                                                    ...privacySettings.dataPoints,
-                                                    [dataPointId]: {
-                                                      ...privacySettings.dataPoints[dataPointId],
-                                                      label: dataPoint.name,
-                                                      description: dataPoint.description,
-                                                      category: dataPoint.category as 'verification' | 'preferences' | 'compliance' | 'location' | 'content' | 'analytics',
-                                                      globalSetting: !isGloballyEnabled
-                                                    }
-                                                  }
-                                                })}
-                                                disabled={isLocked}
-                                                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors border-2 ${
-                                                  isGloballyEnabled 
-                                                    ? 'bg-primary border-primary' 
-                                                    : 'bg-white border-border'
-                                                }`}
-                                              >
-                                                <span
-                                                  className={`inline-block h-4 w-4 transform rounded-full shadow-sm transition-transform ${
-                                                    isGloballyEnabled 
-                                                      ? 'bg-white translate-x-6' 
-                                                      : 'bg-gray-600 translate-x-1'
-                                                  }`}
-                                                />
-                                              </button>
-                                            </div>
-                                          </div>
-                                        );
-                                      })}
-                                    </div>
-                                  );
-                                })}
+                            <div className="space-y-3">
+                              {Object.entries(STANDARD_DATA_POINTS).map(([dataPointId, dataPoint]) => {
+                                // Check if user has attested or verified this data point
+                                const hasAttested = attestedDataPoints.has(dataPointId);
+                                const hasVerified = verifiedDataPoints.has(dataPointId);
+                                const hasData = hasAttested || hasVerified;
+                                
+                                return (
+                                  <PermissionTile
+                                    key={dataPointId}
+                                    title={dataPoint.name}
+                                    hasData={hasData}
+                                    onClick={() => handleRequestDataPoint(dataPointId)}
+                                  />
+                                );
+                              })}
                             </div>
                           </div>
                             </div>

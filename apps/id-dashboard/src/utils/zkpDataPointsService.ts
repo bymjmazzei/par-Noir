@@ -15,6 +15,8 @@ export interface ZKPDataPoint {
     provider: string;
     fraudPreventionScore?: number;
   };
+  // Encrypted userData for editing purposes (client-side encryption)
+  encryptedUserData?: string;
 }
 
 export class ZKPDataPointsService {

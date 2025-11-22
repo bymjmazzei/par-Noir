@@ -17,6 +17,8 @@ export interface ZKPDataPoint {
     provider: string;
     fraudPreventionScore?: number;
   };
+  // Encrypted userData for editing purposes (client-side encryption)
+  encryptedUserData?: string;
 }
 
 export interface ZKPVerificationResult {
@@ -134,7 +136,7 @@ export class ZKPDataPointsService {
       return null;
     }
 
-    // Return the proof (but NOT the actual value/data)
+    // Return the proof and encrypted userData (for editing purposes)
     return {
       dataPointId: dataPoint.dataPointId,
       proofType: dataPoint.proofType,
@@ -143,7 +145,8 @@ export class ZKPDataPointsService {
       verifiedAt: dataPoint.verifiedAt,
       expiresAt: dataPoint.expiresAt,
       verificationLevel: dataPoint.verificationLevel,
-      metadata: dataPoint.metadata
+      metadata: dataPoint.metadata,
+      encryptedUserData: dataPoint.encryptedUserData // Include encrypted userData for editing
     };
   }
 
