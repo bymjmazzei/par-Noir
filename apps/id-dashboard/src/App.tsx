@@ -695,6 +695,39 @@ function App() {
     }
   };
   
+  // Initialize browser-app tool permissions (hard-coded pN owned third party)
+  useEffect(() => {
+    if (authenticatedUser?.id && !privacySettings.toolPermissions['browser-app']) {
+      setPrivacySettings(prev => ({
+        ...prev,
+        toolPermissions: {
+          ...prev.toolPermissions,
+          'browser-app': {
+            toolName: 'par Noir Browser',
+            toolDescription: 'par Noir owned content aggregator browser',
+            permissions: ['openid', 'profile', 'zkp:age_attestation'],
+            dataPoints: ['age_attestation'], // Age is optional for 18+/NSFW content access
+            requiredDataPoints: [], // No required data points
+            optionalDataPoints: ['age_attestation'], // Age is optional
+            grantedAt: new Date().toISOString(),
+            status: 'active' as const
+          }
+        },
+        dataPoints: {
+          ...prev.dataPoints,
+          'age_attestation': {
+            label: 'Age Attestation',
+            description: 'Attest to your age for age-restricted services',
+            category: 'verification' as const,
+            requestedBy: ['browser-app'],
+            globalSetting: true,
+            lastUpdated: new Date().toISOString()
+          }
+        }
+      }));
+    }
+  }, [authenticatedUser?.id, privacySettings.toolPermissions]);
+
   // Load attested data points from metadata
   useEffect(() => {
     const loadAttestedDataPoints = async () => {

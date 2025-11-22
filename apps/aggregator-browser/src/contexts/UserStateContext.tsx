@@ -171,9 +171,9 @@ export function UserStateProvider({ children }: { children: ReactNode }) {
 
         const apiEndpoint = process.env.REACT_APP_API_ENDPOINT || 'https://api.parnoir.com';
         
-        // Check if user has age_attestation ZKP
-        const proofResponse = await fetch(
-          `${apiEndpoint}/api/users/${userState.pnIdentifier}/zkp-data-points/age_attestation`,
+        // Check if user has age_attestation ZKP via OAuth endpoint
+        const zkpResponse = await fetch(
+          `${apiEndpoint}/oauth/zkp-data-points?data_points=age_attestation`,
           {
             headers: {
               'Authorization': `Bearer ${session.accessToken}`
@@ -181,43 +181,46 @@ export function UserStateProvider({ children }: { children: ReactNode }) {
           }
         );
 
-        if (proofResponse.ok) {
-          const { proof } = await proofResponse.json();
+        if (zkpResponse.ok) {
+          const { dataPoints } = await zkpResponse.json();
+          const ageZKP = dataPoints?.find((dp: any) => dp.dataPointId === 'age_attestation');
           
-          // Verify the proof for "age >= 18"
-          const verifyResponse = await fetch(
-            `${apiEndpoint}/api/users/${userState.pnIdentifier}/zkp-data-points/verify`,
-            {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${session.accessToken}`
-              },
-              body: JSON.stringify({
-                dataPointId: 'age_attestation',
-                condition: 'age >= 18'
-              })
-            }
-          );
+          if (ageZKP) {
+            // Verify the proof for "age >= 18"
+            const verifyResponse = await fetch(
+              `${apiEndpoint}/api/users/${userState.pnIdentifier}/zkp-data-points/verify`,
+              {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                  'Authorization': `Bearer ${session.accessToken}`
+                },
+                body: JSON.stringify({
+                  dataPointId: 'age_attestation',
+                  condition: 'age >= 18'
+                })
+              }
+            );
 
-          if (verifyResponse.ok) {
-            const { verification } = await verifyResponse.json();
-            if (verification.isValid) {
-              // Auto-set age verified without revealing actual age
-              // Use minimum age (18) since we don't know the actual age
-              setUserState(prev => ({
-                ...prev,
-                preferences: {
-                  ...prev.preferences,
-                  ageVerified: true,
-                  verifiedAge: 18 // Minimum age, not actual age
-                }
-              }));
-              console.log('✅ Age verified via ZKP (age >= 18)');
+            if (verifyResponse.ok) {
+              const { verification } = await verifyResponse.json();
+              if (verification.isValid) {
+                // Auto-set age verified and allow 18+ and NSFW content
+                setUserState(prev => ({
+                  ...prev,
+                  preferences: {
+                    ...prev.preferences,
+                    ageVerified: true,
+                    verifiedAge: 18, // Minimum age, not actual age
+                    maxRating: prev.preferences.maxRating === 'GA' ? 'NSFW' : prev.preferences.maxRating // Allow NSFW if age verified
+                  }
+                }));
+                console.log('✅ Age verified via ZKP (age >= 18) - 18+ and NSFW content now accessible');
+              }
             }
           }
-        } else if (proofResponse.status !== 404) {
-          console.warn('Failed to check ZKP age verification:', proofResponse.status);
+        } else if (zkpResponse.status !== 404) {
+          console.warn('Failed to check ZKP age verification:', zkpResponse.status);
         }
         // 404 is expected if user hasn't verified age yet
       } catch (error) {

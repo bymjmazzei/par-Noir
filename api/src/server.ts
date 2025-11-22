@@ -4958,13 +4958,18 @@ class ProductionServer {
         });
       }
 
-      // Validate client
-      const { ClientRegistrationService } = await import('./server/modules/clientRegistration');
-      if (!ClientRegistrationService.validateClient(client_id as string, redirect_uri as string)) {
-        return res.status(400).json({
-          error: 'invalid_client',
-          error_description: 'Invalid client_id or redirect_uri'
-        });
+      // Hard-code browser-app (pN owned third party) - skip client registration validation
+      const isBrowserApp = client_id === 'browser-app';
+      
+      // Validate client (skip for browser-app)
+      if (!isBrowserApp) {
+        const { ClientRegistrationService } = await import('./server/modules/clientRegistration');
+        if (!ClientRegistrationService.validateClient(client_id as string, redirect_uri as string)) {
+          return res.status(400).json({
+            error: 'invalid_client',
+            error_description: 'Invalid client_id or redirect_uri'
+          });
+        }
       }
 
       // Route based on client_id
