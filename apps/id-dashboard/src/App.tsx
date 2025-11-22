@@ -3184,6 +3184,12 @@ This invitation expires in 24 hours.`;
               }
             };
 
+            console.log('🔄 [ZKP Sync] Sending request to API...', {
+              url: `${apiEndpoint}/api/users/${pnIdentifier}/zkp-data-points/${dataPointId}`,
+              dataPointId,
+              hasProof: !!zkpDataPoint.zkpProof
+            });
+
             const response = await fetch(
               `${apiEndpoint}/api/users/${pnIdentifier}/zkp-data-points/${dataPointId}`,
               {
@@ -3196,17 +3202,17 @@ This invitation expires in 24 hours.`;
               }
             );
 
+            console.log('🔄 [ZKP Sync] API response status:', response.status);
+
             if (response.ok) {
-              console.log(`✅ Synced ZKP data point ${dataPointId} to API`);
+              const result = await response.json();
+              console.log(`✅ [ZKP Sync] Successfully synced ZKP data point ${dataPointId} to API`, result);
             } else {
               const errorText = await response.text();
-              console.warn(`⚠️ Failed to sync ZKP data point ${dataPointId}:`, response.status, errorText);
+              console.error(`❌ [ZKP Sync] Failed to sync ZKP data point ${dataPointId}:`, response.status, errorText);
             }
-          } else {
-            console.warn('No access token available to sync ZKP data point. Data stored locally only.');
-          }
         } catch (error) {
-          console.error('Error syncing ZKP data point to API:', error);
+          console.error('❌ [ZKP Sync] Error syncing ZKP data point to API:', error);
           // Don't throw - local storage succeeded, API sync is optional
         }
         
