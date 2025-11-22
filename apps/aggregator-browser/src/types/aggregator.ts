@@ -401,6 +401,8 @@ export interface TextPostStyle {
 export interface TextPostData {
   content: string;
   style: TextPostStyle;
+  contentRating?: ContentRating;
+  category?: FeedCategory;
 }
 
 export interface MetadataFilters {

@@ -4,9 +4,10 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { X, Globe, Lock, Users, Star } from 'lucide-react';
-import { IndexedFile } from '../types/aggregator';
+import { X, Globe, Lock, Users, Star, Shield } from 'lucide-react';
+import { IndexedFile, ContentRating } from '../types/aggregator';
 import { useUserState } from '../contexts/UserStateContext';
+import { CONTENT_RATINGS, RATING_ORDER, getDefaultContentRating } from '../constants/contentRatings';
 
 interface EditFileModalProps {
   file: IndexedFile;
@@ -23,6 +24,9 @@ export function EditFileModal({ file, onClose, onSave }: EditFileModalProps) {
   const [description, setDescription] = useState(file.metadata.description || '');
   const [tags, setTags] = useState((file.metadata.keywords || file.metadata.tags || []).join(', '));
   const [isTopPost, setIsTopPost] = useState(file.metadata.isTopPost || false);
+  const [contentRating, setContentRating] = useState<ContentRating>(
+    (file.metadata.contentRating as ContentRating) || getDefaultContentRating(userState.preferences.ageVerified)
+  );
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -52,7 +56,8 @@ export function EditFileModal({ file, onClose, onSave }: EditFileModalProps) {
           tags: tags.split(',').map(t => t.trim()).filter(Boolean),
           isPublic: visibility === 'public',
           visibility: visibility,
-          isTopPost: isTopPost
+          isTopPost: isTopPost,
+          contentRating: contentRating
         }),
       });
 
@@ -76,7 +81,8 @@ export function EditFileModal({ file, onClose, onSave }: EditFileModalProps) {
           description: description.trim() || undefined,
           keywords: tags.split(',').map(t => t.trim()).filter(Boolean),
           tags: tags.split(',').map(t => t.trim()).filter(Boolean),
-          isTopPost: isTopPost
+          isTopPost: isTopPost,
+          contentRating: contentRating
         }
       };
 
@@ -190,6 +196,29 @@ export function EditFileModal({ file, onClose, onSave }: EditFileModalProps) {
               placeholder="tag1, tag2, tag3"
             />
             <p className="text-xs text-neutral-400 mt-1">Separate tags with commas</p>
+          </div>
+
+          {/* Content Rating */}
+          <div>
+            <label className="block text-white font-medium mb-2">Content Rating</label>
+            <select
+              value={contentRating}
+              onChange={(e) => setContentRating(e.target.value as ContentRating)}
+              className="w-full px-4 py-2 bg-neutral-800 border border-neutral-700 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              {RATING_ORDER.map((rating) => {
+                const ratingInfo = CONTENT_RATINGS[rating];
+                const isDisabled = ratingInfo.requiresVerification && !userState.preferences.ageVerified;
+                return (
+                  <option key={rating} value={rating} disabled={isDisabled}>
+                    {rating} {isDisabled ? '(Verification Required)' : ''}
+                  </option>
+                );
+              })}
+            </select>
+            <p className="text-xs text-neutral-400 mt-1">
+              {CONTENT_RATINGS[contentRating]?.description}
+            </p>
           </div>
 
           {/* Top Post */}

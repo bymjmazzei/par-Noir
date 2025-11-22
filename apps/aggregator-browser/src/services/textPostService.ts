@@ -332,6 +332,8 @@ export async function createTextPost(
         textPost: textPost, // Include the full text post data
         thought: textPost, // Alias for compatibility
         contentRating: metadata?.contentRating,
+        feedCategories: metadata?.keywords && metadata.keywords.length > 0 ? metadata.keywords : undefined,
+        category: metadata?.keywords && metadata.keywords.length > 0 ? metadata.keywords[0] : undefined,
       }),
     });
 

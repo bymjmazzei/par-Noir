@@ -85,6 +85,8 @@ export type FeedCategory =
   | 'humor-meme-culture'
   | 'adults-only';
 
+export type ContentRating = 'GA' | '18+' | 'NSFW' | 'X';
+
 export interface PublicMetadata {
   fileId: string;
   backend: string;

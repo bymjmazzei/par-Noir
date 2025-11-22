@@ -11,8 +11,9 @@ import { EncryptionManager } from '../utils/encryptionManager';
 import { getEncryptionService } from '../services/encryptionService';
 import { FEED_CATEGORIES, FEED_CATEGORY_LIST } from '../constants/feedCategories';
 import { LICENSE_TYPES } from '../constants/licenses';
-import { FeedCategory } from '../types/aggregator';
+import { FeedCategory, ContentRating } from '../types/aggregator';
 import { useUserState } from '../contexts/UserStateContext';
+import { CONTENT_RATINGS, RATING_ORDER, getDefaultContentRating } from '../constants/contentRatings';
 
 const apiEndpoint = process.env.REACT_APP_API_ENDPOINT || 'https://api.parnoir.com';
 
@@ -827,6 +828,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
     locationName: string;
     locationAddress: string;
     license: string;
+    contentRating: ContentRating;
   }>({
     name: '',
     description: '',
@@ -835,7 +837,8 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
     category: '',
     locationName: '',
     locationAddress: '',
-    license: 'all-rights-reserved'
+    license: 'all-rights-reserved',
+    contentRating: 'GA'
   });
   const [fileMetadataMap, setFileMetadataMap] = useState<Map<string, any>>(new Map());
 
@@ -958,6 +961,9 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
     const license = metadata?.license || metadata?.schema?.license || '';
     const licenseString = typeof license === 'object' && license?.name ? license.name : (typeof license === 'string' ? license : '') || 'all-rights-reserved';
     
+    // Extract content rating
+    const contentRating = (metadata?.contentRating as ContentRating) || getDefaultContentRating(userState.preferences.ageVerified);
+    
     setEditForm({
       name: metadata?.name || (file.name.endsWith('.encrypted') ? file.name.replace('.encrypted', '') : file.name),
       description: metadata?.description || '',
@@ -966,7 +972,8 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
       category: category as FeedCategory | '',
       locationName: locationName,
       locationAddress: locationAddress,
-      license: licenseString
+      license: licenseString,
+      contentRating: contentRating
     });
     setEditingFile(file);
   };
@@ -1036,7 +1043,8 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
           feedCategories: editForm.category ? [editForm.category as FeedCategory] : undefined,
           category: editForm.category || undefined,
           locationCreated: locationCreated,
-          license: editForm.license || undefined
+          license: editForm.license || undefined,
+          contentRating: editForm.contentRating
         }),
       });
 
@@ -1696,6 +1704,9 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
           : file.type.startsWith('audio/') ? 'audio'
           : 'document';
 
+        // Get default content rating based on user's verification status
+        const defaultRating = getDefaultContentRating(userState.preferences.ageVerified);
+        
         // Create metadata entry via API (this also updates owner index automatically)
         const metadataResponse = await fetch(`${apiEndpoint}/api/aggregator/metadata-index/${fileId}`, {
           method: 'PUT',
@@ -1712,6 +1723,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
             isPublic: false, // Default to private
             publicToken: shareToken ? JSON.stringify(shareToken) : undefined, // Store share token for future use
             uploadDate: new Date().toISOString(),
+            contentRating: defaultRating, // Set default rating based on user's highest accessible rating
             // Include accountId in query params if needed
           }),
         });
@@ -2216,7 +2228,8 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
               category: '',
               locationName: '',
               locationAddress: '',
-              license: ''
+              license: '',
+              contentRating: 'GA'
             });
           }}
         >
@@ -2228,20 +2241,21 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
               <h3 className="text-lg font-semibold">Edit Metadata</h3>
               <button
                 onClick={() => {
-                  setEditingFile(null);
-                  setEditForm({ 
-                    name: '', 
-                    description: '', 
-                    tags: '',
-                    genre: '',
-                    category: '',
-                    locationName: '',
-                    locationAddress: '',
-                    locationLat: '',
-                    locationLng: '',
-                    license: '',
-                    language: ''
-                  });
+                    setEditingFile(null);
+                    setEditForm({ 
+                      name: '', 
+                      description: '', 
+                      tags: '',
+                      genre: '',
+                      category: '',
+                      locationName: '',
+                      locationAddress: '',
+                      locationLat: '',
+                      locationLng: '',
+                      license: '',
+                      language: '',
+                      contentRating: 'GA'
+                    });
                 }}
                 className="text-text-secondary hover:text-text-primary transition-colors"
               >
@@ -2364,6 +2378,36 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
               </div>
 
               <div className="border-t border-neutral-700 pt-4 mt-4">
+                <h4 className="text-sm font-semibold text-text-primary mb-3">Content Rating</h4>
+                
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium text-text-secondary mb-1">
+                      Rating
+                    </label>
+                    <select
+                      value={editForm.contentRating}
+                      onChange={(e) => setEditForm({ ...editForm, contentRating: e.target.value as ContentRating })}
+                      className="w-full px-3 py-2 bg-neutral-700 border border-neutral-600 rounded-lg text-text-primary focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    >
+                      {RATING_ORDER.map((rating) => {
+                        const ratingInfo = CONTENT_RATINGS[rating];
+                        const isDisabled = ratingInfo.requiresVerification && !userState.preferences.ageVerified;
+                        return (
+                          <option key={rating} value={rating} disabled={isDisabled}>
+                            {rating} {isDisabled ? '(Verification Required)' : ''}
+                          </option>
+                        );
+                      })}
+                    </select>
+                    <p className="text-xs text-text-secondary mt-1">
+                      {CONTENT_RATINGS[editForm.contentRating]?.description}
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="border-t border-neutral-700 pt-4 mt-4">
                 <h4 className="text-sm font-semibold text-text-primary mb-3">Rights & Licensing</h4>
                 
                 <div className="space-y-4">
@@ -2395,17 +2439,18 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
               <div className="flex justify-end space-x-2 pt-4 flex-shrink-0 border-t border-neutral-700 mt-4">
                 <button
                   onClick={() => {
-                    setEditingFile(null);
-                    setEditForm({ 
-                      name: '', 
-                      description: '', 
-                      tags: '',
-                      genre: '',
-                      category: '',
-                      locationName: '',
-                      locationAddress: '',
-                      license: 'all-rights-reserved'
-                    });
+      setEditingFile(null);
+      setEditForm({
+        name: '',
+        description: '',
+        tags: '',
+        genre: '',
+        category: '',
+        locationName: '',
+        locationAddress: '',
+        license: 'all-rights-reserved',
+        contentRating: 'GA'
+      });
                   }}
                   className="px-4 py-2 text-sm font-medium text-text-secondary hover:text-text-primary transition-colors"
                   disabled={isLoading}

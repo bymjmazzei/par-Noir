@@ -112,6 +112,9 @@ export function UploadModal({ feeds: propsFeeds, onClose, onUploadComplete }: Up
         {
           title: textPost.content.substring(0, 50),
           description: textPost.content,
+          contentRating: textPost.contentRating,
+          keywords: textPost.category ? [textPost.category] : undefined,
+          tags: textPost.category ? [textPost.category] : undefined,
         }
       );
 

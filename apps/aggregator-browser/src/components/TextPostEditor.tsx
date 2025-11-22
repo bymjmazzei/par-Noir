@@ -6,7 +6,10 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { X, Check, Palette, Type, Image as ImageIcon, Upload, AlignLeft, AlignCenter, AlignRight, AlignJustify, Layers, Minus, Plus as PlusIcon, Send, Bold } from 'lucide-react';
-import { TextPostData, TextPostStyle } from '../types/aggregator';
+import { TextPostData, TextPostStyle, ContentRating, FeedCategory } from '../types/aggregator';
+import { useUserState } from '../contexts/UserStateContext';
+import { CONTENT_RATINGS, RATING_ORDER, getDefaultContentRating } from '../constants/contentRatings';
+import { FEED_CATEGORY_LIST } from '../constants/feedCategories';
 
 // Helper function to convert hex to RGB
 const hexToRgb = (hex: string): { r: number; g: number; b: number } => {
@@ -225,6 +228,7 @@ const FONT_OPTIONS = [
 ];
 
 export function TextPostEditor({ onSave, onCancel }: TextPostEditorProps) {
+  const { userState } = useUserState();
   const [content, setContent] = useState('');
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [textareaHeight, setTextareaHeight] = useState(60); // Starting height
@@ -240,6 +244,10 @@ export function TextPostEditor({ onSave, onCancel }: TextPostEditorProps) {
   const [textAlign, setTextAlign] = useState<'left' | 'center' | 'right' | 'justify'>('center');
   const [textStyle, setTextStyle] = useState<'plain' | 'bold' | 'italic' | 'strikethrough'>('plain');
   const [padding, setPadding] = useState(40);
+  const [contentRating, setContentRating] = useState<ContentRating>(
+    getDefaultContentRating(userState.preferences.ageVerified)
+  );
+  const [category, setCategory] = useState<FeedCategory | ''>('');
   const [showTextColorPicker, setShowTextColorPicker] = useState(false);
   const [showBackgroundColorPicker, setShowBackgroundColorPicker] = useState(false);
   const [showDropShadowColorPicker, setShowDropShadowColorPicker] = useState(false);
@@ -486,7 +494,9 @@ export function TextPostEditor({ onSave, onCancel }: TextPostEditorProps) {
         textAlign,
         textStyle,
         padding,
-      }
+      },
+      contentRating: contentRating,
+      category: category || undefined
     };
 
     onSave(textPost);
@@ -1174,6 +1184,47 @@ export function TextPostEditor({ onSave, onCancel }: TextPostEditorProps) {
           >
             <Send className="h-5 w-5" />
           </button>
+        </div>
+
+        {/* Rating and Category Selection */}
+        <div className="px-4 pb-4 space-y-3 border-t border-neutral-700 pt-3">
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs text-neutral-400 mb-1">Content Rating</label>
+              <select
+                value={contentRating}
+                onChange={(e) => setContentRating(e.target.value as ContentRating)}
+                className="w-full px-3 py-2 bg-neutral-800 border border-neutral-700 rounded-lg text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                {RATING_ORDER.map((rating) => {
+                  const ratingInfo = CONTENT_RATINGS[rating];
+                  const isDisabled = ratingInfo.requiresVerification && !userState.preferences.ageVerified;
+                  return (
+                    <option key={rating} value={rating} disabled={isDisabled}>
+                      {rating} {isDisabled ? '(Verification Required)' : ''}
+                    </option>
+                  );
+                })}
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs text-neutral-400 mb-1">Category</label>
+              <select
+                value={category}
+                onChange={(e) => setCategory(e.target.value as FeedCategory | '')}
+                className="w-full px-3 py-2 bg-neutral-800 border border-neutral-700 rounded-lg text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="">Select category</option>
+                {FEED_CATEGORY_LIST
+                  .filter(cat => cat.id !== 'adults-only' || userState.preferences.ageVerified)
+                  .map(cat => (
+                    <option key={cat.id} value={cat.id}>
+                      {cat.name}
+                    </option>
+                  ))}
+              </select>
+            </div>
+          </div>
         </div>
       </div>
 

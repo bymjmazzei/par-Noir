@@ -60,3 +60,22 @@ export const WARNING_TAGS: Record<WarningTag, string> = {
   'language': 'Contains strong language'
 };
 
+/**
+ * Get default content rating based on user's age verification status
+ * - If only age attested (basic verification): default to NSFW
+ * - If age verified: default to X
+ * - Otherwise: default to GA
+ */
+export function getDefaultContentRating(ageVerified: boolean, verificationLevel?: 'basic' | 'enhanced' | 'verified'): ContentRating {
+  if (ageVerified) {
+    // If verified (not just basic attestation), default to X
+    if (verificationLevel === 'verified' || verificationLevel === 'enhanced') {
+      return 'X';
+    }
+    // If only basic attestation, default to NSFW
+    return 'NSFW';
+  }
+  // No age verification, default to GA
+  return 'GA';
+}
+
