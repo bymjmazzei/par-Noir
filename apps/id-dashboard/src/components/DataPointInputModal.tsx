@@ -196,8 +196,19 @@ export const DataPointInputModal: React.FC<DataPointInputModalProps> = ({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-      <div className="bg-modal-bg rounded-lg max-w-md w-full border border-modal-border shadow-2xl">
+    <div 
+      className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4"
+      onClick={(e) => {
+        // Close on backdrop click
+        if (e.target === e.currentTarget) {
+          onClose();
+        }
+      }}
+    >
+      <div 
+        className="bg-modal-bg rounded-lg max-w-md w-full border border-modal-border shadow-2xl"
+        onClick={(e) => e.stopPropagation()}
+      >
         <div className="p-6">
           {/* Header */}
           <div className="flex justify-between items-center mb-6">
@@ -268,7 +279,13 @@ export const DataPointInputModal: React.FC<DataPointInputModalProps> = ({
               Cancel
             </button>
             <button
-              onClick={handleSubmit}
+              type="button"
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                console.log('🔄 [DataPointInputModal] Save button clicked');
+                handleSubmit();
+              }}
               disabled={loading}
               className="px-4 py-2 bg-primary text-white rounded-md hover:bg-primary/80 disabled:opacity-50 font-medium transition-colors border border-primary"
             >
