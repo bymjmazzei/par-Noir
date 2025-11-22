@@ -2828,7 +2828,7 @@ function App() {
         {/* Lock/Unlock Button - Top right corner, always visible on ALL screens */}
       <button
         onClick={handleLockUnlock}
-        className="fixed top-3 right-3 z-[110] w-10 h-10 flex items-center justify-center text-white/85 hover:text-white transition-colors pointer-events-auto bg-black/50 rounded-full backdrop-blur-sm"
+        className="fixed top-3 right-3 z-[110] p-2 flex items-center justify-center text-white/85 hover:text-white transition-colors pointer-events-auto"
         title={userState.isUnlocked ? 'Lock pN' : 'Unlock pN'}
       >
         {userState.isUnlocked ? (
