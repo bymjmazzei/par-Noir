@@ -59,75 +59,62 @@ export function ContentPreferences({ onClose, feeds }: ContentPreferencesProps) 
       const isSubscribed = isCategorySubscribed(categoryId);
       console.log('Is subscribed to category:', isSubscribed);
 
+      // Get all feeds in this category
+      const categoryFeeds = getFeedsForCategory(categoryId);
+      
       if (isSubscribed) {
-        // Unsubscribe from category
+        // Unsubscribe from all feeds in category
         unsubscribeFromCategory(categoryId);
         console.log('Unsubscribed from category:', categoryId);
         
-        // Optionally save to cloud storage via API (if endpoint exists)
-        try {
-          const session = PNOAuthService.loadSession();
-          if (session?.accessToken && userState.pnIdentifier) {
-            const headers: HeadersInit = {
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${session.accessToken}`
-            };
+        // Unsubscribe from each feed in the category via API
+        const session = PNOAuthService.loadSession();
+        if (session?.accessToken && userState.pnIdentifier) {
+          const apiEndpoint = process.env.REACT_APP_API_ENDPOINT || 'https://api.parnoir.com';
+          const headers: HeadersInit = {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${session.accessToken}`
+          };
 
-            const apiEndpoint = process.env.REACT_APP_API_ENDPOINT || 'https://api.parnoir.com';
-            const currentCategories = userState.preferences.subscribedCategories || [];
-            const response = await fetch(`${apiEndpoint}/api/users/${userState.pnIdentifier}/preferences`, {
-              method: 'PUT',
-              headers,
-              body: JSON.stringify({
-                subscribedCategories: currentCategories.filter(id => id !== categoryId)
-              })
-            });
-
-            if (response.ok) {
-              console.log('Successfully saved subscription to cloud storage');
-            } else if (response.status !== 404) {
-              // Only log non-404 errors (404 means endpoint doesn't exist yet)
-              console.warn('Failed to save subscription to cloud storage:', response.status);
+          // Unsubscribe from each feed
+          for (const feed of categoryFeeds) {
+            try {
+              await fetch(`${apiEndpoint}/api/feeds/${feed.feedId}/subscribe`, {
+                method: 'DELETE',
+                headers,
+                body: JSON.stringify({ userDid: userState.pnIdentifier })
+              });
+            } catch (error) {
+              console.warn(`Failed to unsubscribe from feed ${feed.feedId}:`, error);
             }
           }
-        } catch (error: any) {
-          // Silently fail - preferences are stored locally anyway
-          console.warn('Could not sync subscription to cloud storage:', error);
         }
       } else {
-        // Subscribe to category
+        // Subscribe to all feeds in category
         subscribeToCategory(categoryId);
         console.log('Subscribed to category:', categoryId);
         
-        // Optionally save to cloud storage via API (if endpoint exists)
-        try {
-          const session = PNOAuthService.loadSession();
-          if (session?.accessToken && userState.pnIdentifier) {
-            const headers: HeadersInit = {
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${session.accessToken}`
-            };
+        // Subscribe to each feed in the category via API
+        const session = PNOAuthService.loadSession();
+        if (session?.accessToken && userState.pnIdentifier) {
+          const apiEndpoint = process.env.REACT_APP_API_ENDPOINT || 'https://api.parnoir.com';
+          const headers: HeadersInit = {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${session.accessToken}`
+          };
 
-            const apiEndpoint = process.env.REACT_APP_API_ENDPOINT || 'https://api.parnoir.com';
-            const currentCategories = userState.preferences.subscribedCategories || [];
-            const response = await fetch(`${apiEndpoint}/api/users/${userState.pnIdentifier}/preferences`, {
-              method: 'PUT',
-              headers,
-              body: JSON.stringify({
-                subscribedCategories: [...currentCategories, categoryId]
-              })
-            });
-
-            if (response.ok) {
-              console.log('Successfully saved subscription to cloud storage');
-            } else if (response.status !== 404) {
-              // Only log non-404 errors (404 means endpoint doesn't exist yet)
-              console.warn('Failed to save subscription to cloud storage:', response.status);
+          // Subscribe to each feed
+          for (const feed of categoryFeeds) {
+            try {
+              await fetch(`${apiEndpoint}/api/feeds/${feed.feedId}/subscribe`, {
+                method: 'POST',
+                headers,
+                body: JSON.stringify({ userDid: userState.pnIdentifier })
+              });
+            } catch (error) {
+              console.warn(`Failed to subscribe to feed ${feed.feedId}:`, error);
             }
           }
-        } catch (error: any) {
-          // Silently fail - preferences are stored locally anyway
-          console.warn('Could not sync subscription to cloud storage:', error);
         }
       }
     } catch (error: any) {
