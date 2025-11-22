@@ -28,7 +28,7 @@ interface UserStateContextType {
   setUnlocked: (pnIdentifier: string) => void;
   setLocked: () => void;
   updateMaxRating: (rating: ContentRating) => Promise<void>;
-  setAgeVerified: (age: number) => void;
+  setAgeVerified: (age: number) => Promise<void>;
   subscribeToFeed: (feedId: string) => void;
   unsubscribeFromFeed: (feedId: string) => void;
   isSubscribedToFeed: (feedId: string) => boolean;
@@ -359,7 +359,8 @@ export function UserStateProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const setAgeVerified = (age: number) => {
+  const setAgeVerified = async (age: number) => {
+    // Update local state immediately
     setUserState(prev => ({
       ...prev,
       preferences: {
@@ -368,6 +369,41 @@ export function UserStateProvider({ children }: { children: ReactNode }) {
         verifiedAge: age
       }
     }));
+
+    // Save to Google Drive if user is unlocked
+    if (userState.isUnlocked && userState.pnIdentifier) {
+      try {
+        const { PNOAuthService } = await import('../services/pnOAuthService');
+        const session = PNOAuthService.loadSession();
+        if (!session?.accessToken) {
+          console.warn('No access token, cannot save ageVerified to Google Drive');
+          return;
+        }
+
+        const apiEndpoint = process.env.REACT_APP_API_ENDPOINT || 'https://api.parnoir.com';
+        const response = await fetch(`${apiEndpoint}/api/users/${userState.pnIdentifier}/preferences`, {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${session.accessToken}`
+          },
+          body: JSON.stringify({
+            ageVerified: true,
+            verifiedAge: age
+          })
+        });
+
+        if (response.ok) {
+          console.log('✅ Saved ageVerified to Google Drive:', age);
+        } else if (response.status === 404) {
+          console.warn('Preferences endpoint not available, keeping local state only');
+        } else {
+          console.warn('Failed to save ageVerified to Google Drive:', response.status);
+        }
+      } catch (error) {
+        console.warn('Error saving ageVerified to Google Drive:', error);
+      }
+    }
   };
 
   const subscribeToFeed = (feedId: string) => {

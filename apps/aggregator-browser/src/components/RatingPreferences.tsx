@@ -22,7 +22,7 @@ export function RatingPreferences() {
       if (age) {
         const ageNum = parseInt(age, 10);
         if (ageNum >= ratingInfo.ageRestriction) {
-          setAgeVerified(ageNum);
+          await setAgeVerified(ageNum);
           await updateMaxRating(rating);
         } else {
           alert(`You must be at least ${ratingInfo.ageRestriction} to view ${rating} content.`);

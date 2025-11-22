@@ -194,7 +194,7 @@ export function ContentPreferences({ onClose, feeds }: ContentPreferencesProps) 
                         if (verifyData.verification?.isValid) {
                           // Age verified - update rating
                           console.log('[Rating Select] ✅ Verification passed, updating rating to:', newRating);
-                          setAgeVerified(ratingInfo.ageRestriction);
+                          await setAgeVerified(ratingInfo.ageRestriction);
                           await updateMaxRating(newRating);
                         } else {
                           console.warn('[Rating Select] ❌ Verification failed - blocking change:', verifyData.verification);
