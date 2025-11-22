@@ -609,14 +609,14 @@ export function DiscoveryPage({
                   })()
                 ) : (
                   // Render regular thumbnail
-                  <img
-                    src={item.thumbnail}
-                    alt={item.title}
-                    className="w-full h-full object-cover group-hover:scale-105 transition-transform"
-                    onError={(e) => {
-                      e.currentTarget.src = '/placeholder-thumbnail.png';
-                    }}
-                  />
+                <img
+                  src={item.thumbnail}
+                  alt={item.title}
+                  className="w-full h-full object-cover group-hover:scale-105 transition-transform"
+                  onError={(e) => {
+                    e.currentTarget.src = '/placeholder-thumbnail.png';
+                  }}
+                />
                 )}
                 
                 {/* Info Button */}

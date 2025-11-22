@@ -327,7 +327,7 @@ function App() {
         if (error?.message?.includes('429') || error?.status === 429) {
           console.warn('Rate limited when loading feeds, using empty list');
         } else {
-          console.error('Failed to load feeds:', error);
+        console.error('Failed to load feeds:', error);
         }
         // Continue with empty feeds - UI will show default feeds
         setFeeds([]);
@@ -388,8 +388,8 @@ function App() {
         // Mark all new files as being loaded
         newFileIds.forEach(id => loadedEngagementFileIdsRef.current.add(id));
         
-        // Load engagement stats in batches to avoid overwhelming the API
-        const batchSize = 50;
+      // Load engagement stats in batches to avoid overwhelming the API
+      const batchSize = 50;
         for (let i = 0; i < newFileIds.length; i += batchSize) {
           const batch = newFileIds.slice(i, i + batchSize);
           loadBulkEngagementStatsRef.current(batch).catch(error => {

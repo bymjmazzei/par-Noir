@@ -1099,22 +1099,22 @@ export function TextPostEditor({ onSave, onCancel }: TextPostEditorProps) {
           }}
         >
           <div className="flex items-center gap-4 min-w-max">
-            {FONT_OPTIONS.map((font) => (
-              <button
-                key={font.value}
-                ref={fontFamily === font.value ? activeFontButtonRef : null}
-                onClick={() => setFontFamily(font.value)}
+          {FONT_OPTIONS.map((font) => (
+            <button
+              key={font.value}
+              ref={fontFamily === font.value ? activeFontButtonRef : null}
+              onClick={() => setFontFamily(font.value)}
                 className="px-3 py-1 transition-opacity hover:opacity-80 relative flex-shrink-0"
-                style={{ 
-                  fontFamily: font.value, 
-                  color: 'white',
-                  textDecoration: fontFamily === font.value ? 'underline' : 'none',
-                  textUnderlineOffset: '4px'
-                }}
-              >
-                <span className="text-sm whitespace-nowrap">{font.label}</span>
-              </button>
-            ))}
+              style={{ 
+                fontFamily: font.value, 
+                color: 'white',
+                textDecoration: fontFamily === font.value ? 'underline' : 'none',
+                textUnderlineOffset: '4px'
+              }}
+            >
+              <span className="text-sm whitespace-nowrap">{font.label}</span>
+            </button>
+          ))}
           </div>
         </div>
       </div>

@@ -84,10 +84,7 @@ export function ContentPreferences({ onClose, feeds }: ContentPreferencesProps) 
           'Authorization': `Bearer ${session.accessToken}`
         },
         body: JSON.stringify({
-          subscribedCategories: updatedCategories,
-          maxRating: userState.preferences.maxRating,
-          ageVerified: userState.preferences.ageVerified,
-          verifiedAge: userState.preferences.verifiedAge
+          subscribedCategories: updatedCategories
         })
       });
 

@@ -5,7 +5,7 @@
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { createPortal } from 'react-dom';
-import { User, MessageCircle, UserPlus, Check, X, Clock, ChevronDown, Edit2, Save, X as XIcon, Pencil, UserMinus, Send } from 'lucide-react';
+import { User, MessageCircle, UserPlus, Check, X, Clock, ChevronDown, Edit2, Save, X as XIcon, Pencil, UserMinus } from 'lucide-react';
 import { useUserState } from '../contexts/UserStateContext';
 import { getConnectionStatus, sendConnectionRequest, acceptConnectionRequest, rejectConnectionRequest, removeConnection } from '../services/connectionService';
 import { ConnectionStatus } from '../services/connectionService';
@@ -561,11 +561,11 @@ export const ProfileActionMenu = React.memo(function ProfileActionMenu({ creator
         >
           {console.log('🔍 Menu rendering, isOpen:', isOpen, 'position:', menuPosition, 'buttonRect:', buttonRef.current?.getBoundingClientRect())}
             {/* Header with Display Name */}
-          <div className="px-4 py-3 border-b border-neutral-700">
+          <div className="px-4 py-3 border-b border-neutral-700 min-h-[60px]">
             {isEditingName && isOwnProfile ? (
-              <div className="flex items-end gap-2">
+              <div className="flex items-center gap-2">
                 {/* Profile Icon */}
-                <div className="w-8 h-8 rounded-full bg-black/30 backdrop-blur-sm flex items-center justify-center flex-shrink-0 overflow-hidden mb-0.5">
+                <div className="w-8 h-8 rounded-full bg-black/30 backdrop-blur-sm flex items-center justify-center flex-shrink-0 overflow-hidden">
                   {profileImageUrl && !profileImageLoading ? (
                     <img 
                       src={profileImageUrl} 
@@ -576,38 +576,41 @@ export const ProfileActionMenu = React.memo(function ProfileActionMenu({ creator
                     <User className="h-4 w-4 text-white" />
                   )}
                 </div>
-                <input
-                  type="text"
-                  value={editNameValue}
-                  onChange={(e) => setEditNameValue(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') {
-                      e.preventDefault();
-                      if (editNameValue.trim()) {
-                        handleSaveDisplayName();
+                {/* Text Input with Checkmark */}
+                <div className="flex-1 relative">
+                  <input
+                    type="text"
+                    value={editNameValue}
+                    onChange={(e) => setEditNameValue(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        if (editNameValue.trim()) {
+                          handleSaveDisplayName();
+                        }
+                      } else if (e.key === 'Escape') {
+                        setIsEditingName(false);
+                        setEditNameValue(displayName);
                       }
-                    } else if (e.key === 'Escape') {
-                      setIsEditingName(false);
-                      setEditNameValue(displayName);
-                    }
-                  }}
-                  className="flex-1 px-3 py-2 bg-neutral-800 text-white rounded-lg border border-neutral-700 focus:border-blue-500 focus:outline-none text-sm"
-                  autoFocus
-                  maxLength={50}
-                  placeholder="Enter platform name..."
-                />
-                <button
-                  onClick={(e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    handleSaveDisplayName();
-                  }}
-                  className="p-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center justify-center mb-0.5 disabled:opacity-50 disabled:cursor-not-allowed"
-                  disabled={!editNameValue.trim() || loading}
-                  title="Save"
-                >
-                  <Send className="h-5 w-5" />
-                </button>
+                    }}
+                    className="w-full px-3 pr-10 py-2 bg-neutral-800 text-white rounded-lg border border-neutral-700 focus:border-blue-500 focus:outline-none text-sm"
+                    autoFocus
+                    maxLength={50}
+                    placeholder="Enter platform name..."
+                  />
+                  <button
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      handleSaveDisplayName();
+                    }}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 text-white hover:text-blue-400 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    disabled={!editNameValue.trim() || loading}
+                    title="Save"
+                  >
+                    <Check className="h-4 w-4" />
+                  </button>
+                </div>
               </div>
             ) : (
               <div className="flex items-center gap-2">

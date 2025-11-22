@@ -50,12 +50,12 @@ export async function getUserProfile(userDid: string): Promise<UserProfile> {
   }
 
   const request = (async () => {
-    try {
-      // API now handles both pN identifiers and DIDs
-      // No need to skip any format - let the API handle the lookup
-      const response = await fetch(`${API_ENDPOINT}/api/profile/${encodeURIComponent(userDid)}`, {
-        headers: getAuthHeaders()
-      });
+  try {
+    // API now handles both pN identifiers and DIDs
+    // No need to skip any format - let the API handle the lookup
+    const response = await fetch(`${API_ENDPOINT}/api/profile/${encodeURIComponent(userDid)}`, {
+      headers: getAuthHeaders()
+    });
 
       if (response.status === 429) {
         // Rate limited - return cached result if available, otherwise empty profile
@@ -66,13 +66,13 @@ export async function getUserProfile(userDid: string): Promise<UserProfile> {
         return { displayName: undefined, profileImageFileId: undefined };
       }
 
-      if (!response.ok) {
+    if (!response.ok) {
         // Return cached result if available, otherwise empty
         if (cachedResult) {
           return cachedResult.profile;
         }
         return { displayName: undefined, profileImageFileId: undefined };
-      }
+    }
 
       const profile = await response.json();
       
@@ -80,7 +80,7 @@ export async function getUserProfile(userDid: string): Promise<UserProfile> {
       profileResultCache.set(userDid, { profile, timestamp: Date.now() });
       
       return profile;
-    } catch (error) {
+  } catch (error) {
       // Return cached result if available, otherwise empty
       if (cachedResult) {
         return cachedResult.profile;
@@ -90,7 +90,7 @@ export async function getUserProfile(userDid: string): Promise<UserProfile> {
     } finally {
       // Remove from request cache after request completes
       profileRequestCache.delete(userDid);
-    }
+  }
   })();
 
   // Cache the request
