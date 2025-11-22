@@ -129,13 +129,10 @@ export interface ShareToken {
 // ============================================================================
 
 export type ContentRating = 
-  | 'GA'      // General Audience
-  | 'FF'      // Family Friendly
-  | 'T13+'    // Teen 13+
-  | 'YA16+'   // Young Adult 16+
-  | 'M18+'    // Mature 18+
+  | 'GA'      // All Audiences
+  | '18+'     // 18+
   | 'NSFW'    // Not Safe For Work
-  | 'X18+';   // Explicit 18+
+  | 'X';      // X (Hardcore)
 
 export type WarningTag =
   | 'violence'

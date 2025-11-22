@@ -42,7 +42,7 @@ interface UserStateContextType {
 }
 
 const defaultPreferences: UserPreferences = {
-  maxRating: 'T13+',
+  maxRating: 'GA',
   ageVerified: false,
   subscribedFeedIds: [],
   subscribedCategories: []
