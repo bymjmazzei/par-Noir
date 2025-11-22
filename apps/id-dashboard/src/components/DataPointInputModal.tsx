@@ -31,6 +31,11 @@ export const DataPointInputModal: React.FC<DataPointInputModalProps> = ({
 
   useEffect(() => {
     if (isOpen) {
+      console.log('🔄 [DataPointInputModal] Modal opened', {
+        dataPointId: dataPoint.id,
+        dataPointName: dataPoint.name,
+        hasExistingData: !!existingData
+      });
       // Initialize with existing data or empty values
       const initialData: Record<string, any> = {};
       dataPoint.requiredFields?.forEach(field => {
@@ -41,6 +46,9 @@ export const DataPointInputModal: React.FC<DataPointInputModalProps> = ({
       });
       setUserData(initialData);
       setErrors({});
+      console.log('🔄 [DataPointInputModal] Initialized userData:', initialData);
+    } else {
+      console.log('🔄 [DataPointInputModal] Modal closed');
     }
   }, [isOpen, dataPoint, existingData]);
 
@@ -193,7 +201,16 @@ export const DataPointInputModal: React.FC<DataPointInputModalProps> = ({
     }
   };
 
-  if (!isOpen) return null;
+  if (!isOpen) {
+    console.log('🔄 [DataPointInputModal] Modal not open, returning null');
+    return null;
+  }
+
+  console.log('🔄 [DataPointInputModal] Rendering modal', {
+    dataPointId: dataPoint.id,
+    loading,
+    userDataKeys: Object.keys(userData)
+  });
 
   return (
     <div 
