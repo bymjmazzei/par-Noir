@@ -4,8 +4,8 @@
  * Used in upload section settings
  */
 
-import React, { useState, useMemo, useEffect, useRef } from 'react';
-import { X, Settings, Globe, Shield, ChevronDown } from 'lucide-react';
+import React, { useState, useMemo } from 'react';
+import { X, Settings, Globe, Shield } from 'lucide-react';
 import { useUserState } from '../contexts/UserStateContext';
 import { FEED_CATEGORIES, FEED_CATEGORY_LIST } from '../constants/feedCategories';
 import { Feed, ContentRating } from '../types/aggregator';
@@ -20,8 +20,6 @@ interface ContentPreferencesProps {
 export function ContentPreferences({ onClose, feeds }: ContentPreferencesProps) {
   const { userState, subscribeToCategory, unsubscribeFromCategory, isSubscribedToCategory, updateMaxRating, setAgeVerified } = useUserState();
   const [isLoading, setIsLoading] = useState(false);
-  const [showRatingDropdown, setShowRatingDropdown] = useState(false);
-  const ratingDropdownRef = useRef<HTMLDivElement>(null);
 
   // Group feeds by category
   const feedsByCategory = useMemo(() => {
@@ -105,21 +103,6 @@ export function ContentPreferences({ onClose, feeds }: ContentPreferencesProps) 
     }
   };
 
-  // Close rating dropdown when clicking outside
-  useEffect(() => {
-    if (!showRatingDropdown) return;
-
-    const handleClickOutside = (event: MouseEvent) => {
-      if (ratingDropdownRef.current && !ratingDropdownRef.current.contains(event.target as Node)) {
-        setShowRatingDropdown(false);
-      }
-    };
-
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => {
-      document.removeEventListener('mousedown', handleClickOutside);
-    };
-  }, [showRatingDropdown]);
 
   return (
     <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-[9999] p-4 pb-20">
@@ -147,75 +130,91 @@ export function ContentPreferences({ onClose, feeds }: ContentPreferencesProps) 
               <h3 className="text-lg font-semibold text-white">Content Rating</h3>
             </div>
             <div className="bg-neutral-800/50 rounded-lg p-4">
-              <div className="relative" ref={ratingDropdownRef}>
-                <button
-                  onClick={() => setShowRatingDropdown(!showRatingDropdown)}
-                  className="w-full flex items-center justify-between p-3 bg-neutral-900 rounded-lg border border-neutral-700 hover:border-neutral-600 transition-colors"
-                >
-                  <div className="flex items-center space-x-2">
-                    <span className="text-white font-medium">
-                      {userState.preferences.maxRating}
-                    </span>
-                    {CONTENT_RATINGS[userState.preferences.maxRating]?.requiresVerification && (
-                      <span className="text-xs text-yellow-400">(Age Verified)</span>
-                    )}
-                  </div>
-                  <ChevronDown className={`h-4 w-4 text-text-secondary transition-transform ${showRatingDropdown ? 'rotate-180' : ''}`} />
-                </button>
-                
-                {showRatingDropdown && (
-                  <div className="absolute z-10 w-full mt-2 bg-neutral-900 border border-neutral-700 rounded-lg shadow-lg overflow-hidden max-h-80 overflow-y-auto">
-                    {RATING_ORDER.map((rating) => {
-                      const ratingInfo = CONTENT_RATINGS[rating];
-                      if (!ratingInfo) {
-                        console.warn(`Rating ${rating} not found in CONTENT_RATINGS`);
-                        return null;
+              <select
+                value={userState.preferences.maxRating}
+                onChange={async (e) => {
+                  const newRating = e.target.value as ContentRating;
+                  const ratingInfo = CONTENT_RATINGS[newRating];
+                  
+                  // If rating requires verification, verify through ZKP
+                  if (ratingInfo.requiresVerification && !userState.preferences.ageVerified) {
+                    if (!userState.isUnlocked || !userState.pnIdentifier) {
+                      alert('Please unlock your pN to verify age for this rating');
+                      e.target.value = userState.preferences.maxRating; // Reset select
+                      return;
+                    }
+                    
+                    setIsLoading(true);
+                    try {
+                      const { PNOAuthService } = await import('../services/pnOAuthService');
+                      const session = PNOAuthService.loadSession();
+                      if (!session?.accessToken) {
+                        alert('Please authenticate to verify age');
+                        e.target.value = userState.preferences.maxRating;
+                        return;
                       }
-                      const isSelected = userState.preferences.maxRating === rating;
-                      const isDisabled = ratingInfo.requiresVerification && !userState.preferences.ageVerified;
                       
-                      const handleRatingSelect = () => {
-                        if (isDisabled) {
-                          const age = prompt(`This rating requires age verification. Please enter your age:`);
-                          if (age) {
-                            const ageNum = parseInt(age, 10);
-                            if (ageNum >= ratingInfo.ageRestriction) {
-                              setAgeVerified(ageNum);
-                              updateMaxRating(rating);
-                            } else {
-                              alert(`You must be at least ${ratingInfo.ageRestriction} to view ${rating} content.`);
-                            }
-                          }
-                        } else {
-                          updateMaxRating(rating);
+                      const apiEndpoint = process.env.REACT_APP_API_ENDPOINT || 'https://api.parnoir.com';
+                      const verifyResponse = await fetch(
+                        `${apiEndpoint}/api/users/${userState.pnIdentifier}/zkp-data-points/verify`,
+                        {
+                          method: 'POST',
+                          headers: {
+                            'Content-Type': 'application/json',
+                            'Authorization': `Bearer ${session.accessToken}`
+                          },
+                          body: JSON.stringify({
+                            dataPointId: 'age_attestation',
+                            condition: `age >= ${ratingInfo.ageRestriction}`
+                          })
                         }
-                        setShowRatingDropdown(false);
-                      };
-                      
-                      return (
-                        <button
-                          key={rating}
-                          onClick={handleRatingSelect}
-                          disabled={isDisabled}
-                          className={`w-full text-left px-4 py-3 transition-colors ${
-                            isSelected
-                              ? 'bg-blue-500/20 text-white font-medium'
-                              : 'text-text-secondary hover:bg-neutral-800 hover:text-white'
-                          } ${isDisabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
-                        >
-                          <div className="flex items-center justify-between">
-                            <span>{rating}</span>
-                            {isSelected && <span className="text-blue-400 text-xs">✓</span>}
-                          </div>
-                          <p className="text-xs text-text-secondary mt-1">
-                            {ratingInfo.description}
-                          </p>
-                        </button>
                       );
-                    })}
-                  </div>
-                )}
-              </div>
+                      
+                      if (verifyResponse.ok) {
+                        const verifyData = await verifyResponse.json();
+                        if (verifyData.verification?.isValid) {
+                          // Age verified - update rating
+                          setAgeVerified(ratingInfo.ageRestriction);
+                          updateMaxRating(newRating);
+                        } else {
+                          alert(`Age verification failed. You must be at least ${ratingInfo.ageRestriction} to view ${newRating} content.`);
+                          e.target.value = userState.preferences.maxRating;
+                        }
+                      } else {
+                        const errorText = await verifyResponse.text().catch(() => 'Unknown error');
+                        console.warn('Age verification failed:', errorText);
+                        alert(`Age verification failed. Please ensure you have attested your age in the dashboard.`);
+                        e.target.value = userState.preferences.maxRating;
+                      }
+                    } catch (error) {
+                      console.error('Error verifying age:', error);
+                      alert('Failed to verify age. Please try again.');
+                      e.target.value = userState.preferences.maxRating;
+                    } finally {
+                      setIsLoading(false);
+                    }
+                  } else {
+                    // No verification needed or already verified
+                    updateMaxRating(newRating);
+                  }
+                }}
+                disabled={isLoading}
+                className="w-full p-3 bg-neutral-900 rounded-lg border border-neutral-700 text-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {RATING_ORDER.map((rating) => {
+                  const ratingInfo = CONTENT_RATINGS[rating];
+                  const isDisabled = ratingInfo.requiresVerification && !userState.preferences.ageVerified;
+                  return (
+                    <option
+                      key={rating}
+                      value={rating}
+                      disabled={isDisabled}
+                    >
+                      {rating} {ratingInfo.requiresVerification && !userState.preferences.ageVerified ? '(Verification Required)' : ''}
+                    </option>
+                  );
+                })}
+              </select>
               
               {!userState.preferences.ageVerified && (
                 <div className="mt-4 p-3 bg-yellow-500/10 border border-yellow-500/20 rounded-lg">

@@ -184,7 +184,12 @@ export class ZKPDataPointsService {
           // Verify the proof cryptographically (simplified for now)
           // In production, use proper ZKP verification library
           const calculatedAge = this.calculateAgeFromRange(proofData.ageRange);
-          const isValid = proofData.verificationLevel === 'verified' && 
+          // Accept 'basic' or 'verified' verification levels for age attestation
+          // 'basic' means the user attested their age, which is sufficient for content filtering
+          const hasValidVerificationLevel = proofData.verificationLevel === 'verified' || 
+                                          proofData.verificationLevel === 'basic' ||
+                                          proofData.verificationLevel === 'enhanced';
+          const isValid = hasValidVerificationLevel && 
                          proofData.ageRange && 
                          calculatedAge >= minAge;
           
@@ -193,6 +198,7 @@ export class ZKPDataPointsService {
             ageRange: proofData.ageRange,
             calculatedAge,
             minAge,
+            hasValidVerificationLevel,
             isValid
           });
           
@@ -212,7 +218,10 @@ export class ZKPDataPointsService {
       }
 
       // For other conditions, return basic validation
-      const isValid = proofData.verificationLevel === 'verified';
+      // Accept 'basic', 'enhanced', or 'verified' verification levels
+      const isValid = proofData.verificationLevel === 'verified' || 
+                     proofData.verificationLevel === 'basic' ||
+                     proofData.verificationLevel === 'enhanced';
       console.log('[ZKP Verify] General verification result:', {
         verificationLevel: proofData.verificationLevel,
         isValid
@@ -247,6 +256,23 @@ export class ZKPDataPointsService {
     // If ageRange is an object with min/max, use min
     if (ageRange && typeof ageRange === 'object') {
       return ageRange.min || ageRange.max || 0;
+    }
+    
+    // If ageRange is a string like "30_39", parse it
+    if (typeof ageRange === 'string') {
+      // Handle formats like "30_39", "18_24", etc.
+      const parts = ageRange.split('_');
+      if (parts.length === 2) {
+        const min = parseInt(parts[0], 10);
+        if (!isNaN(min)) {
+          return min; // Use the minimum age from the range
+        }
+      }
+      // Try parsing as a single number
+      const parsed = parseInt(ageRange, 10);
+      if (!isNaN(parsed)) {
+        return parsed;
+      }
     }
     
     // Default to 0 if can't determine
