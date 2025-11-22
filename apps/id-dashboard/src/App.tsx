@@ -699,6 +699,25 @@ function App() {
       try {
         if (authenticatedUser?.id) {
           console.log('[App] Loading attested data points for user:', authenticatedUser.id);
+          
+          // First, verify data is in localStorage
+          try {
+            const rawStorage = localStorage.getItem('secure_metadata');
+            if (rawStorage) {
+              const parsed = JSON.parse(rawStorage);
+              const hasUserData = !!parsed[authenticatedUser.id];
+              console.log('[App] localStorage check:', {
+                hasSecureMetadata: !!rawStorage,
+                hasUserData,
+                allUserIds: Object.keys(parsed || {})
+              });
+            } else {
+              console.log('[App] No secure_metadata in localStorage');
+            }
+          } catch (e) {
+            console.warn('[App] Error checking localStorage:', e);
+          }
+          
           const { SecureMetadataStorage } = await import('./utils/secureMetadataStorage');
           const { SecureMetadataCrypto } = await import('./utils/secureMetadata');
           
@@ -723,11 +742,12 @@ function App() {
             console.log('[App] Decrypted content:', {
               hasDataPoints: !!decryptedContent?.dataPoints,
               hasAttestedData: !!decryptedContent?.dataPoints?.attestedData,
-              attestedDataCount: decryptedContent?.dataPoints?.attestedData?.length || 0
+              attestedDataCount: decryptedContent?.dataPoints?.attestedData?.length || 0,
+              attestedDataIds: decryptedContent?.dataPoints?.attestedData?.map((item: any) => item.dataPointId) || []
             });
             
             // Load attested data points
-            if (decryptedContent?.dataPoints?.attestedData) {
+            if (decryptedContent?.dataPoints?.attestedData && decryptedContent.dataPoints.attestedData.length > 0) {
               const attestedIds = new Set(decryptedContent.dataPoints.attestedData.map((item: any) => item.dataPointId));
               console.log('[App] Loaded attested data points from storage:', Array.from(attestedIds));
               setAttestedDataPoints(attestedIds);
@@ -745,11 +765,17 @@ function App() {
         }
       } catch (error) {
         console.error('[App] Error loading attested data points:', error);
+        console.error('[App] Error stack:', error instanceof Error ? error.stack : 'No stack');
         setAttestedDataPoints(new Set()); // Clear on error
       }
     };
     
-    loadAttestedDataPoints();
+    // Add a small delay to ensure authenticatedUser is fully set
+    const timeoutId = setTimeout(() => {
+      loadAttestedDataPoints();
+    }, 100);
+    
+    return () => clearTimeout(timeoutId);
   }, [authenticatedUser?.id]); // Only depend on the ID, not the whole object
   
   // Debug success state changes
