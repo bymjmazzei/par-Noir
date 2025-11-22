@@ -243,7 +243,7 @@ export function ContentPreferences({ onClose, feeds }: ContentPreferencesProps) 
                     <span className="text-white font-medium">
                       {userState.preferences.maxRating}
                     </span>
-                    {CONTENT_RATINGS[userState.preferences.maxRating].requiresVerification && (
+                    {CONTENT_RATINGS[userState.preferences.maxRating]?.requiresVerification && (
                       <span className="text-xs text-yellow-400">(Age Verified)</span>
                     )}
                   </div>
