@@ -5262,21 +5262,35 @@ class ProductionServer {
                             metadataFolderId
                           );
                           
-                          // Update browser-app permissions
+                          // Update browser-app permissions (merge with existing if present)
                           const shareAge = age_shared === true || age_shared === 'true';
-                          const dataPoints = shareAge ? ['age_attestation'] : [];
+                          const existingBrowserApp = permissions['browser-app'];
+                          
+                          // Merge data points - add age_attestation if sharing, remove if not
+                          let dataPoints = existingBrowserApp?.dataPoints || [];
+                          if (shareAge && !dataPoints.includes('age_attestation')) {
+                            dataPoints = [...dataPoints, 'age_attestation'];
+                          } else if (!shareAge) {
+                            dataPoints = dataPoints.filter(dp => dp !== 'age_attestation');
+                          }
                           
                           permissions['browser-app'] = {
                             toolId: 'browser-app',
                             toolName: 'par Noir Browser',
                             toolDescription: 'Official par Noir browser application for browsing and discovering encrypted content',
-                            permissions: ['openid', 'profile', 'cloud:read'], // Include secure cloud access scope
+                            permissions: existingBrowserApp?.permissions || ['openid', 'profile', 'cloud:read'],
                             dataPoints: dataPoints,
-                            requiredDataPoints: [], // No required data points for browser
-                            optionalDataPoints: ['age_attestation'], // Age is optional
-                            grantedAt: new Date().toISOString(),
-                            status: 'active'
+                            requiredDataPoints: existingBrowserApp?.requiredDataPoints || [],
+                            optionalDataPoints: existingBrowserApp?.optionalDataPoints || ['age_attestation'],
+                            grantedAt: existingBrowserApp?.grantedAt || new Date().toISOString(),
+                            status: 'active' as const
                           };
+                          
+                          console.log(`[OAuth] Updated browser-app permissions:`, {
+                            ageShared: shareAge,
+                            dataPoints: dataPoints,
+                            hadExisting: !!existingBrowserApp
+                          });
                           
                           // Store updated permissions
                           await ThirdPartyPermissionsService.storePermissions(

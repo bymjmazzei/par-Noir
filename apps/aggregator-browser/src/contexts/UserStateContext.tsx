@@ -188,8 +188,12 @@ export function UserStateProvider({ children }: { children: ReactNode }) {
         );
 
         if (zkpResponse.ok) {
-          const { dataPoints } = await zkpResponse.json();
+          const responseData = await zkpResponse.json();
+          console.log('[Age ZKP Check] Response:', responseData);
+          const { dataPoints } = responseData;
+          console.log('[Age ZKP Check] Data points received:', dataPoints);
           const ageZKP = dataPoints?.find((dp: any) => dp.dataPointId === 'age_attestation');
+          console.log('[Age ZKP Check] Age ZKP found:', !!ageZKP, ageZKP);
           
           if (ageZKP) {
             // User has granted access to age ZKP - verify the proof for "age >= 18"
@@ -234,16 +238,24 @@ export function UserStateProvider({ children }: { children: ReactNode }) {
           } else {
             console.log('ℹ️ Age ZKP not shared - only GA content available');
           }
-        } else if (zkpResponse.status === 404) {
-          // User hasn't granted access to age ZKP or doesn't have it
-          // Retry once in case permissions are still being stored
-          if (retryCount < 1) {
+        } else {
+          const errorText = await zkpResponse.text().catch(() => 'Unknown error');
+          console.warn(`[Age ZKP Check] Failed to check ZKP age verification:`, {
+            status: zkpResponse.status,
+            statusText: zkpResponse.statusText,
+            error: errorText
+          });
+          
+          // Retry on server errors
+          if (zkpResponse.status >= 500 && retryCount < 2) {
+            setTimeout(() => checkZKPAgeVerification(retryCount + 1), 2000 * (retryCount + 1));
+          } else if (zkpResponse.status === 404 && retryCount < 1) {
+            // User hasn't granted access to age ZKP or doesn't have it
+            // Retry once in case permissions are still being stored
             setTimeout(() => checkZKPAgeVerification(retryCount + 1), 2000);
           } else {
             console.log('ℹ️ Age ZKP not shared - only GA content available');
           }
-        } else {
-          console.warn('Failed to check ZKP age verification:', zkpResponse.status);
         }
       } catch (error) {
         console.error('Error checking ZKP age verification:', error);
