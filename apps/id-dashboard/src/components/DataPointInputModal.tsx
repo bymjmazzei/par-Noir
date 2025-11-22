@@ -75,14 +75,24 @@ export const DataPointInputModal: React.FC<DataPointInputModalProps> = ({
   };
 
   const handleSubmit = async () => {
+    console.log('🔄 [DataPointInputModal] handleSubmit called', { 
+      dataPointId: dataPoint.id,
+      userData,
+      hasValidation: true
+    });
+    
     if (!validateData()) {
+      console.warn('⚠️ [DataPointInputModal] Validation failed');
       return;
     }
+
+    console.log('✅ [DataPointInputModal] Validation passed');
 
     // Check if verification is required for this data point
     const requiresVerification = ['email_verification', 'phone_verification', 'location_verification'].includes(dataPoint.id);
     
     if (requiresVerification) {
+      console.log('🔄 [DataPointInputModal] Requires verification, showing verification modal');
       // Determine verification type and target
       let verificationType: 'email' | 'phone' | 'location' = 'email';
       let target = '';
@@ -108,11 +118,17 @@ export const DataPointInputModal: React.FC<DataPointInputModalProps> = ({
       return;
     }
 
+    console.log('🔄 [DataPointInputModal] No verification required, generating ZKP');
     // For non-verification data points, proceed with normal ZKP generation
     await generateZKPAndComplete();
   };
 
   const generateZKPAndComplete = async () => {
+    console.log('🔄 [DataPointInputModal] generateZKPAndComplete called', {
+      dataPointId: dataPoint.id,
+      userData
+    });
+    
     setLoading(true);
 
     try {
@@ -124,11 +140,16 @@ export const DataPointInputModal: React.FC<DataPointInputModalProps> = ({
         expirationDays: 365
       };
 
+      console.log('🔄 [DataPointInputModal] Generating ZKP with request:', zkpRequest);
       const proof = await ZKPGenerator.generateZKP(zkpRequest);
+      console.log('✅ [DataPointInputModal] ZKP generated successfully', { proof });
       
+      console.log('🔄 [DataPointInputModal] Calling onComplete callback');
       onComplete([proof], userData);
+      console.log('✅ [DataPointInputModal] onComplete called, closing modal');
       onClose();
     } catch (error) {
+      console.error('❌ [DataPointInputModal] Error generating ZKP:', error);
       alert('Error generating proof. Please try again.');
     } finally {
       setLoading(false);
