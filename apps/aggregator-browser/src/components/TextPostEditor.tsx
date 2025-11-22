@@ -242,10 +242,13 @@ export function TextPostEditor({ onSave, onCancel }: TextPostEditorProps) {
   const [padding, setPadding] = useState(40);
   const [showTextColorPicker, setShowTextColorPicker] = useState(false);
   const [showBackgroundColorPicker, setShowBackgroundColorPicker] = useState(false);
+  const [showDropShadowColorPicker, setShowDropShadowColorPicker] = useState(false);
   const textColorButtonRef = useRef<HTMLButtonElement>(null);
   const textColorPickerRef = useRef<HTMLDivElement>(null);
   const backgroundColorButtonRef = useRef<HTMLButtonElement>(null);
   const backgroundColorPickerRef = useRef<HTMLDivElement>(null);
+  const dropShadowColorButtonRef = useRef<HTMLButtonElement>(null);
+  const dropShadowColorPickerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const textColorInputRef = useRef<HTMLInputElement>(null);
@@ -521,8 +524,15 @@ export function TextPostEditor({ onSave, onCancel }: TextPostEditorProps) {
       if (openMenu === 'background' && showBackgroundColorPicker) {
         return;
       }
+      // Don't close menu if shadow color picker is open
+      if (openMenu === 'shadow' && showDropShadowColorPicker) {
+        return;
+      }
       // Don't close if clicking on color picker
       if (backgroundColorPickerRef.current && backgroundColorPickerRef.current.contains(target)) {
+        return;
+      }
+      if (dropShadowColorPickerRef.current && dropShadowColorPickerRef.current.contains(target)) {
         return;
       }
       closeMenu();
@@ -536,7 +546,7 @@ export function TextPostEditor({ onSave, onCancel }: TextPostEditorProps) {
       clearTimeout(timeout);
       document.removeEventListener('mousedown', handleClickOutside, true);
     };
-  }, [openMenu, showBackgroundColorPicker]);
+  }, [openMenu, showBackgroundColorPicker, showDropShadowColorPicker]);
 
   // Close text color picker when clicking outside
   useEffect(() => {
@@ -592,6 +602,35 @@ export function TextPostEditor({ onSave, onCancel }: TextPostEditorProps) {
     };
   }, [showBackgroundColorPicker]);
 
+  // Close drop shadow color picker when clicking outside
+  useEffect(() => {
+    if (!showDropShadowColorPicker) return;
+    
+    const handleClickOutside = (event: MouseEvent) => {
+      const target = event.target as Node;
+      const menuElement = document.querySelector('[data-menu="shadow"]');
+      if (menuElement && menuElement.contains(target)) {
+        return;
+      }
+      if (dropShadowColorButtonRef.current && (dropShadowColorButtonRef.current.contains(target) || dropShadowColorButtonRef.current === target)) {
+        return;
+      }
+      if (dropShadowColorPickerRef.current && dropShadowColorPickerRef.current.contains(target)) {
+        return;
+      }
+      setShowDropShadowColorPicker(false);
+    };
+
+    const timeout = setTimeout(() => {
+      document.addEventListener('mousedown', handleClickOutside, true);
+    }, 200);
+
+    return () => {
+      clearTimeout(timeout);
+      document.removeEventListener('mousedown', handleClickOutside, true);
+    };
+  }, [showDropShadowColorPicker]);
+
   const renderPopupMenu = () => {
     if (!openMenu || !menuPosition) return null;
 
@@ -639,11 +678,18 @@ export function TextPostEditor({ onSave, onCancel }: TextPostEditorProps) {
             <div className="p-3 min-w-[280px]">
               <div className="flex gap-3 items-center">
                 {/* Left column: Color box */}
-                <input
-                  type="color"
-                  value={dropShadowColor}
-                  onChange={(e) => setDropShadowColor(e.target.value)}
-                  className="w-12 h-12 rounded border border-neutral-700 cursor-pointer flex-shrink-0"
+                <button
+                  ref={dropShadowColorButtonRef}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setShowDropShadowColorPicker(!showDropShadowColorPicker);
+                  }}
+                  className="rounded cursor-pointer relative flex items-center justify-center flex-shrink-0 border border-neutral-700"
+                  style={{ 
+                    backgroundColor: dropShadowColor,
+                    width: '48px',
+                    height: '48px'
+                  }}
                 />
                 {/* Right column: Three sliders */}
                 <div className="flex-1 space-y-2">
@@ -680,6 +726,25 @@ export function TextPostEditor({ onSave, onCancel }: TextPostEditorProps) {
                   </div>
                 </div>
               </div>
+              {showDropShadowColorPicker && dropShadowColorButtonRef.current && createPortal(
+                <div
+                  ref={dropShadowColorPickerRef}
+                  className="fixed bg-neutral-800 border border-neutral-700 rounded-lg shadow-lg p-3"
+                  style={{
+                    top: `${dropShadowColorButtonRef.current.getBoundingClientRect().bottom}px`,
+                    left: `${dropShadowColorButtonRef.current.getBoundingClientRect().left + dropShadowColorButtonRef.current.getBoundingClientRect().width / 2}px`,
+                    transform: 'translateX(-50%)',
+                    marginTop: '8px',
+                    zIndex: 9999
+                  }}
+                >
+                  <CustomColorPicker
+                    color={dropShadowColor}
+                    onChange={setDropShadowColor}
+                  />
+                </div>,
+                document.body
+              )}
             </div>
           );
         case 'background':
@@ -898,7 +963,7 @@ export function TextPostEditor({ onSave, onCancel }: TextPostEditorProps) {
       </div>
 
       {/* Main Railway with Icon Buttons - Sticky (above font selector, overlays media) */}
-      <div className="fixed left-0 right-0 h-14 flex items-center justify-center gap-4 px-4 z-40" style={{ bottom: `calc(64px + ${textareaHeight}px + 48px + 40px)` }}>
+      <div className="fixed left-0 right-0 h-14 flex items-center justify-center gap-4 px-4 z-40" style={{ bottom: `calc(64px + ${textareaHeight}px + 48px + 8px)` }}>
         <div className="flex items-center gap-4 overflow-x-auto" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
 
           {/* Font Size - Small A next to large A */}
