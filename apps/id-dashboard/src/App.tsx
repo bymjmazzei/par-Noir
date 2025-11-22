@@ -3060,6 +3060,23 @@ This invitation expires in 24 hours.`;
     setTimeout(() => setSuccessWithTimeout(null), 5000);
   };
 
+  // Helper function to map data point ID to proof type for ZKP API
+  const mapDataPointIdToProofType = (dataPointId: string): 'age_verification' | 'identity_verification' | 'location_verification' | 'document_verification' => {
+    switch (dataPointId) {
+      case 'age_attestation':
+        return 'age_verification';
+      case 'identity_attestation':
+        return 'identity_verification';
+      case 'location_verification':
+        return 'location_verification';
+      case 'document_verification':
+        return 'document_verification';
+      default:
+        // Default to identity_verification for unknown data points
+        return 'identity_verification';
+    }
+  };
+
   const handleRequestDataPoint = async (dataPointId: string) => {
     try {
       const dataPoint = STANDARD_DATA_POINTS[dataPointId];
