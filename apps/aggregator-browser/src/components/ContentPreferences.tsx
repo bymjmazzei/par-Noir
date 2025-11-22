@@ -55,10 +55,17 @@ export function ContentPreferences({ onClose, feeds }: ContentPreferencesProps) 
       return;
     }
 
+    const categoryFeeds = getFeedsForCategory(categoryId);
+    console.log('Category feeds found:', categoryFeeds.length, categoryFeeds);
+    
+    if (categoryFeeds.length === 0) {
+      console.warn('No feeds available for category:', categoryId);
+      alert('No feeds available in this category yet');
+      return;
+    }
+
     setIsLoading(true);
     try {
-      const categoryFeeds = getFeedsForCategory(categoryId);
-      console.log('Category feeds found:', categoryFeeds.length, categoryFeeds);
       const isSubscribed = isCategorySubscribed(categoryId);
       console.log('Is subscribed:', isSubscribed);
 
@@ -67,14 +74,17 @@ export function ContentPreferences({ onClose, feeds }: ContentPreferencesProps) 
         for (const feed of categoryFeeds) {
           if (isSubscribedToFeed(feed.feedId)) {
             try {
+              console.log('Unsubscribing from feed:', feed.feedId);
               await FeedService.unsubscribeFromFeed(
                 feed.feedId, 
                 userState.pnIdentifier!,
                 feed.creatorId
               );
               unsubscribeFromFeed(feed.feedId);
-            } catch (error) {
+              console.log('Successfully unsubscribed from feed:', feed.feedId);
+            } catch (error: any) {
               console.error(`Failed to unsubscribe from feed ${feed.feedId}:`, error);
+              alert(`Failed to unsubscribe from ${feed.feedName}: ${error?.message || 'Unknown error'}`);
             }
           }
         }
@@ -82,30 +92,28 @@ export function ContentPreferences({ onClose, feeds }: ContentPreferencesProps) 
         // Subscribe to all feeds in this category
         let successCount = 0;
         let errorCount = 0;
+        const errors: string[] = [];
         
         for (const feed of categoryFeeds) {
           if (!isSubscribedToFeed(feed.feedId)) {
             try {
+              console.log('Subscribing to feed:', feed.feedId, feed.feedName);
               await FeedService.subscribeToFeed(
                 feed.feedId, 
                 userState.pnIdentifier!,
                 feed.creatorId
               );
-              // Update UI state even if decentralized attempt failed but API succeeded
+              // Update UI state
               subscribeToFeed(feed.feedId);
               successCount++;
+              console.log('Successfully subscribed to feed:', feed.feedId);
             } catch (error: any) {
               console.error(`Failed to subscribe to feed ${feed.feedId}:`, error);
-              // Only count as error if it's not an IPFS error (API fallback should work)
-              if (!error?.message?.includes('IPFS') && !error?.message?.includes('decentralized')) {
-                errorCount++;
-              } else {
-                // IPFS failed but API might have succeeded - try to update UI anyway
-                // The FeedService should have already tried the API fallback
-                subscribeToFeed(feed.feedId);
-                successCount++;
-              }
+              errorCount++;
+              errors.push(`${feed.feedName}: ${error?.message || 'Unknown error'}`);
             }
+          } else {
+            console.log('Already subscribed to feed:', feed.feedId);
           }
         }
         
@@ -114,10 +122,15 @@ export function ContentPreferences({ onClose, feeds }: ContentPreferencesProps) 
         }
         if (errorCount > 0) {
           console.warn(`Failed to subscribe to ${errorCount} feed(s) in category ${categoryId}`);
+          alert(`Failed to subscribe to some feeds:\n${errors.join('\n')}`);
+        } else if (successCount === 0 && categoryFeeds.length > 0) {
+          // All feeds were already subscribed
+          console.log('All feeds in category were already subscribed');
         }
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Failed to toggle category subscription:', error);
+      alert(`Failed to toggle subscription: ${error?.message || 'Unknown error'}`);
     } finally {
       setIsLoading(false);
     }
