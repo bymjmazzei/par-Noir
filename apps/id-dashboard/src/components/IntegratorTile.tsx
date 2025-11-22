@@ -68,9 +68,9 @@ export const IntegratorTile: React.FC<IntegratorTileProps> = ({
               <p className="text-xs text-text-secondary">No data points requested</p>
             ) : (
               availableDataPoints.map((dataPoint) => {
-                const isEnabled = dataPoints.includes(dataPoint.id);
                 const isRequired = requiredDataPoints.includes(dataPoint.id);
-                const isOptional = optionalDataPoints.includes(dataPoint.id);
+                // Required data points are always enabled (shared)
+                const isEnabled = isRequired ? true : dataPoints.includes(dataPoint.id);
                 const globalSetting = globalDataPointSettings[dataPoint.id]?.globalSetting ?? true;
                 const isLocked = globalSetting === false; // Locked if globally disabled
 
@@ -94,35 +94,26 @@ export const IntegratorTile: React.FC<IntegratorTileProps> = ({
                         {isRequired ? 'Required' : 'Optional'}
                       </span>
                       
-                      {/* Grant/Deny toggle (user controls this) - no background */}
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          if (!isLocked && !isRequired) {
-                            onToggleDataPoint(dataPoint.id, !isEnabled);
-                          }
-                        }}
-                        disabled={isLocked || isRequired} // Required data points must be enabled
-                        className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors border-2 ${
-                          isEnabled && !isLocked
-                            ? 'border-primary' 
-                            : 'border-border'
-                        } ${isLocked || isRequired ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
-                        aria-label={isEnabled ? 'Revoke access' : 'Grant access'}
-                        title={isRequired ? 'Required by third party - must grant access' : isEnabled ? 'Revoke access to this data point' : 'Grant access to this data point'}
-                      >
-                        <span
-                          className={`inline-block h-4 w-4 transform rounded-full transition-transform ${
-                            isEnabled && !isLocked
-                              ? 'bg-primary translate-x-6' 
-                              : 'bg-gray-400 translate-x-1'
-                          }`}
-                        />
-                      </button>
-                      
-                      {isRequired && !isEnabled && (
-                        <span className="text-xs text-red-600">Required - must grant access</span>
+                      {/* Share status dropdown for optional fields, always "Shared" for required */}
+                      {isRequired ? (
+                        <span className="text-xs text-text-primary px-2 py-1 border border-border rounded">
+                          Shared
+                        </span>
+                      ) : (
+                        <select
+                          value={isEnabled ? 'shared' : 'not_shared'}
+                          onChange={(e) => {
+                            const shared = e.target.value === 'shared';
+                            onToggleDataPoint(dataPoint.id, shared);
+                          }}
+                          disabled={isLocked}
+                          className="text-xs border border-border rounded px-2 py-1 bg-white text-text-primary disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          <option value="not_shared">Not Shared</option>
+                          <option value="shared">Shared</option>
+                        </select>
                       )}
+                      
                       {isLocked && (
                         <span className="text-xs text-text-secondary">Locked</span>
                       )}

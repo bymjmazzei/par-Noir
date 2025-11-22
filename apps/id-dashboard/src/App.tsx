@@ -695,7 +695,71 @@ function App() {
     }
   };
   
+  // Load third-party permissions from Google Drive
+  useEffect(() => {
+    const loadThirdPartyPermissions = async () => {
+      if (!authenticatedUser?.id) return;
+
+      try {
+        const credentials = SecureCredentialManager.getCredentials(authenticatedUser.id);
+        if (!credentials) {
+          console.warn('[App] Cannot load permissions - credentials not available');
+          return;
+        }
+
+        const authToken = authenticatedUser.accessToken || authenticatedUser.authToken;
+        if (!authToken) {
+          console.warn('[App] Cannot load permissions - no auth token');
+          return;
+        }
+
+        // Get pN identifier
+        const { VolumeIdGenerator } = await import('./utils/crypto/volumeIdGenerator');
+        const pnIdentifier = await VolumeIdGenerator.generateVolumeId({
+          pnName: credentials.pnName,
+          passcode: credentials.passcode,
+          publicKey: authenticatedUser.publicKey || ''
+        });
+
+        const apiEndpoint = import.meta.env.VITE_API_ENDPOINT || 
+                           process.env.REACT_APP_API_ENDPOINT || 
+                           'https://api.parnoir.com';
+
+        // Load permissions from API (Google Drive)
+        const response = await fetch(
+          `${apiEndpoint}/api/users/${pnIdentifier}/third-party-permissions`,
+          {
+            headers: {
+              'Authorization': `Bearer ${authToken}`
+            }
+          }
+        );
+
+        if (response.ok) {
+          const { permissions } = await response.json();
+          if (permissions && Object.keys(permissions).length > 0) {
+            setPrivacySettings(prev => ({
+              ...prev,
+              toolPermissions: {
+                ...prev.toolPermissions,
+                ...permissions
+              }
+            }));
+            console.log('[App] Loaded third-party permissions from Google Drive:', Object.keys(permissions));
+          }
+        } else if (response.status !== 404) {
+          console.warn('[App] Failed to load permissions:', response.status);
+        }
+      } catch (error) {
+        console.error('[App] Error loading third-party permissions:', error);
+      }
+    };
+
+    loadThirdPartyPermissions();
+  }, [authenticatedUser?.id]);
+
   // Initialize browser-app tool permissions (hard-coded pN owned third party)
+  // Only initialize if not already loaded from Google Drive
   useEffect(() => {
     if (authenticatedUser?.id && !privacySettings.toolPermissions['browser-app']) {
       setPrivacySettings(prev => ({
@@ -706,7 +770,7 @@ function App() {
             toolName: 'par Noir Browser',
             toolDescription: 'par Noir owned content aggregator browser',
             permissions: ['openid', 'profile', 'zkp:age_attestation'],
-            dataPoints: ['age_attestation'], // Age is optional for 18+/NSFW content access
+            dataPoints: [], // Start with empty - user chooses to share age ZKP
             requiredDataPoints: [], // No required data points
             optionalDataPoints: ['age_attestation'], // Age is optional
             grantedAt: new Date().toISOString(),
@@ -3095,21 +3159,21 @@ This invitation expires in 24 hours.`;
     setShowToolSettingsModal(true);
   };
 
-  const handleToggleToolDataPoint = (toolId: string, dataPointId: string, enabled: boolean) => {
+  const handleToggleToolDataPoint = async (toolId: string, dataPointId: string, enabled: boolean) => {
     const tool = privacySettings.toolPermissions[toolId];
     if (!tool) return;
 
+    // Required data points must always be included
+    const requiredDataPoints = tool.requiredDataPoints || [];
+    
+    // For optional data points, add/remove based on enabled flag
+    // For required data points, always include them
     const newDataPoints = enabled
-      ? [...tool.dataPoints, dataPointId]
-      : tool.dataPoints.filter(dp => dp !== dataPointId);
-
-    // Remove from required/optional lists if disabled
-    const newRequiredDataPoints = enabled
-      ? tool.requiredDataPoints || []
-      : (tool.requiredDataPoints || []).filter(dp => dp !== dataPointId);
-    const newOptionalDataPoints = enabled
-      ? tool.optionalDataPoints || []
-      : (tool.optionalDataPoints || []).filter(dp => dp !== dataPointId);
+      ? [...new Set([...tool.dataPoints, dataPointId])] // Ensure no duplicates
+      : tool.dataPoints.filter(dp => dp !== dataPointId && !requiredDataPoints.includes(dp)); // Don't remove required
+    
+    // Always include required data points
+    const finalDataPoints = [...new Set([...newDataPoints, ...requiredDataPoints])];
 
     const newSettings = {
       ...privacySettings,
@@ -3117,13 +3181,64 @@ This invitation expires in 24 hours.`;
         ...privacySettings.toolPermissions,
         [toolId]: {
           ...tool,
-          dataPoints: newDataPoints,
-          requiredDataPoints: newRequiredDataPoints,
-          optionalDataPoints: newOptionalDataPoints
+          dataPoints: finalDataPoints,
+          requiredDataPoints: tool.requiredDataPoints || [],
+          optionalDataPoints: tool.optionalDataPoints || []
         }
       }
     };
     setPrivacySettings(newSettings);
+
+    // Persist to Google Drive via API
+    try {
+      const credentials = SecureCredentialManager.getCredentials(authenticatedUser?.id || '');
+      if (!credentials || !authenticatedUser?.id) {
+        console.warn('[App] Cannot persist permissions - credentials not available');
+        return;
+      }
+
+      const authToken = authenticatedUser.accessToken || authenticatedUser.authToken;
+      if (!authToken) {
+        console.warn('[App] Cannot persist permissions - no auth token');
+        return;
+      }
+
+      // Get pN identifier
+      const { VolumeIdGenerator } = await import('./utils/crypto/volumeIdGenerator');
+      const pnIdentifier = await VolumeIdGenerator.generateVolumeId({
+        pnName: credentials.pnName,
+        passcode: credentials.passcode,
+        publicKey: authenticatedUser.publicKey || ''
+      });
+
+      const apiEndpoint = import.meta.env.VITE_API_ENDPOINT || 
+                         process.env.REACT_APP_API_ENDPOINT || 
+                         'https://api.parnoir.com';
+
+      // Store permissions via API (will be saved to Google Drive)
+      const response = await fetch(
+        `${apiEndpoint}/api/users/${pnIdentifier}/third-party-permissions`,
+        {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${authToken}`
+          },
+          body: JSON.stringify({
+            toolId,
+            permission: newSettings.toolPermissions[toolId]
+          })
+        }
+      );
+
+      if (!response.ok) {
+        console.error('Failed to persist permissions:', response.status);
+      } else {
+        console.log('✅ Permissions persisted to Google Drive');
+      }
+    } catch (error) {
+      console.error('Error persisting permissions:', error);
+    }
   };
 
   const handleSetToolDataPointRequired = (toolId: string, dataPointId: string, required: boolean) => {

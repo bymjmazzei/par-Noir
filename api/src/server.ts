@@ -5275,11 +5275,44 @@ class ProductionServer {
 
         const metadataFolderId = metadataFolderData.files[0].id;
 
+        // Get client_id from token to check permissions
+        const clientId = tokenPayload.clientId || 'browser-app'; // Default to browser-app for backward compatibility
+        
+        // Check if user has granted access to these data points for this third party
+        const { ThirdPartyPermissionsService } = await import('./server/modules/thirdPartyPermissionsService');
+        const permissions = await ThirdPartyPermissionsService.getPermissions(
+          userAccessToken,
+          metadataFolderId
+        );
+        
+        const toolPermission = permissions[clientId];
+        let finalAllowedDataPoints = allowedDataPoints;
+        
+        if (toolPermission) {
+          // Filter data points to only those the user has granted access to
+          // Required data points are always granted, optional ones must be in dataPoints array
+          finalAllowedDataPoints = allowedDataPoints.filter((dp: string) => 
+            toolPermission.requiredDataPoints.includes(dp) || // Required are always granted
+            toolPermission.dataPoints.includes(dp) // Optional must be explicitly granted
+          );
+          
+          if (finalAllowedDataPoints.length === 0) {
+            return res.json({ success: true, dataPoints: [] });
+          }
+        } else {
+          // No permissions found - return empty (user hasn't granted access)
+          // Exception: browser-app is hard-coded, so allow if it's browser-app
+          if (clientId !== 'browser-app') {
+            return res.json({ success: true, dataPoints: [] });
+          }
+          // For browser-app, continue without permission check (backward compatibility)
+        }
+
         // Get ZKP proofs for requested data points
         const ZKPDataPointsService = (await import('./server/modules/zkpDataPointsService')).ZKPDataPointsService;
         const zkpDataPoints: any[] = [];
 
-        for (const dataPointId of allowedDataPoints) {
+        for (const dataPointId of finalAllowedDataPoints) {
           try {
             const proof = await ZKPDataPointsService.getDataPointProof(
               userAccessToken,
@@ -7348,6 +7381,264 @@ class ProductionServer {
         return res.status(500).json({
           error: 'Failed to get ZKP data point',
           error_description: error.message || 'Failed to get ZKP data point'
+        });
+      }
+    });
+
+    // GET /api/users/:pnIdentifier/third-party-permissions - Get all third-party permissions
+    this.app.get('/api/users/:pnIdentifier/third-party-permissions', async (req, res) => {
+      try {
+        const { pnIdentifier } = req.params;
+        const authHeader = req.headers.authorization;
+        
+        if (!authHeader || !authHeader.startsWith('Bearer ')) {
+          return res.status(401).json({ error: 'Unauthorized' });
+        }
+
+        const { ThirdPartyPermissionsService } = await import('./server/modules/thirdPartyPermissionsService');
+        const { googleDriveProxyService } = await import('./server/modules/googleDriveProxy');
+        const { storageCredentialsService } = await import('./server/modules/storageCredentialsService');
+
+        // Normalize pn identifier
+        const normalizedPnIdentifier = pnIdentifier.startsWith('pn-') ? pnIdentifier : `pn-${pnIdentifier}`;
+
+        // Get user's credentials
+        const userCredentials = await storageCredentialsService.getCredentials(normalizedPnIdentifier);
+        if (!userCredentials?.credentials) {
+          return res.status(404).json({ error: 'User credentials not found' });
+        }
+
+        const googleDriveAccounts = userCredentials.credentials.googleDriveAccounts || 
+          (userCredentials.credentials.googleDrive ? [userCredentials.credentials.googleDrive] : []);
+        
+        if (googleDriveAccounts.length === 0) {
+          return res.status(404).json({ error: 'User has no Google Drive connected' });
+        }
+
+        const account = googleDriveAccounts[0];
+        const accountId = (account as any).accountId || (account as any).id;
+        const userAccessToken = await googleDriveProxyService.getAccessToken(normalizedPnIdentifier, accountId);
+
+        // Find pN folder and _metadata folder (same pattern as ZKP endpoints)
+        const pnFolderName = `par Noir - ${normalizedPnIdentifier}`;
+        const pnFolderSearchQuery = `name='${pnFolderName.replace(/'/g, "\\'")}' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
+        const pnFolderSearchUrl = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(pnFolderSearchQuery)}&fields=files(id,name)&pageSize=1`;
+        
+        const pnFolderResponse = await fetch(pnFolderSearchUrl, {
+          headers: { 'Authorization': `Bearer ${userAccessToken}` }
+        });
+
+        let pnFolderId: string | null = null;
+        if (pnFolderResponse.ok) {
+          const pnFolderData = await pnFolderResponse.json() as { files?: Array<{ id: string; name: string }> };
+          if (pnFolderData.files && pnFolderData.files.length > 0) {
+            pnFolderId = pnFolderData.files[0].id;
+          }
+        }
+
+        if (!pnFolderId) {
+          return res.json({ success: true, permissions: {} });
+        }
+
+        // Find _metadata folder
+        const metadataFolderName = '_metadata';
+        const metadataSearchQuery = `name='${metadataFolderName}' and '${pnFolderId}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`;
+        const metadataSearchUrl = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(metadataSearchQuery)}&fields=files(id)&pageSize=1`;
+        
+        const metadataFolderResponse = await fetch(metadataSearchUrl, {
+          headers: { 'Authorization': `Bearer ${userAccessToken}` }
+        });
+
+        if (!metadataFolderResponse.ok) {
+          return res.json({ success: true, permissions: {} });
+        }
+
+        const metadataFolderData = await metadataFolderResponse.json() as { files?: Array<{ id: string }> };
+        if (!metadataFolderData.files || metadataFolderData.files.length === 0) {
+          return res.json({ success: true, permissions: {} });
+        }
+
+        const metadataFolderId = metadataFolderData.files[0].id;
+
+        // Get permissions
+        const permissions = await ThirdPartyPermissionsService.getPermissions(
+          userAccessToken,
+          metadataFolderId
+        );
+
+        return res.json({ success: true, permissions });
+      } catch (error: any) {
+        console.error('Error getting third-party permissions:', error);
+        return res.status(500).json({
+          error: 'Failed to get third-party permissions',
+          error_description: error.message || 'Failed to get third-party permissions'
+        });
+      }
+    });
+
+    // PUT /api/users/:pnIdentifier/third-party-permissions - Store or update third-party permission
+    this.app.put('/api/users/:pnIdentifier/third-party-permissions', async (req, res) => {
+      try {
+        const { pnIdentifier } = req.params;
+        const { toolId, permission } = req.body;
+        const authHeader = req.headers.authorization;
+        
+        if (!authHeader || !authHeader.startsWith('Bearer ')) {
+          return res.status(401).json({ error: 'Unauthorized' });
+        }
+
+        if (!toolId || !permission) {
+          return res.status(400).json({ error: 'toolId and permission are required' });
+        }
+
+        const { ThirdPartyPermissionsService } = await import('./server/modules/thirdPartyPermissionsService');
+        const { googleDriveProxyService } = await import('./server/modules/googleDriveProxy');
+        const { storageCredentialsService } = await import('./server/modules/storageCredentialsService');
+
+        // Normalize pn identifier
+        const normalizedPnIdentifier = pnIdentifier.startsWith('pn-') ? pnIdentifier : `pn-${pnIdentifier}`;
+
+        // Get user's credentials
+        const userCredentials = await storageCredentialsService.getCredentials(normalizedPnIdentifier);
+        if (!userCredentials?.credentials) {
+          return res.status(404).json({ error: 'User credentials not found' });
+        }
+
+        const googleDriveAccounts = userCredentials.credentials.googleDriveAccounts || 
+          (userCredentials.credentials.googleDrive ? [userCredentials.credentials.googleDrive] : []);
+        
+        if (googleDriveAccounts.length === 0) {
+          return res.status(404).json({ error: 'User has no Google Drive connected' });
+        }
+
+        const account = googleDriveAccounts[0];
+        const accountId = (account as any).accountId || (account as any).id;
+        const userAccessToken = await googleDriveProxyService.getAccessToken(normalizedPnIdentifier, accountId);
+
+        // Find or create pN folder and _metadata folder (same pattern as ZKP endpoints)
+        const pnFolderName = `par Noir - ${normalizedPnIdentifier}`;
+        const pnFolderSearchQuery = `name='${pnFolderName.replace(/'/g, "\\'")}' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
+        const pnFolderSearchUrl = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(pnFolderSearchQuery)}&fields=files(id,name)&pageSize=1`;
+        
+        const pnFolderResponse = await fetch(pnFolderSearchUrl, {
+          headers: { 'Authorization': `Bearer ${userAccessToken}` }
+        });
+
+        let pnFolderId: string | null = null;
+        if (pnFolderResponse.ok) {
+          const pnFolderData = await pnFolderResponse.json() as { files?: Array<{ id: string; name: string }> };
+          if (pnFolderData.files && pnFolderData.files.length > 0) {
+            pnFolderId = pnFolderData.files[0].id;
+          }
+        }
+
+        // Create pN folder if it doesn't exist
+        if (!pnFolderId) {
+          const createPnFolderResponse = await fetch('https://www.googleapis.com/drive/v3/files', {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${userAccessToken}`,
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+              name: pnFolderName,
+              mimeType: 'application/vnd.google-apps.folder'
+            })
+          });
+          
+          if (createPnFolderResponse.ok) {
+            const createdPnFolder = await createPnFolderResponse.json() as { id: string };
+            pnFolderId = createdPnFolder.id;
+          } else {
+            return res.status(500).json({ error: 'Failed to create pN folder' });
+          }
+        }
+
+        // Find or create _metadata folder
+        const metadataFolderName = '_metadata';
+        const metadataSearchQuery = `name='${metadataFolderName}' and '${pnFolderId}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`;
+        const metadataSearchUrl = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(metadataSearchQuery)}&fields=files(id)&pageSize=1`;
+        
+        const metadataFolderResponse = await fetch(metadataSearchUrl, {
+          headers: { 'Authorization': `Bearer ${userAccessToken}` }
+        });
+
+        let metadataFolderId: string;
+        if (metadataFolderResponse.ok) {
+          const metadataFolderData = await metadataFolderResponse.json() as { files?: Array<{ id: string }> };
+          if (metadataFolderData.files && metadataFolderData.files.length > 0) {
+            metadataFolderId = metadataFolderData.files[0].id;
+          } else {
+            // Create _metadata folder
+            const createMetadataResponse = await fetch('https://www.googleapis.com/drive/v3/files', {
+              method: 'POST',
+              headers: {
+                'Authorization': `Bearer ${userAccessToken}`,
+                'Content-Type': 'application/json'
+              },
+              body: JSON.stringify({
+                name: metadataFolderName,
+                mimeType: 'application/vnd.google-apps.folder',
+                parents: [pnFolderId]
+              })
+            });
+            
+            if (!createMetadataResponse.ok) {
+              return res.status(500).json({ error: 'Failed to create _metadata folder' });
+            }
+            
+            const createdMetadata = await createMetadataResponse.json() as { id: string };
+            metadataFolderId = createdMetadata.id;
+          }
+        } else {
+          // Create _metadata folder
+          const createMetadataResponse = await fetch('https://www.googleapis.com/drive/v3/files', {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${userAccessToken}`,
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+              name: metadataFolderName,
+              mimeType: 'application/vnd.google-apps.folder',
+              parents: [pnFolderId]
+            })
+          });
+          
+          if (!createMetadataResponse.ok) {
+            return res.status(500).json({ error: 'Failed to create _metadata folder' });
+          }
+          
+          const createdMetadata = await createMetadataResponse.json() as { id: string };
+          metadataFolderId = createdMetadata.id;
+        }
+
+        // Get existing permissions
+        const existingPermissions = await ThirdPartyPermissionsService.getPermissions(
+          userAccessToken,
+          metadataFolderId
+        );
+
+        // Update permissions
+        const updatedPermissions = {
+          ...existingPermissions,
+          [toolId]: permission
+        };
+
+        // Store permissions
+        await ThirdPartyPermissionsService.storePermissions(
+          userAccessToken,
+          metadataFolderId,
+          normalizedPnIdentifier,
+          updatedPermissions
+        );
+
+        return res.json({ success: true, permission });
+      } catch (error: any) {
+        console.error('Error storing third-party permission:', error);
+        return res.status(500).json({
+          error: 'Failed to store third-party permission',
+          error_description: error.message || 'Failed to store third-party permission'
         });
       }
     });
