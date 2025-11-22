@@ -5184,6 +5184,7 @@ class ProductionServer {
                           const dataPoints = shareAge ? ['age_attestation'] : [];
                           
                           permissions['browser-app'] = {
+                            toolId: 'browser-app',
                             toolName: 'par Noir Browser',
                             toolDescription: 'Official par Noir browser application for browsing and discovering encrypted content',
                             permissions: ['openid', 'profile', 'cloud:read'], // Include secure cloud access scope
