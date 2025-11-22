@@ -33,15 +33,12 @@ export function ContentRatingBadge({
   const getRatingColor = (rating: ContentRating): string => {
     switch (rating) {
       case 'GA':
-      case 'FF':
         return 'bg-green-500/20 text-green-400 border-green-500/30';
-      case 'T13+':
-      case 'YA16+':
+      case '18+':
         return 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30';
-      case 'M18+':
       case 'NSFW':
         return 'bg-orange-500/20 text-orange-400 border-orange-500/30';
-      case 'X18+':
+      case 'X':
         return 'bg-red-500/20 text-red-400 border-red-500/30';
       default:
         return 'bg-blue-500/20 text-blue-400 border-blue-500/30';

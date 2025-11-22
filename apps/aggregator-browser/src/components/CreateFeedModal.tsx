@@ -23,7 +23,7 @@ export function CreateFeedModal({ onClose, onFeedCreated }: CreateFeedModalProps
   const [feedName, setFeedName] = useState('');
   const [feedDescription, setFeedDescription] = useState('');
   const [feedCategory, setFeedCategory] = useState<FeedCategory | ''>('');
-  const [ratingRange, setRatingRange] = useState<ContentRating[]>(['GA', 'FF', 'T13+', 'YA16+']);
+  const [ratingRange, setRatingRange] = useState<ContentRating[]>(['GA', '18+']);
   const [bannerImage, setBannerImage] = useState<string>('');
   const [avatar, setAvatar] = useState<string>('');
   const [bio, setBio] = useState('');
@@ -37,7 +37,7 @@ export function CreateFeedModal({ onClose, onFeedCreated }: CreateFeedModalProps
       setRatingRange(ratingRange.filter(r => r !== rating));
     } else {
       setRatingRange([...ratingRange, rating].sort((a, b) => {
-        const order: ContentRating[] = ['GA', 'FF', 'T13+', 'YA16+', 'M18+', 'NSFW', 'X18+'];
+        const order: ContentRating[] = ['GA', '18+', 'NSFW', 'X'];
         return order.indexOf(a) - order.indexOf(b);
       }));
     }
@@ -198,7 +198,7 @@ export function CreateFeedModal({ onClose, onFeedCreated }: CreateFeedModalProps
               Select which content ratings your feed will accept
             </p>
             <div className="flex flex-wrap gap-2">
-              {(['GA', 'FF', 'T13+', 'YA16+', 'M18+', 'NSFW', 'X18+'] as ContentRating[]).map((rating) => {
+              {(['GA', '18+', 'NSFW', 'X'] as ContentRating[]).map((rating) => {
                 const isSelected = ratingRange.includes(rating);
                 return (
                   <button

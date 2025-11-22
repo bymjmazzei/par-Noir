@@ -156,7 +156,7 @@ export async function loadUserFilesFromGoogleDrive(
           uploadDate: metadataContent.uploadedAt,
           isPublic: metadataContent.visibility === 'public',
           visibility: metadataContent.visibility,
-          contentRating: metadataContent.contentRating || 'T13+',
+          contentRating: metadataContent.contentRating || 'GA',
           keywords: metadataContent.tags || [],
           description: metadataContent.description,
           backend: 'google_drive',
