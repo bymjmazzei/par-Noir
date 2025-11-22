@@ -171,7 +171,8 @@ export function UserStateProvider({ children }: { children: ReactNode }) {
 
         const apiEndpoint = process.env.REACT_APP_API_ENDPOINT || 'https://api.parnoir.com';
         
-        // Check if user has age_attestation ZKP via OAuth endpoint
+        // Check if user has granted access to age_attestation ZKP via OAuth endpoint
+        // OAuth endpoint only returns ZKP if user has granted access in dashboard
         const zkpResponse = await fetch(
           `${apiEndpoint}/oauth/zkp-data-points?data_points=age_attestation`,
           {
@@ -186,7 +187,7 @@ export function UserStateProvider({ children }: { children: ReactNode }) {
           const ageZKP = dataPoints?.find((dp: any) => dp.dataPointId === 'age_attestation');
           
           if (ageZKP) {
-            // Verify the proof for "age >= 18"
+            // User has granted access to age ZKP - verify the proof for "age >= 18"
             const verifyResponse = await fetch(
               `${apiEndpoint}/api/users/${userState.pnIdentifier}/zkp-data-points/verify`,
               {
@@ -205,24 +206,30 @@ export function UserStateProvider({ children }: { children: ReactNode }) {
             if (verifyResponse.ok) {
               const { verification } = await verifyResponse.json();
               if (verification.isValid) {
-                // Auto-set age verified and allow 18+ and NSFW content
+                // Age ZKP is shared and valid (age >= 18) - allow 18+ and NSFW content
+                // GA content is always available (no age check needed)
                 setUserState(prev => ({
                   ...prev,
                   preferences: {
                     ...prev.preferences,
                     ageVerified: true,
                     verifiedAge: 18, // Minimum age, not actual age
-                    maxRating: prev.preferences.maxRating === 'GA' ? 'NSFW' : prev.preferences.maxRating // Allow NSFW if age verified
+                    // Allow 18+ and NSFW if age ZKP is shared and valid
+                    // Don't override if user has already set a higher rating
+                    maxRating: prev.preferences.maxRating === 'GA' ? 'NSFW' : prev.preferences.maxRating
                   }
                 }));
-                console.log('✅ Age verified via ZKP (age >= 18) - 18+ and NSFW content now accessible');
+                console.log('✅ Age ZKP shared and verified (age >= 18) - 18+ and NSFW content now accessible');
               }
             }
           }
-        } else if (zkpResponse.status !== 404) {
+        } else if (zkpResponse.status === 404) {
+          // User hasn't granted access to age ZKP or doesn't have it
+          // GA content is still available (no age check needed)
+          console.log('ℹ️ Age ZKP not shared - only GA content available');
+        } else {
           console.warn('Failed to check ZKP age verification:', zkpResponse.status);
         }
-        // 404 is expected if user hasn't verified age yet
       } catch (error) {
         console.error('Error checking ZKP age verification:', error);
       }
