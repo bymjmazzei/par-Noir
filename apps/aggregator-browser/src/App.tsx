@@ -2146,10 +2146,16 @@ function App() {
     if (isOwnIndex) {
       switch (mePageTab) {
         case 'all':
-          filtered = Array.from(
+          // Combine all files, then separate media and thoughts
+          const allFiles = Array.from(
             new Map([...creatorFiles, ...userLikedFiles, ...userCommentedFiles]
               .map(f => [f.metadata.fileId, f])).values()
           );
+          // Separate media and thoughts
+          const mediaFiles = allFiles.filter(f => !isThought(f));
+          const thoughtFiles = allFiles.filter(f => isThought(f));
+          // Show media first, then thoughts
+          filtered = [...mediaFiles, ...thoughtFiles];
           break;
         case 'media':
           filtered = creatorFiles.filter(f => !isThought(f));
@@ -2252,10 +2258,16 @@ function App() {
     } else if (viewingCreatorId) {
       switch (mePageTab) {
         case 'all':
-          filtered = Array.from(
+          // Combine all files, then separate media and thoughts
+          const allFilesOther = Array.from(
             new Map([...creatorFiles, ...viewedUserLikedFiles, ...viewedUserCommentedFiles]
               .map(f => [f.metadata.fileId, f])).values()
           );
+          // Separate media and thoughts
+          const mediaFilesOther = allFilesOther.filter(f => !isThought(f));
+          const thoughtFilesOther = allFilesOther.filter(f => isThought(f));
+          // Show media first, then thoughts
+          filtered = [...mediaFilesOther, ...thoughtFilesOther];
           break;
         case 'media':
           filtered = creatorFiles.filter(f => !isThought(f));
@@ -2872,7 +2884,7 @@ function App() {
               setMePageTab(tab);
               setCurrentFeedIndex(0);
             }}
-            availableTabs={isOwnIndex ? ['connections', 'all', 'media', 'likes', 'comments', 'saved'] : ['all', 'media', 'likes', 'comments']}
+            availableTabs={isOwnIndex ? ['connections', 'all', 'media', 'thoughts', 'likes', 'comments', 'saved'] : ['all', 'media', 'thoughts', 'likes', 'comments']}
           />
           
           {/* Unified feed view for all profiles */}
