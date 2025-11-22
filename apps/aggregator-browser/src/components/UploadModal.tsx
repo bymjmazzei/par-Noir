@@ -147,6 +147,10 @@ export function UploadModal({ feeds: propsFeeds, onClose, onUploadComplete }: Up
       <div 
         className="fixed top-0 left-0 right-0 h-12 flex items-center justify-between px-4 z-[100] bg-transparent"
       >
+        <div className="w-9" /> {/* Spacer for centering */}
+        <h2 className="text-sm font-medium uppercase tracking-wide text-white">
+          Upload from Secure Cloud
+        </h2>
         <button
           onClick={() => setShowContentPreferences(true)}
           className="p-2 text-white/85 hover:text-white transition-colors"
@@ -154,10 +158,6 @@ export function UploadModal({ feeds: propsFeeds, onClose, onUploadComplete }: Up
         >
           <Settings className="h-5 w-5" />
         </button>
-        <h2 className="text-sm font-medium uppercase tracking-wide text-white">
-          Upload from Secure Cloud
-        </h2>
-        <div className="w-9" /> {/* Spacer for centering */}
       </div>
 
       {/* FileStorageAggregator Component */}
