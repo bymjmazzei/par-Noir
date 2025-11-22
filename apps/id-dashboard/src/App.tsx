@@ -3264,6 +3264,34 @@ This invitation expires in 24 hours.`;
         );
         
         console.log('[DataPointInput] Metadata saved successfully');
+        
+        // Verify the save worked by reading it back immediately
+        try {
+          const verifyMetadata = await SecureMetadataStorage.getMetadata(authenticatedUser.id);
+          if (verifyMetadata) {
+            const { SecureMetadataCrypto } = await import('./utils/secureMetadata');
+            const verifyDecrypted = await SecureMetadataCrypto.decryptMetadata(
+              verifyMetadata,
+              credentials.pnName,
+              credentials.passcode
+            );
+            const verifyAttestedData = verifyDecrypted?.dataPoints?.attestedData || [];
+            const verifyIds = verifyAttestedData.map((item: any) => item.dataPointId);
+            console.log('[DataPointInput] VERIFICATION - Read back from storage:', {
+              found: verifyIds.includes(dataPointId),
+              allIds: verifyIds,
+              count: verifyAttestedData.length
+            });
+            
+            if (!verifyIds.includes(dataPointId)) {
+              console.error('[DataPointInput] ERROR - Data was NOT saved correctly!');
+            }
+          } else {
+            console.error('[DataPointInput] ERROR - Could not read metadata back after save!');
+          }
+        } catch (verifyError) {
+          console.error('[DataPointInput] ERROR - Verification failed:', verifyError);
+        }
 
         // Sync ZKP data point to API server (Google Drive)
         try {
