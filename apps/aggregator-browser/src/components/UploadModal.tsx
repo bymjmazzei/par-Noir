@@ -147,7 +147,7 @@ export function UploadModal({ feeds: propsFeeds, onClose, onUploadComplete }: Up
       <div 
         className="fixed top-0 left-0 right-0 h-12 flex items-center justify-between px-4 z-[100] bg-neutral-900 border-b border-neutral-800"
       >
-        {/* Left side - Settings button with same p-2 padding as lock button */}
+        {/* Left side - Settings button with same positioning and size as lock button */}
         <button
           onClick={(e) => {
             e.preventDefault();
@@ -156,6 +156,7 @@ export function UploadModal({ feeds: propsFeeds, onClose, onUploadComplete }: Up
           }}
           className="p-2 text-white/85 hover:text-white transition-colors flex items-center justify-center flex-shrink-0"
           title="Content Preferences"
+          style={{ marginTop: '12px' }} {/* Match lock button's top-3 (12px) */}
         >
           <Settings className="h-5 w-5" />
         </button>
