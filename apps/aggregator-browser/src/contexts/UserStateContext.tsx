@@ -138,6 +138,9 @@ export function UserStateProvider({ children }: { children: ReactNode }) {
             }));
             console.log('Loaded preferences from Google Drive:', data.preferences.subscribedCategories);
           }
+        } else if (response.status === 404) {
+          // Endpoint not deployed yet - just use local state
+          console.log('Preferences endpoint not available, using local state');
         }
       } catch (error) {
         console.warn('Failed to load preferences from Google Drive:', error);

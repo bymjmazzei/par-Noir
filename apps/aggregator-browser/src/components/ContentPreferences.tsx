@@ -88,19 +88,18 @@ export function ContentPreferences({ onClose, feeds }: ContentPreferencesProps) 
         })
       });
 
-      if (!response.ok) {
-        throw new Error(`Failed to save preferences: ${response.status}`);
+      if (response.ok) {
+        console.log('Successfully saved preferences to Google Drive');
+      } else if (response.status === 404) {
+        // Endpoint not deployed yet - just log, keep local state
+        console.warn('Preferences endpoint not available yet, keeping local state only');
+      } else {
+        // Other error - log but don't revert (like connections)
+        console.warn('Failed to save preferences to Google Drive:', response.status);
       }
     } catch (error: any) {
-      console.error('Failed to toggle category subscription:', error);
-      alert(`Failed to save subscription: ${error?.message || 'Unknown error'}`);
-      // Revert local state on error
-      const isSubscribed = isCategorySubscribed(categoryId);
-      if (isSubscribed) {
-        subscribeToCategory(categoryId);
-      } else {
-        unsubscribeFromCategory(categoryId);
-      }
+      // Log error but don't revert - keep local state (like connections)
+      console.warn('Could not save preferences to Google Drive:', error);
     } finally {
       setIsLoading(false);
     }
