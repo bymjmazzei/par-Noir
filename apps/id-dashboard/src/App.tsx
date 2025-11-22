@@ -5479,32 +5479,100 @@ This invitation expires in 24 hours.`;
                           
                           {globalSettingsExpanded && (
                             <div className="px-6 pb-6">
-
-                          {/* Active Data Point Permissions */}
-                            <div>
-                            <h5 className="text-sm font-medium text-text-primary mb-4 flex items-center gap-2">
-                              <CheckCircle className="w-4 h-4 text-green-500" />
-                              Active Data Point Permissions
-                            </h5>
                             <div className="space-y-3">
-                              {Object.entries(STANDARD_DATA_POINTS).map(([dataPointId, dataPoint]) => {
-                                // Check if user has attested or verified this data point
-                                const hasAttested = attestedDataPoints.has(dataPointId);
-                                const hasVerified = verifiedDataPoints.has(dataPointId);
-                                const hasData = hasAttested || hasVerified;
-                                
-                                return (
-                                  <PermissionTile
-                                    key={dataPointId}
-                                    title={dataPoint.name}
-                                    hasData={hasData}
-                                    onClick={() => handleRequestDataPoint(dataPointId)}
-                                  />
-                                );
-                              })}
+                              {/* pN Identifier - Static, not editable */}
+                              {STANDARD_DATA_POINTS['pn_identifier'] && (
+                                <PermissionTile
+                                  key="pn_identifier"
+                                  title={STANDARD_DATA_POINTS['pn_identifier'].name}
+                                  hasData={attestedDataPoints.has('pn_identifier') || verifiedDataPoints.has('pn_identifier')}
+                                  isVerified={verifiedDataPoints.has('pn_identifier')}
+                                  isStatic={true}
+                                  onClick={() => {}}
+                                />
+                              )}
+                              
+                              {/* Name fields */}
+                              {STANDARD_DATA_POINTS['first_name'] && (
+                                <PermissionTile
+                                  key="first_name"
+                                  title={STANDARD_DATA_POINTS['first_name'].name}
+                                  hasData={attestedDataPoints.has('first_name') || verifiedDataPoints.has('first_name')}
+                                  isVerified={verifiedDataPoints.has('first_name')}
+                                  onClick={() => handleRequestDataPoint('first_name')}
+                                />
+                              )}
+                              {STANDARD_DATA_POINTS['middle_name'] && (
+                                <PermissionTile
+                                  key="middle_name"
+                                  title={STANDARD_DATA_POINTS['middle_name'].name}
+                                  hasData={attestedDataPoints.has('middle_name') || verifiedDataPoints.has('middle_name')}
+                                  isVerified={verifiedDataPoints.has('middle_name')}
+                                  onClick={() => handleRequestDataPoint('middle_name')}
+                                />
+                              )}
+                              {STANDARD_DATA_POINTS['last_name'] && (
+                                <PermissionTile
+                                  key="last_name"
+                                  title={STANDARD_DATA_POINTS['last_name'].name}
+                                  hasData={attestedDataPoints.has('last_name') || verifiedDataPoints.has('last_name')}
+                                  isVerified={verifiedDataPoints.has('last_name')}
+                                  onClick={() => handleRequestDataPoint('last_name')}
+                                />
+                              )}
+                              {STANDARD_DATA_POINTS['suffix'] && (
+                                <PermissionTile
+                                  key="suffix"
+                                  title={STANDARD_DATA_POINTS['suffix'].name}
+                                  hasData={attestedDataPoints.has('suffix') || verifiedDataPoints.has('suffix')}
+                                  isVerified={verifiedDataPoints.has('suffix')}
+                                  onClick={() => handleRequestDataPoint('suffix')}
+                                />
+                              )}
+                              
+                              {/* Age */}
+                              {STANDARD_DATA_POINTS['age_attestation'] && (
+                                <PermissionTile
+                                  key="age_attestation"
+                                  title={STANDARD_DATA_POINTS['age_attestation'].name}
+                                  hasData={attestedDataPoints.has('age_attestation') || verifiedDataPoints.has('age_attestation')}
+                                  isVerified={verifiedDataPoints.has('age_attestation')}
+                                  onClick={() => handleRequestDataPoint('age_attestation')}
+                                />
+                              )}
+                              
+                              {/* Location */}
+                              {STANDARD_DATA_POINTS['location_verification'] && (
+                                <PermissionTile
+                                  key="location_verification"
+                                  title={STANDARD_DATA_POINTS['location_verification'].name}
+                                  hasData={attestedDataPoints.has('location_verification') || verifiedDataPoints.has('location_verification')}
+                                  isVerified={verifiedDataPoints.has('location_verification')}
+                                  onClick={() => handleRequestDataPoint('location_verification')}
+                                />
+                              )}
+                              
+                              {/* Contact */}
+                              {STANDARD_DATA_POINTS['email_verification'] && (
+                                <PermissionTile
+                                  key="email_verification"
+                                  title={STANDARD_DATA_POINTS['email_verification'].name}
+                                  hasData={attestedDataPoints.has('email_verification') || verifiedDataPoints.has('email_verification')}
+                                  isVerified={verifiedDataPoints.has('email_verification')}
+                                  onClick={() => handleRequestDataPoint('email_verification')}
+                                />
+                              )}
+                              {STANDARD_DATA_POINTS['phone_verification'] && (
+                                <PermissionTile
+                                  key="phone_verification"
+                                  title={STANDARD_DATA_POINTS['phone_verification'].name}
+                                  hasData={attestedDataPoints.has('phone_verification') || verifiedDataPoints.has('phone_verification')}
+                                  isVerified={verifiedDataPoints.has('phone_verification')}
+                                  onClick={() => handleRequestDataPoint('phone_verification')}
+                                />
+                              )}
                             </div>
                           </div>
-                            </div>
                           )}
                         </div>
 
