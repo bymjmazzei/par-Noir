@@ -61,7 +61,31 @@ export function UserStateProvider({ children }: { children: ReactNode }) {
     try {
       const stored = localStorage.getItem('pn_user_state');
       if (stored) {
-        return JSON.parse(stored);
+        const parsed = JSON.parse(stored);
+        // Ensure subscribedCategories exists for backward compatibility
+        if (!parsed.preferences?.subscribedCategories) {
+          parsed.preferences = {
+            ...parsed.preferences,
+            subscribedCategories: []
+          };
+        }
+        // Migrate old content ratings to new 4-tier system
+        if (parsed.preferences?.maxRating) {
+          const oldRating = parsed.preferences.maxRating;
+          const validRatings: ContentRating[] = ['GA', '18+', 'NSFW', 'X'];
+          if (!validRatings.includes(oldRating as ContentRating)) {
+            // Map old ratings to new ones
+            const ratingMap: Record<string, ContentRating> = {
+              'FF': 'GA',
+              'T13+': 'GA',
+              'YA16+': '18+',
+              'M18+': '18+',
+              'X18+': 'X'
+            };
+            parsed.preferences.maxRating = ratingMap[oldRating] || 'GA';
+          }
+        }
+        return parsed;
       }
     } catch (e) {
       console.warn('Failed to load user state from localStorage:', e);
