@@ -760,6 +760,30 @@
         const shortHash = hexHash.substring(0, 12);
         pnIdentifier = `pn-${shortHash}`;
         
+        // Check if permissions already exist (user has previously granted access)
+        const existingPermissions = authResult.existingPermissions;
+        
+        if (existingPermissions && clientId === 'browser-app') {
+          // Permissions already exist - skip consent screen and auto-approve
+          console.log('✅ Existing permissions found, skipping consent screen');
+          console.log('Age sharing preference:', existingPermissions.ageShared);
+          
+          // Automatically proceed with stored preferences
+          const ageSharedParam = existingPermissions.ageShared ? 'true' : 'false';
+          
+          if (isInPopup) {
+            console.log('IN POPUP - Auto-approving with existing permissions...');
+            const callbackUrl = `${window.location.origin}/oauth-callback.html?code=${authorizationCode}&state=${state}&age_shared=${ageSharedParam}`;
+            console.log('Redirecting popup to callback page:', callbackUrl);
+            window.location.href = callbackUrl;
+          } else {
+            console.log('NOT IN POPUP - Auto-approving with existing permissions...');
+            window.location.href = `${redirectUri}?code=${authorizationCode}&state=${state}&age_shared=${ageSharedParam}`;
+          }
+          return; // Exit early - don't show consent screen
+        }
+        
+        // No existing permissions - show consent screen for first-time authorization
         // Display pN identifier
         document.getElementById('pnIdentifierDisplay').textContent = pnIdentifier;
         

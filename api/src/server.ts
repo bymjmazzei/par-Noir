@@ -5058,6 +5058,86 @@ class ProductionServer {
         // Extract pnName from request (client should send it after decrypting identity)
         const pnName = req.body.pnName || req.body.pn_name;
 
+        // Derive pN identifier to check for existing permissions
+        let existingPermissions = null;
+        if (pnName && passcode && public_key && client_id === 'browser-app') {
+          try {
+            const { VolumeIdGenerator } = await import('./server/modules/volumeIdGenerator');
+            const pnIdentifier = await VolumeIdGenerator.generateVolumeId({
+              pnName,
+              passcode,
+              publicKey: public_key
+            });
+
+            // Check for existing permissions
+            const { googleDriveProxyService } = await import('./server/modules/googleDriveProxy');
+            const { storageCredentialsService } = await import('./server/modules/storageCredentialsService');
+            
+            const normalizedPnIdentifier = pnIdentifier.startsWith('pn-') ? pnIdentifier : `pn-${pnIdentifier}`;
+            const userCredentials = await storageCredentialsService.getCredentials(normalizedPnIdentifier);
+            
+            if (userCredentials?.credentials) {
+              const googleDriveAccounts = userCredentials.credentials.googleDriveAccounts || 
+                (userCredentials.credentials.googleDrive ? [userCredentials.credentials.googleDrive] : []);
+              
+              if (googleDriveAccounts.length > 0) {
+                const account = googleDriveAccounts[0];
+                const accountId = (account as any).accountId || (account as any).id;
+                const userAccessToken = await googleDriveProxyService.getAccessToken(normalizedPnIdentifier, accountId);
+                
+                // Find pN folder and _metadata folder
+                const pnFolderName = `par Noir - ${pnIdentifier}`;
+                const pnFolderSearchQuery = `name='${pnFolderName.replace(/'/g, "\\'")}' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
+                const pnFolderSearchUrl = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(pnFolderSearchQuery)}&fields=files(id,name)&pageSize=1`;
+                
+                const pnFolderResponse = await fetch(pnFolderSearchUrl, {
+                  headers: { 'Authorization': `Bearer ${userAccessToken}` }
+                });
+                
+                if (pnFolderResponse.ok) {
+                  const pnFolderData = await pnFolderResponse.json() as { files?: Array<{ id: string; name: string }> };
+                  if (pnFolderData.files && pnFolderData.files.length > 0) {
+                    const pnFolderId = pnFolderData.files[0].id;
+                    
+                    // Find _metadata folder
+                    const metadataFolderName = '_metadata';
+                    const metadataSearchQuery = `name='${metadataFolderName}' and '${pnFolderId}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`;
+                    const metadataSearchUrl = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(metadataSearchQuery)}&fields=files(id)&pageSize=1`;
+                    
+                    const metadataFolderResponse = await fetch(metadataSearchUrl, {
+                      headers: { 'Authorization': `Bearer ${userAccessToken}` }
+                    });
+                    
+                    if (metadataFolderResponse.ok) {
+                      const metadataFolderData = await metadataFolderResponse.json() as { files?: Array<{ id: string }> };
+                      if (metadataFolderData.files && metadataFolderData.files.length > 0) {
+                        const metadataFolderId = metadataFolderData.files[0].id;
+                        
+                        // Get existing permissions
+                        const { ThirdPartyPermissionsService } = await import('./server/modules/thirdPartyPermissionsService');
+                        const permissions = await ThirdPartyPermissionsService.getPermissions(
+                          userAccessToken,
+                          metadataFolderId
+                        );
+                        
+                        if (permissions['browser-app']) {
+                          existingPermissions = {
+                            ageShared: permissions['browser-app'].dataPoints.includes('age_attestation')
+                          };
+                          console.log('[OAuth Auth] Found existing permissions for browser-app:', existingPermissions);
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          } catch (permError) {
+            // Log but don't fail - permissions check is optional
+            console.log('[OAuth Auth] Could not check existing permissions:', permError);
+          }
+        }
+
         // Generate authorization code
         // Store public_key, pnName, and passcode so we can derive pN identifier using VolumeIdGenerator
         const scopes = scope ? scope.split(' ') : ['openid', 'profile'];
@@ -5073,10 +5153,11 @@ class ProductionServer {
           passcode: passcode // Store passcode for VolumeIdGenerator (temporarily, not persisted)
         });
 
-        // Return authorization code
+        // Return authorization code and existing permissions (if any)
         return res.json({
           code,
-          state: state || undefined
+          state: state || undefined,
+          existingPermissions // Include existing permissions if found
         });
       } catch (error: any) {
         console.error('OAuth authentication error:', error);
