@@ -155,32 +155,27 @@ export class FeedService {
   }
 
   /**
-   * Subscribe to feed - uses decentralized IPFS pubsub when available
+   * Subscribe to feed - stores subscription on user's cloud storage (like connection index)
    */
   static async subscribeToFeed(feedId: string, userDid: string, creatorDid?: string): Promise<void> {
-    // Try decentralized first (IPFS pubsub)
-    if (USE_DECENTRALIZED && creatorDid) {
-      try {
-        await decentralizedFeed.subscribeToFeed(userDid, creatorDid, feedId);
-        return;
-      } catch (error) {
-        console.warn('Decentralized subscribe failed, falling back to API:', error);
-      }
+    // Store subscription via API - backend will save to user's cloud storage
+    // Similar to how connection index is stored on user's Google Drive
+    const session = PNOAuthService.loadSession();
+    const headers: HeadersInit = {
+      'Content-Type': 'application/json'
+    };
+    
+    if (session?.accessToken) {
+      headers['Authorization'] = `Bearer ${session.accessToken}`;
     }
     
-    // Fallback to centralized API (Google Drive)
-    // Creator stores subscriber info on their Google Drive
-    // Subscriber stores local reference (already handled by UserStateContext)
     const response = await fetch(`${API_ENDPOINT}/api/feeds/${feedId}/subscribe`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
+      headers,
       body: JSON.stringify({ 
         userDid
-        // Note: creatorGoogleTokens would be passed if creator is making the call
-        // For subscriber-initiated subscriptions, creator's tokens aren't available
-        // Subscription is stored in database and synced to Drive when creator is online
+        // Backend will store this subscription in the user's cloud storage (Google Drive)
+        // Similar to connection index storage pattern
       })
     });
 
@@ -191,27 +186,22 @@ export class FeedService {
   }
 
   /**
-   * Unsubscribe from feed - uses decentralized when available
+   * Unsubscribe from feed - removes from user's cloud storage
    */
   static async unsubscribeFromFeed(feedId: string, userDid: string, creatorDid?: string): Promise<void> {
-    // Try decentralized first
-    if (USE_DECENTRALIZED && creatorDid) {
-      try {
-        await decentralizedFeed.unsubscribeFromFeed(userDid, creatorDid, feedId);
-        return;
-      } catch (error) {
-        console.warn('Decentralized unsubscribe failed, falling back to API:', error);
-      }
+    // Remove subscription via API - backend will remove from user's cloud storage
+    const session = PNOAuthService.loadSession();
+    const headers: HeadersInit = {
+      'Content-Type': 'application/json'
+    };
+    
+    if (session?.accessToken) {
+      headers['Authorization'] = `Bearer ${session.accessToken}`;
     }
     
-    // Fallback to centralized API
-    // Removes from creator's Google Drive and database
-    // Local reference removed by UserStateContext
     const response = await fetch(`${API_ENDPOINT}/api/feeds/${feedId}/subscribe`, {
       method: 'DELETE',
-      headers: {
-        'Content-Type': 'application/json'
-      },
+      headers,
       body: JSON.stringify({ userDid })
     });
 
