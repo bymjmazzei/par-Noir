@@ -5469,6 +5469,12 @@ class ProductionServer {
         let finalAllowedDataPoints = allowedDataPoints;
         
         if (toolPermission) {
+          console.log(`[OAuth ZKP] Found permissions for ${clientId}:`, {
+            dataPoints: toolPermission.dataPoints,
+            requiredDataPoints: toolPermission.requiredDataPoints,
+            optionalDataPoints: toolPermission.optionalDataPoints
+          });
+          
           // Filter data points to only those the user has granted access to
           // Required data points are always granted, optional ones must be in dataPoints array
           finalAllowedDataPoints = allowedDataPoints.filter((dp: string) => 
@@ -5476,16 +5482,24 @@ class ProductionServer {
             toolPermission.dataPoints.includes(dp) // Optional must be explicitly granted
           );
           
+          console.log(`[OAuth ZKP] Filtered data points:`, {
+            requested: allowedDataPoints,
+            allowed: finalAllowedDataPoints
+          });
+          
           if (finalAllowedDataPoints.length === 0) {
+            console.log(`[OAuth ZKP] No data points granted for ${clientId}`);
             return res.json({ success: true, dataPoints: [] });
           }
         } else {
+          console.log(`[OAuth ZKP] No permissions found for ${clientId}`);
           // No permissions found - return empty (user hasn't granted access)
           // Exception: browser-app is hard-coded, so allow if it's browser-app
           if (clientId !== 'browser-app') {
             return res.json({ success: true, dataPoints: [] });
           }
           // For browser-app, continue without permission check (backward compatibility)
+          console.log(`[OAuth ZKP] Continuing for browser-app without permission check (backward compatibility)`);
         }
 
         // Get ZKP proofs for requested data points
@@ -5494,6 +5508,7 @@ class ProductionServer {
 
         for (const dataPointId of finalAllowedDataPoints) {
           try {
+            console.log(`[OAuth ZKP] Attempting to get proof for ${dataPointId}`);
             const proof = await ZKPDataPointsService.getDataPointProof(
               userAccessToken,
               metadataFolderId,
@@ -5501,6 +5516,7 @@ class ProductionServer {
             );
             
             if (proof) {
+              console.log(`[OAuth ZKP] Found proof for ${dataPointId}`);
               zkpDataPoints.push({
                 dataPointId: proof.dataPointId,
                 proofType: proof.proofType,
@@ -5510,12 +5526,16 @@ class ProductionServer {
                 verificationLevel: proof.verificationLevel
                 // NEVER include: encryptedUserData, signature, or any actual user data
               });
+            } else {
+              console.log(`[OAuth ZKP] No proof found for ${dataPointId} (permission granted but ZKP not created yet)`);
             }
           } catch (error) {
-            console.warn(`Failed to get ZKP proof for ${dataPointId}:`, error);
+            console.warn(`[OAuth ZKP] Failed to get ZKP proof for ${dataPointId}:`, error);
             // Continue with other data points
           }
         }
+        
+        console.log(`[OAuth ZKP] Returning ${zkpDataPoints.length} data point(s) for ${clientId}`);
 
         return res.json({ success: true, dataPoints: zkpDataPoints });
       } catch (error: any) {
