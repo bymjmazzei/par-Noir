@@ -3243,8 +3243,11 @@ This invitation expires in 24 hours.`;
         updatedAttestedData.push(attestedDataPoint);
         
         // Merge the entire dataPoints object to preserve other fields
-        const updatedDataPoints = {
+        // If existingDataPoints is null, create a new object with just attestedData
+        const updatedDataPoints = existingDataPoints ? {
           ...existingDataPoints,
+          attestedData: updatedAttestedData
+        } : {
           attestedData: updatedAttestedData
         };
         
@@ -3252,7 +3255,9 @@ This invitation expires in 24 hours.`;
           dataPointId,
           totalAttestedDataPoints: updatedAttestedData.length,
           existingCount: existingAttestedData.length,
-          preservingOtherFields: !!existingDataPoints
+          preservingOtherFields: !!existingDataPoints,
+          updatedDataPointsKeys: Object.keys(updatedDataPoints),
+          attestedDataInUpdate: updatedDataPoints.attestedData?.length || 0
         });
         
         await SecureMetadataStorage.updateMetadataField(
@@ -3264,6 +3269,9 @@ This invitation expires in 24 hours.`;
         );
         
         console.log('[DataPointInput] Metadata saved successfully');
+        
+        // Wait a moment for localStorage to sync
+        await new Promise(resolve => setTimeout(resolve, 200));
         
         // Verify the save worked by reading it back immediately
         try {
@@ -3280,11 +3288,20 @@ This invitation expires in 24 hours.`;
             console.log('[DataPointInput] VERIFICATION - Read back from storage:', {
               found: verifyIds.includes(dataPointId),
               allIds: verifyIds,
-              count: verifyAttestedData.length
+              count: verifyAttestedData.length,
+              dataPointIdLookingFor: dataPointId,
+              decryptedHasDataPoints: !!verifyDecrypted?.dataPoints,
+              decryptedDataPointsKeys: verifyDecrypted?.dataPoints ? Object.keys(verifyDecrypted.dataPoints) : []
             });
             
             if (!verifyIds.includes(dataPointId)) {
-              console.error('[DataPointInput] ERROR - Data was NOT saved correctly!');
+              console.error('[DataPointInput] ERROR - Data was NOT saved correctly!', {
+                savedDataPointId: dataPointId,
+                foundIds: verifyIds,
+                fullAttestedData: verifyAttestedData
+              });
+            } else {
+              console.log('[DataPointInput] SUCCESS - Data verified in storage!');
             }
           } else {
             console.error('[DataPointInput] ERROR - Could not read metadata back after save!');
