@@ -105,6 +105,48 @@ export function UserStateProvider({ children }: { children: ReactNode }) {
     }
   }, [userState]);
 
+  // Load preferences from Google Drive when user unlocks (like connections)
+  useEffect(() => {
+    if (!userState.isUnlocked || !userState.pnIdentifier) {
+      return;
+    }
+
+    const loadPreferencesFromDrive = async () => {
+      try {
+        const { PNOAuthService } = await import('./pnOAuthService');
+        const session = PNOAuthService.loadSession();
+        if (!session?.accessToken) {
+          return;
+        }
+
+        const apiEndpoint = process.env.REACT_APP_API_ENDPOINT || 'https://api.parnoir.com';
+        const response = await fetch(`${apiEndpoint}/api/users/${userState.pnIdentifier}/preferences`, {
+          headers: {
+            'Authorization': `Bearer ${session.accessToken}`
+          }
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          if (data.preferences?.subscribedCategories) {
+            setUserState(prev => ({
+              ...prev,
+              preferences: {
+                ...prev.preferences,
+                subscribedCategories: data.preferences.subscribedCategories
+              }
+            }));
+            console.log('Loaded preferences from Google Drive:', data.preferences.subscribedCategories);
+          }
+        }
+      } catch (error) {
+        console.warn('Failed to load preferences from Google Drive:', error);
+      }
+    };
+
+    loadPreferencesFromDrive();
+  }, [userState.isUnlocked, userState.pnIdentifier]);
+
   const setUnlocked = (pnIdentifier: string) => {
     setUserState(prev => ({
       ...prev,
