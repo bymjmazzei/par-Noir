@@ -128,15 +128,26 @@ export function UserStateProvider({ children }: { children: ReactNode }) {
 
         if (response.ok) {
           const data = await response.json();
-          if (data.preferences?.subscribedCategories) {
+          if (data.preferences) {
             setUserState(prev => ({
               ...prev,
               preferences: {
                 ...prev.preferences,
-                subscribedCategories: data.preferences.subscribedCategories
+                // Load subscribed categories
+                subscribedCategories: data.preferences.subscribedCategories || prev.preferences.subscribedCategories,
+                // Load age verification
+                ageVerified: data.preferences.ageVerified ?? prev.preferences.ageVerified,
+                verifiedAge: data.preferences.verifiedAge ?? prev.preferences.verifiedAge,
+                // Load max rating
+                maxRating: (data.preferences.maxRating as ContentRating) || prev.preferences.maxRating
               }
             }));
-            console.log('Loaded preferences from Google Drive:', data.preferences.subscribedCategories);
+            console.log('Loaded preferences from Google Drive:', {
+              subscribedCategories: data.preferences.subscribedCategories,
+              ageVerified: data.preferences.ageVerified,
+              verifiedAge: data.preferences.verifiedAge,
+              maxRating: data.preferences.maxRating
+            });
           }
         } else if (response.status === 404) {
           // Endpoint not deployed yet - just use local state
@@ -166,7 +177,7 @@ export function UserStateProvider({ children }: { children: ReactNode }) {
     }));
   };
 
-  const updateMaxRating = (rating: ContentRating) => {
+  const updateMaxRating = async (rating: ContentRating) => {
     setUserState(prev => ({
       ...prev,
       preferences: {
@@ -174,9 +185,32 @@ export function UserStateProvider({ children }: { children: ReactNode }) {
         maxRating: rating
       }
     }));
+
+    // Save to Google Drive if unlocked
+    if (userState.isUnlocked && userState.pnIdentifier) {
+      try {
+        const { PNOAuthService } = await import('../services/pnOAuthService');
+        const session = PNOAuthService.loadSession();
+        if (session?.accessToken) {
+          const apiEndpoint = process.env.REACT_APP_API_ENDPOINT || 'https://api.parnoir.com';
+          await fetch(`${apiEndpoint}/api/users/${userState.pnIdentifier}/preferences`, {
+            method: 'PUT',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${session.accessToken}`
+            },
+            body: JSON.stringify({
+              maxRating: rating
+            })
+          });
+        }
+      } catch (error) {
+        console.warn('Failed to save maxRating to Google Drive:', error);
+      }
+    }
   };
 
-  const setAgeVerified = (age: number) => {
+  const setAgeVerified = async (age: number) => {
     setUserState(prev => ({
       ...prev,
       preferences: {
@@ -185,6 +219,30 @@ export function UserStateProvider({ children }: { children: ReactNode }) {
         verifiedAge: age
       }
     }));
+
+    // Save to Google Drive if unlocked
+    if (userState.isUnlocked && userState.pnIdentifier) {
+      try {
+        const { PNOAuthService } = await import('../services/pnOAuthService');
+        const session = PNOAuthService.loadSession();
+        if (session?.accessToken) {
+          const apiEndpoint = process.env.REACT_APP_API_ENDPOINT || 'https://api.parnoir.com';
+          await fetch(`${apiEndpoint}/api/users/${userState.pnIdentifier}/preferences`, {
+            method: 'PUT',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${session.accessToken}`
+            },
+            body: JSON.stringify({
+              ageVerified: true,
+              verifiedAge: age
+            })
+          });
+        }
+      } catch (error) {
+        console.warn('Failed to save age verification to Google Drive:', error);
+      }
+    }
   };
 
   const subscribeToFeed = (feedId: string) => {
