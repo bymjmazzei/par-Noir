@@ -155,10 +155,10 @@ export function ContentPreferences({ onClose, feeds }: ContentPreferencesProps) 
   }, [showRatingDropdown]);
 
   return (
-    <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
-      <div className="bg-neutral-900 rounded-xl max-w-2xl w-full max-h-[90vh] flex flex-col">
+    <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-[9999] p-4 pb-20">
+      <div className="bg-neutral-900 rounded-xl max-w-2xl w-full max-h-[calc(100vh-8rem)] flex flex-col">
         {/* Header */}
-        <div className="flex items-center justify-between p-6 border-b border-neutral-700">
+        <div className="flex items-center justify-between p-6 border-b border-neutral-700 flex-shrink-0">
           <div className="flex items-center space-x-2">
             <Settings className="h-5 w-5 text-blue-400" />
             <h2 className="text-2xl font-bold text-white">Content Preferences</h2>
@@ -172,62 +172,8 @@ export function ContentPreferences({ onClose, feeds }: ContentPreferencesProps) 
         </div>
 
         {/* Content */}
-        <div className="flex-1 overflow-y-auto p-6 space-y-6">
-          {/* Niche Feeds Section */}
-          <section>
-            <div className="flex items-center space-x-2 mb-4">
-              <Globe className="h-5 w-5 text-blue-400" />
-              <h3 className="text-lg font-semibold text-white">Niche Feeds</h3>
-            </div>
-            <div className="bg-neutral-800/50 rounded-lg p-4">
-              <p className="text-text-secondary text-sm mb-4">
-                Select niche feeds to include in your curated feed. Your curated feed will show content from all selected categories.
-              </p>
-              {!userState.isUnlocked ? (
-                <div className="bg-yellow-500/10 border border-yellow-500/20 rounded-lg p-3">
-                  <p className="text-yellow-400 text-sm">
-                    Please unlock your pN to manage feed subscriptions.
-                  </p>
-                </div>
-              ) : (
-                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3 max-h-96 overflow-y-auto">
-                  {FEED_CATEGORY_LIST.filter(cat => 
-                    cat.id !== 'adults-only' || userState.preferences.ageVerified
-                  ).map(category => {
-                    const isSubscribed = isCategorySubscribed(category.id);
-
-                    return (
-                      <button
-                        key={category.id}
-                        onClick={(e) => {
-                          e.preventDefault();
-                          e.stopPropagation();
-                          if (!isLoading && userState.isUnlocked) {
-                            handleCategoryToggle(category.id);
-                          } else if (!userState.isUnlocked) {
-                            alert('Please unlock your pN to manage feed subscriptions');
-                          }
-                        }}
-                        disabled={isLoading || !userState.isUnlocked}
-                        className={`p-3 rounded-lg transition-all text-left ${
-                          isSubscribed
-                            ? 'bg-blue-500/20 border-2 border-blue-500 text-white'
-                            : 'bg-neutral-800/50 border-2 border-transparent hover:bg-neutral-800 text-white'
-                        } ${!userState.isUnlocked ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
-                      >
-                        <div className="font-medium text-sm mb-1">{category.name}</div>
-                        <div className="text-xs text-text-secondary">
-                          {isSubscribed ? 'Subscribed' : 'Click to subscribe'}
-                        </div>
-                      </button>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-          </section>
-
-          {/* Content Rating Preferences */}
+        <div className="flex-1 overflow-y-auto p-6 space-y-6 pb-6">
+          {/* Content Rating Preferences - First */}
           <section>
             <div className="flex items-center space-x-2 mb-4">
               <Shield className="h-5 w-5 text-blue-400" />
@@ -309,6 +255,60 @@ export function ContentPreferences({ onClose, feeds }: ContentPreferencesProps) 
                   <p className="text-xs text-yellow-400">
                     Some ratings require age verification. You'll be prompted when selecting them.
                   </p>
+                </div>
+              )}
+            </div>
+          </section>
+
+          {/* Niche Feeds Section - Second */}
+          <section>
+            <div className="flex items-center space-x-2 mb-4">
+              <Globe className="h-5 w-5 text-blue-400" />
+              <h3 className="text-lg font-semibold text-white">Niche Feeds</h3>
+            </div>
+            <div className="bg-neutral-800/50 rounded-lg p-4">
+              <p className="text-text-secondary text-sm mb-4">
+                Select niche feeds to include in your curated feed. Your curated feed will show content from all selected categories.
+              </p>
+              {!userState.isUnlocked ? (
+                <div className="bg-yellow-500/10 border border-yellow-500/20 rounded-lg p-3">
+                  <p className="text-yellow-400 text-sm">
+                    Please unlock your pN to manage feed subscriptions.
+                  </p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3 max-h-96 overflow-y-auto">
+                  {FEED_CATEGORY_LIST.filter(cat => 
+                    cat.id !== 'adults-only' || userState.preferences.ageVerified
+                  ).map(category => {
+                    const isSubscribed = isCategorySubscribed(category.id);
+
+                    return (
+                      <button
+                        key={category.id}
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          if (!isLoading && userState.isUnlocked) {
+                            handleCategoryToggle(category.id);
+                          } else if (!userState.isUnlocked) {
+                            alert('Please unlock your pN to manage feed subscriptions');
+                          }
+                        }}
+                        disabled={isLoading || !userState.isUnlocked}
+                        className={`p-3 rounded-lg transition-all text-left ${
+                          isSubscribed
+                            ? 'bg-blue-500/20 border-2 border-blue-500 text-white'
+                            : 'bg-neutral-800/50 border-2 border-transparent hover:bg-neutral-800 text-white'
+                        } ${!userState.isUnlocked ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
+                      >
+                        <div className="font-medium text-sm mb-1">{category.name}</div>
+                        <div className="text-xs text-text-secondary">
+                          {isSubscribed ? 'Subscribed' : 'Click to subscribe'}
+                        </div>
+                      </button>
+                    );
+                  })}
                 </div>
               )}
             </div>
