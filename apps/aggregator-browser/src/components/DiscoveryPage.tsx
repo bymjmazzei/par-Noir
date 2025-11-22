@@ -179,6 +179,18 @@ export function DiscoveryPage({
     return filtered;
   }, [files, feeds, selectedNiche, activeTopFeed]);
 
+  // Helper to check if file is a text post/thought
+  const isTextPost = (file: IndexedFile): boolean => {
+    const fileType = file.metadata.fileType;
+    const hasTextPostData = !!(file.metadata as any).textPost || !!(file.metadata as any).thought;
+    return fileType === 'text' || fileType === 'thought' || hasTextPostData;
+  };
+
+  // Helper to get text post data
+  const getTextPostData = (file: IndexedFile) => {
+    return (file.metadata as any).textPost || (file.metadata as any).thought || null;
+  };
+
   // Helper to get thumbnail URL for a file
   const getThumbnail = (file: IndexedFile): string => {
     if (thumbnails && thumbnails.has(file.metadata.fileId)) {
@@ -547,16 +559,65 @@ export function DiscoveryPage({
               className="group relative cursor-pointer"
               onClick={() => handleItemClick(item)}
             >
-              {/* Thumbnail */}
+              {/* Thumbnail or Thought Preview */}
               <div className="relative aspect-video bg-neutral-800 rounded-lg overflow-hidden mb-2">
-                <img
-                  src={item.thumbnail}
-                  alt={item.title}
-                  className="w-full h-full object-cover group-hover:scale-105 transition-transform"
-                  onError={(e) => {
-                    e.currentTarget.src = '/placeholder-thumbnail.png';
-                  }}
-                />
+                {item.type === 'file' && isTextPost(item.item as IndexedFile) ? (
+                  // Render thought preview
+                  (() => {
+                    const textPostData = getTextPostData(item.item as IndexedFile);
+                    const file = item.item as IndexedFile;
+                    return (
+                      <div
+                        className="w-full h-full flex items-center justify-center"
+                        style={{
+                          backgroundColor: textPostData?.style?.backgroundColor || '#000000',
+                          backgroundImage: textPostData?.style?.backgroundImage 
+                            ? `url(${textPostData.style.backgroundImage})` 
+                            : 'none',
+                          backgroundSize: 'cover',
+                          backgroundPosition: 'center',
+                        }}
+                      >
+                        <div
+                          className="w-full px-4 text-center"
+                          style={{
+                            fontFamily: textPostData?.style?.fontFamily || 'Arial',
+                            fontSize: textPostData?.style?.fontSize 
+                              ? `${Math.min(textPostData.style.fontSize, 24)}px` 
+                              : '16px',
+                            color: textPostData?.style?.textColor || '#FFFFFF',
+                            fontWeight: textPostData?.style?.textStyle === 'bold' ? 'bold' : 'normal',
+                            fontStyle: textPostData?.style?.textStyle === 'italic' ? 'italic' : 'normal',
+                            textDecoration: textPostData?.style?.textStyle === 'strikethrough' ? 'line-through' : 'none',
+                            textAlign: (textPostData?.style?.textAlign || 'center') as 'left' | 'center' | 'right' | 'justify',
+                            textShadow: textPostData?.style?.dropShadowOffsetX || textPostData?.style?.dropShadowOffsetY || textPostData?.style?.dropShadowBlur
+                              ? `${textPostData.style.dropShadowOffsetX || 2}px ${textPostData.style.dropShadowOffsetY || 2}px ${textPostData.style.dropShadowBlur || 10}px ${textPostData.style.dropShadowColor || '#000000'}`
+                              : 'none',
+                            padding: `${Math.min(textPostData?.style?.padding || 20, 20)}px`,
+                            lineHeight: 1.2,
+                            wordWrap: 'break-word',
+                            overflowWrap: 'break-word',
+                            whiteSpace: 'pre-wrap',
+                            maxHeight: '100%',
+                            overflow: 'hidden',
+                          }}
+                        >
+                          {textPostData?.content || file.metadata.description || file.metadata.name || file.metadata.title || 'Thought'}
+                        </div>
+                      </div>
+                    );
+                  })()
+                ) : (
+                  // Render regular thumbnail
+                  <img
+                    src={item.thumbnail}
+                    alt={item.title}
+                    className="w-full h-full object-cover group-hover:scale-105 transition-transform"
+                    onError={(e) => {
+                      e.currentTarget.src = '/placeholder-thumbnail.png';
+                    }}
+                  />
+                )}
                 
                 {/* Info Button */}
                 <button
