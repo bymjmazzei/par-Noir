@@ -4,7 +4,7 @@
  * Used in upload section settings
  */
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef } from 'react';
 import { X, Settings, Globe, Shield } from 'lucide-react';
 import { useUserState } from '../contexts/UserStateContext';
 import { FEED_CATEGORIES, FEED_CATEGORY_LIST } from '../constants/feedCategories';
@@ -20,6 +20,7 @@ interface ContentPreferencesProps {
 export function ContentPreferences({ onClose, feeds }: ContentPreferencesProps) {
   const { userState, subscribeToCategory, unsubscribeFromCategory, isSubscribedToCategory, updateMaxRating, setAgeVerified } = useUserState();
   const [isLoading, setIsLoading] = useState(false);
+  const selectRef = useRef<HTMLSelectElement>(null);
 
   // Group feeds by category
   const feedsByCategory = useMemo(() => {
@@ -131,20 +132,25 @@ export function ContentPreferences({ onClose, feeds }: ContentPreferencesProps) 
             </div>
             <div className="bg-neutral-800/50 rounded-lg p-4">
               <select
+                ref={selectRef}
                 value={userState.preferences.maxRating}
                 onChange={async (e) => {
                   const newRating = e.target.value as ContentRating;
+                  const previousRating = userState.preferences.maxRating;
                   const ratingInfo = CONTENT_RATINGS[newRating];
-                  console.log('[Rating Select] Rating changed:', { newRating, ratingInfo, ageVerified: userState.preferences.ageVerified });
+                  console.log('[Rating Select] Rating changed:', { newRating, previousRating, ratingInfo, ageVerified: userState.preferences.ageVerified });
                   
                   // If rating requires verification, verify through ZKP
                   if (ratingInfo.requiresVerification && !userState.preferences.ageVerified) {
                     console.log('[Rating Select] Verification required for rating:', newRating);
                     
                     if (!userState.isUnlocked || !userState.pnIdentifier) {
-                      console.warn('[Rating Select] User not unlocked');
+                      console.warn('[Rating Select] User not unlocked - blocking change');
                       alert('Please unlock your pN to verify age for this rating');
-                      e.target.value = userState.preferences.maxRating; // Reset select
+                      // Reset select to previous value
+                      if (selectRef.current) {
+                        selectRef.current.value = previousRating;
+                      }
                       return;
                     }
                     
@@ -153,9 +159,12 @@ export function ContentPreferences({ onClose, feeds }: ContentPreferencesProps) 
                       const { PNOAuthService } = await import('../services/pnOAuthService');
                       const session = PNOAuthService.loadSession();
                       if (!session?.accessToken) {
-                        console.warn('[Rating Select] No access token');
+                        console.warn('[Rating Select] No access token - blocking change');
                         alert('Please authenticate to verify age');
-                        e.target.value = userState.preferences.maxRating;
+                        // Reset select to previous value
+                        if (selectRef.current) {
+                          selectRef.current.value = previousRating;
+                        }
                         return;
                       }
                       
@@ -188,23 +197,32 @@ export function ContentPreferences({ onClose, feeds }: ContentPreferencesProps) 
                           setAgeVerified(ratingInfo.ageRestriction);
                           updateMaxRating(newRating);
                         } else {
-                          console.warn('[Rating Select] ❌ Verification failed:', verifyData.verification);
+                          console.warn('[Rating Select] ❌ Verification failed - blocking change:', verifyData.verification);
                           alert(`Age verification failed. You must be at least ${ratingInfo.ageRestriction} to view ${newRating} content.`);
-                          e.target.value = userState.preferences.maxRating;
+                          // Reset select to previous value
+                          if (selectRef.current) {
+                            selectRef.current.value = previousRating;
+                          }
                         }
                       } else {
                         const errorText = await verifyResponse.text().catch(() => 'Unknown error');
-                        console.warn('[Rating Select] ❌ Verify request failed:', {
+                        console.warn('[Rating Select] ❌ Verify request failed - blocking change:', {
                           status: verifyResponse.status,
                           error: errorText
                         });
                         alert(`Age verification failed. Please ensure you have attested your age in the dashboard.`);
-                        e.target.value = userState.preferences.maxRating;
+                        // Reset select to previous value
+                        if (selectRef.current) {
+                          selectRef.current.value = previousRating;
+                        }
                       }
                     } catch (error) {
-                      console.error('[Rating Select] ❌ Error verifying age:', error);
+                      console.error('[Rating Select] ❌ Error verifying age - blocking change:', error);
                       alert('Failed to verify age. Please try again.');
-                      e.target.value = userState.preferences.maxRating;
+                      // Reset select to previous value
+                      if (selectRef.current) {
+                        selectRef.current.value = previousRating;
+                      }
                     } finally {
                       setIsLoading(false);
                     }
