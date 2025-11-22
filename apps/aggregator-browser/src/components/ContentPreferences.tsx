@@ -135,10 +135,14 @@ export function ContentPreferences({ onClose, feeds }: ContentPreferencesProps) 
                 onChange={async (e) => {
                   const newRating = e.target.value as ContentRating;
                   const ratingInfo = CONTENT_RATINGS[newRating];
+                  console.log('[Rating Select] Rating changed:', { newRating, ratingInfo, ageVerified: userState.preferences.ageVerified });
                   
                   // If rating requires verification, verify through ZKP
                   if (ratingInfo.requiresVerification && !userState.preferences.ageVerified) {
+                    console.log('[Rating Select] Verification required for rating:', newRating);
+                    
                     if (!userState.isUnlocked || !userState.pnIdentifier) {
+                      console.warn('[Rating Select] User not unlocked');
                       alert('Please unlock your pN to verify age for this rating');
                       e.target.value = userState.preferences.maxRating; // Reset select
                       return;
@@ -149,12 +153,16 @@ export function ContentPreferences({ onClose, feeds }: ContentPreferencesProps) 
                       const { PNOAuthService } = await import('../services/pnOAuthService');
                       const session = PNOAuthService.loadSession();
                       if (!session?.accessToken) {
+                        console.warn('[Rating Select] No access token');
                         alert('Please authenticate to verify age');
                         e.target.value = userState.preferences.maxRating;
                         return;
                       }
                       
                       const apiEndpoint = process.env.REACT_APP_API_ENDPOINT || 'https://api.parnoir.com';
+                      const condition = `age >= ${ratingInfo.ageRestriction}`;
+                      console.log('[Rating Select] Verifying age:', { condition, dataPointId: 'age_attestation' });
+                      
                       const verifyResponse = await fetch(
                         `${apiEndpoint}/api/users/${userState.pnIdentifier}/zkp-data-points/verify`,
                         {
@@ -165,29 +173,36 @@ export function ContentPreferences({ onClose, feeds }: ContentPreferencesProps) 
                           },
                           body: JSON.stringify({
                             dataPointId: 'age_attestation',
-                            condition: `age >= ${ratingInfo.ageRestriction}`
+                            condition
                           })
                         }
                       );
                       
                       if (verifyResponse.ok) {
                         const verifyData = await verifyResponse.json();
+                        console.log('[Rating Select] Verify response:', verifyData);
+                        
                         if (verifyData.verification?.isValid) {
                           // Age verified - update rating
+                          console.log('[Rating Select] ✅ Verification passed, updating rating to:', newRating);
                           setAgeVerified(ratingInfo.ageRestriction);
                           updateMaxRating(newRating);
                         } else {
+                          console.warn('[Rating Select] ❌ Verification failed:', verifyData.verification);
                           alert(`Age verification failed. You must be at least ${ratingInfo.ageRestriction} to view ${newRating} content.`);
                           e.target.value = userState.preferences.maxRating;
                         }
                       } else {
                         const errorText = await verifyResponse.text().catch(() => 'Unknown error');
-                        console.warn('Age verification failed:', errorText);
+                        console.warn('[Rating Select] ❌ Verify request failed:', {
+                          status: verifyResponse.status,
+                          error: errorText
+                        });
                         alert(`Age verification failed. Please ensure you have attested your age in the dashboard.`);
                         e.target.value = userState.preferences.maxRating;
                       }
                     } catch (error) {
-                      console.error('Error verifying age:', error);
+                      console.error('[Rating Select] ❌ Error verifying age:', error);
                       alert('Failed to verify age. Please try again.');
                       e.target.value = userState.preferences.maxRating;
                     } finally {
@@ -195,6 +210,7 @@ export function ContentPreferences({ onClose, feeds }: ContentPreferencesProps) 
                     }
                   } else {
                     // No verification needed or already verified
+                    console.log('[Rating Select] No verification needed, updating rating to:', newRating);
                     updateMaxRating(newRating);
                   }
                 }}
