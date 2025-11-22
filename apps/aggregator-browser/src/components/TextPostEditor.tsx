@@ -619,62 +619,18 @@ export function TextPostEditor({ onSave, onCancel }: TextPostEditorProps) {
             </div>
           );
         case 'fontSize':
-          // Calculate max fontSize based on content length to prevent overflow
-          // Estimate: container width / (content length * avg char width ratio)
-          const calculateMaxFontSize = () => {
-            if (!content.trim()) return 120; // Default max if no content
-            const containerWidth = window.innerWidth - 80; // Account for padding
-            const avgCharWidth = 0.6; // Average character width as ratio of fontSize
-            const maxCharsPerLine = Math.floor(containerWidth / (48 * avgCharWidth)); // Use 48px as baseline
-            const contentLength = content.length;
-            
-            // If content fits on one line, allow larger font
-            if (contentLength <= maxCharsPerLine) {
-              const maxSize = containerWidth / (contentLength * avgCharWidth);
-              return Math.min(120, Math.max(48, maxSize));
-            }
-            
-            // If content needs wrapping, be more conservative
-            const estimatedLines = Math.ceil(contentLength / maxCharsPerLine);
-            const containerHeight = window.innerHeight - 200; // Account for UI elements
-            const lineHeight = 1.2;
-            const maxSizeForHeight = containerHeight / (estimatedLines * lineHeight);
-            const maxSizeForWidth = containerWidth / (maxCharsPerLine * avgCharWidth);
-            return Math.min(120, Math.max(24, Math.min(maxSizeForHeight, maxSizeForWidth)));
-          };
-          
-          const maxFontSize = calculateMaxFontSize();
-          
           return (
             <div className="p-3 min-w-[200px]">
               <div className="flex items-center gap-2">
                 <label className="text-white text-xs whitespace-nowrap">Size</label>
-                <button
-                  onClick={() => setFontSize(Math.max(24, fontSize - 4))}
-                  className="p-1 rounded hover:bg-neutral-700"
-                  disabled={fontSize <= 24}
-                >
-                  <Minus className="h-4 w-4 text-white" />
-                </button>
                 <input
                   type="range"
                   min="24"
-                  max={Math.max(48, maxFontSize)}
-                  value={Math.min(fontSize, maxFontSize)}
-                  onChange={(e) => {
-                    const newSize = Number(e.target.value);
-                    setFontSize(Math.min(newSize, maxFontSize));
-                  }}
+                  max="72"
+                  value={fontSize}
+                  onChange={(e) => setFontSize(Number(e.target.value))}
                   className="flex-1"
                 />
-                <button
-                  onClick={() => setFontSize(Math.min(maxFontSize, fontSize + 4))}
-                  className="p-1 rounded hover:bg-neutral-700"
-                  disabled={fontSize >= maxFontSize}
-                >
-                  <PlusIcon className="h-4 w-4 text-white" />
-                </button>
-                <span className="text-white text-xs w-12 text-right">{Math.min(fontSize, maxFontSize)}px</span>
               </div>
             </div>
           );
@@ -903,10 +859,10 @@ export function TextPostEditor({ onSave, onCancel }: TextPostEditorProps) {
         >
           {content.trim() ? (
             <div
-              className="w-full px-8 text-center"
+              className="w-full text-center"
               style={{
                 fontFamily: fontFamily,
-                fontSize: `clamp(24px, 5vw, ${fontSize}px)`,
+                fontSize: `${fontSize}px`,
                 color: textColor,
                 fontWeight: textStyle === 'bold' ? 'bold' : 'normal',
                 fontStyle: textStyle === 'italic' ? 'italic' : 'normal',
@@ -918,8 +874,17 @@ export function TextPostEditor({ onSave, onCancel }: TextPostEditorProps) {
                   ${dropShadowBlur}px 
                   ${dropShadowColor}
                 `,
-                padding: `${padding}px`,
+                // Use responsive padding that maintains layout as screen size changes
+                padding: (() => {
+                  const viewportWidth = window.innerWidth;
+                  const baseViewportWidth = 375; // iPhone base width
+                  const paddingScale = viewportWidth / baseViewportWidth;
+                  return `${padding * paddingScale}px`;
+                })(),
                 lineHeight: 1.2,
+                wordWrap: 'break-word',
+                overflowWrap: 'break-word',
+                whiteSpace: 'pre-wrap',
               }}
             >
               {content}
