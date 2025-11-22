@@ -762,6 +762,12 @@
         
         // Check if permissions already exist (user has previously granted access)
         const existingPermissions = authResult.existingPermissions;
+        console.log('[OAuth] Auth result:', { 
+          hasCode: !!authorizationCode, 
+          hasExistingPermissions: !!existingPermissions,
+          existingPermissions: existingPermissions,
+          clientId: clientId
+        });
         
         if (existingPermissions && clientId === 'browser-app') {
           // Permissions already exist - skip consent screen and auto-approve
@@ -781,6 +787,8 @@
             window.location.href = `${redirectUri}?code=${authorizationCode}&state=${state}&age_shared=${ageSharedParam}`;
           }
           return; // Exit early - don't show consent screen
+        } else {
+          console.log('ℹ️ No existing permissions found or not browser-app, showing consent screen');
         }
         
         // No existing permissions - show consent screen for first-time authorization
