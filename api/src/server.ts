@@ -5062,12 +5062,14 @@ class ProductionServer {
         let existingPermissions = null;
         if (pnName && passcode && public_key && client_id === 'browser-app') {
           try {
-            const { VolumeIdGenerator } = await import('./server/modules/volumeIdGenerator');
-            const pnIdentifier = await VolumeIdGenerator.generateVolumeId({
-              pnName,
-              passcode,
-              publicKey: public_key
-            });
+            // STANDARDIZED: Derive pN identifier using VolumeIdGenerator formula
+            // Formula: SHA256(pnName:passcode:publicKey) → first 12 hex chars → pn-{hash}
+            const combined = `${pnName}:${passcode}:${public_key}`;
+            const crypto = await import('crypto');
+            const utf8Bytes = Buffer.from(combined, 'utf8');
+            const hash = crypto.createHash('sha256').update(utf8Bytes).digest('hex');
+            const shortHash = hash.substring(0, 12);
+            const pnIdentifier = `pn-${shortHash}`;
 
             // Check for existing permissions
             const { googleDriveProxyService } = await import('./server/modules/googleDriveProxy');
