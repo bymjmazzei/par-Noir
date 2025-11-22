@@ -7923,23 +7923,46 @@ class ProductionServer {
         const accountId = (account as any).accountId || (account as any).id;
         const userAccessToken = await googleDriveProxyService.getAccessToken(normalizedPnIdentifier, accountId);
 
-        // Find metadata folder
-        const folderQuery = `name='Metadata' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
-        const folderUrl = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(folderQuery)}&fields=files(id)&pageSize=1`;
-        const folderResponse = await fetch(folderUrl, {
+        // Find pN folder and _metadata folder (same pattern as other endpoints)
+        const pnFolderName = `par Noir - ${normalizedPnIdentifier}`;
+        const pnFolderSearchQuery = `name='${pnFolderName.replace(/'/g, "\\'")}' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
+        const pnFolderSearchUrl = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(pnFolderSearchQuery)}&fields=files(id,name)&pageSize=1`;
+        
+        const pnFolderResponse = await fetch(pnFolderSearchUrl, {
           headers: { 'Authorization': `Bearer ${userAccessToken}` }
         });
 
-        if (!folderResponse.ok) {
-          return res.status(404).json({ error: 'Metadata folder not found' });
+        let pnFolderId: string | null = null;
+        if (pnFolderResponse.ok) {
+          const pnFolderData = await pnFolderResponse.json() as { files?: Array<{ id: string; name: string }> };
+          if (pnFolderData.files && pnFolderData.files.length > 0) {
+            pnFolderId = pnFolderData.files[0].id;
+          }
         }
 
-        const folderData = await folderResponse.json() as { files?: Array<{ id: string }> };
-        if (!folderData.files || folderData.files.length === 0) {
-          return res.status(404).json({ error: 'Metadata folder not found' });
+        if (!pnFolderId) {
+          return res.status(404).json({ error: 'pN folder not found' });
         }
 
-        const metadataFolderId = folderData.files[0].id;
+        // Find _metadata folder
+        const metadataFolderName = '_metadata';
+        const metadataSearchQuery = `name='${metadataFolderName}' and '${pnFolderId}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`;
+        const metadataSearchUrl = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(metadataSearchQuery)}&fields=files(id)&pageSize=1`;
+        
+        const metadataFolderResponse = await fetch(metadataSearchUrl, {
+          headers: { 'Authorization': `Bearer ${userAccessToken}` }
+        });
+
+        if (!metadataFolderResponse.ok) {
+          return res.status(404).json({ error: '_metadata folder not found' });
+        }
+
+        const metadataFolderData = await metadataFolderResponse.json() as { files?: Array<{ id: string }> };
+        if (!metadataFolderData.files || metadataFolderData.files.length === 0) {
+          return res.status(404).json({ error: '_metadata folder not found' });
+        }
+
+        const metadataFolderId = metadataFolderData.files[0].id;
 
         // Get the ZKP proof
         const proof = await ZKPDataPointsService.getDataPointProof(
