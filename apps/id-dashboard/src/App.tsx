@@ -3097,12 +3097,22 @@ This invitation expires in 24 hours.`;
       
       setCurrentDataPoint(dataPoint);
       setCurrentDataPointExistingData(existingData);
+      console.log('🔄 [App] Opening DataPointInputModal', {
+        dataPointId,
+        dataPointName: dataPoint.name,
+        hasExistingData: !!existingData
+      });
       setShowDataPointInputModal(true);
     } catch (error) {
+      console.error('❌ [App] Error loading existing data, using fallback:', error);
       // Fallback to new data collection
       const dataPoint = STANDARD_DATA_POINTS[dataPointId];
       setCurrentDataPoint(dataPoint);
       setCurrentDataPointExistingData(null);
+      console.log('🔄 [App] Opening DataPointInputModal (fallback)', {
+        dataPointId,
+        dataPointName: dataPoint.name
+      });
       setShowDataPointInputModal(true);
     }
   };
