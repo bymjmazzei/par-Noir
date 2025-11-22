@@ -223,10 +223,16 @@ export const ProfileActionMenu = React.memo(function ProfileActionMenu({ creator
     }
 
     const loadProfileImage = async () => {
-      // Check if it's an image or video (we can use video thumbnail too)
+      // Check if it's an image, video, or thought (thoughts are rendered as PNG images)
       // Handle both MIME types (image/jpeg) and simple types (image)
       const fileType = topPostFile.metadata.fileType || '';
       const encodingFormat = topPostFile.metadata.encodingFormat || '';
+      
+      // Check if it's a thought (text post) - these are rendered as PNG images
+      const isThought = fileType === 'text' || 
+                       fileType === 'thought' ||
+                       !!(topPostFile.metadata as any).textPost ||
+                       !!(topPostFile.metadata as any).thought;
       
       const isImage = fileType.startsWith('image/') || 
                      fileType === 'image' ||
@@ -237,7 +243,8 @@ export const ProfileActionMenu = React.memo(function ProfileActionMenu({ creator
                      encodingFormat.startsWith('video/') ||
                      encodingFormat === 'video';
       
-      if (!isImage && !isVideo) {
+      // Thoughts are stored as PNG images, so treat them as images
+      if (!isImage && !isVideo && !isThought) {
         setProfileImageUrl(null);
         lastProcessedFileIdRef.current = fileId;
         return;
@@ -249,7 +256,8 @@ export const ProfileActionMenu = React.memo(function ProfileActionMenu({ creator
           ? JSON.parse(publicToken) 
           : publicToken;
         
-        if (isImage) {
+        if (isImage || isThought) {
+          // Thoughts are rendered as PNG images, so decrypt and use them
           const decryptedBlob = await decryptWithToken(token);
           const url = URL.createObjectURL(decryptedBlob);
           setProfileImageUrl(url);
