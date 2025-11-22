@@ -6920,26 +6920,70 @@ class ProductionServer {
 
         // Create pN folder if it doesn't exist
         if (!pnFolderId) {
-          const createPnFolderResponse = await fetch('https://www.googleapis.com/drive/v3/files', {
-            method: 'POST',
-            headers: {
-              'Authorization': `Bearer ${userAccessToken}`,
-              'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-              name: pnFolderName,
-              mimeType: 'application/vnd.google-apps.folder'
-            })
-          });
-          
-          if (!createPnFolderResponse.ok) {
-            const errorText = await createPnFolderResponse.text();
-            console.error('Failed to create pN folder:', createPnFolderResponse.status, errorText);
-            return res.status(500).json({ error: 'Failed to create pN folder' });
+          try {
+            const createPnFolderResponse = await fetch('https://www.googleapis.com/drive/v3/files', {
+              method: 'POST',
+              headers: {
+                'Authorization': `Bearer ${userAccessToken}`,
+                'Content-Type': 'application/json'
+              },
+              body: JSON.stringify({
+                name: pnFolderName,
+                mimeType: 'application/vnd.google-apps.folder'
+              })
+            });
+            
+            if (!createPnFolderResponse.ok) {
+              const errorText = await createPnFolderResponse.text();
+              let errorJson: any = {};
+              try {
+                errorJson = JSON.parse(errorText);
+              } catch {
+                errorJson = { message: errorText };
+              }
+              
+              console.error('Failed to create pN folder:', {
+                status: createPnFolderResponse.status,
+                statusText: createPnFolderResponse.statusText,
+                error: errorJson,
+                pnFolderName,
+                normalizedPnIdentifier
+              });
+              
+              // If folder already exists (403 or specific error), try to find it again
+              if (createPnFolderResponse.status === 403 || errorJson.error?.message?.includes('already exists')) {
+                console.log('Folder might already exist, retrying search...');
+                // Retry search one more time
+                const retryResponse = await fetch(pnFolderSearchUrl, {
+                  headers: { 'Authorization': `Bearer ${userAccessToken}` }
+                });
+                if (retryResponse.ok) {
+                  const retryData = await retryResponse.json() as { files?: Array<{ id: string; name: string }> };
+                  if (retryData.files && retryData.files.length > 0) {
+                    pnFolderId = retryData.files[0].id;
+                    console.log('Found pN folder on retry:', pnFolderId);
+                  }
+                }
+              }
+              
+              if (!pnFolderId) {
+                return res.status(500).json({ 
+                  error: 'Failed to create pN folder',
+                  details: errorJson.error?.message || errorText
+                });
+              }
+            } else {
+              const createdPnFolder = await createPnFolderResponse.json() as { id: string };
+              pnFolderId = createdPnFolder.id;
+              console.log('Successfully created pN folder:', pnFolderId);
+            }
+          } catch (createError: any) {
+            console.error('Exception creating pN folder:', createError);
+            return res.status(500).json({ 
+              error: 'Failed to create pN folder',
+              details: createError.message
+            });
           }
-          
-          const createdPnFolder = await createPnFolderResponse.json() as { id: string };
-          pnFolderId = createdPnFolder.id;
         }
 
         // Find or create _metadata folder inside pN folder (same folder used for index metadata)
@@ -7244,26 +7288,70 @@ class ProductionServer {
 
         // Create pN folder if it doesn't exist
         if (!pnFolderId) {
-          const createPnFolderResponse = await fetch('https://www.googleapis.com/drive/v3/files', {
-            method: 'POST',
-            headers: {
-              'Authorization': `Bearer ${userAccessToken}`,
-              'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-              name: pnFolderName,
-              mimeType: 'application/vnd.google-apps.folder'
-            })
-          });
-          
-          if (!createPnFolderResponse.ok) {
-            const errorText = await createPnFolderResponse.text();
-            console.error('Failed to create pN folder:', createPnFolderResponse.status, errorText);
-            return res.status(500).json({ error: 'Failed to create pN folder' });
+          try {
+            const createPnFolderResponse = await fetch('https://www.googleapis.com/drive/v3/files', {
+              method: 'POST',
+              headers: {
+                'Authorization': `Bearer ${userAccessToken}`,
+                'Content-Type': 'application/json'
+              },
+              body: JSON.stringify({
+                name: pnFolderName,
+                mimeType: 'application/vnd.google-apps.folder'
+              })
+            });
+            
+            if (!createPnFolderResponse.ok) {
+              const errorText = await createPnFolderResponse.text();
+              let errorJson: any = {};
+              try {
+                errorJson = JSON.parse(errorText);
+              } catch {
+                errorJson = { message: errorText };
+              }
+              
+              console.error('Failed to create pN folder:', {
+                status: createPnFolderResponse.status,
+                statusText: createPnFolderResponse.statusText,
+                error: errorJson,
+                pnFolderName,
+                normalizedPnIdentifier
+              });
+              
+              // If folder already exists (403 or specific error), try to find it again
+              if (createPnFolderResponse.status === 403 || errorJson.error?.message?.includes('already exists')) {
+                console.log('Folder might already exist, retrying search...');
+                // Retry search one more time
+                const retryResponse = await fetch(pnFolderSearchUrl, {
+                  headers: { 'Authorization': `Bearer ${userAccessToken}` }
+                });
+                if (retryResponse.ok) {
+                  const retryData = await retryResponse.json() as { files?: Array<{ id: string; name: string }> };
+                  if (retryData.files && retryData.files.length > 0) {
+                    pnFolderId = retryData.files[0].id;
+                    console.log('Found pN folder on retry:', pnFolderId);
+                  }
+                }
+              }
+              
+              if (!pnFolderId) {
+                return res.status(500).json({ 
+                  error: 'Failed to create pN folder',
+                  details: errorJson.error?.message || errorText
+                });
+              }
+            } else {
+              const createdPnFolder = await createPnFolderResponse.json() as { id: string };
+              pnFolderId = createdPnFolder.id;
+              console.log('Successfully created pN folder:', pnFolderId);
+            }
+          } catch (createError: any) {
+            console.error('Exception creating pN folder:', createError);
+            return res.status(500).json({ 
+              error: 'Failed to create pN folder',
+              details: createError.message
+            });
           }
-          
-          const createdPnFolder = await createPnFolderResponse.json() as { id: string };
-          pnFolderId = createdPnFolder.id;
         }
 
         // Find or create _metadata folder inside pN folder (same folder used for index metadata)

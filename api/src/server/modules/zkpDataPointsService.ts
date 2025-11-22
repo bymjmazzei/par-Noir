@@ -258,7 +258,7 @@ export class ZKPDataPointsService {
         if (searchData.files && searchData.files.length > 0) {
           // Update existing file
           const fileId = searchData.files[0].id;
-          await fetch(`https://www.googleapis.com/upload/drive/v3/files/${fileId}?uploadType=media`, {
+          const updateResponse = await fetch(`https://www.googleapis.com/upload/drive/v3/files/${fileId}?uploadType=media`, {
             method: 'PATCH',
             headers: {
               'Authorization': `Bearer ${accessToken}`,
@@ -266,6 +266,14 @@ export class ZKPDataPointsService {
             },
             body: fileContentJson
           });
+          
+          if (!updateResponse.ok) {
+            const errorText = await updateResponse.text();
+            console.error('Failed to update ZKP data points file:', updateResponse.status, errorText);
+            throw new Error(`Failed to update ZKP data points file: ${errorText}`);
+          }
+          
+          console.log('Successfully updated ZKP data points file:', fileId);
           return;
         }
       }
@@ -291,7 +299,7 @@ export class ZKPDataPointsService {
         `--${boundary}--`
       ].join('\r\n');
 
-      await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart', {
+      const createResponse = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart', {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${accessToken}`,
@@ -299,6 +307,15 @@ export class ZKPDataPointsService {
         },
         body: multipartBody
       });
+      
+      if (!createResponse.ok) {
+        const errorText = await createResponse.text();
+        console.error('Failed to create ZKP data points file:', createResponse.status, errorText);
+        throw new Error(`Failed to create ZKP data points file: ${errorText}`);
+      }
+      
+      const createdFile = await createResponse.json() as { id: string };
+      console.log('Successfully created ZKP data points file:', createdFile.id);
     } catch (error) {
       console.error('Error storing ZKP data point:', error);
       throw error;
