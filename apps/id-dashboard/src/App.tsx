@@ -3108,11 +3108,17 @@ This invitation expires in 24 hours.`;
   };
 
     const handleDataPointInputComplete = async (proofs: any[], userData: any) => {
+    console.log('🔄 [DataPointInput] handleDataPointInputComplete called', { 
+      proofsCount: proofs.length, 
+      dataPointId: currentDataPoint?.id,
+      hasUserData: !!userData 
+    });
     try {
       // Store attested data in metadata
       const { SecureMetadataStorage } = await import('./utils/secureMetadataStorage');
       
       const dataPointId = currentDataPoint?.id;
+      console.log('🔄 [DataPointInput] Processing data point:', dataPointId);
       if (dataPointId && proofs.length > 0) {
         const proof = proofs[0];
         const attestedDataPoint = {
