@@ -310,6 +310,42 @@
       font-size: 12px;
     }
     
+    .permission-select {
+      padding: 8px 12px;
+      background: rgba(26, 26, 26, 0.95);
+      border: 1px solid #333;
+      border-radius: 6px;
+      color: #fff;
+      font-size: 14px;
+      cursor: pointer;
+      transition: all 0.2s;
+      min-width: 120px;
+    }
+    
+    .permission-select:focus {
+      outline: none;
+      border-color: #3b82f6;
+      box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+    }
+    
+    .permission-select:invalid {
+      border-color: #ef4444;
+    }
+    
+    .required-badge {
+      color: #ef4444;
+      font-size: 12px;
+      font-weight: 500;
+      margin-left: 4px;
+    }
+    
+    .optional-badge {
+      color: #3b82f6;
+      font-size: 12px;
+      font-weight: 500;
+      margin-left: 4px;
+    }
+    
     .app-info {
       background: rgba(26, 26, 26, 0.95);
       border: 1px solid #333;
@@ -422,28 +458,40 @@
       </div>
       
       <div class="permissions-list">
+        <!-- pN Identifier - Required -->
         <div class="permission-item">
           <div class="permission-text">
-            <div class="permission-title">Access your DID (Decentralized Identifier)</div>
-            <div class="permission-desc">View your unique pN identifier for authentication</div>
+            <div class="permission-title">
+              pN Identifier <span class="required-badge">(Required)</span>
+            </div>
+            <div class="permission-desc" id="pnIdentifierDisplay">Loading...</div>
           </div>
         </div>
+        
+        <!-- Age Attestation - Optional with dropdown -->
         <div class="permission-item">
           <div class="permission-text">
-            <div class="permission-title">Access your nickname</div>
-            <div class="permission-desc">View your nickname for profile display (if available)</div>
+            <div class="permission-title">
+              Age Attestation <span class="optional-badge">(Optional)</span>
+            </div>
+            <div class="permission-desc">Share your age verification to access 18+ and NSFW content</div>
+          </div>
+          <div style="margin-left: 12px;">
+            <select id="ageAttestationSelect" class="permission-select" required>
+              <option value="">Select...</option>
+              <option value="shared">Share</option>
+              <option value="not-shared">Don't Share</option>
+            </select>
           </div>
         </div>
+        
+        <!-- Secure Cloud Access - Required -->
         <div class="permission-item">
           <div class="permission-text">
-            <div class="permission-title">Engage with content</div>
-            <div class="permission-desc">Like, comment, and share content using your identity</div>
-          </div>
-        </div>
-        <div class="permission-item">
-          <div class="permission-text">
-            <div class="permission-title">Create and manage feeds</div>
-            <div class="permission-desc">Create feeds and manage your content collections</div>
+            <div class="permission-title">
+              Secure Cloud Access <span class="required-badge">(Required)</span>
+            </div>
+            <div class="permission-desc">Access your media, companion metadata, and engagements stored in your secure cloud</div>
           </div>
         </div>
       </div>
@@ -484,6 +532,8 @@
     
     let identityData = null;
     let authorizationCode = null;
+    let pnIdentifier = null;
+    let decryptedIdentity = null;
     
     // Show/hide toggle for pN name
     let showPnName = false;
@@ -647,6 +697,9 @@
             const decryptedData = decoder.decode(decryptedBuffer);
             const identity = JSON.parse(decryptedData);
             
+            // Store decrypted identity for pN identifier generation
+            decryptedIdentity = identity;
+            
             // Extract DID from decrypted identity (same as dashboard)
             did = identity.id; // DID comes from decrypted data (EXACT as dashboard)
             if (did) {
@@ -696,6 +749,20 @@
         const authResult = await authResponse.json();
         authorizationCode = authResult.code;
         
+        // Derive pN identifier using VolumeIdGenerator logic
+        // Formula: SHA256(pnName:passcode:publicKey) → first 12 hex chars → pn-{hash}
+        const combined = `${pnName}:${passcode}:${publicKey}`;
+        const encoder = new TextEncoder();
+        const data = encoder.encode(combined);
+        const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+        const hashArray = Array.from(new Uint8Array(hashBuffer));
+        const hexHash = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+        const shortHash = hexHash.substring(0, 12);
+        pnIdentifier = `pn-${shortHash}`;
+        
+        // Display pN identifier
+        document.getElementById('pnIdentifierDisplay').textContent = pnIdentifier;
+        
         // Show consent screen
         document.getElementById('unlockStep').style.display = 'none';
         document.getElementById('consentStep').style.display = 'block';
@@ -711,7 +778,20 @@
     // Consent handlers
     document.getElementById('approveBtn').addEventListener('click', () => {
       console.log('=== APPROVE BUTTON CLICKED ===');
+      
+      // Validate age attestation selection (required field, but optional permission)
+      const ageSelect = document.getElementById('ageAttestationSelect');
+      if (!ageSelect.value) {
+        alert('Please select whether to share your age attestation');
+        ageSelect.focus();
+        return;
+      }
+      
+      // Get age sharing preference
+      const shareAge = ageSelect.value === 'shared';
+      
       console.log('authorizationCode:', authorizationCode);
+      console.log('shareAge:', shareAge);
       console.log('isInPopup (from page load):', isInPopup);
       console.log('window.opener (current):', window.opener);
       console.log('window.opener.closed (current):', window.opener ? window.opener.closed : 'N/A');
@@ -721,17 +801,22 @@
         return;
       }
       
+      // Include age sharing preference in the callback
+      // This will be used when exchanging the code for a token
+      const ageSharedParam = shareAge ? 'true' : 'false';
+      
       if (isInPopup) {
         console.log('IN POPUP - Handling popup flow...');
         
         // Always redirect to oauth-callback.html when in popup mode
+        // Include age sharing preference in URL params
         // oauth-callback.html will send the message and close the popup
-        const callbackUrl = `${window.location.origin}/oauth-callback.html?code=${authorizationCode}&state=${state}`;
+        const callbackUrl = `${window.location.origin}/oauth-callback.html?code=${authorizationCode}&state=${state}&age_shared=${ageSharedParam}`;
         console.log('Redirecting popup to callback page:', callbackUrl);
         window.location.href = callbackUrl;
         } else {
         console.log('NOT IN POPUP - Redirecting to:', redirectUri);
-          window.location.href = `${redirectUri}?code=${authorizationCode}&state=${state}`;
+          window.location.href = `${redirectUri}?code=${authorizationCode}&state=${state}&age_shared=${ageSharedParam}`;
       }
     });
     

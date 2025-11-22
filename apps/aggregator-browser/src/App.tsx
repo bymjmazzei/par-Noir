@@ -2581,7 +2581,7 @@ function App() {
         const processedCodes = new Set<string>();
         
         // Handle OAuth callback - listen for both postMessage and localStorage events
-        const handleOAuthCallback = (data: { code?: string; state?: string; error?: string; error_description?: string }) => {
+        const handleOAuthCallback = (data: { code?: string; state?: string; error?: string; error_description?: string; age_shared?: string }) => {
           console.log('🔐 OAuth callback received:', data);
           
           if (data.code) {
@@ -2598,7 +2598,9 @@ function App() {
               try {
                 // Use the same redirect_uri that was used in the authorization request
                 // Extract it from the auth URL to ensure exact match
-                const tokenResponse = await PNOAuthService.exchangeCodeForToken(data.code!, actualRedirectUri);
+                // Pass age_shared preference to token exchange
+                const ageShared = data.age_shared === 'true';
+                const tokenResponse = await PNOAuthService.exchangeCodeForToken(data.code!, actualRedirectUri, ageShared);
                 const userInfo = await PNOAuthService.getUserInfo(tokenResponse.access_token);
                 
                 console.log('🔐 [OAuth] UserInfo response:', {

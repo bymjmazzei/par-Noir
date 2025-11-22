@@ -134,7 +134,7 @@ export class PNOAuthService {
   /**
    * Exchange authorization code for access token
    */
-  static async exchangeCodeForToken(code: string, redirectUri?: string): Promise<OAuthTokenResponse> {
+  static async exchangeCodeForToken(code: string, redirectUri?: string, ageShared?: boolean): Promise<OAuthTokenResponse> {
     // Use provided redirect_uri or default to REDIRECT_URI
     // Must match the redirect_uri used in the authorization request exactly
     // Normalize to ensure exact match (remove trailing slashes, ensure consistent encoding)
@@ -142,6 +142,7 @@ export class PNOAuthService {
     
     console.log('🔐 [Token Exchange] Using redirect_uri:', finalRedirectUri);
     console.log('🔐 [Token Exchange] Code (first 20 chars):', code.substring(0, 20));
+    console.log('🔐 [Token Exchange] Age shared:', ageShared);
     
     const response = await fetch(`${API_ENDPOINT}/oauth/token`, {
       method: 'POST',
@@ -152,7 +153,8 @@ export class PNOAuthService {
         code,
         client_id: CLIENT_ID,
         redirect_uri: finalRedirectUri,
-        grant_type: 'authorization_code'
+        grant_type: 'authorization_code',
+        age_shared: ageShared // Include age sharing preference
       })
     });
 

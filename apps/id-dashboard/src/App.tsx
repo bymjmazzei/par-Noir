@@ -791,7 +791,7 @@ function App() {
       }));
     }
   }, [authenticatedUser?.id, privacySettings.toolPermissions]);
-
+  
   // Load attested data points from metadata
   useEffect(() => {
     const loadAttestedDataPoints = async () => {
@@ -818,13 +818,13 @@ function App() {
           }
           
           // Load attested data points from API server (Google Drive) - NO localStorage
-          const credentials = SecureCredentialManager.getCredentials(authenticatedUser.id);
-          if (!credentials) {
+            const credentials = SecureCredentialManager.getCredentials(authenticatedUser.id);
+            if (!credentials) {
             console.warn('[App] Credentials not available');
             setAttestedDataPoints(new Set());
-            return;
-          }
-
+              return;
+            }
+            
           const authToken = authenticatedUser.accessToken || authenticatedUser.authToken;
           if (!authToken) {
             console.warn('[App] No access token available');
@@ -3335,8 +3335,8 @@ This invitation expires in 24 hours.`;
       // Check if user has already attested this data point - from API server (Google Drive)
       let existingData = null;
       
-      const credentials = SecureCredentialManager.getCredentials(authenticatedUser.id);
-      if (!credentials) {
+        const credentials = SecureCredentialManager.getCredentials(authenticatedUser.id);
+        if (!credentials) {
         console.warn('[App] Credentials not available for checking existing data point');
       } else {
         const authToken = authenticatedUser.accessToken || authenticatedUser.authToken;
@@ -3361,8 +3361,8 @@ This invitation expires in 24 hours.`;
                   const decryptedUserDataJson = await IdentityCrypto.decrypt(
                     existingDataPoint.encryptedUserData,
                     authenticatedUser.publicKey || '',
-                    credentials.passcode
-                  );
+          credentials.passcode
+        );
                   existingData = JSON.parse(decryptedUserDataJson);
                   console.log('[App] Decrypted existing userData for editing:', existingData);
                 } catch (error) {
@@ -3406,7 +3406,7 @@ This invitation expires in 24 hours.`;
       dataPointId: currentDataPoint?.id,
       hasUserData: !!userData 
     });
-    
+      
     try {
       const dataPointId = currentDataPoint?.id;
       if (!dataPointId || proofs.length === 0) {
@@ -3414,19 +3414,19 @@ This invitation expires in 24 hours.`;
       }
 
       const proof = proofs[0];
-      const credentials = SecureCredentialManager.getCredentials(authenticatedUser.id);
-      if (!credentials) {
+        const credentials = SecureCredentialManager.getCredentials(authenticatedUser.id);
+        if (!credentials) {
         throw new Error('Credentials not available');
-      }
-
+        }
+        
       const authToken = authenticatedUser.accessToken || authenticatedUser.authToken;
       if (!authToken) {
         throw new Error('No access token available. Please re-authenticate.');
-      }
-
+        }
+        
       // Convert to API format
       const { ZKPDataPointsService } = await import('./utils/zkpDataPointsService');
-      
+        
       // Encrypt userData for storage (so it can be retrieved for editing)
       let encryptedUserData: string | undefined;
       if (userData && Object.keys(userData).length > 0) {
@@ -3435,24 +3435,24 @@ This invitation expires in 24 hours.`;
           encryptedUserData = await IdentityCrypto.encrypt(
             userDataJson,
             authenticatedUser.publicKey || '',
-            credentials.passcode
-          );
+              credentials.passcode
+            );
         } catch (error) {
           console.warn('Failed to encrypt userData, continuing without it:', error);
         }
       }
       
-      const zkpDataPoint = {
-        dataPointId: dataPointId,
-        proofType: mapDataPointIdToProofType(dataPointId),
-        zkpProof: proof.proof,
+            const zkpDataPoint = {
+              dataPointId: dataPointId,
+              proofType: mapDataPointIdToProofType(dataPointId),
+              zkpProof: proof.proof,
         signature: proof.signature || proof.proof,
-        verifiedAt: proof.timestamp || new Date().toISOString(),
+              verifiedAt: proof.timestamp || new Date().toISOString(),
         expiresAt: proof.expiresAt || new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString(),
-        verificationLevel: proof.verificationLevel || 'basic',
-        metadata: {
-          provider: 'user_attested',
-          fraudPreventionScore: undefined
+              verificationLevel: proof.verificationLevel || 'basic',
+              metadata: {
+                provider: 'user_attested',
+                fraudPreventionScore: undefined
         },
         encryptedUserData: encryptedUserData
       };
@@ -3479,7 +3479,7 @@ This invitation expires in 24 hours.`;
         dataPointId,
         authenticatedUser.publicKey
       );
-
+              
       if (!verified) {
         throw new Error('Verification failed - data point not found after save');
       }
@@ -3494,7 +3494,7 @@ This invitation expires in 24 hours.`;
       
       console.log('✅ [ZKP] Successfully saved and verified. All data points:', allDataPointIds);
       setAttestedDataPoints(new Set(allDataPointIds));
-
+      
       setSuccessWithTimeout(`Successfully attested ${currentDataPoint?.name}!`);
       setTimeout(() => setSuccessWithTimeout(null), 5000);
       setShowDataPointInputModal(false);
@@ -5780,8 +5780,8 @@ This invitation expires in 24 hours.`;
                                   onClick={() => handleRequestDataPoint('phone_verification')}
                                 />
                               )}
-                            </div>
                           </div>
+                            </div>
                           )}
                         </div>
 
@@ -5825,8 +5825,8 @@ This invitation expires in 24 hours.`;
                                   }
                                   globalDataPointSettings={privacySettings.dataPoints}
                                 />
-                              ))}
-                            </div>
+                            ))}
+                          </div>
                           )}
                           </div>
                           )}

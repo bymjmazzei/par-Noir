@@ -4963,12 +4963,12 @@ class ProductionServer {
       
       // Validate client (skip for browser-app)
       if (!isBrowserApp) {
-        const { ClientRegistrationService } = await import('./server/modules/clientRegistration');
-        if (!ClientRegistrationService.validateClient(client_id as string, redirect_uri as string)) {
-          return res.status(400).json({
-            error: 'invalid_client',
-            error_description: 'Invalid client_id or redirect_uri'
-          });
+      const { ClientRegistrationService } = await import('./server/modules/clientRegistration');
+      if (!ClientRegistrationService.validateClient(client_id as string, redirect_uri as string)) {
+        return res.status(400).json({
+          error: 'invalid_client',
+          error_description: 'Invalid client_id or redirect_uri'
+        });
         }
       }
 
@@ -5091,7 +5091,7 @@ class ProductionServer {
     // Exchange authorization code for access token
     this.app.post('/oauth/token', async (req, res) => {
       try {
-        const { code, client_id, redirect_uri, grant_type } = req.body;
+        const { code, client_id, redirect_uri, grant_type, age_shared } = req.body;
 
         if (!code || !client_id || !redirect_uri) {
           return res.status(400).json({
@@ -5118,6 +5118,102 @@ class ProductionServer {
             error: 'invalid_grant',
             error_description: 'Invalid or expired authorization code'
           });
+        }
+
+        // Store age sharing preference in third-party permissions (for browser-app only)
+        if (client_id === 'browser-app' && age_shared !== undefined) {
+          try {
+            // Decode token to get pN identifier
+            const tokenPayload = PNOAuthService.validateAccessToken(tokenResponse.access_token);
+            if (tokenPayload?.pnIdentifier) {
+              const pnIdentifier = tokenPayload.pnIdentifier;
+              
+              // Get Google Drive access token
+              const { googleDriveProxyService } = await import('./server/modules/googleDriveProxy');
+              const { storageCredentialsService } = await import('./server/modules/storageCredentialsService');
+              
+              const normalizedPnIdentifier = pnIdentifier.startsWith('pn-') ? pnIdentifier : `pn-${pnIdentifier}`;
+              const userCredentials = await storageCredentialsService.getCredentials(normalizedPnIdentifier);
+              
+              if (userCredentials?.credentials) {
+                const googleDriveAccounts = userCredentials.credentials.googleDriveAccounts || 
+                  (userCredentials.credentials.googleDrive ? [userCredentials.credentials.googleDrive] : []);
+                
+                if (googleDriveAccounts.length > 0) {
+                  const account = googleDriveAccounts[0];
+                  const accountId = (account as any).accountId || (account as any).id;
+                  const userAccessToken = await googleDriveProxyService.getAccessToken(normalizedPnIdentifier, accountId);
+                  
+                  // Find pN folder and _metadata folder
+                  const pnFolderName = `par Noir - ${pnIdentifier}`;
+                  const pnFolderSearchQuery = `name='${pnFolderName.replace(/'/g, "\\'")}' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
+                  const pnFolderSearchUrl = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(pnFolderSearchQuery)}&fields=files(id,name)&pageSize=1`;
+                  
+                  const pnFolderResponse = await fetch(pnFolderSearchUrl, {
+                    headers: { 'Authorization': `Bearer ${userAccessToken}` }
+                  });
+                  
+                  if (pnFolderResponse.ok) {
+                    const pnFolderData = await pnFolderResponse.json() as { files?: Array<{ id: string; name: string }> };
+                    if (pnFolderData.files && pnFolderData.files.length > 0) {
+                      const pnFolderId = pnFolderData.files[0].id;
+                      
+                      // Find _metadata folder
+                      const metadataFolderName = '_metadata';
+                      const metadataSearchQuery = `name='${metadataFolderName}' and '${pnFolderId}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`;
+                      const metadataSearchUrl = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(metadataSearchQuery)}&fields=files(id)&pageSize=1`;
+                      
+                      const metadataFolderResponse = await fetch(metadataSearchUrl, {
+                        headers: { 'Authorization': `Bearer ${userAccessToken}` }
+                      });
+                      
+                      if (metadataFolderResponse.ok) {
+                        const metadataFolderData = await metadataFolderResponse.json() as { files?: Array<{ id: string }> };
+                        if (metadataFolderData.files && metadataFolderData.files.length > 0) {
+                          const metadataFolderId = metadataFolderData.files[0].id;
+                          
+                          // Get existing permissions
+                          const { ThirdPartyPermissionsService } = await import('./server/modules/thirdPartyPermissionsService');
+                          const permissions = await ThirdPartyPermissionsService.getPermissions(
+                            userAccessToken,
+                            metadataFolderId
+                          );
+                          
+                          // Update browser-app permissions
+                          const shareAge = age_shared === true || age_shared === 'true';
+                          const dataPoints = shareAge ? ['age_attestation'] : [];
+                          
+                          permissions['browser-app'] = {
+                            toolName: 'par Noir Browser',
+                            toolDescription: 'Official par Noir browser application for browsing and discovering encrypted content',
+                            permissions: ['openid', 'profile', 'cloud:read'], // Include secure cloud access scope
+                            dataPoints: dataPoints,
+                            requiredDataPoints: [], // No required data points for browser
+                            optionalDataPoints: ['age_attestation'], // Age is optional
+                            grantedAt: new Date().toISOString(),
+                            status: 'active'
+                          };
+                          
+                          // Store updated permissions
+                          await ThirdPartyPermissionsService.storePermissions(
+                            userAccessToken,
+                            metadataFolderId,
+                            pnIdentifier,
+                            permissions
+                          );
+                          
+                          console.log(`[OAuth] Stored age sharing preference for browser-app: ${shareAge}`);
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          } catch (permError) {
+            // Log but don't fail token exchange if permission storage fails
+            console.error('[OAuth] Failed to store age sharing preference:', permError);
+          }
         }
 
         return res.json(tokenResponse);

@@ -53,8 +53,9 @@
     const code = urlParams.get('code');
     const state = urlParams.get('state');
     const error = urlParams.get('error');
+    const ageShared = urlParams.get('age_shared'); // Age sharing preference from consent screen
     
-    console.log('oauth-callback.html loaded', { code, state, error });
+    console.log('oauth-callback.html loaded', { code, state, error, ageShared });
     
     // Store in localStorage with unique key to avoid conflicts
     const callbackKey = `pn_oauth_callback_${Date.now()}`;
@@ -63,6 +64,7 @@
       code: code,
       state: state,
       error: error,
+      age_shared: ageShared, // Include age sharing preference
       timestamp: Date.now()
     };
     
