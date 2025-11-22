@@ -145,7 +145,7 @@ export function UploadModal({ feeds: propsFeeds, onClose, onUploadComplete }: Up
     <div className="h-full w-full bg-neutral-900 flex flex-col overflow-y-auto" style={{ paddingBottom: '64px' }}>
       {/* Railway Header with Settings Button */}
       <div 
-        className="fixed top-0 left-0 right-0 h-12 flex items-center justify-between px-4 z-[100] bg-transparent"
+        className="fixed top-0 left-0 right-0 h-12 flex items-center justify-between px-4 z-[100] bg-neutral-900/95 backdrop-blur-sm"
       >
         <div className="w-9" /> {/* Spacer for centering */}
         <h2 className="text-sm font-medium uppercase tracking-wide text-white">
@@ -153,7 +153,7 @@ export function UploadModal({ feeds: propsFeeds, onClose, onUploadComplete }: Up
         </h2>
         <button
           onClick={() => setShowContentPreferences(true)}
-          className="p-2 text-white/85 hover:text-white transition-colors"
+          className="p-2 text-white/85 hover:text-white transition-colors flex items-center justify-center"
           title="Content Preferences"
         >
           <Settings className="h-5 w-5" />
