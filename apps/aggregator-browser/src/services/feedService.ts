@@ -1,13 +1,12 @@
 /**
  * Feed Service (Frontend)
- * Connects to backend feed APIs with decentralized subscription support
+ * Connects to backend feed APIs - subscriptions stored on user's cloud storage
  */
 
 import { Feed, FeedCategory } from '../types/aggregator';
-import * as decentralizedFeed from './decentralizedFeedSubscription';
+import { PNOAuthService } from './pnOAuthService';
 
 const API_ENDPOINT = process.env.REACT_APP_API_ENDPOINT || 'https://api.parnoir.com';
-const USE_DECENTRALIZED = process.env.REACT_APP_USE_DECENTRALIZED !== 'false'; // Default true
 
 export interface CreateFeedRequest {
   feedName: string;
