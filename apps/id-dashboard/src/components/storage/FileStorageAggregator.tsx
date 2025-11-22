@@ -5199,7 +5199,8 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
                 ...(editForm.category && { category: editForm.category }),
                 ...(editForm.category && { feedCategories: [editForm.category as FeedCategory] }),
                 ...(locationCreated && { locationCreated }),
-                ...(editForm.license && { license: editForm.license })
+                ...(editForm.license && { license: editForm.license }),
+                ...(editForm.contentRating && { contentRating: editForm.contentRating })
               },
               engagement: currentMetadata.engagement || {
                 views: 0,
