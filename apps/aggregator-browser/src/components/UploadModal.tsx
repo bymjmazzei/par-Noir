@@ -146,24 +146,26 @@ export function UploadModal({ feeds: propsFeeds, onClose, onUploadComplete }: Up
       {/* Railway Header with Settings Button */}
       <div 
         className="fixed top-0 left-0 right-0 h-12 flex items-center justify-between px-4 z-[100] bg-neutral-900 border-b border-neutral-800"
-        style={{ position: 'fixed', top: 0, left: 0, right: 0, zIndex: 100 }}
       >
-        <div className="w-9 h-9 flex-shrink-0" /> {/* Spacer for centering - same size as button */}
+        {/* Left side - Lock button would be here with p-2 padding */}
+        <div className="w-9 h-9 flex-shrink-0" />
+        
+        {/* Center - Title */}
         <h2 className="text-sm font-medium uppercase tracking-wide text-white flex-1 text-center">
           Upload from Secure Cloud
         </h2>
+        
+        {/* Right side - Settings button with same p-2 padding as lock button */}
         <button
           onClick={(e) => {
             e.preventDefault();
             e.stopPropagation();
-            console.log('Settings button clicked!', { showContentPreferences });
             setShowContentPreferences(true);
           }}
-          className="w-9 h-9 p-2 text-white bg-blue-600 hover:bg-blue-700 transition-colors flex items-center justify-center rounded flex-shrink-0"
+          className="p-2 text-white/85 hover:text-white transition-colors flex items-center justify-center flex-shrink-0"
           title="Content Preferences"
-          style={{ zIndex: 101, minWidth: '36px', minHeight: '36px' }}
         >
-          <Settings className="h-5 w-5 text-white" />
+          <Settings className="h-5 w-5" />
         </button>
       </div>
 
