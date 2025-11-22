@@ -128,26 +128,15 @@ export function UserStateProvider({ children }: { children: ReactNode }) {
 
         if (response.ok) {
           const data = await response.json();
-          if (data.preferences) {
+          if (data.preferences?.subscribedCategories) {
             setUserState(prev => ({
               ...prev,
               preferences: {
                 ...prev.preferences,
-                // Load subscribed categories
-                subscribedCategories: data.preferences.subscribedCategories || prev.preferences.subscribedCategories,
-                // Load age verification
-                ageVerified: data.preferences.ageVerified ?? prev.preferences.ageVerified,
-                verifiedAge: data.preferences.verifiedAge ?? prev.preferences.verifiedAge,
-                // Load max rating
-                maxRating: (data.preferences.maxRating as ContentRating) || prev.preferences.maxRating
+                subscribedCategories: data.preferences.subscribedCategories
               }
             }));
-            console.log('Loaded preferences from Google Drive:', {
-              subscribedCategories: data.preferences.subscribedCategories,
-              ageVerified: data.preferences.ageVerified,
-              verifiedAge: data.preferences.verifiedAge,
-              maxRating: data.preferences.maxRating
-            });
+            console.log('Loaded preferences from Google Drive:', data.preferences.subscribedCategories);
           }
         } else if (response.status === 404) {
           // Endpoint not deployed yet - just use local state
@@ -160,6 +149,84 @@ export function UserStateProvider({ children }: { children: ReactNode }) {
 
     loadPreferencesFromDrive();
   }, [userState.isUnlocked, userState.pnIdentifier]);
+
+  // Check ZKP age verification when user unlocks
+  useEffect(() => {
+    if (!userState.isUnlocked || !userState.pnIdentifier) {
+      return;
+    }
+
+    // Only check if not already verified
+    if (userState.preferences.ageVerified) {
+      return;
+    }
+
+    const checkZKPAgeVerification = async () => {
+      try {
+        const { PNOAuthService } = await import('../services/pnOAuthService');
+        const session = PNOAuthService.loadSession();
+        if (!session?.accessToken) {
+          return;
+        }
+
+        const apiEndpoint = process.env.REACT_APP_API_ENDPOINT || 'https://api.parnoir.com';
+        
+        // Check if user has age_attestation ZKP
+        const proofResponse = await fetch(
+          `${apiEndpoint}/api/users/${userState.pnIdentifier}/zkp-data-points/age_attestation`,
+          {
+            headers: {
+              'Authorization': `Bearer ${session.accessToken}`
+            }
+          }
+        );
+
+        if (proofResponse.ok) {
+          const { proof } = await proofResponse.json();
+          
+          // Verify the proof for "age >= 18"
+          const verifyResponse = await fetch(
+            `${apiEndpoint}/api/users/${userState.pnIdentifier}/zkp-data-points/verify`,
+            {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${session.accessToken}`
+              },
+              body: JSON.stringify({
+                dataPointId: 'age_attestation',
+                condition: 'age >= 18'
+              })
+            }
+          );
+
+          if (verifyResponse.ok) {
+            const { verification } = await verifyResponse.json();
+            if (verification.isValid) {
+              // Auto-set age verified without revealing actual age
+              // Use minimum age (18) since we don't know the actual age
+              setUserState(prev => ({
+                ...prev,
+                preferences: {
+                  ...prev.preferences,
+                  ageVerified: true,
+                  verifiedAge: 18 // Minimum age, not actual age
+                }
+              }));
+              console.log('✅ Age verified via ZKP (age >= 18)');
+            }
+          }
+        } else if (proofResponse.status !== 404) {
+          console.warn('Failed to check ZKP age verification:', proofResponse.status);
+        }
+        // 404 is expected if user hasn't verified age yet
+      } catch (error) {
+        console.error('Error checking ZKP age verification:', error);
+      }
+    };
+
+    checkZKPAgeVerification();
+  }, [userState.isUnlocked, userState.pnIdentifier, userState.preferences.ageVerified]);
 
   const setUnlocked = (pnIdentifier: string) => {
     setUserState(prev => ({
@@ -177,7 +244,7 @@ export function UserStateProvider({ children }: { children: ReactNode }) {
     }));
   };
 
-  const updateMaxRating = async (rating: ContentRating) => {
+  const updateMaxRating = (rating: ContentRating) => {
     setUserState(prev => ({
       ...prev,
       preferences: {
@@ -185,32 +252,9 @@ export function UserStateProvider({ children }: { children: ReactNode }) {
         maxRating: rating
       }
     }));
-
-    // Save to Google Drive if unlocked
-    if (userState.isUnlocked && userState.pnIdentifier) {
-      try {
-        const { PNOAuthService } = await import('../services/pnOAuthService');
-        const session = PNOAuthService.loadSession();
-        if (session?.accessToken) {
-          const apiEndpoint = process.env.REACT_APP_API_ENDPOINT || 'https://api.parnoir.com';
-          await fetch(`${apiEndpoint}/api/users/${userState.pnIdentifier}/preferences`, {
-            method: 'PUT',
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${session.accessToken}`
-            },
-            body: JSON.stringify({
-              maxRating: rating
-            })
-          });
-        }
-      } catch (error) {
-        console.warn('Failed to save maxRating to Google Drive:', error);
-      }
-    }
   };
 
-  const setAgeVerified = async (age: number) => {
+  const setAgeVerified = (age: number) => {
     setUserState(prev => ({
       ...prev,
       preferences: {
@@ -219,30 +263,6 @@ export function UserStateProvider({ children }: { children: ReactNode }) {
         verifiedAge: age
       }
     }));
-
-    // Save to Google Drive if unlocked
-    if (userState.isUnlocked && userState.pnIdentifier) {
-      try {
-        const { PNOAuthService } = await import('../services/pnOAuthService');
-        const session = PNOAuthService.loadSession();
-        if (session?.accessToken) {
-          const apiEndpoint = process.env.REACT_APP_API_ENDPOINT || 'https://api.parnoir.com';
-          await fetch(`${apiEndpoint}/api/users/${userState.pnIdentifier}/preferences`, {
-            method: 'PUT',
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${session.accessToken}`
-            },
-            body: JSON.stringify({
-              ageVerified: true,
-              verifiedAge: age
-            })
-          });
-        }
-      } catch (error) {
-        console.warn('Failed to save age verification to Google Drive:', error);
-      }
-    }
   };
 
   const subscribeToFeed = (feedId: string) => {

@@ -6850,6 +6850,361 @@ class ProductionServer {
       }
     });
 
+    // GET /api/users/:pnIdentifier/zkp-data-points - Get all available ZKP data points (metadata only)
+    this.app.get('/api/users/:pnIdentifier/zkp-data-points', async (req, res) => {
+      try {
+        const { pnIdentifier } = req.params;
+
+        if (!pnIdentifier) {
+          return res.status(400).json({ error: 'pnIdentifier is required' });
+        }
+
+        const { ZKPDataPointsService } = await import('./server/modules/zkpDataPointsService');
+        const { googleDriveProxyService } = await import('./server/modules/googleDriveProxy');
+        const { storageCredentialsService } = await import('./server/modules/storageCredentialsService');
+
+        // Normalize pn identifier
+        const normalizedPnIdentifier = pnIdentifier.startsWith('pn-') ? pnIdentifier : `pn-${pnIdentifier}`;
+
+        // Get user's credentials
+        const userCredentials = await storageCredentialsService.getCredentials(normalizedPnIdentifier);
+        if (!userCredentials?.credentials) {
+          return res.status(404).json({ error: 'User credentials not found' });
+        }
+
+        const googleDriveAccounts = userCredentials.credentials.googleDriveAccounts || 
+          (userCredentials.credentials.googleDrive ? [userCredentials.credentials.googleDrive] : []);
+        
+        if (googleDriveAccounts.length === 0) {
+          return res.status(404).json({ error: 'User has no Google Drive connected' });
+        }
+
+        const account = googleDriveAccounts[0];
+        const accountId = (account as any).accountId || (account as any).id;
+        const userAccessToken = await googleDriveProxyService.getAccessToken(normalizedPnIdentifier, accountId);
+
+        // Find or create metadata folder
+        const folderQuery = `name='Metadata' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
+        const folderUrl = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(folderQuery)}&fields=files(id)&pageSize=1`;
+        let folderResponse = await fetch(folderUrl, {
+          headers: { 'Authorization': `Bearer ${userAccessToken}` }
+        });
+
+        let metadataFolderId: string;
+        if (folderResponse.ok) {
+          const folderData = await folderResponse.json() as { files?: Array<{ id: string }> };
+          if (folderData.files && folderData.files.length > 0) {
+            metadataFolderId = folderData.files[0].id;
+          } else {
+            // Create Metadata folder if it doesn't exist
+            const createFolderResponse = await fetch('https://www.googleapis.com/drive/v3/files', {
+              method: 'POST',
+              headers: {
+                'Authorization': `Bearer ${userAccessToken}`,
+                'Content-Type': 'application/json'
+              },
+              body: JSON.stringify({
+                name: 'Metadata',
+                mimeType: 'application/vnd.google-apps.folder'
+              })
+            });
+            if (!createFolderResponse.ok) {
+              return res.status(500).json({ error: 'Failed to create Metadata folder' });
+            }
+            const createdFolder = await createFolderResponse.json() as { id: string };
+            metadataFolderId = createdFolder.id;
+          }
+        } else {
+          // Create Metadata folder if search fails
+          const createFolderResponse = await fetch('https://www.googleapis.com/drive/v3/files', {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${userAccessToken}`,
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+              name: 'Metadata',
+              mimeType: 'application/vnd.google-apps.folder'
+            })
+          });
+          if (!createFolderResponse.ok) {
+            return res.status(500).json({ error: 'Failed to create Metadata folder' });
+          }
+          const createdFolder = await createFolderResponse.json() as { id: string };
+          metadataFolderId = createdFolder.id;
+        }
+
+        // Get available data points (metadata only, no actual data)
+        const dataPoints = await ZKPDataPointsService.getAvailableDataPoints(
+          userAccessToken,
+          metadataFolderId
+        );
+
+        return res.json({ success: true, dataPoints });
+      } catch (error: any) {
+        console.error('Error getting ZKP data points:', error);
+        return res.status(500).json({
+          error: 'Failed to get ZKP data points',
+          error_description: error.message || 'Failed to get ZKP data points'
+        });
+      }
+    });
+
+    // GET /api/users/:pnIdentifier/zkp-data-points/:dataPointId - Get specific ZKP proof
+    this.app.get('/api/users/:pnIdentifier/zkp-data-points/:dataPointId', async (req, res) => {
+      try {
+        const { pnIdentifier, dataPointId } = req.params;
+
+        if (!pnIdentifier || !dataPointId) {
+          return res.status(400).json({ error: 'pnIdentifier and dataPointId are required' });
+        }
+
+        const { ZKPDataPointsService } = await import('./server/modules/zkpDataPointsService');
+        const { googleDriveProxyService } = await import('./server/modules/googleDriveProxy');
+        const { storageCredentialsService } = await import('./server/modules/storageCredentialsService');
+
+        // Normalize pn identifier
+        const normalizedPnIdentifier = pnIdentifier.startsWith('pn-') ? pnIdentifier : `pn-${pnIdentifier}`;
+
+        // Get user's credentials
+        const userCredentials = await storageCredentialsService.getCredentials(normalizedPnIdentifier);
+        if (!userCredentials?.credentials) {
+          return res.status(404).json({ error: 'User credentials not found' });
+        }
+
+        const googleDriveAccounts = userCredentials.credentials.googleDriveAccounts || 
+          (userCredentials.credentials.googleDrive ? [userCredentials.credentials.googleDrive] : []);
+        
+        if (googleDriveAccounts.length === 0) {
+          return res.status(404).json({ error: 'User has no Google Drive connected' });
+        }
+
+        const account = googleDriveAccounts[0];
+        const accountId = (account as any).accountId || (account as any).id;
+        const userAccessToken = await googleDriveProxyService.getAccessToken(normalizedPnIdentifier, accountId);
+
+        // Find metadata folder
+        const folderQuery = `name='Metadata' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
+        const folderUrl = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(folderQuery)}&fields=files(id)&pageSize=1`;
+        const folderResponse = await fetch(folderUrl, {
+          headers: { 'Authorization': `Bearer ${userAccessToken}` }
+        });
+
+        if (!folderResponse.ok) {
+          return res.status(404).json({ error: 'Metadata folder not found' });
+        }
+
+        const folderData = await folderResponse.json() as { files?: Array<{ id: string }> };
+        if (!folderData.files || folderData.files.length === 0) {
+          return res.status(404).json({ error: 'Metadata folder not found' });
+        }
+
+        const metadataFolderId = folderData.files[0].id;
+
+        // Get the ZKP proof (NOT the actual data)
+        const proof = await ZKPDataPointsService.getDataPointProof(
+          userAccessToken,
+          metadataFolderId,
+          dataPointId
+        );
+
+        if (!proof) {
+          return res.status(404).json({ error: 'ZKP data point not found or expired' });
+        }
+
+        return res.json({ success: true, proof });
+      } catch (error: any) {
+        console.error('Error getting ZKP data point:', error);
+        return res.status(500).json({
+          error: 'Failed to get ZKP data point',
+          error_description: error.message || 'Failed to get ZKP data point'
+        });
+      }
+    });
+
+    // POST /api/users/:pnIdentifier/zkp-data-points/verify - Verify a ZKP proof against a condition
+    this.app.post('/api/users/:pnIdentifier/zkp-data-points/verify', async (req, res) => {
+      try {
+        const { pnIdentifier } = req.params;
+        const { dataPointId, condition } = req.body; // e.g., condition: "age >= 18"
+
+        if (!pnIdentifier || !dataPointId || !condition) {
+          return res.status(400).json({ error: 'pnIdentifier, dataPointId, and condition are required' });
+        }
+
+        const { ZKPDataPointsService } = await import('./server/modules/zkpDataPointsService');
+        const { googleDriveProxyService } = await import('./server/modules/googleDriveProxy');
+        const { storageCredentialsService } = await import('./server/modules/storageCredentialsService');
+
+        // Normalize pn identifier
+        const normalizedPnIdentifier = pnIdentifier.startsWith('pn-') ? pnIdentifier : `pn-${pnIdentifier}`;
+
+        // Get user's credentials
+        const userCredentials = await storageCredentialsService.getCredentials(normalizedPnIdentifier);
+        if (!userCredentials?.credentials) {
+          return res.status(404).json({ error: 'User credentials not found' });
+        }
+
+        const googleDriveAccounts = userCredentials.credentials.googleDriveAccounts || 
+          (userCredentials.credentials.googleDrive ? [userCredentials.credentials.googleDrive] : []);
+        
+        if (googleDriveAccounts.length === 0) {
+          return res.status(404).json({ error: 'User has no Google Drive connected' });
+        }
+
+        const account = googleDriveAccounts[0];
+        const accountId = (account as any).accountId || (account as any).id;
+        const userAccessToken = await googleDriveProxyService.getAccessToken(normalizedPnIdentifier, accountId);
+
+        // Find metadata folder
+        const folderQuery = `name='Metadata' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
+        const folderUrl = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(folderQuery)}&fields=files(id)&pageSize=1`;
+        const folderResponse = await fetch(folderUrl, {
+          headers: { 'Authorization': `Bearer ${userAccessToken}` }
+        });
+
+        if (!folderResponse.ok) {
+          return res.status(404).json({ error: 'Metadata folder not found' });
+        }
+
+        const folderData = await folderResponse.json() as { files?: Array<{ id: string }> };
+        if (!folderData.files || folderData.files.length === 0) {
+          return res.status(404).json({ error: 'Metadata folder not found' });
+        }
+
+        const metadataFolderId = folderData.files[0].id;
+
+        // Get the ZKP proof
+        const proof = await ZKPDataPointsService.getDataPointProof(
+          userAccessToken,
+          metadataFolderId,
+          dataPointId
+        );
+
+        if (!proof) {
+          return res.status(404).json({ error: 'ZKP data point not found or expired' });
+        }
+
+        // Verify the proof against the condition
+        const verification = await ZKPDataPointsService.verifyProof(proof.zkpProof, condition);
+
+        return res.json({ success: true, verification });
+      } catch (error: any) {
+        console.error('Error verifying ZKP proof:', error);
+        return res.status(500).json({
+          error: 'Failed to verify ZKP proof',
+          error_description: error.message || 'Failed to verify ZKP proof'
+        });
+      }
+    });
+
+    // PUT /api/users/:pnIdentifier/zkp-data-points/:dataPointId - Store/update ZKP data point
+    this.app.put('/api/users/:pnIdentifier/zkp-data-points/:dataPointId', async (req, res) => {
+      try {
+        const { pnIdentifier, dataPointId } = req.params;
+        const dataPoint = req.body; // ZKPDataPoint object
+
+        if (!pnIdentifier || !dataPointId) {
+          return res.status(400).json({ error: 'pnIdentifier and dataPointId are required' });
+        }
+
+        if (!dataPoint || dataPoint.dataPointId !== dataPointId) {
+          return res.status(400).json({ error: 'Invalid data point' });
+        }
+
+        const { ZKPDataPointsService } = await import('./server/modules/zkpDataPointsService');
+        const { googleDriveProxyService } = await import('./server/modules/googleDriveProxy');
+        const { storageCredentialsService } = await import('./server/modules/storageCredentialsService');
+
+        // Normalize pn identifier
+        const normalizedPnIdentifier = pnIdentifier.startsWith('pn-') ? pnIdentifier : `pn-${pnIdentifier}`;
+
+        // Get user's credentials
+        const userCredentials = await storageCredentialsService.getCredentials(normalizedPnIdentifier);
+        if (!userCredentials?.credentials) {
+          return res.status(404).json({ error: 'User credentials not found' });
+        }
+
+        const googleDriveAccounts = userCredentials.credentials.googleDriveAccounts || 
+          (userCredentials.credentials.googleDrive ? [userCredentials.credentials.googleDrive] : []);
+        
+        if (googleDriveAccounts.length === 0) {
+          return res.status(404).json({ error: 'User has no Google Drive connected' });
+        }
+
+        const account = googleDriveAccounts[0];
+        const accountId = (account as any).accountId || (account as any).id;
+        const userAccessToken = await googleDriveProxyService.getAccessToken(normalizedPnIdentifier, accountId);
+
+        // Find or create metadata folder
+        const folderQuery = `name='Metadata' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
+        const folderUrl = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(folderQuery)}&fields=files(id)&pageSize=1`;
+        let folderResponse = await fetch(folderUrl, {
+          headers: { 'Authorization': `Bearer ${userAccessToken}` }
+        });
+
+        let metadataFolderId: string;
+        if (folderResponse.ok) {
+          const folderData = await folderResponse.json() as { files?: Array<{ id: string }> };
+          if (folderData.files && folderData.files.length > 0) {
+            metadataFolderId = folderData.files[0].id;
+          } else {
+            // Create Metadata folder if it doesn't exist
+            const createFolderResponse = await fetch('https://www.googleapis.com/drive/v3/files', {
+              method: 'POST',
+              headers: {
+                'Authorization': `Bearer ${userAccessToken}`,
+                'Content-Type': 'application/json'
+              },
+              body: JSON.stringify({
+                name: 'Metadata',
+                mimeType: 'application/vnd.google-apps.folder'
+              })
+            });
+            if (!createFolderResponse.ok) {
+              return res.status(500).json({ error: 'Failed to create Metadata folder' });
+            }
+            const createdFolder = await createFolderResponse.json() as { id: string };
+            metadataFolderId = createdFolder.id;
+          }
+        } else {
+          // Create Metadata folder if search fails
+          const createFolderResponse = await fetch('https://www.googleapis.com/drive/v3/files', {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${userAccessToken}`,
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+              name: 'Metadata',
+              mimeType: 'application/vnd.google-apps.folder'
+            })
+          });
+          if (!createFolderResponse.ok) {
+            return res.status(500).json({ error: 'Failed to create Metadata folder' });
+          }
+          const createdFolder = await createFolderResponse.json() as { id: string };
+          metadataFolderId = createdFolder.id;
+        }
+
+        // Store the data point
+        await ZKPDataPointsService.storeDataPoint(
+          userAccessToken,
+          metadataFolderId,
+          normalizedPnIdentifier,
+          dataPoint
+        );
+
+        return res.json({ success: true });
+      } catch (error: any) {
+        console.error('Error storing ZKP data point:', error);
+        return res.status(500).json({
+          error: 'Failed to store ZKP data point',
+          error_description: error.message || 'Failed to store ZKP data point'
+        });
+      }
+    });
+
     // GET /api/users/:pnIdentifier/preferences - Get user preferences from Google Drive
     this.app.get('/api/users/:pnIdentifier/preferences', async (req, res) => {
       try {
