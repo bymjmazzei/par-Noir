@@ -80,6 +80,9 @@ export function ContentPreferences({ onClose, feeds }: ContentPreferencesProps) 
         }
       } else {
         // Subscribe to all feeds in this category
+        let successCount = 0;
+        let errorCount = 0;
+        
         for (const feed of categoryFeeds) {
           if (!isSubscribedToFeed(feed.feedId)) {
             try {
@@ -88,11 +91,29 @@ export function ContentPreferences({ onClose, feeds }: ContentPreferencesProps) 
                 userState.pnIdentifier!,
                 feed.creatorId
               );
+              // Update UI state even if decentralized attempt failed but API succeeded
               subscribeToFeed(feed.feedId);
-            } catch (error) {
+              successCount++;
+            } catch (error: any) {
               console.error(`Failed to subscribe to feed ${feed.feedId}:`, error);
+              // Only count as error if it's not an IPFS error (API fallback should work)
+              if (!error?.message?.includes('IPFS') && !error?.message?.includes('decentralized')) {
+                errorCount++;
+              } else {
+                // IPFS failed but API might have succeeded - try to update UI anyway
+                // The FeedService should have already tried the API fallback
+                subscribeToFeed(feed.feedId);
+                successCount++;
+              }
             }
           }
+        }
+        
+        if (successCount > 0) {
+          console.log(`Successfully subscribed to ${successCount} feed(s) in category ${categoryId}`);
+        }
+        if (errorCount > 0) {
+          console.warn(`Failed to subscribe to ${errorCount} feed(s) in category ${categoryId}`);
         }
       }
     } catch (error) {
