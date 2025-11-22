@@ -5593,16 +5593,29 @@ class ProductionServer {
         let publicKey: string | undefined = undefined;
         
         // Try to get publicKey from refresh token database
+        // Also try looking up by pN identifier if available
         try {
           const db = (await import('./server/utils/database')).getDatabasePool();
-          const refreshTokenResult = await db.query(
+          
+          // First try by DID
+          let refreshTokenResult = await db.query(
             `SELECT public_key FROM oauth_refresh_tokens WHERE did = $1 ORDER BY expires_at DESC LIMIT 1`,
             [tokenPayload.did]
           );
           
+          // If not found and we have pN identifier, try by pN identifier
+          if ((!refreshTokenResult.rows.length || !refreshTokenResult.rows[0].public_key) && pnIdentifier) {
+            refreshTokenResult = await db.query(
+              `SELECT public_key FROM oauth_refresh_tokens WHERE pn_identifier = $1 ORDER BY expires_at DESC LIMIT 1`,
+              [pnIdentifier]
+            );
+          }
+          
           if (refreshTokenResult.rows.length > 0 && refreshTokenResult.rows[0].public_key) {
             publicKey = refreshTokenResult.rows[0].public_key;
             console.log(`✅ [Userinfo] Found publicKey from refresh token`);
+          } else {
+            console.warn(`⚠️ [Userinfo] No publicKey found in refresh token for DID: ${tokenPayload.did.substring(0, 20)}...`);
           }
         } catch (dbError) {
           console.warn('⚠️ [Userinfo] Failed to look up publicKey from refresh token:', dbError);
@@ -5631,8 +5644,11 @@ class ProductionServer {
           // NEVER include: pn_name, pn_file, passcode
         };
 
-        // Only include public_key if explicitly requested and authorized
-        if (scopes.includes('public_key') && publicKey) {
+        // Always include public_key for browser-app (needed for file decryption)
+        // For other clients, only include if explicitly requested
+        if (tokenPayload.clientId === 'browser-app' && publicKey) {
+          userInfo.public_key = publicKey;
+        } else if (scopes.includes('public_key') && publicKey) {
           userInfo.public_key = publicKey;
         }
 
