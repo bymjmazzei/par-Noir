@@ -73,11 +73,12 @@ export function ContentPreferences({ onClose, feeds }: ContentPreferencesProps) 
           }
 
           const apiEndpoint = process.env.REACT_APP_API_ENDPOINT || 'https://api.parnoir.com';
+          const currentCategories = userState.preferences.subscribedCategories || [];
           const response = await fetch(`${apiEndpoint}/api/users/${userState.pnIdentifier}/preferences`, {
             method: 'PUT',
             headers,
             body: JSON.stringify({
-              subscribedCategories: userState.preferences.subscribedCategories.filter(id => id !== categoryId)
+              subscribedCategories: currentCategories.filter(id => id !== categoryId)
             })
           });
 
@@ -107,11 +108,12 @@ export function ContentPreferences({ onClose, feeds }: ContentPreferencesProps) 
           }
 
           const apiEndpoint = process.env.REACT_APP_API_ENDPOINT || 'https://api.parnoir.com';
+          const currentCategories = userState.preferences.subscribedCategories || [];
           const response = await fetch(`${apiEndpoint}/api/users/${userState.pnIdentifier}/preferences`, {
             method: 'PUT',
             headers,
             body: JSON.stringify({
-              subscribedCategories: [...userState.preferences.subscribedCategories, categoryId]
+              subscribedCategories: [...currentCategories, categoryId]
             })
           });
 

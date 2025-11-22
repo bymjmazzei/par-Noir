@@ -625,8 +625,8 @@ function App() {
     }
     if (activeFeedId === 'curated') {
       // Curated feed = all files from subscribed categories (niche feeds), filtered by content rating
-      const subscribedCategories = userState.preferences.subscribedCategories;
-      const subscribedFeedIds = userState.preferences.subscribedFeedIds;
+      const subscribedCategories = userState.preferences.subscribedCategories || [];
+      const subscribedFeedIds = userState.preferences.subscribedFeedIds || [];
       
       if (subscribedCategories.length === 0 && subscribedFeedIds.length === 0) {
         return []; // Empty curated feed if no subscriptions

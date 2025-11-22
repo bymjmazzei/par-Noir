@@ -146,14 +146,15 @@ export function UserStateProvider({ children }: { children: ReactNode }) {
 
   const subscribeToCategory = (categoryId: string) => {
     setUserState(prev => {
-      if (prev.preferences.subscribedCategories.includes(categoryId)) {
+      const currentCategories = prev.preferences.subscribedCategories || [];
+      if (currentCategories.includes(categoryId)) {
         return prev; // Already subscribed
       }
       return {
         ...prev,
         preferences: {
           ...prev.preferences,
-          subscribedCategories: [...prev.preferences.subscribedCategories, categoryId]
+          subscribedCategories: [...currentCategories, categoryId]
         }
       };
     });
@@ -164,13 +165,13 @@ export function UserStateProvider({ children }: { children: ReactNode }) {
       ...prev,
       preferences: {
         ...prev.preferences,
-        subscribedCategories: prev.preferences.subscribedCategories.filter(id => id !== categoryId)
+        subscribedCategories: (prev.preferences.subscribedCategories || []).filter(id => id !== categoryId)
       }
     }));
   };
 
   const isSubscribedToCategory = (categoryId: string): boolean => {
-    return userState.preferences.subscribedCategories.includes(categoryId);
+    return (userState.preferences.subscribedCategories || []).includes(categoryId);
   };
 
   const updateDisplayName = (displayName: string) => {
