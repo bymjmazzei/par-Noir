@@ -195,10 +195,24 @@ export class SecureMetadataCrypto {
       );
       
       // Update the specific field
-      const updatedMetadata: MetadataContent = {
-        ...currentMetadata,
-        [field]: value
-      };
+      // Special handling for dataPoints to ensure proper merging
+      let updatedMetadata: MetadataContent;
+      if (field === 'dataPoints' && currentMetadata.dataPoints && typeof value === 'object' && value !== null) {
+        // Merge dataPoints object to preserve existing fields
+        updatedMetadata = {
+          ...currentMetadata,
+          [field]: {
+            ...currentMetadata.dataPoints,
+            ...value
+          }
+        };
+      } else {
+        // For other fields or when dataPoints doesn't exist, replace entirely
+        updatedMetadata = {
+          ...currentMetadata,
+          [field]: value
+        };
+      }
       
       // Re-encrypt the updated metadata
       return await this.encryptMetadata(
