@@ -147,15 +147,7 @@ export function UploadModal({ feeds: propsFeeds, onClose, onUploadComplete }: Up
       <div 
         className="fixed top-0 left-0 right-0 h-12 flex items-center justify-between px-4 z-[100] bg-neutral-900 border-b border-neutral-800"
       >
-        {/* Left side - Lock button would be here with p-2 padding */}
-        <div className="w-9 h-9 flex-shrink-0" />
-        
-        {/* Center - Title */}
-        <h2 className="text-sm font-medium uppercase tracking-wide text-white flex-1 text-center">
-          Upload from Secure Cloud
-        </h2>
-        
-        {/* Right side - Settings button with same p-2 padding as lock button */}
+        {/* Left side - Settings button with same p-2 padding as lock button */}
         <button
           onClick={(e) => {
             e.preventDefault();
@@ -167,6 +159,14 @@ export function UploadModal({ feeds: propsFeeds, onClose, onUploadComplete }: Up
         >
           <Settings className="h-5 w-5" />
         </button>
+        
+        {/* Center - Title */}
+        <h2 className="text-sm font-medium uppercase tracking-wide text-white flex-1 text-center">
+          Upload from Secure Cloud
+        </h2>
+        
+        {/* Right side - Spacer for lock button */}
+        <div className="w-9 h-9 flex-shrink-0" />
       </div>
 
       {/* FileStorageAggregator Component */}
