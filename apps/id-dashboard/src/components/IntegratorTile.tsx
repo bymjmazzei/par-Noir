@@ -7,10 +7,9 @@ interface IntegratorTileProps {
   toolName: string;
   toolDescription: string;
   dataPoints: string[];
-  requiredDataPoints: string[];
-  optionalDataPoints: string[];
+  requiredDataPoints: string[]; // Set by third party - read-only
+  optionalDataPoints: string[]; // Set by third party - read-only
   onToggleDataPoint: (dataPointId: string, enabled: boolean) => void;
-  onSetRequired: (dataPointId: string, required: boolean) => void;
   globalDataPointSettings: Record<string, { globalSetting: boolean }>;
 }
 
@@ -22,7 +21,6 @@ export const IntegratorTile: React.FC<IntegratorTileProps> = ({
   requiredDataPoints,
   optionalDataPoints,
   onToggleDataPoint,
-  onSetRequired,
   globalDataPointSettings
 }) => {
   const [isExpanded, setIsExpanded] = useState(false);
@@ -87,45 +85,44 @@ export const IntegratorTile: React.FC<IntegratorTileProps> = ({
                     </div>
                     
                     <div className="flex items-center gap-3">
-                      {/* Required/Optional selector */}
-                      <select
-                        value={isRequired ? 'required' : 'optional'}
-                        onChange={(e) => {
-                          const required = e.target.value === 'required';
-                          onSetRequired(dataPoint.id, required);
-                        }}
-                        disabled={!isEnabled || isLocked}
-                        className="text-xs border border-border rounded px-2 py-1 bg-white text-text-primary disabled:opacity-50 disabled:cursor-not-allowed"
-                      >
-                        <option value="optional">Optional</option>
-                        <option value="required">Required</option>
-                      </select>
+                      {/* Required/Optional indicator (read-only, set by third party) */}
+                      <span className={`text-xs px-2 py-1 rounded border ${
+                        isRequired 
+                          ? 'text-red-600 border-red-300' 
+                          : 'text-blue-600 border-blue-300'
+                      }`}>
+                        {isRequired ? 'Required' : 'Optional'}
+                      </span>
                       
-                      {/* Enable/Disable toggle */}
+                      {/* Grant/Deny toggle (user controls this) - no background */}
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
-                          if (!isLocked) {
+                          if (!isLocked && !isRequired) {
                             onToggleDataPoint(dataPoint.id, !isEnabled);
                           }
                         }}
-                        disabled={isLocked}
+                        disabled={isLocked || isRequired} // Required data points must be enabled
                         className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors border-2 ${
                           isEnabled && !isLocked
-                            ? 'bg-primary border-primary' 
-                            : 'bg-white border-border'
-                        } ${isLocked ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
-                        aria-label={isEnabled ? 'Disable' : 'Enable'}
+                            ? 'border-primary' 
+                            : 'border-border'
+                        } ${isLocked || isRequired ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
+                        aria-label={isEnabled ? 'Revoke access' : 'Grant access'}
+                        title={isRequired ? 'Required by third party - must grant access' : isEnabled ? 'Revoke access to this data point' : 'Grant access to this data point'}
                       >
                         <span
-                          className={`inline-block h-4 w-4 transform rounded-full shadow-sm transition-transform ${
+                          className={`inline-block h-4 w-4 transform rounded-full transition-transform ${
                             isEnabled && !isLocked
-                              ? 'bg-white translate-x-6' 
-                              : 'bg-gray-600 translate-x-1'
+                              ? 'bg-primary translate-x-6' 
+                              : 'bg-gray-400 translate-x-1'
                           }`}
                         />
                       </button>
                       
+                      {isRequired && !isEnabled && (
+                        <span className="text-xs text-red-600">Required - must grant access</span>
+                      )}
                       {isLocked && (
                         <span className="text-xs text-text-secondary">Locked</span>
                       )}

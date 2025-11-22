@@ -5708,9 +5708,6 @@ This invitation expires in 24 hours.`;
                                   onToggleDataPoint={(dataPointId, enabled) => 
                                     handleToggleToolDataPoint(toolId, dataPointId, enabled)
                                   }
-                                  onSetRequired={(dataPointId, required) => 
-                                    handleSetToolDataPointRequired(toolId, dataPointId, required)
-                                  }
                                   globalDataPointSettings={privacySettings.dataPoints}
                                 />
                               ))}
