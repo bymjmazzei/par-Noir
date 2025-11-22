@@ -195,7 +195,7 @@ export function ContentPreferences({ onClose, feeds }: ContentPreferencesProps) 
                           // Age verified - update rating
                           console.log('[Rating Select] ✅ Verification passed, updating rating to:', newRating);
                           setAgeVerified(ratingInfo.ageRestriction);
-                          updateMaxRating(newRating);
+                          await updateMaxRating(newRating);
                         } else {
                           console.warn('[Rating Select] ❌ Verification failed - blocking change:', verifyData.verification);
                           alert(`Age verification failed. You must be at least ${ratingInfo.ageRestriction} to view ${newRating} content.`);
@@ -229,7 +229,7 @@ export function ContentPreferences({ onClose, feeds }: ContentPreferencesProps) 
                   } else {
                     // No verification needed or already verified
                     console.log('[Rating Select] No verification needed, updating rating to:', newRating);
-                    updateMaxRating(newRating);
+                    await updateMaxRating(newRating);
                   }
                 }}
                 disabled={isLoading}

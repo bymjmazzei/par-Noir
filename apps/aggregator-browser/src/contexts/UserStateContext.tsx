@@ -27,7 +27,7 @@ interface UserStateContextType {
   userState: UserState;
   setUnlocked: (pnIdentifier: string) => void;
   setLocked: () => void;
-  updateMaxRating: (rating: ContentRating) => void;
+  updateMaxRating: (rating: ContentRating) => Promise<void>;
   setAgeVerified: (age: number) => void;
   subscribeToFeed: (feedId: string) => void;
   unsubscribeFromFeed: (feedId: string) => void;
@@ -128,15 +128,18 @@ export function UserStateProvider({ children }: { children: ReactNode }) {
 
         if (response.ok) {
           const data = await response.json();
-          if (data.preferences?.subscribedCategories) {
+          if (data.preferences) {
             setUserState(prev => ({
               ...prev,
               preferences: {
                 ...prev.preferences,
-                subscribedCategories: data.preferences.subscribedCategories
+                ...(data.preferences.subscribedCategories && { subscribedCategories: data.preferences.subscribedCategories }),
+                ...(data.preferences.maxRating && { maxRating: data.preferences.maxRating as ContentRating }),
+                ...(data.preferences.ageVerified !== undefined && { ageVerified: data.preferences.ageVerified }),
+                ...(data.preferences.verifiedAge !== undefined && { verifiedAge: data.preferences.verifiedAge })
               }
             }));
-            console.log('Loaded preferences from Google Drive:', data.preferences.subscribedCategories);
+            console.log('Loaded preferences from Google Drive:', data.preferences);
           }
         } else if (response.status === 404) {
           // Endpoint not deployed yet - just use local state
@@ -311,7 +314,8 @@ export function UserStateProvider({ children }: { children: ReactNode }) {
     }));
   };
 
-  const updateMaxRating = (rating: ContentRating) => {
+  const updateMaxRating = async (rating: ContentRating) => {
+    // Update local state immediately
     setUserState(prev => ({
       ...prev,
       preferences: {
@@ -319,6 +323,40 @@ export function UserStateProvider({ children }: { children: ReactNode }) {
         maxRating: rating
       }
     }));
+
+    // Save to Google Drive if user is unlocked
+    if (userState.isUnlocked && userState.pnIdentifier) {
+      try {
+        const { PNOAuthService } = await import('../services/pnOAuthService');
+        const session = PNOAuthService.loadSession();
+        if (!session?.accessToken) {
+          console.warn('No access token, cannot save maxRating to Google Drive');
+          return;
+        }
+
+        const apiEndpoint = process.env.REACT_APP_API_ENDPOINT || 'https://api.parnoir.com';
+        const response = await fetch(`${apiEndpoint}/api/users/${userState.pnIdentifier}/preferences`, {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${session.accessToken}`
+          },
+          body: JSON.stringify({
+            maxRating: rating
+          })
+        });
+
+        if (response.ok) {
+          console.log('✅ Saved maxRating to Google Drive:', rating);
+        } else if (response.status === 404) {
+          console.warn('Preferences endpoint not available, keeping local state only');
+        } else {
+          console.warn('Failed to save maxRating to Google Drive:', response.status);
+        }
+      } catch (error) {
+        console.warn('Error saving maxRating to Google Drive:', error);
+      }
+    }
   };
 
   const setAgeVerified = (age: number) => {

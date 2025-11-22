@@ -13,7 +13,7 @@ export function RatingPreferences() {
   const { userState, updateMaxRating, setAgeVerified } = useUserState();
   const { maxRating, ageVerified, verifiedAge } = userState.preferences;
 
-  const handleRatingChange = (rating: ContentRating) => {
+  const handleRatingChange = async (rating: ContentRating) => {
     const ratingInfo = CONTENT_RATINGS[rating];
     
     // If rating requires verification and user hasn't verified, prompt
@@ -23,13 +23,13 @@ export function RatingPreferences() {
         const ageNum = parseInt(age, 10);
         if (ageNum >= ratingInfo.ageRestriction) {
           setAgeVerified(ageNum);
-          updateMaxRating(rating);
+          await updateMaxRating(rating);
         } else {
           alert(`You must be at least ${ratingInfo.ageRestriction} to view ${rating} content.`);
         }
       }
     } else {
-      updateMaxRating(rating);
+      await updateMaxRating(rating);
     }
   };
 
