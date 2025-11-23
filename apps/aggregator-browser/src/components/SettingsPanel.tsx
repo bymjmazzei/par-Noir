@@ -6,7 +6,7 @@
 import React from 'react';
 import { X, Shield, User, Bell, Globe } from 'lucide-react';
 import { useUserState } from '../contexts/UserStateContext';
-import { RatingPreferences } from './RatingPreferences';
+// RatingPreferences removed - will be replaced with NSFW toggle in Phase 7
 import { PNConnect } from './PNConnect';
 
 interface SettingsPanelProps {
@@ -69,14 +69,8 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
             </div>
           </section>
 
-          {/* Content Rating Preferences */}
-          <section>
-            <div className="flex items-center space-x-2 mb-4">
-              <Shield className="h-5 w-5 text-blue-400" />
-              <h3 className="text-lg font-semibold text-white">Content Preferences</h3>
-            </div>
-            <RatingPreferences />
-          </section>
+          {/* Content Preferences - NSFW toggle will be added in Phase 7 */}
+          {/* Removed rating preferences - replaced with simple NSFW toggle */}
 
           {/* Privacy & Safety */}
           <section>

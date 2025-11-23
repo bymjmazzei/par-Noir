@@ -1,68 +1,40 @@
 /**
- * Content Rating Badge Component
- * Displays content rating with appropriate styling
+ * Content Rating Badge Component (Simplified)
+ * Shows NSFW badge if content is NSFW
  */
 
 import React from 'react';
-import { Shield, Lock } from 'lucide-react';
-import { ContentRating } from '../types/aggregator';
-import { CONTENT_RATINGS } from '../constants/contentRatings';
+import { Shield } from 'lucide-react';
 
 interface ContentRatingBadgeProps {
-  rating: ContentRating;
+  isNSFW?: boolean;
   size?: 'sm' | 'md' | 'lg';
-  showIcon?: boolean;
   className?: string;
 }
 
 export function ContentRatingBadge({ 
-  rating, 
-  size = 'md', 
-  showIcon = false,
+  isNSFW = false, 
+  size = 'sm',
   className = '' 
 }: ContentRatingBadgeProps) {
-  const ratingInfo = CONTENT_RATINGS[rating];
-  const requiresVerification = ratingInfo.requiresVerification;
+  // Only show badge if content is NSFW
+  if (!isNSFW) {
+    return null;
+  }
 
   const sizeClasses = {
-    sm: 'text-xs px-1.5 py-0.5',
-    md: 'text-xs px-2 py-1',
-    lg: 'text-sm px-3 py-1.5'
-  };
-
-  const getRatingColor = (rating: ContentRating): string => {
-    switch (rating) {
-      case 'GA':
-        return 'bg-green-500/20 text-green-400 border-green-500/30';
-      case '18+':
-        return 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30';
-      case 'NSFW':
-        return 'bg-orange-500/20 text-orange-400 border-orange-500/30';
-      case 'X':
-        return 'bg-red-500/20 text-red-400 border-red-500/30';
-      default:
-        return 'bg-blue-500/20 text-blue-400 border-blue-500/30';
-    }
+    sm: 'h-4 w-4 text-xs',
+    md: 'h-5 w-5 text-sm',
+    lg: 'h-6 w-6 text-base'
   };
 
   return (
     <span
-      className={`
-        inline-flex items-center space-x-1 rounded-full border font-medium
-        ${sizeClasses[size]}
-        ${getRatingColor(rating)}
-        ${className}
-      `}
-      title={ratingInfo.description}
+      className={`inline-flex items-center space-x-1 px-2 py-1 bg-red-500/20 border border-red-500/50 rounded text-red-400 ${sizeClasses[size]} ${className}`}
+      title="NSFW - Not Safe For Work"
     >
-      {showIcon && requiresVerification && (
-        <Lock className={`${size === 'sm' ? 'h-2 w-2' : size === 'md' ? 'h-3 w-3' : 'h-4 w-4'}`} />
-      )}
-      {showIcon && !requiresVerification && (
-        <Shield className={`${size === 'sm' ? 'h-2 w-2' : size === 'md' ? 'h-3 w-3' : 'h-4 w-4'}`} />
-      )}
-      <span>{rating}</span>
+      <Shield className="h-3 w-3" />
+      <span>NSFW</span>
     </span>
   );
 }
-
