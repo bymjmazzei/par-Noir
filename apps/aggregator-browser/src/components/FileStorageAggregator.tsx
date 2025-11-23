@@ -827,7 +827,6 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
     locationName: string;
     locationAddress: string;
     license: string;
-    isNSFW: boolean;
   }>({
     name: '',
     description: '',
@@ -836,8 +835,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
     category: '',
     locationName: '',
     locationAddress: '',
-    license: 'all-rights-reserved',
-    isNSFW: false
+    license: 'all-rights-reserved'
   });
   const [fileMetadataMap, setFileMetadataMap] = useState<Map<string, any>>(new Map());
 
@@ -845,6 +843,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
   const [sharingFile, setSharingFile] = useState<DriveFile | null>(null);
   const [sharingAccountId, setSharingAccountId] = useState<string | null>(null);
   const [shareVisibility, setShareVisibility] = useState<'public' | 'private'>('private');
+  const [shareNSFW, setShareNSFW] = useState<boolean>(false);
   const [isSavingShare, setIsSavingShare] = useState(false);
   const [thirdPartyIndexers, setThirdPartyIndexers] = useState<any[]>([]);
   const [indexerToggles, setIndexerToggles] = useState<Record<string, boolean>>({});
@@ -960,9 +959,6 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
     const license = metadata?.license || metadata?.schema?.license || '';
     const licenseString = typeof license === 'object' && license?.name ? license.name : (typeof license === 'string' ? license : '') || 'all-rights-reserved';
     
-    // Extract isNSFW (default to false for public content)
-    const isNSFW = metadata?.isNSFW === true;
-    
     setEditForm({
       name: metadata?.name || (file.name.endsWith('.encrypted') ? file.name.replace('.encrypted', '') : file.name),
       description: metadata?.description || '',
@@ -971,8 +967,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
       category: category as FeedCategory | '',
       locationName: locationName,
       locationAddress: locationAddress,
-      license: licenseString,
-      isNSFW: isNSFW
+      license: licenseString
     });
     setEditingFile(file);
   };
@@ -1042,8 +1037,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
           feedCategories: editForm.category ? [editForm.category as FeedCategory] : undefined,
           category: editForm.category || undefined,
           locationCreated: locationCreated,
-          license: editForm.license || undefined,
-          isNSFW: editForm.isNSFW
+          license: editForm.license || undefined
         }),
       });
 
@@ -1113,6 +1107,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
     // Load existing metadata to determine current visibility
     const metadata = await loadFileMetadata(file.id);
     const isPublic = metadata?.isPublic || false;
+    const isNSFW = metadata?.isNSFW === true;
     const hasPublicToken = metadata?.publicToken && 
                           typeof metadata.publicToken === 'string' && 
                           metadata.publicToken.trim().length > 0;
@@ -1121,6 +1116,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
       fileId: file.id,
       fileName: file.name,
       isPublic,
+      isNSFW,
       hasPublicToken,
       publicTokenType: typeof metadata?.publicToken,
       publicTokenLength: metadata?.publicToken ? String(metadata.publicToken).length : 0
@@ -1135,6 +1131,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
     
     setSharingFile(file);
     setSharingAccountId(accountId);
+    setShareNSFW(isNSFW);
   };
 
   // Close share settings
@@ -1142,6 +1139,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
     setSharingFile(null);
     setSharingAccountId(null);
     setShareVisibility('private');
+    setShareNSFW(false);
     setThirdPartyIndexers([]);
     setIndexerToggles({});
     setIndexingPermissionsState(null);
@@ -1173,6 +1171,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
       const existingMetadata = fileMetadataMap.get(sharingFile.id);
       const targetFileId = existingMetadata?.fileId || sharingFile.id;
       const isCurrentlyPublic = existingMetadata?.isPublic || false;
+      const existingIsNSFW = existingMetadata?.isNSFW === true;
       const makePublic = shareVisibility === 'public';
 
       const blockedIds = Object.entries(indexerToggles)
@@ -1309,6 +1308,11 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
           updateBody.isPublic = makePublic;
         }
         
+        // Update NSFW status if changed
+        if (shareNSFW !== existingIsNSFW) {
+          updateBody.isNSFW = shareNSFW;
+        }
+        
         // Always include publicToken if we have one (newly generated or existing)
         // This ensures the API has the token for public files
         if (publicToken) {
@@ -1379,7 +1383,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
       }
 
       // Update local metadata map
-      if (makePublic || nextPermissions) {
+      if (makePublic || nextPermissions || shareNSFW !== existingMetadata?.isNSFW) {
         setFileMetadataMap(prev => {
           const next = new Map(prev);
           const current = next.get(sharingFile.id);
@@ -1387,6 +1391,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
             next.set(sharingFile.id, {
               ...current,
               isPublic: makePublic,
+              isNSFW: shareNSFW,
               ...(nextPermissions && { indexingPermissions: nextPermissions })
             });
           } else {
@@ -1394,6 +1399,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
             next.set(sharingFile.id, {
               fileId: sharingFile.id,
               isPublic: makePublic,
+              isNSFW: shareNSFW,
               ...(nextPermissions && { indexingPermissions: nextPermissions })
             } as any);
           }
@@ -2403,29 +2409,6 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
               </div>
 
               <div className="border-t border-neutral-700 pt-4 mt-4">
-                <h4 className="text-sm font-semibold text-text-primary mb-3">Content Rating</h4>
-                
-                <div className="space-y-4">
-                  <div>
-                    <label className="flex items-center space-x-3 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={editForm.isNSFW}
-                        onChange={(e) => setEditForm({ ...editForm, isNSFW: e.target.checked })}
-                        className="w-4 h-4 text-blue-600 bg-neutral-700 border-neutral-600 rounded focus:ring-blue-500 focus:ring-2"
-                      />
-                      <div>
-                        <span className="text-sm font-medium text-text-primary">NSFW Content</span>
-                    <p className="text-xs text-text-secondary mt-1">
-                          Mark this content as Not Safe For Work (18+)
-                    </p>
-                      </div>
-                    </label>
-                  </div>
-                </div>
-              </div>
-
-              <div className="border-t border-neutral-700 pt-4 mt-4">
                 <h4 className="text-sm font-semibold text-text-primary mb-3">Rights & Licensing</h4>
                 
                 <div className="space-y-4">
@@ -2466,8 +2449,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
         category: '',
         locationName: '',
         locationAddress: '',
-        license: 'all-rights-reserved',
-        isNSFW: false
+        license: 'all-rights-reserved'
       });
                   }}
                   className="px-4 py-2 text-sm font-medium text-text-secondary hover:text-text-primary transition-colors"
@@ -2549,6 +2531,39 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
                   })}
                 </div>
               </section>
+
+              {shareVisibility === 'public' && (
+                <section>
+                  <div className="flex items-center justify-between mb-3">
+                    <h3 className="text-sm font-semibold text-text-primary uppercase tracking-wide">
+                      Content Classification
+                    </h3>
+                  </div>
+                  
+                  <div className="space-y-4">
+                    <div className="flex items-center justify-between border border-neutral-800 bg-neutral-900/70 rounded-lg px-4 py-3">
+                      <div className="flex-1">
+                        <p className="text-sm font-semibold text-white uppercase tracking-wide mb-1">
+                          NSFW Content
+                        </p>
+                        <p className="text-xs text-text-secondary">
+                          Mark this content as Not Safe For Work (18+)
+                        </p>
+                      </div>
+                      <button
+                        onClick={() => setShareNSFW(!shareNSFW)}
+                        className={`px-4 py-2 text-xs font-semibold uppercase tracking-widest rounded-md border transition-colors ${
+                          shareNSFW
+                            ? 'bg-red-600 border-red-500 text-white'
+                            : 'bg-neutral-800 border-neutral-600 text-text-secondary hover:text-text-primary'
+                        }`}
+                      >
+                        {shareNSFW ? 'NSFW' : 'PUBLIC'}
+                      </button>
+                    </div>
+                  </div>
+                </section>
+              )}
 
               <section>
                 <div className="flex items-center justify-between mb-3">
