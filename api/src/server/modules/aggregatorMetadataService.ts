@@ -75,6 +75,7 @@ export interface PublicMetadata {
   // par Noir specific
   publicToken?: string;
   isPublic: boolean;
+  isNSFW?: boolean; // NSFW content flag
   
   // Linked Data
   sameAs?: string[];
