@@ -11,6 +11,7 @@ import { TextPostData, Feed } from '../types/aggregator';
 import { createTextPost } from '../services/textPostService';
 import { PNOAuthService } from '../services/pnOAuthService';
 import { FeedService } from '../services/feedService';
+import { Settings, X } from 'lucide-react';
 
 const apiEndpoint = process.env.REACT_APP_API_ENDPOINT || 'https://api.parnoir.com';
 
@@ -21,8 +22,9 @@ interface UploadModalProps {
 }
 
 export function UploadModal({ feeds: propsFeeds, onClose, onUploadComplete }: UploadModalProps) {
-  const { userState } = useUserState();
+  const { userState, toggleShowNSFW } = useUserState();
   const [showTextEditor, setShowTextEditor] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
   const [accountId, setAccountId] = useState<string | null>(null);
   const [feeds, setFeeds] = useState<Feed[]>(propsFeeds || []);
   
@@ -145,12 +147,24 @@ export function UploadModal({ feeds: propsFeeds, onClose, onUploadComplete }: Up
     <div className="h-full w-full bg-neutral-900 flex flex-col overflow-y-auto" style={{ paddingBottom: '64px' }}>
       {/* Railway Header */}
       <div 
-        className="fixed top-0 left-0 right-0 h-12 flex items-center justify-center px-4 z-[100] bg-neutral-900 border-b border-neutral-800"
+        className="fixed top-0 left-0 right-0 h-12 flex items-center justify-between px-4 z-[100] bg-neutral-900 border-b border-neutral-800"
       >
+        {/* Left - Settings Button */}
+        <button
+          onClick={() => setShowSettings(true)}
+          className="p-2 text-text-secondary hover:text-white transition-colors"
+          title="Settings"
+        >
+          <Settings className="h-5 w-5" />
+        </button>
+        
         {/* Center - Title */}
         <h2 className="text-sm font-medium uppercase tracking-wide text-white">
           Upload from Secure Cloud
         </h2>
+        
+        {/* Right - Spacer (for balance) */}
+        <div className="w-9" />
       </div>
 
       {/* FileStorageAggregator Component */}
@@ -165,6 +179,80 @@ export function UploadModal({ feeds: propsFeeds, onClose, onUploadComplete }: Up
         />
       </div>
 
+      {/* Settings Modal */}
+      {showSettings && (
+        <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-[150] p-4">
+          <div className="bg-neutral-900 rounded-xl max-w-md w-full max-h-[90vh] flex flex-col">
+            {/* Header */}
+            <div className="flex items-center justify-between p-6 border-b border-neutral-700">
+              <h2 className="text-xl font-bold text-white">Content Preferences</h2>
+              <button
+                onClick={() => setShowSettings(false)}
+                className="text-text-secondary hover:text-white transition-colors"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            {/* Content */}
+            <div className="flex-1 overflow-y-auto p-6 space-y-6">
+              {/* NSFW Content Toggle */}
+              <section>
+                <div className="bg-neutral-800/50 rounded-lg p-4 space-y-4">
+                  {userState.preferences.hasAgeZKP && userState.preferences.isOver18 ? (
+                    <div>
+                      <div className="flex items-center justify-between mb-2">
+                        <div className="flex-1">
+                          <p className="text-white text-sm font-medium mb-1">Show NSFW Content</p>
+                          <p className="text-text-secondary text-xs">
+                            Enable to view NSFW (18+) content in your feed
+                          </p>
+                        </div>
+                        <button
+                          type="button"
+                          role="switch"
+                          aria-checked={userState.preferences.showNSFW || false}
+                          onClick={async () => {
+                            if (toggleShowNSFW) {
+                              await toggleShowNSFW(!(userState.preferences.showNSFW || false));
+                            }
+                          }}
+                          className={`
+                            relative inline-flex h-6 w-11 items-center rounded-full transition-colors
+                            ${userState.preferences.showNSFW 
+                              ? 'bg-blue-600' 
+                              : 'bg-neutral-700'
+                            }
+                          `}
+                        >
+                          <span
+                            className={`
+                              inline-block h-4 w-4 transform rounded-full bg-white transition-transform
+                              ${userState.preferences.showNSFW ? 'translate-x-6' : 'translate-x-1'}
+                            `}
+                          />
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div>
+                      <p className="text-white text-sm font-medium mb-2">NSFW Content</p>
+                      <p className="text-text-secondary text-xs mb-3">
+                        Age verification required to access NSFW content.
+                      </p>
+                      <div className="rounded-lg border border-yellow-500/40 bg-yellow-500/10 px-4 py-3">
+                        <p className="text-yellow-200 text-xs">
+                          Please set up your age ZKP in your dashboard and share it with the browser app to enable NSFW content.
+                        </p>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </section>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

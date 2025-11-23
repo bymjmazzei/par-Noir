@@ -909,9 +909,9 @@ function App() {
       // Discover public files from all users (with optional force refresh)
       const publicFiles = await metadataIndexService.discoverFiles(finalFilters, forceRefresh);
       
-      // If user has age ZKP and is over 18, also load NSFW index
+      // If user has age ZKP, is over 18, AND has NSFW enabled, also load NSFW index
       let nsfwFiles: IndexedFile[] = [];
-      if (userState.preferences.hasAgeZKP && userState.preferences.isOver18) {
+      if (userState.preferences.hasAgeZKP && userState.preferences.isOver18 && userState.preferences.showNSFW) {
         try {
           const { CentralMetadataAggregator } = await import('./services/storage/CentralMetadataAggregator');
           const nsfwEntries = await CentralMetadataAggregator.fetchNSFWIndex({
