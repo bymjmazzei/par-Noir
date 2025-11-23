@@ -85,7 +85,7 @@ export type FeedCategory =
   | 'humor-meme-culture'
   | 'adults-only';
 
-export type ContentRating = 'GA' | '18+' | 'NSFW' | 'X';
+// ContentRating removed - using isNSFW boolean instead
 
 export interface PublicMetadata {
   fileId: string;

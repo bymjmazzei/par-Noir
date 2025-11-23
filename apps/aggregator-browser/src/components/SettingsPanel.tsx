@@ -93,24 +93,38 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
               </div>
               {userState.preferences.hasAgeZKP && userState.preferences.isOver18 ? (
                 <div>
-                  <label className="flex items-center space-x-3 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={userState.preferences.showNSFW || false}
-                      onChange={async (e) => {
-                        if (toggleShowNSFW) {
-                          await toggleShowNSFW(e.target.checked);
-                        }
-                      }}
-                      className="w-4 h-4 text-blue-600 bg-neutral-700 border-neutral-600 rounded focus:ring-blue-500 focus:ring-2"
-                    />
-                    <div>
-                      <span className="text-white text-sm font-medium">Show NSFW Content</span>
-                      <p className="text-text-secondary text-xs mt-1">
+                  <div className="flex items-center justify-between">
+                    <div className="flex-1">
+                      <p className="text-white text-sm font-medium mb-1">Show NSFW Content</p>
+                      <p className="text-text-secondary text-xs">
                         Enable to view NSFW (18+) content in your feed
                       </p>
                     </div>
-                  </label>
+                    <button
+                      type="button"
+                      role="switch"
+                      aria-checked={userState.preferences.showNSFW || false}
+                      onClick={async () => {
+                        if (toggleShowNSFW) {
+                          await toggleShowNSFW(!(userState.preferences.showNSFW || false));
+                        }
+                      }}
+                      className={`
+                        relative inline-flex h-6 w-11 items-center rounded-full transition-colors
+                        ${userState.preferences.showNSFW 
+                          ? 'bg-blue-600' 
+                          : 'bg-neutral-700'
+                        }
+                      `}
+                    >
+                      <span
+                        className={`
+                          inline-block h-4 w-4 transform rounded-full bg-white transition-transform
+                          ${userState.preferences.showNSFW ? 'translate-x-6' : 'translate-x-1'}
+                        `}
+                      />
+                    </button>
+                  </div>
                 </div>
               ) : (
                 <div>

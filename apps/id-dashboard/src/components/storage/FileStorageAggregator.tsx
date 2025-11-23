@@ -18,8 +18,7 @@ import { SecureCredentialManager } from '../../utils/secureCredentialManager';
 import { IntegrationCredentialManager } from '../../utils/integrationCredentialManager';
 import { LICENSE_TYPES } from '../../constants/licenses';
 import { FEED_CATEGORIES, FEED_CATEGORY_LIST } from '../../constants/feedCategories';
-import { ContentRating } from '../../types/aggregator';
-import { CONTENT_RATINGS, RATING_ORDER } from '../../constants/contentRatings';
+// ContentRating removed - using isNSFW boolean instead
 
 const GOOGLE_DRIVE_ICON_URL = GoogleDriveIconUrl;
 const DRIVE_ACCOUNTS_STORAGE_KEY = 'pn_google_drive_accounts';
@@ -123,7 +122,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
     locationName: string;
     locationAddress: string;
     license: string;
-    contentRating: ContentRating;
+    isNSFW: boolean;
   }>({ 
     name: '', 
     description: '', 
@@ -133,7 +132,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
     locationName: '',
     locationAddress: '',
     license: 'all-rights-reserved',
-    contentRating: 'GA'
+    isNSFW: false
   });
   const [openMenuFor, setOpenMenuFor] = useState<string | null>(null);
   const actionMenuRef = React.useRef<HTMLDivElement | null>(null);
@@ -4993,8 +4992,8 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
     const license = (metadata as any)?.license || (metadata as any)?.schema?.license || '';
     const licenseString = typeof license === 'object' && license?.name ? license.name : (typeof license === 'string' ? license : '') || 'all-rights-reserved';
     
-    // Extract content rating (default to GA if not set)
-    const contentRating = ((metadata as any)?.contentRating as ContentRating) || 'GA';
+    // Extract isNSFW (default to false for public content)
+    const isNSFW = ((metadata as any)?.isNSFW === true);
     
     setEditForm({
       name: metadata?.name || file.encrypted ? file.originalName || file.name.replace('.encrypted', '') : file.name,
@@ -5005,7 +5004,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
       locationName: locationName,
       locationAddress: locationAddress,
       license: licenseString,
-      contentRating: contentRating
+      isNSFW: isNSFW
     });
     setEditingFile(file);
   };
@@ -5072,7 +5071,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
           category: editForm.category || undefined,
           locationCreated: locationCreated,
           license: editForm.license || undefined,
-          contentRating: editForm.contentRating
+          isNSFW: editForm.isNSFW
         }),
       });
 
@@ -5200,7 +5199,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
                 ...(editForm.category && { feedCategories: [editForm.category as FeedCategory] }),
                 ...(locationCreated && { locationCreated }),
                 ...(editForm.license && { license: editForm.license }),
-                contentRating: editForm.contentRating || 'GA'
+                isNSFW: editForm.isNSFW || false
               },
               engagement: currentMetadata.engagement || {
                 views: 0,
@@ -5274,7 +5273,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
         locationName: '',
         locationAddress: '',
         license: 'all-rights-reserved',
-        contentRating: 'GA'
+        isNSFW: false
       });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to update metadata');
@@ -6763,7 +6762,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
         locationName: '',
         locationAddress: '',
         license: 'all-rights-reserved',
-        contentRating: 'GA'
+        isNSFW: false
       });
           }}
         >
@@ -6785,7 +6784,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
         locationName: '',
         locationAddress: '',
         license: 'all-rights-reserved',
-        contentRating: 'GA'
+        isNSFW: false
       });
                 }}
                 className="text-text-secondary hover:text-text-primary transition-colors"
@@ -6913,23 +6912,20 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
                 
                 <div className="space-y-4">
                   <div>
-                    <label className="block text-sm font-medium text-text-secondary mb-1">
-                      Rating
+                    <label className="flex items-center space-x-3 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={editForm.isNSFW}
+                        onChange={(e) => setEditForm({ ...editForm, isNSFW: e.target.checked })}
+                        className="w-4 h-4 text-blue-600 bg-neutral-700 border-neutral-600 rounded focus:ring-blue-500 focus:ring-2"
+                      />
+                      <div>
+                        <span className="text-sm font-medium text-text-primary">NSFW Content</span>
+                        <p className="text-xs text-text-secondary mt-1">
+                          Mark this content as Not Safe For Work (18+)
+                        </p>
+                      </div>
                     </label>
-                    <select
-                      value={editForm.contentRating}
-                      onChange={(e) => setEditForm({ ...editForm, contentRating: e.target.value as ContentRating })}
-                      className="w-full px-3 py-2 bg-neutral-700 border border-neutral-600 rounded-lg text-text-primary focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    >
-                      {RATING_ORDER.map((rating) => (
-                        <option key={rating} value={rating}>
-                          {rating}
-                        </option>
-                      ))}
-                    </select>
-                    <p className="text-xs text-text-secondary mt-1">
-                      {CONTENT_RATINGS[editForm.contentRating]?.description}
-                    </p>
                   </div>
                 </div>
               </div>
@@ -6976,7 +6972,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
         locationName: '',
         locationAddress: '',
         license: 'all-rights-reserved',
-        contentRating: 'GA'
+        isNSFW: false
       });
                   }}
                   className="px-4 py-2 text-sm font-medium text-text-secondary hover:text-text-primary transition-colors"
