@@ -125,20 +125,13 @@ export class CentralMetadataAggregator {
         const data: CentralIndexResponse = await response.json();
         console.log(`✅ [CentralMetadataAggregator] Received ${data.files?.length || 0} files from API`);
         
-        // Debug: Log NSFW status of files
+        // Warn if NSFW files are found in public index (should never happen)
         if (data.files && data.files.length > 0) {
           data.files.forEach((file: any) => {
             const metadata = file.metadata || {};
             const isNSFW = metadata.isNSFW;
-            const isNSFWType = typeof isNSFW;
-            if (isNSFW === true || isNSFW === 'true' || isNSFW === 'True') {
-              console.warn(`⚠️ [CentralMetadataAggregator] NSFW file found in PUBLIC index:`, {
-                fileId: file.file_id || metadata.fileId,
-                fileName: metadata.name,
-                isNSFW: isNSFW,
-                isNSFWType: isNSFWType,
-                metadata: JSON.stringify(metadata).substring(0, 200)
-              });
+            if (isNSFW === true || String(isNSFW).toLowerCase() === 'true') {
+              console.error(`❌ [CentralMetadataAggregator] NSFW file in PUBLIC index: ${file.file_id || metadata.fileId}`);
             }
           });
         }

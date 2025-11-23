@@ -614,21 +614,6 @@ function App() {
     const shouldShowFile = (file: IndexedFile): boolean => {
       const isNSFW = isNSFWContent(file.metadata);
       
-      // Debug logging for NSFW files
-      if (isNSFW && activeFeedId === 'public') {
-        console.log('[Filter] NSFW file detected:', {
-          fileId: file.metadata.fileId,
-          fileName: file.metadata.name,
-          isNSFW: true,
-          metadataIsNSFW: file.metadata.isNSFW,
-          isUnlocked: userState.isUnlocked,
-          showNSFW,
-          hasAgeZKP,
-          isOver18,
-          willShow: userState.isUnlocked && hasAgeZKP && isOver18 && showNSFW
-        });
-      }
-      
       // LOCKED USERS: Never show NSFW content, period
       if (!userState.isUnlocked && isNSFW) {
         return false;

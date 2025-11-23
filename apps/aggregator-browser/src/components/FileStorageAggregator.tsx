@@ -1157,21 +1157,11 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
 
   // Handle save share settings
   const handleSaveShareSettings = async () => {
-    console.log('🔵 [ShareSettings] Save button clicked!', {
-      sharingFile: sharingFile?.id,
-      shareNSFW,
-      shareVisibility
-    });
-    
-    if (!sharingFile) {
-      console.error('❌ [ShareSettings] No sharingFile, aborting');
-      return;
-    }
+    if (!sharingFile) return;
 
     try {
       setIsSavingShare(true);
       setError(null);
-      console.log('🔵 [ShareSettings] Starting save process...');
 
       const accessToken = await PNOAuthService.getValidAccessToken();
       if (!accessToken) {
@@ -1314,58 +1304,18 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
         const accountIdParam = sharingAccountId ? `?accountId=${encodeURIComponent(sharingAccountId)}` : '';
         const updateBody: any = {};
         
-        console.log('🔵 [ShareSettings] Building update body:', {
-          makePublic,
-          isCurrentlyPublic,
-          shareNSFW,
-          existingIsNSFW,
-          existingMetadataIsNSFW: existingMetadata?.isNSFW
-        });
-        
         if (makePublic !== isCurrentlyPublic) {
           updateBody.isPublic = makePublic;
-          console.log('📤 [ShareSettings] isPublic changed, adding to updateBody');
         }
         
         // ALWAYS update NSFW status if file is public (whether making public or already public)
         // This ensures NSFW status is always persisted for public files
         if (makePublic || isCurrentlyPublic) {
           updateBody.isNSFW = shareNSFW;
-          console.log('📤 [ShareSettings] Setting isNSFW for public file:', {
-            shareNSFW,
-            existingIsNSFW,
-            existingMetadataIsNSFW: existingMetadata?.isNSFW,
-            makePublic,
-            isCurrentlyPublic,
-            willSend: true,
-            updateBodyKeys: Object.keys(updateBody)
-          });
-        } else {
+        } else if (shareNSFW !== existingIsNSFW) {
           // File is private - only update if changed
-          if (shareNSFW !== existingIsNSFW) {
-            updateBody.isNSFW = shareNSFW;
-            console.log('📤 [ShareSettings] Updating isNSFW (changed, private file):', {
-              shareNSFW,
-              existingIsNSFW,
-              existingMetadataIsNSFW: existingMetadata?.isNSFW,
-              willSend: true
-            });
-          } else {
-            console.log('ℹ️ [ShareSettings] isNSFW unchanged (private file):', {
-              shareNSFW,
-              existingIsNSFW,
-              existingMetadataIsNSFW: existingMetadata?.isNSFW,
-              willSend: false
-            });
-          }
+          updateBody.isNSFW = shareNSFW;
         }
-        
-        console.log('🔵 [ShareSettings] Final updateBody before API call:', {
-          updateBody,
-          updateBodyKeys: Object.keys(updateBody),
-          hasIsNSFW: 'isNSFW' in updateBody,
-          isNSFWValue: updateBody.isNSFW
-        });
         
         // Always include publicToken if we have one (newly generated or existing)
         // This ensures the API has the token for public files
@@ -1387,12 +1337,6 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
           console.warn('⚠️ [ShareSettings] Making file public but no publicToken available - file may not load in public feed');
         }
         
-        console.log('📤 [ShareSettings] Sending update to API:', {
-          fileId: targetFileId,
-          updateBody,
-          updateBodyString: JSON.stringify(updateBody)
-        });
-        
         const metadataResponse = await fetch(`${apiEndpoint}/api/aggregator/metadata-index/${targetFileId}${accountIdParam}`, {
           method: 'PUT',
           headers: {
@@ -1404,18 +1348,9 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
         
         if (!metadataResponse.ok) {
           const errorText = await metadataResponse.text().catch(() => 'Unknown error');
-          console.error('❌ [ShareSettings] API update failed:', {
-            status: metadataResponse.status,
-            statusText: metadataResponse.statusText,
-            error: errorText
-          });
+          console.error('❌ [ShareSettings] API update failed:', errorText);
           throw new Error(`Failed to update file visibility: ${errorText}`);
         }
-        
-        const responseData = await metadataResponse.json().catch(() => null);
-        console.log('✅ [ShareSettings] API update successful:', {
-          response: responseData
-        });
 
         if (!metadataResponse.ok) {
           throw new Error('Failed to update file visibility');

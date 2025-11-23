@@ -1945,7 +1945,6 @@ class ProductionServer {
         }
 
         // Now update with provided fields
-        console.log(`[MetadataIndex PUT] Updating metadata for ${fileId}, isNSFW=${isNSFW}, isPublic=${isPublic}`);
         const updated = await service.updateMetadata(fileId, {
           name,
           description,
@@ -1962,7 +1961,6 @@ class ProductionServer {
           isNSFW,
           isPublic
         });
-        console.log(`[MetadataIndex PUT] Update complete for ${fileId}, isNSFW in result: ${updated?.isNSFW}`);
 
         // Also update isPublic if provided (or default for text posts)
         // If making file public for the first time, create companion metadata file

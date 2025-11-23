@@ -213,33 +213,15 @@ export class AggregatorMetadataServiceDB {
 
       const result = await db.query(query, params);
       
-      // Debug: Log all files and their isNSFW values to verify query is working
-      console.log(`🔍 [getPublicMetadata] Query returned ${result.rows.length} files. Checking isNSFW values:`);
+      // Check if any NSFW files slipped through the query (should never happen)
       result.rows.forEach((row: any) => {
         const metadata = row.metadata || {};
         const isNSFW = metadata.isNSFW;
-        const isNSFWType = typeof isNSFW;
-        const isNSFWString = String(isNSFW || '');
-        const isNSFWLower = isNSFWString.toLowerCase();
-        const rawMetadata = JSON.stringify(metadata).substring(0, 300);
-        
-        console.log(`  - File ${row.file_id} (${metadata.name || 'unnamed'}):`);
-        console.log(`    isNSFW=${isNSFW} (type: ${isNSFWType}, string: "${isNSFWString}", lower: "${isNSFWLower}")`);
-        console.log(`    Raw metadata: ${rawMetadata}`);
-        
-        // Warn if NSFW file slipped through - check all possible representations
-        const isNSFWValue = isNSFW === true || 
-                           isNSFW === 'true' || 
-                           isNSFW === 'True' || 
-                           isNSFW === 'TRUE' ||
-                           isNSFWLower === 'true';
+        const isNSFWString = String(isNSFW || '').toLowerCase();
+        const isNSFWValue = isNSFW === true || isNSFWString === 'true';
         
         if (isNSFWValue) {
-          console.error(`❌ [getPublicMetadata] NSFW FILE FOUND IN PUBLIC INDEX!`);
-          console.error(`    File ID: ${row.file_id}`);
-          console.error(`    File Name: ${metadata.name || 'unnamed'}`);
-          console.error(`    isNSFW value: ${isNSFW} (type: ${isNSFWType})`);
-          console.error(`    This file should have been filtered out by the SQL query!`);
+          console.error(`❌ [getPublicMetadata] NSFW FILE FOUND IN PUBLIC INDEX! File: ${row.file_id} (${metadata.name || 'unnamed'})`);
         }
       });
       
