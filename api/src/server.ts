@@ -4934,81 +4934,62 @@ class ProductionServer {
           finalParentFolderId = parentFolderId;
           console.log(`[CreateFolder] Using provided parent folder ID: ${parentFolderId}`);
         }
-        // Otherwise, if parentFolderName is provided, find or create it
+        // Otherwise, if parentFolderName is provided, find it (but don't create - use auto-find instead)
         else if (parentFolderName) {
-          console.log(`[CreateFolder] Searching for parent folder: ${parentFolderName}`);
-          const parentFolderSearchQuery = `name='${parentFolderName.replace(/'/g, "\\'")}' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
-          const parentFolderSearchUrl = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(parentFolderSearchQuery)}&fields=files(id,name)&pageSize=1`;
-          
-          console.log(`[CreateFolder] Parent folder search query: ${parentFolderSearchQuery}`);
-          
-          const parentFolderResponse = await fetch(parentFolderSearchUrl, {
-            headers: {
-              'Authorization': `Bearer ${accessToken}`
-            }
-          });
-          
-          if (parentFolderResponse.ok) {
-            const parentFolderData = await parentFolderResponse.json() as { files?: Array<{ id: string; name: string }> };
-            const parentFolderFiles = parentFolderData.files || [];
-            console.log(`[CreateFolder] Found ${parentFolderFiles.length} parent folder(s):`, parentFolderFiles);
-            if (parentFolderFiles.length > 0) {
-              finalParentFolderId = parentFolderFiles[0].id;
-              console.log(`[CreateFolder] Using parent folder ID: ${finalParentFolderId}`);
-            }
+          // SECURITY: Reject parentFolderName with DID - this should never happen
+          if (parentFolderName.includes('did:key:')) {
+            console.error(`[CreateFolder] Rejected parentFolderName with DID: ${parentFolderName}`);
+            // Don't return error - just ignore parentFolderName and use auto-find instead
+            console.log(`[CreateFolder] Ignoring parentFolderName with DID, using auto-find instead`);
           } else {
-            const errorText = await parentFolderResponse.text().catch(() => 'Unknown error');
-            console.error(`[CreateFolder] Failed to search for parent folder: ${parentFolderResponse.status} - ${errorText}`);
-          }
-
-          // If parent folder not found, try alternative name format
-          if (!finalParentFolderId && parentFolderName.includes('pn-')) {
-            const altParentFolderName = parentFolderName.replace('pn-', '');
-            const altParentFolderSearchQuery = `name='${altParentFolderName.replace(/'/g, "\\'")}' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
-            const altParentFolderSearchUrl = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(altParentFolderSearchQuery)}&fields=files(id,name)&pageSize=1`;
+            console.log(`[CreateFolder] Searching for parent folder: ${parentFolderName}`);
+            const parentFolderSearchQuery = `name='${parentFolderName.replace(/'/g, "\\'")}' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
+            const parentFolderSearchUrl = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(parentFolderSearchQuery)}&fields=files(id,name)&pageSize=1`;
             
-            const altParentFolderResponse = await fetch(altParentFolderSearchUrl, {
+            console.log(`[CreateFolder] Parent folder search query: ${parentFolderSearchQuery}`);
+            
+            const parentFolderResponse = await fetch(parentFolderSearchUrl, {
               headers: {
                 'Authorization': `Bearer ${accessToken}`
               }
             });
             
-            if (altParentFolderResponse.ok) {
-              const altParentFolderData = await altParentFolderResponse.json() as { files?: Array<{ id: string; name: string }> };
-              const altParentFolderFiles = altParentFolderData.files || [];
-              if (altParentFolderFiles.length > 0) {
-                finalParentFolderId = altParentFolderFiles[0].id;
+            if (parentFolderResponse.ok) {
+              const parentFolderData = await parentFolderResponse.json() as { files?: Array<{ id: string; name: string }> };
+              const parentFolderFiles = parentFolderData.files || [];
+              console.log(`[CreateFolder] Found ${parentFolderFiles.length} parent folder(s):`, parentFolderFiles);
+              if (parentFolderFiles.length > 0) {
+                finalParentFolderId = parentFolderFiles[0].id;
+                console.log(`[CreateFolder] Using parent folder ID: ${finalParentFolderId}`);
+              }
+            } else {
+              const errorText = await parentFolderResponse.text().catch(() => 'Unknown error');
+              console.error(`[CreateFolder] Failed to search for parent folder: ${parentFolderResponse.status} - ${errorText}`);
+            }
+
+            // If parent folder not found, try alternative name format
+            if (!finalParentFolderId && parentFolderName.includes('pn-')) {
+              const altParentFolderName = parentFolderName.replace('pn-', '');
+              const altParentFolderSearchQuery = `name='${altParentFolderName.replace(/'/g, "\\'")}' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
+              const altParentFolderSearchUrl = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(altParentFolderSearchQuery)}&fields=files(id,name)&pageSize=1`;
+              
+              const altParentFolderResponse = await fetch(altParentFolderSearchUrl, {
+                headers: {
+                  'Authorization': `Bearer ${accessToken}`
+                }
+              });
+              
+              if (altParentFolderResponse.ok) {
+                const altParentFolderData = await altParentFolderResponse.json() as { files?: Array<{ id: string; name: string }> };
+                const altParentFolderFiles = altParentFolderData.files || [];
+                if (altParentFolderFiles.length > 0) {
+                  finalParentFolderId = altParentFolderFiles[0].id;
+                }
               }
             }
-          }
-
-          // If parent folder still not found, create it
-          if (!finalParentFolderId) {
-            console.log(`[CreateFolder] Creating parent folder: ${parentFolderName}`);
-            const createParentFolderResponse = await fetch('https://www.googleapis.com/drive/v3/files', {
-              method: 'POST',
-              headers: {
-                'Authorization': `Bearer ${accessToken}`,
-                'Content-Type': 'application/json'
-              },
-              body: JSON.stringify({
-                name: parentFolderName,
-                mimeType: 'application/vnd.google-apps.folder'
-              })
-            });
             
-            if (createParentFolderResponse.ok) {
-              const createdParentFolder = await createParentFolderResponse.json() as { id: string };
-              finalParentFolderId = createdParentFolder.id;
-              console.log(`[CreateFolder] Created parent folder: ${parentFolderName} (ID: ${finalParentFolderId})`);
-            } else {
-              const errorText = await createParentFolderResponse.text().catch(() => 'Unknown error');
-              console.error(`[CreateFolder] Failed to create parent folder: ${createParentFolderResponse.status} - ${errorText}`);
-              return res.status(500).json({
-                error: 'Failed to create parent folder',
-                error_description: errorText
-              });
-            }
+            // NOTE: We no longer create parent folders here - if not found, auto-find will handle it below
+            // This prevents creating folders with wrong names (like DID folders)
           }
         }
         
