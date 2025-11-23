@@ -1816,6 +1816,10 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
           if (!pnIdentifier) {
             throw new Error('No pnIdentifier available. Please unlock your pN.');
           }
+          // Validate that we have a pnIdentifier, not a DID
+          if (pnIdentifier.startsWith('did:key:')) {
+            throw new Error('pnIdentifier is still a DID. Please reconnect your pN to get the correct identifier.');
+          }
           const pnFolderName = `par Noir - pn-${pnIdentifier}`;
           const baseFileName = file.name.replace(/\.pdf$/i, '');
           const pdfPagesFolderName = `${baseFileName}-pages`;

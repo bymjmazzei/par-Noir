@@ -53,13 +53,18 @@ export function PNConnect({ onConnect, compact = false }: PNConnectProps) {
             refreshToken: tokenResponse.refresh_token,
             expiresAt: Date.now() + (tokenResponse.expires_in * 1000),
             did: userInfo.did,
+            pnIdentifier: userInfo.pn_identifier, // Store pnIdentifier if available
             nickname: userInfo.nickname // Optional nickname if available
           };
 
           PNOAuthService.saveSession(session);
 
-          // Update user state
-          setUnlocked(userInfo.did);
+          // Update user state - use pn_identifier if available, otherwise fall back to DID
+          const identifier = userInfo.pn_identifier || userInfo.did;
+          if (!identifier) {
+            throw new Error('No identifier available from user info');
+          }
+          setUnlocked(identifier);
           success('Successfully connected your pN!');
           onConnect?.();
         } catch (err: any) {
