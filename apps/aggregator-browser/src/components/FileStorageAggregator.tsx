@@ -1811,45 +1811,32 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
         console.log('📄 [Upload] PDF detected, converting to PNG pages...');
         try {
           // Use API endpoint to create folders (handles Google Drive authentication properly)
-          // Get pnIdentifier from userState (set when user unlocks)
-          // Also check session as fallback, but prefer userState
-          let pnIdentifier = userState.pnIdentifier;
+          // IMPORTANT: Read pnIdentifier directly from session, not from userState closure
+          // This avoids React closure issues where userState might be stale
+          const currentSession = PNOAuthService.loadSession();
+          let pnIdentifier = currentSession?.pnIdentifier;
           
           // Debug logging
           console.log('🔍 [Upload] Checking pnIdentifier:', {
+            session_pnIdentifier: currentSession?.pnIdentifier,
+            session_did: currentSession?.did,
             userState_pnIdentifier: userState.pnIdentifier,
-            userState_isUnlocked: userState.isUnlocked,
-            session_did: session?.did,
-            session_pnIdentifier: session?.pnIdentifier
+            userState_isUnlocked: userState.isUnlocked
           });
           
-          // If userState doesn't have it or it's a DID, try to get from session
-          if (!pnIdentifier || pnIdentifier.startsWith('did:key:')) {
-            console.warn('⚠️ [Upload] userState.pnIdentifier is missing or is a DID, checking session...');
-            // Only use session.pnIdentifier if it exists and is not a DID
-            if (session?.pnIdentifier && !session.pnIdentifier.startsWith('did:key:')) {
-              pnIdentifier = session.pnIdentifier;
-              console.log('✅ [Upload] Using pnIdentifier from session:', pnIdentifier);
-            } else if (session?.pnIdentifier && session.pnIdentifier.startsWith('did:key:')) {
-              console.error('❌ [Upload] Session pnIdentifier is also a DID:', session.pnIdentifier);
-              throw new Error('Session pnIdentifier is still a DID. Please reconnect your pN to get the correct identifier.');
-            } else {
-              console.error('❌ [Upload] No valid pnIdentifier found in userState or session');
-              throw new Error('No valid pnIdentifier available. Please reconnect your pN.');
-            }
-          }
-          
+          // If session doesn't have pnIdentifier or it's a DID, throw error
           if (!pnIdentifier) {
-            throw new Error('No pnIdentifier available. Please unlock your pN.');
+            console.error('❌ [Upload] No pnIdentifier in session');
+            throw new Error('No pnIdentifier available in session. Please reconnect your pN.');
           }
           
-          // Final validation that we have a pnIdentifier, not a DID
+          // Validate that we have a pnIdentifier, not a DID
           if (pnIdentifier.startsWith('did:key:')) {
-            console.error('❌ [Upload] pnIdentifier is still a DID after all checks:', pnIdentifier);
-            throw new Error('pnIdentifier is still a DID. Please reconnect your pN to get the correct identifier.');
+            console.error('❌ [Upload] Session pnIdentifier is a DID:', pnIdentifier);
+            throw new Error('Session pnIdentifier is still a DID. Please reconnect your pN to get the correct identifier.');
           }
           
-          console.log('✅ [Upload] Using pnIdentifier:', pnIdentifier);
+          console.log('✅ [Upload] Using pnIdentifier from session:', pnIdentifier);
           const pnFolderName = `par Noir - pn-${pnIdentifier}`;
           const baseFileName = file.name.replace(/\.pdf$/i, '');
           const pdfPagesFolderName = `${baseFileName}-pages`;
