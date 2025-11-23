@@ -1701,6 +1701,9 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
 
       console.log('📤 [Upload] Starting upload...', { fileName: file.name, fileSize: file.size });
 
+      // Initialize encryption manager (needed for PDF conversion)
+      const encryptionManager = new EncryptionManager();
+
       // Check if this is a PDF - if so, convert to PNG pages first
       const isPDF = file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
       let pageFileIds: string[] = [];
@@ -1840,7 +1843,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
       const fileArrayBuffer = await file.arrayBuffer();
       const fileData = new Uint8Array(fileArrayBuffer);
       
-      const encryptionManager = new EncryptionManager();
+      // encryptionManager already initialized above
       const encrypted = await encryptionManager.encrypt(
         fileData,
         session.did, // Use DID as pnId (matches dashboard)
