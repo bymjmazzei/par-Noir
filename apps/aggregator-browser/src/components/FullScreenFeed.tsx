@@ -637,12 +637,15 @@ export function FullScreenFeed({
           file.fileType === 'image' || 
           (file.name || file.title || '').match(/\.(jpg|jpeg|png|gif|webp|svg|bmp|ico)$/i)
         );
-        const isPDF = !isTextPost && (
+        // Check if this is an image slideshow folder (folder ending with "-pages")
+        const isImageSlideshowFolder = !isTextPost && file.mimeType === 'application/vnd.google-apps.folder' && 
+          (file.name.toLowerCase().endsWith('-pages') || file.metadata?.pdfPagesFolderId);
+        
+        const isPDF = !isTextPost && !isImageSlideshowFolder && (
           file.fileType === 'document' ||
           file.fileType === 'pdf' ||
           (file.name || file.title || '').match(/\.pdf$/i) ||
-          file.mimeType === 'application/pdf' ||
-          (file.mimeType === 'application/vnd.google-apps.folder' && (file.name.toLowerCase().endsWith('-pages') || file.metadata?.pdfPagesFolderId)) // Treat PDF slideshow folders as PDFs
+          file.mimeType === 'application/pdf'
         );
         
         // Debug logging for ALL files to see what's happening
@@ -944,7 +947,32 @@ export function FullScreenFeed({
               );
             })()}
 
-            {/* PDF Slideshow */}
+            {/* Image Slideshow (from PDF conversion folder) */}
+            {isImageSlideshowFolder && !isTextPost && (() => {
+              // For image slideshow folders, use the folder ID directly (no token needed - images are loaded via API)
+              const folderId = file.metadata?.pdfPagesFolderId || fileId;
+              
+              console.log('[FullScreenFeed] Image slideshow folder metadata:', {
+                fileId,
+                folderId,
+                fileName,
+                accountId: file.accountId || file.backendFileId
+              });
+              
+              return (
+                <div className="w-full h-full relative z-10">
+                  <PDFSlideshow
+                    fileId={folderId}
+                    publicToken={{}} // Empty token - not needed for folder-based images
+                    fileName={fileName}
+                    pdfPagesFolderId={folderId} // Folder ID containing PNG pages
+                    accountId={file.accountId || file.backendFileId} // Get accountId from file
+                  />
+                </div>
+              );
+            })()}
+            
+            {/* PDF Slideshow (actual PDF files) */}
             {isPDF && !isTextPost && file.publicToken && (() => {
               // Parse token if it's a string
               let token: ShareToken | object = file.publicToken;
@@ -972,7 +1000,7 @@ export function FullScreenFeed({
                     fileId={fileId}
                     publicToken={token}
                     fileName={fileName}
-                    pdfPagesFolderId={file.metadata?.pdfPagesFolderId || fileId} // Use fileId if pdfPagesFolderId not in metadata (folder IS the file)
+                    pdfPagesFolderId={file.metadata?.pdfPagesFolderId} // Optional: pre-rendered pages folder
                     accountId={file.accountId || file.backendFileId} // Get accountId from file
                   />
                 </div>

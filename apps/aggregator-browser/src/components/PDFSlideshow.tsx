@@ -114,8 +114,10 @@ export function PDFSlideshow({ fileId, publicToken, fileName, pdfPagesFolderId, 
   }, [pdfPagesFolderId, accountId]);
 
   // Load and decrypt PDF (fallback if no pre-rendered pages)
+  // NOTE: If pdfPagesFolderId is provided and equals fileId, this is a folder-based slideshow (no PDF to load)
   useEffect(() => {
     if (usePreRenderedPages) return; // Skip if using pre-rendered pages
+    if (pdfPagesFolderId && pdfPagesFolderId === fileId) return; // Skip if folder IS the file (image slideshow, not PDF)
 
     const loadPDF = async () => {
       try {
