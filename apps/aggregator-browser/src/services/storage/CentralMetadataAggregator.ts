@@ -124,6 +124,25 @@ export class CentralMetadataAggregator {
       if (response.ok) {
         const data: CentralIndexResponse = await response.json();
         console.log(`✅ [CentralMetadataAggregator] Received ${data.files?.length || 0} files from API`);
+        
+        // Debug: Log NSFW status of files
+        if (data.files && data.files.length > 0) {
+          data.files.forEach((file: any) => {
+            const metadata = file.metadata || {};
+            const isNSFW = metadata.isNSFW;
+            const isNSFWType = typeof isNSFW;
+            if (isNSFW === true || isNSFW === 'true' || isNSFW === 'True') {
+              console.warn(`⚠️ [CentralMetadataAggregator] NSFW file found in PUBLIC index:`, {
+                fileId: file.file_id || metadata.fileId,
+                fileName: metadata.name,
+                isNSFW: isNSFW,
+                isNSFWType: isNSFWType,
+                metadata: JSON.stringify(metadata).substring(0, 200)
+              });
+            }
+          });
+        }
+        
         return data.files || [];
       } else if (response.status === 429 && retryCount < maxRetries) {
         // Rate limited - retry with exponential backoff
