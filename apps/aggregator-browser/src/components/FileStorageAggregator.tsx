@@ -1874,7 +1874,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
               },
               body: JSON.stringify({
                 folderName: pdfPagesFolderName,
-                parentFolderName: pnFolderName,
+                // Don't specify parentFolderName - let API auto-find pN folder (same as file uploads)
                 accountId: accountId
               })
             });
