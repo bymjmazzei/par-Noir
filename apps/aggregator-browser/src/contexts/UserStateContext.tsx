@@ -177,20 +177,41 @@ export function UserStateProvider({ children }: { children: ReactNode }) {
         if (response.ok) {
           const data = await response.json();
           if (data.preferences) {
-            setUserState(prev => ({
-              ...prev,
-              preferences: {
+            setUserState(prev => {
+              const localBlockedCategories = prev.preferences.blockedCategories || [];
+              const apiBlockedCategories = data.preferences.blockedCategories;
+              
+              // Preserve local blockedCategories if API doesn't provide it or returns empty array
+              // Only use API value if it's a non-empty array
+              const finalBlockedCategories = (apiBlockedCategories !== undefined && Array.isArray(apiBlockedCategories) && apiBlockedCategories.length > 0)
+                ? apiBlockedCategories
+                : localBlockedCategories; // Preserve local state
+              
+              const updatedPreferences = {
                 ...prev.preferences,
-                ...(data.preferences.subscribedCategories && { subscribedCategories: data.preferences.subscribedCategories }),
-                ...(data.preferences.blockedCategories && { blockedCategories: data.preferences.blockedCategories }),
-                ...(data.preferences.subscribedSubjects && { subscribedSubjects: data.preferences.subscribedSubjects }),
-                ...(data.preferences.blockedSubjects && { blockedSubjects: data.preferences.blockedSubjects }),
+                // Only update if API provides these values (preserve local state if not provided)
+                ...(data.preferences.subscribedCategories !== undefined && { subscribedCategories: data.preferences.subscribedCategories }),
+                blockedCategories: finalBlockedCategories, // Always set (either from API or preserve local)
+                ...(data.preferences.subscribedSubjects !== undefined && { subscribedSubjects: data.preferences.subscribedSubjects }),
+                ...(data.preferences.blockedSubjects !== undefined && { blockedSubjects: data.preferences.blockedSubjects }),
                 ...(data.preferences.hasAgeZKP !== undefined && { hasAgeZKP: data.preferences.hasAgeZKP }),
                 ...(data.preferences.isOver18 !== undefined && { isOver18: data.preferences.isOver18 }),
                 ...(data.preferences.showNSFW !== undefined && { showNSFW: data.preferences.showNSFW })
-              }
-            }));
-            console.log('Loaded preferences from Google Drive:', data.preferences);
+              };
+              
+              console.log('Loaded preferences from Google Drive:', {
+                apiResponse: data.preferences,
+                blockedCategoriesFromAPI: apiBlockedCategories,
+                localBlockedCategories,
+                finalBlockedCategories,
+                preservedLocal: finalBlockedCategories === localBlockedCategories
+              });
+              
+              return {
+                ...prev,
+                preferences: updatedPreferences
+              };
+            });
           }
         } else if (response.status === 404) {
           // Endpoint not deployed yet - just use local state
