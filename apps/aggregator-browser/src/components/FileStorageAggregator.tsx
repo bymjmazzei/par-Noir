@@ -1826,16 +1826,26 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
           // If userState doesn't have it or it's a DID, try to get from session
           if (!pnIdentifier || pnIdentifier.startsWith('did:key:')) {
             console.warn('⚠️ [Upload] userState.pnIdentifier is missing or is a DID, checking session...');
-            pnIdentifier = session?.pnIdentifier || session?.did;
+            // Only use session.pnIdentifier if it exists and is not a DID
+            if (session?.pnIdentifier && !session.pnIdentifier.startsWith('did:key:')) {
+              pnIdentifier = session.pnIdentifier;
+              console.log('✅ [Upload] Using pnIdentifier from session:', pnIdentifier);
+            } else if (session?.pnIdentifier && session.pnIdentifier.startsWith('did:key:')) {
+              console.error('❌ [Upload] Session pnIdentifier is also a DID:', session.pnIdentifier);
+              throw new Error('Session pnIdentifier is still a DID. Please reconnect your pN to get the correct identifier.');
+            } else {
+              console.error('❌ [Upload] No valid pnIdentifier found in userState or session');
+              throw new Error('No valid pnIdentifier available. Please reconnect your pN.');
+            }
           }
           
           if (!pnIdentifier) {
             throw new Error('No pnIdentifier available. Please unlock your pN.');
           }
           
-          // Validate that we have a pnIdentifier, not a DID
+          // Final validation that we have a pnIdentifier, not a DID
           if (pnIdentifier.startsWith('did:key:')) {
-            console.error('❌ [Upload] pnIdentifier is still a DID:', pnIdentifier);
+            console.error('❌ [Upload] pnIdentifier is still a DID after all checks:', pnIdentifier);
             throw new Error('pnIdentifier is still a DID. Please reconnect your pN to get the correct identifier.');
           }
           
