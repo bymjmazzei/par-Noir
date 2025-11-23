@@ -93,6 +93,9 @@ export interface PublicMetadata {
     updatedAt?: string;
   };
 
+  // PDF Pre-rendered Pages (for fast loading)
+  pdfPageFileIds?: string[]; // File IDs of pre-rendered PNG pages
+
   // Text Post / Thought Support
   textPost?: {
     content: string;

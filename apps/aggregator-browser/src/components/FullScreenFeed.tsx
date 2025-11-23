@@ -949,6 +949,16 @@ export function FullScreenFeed({
                 }
               }
               
+              // Debug: Log PDF metadata
+              console.log('[FullScreenFeed] PDF file metadata:', {
+                fileId,
+                fileName,
+                hasPdfPageFileIds: !!file.metadata?.pdfPageFileIds,
+                pdfPageFileIds: file.metadata?.pdfPageFileIds,
+                pdfPageFileIdsLength: file.metadata?.pdfPageFileIds?.length,
+                fullMetadata: file.metadata
+              });
+              
               return (
                 <div className="w-full h-full relative z-10">
                   <PDFSlideshow

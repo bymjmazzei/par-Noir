@@ -1563,6 +1563,7 @@ export class AggregatorMetadataServiceDB {
       isPublic?: boolean;
       subjects?: string[];
       feedCategories?: string[];
+      pdfPageFileIds?: string[];
     }
   ): Promise<PublicMetadata | null> {
     const db = getDatabasePool();
@@ -1616,7 +1617,9 @@ export class AggregatorMetadataServiceDB {
         ...(updates.inLanguage && { inLanguage: updates.inLanguage }),
         // Update subjects and feedCategories
         ...(updates.subjects !== undefined && { subjects: updates.subjects }),
-        ...(updates.feedCategories !== undefined && { feedCategories: updates.feedCategories })
+        ...(updates.feedCategories !== undefined && { feedCategories: updates.feedCategories }),
+        // Update PDF page file IDs
+        ...(updates.pdfPageFileIds !== undefined && { pdfPageFileIds: updates.pdfPageFileIds })
       };
 
       // Ensure keywords and tags are in sync

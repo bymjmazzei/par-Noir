@@ -1974,11 +1974,12 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
         // Users can mark content as NSFW during upload or edit
         
         // Create metadata entry via API (this also updates owner index automatically)
+        console.log(`📝 [Upload] Saving metadata with ${pageFileIds.length} PNG page file IDs`);
         const metadataResponse = await fetch(`${apiEndpoint}/api/aggregator/metadata-index/${fileId}`, {
           method: 'PUT',
           headers: {
             'Content-Type': 'application/json',
-            'Authorization': `Bearer ${accessToken}`
+            'Authorization': `Bearer ${freshAccessToken}` // Use fresh token
           },
           body: JSON.stringify({
             name: file.name,
