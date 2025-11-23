@@ -200,6 +200,23 @@ export class AggregatorMetadataServiceDB {
       query += ` ORDER BY am.updated_at DESC`;
 
       const result = await db.query(query, params);
+      
+      // Debug: Log all files and their isNSFW values to verify query is working
+      console.log(`🔍 [getPublicMetadata] Query returned ${result.rows.length} files. Checking isNSFW values:`);
+      result.rows.forEach((row: any) => {
+        const metadata = row.metadata || {};
+        const isNSFW = metadata.isNSFW;
+        const isNSFWType = typeof isNSFW;
+        const isNSFWString = metadata.isNSFW?.toString();
+        const isNSFWLower = isNSFWString?.toLowerCase();
+        console.log(`  - File ${row.file_id}: isNSFW=${isNSFW} (type: ${isNSFWType}, string: "${isNSFWString}", lower: "${isNSFWLower}")`);
+        
+        // Warn if NSFW file slipped through
+        if (isNSFW === true || isNSFW === 'true' || isNSFW === 'True' || isNSFWLower === 'true') {
+          console.error(`❌ [getPublicMetadata] NSFW FILE FOUND IN PUBLIC INDEX! File ${row.file_id} has isNSFW=${isNSFW}`);
+        }
+      });
+      
       let entries: CentralIndexEntry[] = result.rows.map(row => {
         const metadata = row.metadata as PublicMetadata & { feedIds?: string[] };
         // Add feedIds to metadata if they exist
