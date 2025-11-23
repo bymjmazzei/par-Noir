@@ -127,12 +127,12 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
                   </div>
                 </div>
               ) : (
-                <div>
-                  <p className="text-white text-sm mb-2">Content Filtering</p>
-                  <p className="text-text-secondary text-xs">
+              <div>
+                <p className="text-white text-sm mb-2">Content Filtering</p>
+                <p className="text-text-secondary text-xs">
                     Age verification required to access NSFW content.
-                  </p>
-                </div>
+                </p>
+              </div>
               )}
             </div>
           </section>

@@ -199,27 +199,7 @@ export const MainDashboard: React.FC<MainDashboardProps> = ({
             <div className="bg-modal-bg rounded-lg shadow p-6">
               {activeTab === 'privacy' && (
                 <div>
-                  <h3 className="text-lg font-semibold mb-4 text-theme-primary">Privacy Controls</h3>
-                  <div className="space-y-4">
-                    <div className="bg-modal-bg border border-border rounded-lg p-4">
-                      <h4 className="font-medium text-theme-primary mb-2">Data Sharing Preferences</h4>
-                      <div className="space-y-2">
-                        <label className="flex items-center">
-                          <input type="checkbox" className="mr-2" />
-                          <span className="text-theme-secondary">Allow third-party data sharing</span>
-                        </label>
-                        <label className="flex items-center">
-                          <input type="checkbox" className="mr-2" />
-                          <span className="text-theme-secondary">Enable analytics tracking</span>
-                        </label>
-                      </div>
-                    </div>
-                    <div className="bg-modal-bg border border-border rounded-lg p-4">
-                      <h4 className="font-medium text-theme-primary mb-2">Identity Verification</h4>
-                      <p className="text-theme-secondary mb-3">Manage how your identity is verified and shared.</p>
-                      <button className="modal-button">Configure Verification Settings</button>
-                    </div>
-                  </div>
+                  <p className="text-theme-secondary">Privacy & Sharing settings are managed in the main dashboard.</p>
                 </div>
               )}
 

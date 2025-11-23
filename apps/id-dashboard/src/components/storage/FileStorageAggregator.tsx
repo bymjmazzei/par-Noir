@@ -6917,7 +6917,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
               </div>
 
               <div className="border-t border-neutral-700 pt-4 mt-4">
-                <h4 className="text-sm font-semibold text-text-primary mb-3">Visibility & Content Rating</h4>
+                <h4 className="text-sm font-semibold text-text-primary mb-3">Visibility & Content</h4>
                 
                 <div className="space-y-4">
                   <div className="flex items-center justify-between">

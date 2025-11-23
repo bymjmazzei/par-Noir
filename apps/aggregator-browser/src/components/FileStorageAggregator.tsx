@@ -2416,9 +2416,9 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
                       />
                       <div>
                         <span className="text-sm font-medium text-text-primary">NSFW Content</span>
-                        <p className="text-xs text-text-secondary mt-1">
+                    <p className="text-xs text-text-secondary mt-1">
                           Mark this content as Not Safe For Work (18+)
-                        </p>
+                    </p>
                       </div>
                     </label>
                   </div>

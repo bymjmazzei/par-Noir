@@ -208,9 +208,9 @@ export function EditFileModal({ file, onClose, onSave }: EditFileModalProps) {
               />
               <div>
                 <span className="text-white font-medium">NSFW Content</span>
-                <p className="text-xs text-neutral-400 mt-1">
+            <p className="text-xs text-neutral-400 mt-1">
                   Mark this content as Not Safe For Work (18+)
-                </p>
+            </p>
               </div>
             </label>
           </div>
