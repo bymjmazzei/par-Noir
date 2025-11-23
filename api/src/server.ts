@@ -3410,7 +3410,7 @@ class ProductionServer {
       try {
         const { FeedService } = await import('./server/modules/feedService');
         const { feedId } = req.params;
-        const { feedName, feedDescription, feedCategory, ratingRange, branding, creatorDid } = req.body;
+        const { feedName, feedDescription, feedCategory, branding, creatorDid } = req.body;
 
         // Verify creator owns the feed
         const existingFeed = await FeedService.getFeedById(feedId);
@@ -3426,7 +3426,6 @@ class ProductionServer {
           feedName,
           feedDescription,
           feedCategory,
-          ratingRange,
           branding
         });
 
