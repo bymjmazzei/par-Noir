@@ -4,14 +4,19 @@
  */
 
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { ContentRating, Feed } from '../types/aggregator';
+import { Feed } from '../types/aggregator';
 
 export interface UserPreferences {
-  maxRating: ContentRating;
-  ageVerified: boolean;
-  verifiedAge?: number;
+  // Age verification (for NSFW access)
+  hasAgeZKP: boolean; // User has age attestation ZKP set up
+  isOver18: boolean; // Age ZKP verified to be over 18
+  showNSFW: boolean; // User preference to show NSFW content (default: false)
+  
+  // Feed subscriptions
   subscribedFeedIds: string[]; // Individual feed subscriptions
   subscribedCategories: string[]; // Niche category subscriptions (for curated feed)
+  
+  // Profile
   displayName?: string; // User's display name (defaults to nickname)
   profileImageFileId?: string; // FileId of profile image
   userDisplayNames?: Record<string, string>; // Map of creatorId -> displayName (for other users)
@@ -27,8 +32,8 @@ interface UserStateContextType {
   userState: UserState;
   setUnlocked: (pnIdentifier: string) => void;
   setLocked: () => void;
-  updateMaxRating: (rating: ContentRating) => Promise<void>;
-  setAgeVerified: (age: number) => Promise<void>;
+  setAgeZKPStatus: (hasAgeZKP: boolean, isOver18: boolean) => Promise<void>;
+  toggleShowNSFW: (show: boolean) => Promise<void>;
   subscribeToFeed: (feedId: string) => void;
   unsubscribeFromFeed: (feedId: string) => void;
   isSubscribedToFeed: (feedId: string) => boolean;
@@ -42,8 +47,9 @@ interface UserStateContextType {
 }
 
 const defaultPreferences: UserPreferences = {
-  maxRating: 'GA',
-  ageVerified: false,
+  hasAgeZKP: false,
+  isOver18: false,
+  showNSFW: false,
   subscribedFeedIds: [],
   subscribedCategories: []
 };

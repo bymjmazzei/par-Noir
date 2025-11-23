@@ -1,81 +1,18 @@
 /**
- * Content Rating Constants
- * Defines rating tiers, age restrictions, and descriptions
+ * Content Rating Constants (Simplified)
+ * Simple binary system: Public (default) or NSFW
  */
-
-import { ContentRating, ContentRatingInfo, WarningTag } from '../types/aggregator';
-
-export const CONTENT_RATINGS: Record<ContentRating, ContentRatingInfo> = {
-  'GA': {
-    rating: 'GA',
-    ageRestriction: 0,
-    requiresVerification: false,
-    description: 'All Audiences - Content suitable for all ages. No mature themes, violence, profanity, or sexual content.'
-  },
-  '18+': {
-    rating: '18+',
-    ageRestriction: 18,
-    requiresVerification: true,
-    description: '18+ - Content for mature audiences 18 and older. Explicit language, adult themes, potential non-explicit sexual content.'
-  },
-  'NSFW': {
-    rating: 'NSFW',
-    ageRestriction: 18,
-    requiresVerification: true,
-    description: 'NSFW - Adult content not suitable for workplace viewing. Strong sexual implications, nudity, graphic violence, explicit adult humor.'
-  },
-  'X': {
-    rating: 'X',
-    ageRestriction: 18,
-    requiresVerification: true,
-    description: 'X - Hardcore adult content. Hardcore sexual content or extreme violence. Hidden by default.'
-  }
-};
-
-export const RATING_ORDER: ContentRating[] = ['GA', '18+', 'NSFW', 'X'];
 
 /**
- * Check if a rating is acceptable based on max rating
+ * Check if content is NSFW
  */
-export function isRatingAcceptable(rating: ContentRating, maxRating: ContentRating): boolean {
-  const ratingIndex = RATING_ORDER.indexOf(rating);
-  const maxIndex = RATING_ORDER.indexOf(maxRating);
-  return ratingIndex <= maxIndex;
+export function isNSFWContent(metadata: { isNSFW?: boolean }): boolean {
+  return metadata.isNSFW === true;
 }
 
 /**
- * Get all ratings up to and including the max rating
+ * Get default content rating (always Public/not NSFW)
  */
-export function getAcceptableRatings(maxRating: ContentRating): ContentRating[] {
-  const maxIndex = RATING_ORDER.indexOf(maxRating);
-  return RATING_ORDER.slice(0, maxIndex + 1);
+export function getDefaultContentRating(): boolean {
+  return false; // false = Public (default)
 }
-
-export const WARNING_TAGS: Record<WarningTag, string> = {
-  'violence': 'Contains violent content',
-  'substance-use': 'Depicts drug or alcohol use',
-  'hate-speech': 'Contains potentially offensive language',
-  'graphic-content': 'Contains graphic imagery',
-  'sexual-content': 'Contains sexual themes',
-  'language': 'Contains strong language'
-};
-
-/**
- * Get default content rating based on user's age verification status
- * - If only age attested (basic verification): default to NSFW
- * - If age verified: default to X
- * - Otherwise: default to GA
- */
-export function getDefaultContentRating(ageVerified: boolean, verificationLevel?: 'basic' | 'enhanced' | 'verified'): ContentRating {
-  if (ageVerified) {
-    // If verified (not just basic attestation), default to X
-    if (verificationLevel === 'verified' || verificationLevel === 'enhanced') {
-      return 'X';
-    }
-    // If only basic attestation, default to NSFW
-    return 'NSFW';
-  }
-  // No age verification, default to GA
-  return 'GA';
-}
-

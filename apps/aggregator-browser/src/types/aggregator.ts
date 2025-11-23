@@ -125,29 +125,11 @@ export interface ShareToken {
 }
 
 // ============================================================================
-// Content Rating Types
+// Content Rating Types (Simplified to Public/NSFW)
 // ============================================================================
 
-export type ContentRating = 
-  | 'GA'      // All Audiences
-  | '18+'     // 18+
-  | 'NSFW'    // Not Safe For Work
-  | 'X';      // X (Hardcore)
-
-export type WarningTag =
-  | 'violence'
-  | 'substance-use'
-  | 'hate-speech'
-  | 'graphic-content'
-  | 'sexual-content'
-  | 'language';
-
-export interface ContentRatingInfo {
-  rating: ContentRating;
-  ageRestriction: number;
-  requiresVerification: boolean;
-  description: string;
-}
+// Simple boolean flag: false = Public (default), true = NSFW
+// No complex rating system needed
 
 // ============================================================================
 // Feed Types
@@ -180,7 +162,6 @@ export interface Feed {
   feedName: string;
   feedCategory: FeedCategory;
   feedDescription?: string;
-  feedRatingRange: ContentRating[]; // Accepted ratings for this feed
   creatorId: string; // pN identifier of feed host
   creatorTier: 'feed' | 'self-hosted';
   branding?: {
@@ -356,11 +337,8 @@ export interface PublicMetadata {
   sameAs?: string[];
   about?: string[];
   
-  // Content Rating System
-  contentRating?: ContentRating;
-  warningTags?: WarningTag[];
-  ageRestriction?: number;
-  requiresVerification?: boolean;
+  // Content Rating System (Simplified)
+  isNSFW?: boolean; // false = Public (default), true = NSFW
   
   // Feed Membership
   feedIds?: string[]; // IDs of feeds this content belongs to
@@ -401,7 +379,7 @@ export interface TextPostStyle {
 export interface TextPostData {
   content: string;
   style: TextPostStyle;
-  contentRating?: ContentRating;
+  isNSFW?: boolean; // false = Public (default), true = NSFW
   category?: FeedCategory;
 }
 
@@ -413,10 +391,8 @@ export interface MetadataFilters {
     from: string;
     to: string;
   };
-  // Rating filters
-  maxRating?: ContentRating; // Maximum acceptable rating
-  excludeRatings?: ContentRating[]; // Ratings to exclude
-  warningTags?: WarningTag[]; // Required or excluded warning tags
+  // NSFW filter
+  includeNSFW?: boolean; // Include NSFW content (requires age verification)
   // Feed filters
   feedId?: string; // Filter by specific feed
   feedCategory?: FeedCategory; // Filter by niche category
