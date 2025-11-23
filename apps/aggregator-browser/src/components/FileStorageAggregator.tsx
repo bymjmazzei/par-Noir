@@ -1810,7 +1810,6 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
       if (isPDF) {
         console.log('📄 [Upload] PDF detected, converting to PNG pages...');
         try {
-          // Use API endpoint to create folders (handles Google Drive authentication properly)
           // CRITICAL: Read pnIdentifier directly from session at upload time, not from React state
           // React closures can capture stale state values, so we need to read fresh from session
           const currentSession = PNOAuthService.loadSession();
@@ -1837,47 +1836,22 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
           }
           
           console.log('✅ [Upload] Using pnIdentifier from session:', pnIdentifier);
-          const pnFolderName = `par Noir - pn-${pnIdentifier}`;
           const baseFileName = file.name.replace(/\.pdf$/i, '');
           const pdfPagesFolderName = `${baseFileName}-pages`;
           
-          // Get access token for API calls
-          const apiAccessToken = await PNOAuthService.getValidAccessToken();
+          // Refresh access token before folder operations (ensures it's valid)
+          let apiAccessToken = await PNOAuthService.getValidAccessToken(true); // Force refresh
           if (!apiAccessToken) {
             throw new Error('No access token for folder creation');
           }
           
-          // First, create or get pN folder via API
-          console.log(`📁 [Upload] Creating/finding pN folder via API: ${pnFolderName}`);
-          const createPnFolderResponse = await fetch(`${apiEndpoint}/api/drive/folders`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${apiAccessToken}`
-            },
-            body: JSON.stringify({
-              folderName: pnFolderName,
-              accountId: accountId
-            })
-          });
+          // Use the same pattern as regular file uploads: let the API find/create the pN folder automatically
+          // We'll create the PDF pages folder and let the API put it in the pN folder
+          // First, try to find the pN folder by searching for it via the file upload endpoint pattern
+          const pnFolderName = `par Noir - pn-${pnIdentifier}`;
           
-          if (!createPnFolderResponse.ok) {
-            const errorText = await createPnFolderResponse.text().catch(() => 'Unknown error');
-            console.error(`❌ [Upload] Failed to create pN folder: ${createPnFolderResponse.status} - ${errorText}`);
-            throw new Error(`Failed to create pN folder: ${errorText}`);
-          }
-          
-          const pnFolderData = await createPnFolderResponse.json();
-          const pnFolderId = pnFolderData.folder?.id;
-          
-          if (!pnFolderId) {
-            throw new Error('Failed to get pN folder ID from API response');
-          }
-          
-          console.log(`✅ [Upload] pN folder ready: ${pnFolderName} (ID: ${pnFolderId})`);
-          
-          // Now create PDF pages folder inside pN folder via API
-          console.log(`📁 [Upload] Creating PDF pages folder via API: ${pdfPagesFolderName}`);
+          // Create PDF pages folder - the API will automatically find the pN folder and create this inside it
+          console.log(`📁 [Upload] Creating PDF pages folder via API: ${pdfPagesFolderName} (will be created inside pN folder)`);
           const createPagesFolderResponse = await fetch(`${apiEndpoint}/api/drive/folders`, {
             method: 'POST',
             headers: {
@@ -1886,26 +1860,47 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
             },
             body: JSON.stringify({
               folderName: pdfPagesFolderName,
-              parentFolderId: pnFolderId, // Use folder ID directly instead of name
+              parentFolderName: pnFolderName, // Let API find/create the pN folder automatically
               accountId: accountId
             })
           });
           
           if (!createPagesFolderResponse.ok) {
-            const errorText = await createPagesFolderResponse.text().catch(() => 'Unknown error');
-            console.error(`❌ [Upload] Failed to create PDF pages folder: ${createPagesFolderResponse.status} - ${errorText}`);
-            throw new Error(`Failed to create PDF pages folder: ${errorText}`);
+            // If folder creation fails, refresh token and try once more
+            console.warn(`⚠️ [Upload] Folder creation failed (${createPagesFolderResponse.status}), refreshing token and retrying...`);
+            apiAccessToken = await PNOAuthService.getValidAccessToken(true); // Force refresh
+            
+            const retryResponse = await fetch(`${apiEndpoint}/api/drive/folders`, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${apiAccessToken}`
+              },
+              body: JSON.stringify({
+                folderName: pdfPagesFolderName,
+                parentFolderName: pnFolderName,
+                accountId: accountId
+              })
+            });
+            
+            if (!retryResponse.ok) {
+              const errorText = await retryResponse.text().catch(() => 'Unknown error');
+              console.error(`❌ [Upload] Failed to create PDF pages folder after retry: ${retryResponse.status} - ${errorText}`);
+              throw new Error(`Failed to create PDF pages folder: ${errorText}`);
+            }
+            
+            const pagesFolderData = await retryResponse.json();
+            pdfPagesFolderId = pagesFolderData.folder?.id;
+          } else {
+            const pagesFolderData = await createPagesFolderResponse.json();
+            pdfPagesFolderId = pagesFolderData.folder?.id;
           }
-          
-          const pagesFolderData = await createPagesFolderResponse.json();
-          pdfPagesFolderId = pagesFolderData.folder?.id;
           
           if (!pdfPagesFolderId) {
             throw new Error('Failed to get PDF pages folder ID from API response');
           }
           
           console.log(`✅ [Upload] Created PDF pages folder: ${pdfPagesFolderName} (ID: ${pdfPagesFolderId})`);
-          console.log(`📋 [Upload] Folder details:`, pagesFolderData.folder);
           
           // Verify folder was created in the correct location by querying it directly
           try {
