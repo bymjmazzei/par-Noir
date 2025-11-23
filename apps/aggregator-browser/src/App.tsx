@@ -609,7 +609,8 @@ function App() {
     const isOver18 = userState.preferences.isOver18;
     
     // Helper to check if file should be shown based on NSFW preference
-    // ALWAYS filter out NSFW content if user doesn't have it enabled
+    // LOCKED USERS: Never show NSFW content, period
+    // UNLOCKED USERS: Only show NSFW if age-verified and enabled
     const shouldShowFile = (file: IndexedFile): boolean => {
       const isNSFW = isNSFWContent(file.metadata);
       
@@ -620,20 +621,22 @@ function App() {
           fileName: file.metadata.name,
           isNSFW: true,
           metadataIsNSFW: file.metadata.isNSFW,
+          isUnlocked: userState.isUnlocked,
           showNSFW,
           hasAgeZKP,
           isOver18,
-          willShow: hasAgeZKP && isOver18 && showNSFW
+          willShow: userState.isUnlocked && hasAgeZKP && isOver18 && showNSFW
         });
       }
       
-      // If content is NSFW, only show if:
-      // 1. User has age ZKP AND is over 18 AND showNSFW is enabled
+      // LOCKED USERS: Never show NSFW content, period
+      if (!userState.isUnlocked && isNSFW) {
+        return false;
+      }
+      
+      // UNLOCKED USERS: Only show NSFW if age-verified and enabled
       if (isNSFW) {
-        if (!hasAgeZKP || !isOver18 || !showNSFW) {
-          return false; // Hide NSFW content
-        }
-        return true; // Show NSFW content
+        return hasAgeZKP && isOver18 && showNSFW;
       }
       
       // Show public (non-NSFW) content
