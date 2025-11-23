@@ -634,12 +634,15 @@ function App() {
       return indexedFiles.filter(shouldShowFile);
     }
     if (activeFeedId === 'curated') {
-      // Curated feed = all files from subscribed categories (niche feeds), filtered by NSFW preference
+      // Curated feed = all files from subscribed categories (niche feeds), filtered by NSFW preference and subjects
       const subscribedCategories = userState.preferences.subscribedCategories || [];
       const subscribedFeedIds = userState.preferences.subscribedFeedIds || [];
+      const subscribedSubjects = userState.preferences.subscribedSubjects || [];
+      const blockedSubjects = userState.preferences.blockedSubjects || [];
       
-      if (subscribedCategories.length === 0 && subscribedFeedIds.length === 0) {
-        return []; // Empty curated feed if no subscriptions
+      if (subscribedCategories.length === 0 && subscribedFeedIds.length === 0 && subscribedSubjects.length === 0) {
+        // If no subscriptions at all, show all content (like unlocked user)
+        return indexedFiles.filter(file => shouldShowFile(file));
       }
       
       return indexedFiles.filter(file => {
@@ -652,8 +655,34 @@ function App() {
         const inSubscribedFeed = subscribedFeedIds.length > 0 &&
           file.metadata.feedIds?.some(feedId => subscribedFeedIds.includes(feedId));
         
-        // Must match at least one subscription (category or feed)
-        if (!matchesCategory && !inSubscribedFeed) return false;
+        // Subject filtering
+        const fileSubjects = (file.metadata.subjects || []).map(s => s.toLowerCase().trim());
+        
+        // If user has subscribed subjects, only show matching content
+        let matchesSubject = true;
+        if (subscribedSubjects.length > 0) {
+          const normalizedSubscribed = subscribedSubjects.map(s => s.toLowerCase().trim());
+          matchesSubject = fileSubjects.some(subject => 
+            normalizedSubscribed.includes(subject)
+          );
+        }
+        
+        // Always exclude blocked subjects
+        let hasBlockedSubject = false;
+        if (blockedSubjects.length > 0) {
+          const normalizedBlocked = blockedSubjects.map(s => s.toLowerCase().trim());
+          hasBlockedSubject = fileSubjects.some(subject => 
+            normalizedBlocked.includes(subject)
+          );
+        }
+        
+        // Must match at least one subscription (category, feed, or subject)
+        // If user has subscribed subjects, must match those too
+        const matchesSubscription = matchesCategory || inSubscribedFeed;
+        const subjectFilterPasses = subscribedSubjects.length === 0 ? true : matchesSubject;
+        
+        if (!matchesSubscription && !subjectFilterPasses) return false;
+        if (hasBlockedSubject) return false;
         
         // Filter by NSFW preference
         return shouldShowFile(file);
@@ -690,7 +719,7 @@ function App() {
     );
     filtered = filtered.filter(shouldShowFile);
     return filtered;
-  }, [indexedFiles, activeFeedId, userState.preferences.subscribedFeedIds, userState.preferences.showNSFW, userState.preferences.hasAgeZKP, userState.preferences.isOver18, userState.isUnlocked, feeds]);
+  }, [indexedFiles, activeFeedId, userState.preferences.subscribedFeedIds, userState.preferences.subscribedCategories, userState.preferences.subscribedSubjects, userState.preferences.blockedSubjects, userState.preferences.showNSFW, userState.preferences.hasAgeZKP, userState.preferences.isOver18, userState.isUnlocked, feeds]);
 
   // Navigation handlers (memoized)
 

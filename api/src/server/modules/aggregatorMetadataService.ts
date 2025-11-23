@@ -81,6 +81,10 @@ export interface PublicMetadata {
   sameAs?: string[];
   about?: string[];
 
+  // Subject Niches (auto-extracted from description/tags/keywords)
+  subjects?: string[]; // Subject niches (e.g., ["cowboy", "horses", "ranch"])
+  feedCategories?: string[]; // Niche categories (e.g., ["lifestyle", "entertainment"])
+
   // Third-party indexing permissions
   indexingPermissions?: {
     mode?: 'all' | 'custom' | 'none';

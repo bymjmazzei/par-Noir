@@ -312,6 +312,14 @@ export async function createTextPost(
       throw new Error('No valid access token for metadata update');
     }
 
+    // Extract subjects from text post content and metadata
+    const { extractSubjects } = await import('../utils/subjectExtractor');
+    const subjects = extractSubjects(
+      metadata?.description || textPost.content,
+      metadata?.tags || [],
+      metadata?.keywords || []
+    );
+
     // Create metadata entry with text post data
     console.log('📝 [TextPost] Creating metadata entry with text post data...');
     const metadataResponse = await fetch(`${apiEndpoint}/api/aggregator/metadata-index/${fileId}`, {
@@ -334,6 +342,7 @@ export async function createTextPost(
         isNSFW: metadata?.isNSFW || false,
         feedCategories: metadata?.keywords && metadata.keywords.length > 0 ? metadata.keywords : undefined,
         category: metadata?.keywords && metadata.keywords.length > 0 ? metadata.keywords[0] : undefined,
+        subjects: subjects.length > 0 ? subjects : undefined,
       }),
     });
 

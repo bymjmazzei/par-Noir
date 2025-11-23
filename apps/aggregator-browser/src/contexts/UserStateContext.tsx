@@ -16,6 +16,10 @@ export interface UserPreferences {
   subscribedFeedIds: string[]; // Individual feed subscriptions
   subscribedCategories: string[]; // Niche category subscriptions (for curated feed)
   
+  // Subject niche preferences
+  subscribedSubjects: string[]; // Subjects user wants to see (e.g., ["cowboy", "horses"])
+  blockedSubjects: string[]; // Subjects user wants to block (e.g., ["football", "sports"])
+  
   // Profile
   displayName?: string; // User's display name (defaults to nickname)
   profileImageFileId?: string; // FileId of profile image
@@ -40,6 +44,12 @@ interface UserStateContextType {
   subscribeToCategory: (categoryId: string) => void;
   unsubscribeFromCategory: (categoryId: string) => void;
   isSubscribedToCategory: (categoryId: string) => boolean;
+  subscribeToSubject: (subject: string) => void;
+  unsubscribeFromSubject: (subject: string) => void;
+  isSubscribedToSubject: (subject: string) => boolean;
+  blockSubject: (subject: string) => void;
+  unblockSubject: (subject: string) => void;
+  isBlockedSubject: (subject: string) => boolean;
   updateDisplayName: (displayName: string) => void;
   updateProfileImageFileId: (fileId: string) => void;
   setUserDisplayName: (creatorId: string, displayName: string) => void;
@@ -51,7 +61,9 @@ const defaultPreferences: UserPreferences = {
   isOver18: false,
   showNSFW: false,
   subscribedFeedIds: [],
-  subscribedCategories: []
+  subscribedCategories: [],
+  subscribedSubjects: [],
+  blockedSubjects: []
 };
 
 const defaultUserState: UserState = {
@@ -73,6 +85,19 @@ export function UserStateProvider({ children }: { children: ReactNode }) {
           parsed.preferences = {
             ...parsed.preferences,
             subscribedCategories: []
+          };
+        }
+        // Ensure subject preferences exist for backward compatibility
+        if (!parsed.preferences?.subscribedSubjects) {
+          parsed.preferences = {
+            ...parsed.preferences,
+            subscribedSubjects: []
+          };
+        }
+        if (!parsed.preferences?.blockedSubjects) {
+          parsed.preferences = {
+            ...parsed.preferences,
+            blockedSubjects: []
           };
         }
         // Migrate old rating preferences to new NSFW system
@@ -145,6 +170,8 @@ export function UserStateProvider({ children }: { children: ReactNode }) {
               preferences: {
                 ...prev.preferences,
                 ...(data.preferences.subscribedCategories && { subscribedCategories: data.preferences.subscribedCategories }),
+                ...(data.preferences.subscribedSubjects && { subscribedSubjects: data.preferences.subscribedSubjects }),
+                ...(data.preferences.blockedSubjects && { blockedSubjects: data.preferences.blockedSubjects }),
                 ...(data.preferences.hasAgeZKP !== undefined && { hasAgeZKP: data.preferences.hasAgeZKP }),
                 ...(data.preferences.isOver18 !== undefined && { isOver18: data.preferences.isOver18 }),
                 ...(data.preferences.showNSFW !== undefined && { showNSFW: data.preferences.showNSFW })
@@ -508,6 +535,74 @@ export function UserStateProvider({ children }: { children: ReactNode }) {
     return (userState.preferences.subscribedCategories || []).includes(categoryId);
   };
 
+  const subscribeToSubject = (subject: string) => {
+    setUserState(prev => {
+      const normalizedSubject = subject.toLowerCase().trim();
+      const currentSubjects = prev.preferences.subscribedSubjects || [];
+      if (currentSubjects.includes(normalizedSubject)) {
+        return prev; // Already subscribed
+      }
+      // Remove from blocked if it's there
+      const updatedBlocked = (prev.preferences.blockedSubjects || []).filter(s => s !== normalizedSubject);
+      return {
+        ...prev,
+        preferences: {
+          ...prev.preferences,
+          subscribedSubjects: [...currentSubjects, normalizedSubject],
+          blockedSubjects: updatedBlocked
+        }
+      };
+    });
+  };
+
+  const unsubscribeFromSubject = (subject: string) => {
+    setUserState(prev => ({
+      ...prev,
+      preferences: {
+        ...prev.preferences,
+        subscribedSubjects: (prev.preferences.subscribedSubjects || []).filter(s => s !== subject.toLowerCase().trim())
+      }
+    }));
+  };
+
+  const isSubscribedToSubject = (subject: string): boolean => {
+    return (userState.preferences.subscribedSubjects || []).includes(subject.toLowerCase().trim());
+  };
+
+  const blockSubject = (subject: string) => {
+    setUserState(prev => {
+      const normalizedSubject = subject.toLowerCase().trim();
+      const currentBlocked = prev.preferences.blockedSubjects || [];
+      if (currentBlocked.includes(normalizedSubject)) {
+        return prev; // Already blocked
+      }
+      // Remove from subscribed if it's there
+      const updatedSubscribed = (prev.preferences.subscribedSubjects || []).filter(s => s !== normalizedSubject);
+      return {
+        ...prev,
+        preferences: {
+          ...prev.preferences,
+          blockedSubjects: [...currentBlocked, normalizedSubject],
+          subscribedSubjects: updatedSubscribed
+        }
+      };
+    });
+  };
+
+  const unblockSubject = (subject: string) => {
+    setUserState(prev => ({
+      ...prev,
+      preferences: {
+        ...prev.preferences,
+        blockedSubjects: (prev.preferences.blockedSubjects || []).filter(s => s !== subject.toLowerCase().trim())
+      }
+    }));
+  };
+
+  const isBlockedSubject = (subject: string): boolean => {
+    return (userState.preferences.blockedSubjects || []).includes(subject.toLowerCase().trim());
+  };
+
   const updateDisplayName = (displayName: string) => {
     setUserState(prev => ({
       ...prev,
@@ -571,6 +666,12 @@ export function UserStateProvider({ children }: { children: ReactNode }) {
         subscribeToCategory,
         unsubscribeFromCategory,
         isSubscribedToCategory,
+        subscribeToSubject,
+        unsubscribeFromSubject,
+        isSubscribedToSubject,
+        blockSubject,
+        unblockSubject,
+        isBlockedSubject,
         updateDisplayName,
         updateProfileImageFileId,
         setUserDisplayName,

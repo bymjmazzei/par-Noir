@@ -1794,7 +1794,9 @@ class ProductionServer {
           textPost,
           thought,
           fileType,
-          isNSFW
+          isNSFW,
+          subjects,
+          feedCategories
         } = req.body;
 
         if (!fileId) {
@@ -1959,7 +1961,9 @@ class ProductionServer {
           textPost,
           thought,
           isNSFW,
-          isPublic
+          isPublic,
+          subjects,
+          feedCategories
         });
 
         // Also update isPublic if provided (or default for text posts)
@@ -2422,6 +2426,189 @@ class ProductionServer {
           error: 'Failed to update metadata',
           message: error.message 
         });
+      }
+    });
+
+    // GET /api/aggregator/subjects/popular - Get popular subjects
+    this.app.get('/api/aggregator/subjects/popular', async (req, res) => {
+      try {
+        const limit = parseInt(req.query.limit as string) || 30;
+        const db = (await import('./server/utils/database')).getDatabasePool();
+        
+        // Query all metadata and extract subjects, count frequency
+        const result = await db.query(`
+          SELECT metadata->>'subjects' as subjects
+          FROM aggregator_metadata
+          WHERE metadata->>'subjects' IS NOT NULL
+            AND metadata->>'isPublic' = 'true'
+        `);
+        
+        const subjectCounts = new Map<string, number>();
+        
+        result.rows.forEach(row => {
+          if (row.subjects) {
+            try {
+              const subjects = JSON.parse(row.subjects);
+              if (Array.isArray(subjects)) {
+                subjects.forEach((subject: string) => {
+                  const normalized = subject.toLowerCase().trim();
+                  if (normalized) {
+                    subjectCounts.set(normalized, (subjectCounts.get(normalized) || 0) + 1);
+                  }
+                });
+              }
+            } catch (e) {
+              // Skip invalid JSON
+            }
+          }
+        });
+        
+        // Sort by count and return top N
+        const popular = Array.from(subjectCounts.entries())
+          .sort((a, b) => b[1] - a[1])
+          .slice(0, limit)
+          .map(([subject]) => subject);
+        
+        return res.json({ subjects: popular });
+      } catch (error: any) {
+        console.error('Error fetching popular subjects:', error);
+        return res.status(500).json({ error: 'Failed to fetch popular subjects' });
+      }
+    });
+
+    // GET /api/aggregator/subjects/search - Search subjects
+    this.app.get('/api/aggregator/subjects/search', async (req, res) => {
+      try {
+        const query = (req.query.q as string)?.toLowerCase().trim() || '';
+        if (!query) {
+          return res.json({ subjects: [] });
+        }
+        
+        const db = (await import('./server/utils/database')).getDatabasePool();
+        
+        // Query all metadata and extract subjects
+        const result = await db.query(`
+          SELECT metadata->>'subjects' as subjects
+          FROM aggregator_metadata
+          WHERE metadata->>'subjects' IS NOT NULL
+            AND metadata->>'isPublic' = 'true'
+        `);
+        
+        const matchingSubjects = new Set<string>();
+        
+        result.rows.forEach(row => {
+          if (row.subjects) {
+            try {
+              const subjects = JSON.parse(row.subjects);
+              if (Array.isArray(subjects)) {
+                subjects.forEach((subject: string) => {
+                  const normalized = subject.toLowerCase().trim();
+                  if (normalized.includes(query)) {
+                    matchingSubjects.add(normalized);
+                  }
+                });
+              }
+            } catch (e) {
+              // Skip invalid JSON
+            }
+          }
+        });
+        
+        return res.json({ subjects: Array.from(matchingSubjects).slice(0, 20) });
+      } catch (error: any) {
+        console.error('Error searching subjects:', error);
+        return res.status(500).json({ error: 'Failed to search subjects' });
+      }
+    });
+
+    // GET /api/aggregator/subjects/by-category - Get subjects by category
+    this.app.get('/api/aggregator/subjects/by-category', async (req, res) => {
+      try {
+        const category = req.query.category as string;
+        if (!category) {
+          return res.json({ subjects: [] });
+        }
+        
+        const db = (await import('./server/utils/database')).getDatabasePool();
+        
+        // Query metadata with specific category
+        const result = await db.query(`
+          SELECT metadata->>'subjects' as subjects
+          FROM aggregator_metadata
+          WHERE metadata->'feedCategories' @> $1::jsonb
+            AND metadata->>'isPublic' = 'true'
+            AND metadata->>'subjects' IS NOT NULL
+        `, [JSON.stringify([category])]);
+        
+        const subjectCounts = new Map<string, number>();
+        
+        result.rows.forEach(row => {
+          if (row.subjects) {
+            try {
+              const subjects = JSON.parse(row.subjects);
+              if (Array.isArray(subjects)) {
+                subjects.forEach((subject: string) => {
+                  const normalized = subject.toLowerCase().trim();
+                  if (normalized) {
+                    subjectCounts.set(normalized, (subjectCounts.get(normalized) || 0) + 1);
+                  }
+                });
+              }
+            } catch (e) {
+              // Skip invalid JSON
+            }
+          }
+        });
+        
+        // Sort by count and return
+        const subjects = Array.from(subjectCounts.entries())
+          .sort((a, b) => b[1] - a[1])
+          .map(([subject]) => subject)
+          .slice(0, 30);
+        
+        return res.json({ subjects });
+      } catch (error: any) {
+        console.error('Error fetching subjects by category:', error);
+        return res.status(500).json({ error: 'Failed to fetch subjects by category' });
+      }
+    });
+
+    // POST /api/aggregator/subjects/normalize - Normalize and check for similar subjects
+    this.app.post('/api/aggregator/subjects/normalize', async (req, res) => {
+      try {
+        const { subject } = req.body;
+        if (!subject || typeof subject !== 'string') {
+          return res.status(400).json({ error: 'Subject is required' });
+        }
+        
+        const db = (await import('./server/utils/database')).getDatabasePool();
+        
+        // Get all existing subjects
+        const result = await db.query(`
+          SELECT DISTINCT jsonb_array_elements_text(metadata->'subjects') as subject
+          FROM aggregator_metadata
+          WHERE metadata->>'subjects' IS NOT NULL
+            AND metadata->>'isPublic' = 'true'
+        `);
+        
+        const existingSubjects = result.rows.map(r => r.subject.toLowerCase().trim()).filter(Boolean);
+        const normalized = subject.toLowerCase().trim();
+        
+        // Simple similarity check (exact match or contains)
+        const similar = existingSubjects.find(existing => {
+          return existing === normalized || 
+                 existing.includes(normalized) || 
+                 normalized.includes(existing);
+        });
+        
+        return res.json({
+          normalized,
+          similar: similar || null,
+          isNew: !similar
+        });
+      } catch (error: any) {
+        console.error('Error normalizing subject:', error);
+        return res.status(500).json({ error: 'Failed to normalize subject' });
       }
     });
 

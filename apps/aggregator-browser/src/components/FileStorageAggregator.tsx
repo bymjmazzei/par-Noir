@@ -996,6 +996,14 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
         .map(g => g.trim())
         .filter(g => g.length > 0);
 
+      // Extract subjects from description, tags, and keywords
+      const { extractSubjects } = await import('../utils/subjectExtractor');
+      const subjects = extractSubjects(
+        editForm.description,
+        tags,
+        tags // keywords same as tags
+      );
+
       // Validate required category
       if (!editForm.category) {
         setError('Category is required');
@@ -1036,7 +1044,8 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
           feedCategories: editForm.category ? [editForm.category as FeedCategory] : undefined,
           category: editForm.category || undefined,
           locationCreated: locationCreated,
-          license: editForm.license || undefined
+          license: editForm.license || undefined,
+          subjects: subjects.length > 0 ? subjects : undefined
         }),
       });
 

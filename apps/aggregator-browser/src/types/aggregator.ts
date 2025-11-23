@@ -344,6 +344,9 @@ export interface PublicMetadata {
   feedIds?: string[]; // IDs of feeds this content belongs to
   feedCategories?: FeedCategory[]; // Niche categories
   
+  // Subject Niches (auto-extracted from description/tags/keywords)
+  subjects?: string[]; // Subject niches (e.g., ["cowboy", "horses", "ranch"])
+  
   // Creator Tier
   creatorTier?: 'free' | 'feed' | 'self-hosted';
   

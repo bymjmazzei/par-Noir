@@ -1561,6 +1561,8 @@ export class AggregatorMetadataServiceDB {
       thought?: any;
       isNSFW?: boolean;
       isPublic?: boolean;
+      subjects?: string[];
+      feedCategories?: string[];
     }
   ): Promise<PublicMetadata | null> {
     const db = getDatabasePool();
@@ -1611,7 +1613,10 @@ export class AggregatorMetadataServiceDB {
         ...(updates.category && { category: updates.category }),
         ...(updates.locationCreated && { locationCreated: updates.locationCreated }),
         ...(updates.license && { license: updates.license }),
-        ...(updates.inLanguage && { inLanguage: updates.inLanguage })
+        ...(updates.inLanguage && { inLanguage: updates.inLanguage }),
+        // Update subjects and feedCategories
+        ...(updates.subjects !== undefined && { subjects: updates.subjects }),
+        ...(updates.feedCategories !== undefined && { feedCategories: updates.feedCategories })
       };
 
       // Ensure keywords and tags are in sync
