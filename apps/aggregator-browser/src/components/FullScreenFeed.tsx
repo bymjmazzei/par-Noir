@@ -898,27 +898,27 @@ export function FullScreenFeed({
                   />
                   {/* Main image container - centers image */}
                   <div className="w-full h-full flex items-center justify-center relative z-10">
-                    <img
-                      ref={(el) => {
-                        if (el) {
-                          imageRefs.current.set(fileId, el);
-                          // Track dimensions when loaded
-                          el.addEventListener('load', () => {
-                            setMediaDimensions(prev => {
-                              const newMap = new Map(prev);
-                              newMap.set(fileId, { width: el.naturalWidth, height: el.naturalHeight });
-                              return newMap;
-                            });
+                  <img
+                    ref={(el) => {
+                      if (el) {
+                        imageRefs.current.set(fileId, el);
+                        // Track dimensions when loaded
+                        el.addEventListener('load', () => {
+                          setMediaDimensions(prev => {
+                            const newMap = new Map(prev);
+                            newMap.set(fileId, { width: el.naturalWidth, height: el.naturalHeight });
+                            return newMap;
                           });
-                        }
-                      }}
-                      src={thumbnails.get(fileId)!}
-                      alt={fileName}
-                      style={{ 
+                        });
+                      }
+                    }}
+                    src={thumbnails.get(fileId)!}
+                    alt={fileName}
+                    style={{ 
                         // Display at natural size, scaled to fit container while maintaining aspect ratio
                         maxHeight: 'calc(100vh - 64px - env(safe-area-inset-bottom, 0px))',
                         maxWidth: '100%',
-                        height: 'auto',
+                      height: 'auto',
                         width: 'auto',
                         objectFit: 'contain',
                         imageRendering: 'smooth',

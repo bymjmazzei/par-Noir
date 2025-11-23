@@ -254,13 +254,13 @@ export const GoogleDriveStorage: React.FC = () => {
         // User is authenticated but not connected to Google Drive
         // They need to connect via the Connect button
         console.log('[GoogleDriveStorage] User authenticated but not connected to Google Drive');
-      }
+    }
     }
   }, []);
 
   const handleConnect = async () => {
-    // Use real Google Drive API
-    try {
+      // Use real Google Drive API
+      try {
         setIsLoading(true);
         setError(null);
         
@@ -355,7 +355,7 @@ export const GoogleDriveStorage: React.FC = () => {
                       accountId = accounts[0];
                       console.log('[GoogleDriveStorage] Using accountId:', accountId);
                     }
-                  } else {
+      } else {
                     console.warn('[GoogleDriveStorage] No googleDriveAccounts found in credentials');
                     // Try alternative structure - check if there's a single account stored differently
                     if (credData.credentials?.googleDrive?.accountId) {
@@ -470,26 +470,26 @@ export const GoogleDriveStorage: React.FC = () => {
         }
         
         // Fallback to direct Google Drive API (shows all files, not just pN folder)
-        const token = localStorage.getItem('google_drive_token');
-        if (!token) {
-          throw new Error('No access token found');
-        }
-        
-        const response = await fetch(
-          'https://www.googleapis.com/drive/v3/files?fields=files(id,name,modifiedTime,size,mimeType)',
-          {
-            headers: {
-              'Authorization': `Bearer ${token}`,
-              'Content-Type': 'application/json'
-            }
+      const token = localStorage.getItem('google_drive_token');
+      if (!token) {
+        throw new Error('No access token found');
+      }
+      
+      const response = await fetch(
+        'https://www.googleapis.com/drive/v3/files?fields=files(id,name,modifiedTime,size,mimeType)',
+        {
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
           }
-        );
-        
-        if (!response.ok) {
-          throw new Error('Failed to fetch files');
         }
-        
-        const data = await response.json();
+      );
+      
+      if (!response.ok) {
+        throw new Error('Failed to fetch files');
+      }
+      
+      const data = await response.json();
         // Filter to show thoughts and media files
         const filteredFiles = (data.files || []).filter((file: GoogleDriveFile) => {
           const name = file.name.toLowerCase();
@@ -994,8 +994,8 @@ export const GoogleDriveStorage: React.FC = () => {
   };
 
   const loadStorageQuota = async () => {
-    // Real Google Drive API call
-    try {
+      // Real Google Drive API call
+      try {
         const response = await fetch('https://www.googleapis.com/drive/v3/about?fields=storageQuota', {
           headers: {
             'Authorization': `Bearer ${localStorage.getItem('google_access_token')}`

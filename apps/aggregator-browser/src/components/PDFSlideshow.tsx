@@ -45,8 +45,10 @@ export function PDFSlideshow({ fileId, publicToken, fileName }: PDFSlideshowProp
 
         // Load PDF.js dynamically
         const pdfjsLib = await import('pdfjs-dist');
-        // Use local worker file served from our domain to avoid CORS issues
-        pdfjsLib.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs';
+        // Ensure worker is set (should already be set globally, but set as fallback)
+        if (!pdfjsLib.GlobalWorkerOptions.workerSrc) {
+          pdfjsLib.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs';
+        }
 
         // Load PDF document
         const loadingTask = pdfjsLib.getDocument({ url });

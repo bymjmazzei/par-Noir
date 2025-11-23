@@ -631,7 +631,7 @@ function App() {
     if (activeFeedId === 'public') {
       // Public feed: ALWAYS filter out NSFW content unless user has it enabled
       // This ensures NSFW content never appears in public feed unless explicitly enabled
-      return indexedFiles.filter(shouldShowFile);
+        return indexedFiles.filter(shouldShowFile);
     }
     if (activeFeedId === 'curated') {
       // Curated feed = all content EXCEPT blocked categories (negative filter)
@@ -750,7 +750,7 @@ function App() {
       });
       
       // ALWAYS filter by NSFW preference (for both unlocked and locked users)
-      filtered = filtered.filter(shouldShowFile);
+        filtered = filtered.filter(shouldShowFile);
       return filtered;
     }
     
@@ -758,7 +758,7 @@ function App() {
     let filtered = indexedFiles.filter(file => 
       file.metadata.feedIds?.includes(activeFeedId)
     );
-    filtered = filtered.filter(shouldShowFile);
+      filtered = filtered.filter(shouldShowFile);
     return filtered;
   }, [indexedFiles, activeFeedId, userState.preferences.subscribedFeedIds, userState.preferences.blockedCategories, userState.preferences.subscribedSubjects, userState.preferences.blockedSubjects, userState.preferences.showNSFW, userState.preferences.hasAgeZKP, userState.preferences.isOver18, userState.isUnlocked, feeds]);
 

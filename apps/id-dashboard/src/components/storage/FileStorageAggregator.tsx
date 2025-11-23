@@ -24,8 +24,10 @@ import { FEED_CATEGORIES, FEED_CATEGORY_LIST } from '../../constants/feedCategor
 async function createPDFThumbnail(blob: Blob, maxWidth: number, maxHeight: number): Promise<Blob> {
   try {
     const pdfjsLib = await import('pdfjs-dist');
-    // Use local worker file served from our domain to avoid CORS issues
-    pdfjsLib.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs';
+    // Ensure worker is set (should already be set globally, but set as fallback)
+    if (!pdfjsLib.GlobalWorkerOptions.workerSrc) {
+      pdfjsLib.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs';
+    }
     
     const url = URL.createObjectURL(blob);
     const loadingTask = pdfjsLib.getDocument({ url });
@@ -5519,7 +5521,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
             const thumbnailBlob = await createPDFThumbnail(decryptedBlob, 300, 300);
             previewUrl = URL.createObjectURL(thumbnailBlob);
           } else {
-            previewUrl = URL.createObjectURL(decryptedBlob);
+          previewUrl = URL.createObjectURL(decryptedBlob);
           }
           previewRetryCounts.current.delete(file.id);
         } catch (tokenError) {
@@ -5588,7 +5590,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
             const thumbnailBlob = await createPDFThumbnail(decryptedBlob, 300, 300);
             previewUrl = URL.createObjectURL(thumbnailBlob);
           } else {
-            previewUrl = URL.createObjectURL(decryptedBlob);
+          previewUrl = URL.createObjectURL(decryptedBlob);
           }
           previewRetryCounts.current.delete(file.id);
 

@@ -139,10 +139,10 @@ const ThumbnailImage: React.FC<{ fileId: string; accountId: string; fileName: st
             setThumbnailUrl(blobUrl);
             setError(false);
           } else {
-            const thumbnailBlob = await createThumbnailFromBlob(decryptedBlob, 300, 300);
-            blobUrl = URL.createObjectURL(thumbnailBlob);
-            setThumbnailUrl(blobUrl);
-            setError(false);
+          const thumbnailBlob = await createThumbnailFromBlob(decryptedBlob, 300, 300);
+          blobUrl = URL.createObjectURL(thumbnailBlob);
+          setThumbnailUrl(blobUrl);
+          setError(false);
           }
         } else {
           // Non-encrypted files: try to load thumbnail from Google Drive, fallback to downloading full file
@@ -218,8 +218,10 @@ const ThumbnailImage: React.FC<{ fileId: string; accountId: string; fileName: st
 async function createPDFThumbnail(blob: Blob, maxWidth: number, maxHeight: number): Promise<Blob> {
   try {
     const pdfjsLib = await import('pdfjs-dist');
-    // Use local worker file served from our domain to avoid CORS issues
-    pdfjsLib.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs';
+    // Ensure worker is set (should already be set globally, but set as fallback)
+    if (!pdfjsLib.GlobalWorkerOptions.workerSrc) {
+      pdfjsLib.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs';
+    }
     
     const url = URL.createObjectURL(blob);
     const loadingTask = pdfjsLib.getDocument({ url });
