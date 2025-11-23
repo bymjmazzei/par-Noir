@@ -1,7 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { HardDrive, Upload, Download, Trash2, File, Folder, RefreshCw, AlertCircle, Play, Image, Video, Music, FileText, Archive, Code, Lock, Type } from 'lucide-react';
-import { googleDriveDemoService } from '../../services/googleDriveDemoService';
-import { MockGoogleOAuth } from './MockGoogleOAuth';
+import { HardDrive, Upload, Download, Trash2, File, Folder, RefreshCw, AlertCircle, Image, Video, Music, FileText, Archive, Code, Lock, Type } from 'lucide-react';
 
 interface GoogleDriveFile {
   id: string;
@@ -145,11 +143,9 @@ export const GoogleDriveStorage: React.FC = () => {
   const [files, setFiles] = useState<GoogleDriveFile[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [userEmail, setUserEmail] = useState<string>('');
-  const [isDemoMode, setIsDemoMode] = useState(true); // still default to demo mode
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   const [selectedFile, setSelectedFile] = useState<GoogleDriveFile | null>(null);
   const [showPrivacyModal, setShowPrivacyModal] = useState(false);
-  const [showOAuthModal, setShowOAuthModal] = useState(false);
   const [showSuccessNotification, setShowSuccessNotification] = useState(false);
   const [storageQuota, setStorageQuota] = useState<{
     limit: number;
@@ -159,8 +155,6 @@ export const GoogleDriveStorage: React.FC = () => {
   } | null>(null);
 
   useEffect(() => {
-    console.log('useEffect called, isDemoMode:', isDemoMode);
-    
     // Migration: If Google Drive tokens exist in localStorage but not server-side, store them server-side
     // This allows existing users to use the browser app without reconnecting
     const migrateTokensToServer = async () => {
@@ -245,26 +239,7 @@ export const GoogleDriveStorage: React.FC = () => {
     // Run migration once on mount
     migrateTokensToServer();
     
-    if (isDemoMode) {
-      // Setup demo service listeners
-      const unsubscribe = googleDriveDemoService.onAuthStateChange((authState) => {
-        console.log('Auth state changed:', authState);
-        setIsConnected(authState.isSignedIn);
-        setUserEmail(authState.user?.email || '');
-        if (authState.isSignedIn) {
-          console.log('Auth state is signed in, calling loadFiles and loadStorageQuota');
-          loadFiles();
-          loadStorageQuota();
-        } else {
-          console.log('Auth state is not signed in, clearing files');
-          setFiles([]);
-          setStorageQuota(null);
-        }
-      });
-      
-      return unsubscribe;
-    } else {
-      // Check if already connected (real mode)
+    // Check if already connected
     const token = localStorage.getItem('google_drive_token');
     const email = localStorage.getItem('google_drive_email');
     if (token && email) {
@@ -272,17 +247,20 @@ export const GoogleDriveStorage: React.FC = () => {
       setUserEmail(email);
       loadFiles();
       loadStorageQuota();
+    } else {
+      // If no token, check if user is authenticated with pN
+      const authenticatedUserStr = localStorage.getItem('authenticated_user');
+      if (authenticatedUserStr) {
+        // User is authenticated but not connected to Google Drive
+        // They need to connect via the Connect button
+        console.log('[GoogleDriveStorage] User authenticated but not connected to Google Drive');
+      }
     }
-    }
-  }, [isDemoMode]);
+  }, []);
 
   const handleConnect = async () => {
-    if (isDemoMode) {
-      // Show OAuth modal for demo mode
-      setShowOAuthModal(true);
-    } else {
-      // Use real Google Drive API
-      try {
+    // Use real Google Drive API
+    try {
         setIsLoading(true);
         setError(null);
         
@@ -333,15 +311,9 @@ export const GoogleDriveStorage: React.FC = () => {
 
   const loadFiles = async () => {
     try {
-      console.log('loadFiles called, isDemoMode:', isDemoMode);
       setIsLoading(true);
       
-      if (isDemoMode) {
-        console.log('Calling demo service listFiles...');
-        const demoFiles = await googleDriveDemoService.listFiles();
-        console.log('Demo service returned files:', demoFiles.length);
-        setFiles(demoFiles);
-      } else {
+      {
         // Try to use pN API endpoint first (filters to pN folder, includes thoughts)
         const authenticatedUserStr = localStorage.getItem('authenticated_user');
         const apiEndpoint = process.env.REACT_APP_API_ENDPOINT || 'https://api.parnoir.com';
@@ -373,22 +345,38 @@ export const GoogleDriveStorage: React.FC = () => {
                 const credResponse = await fetch(`${apiEndpoint}/api/storage/credentials/${encodeURIComponent(pnIdentifier)}`);
                 if (credResponse.ok) {
                   const credData = await credResponse.json();
+                  console.log('[GoogleDriveStorage] Credentials data:', credData);
+                  
                   // Get first Google Drive account ID
                   if (credData.credentials?.googleDriveAccounts) {
                     const accounts = Object.keys(credData.credentials.googleDriveAccounts);
+                    console.log('[GoogleDriveStorage] Found Google Drive accounts:', accounts);
                     if (accounts.length > 0) {
                       accountId = accounts[0];
+                      console.log('[GoogleDriveStorage] Using accountId:', accountId);
+                    }
+                  } else {
+                    console.warn('[GoogleDriveStorage] No googleDriveAccounts found in credentials');
+                    // Try alternative structure - check if there's a single account stored differently
+                    if (credData.credentials?.googleDrive?.accountId) {
+                      accountId = credData.credentials.googleDrive.accountId;
+                      console.log('[GoogleDriveStorage] Found accountId in googleDrive:', accountId);
                     }
                   }
+                } else {
+                  console.warn('[GoogleDriveStorage] Failed to fetch credentials:', credResponse.status);
                 }
               } catch (err) {
-                console.warn('Could not fetch accountId:', err);
+                console.warn('[GoogleDriveStorage] Could not fetch accountId:', err);
               }
             }
           } catch (err) {
             console.warn('Could not generate pn identifier:', err);
           }
         }
+        
+        console.log('[GoogleDriveStorage] pnIdentifier:', pnIdentifier ? 'found' : 'missing');
+        console.log('[GoogleDriveStorage] accountId:', accountId || 'missing');
         
         // Try pN API endpoint if we have pnIdentifier and accountId
         if (pnIdentifier && accountId) {
@@ -400,18 +388,23 @@ export const GoogleDriveStorage: React.FC = () => {
             // Try to get pN access token from authenticated user
             if (authenticatedUser?.accessToken) {
               token = authenticatedUser.accessToken;
+              console.log('[GoogleDriveStorage] Using pN access token');
             } else {
               // Fallback to Google Drive token (might work if stored server-side)
               token = localStorage.getItem('google_drive_token');
+              console.log('[GoogleDriveStorage] Using Google Drive token:', token ? 'found' : 'missing');
             }
             
             if (token) {
+              console.log('[GoogleDriveStorage] Calling pN API endpoint...');
               const response = await fetch(`${apiEndpoint}/api/drive/files?accountId=${encodeURIComponent(accountId)}`, {
                 headers: {
                   'Authorization': `Bearer ${token}`,
                   'Content-Type': 'application/json'
                 }
               });
+              
+              console.log('[GoogleDriveStorage] API response status:', response.status);
               
               if (response.ok) {
                 const data = await response.json();
@@ -521,15 +514,11 @@ export const GoogleDriveStorage: React.FC = () => {
 
   const handleDisconnect = async () => {
     try {
-      if (isDemoMode) {
-        await googleDriveDemoService.signOut();
-      } else {
       localStorage.removeItem('google_drive_token');
       localStorage.removeItem('google_drive_email');
       setIsConnected(false);
       setUserEmail('');
       setFiles([]);
-      }
     } catch (err) {
       console.error('Error disconnecting:', err);
     }
@@ -542,13 +531,6 @@ export const GoogleDriveStorage: React.FC = () => {
     try {
       setIsLoading(true);
       
-      if (isDemoMode) {
-        await googleDriveDemoService.uploadFile(file, (progress) => {
-          // Handle upload progress in demo mode
-          console.log(`Upload progress: ${progress.progress}%`);
-        });
-        await loadFiles();
-      } else {
       const token = localStorage.getItem('google_drive_token');
         const email = localStorage.getItem('google_drive_email');
         if (!token || !email) {
@@ -646,31 +628,6 @@ export const GoogleDriveStorage: React.FC = () => {
 
   const handleDownload = async (fileId: string, fileName: string) => {
     try {
-      if (isDemoMode) {
-        const blob = await googleDriveDemoService.downloadFile(fileId);
-        const url = window.URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        
-        // For demo mode, add metadata to filename for binary files
-        if (!blob.type.includes('text')) {
-          const file = files.find(f => f.id === fileId);
-          if (file) {
-            const baseName = fileName.split('.')[0];
-            const extension = fileName.split('.').pop();
-            a.download = `${baseName}_pN_${file.createdTime.split('T')[0]}.${extension}`;
-          } else {
-            a.download = fileName;
-          }
-        } else {
-          a.download = fileName;
-        }
-        
-        document.body.appendChild(a);
-        a.click();
-        window.URL.revokeObjectURL(url);
-        document.body.removeChild(a);
-      } else {
       const token = localStorage.getItem('google_drive_token');
       if (!token) {
         throw new Error('No access token found');
@@ -711,20 +668,6 @@ export const GoogleDriveStorage: React.FC = () => {
     }
 
     try {
-      if (isDemoMode) {
-        await googleDriveDemoService.deleteFile(fileId);
-        // Remove from API metadata index
-        try {
-          const apiEndpoint = process.env.REACT_APP_API_ENDPOINT || 'https://api.parnoir.com';
-          await fetch(`${apiEndpoint}/api/aggregator/metadata-index/${fileId}`, {
-            method: 'DELETE'
-          });
-        } catch (apiErr) {
-          console.warn('Failed to remove from metadata index:', apiErr);
-          // Non-critical - file is deleted from Drive, sync service will clean up
-        }
-        await loadFiles();
-      } else {
       const token = localStorage.getItem('google_drive_token');
       if (!token) {
         throw new Error('No access token found');
@@ -758,7 +701,6 @@ export const GoogleDriveStorage: React.FC = () => {
       }
       
       await loadFiles();
-      }
     } catch (err) {
       setError('Failed to delete file');
       console.error('Error deleting:', err);
@@ -1052,17 +994,8 @@ export const GoogleDriveStorage: React.FC = () => {
   };
 
   const loadStorageQuota = async () => {
-    if (isDemoMode) {
-      // Mock storage quota data
-      setStorageQuota({
-        limit: 16106127360, // 15GB
-        usage: 5368709120, // ~5GB used
-        usageInDrive: 2684354560, // ~2.5GB in Drive
-        usageInDriveTrash: 268435456 // ~256MB in Trash
-      });
-    } else {
-      // Real Google Drive API call
-      try {
+    // Real Google Drive API call
+    try {
         const response = await fetch('https://www.googleapis.com/drive/v3/about?fields=storageQuota', {
           headers: {
             'Authorization': `Bearer ${localStorage.getItem('google_access_token')}`
@@ -1105,99 +1038,6 @@ export const GoogleDriveStorage: React.FC = () => {
     setSelectedFile(null);
   };
 
-  const handleOAuthSuccess = async (token: string, user: { email: string; name: string; picture?: string }, refreshToken?: string) => {
-    setShowOAuthModal(false);
-    
-    // Store token and user info in localStorage (existing behavior - don't break this)
-    // SECURITY: Do not store tokens/email in plaintext localStorage
-    // Credentials should be stored via IntegrationCredentialManager when user is authenticated
-    // For now, store in memory only - will be persisted securely on next connect
-    // localStorage.setItem('google_drive_token', token); // REMOVED - security risk
-    // localStorage.setItem('google_drive_email', user.email); // REMOVED - security risk
-    // localStorage.setItem('google_drive_name', user.name); // REMOVED - security risk
-    // SECURITY: Do not store any user data in plaintext localStorage
-    // if (user.picture) {
-    //   localStorage.setItem('google_drive_picture', user.picture); // REMOVED - security risk
-    // }
-    // if (refreshToken) {
-    //   localStorage.setItem('google_drive_refresh_token', refreshToken); // REMOVED - security risk
-    }
-    
-    // Also store tokens server-side for browser app API access (non-blocking)
-    // Only if user is authenticated with a DID
-    try {
-      const authenticatedUserStr = localStorage.getItem('authenticated_user');
-      if (authenticatedUserStr) {
-        const authenticatedUser = JSON.parse(authenticatedUserStr);
-        
-        // CRITICAL: Use ONLY standardized pn identifier - never use DID/public key/pn name
-        // Generate pn identifier from credentials
-        try {
-          const { VolumeIdGenerator } = await import('../../utils/crypto/volumeIdGenerator');
-          const { SecureCredentialManager } = await import('../../utils/secureCredentialManager');
-          
-          const sessionId = authenticatedUser.id || authenticatedUser.publicKey || null;
-          const credentials = sessionId ? SecureCredentialManager.getCredentials(sessionId) : null;
-          const pnName = authenticatedUser.pnName || authenticatedUser.username;
-          const publicKey = authenticatedUser.publicKey;
-          
-          if (pnName && credentials?.passcode && publicKey) {
-            const pnIdentifier = await VolumeIdGenerator.generateVolumeId({
-              pnName,
-              passcode: credentials.passcode,
-              publicKey
-            });
-            
-            // Store Google Drive credentials server-side using standardized pn identifier
-            const credentialsPayload = {
-              googleDrive: {
-                access_token: token,
-                refresh_token: refreshToken,
-                token_type: 'Bearer',
-                expires_in: 3600, // Default 1 hour, will be refreshed as needed
-                expires_at: Date.now() + (3600 * 1000)
-              }
-            };
-            
-            // Call API to store credentials (non-blocking - don't wait for response)
-            fetch(`${process.env.REACT_APP_API_ENDPOINT || 'https://api.parnoir.com'}/api/storage/credentials/${encodeURIComponent(pnIdentifier)}`, {
-              method: 'PUT',
-              headers: {
-                'Content-Type': 'application/json',
-              },
-              body: JSON.stringify({ credentials: credentialsPayload }),
-            }).catch(err => {
-              console.warn('Failed to store Google Drive credentials server-side:', err);
-              // Non-critical - dashboard still works with localStorage
-            });
-          } else {
-            console.warn('⚠️ [GoogleDriveStorage] Cannot generate pn identifier - missing credentials');
-          }
-        } catch (err) {
-          console.warn('⚠️ [GoogleDriveStorage] Failed to store credentials - pn identifier generation failed:', err);
-          // Non-critical - dashboard still works with localStorage
-        }
-      }
-    } catch (err) {
-      console.warn('Failed to store Google Drive credentials server-side:', err);
-      // Non-critical - dashboard still works with localStorage
-    }
-    
-    // Use the demo service to properly authenticate
-    await googleDriveDemoService.signIn();
-    
-    // Show success notification
-    setShowSuccessNotification(true);
-    setTimeout(() => setShowSuccessNotification(false), 3000);
-    
-    // The auth state change will be handled by the useEffect listener
-    // which will call loadFiles() and loadStorageQuota()
-  };
-
-  const handleOAuthError = (error: string) => {
-    setShowOAuthModal(false);
-    setError(error);
-  };
 
 
   return (
@@ -1212,12 +1052,6 @@ export const GoogleDriveStorage: React.FC = () => {
       </div>
         
         <div className="flex items-center space-x-2">
-          {isDemoMode && (
-            <div className="flex items-center space-x-2 px-3 py-1 bg-blue-500/10 border border-blue-500/20 rounded-full">
-              <Play className="h-4 w-4 text-blue-400" />
-              <span className="text-blue-400 text-sm font-medium">DEMO MODE</span>
-            </div>
-          )}
         </div>
       </div>
 
@@ -1246,7 +1080,7 @@ export const GoogleDriveStorage: React.FC = () => {
               disabled={isLoading}
               className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {isLoading ? 'Connecting...' : (isDemoMode ? 'Start Demo Connection' : 'Connect to Google Drive')}
+              {isLoading ? 'Connecting...' : 'Connect to Google Drive'}
             </button>
           </div>
         </div>
@@ -1256,16 +1090,11 @@ export const GoogleDriveStorage: React.FC = () => {
             <div className="flex items-center space-x-3">
               <div className="h-3 w-3 bg-green-500 rounded-full"></div>
               <span className="text-text-primary font-medium">
-                {isDemoMode ? 'Demo Connected to Google Drive' : 'Connected to Google Drive'}
+                Connected to Google Drive
               </span>
               <span className="text-text-secondary text-sm">({userEmail})</span>
             </div>
             <div className="flex items-center space-x-2">
-              {isDemoMode && (
-                <div className="text-xs text-text-secondary bg-blue-500/10 px-2 py-1 rounded">
-                  Demo Data: {googleDriveDemoService.getDemoStats().totalFiles} files
-                </div>
-              )}
               <button
                 onClick={loadFiles}
                 disabled={isLoading}
@@ -1862,14 +1691,6 @@ export const GoogleDriveStorage: React.FC = () => {
         </div>
       )}
 
-      {/* OAuth Modal */}
-      {showOAuthModal && (
-        <MockGoogleOAuth
-          onAuthSuccess={handleOAuthSuccess}
-          onAuthError={handleOAuthError}
-          onClose={() => setShowOAuthModal(false)}
-        />
-      )}
 
     </div>
   );

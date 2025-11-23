@@ -3302,8 +3302,23 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
         }
 
         aggregatedAllFiles.push(...filesForBackend);
+        console.log(`[FileStorageAggregator] Added ${filesForBackend.length} files from backend ${backendId}`, {
+          totalFiles: aggregatedAllFiles.length,
+          fileNames: filesForBackend.map(f => f.name).slice(0, 5)
+        });
       }
 
+      console.log(`[FileStorageAggregator] Total files loaded: ${aggregatedAllFiles.length}`, {
+        pdfFiles: aggregatedAllFiles.filter(f => {
+          const name = (f.name || '').toLowerCase();
+          return name.endsWith('.pdf') || name.includes('.pdf.encrypted') || f.mimeType === 'application/pdf';
+        }).length,
+        thoughtFiles: aggregatedAllFiles.filter(f => {
+          const name = (f.name || '').toLowerCase().replace(/\.encrypted$/i, '');
+          return /^thought-\d+\.png$/i.test(name);
+        }).length,
+        allFileNames: aggregatedAllFiles.map(f => f.name).slice(0, 10)
+      });
       setFiles(aggregatedAllFiles);
       const normalizedMetadataMap = new Map<string, PublicMetadata>();
       aggregatedMetadataMap.forEach((metadata, key) => {
