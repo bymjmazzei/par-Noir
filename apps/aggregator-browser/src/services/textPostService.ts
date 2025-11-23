@@ -331,7 +331,7 @@ export async function createTextPost(
         uploadDate: new Date().toISOString(),
         textPost: textPost, // Include the full text post data
         thought: textPost, // Alias for compatibility
-        contentRating: metadata?.contentRating,
+        contentRating: metadata?.contentRating || 'GA',
         feedCategories: metadata?.keywords && metadata.keywords.length > 0 ? metadata.keywords : undefined,
         category: metadata?.keywords && metadata.keywords.length > 0 ? metadata.keywords[0] : undefined,
       }),

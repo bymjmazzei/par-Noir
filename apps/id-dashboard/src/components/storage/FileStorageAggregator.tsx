@@ -5200,7 +5200,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
                 ...(editForm.category && { feedCategories: [editForm.category as FeedCategory] }),
                 ...(locationCreated && { locationCreated }),
                 ...(editForm.license && { license: editForm.license }),
-                ...(editForm.contentRating && { contentRating: editForm.contentRating })
+                contentRating: editForm.contentRating || 'GA'
               },
               engagement: currentMetadata.engagement || {
                 views: 0,
@@ -5257,6 +5257,11 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
           }
           return next;
         });
+      }
+
+      // Refresh files to show updated metadata
+      if (loadFilesRef.current) {
+        loadFilesRef.current();
       }
 
       setEditingFile(null);
