@@ -14,6 +14,7 @@ import { useVerticalSwipe } from '../hooks/useVerticalSwipe';
 import { useHorizontalSwipe } from '../hooks/useHorizontalSwipe';
 import { decryptWithToken, ShareToken } from '../utils/tokenDecryption';
 import { formatTimestamp } from '../utils/formatTimestamp';
+import { PDFSlideshow } from './PDFSlideshow';
 
 interface FullScreenFeedProps {
   files: IndexedFile[];
@@ -635,6 +636,12 @@ export function FullScreenFeed({
           file.fileType === 'image' || 
           (file.name || file.title || '').match(/\.(jpg|jpeg|png|gif|webp|svg|bmp|ico)$/i)
         );
+        const isPDF = !isTextPost && (
+          file.fileType === 'document' ||
+          file.fileType === 'pdf' ||
+          (file.name || file.title || '').match(/\.pdf$/i) ||
+          file.mimeType === 'application/pdf'
+        );
         
         // Debug logging for ALL files to see what's happening
         // Debug logging removed for cleaner console - uncomment if needed for debugging
@@ -918,16 +925,40 @@ export function FullScreenFeed({
               );
             })()}
 
+            {/* PDF Slideshow */}
+            {isPDF && !isTextPost && file.publicToken && (() => {
+              // Parse token if it's a string
+              let token: ShareToken | object = file.publicToken;
+              if (typeof token === 'string') {
+                try {
+                  token = JSON.parse(token);
+                } catch (e) {
+                  console.warn('Failed to parse PDF token:', e);
+                  return null;
+                }
+              }
+              
+              return (
+                <div className="w-full h-full relative z-10">
+                  <PDFSlideshow
+                    fileId={fileId}
+                    publicToken={token}
+                    fileName={fileName}
+                  />
+                </div>
+              );
+            })()}
+
             {/* Loading state - Only show if NOT a text post */}
-            {!isTextPost && !textPostData && ((isImage || isVideo) && !thumbnails.get(fileId) && !videoBlobs.get(fileId)) && (
+            {!isTextPost && !textPostData && ((isImage || isVideo) && !thumbnails.get(fileId) && !videoBlobs.get(fileId)) && !isPDF && (
               <div className="flex flex-col items-center justify-center text-neutral-500">
                 <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-400 mb-2"></div>
                 <span className="text-xs">Loading...</span>
               </div>
             )}
 
-            {/* Non-image/video/text file */}
-            {!isImage && !isVideo && !isTextPost && !textPostData && (
+            {/* Non-image/video/text/PDF file */}
+            {!isImage && !isVideo && !isPDF && !isTextPost && !textPostData && (
               <div className="flex flex-col items-center justify-center text-neutral-500">
                 <File className="h-24 w-24 mb-4" />
                 <h3 className="text-white text-xl font-medium mb-2">{fileName}</h3>
