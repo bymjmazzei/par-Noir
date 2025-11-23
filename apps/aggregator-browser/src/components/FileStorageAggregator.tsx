@@ -1308,34 +1308,36 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
           updateBody.isPublic = makePublic;
         }
         
-        // Always update NSFW status if file is public (to ensure it's saved)
-        // This ensures NSFW status is persisted even if it wasn't explicitly changed
-        if (makePublic) {
+        // ALWAYS update NSFW status if file is public (whether making public or already public)
+        // This ensures NSFW status is always persisted for public files
+        if (makePublic || isCurrentlyPublic) {
           updateBody.isNSFW = shareNSFW;
           console.log('📤 [ShareSettings] Setting isNSFW for public file:', {
             shareNSFW,
             existingIsNSFW,
             existingMetadataIsNSFW: existingMetadata?.isNSFW,
             makePublic,
-            willSend: true
-          });
-        } else if (shareNSFW !== existingIsNSFW) {
-          // Only update if changed when making private
-          updateBody.isNSFW = shareNSFW;
-          console.log('📤 [ShareSettings] Updating isNSFW (changed):', {
-            shareNSFW,
-            existingIsNSFW,
-            existingMetadataIsNSFW: existingMetadata?.isNSFW,
+            isCurrentlyPublic,
             willSend: true
           });
         } else {
-          console.log('ℹ️ [ShareSettings] isNSFW unchanged:', {
-            shareNSFW,
-            existingIsNSFW,
-            existingMetadataIsNSFW: existingMetadata?.isNSFW,
-            makePublic,
-            willSend: false
-          });
+          // File is private - only update if changed
+          if (shareNSFW !== existingIsNSFW) {
+            updateBody.isNSFW = shareNSFW;
+            console.log('📤 [ShareSettings] Updating isNSFW (changed, private file):', {
+              shareNSFW,
+              existingIsNSFW,
+              existingMetadataIsNSFW: existingMetadata?.isNSFW,
+              willSend: true
+            });
+          } else {
+            console.log('ℹ️ [ShareSettings] isNSFW unchanged (private file):', {
+              shareNSFW,
+              existingIsNSFW,
+              existingMetadataIsNSFW: existingMetadata?.isNSFW,
+              willSend: false
+            });
+          }
         }
         
         // Always include publicToken if we have one (newly generated or existing)
