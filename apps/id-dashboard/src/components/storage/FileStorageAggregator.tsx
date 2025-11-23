@@ -140,6 +140,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
   const actionMenuRef = React.useRef<HTMLDivElement | null>(null);
   const [sharingFile, setSharingFile] = useState<AggregatedFile | null>(null);
   const [shareVisibility, setShareVisibility] = useState<'public' | 'private'>('private');
+  const [shareNSFW, setShareNSFW] = useState<boolean>(false);
   const [isSavingShare, setIsSavingShare] = useState(false);
   const [thirdPartyIndexers, setThirdPartyIndexers] = useState<ThirdPartyIndexer[]>([]);
   const [indexerToggles, setIndexerToggles] = useState<Record<string, boolean>>({});
@@ -2774,6 +2775,11 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
       const existingMetadata =
         fileMetadataMap.get(file.id) ||
         (file.backendFileId ? fileMetadataMap.get(file.backendFileId) : undefined);
+      
+      // Initialize NSFW state from existing metadata
+      const isNSFW = existingMetadata?.isNSFW === true || (existingMetadata as any)?.isNSFW === true;
+      setShareNSFW(isNSFW);
+      
       loadThirdPartyIndexers(existingMetadata);
 
       if (initialVisibility === 'private') {
@@ -2799,6 +2805,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
   const closeShareSettings = React.useCallback(() => {
     setSharingFile(null);
     setShareVisibility('private');
+    setShareNSFW(false);
     setThirdPartyIndexers([]);
     setIndexerToggles({});
     setIndexingPermissionsState(null);
@@ -3872,6 +3879,66 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
         await loadFileMetadata([sharingFile]);
       }
 
+      // Update NSFW flag if it changed (only for public content)
+      if (makePublic) {
+        const currentNSFW = existingMetadata?.isNSFW === true;
+        if (shareNSFW !== currentNSFW) {
+          try {
+            const response = await fetch(
+              `${apiEndpoint}/api/aggregator/metadata-index`,
+              {
+                method: 'PUT',
+                headers: {
+                  'Content-Type': 'application/json',
+                  ...(authenticatedUser?.accessToken && {
+                    'Authorization': `Bearer ${authenticatedUser.accessToken}`
+                  })
+                },
+                body: JSON.stringify({
+                  fileId: targetFileId,
+                  isNSFW: shareNSFW,
+                  isPublic: true
+                }),
+              }
+            );
+
+            if (!response.ok) {
+              const errorText = await response.text();
+              console.error('❌ [ShareSettings] Failed to update NSFW flag:', errorText);
+            } else {
+              // Update local metadata cache
+              setFileMetadataMap((prev) => {
+                const next = new Map(prev);
+                const targets = new Set<string>();
+                targets.add(sharingFile.id);
+                targets.add(targetFileId);
+                if (sharingFile.backendFileId) {
+                  targets.add(sharingFile.backendFileId);
+                }
+                if (existingMetadata?.fileId) {
+                  targets.add(existingMetadata.fileId);
+                }
+
+                targets.forEach((key) => {
+                  const current = next.get(key);
+                  if (current) {
+                    next.set(key, {
+                      ...current,
+                      isNSFW: shareNSFW
+                    });
+                  }
+                });
+
+                return next;
+              });
+            }
+          } catch (nsfwError) {
+            console.error('❌ [ShareSettings] Failed to update NSFW flag:', nsfwError);
+            // Don't throw - this is non-critical
+          }
+        }
+      }
+
       if (makePublic && nextPermissions) {
         try {
           // Retry on 429 (rate limit) errors with exponential backoff
@@ -3964,6 +4031,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
   }, [
     sharingFile,
     shareVisibility,
+    shareNSFW,
     fileMetadataMap,
     indexerToggles,
     thirdPartyIndexers,
@@ -3971,6 +4039,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
     handleTogglePublic,
     loadFileMetadata,
     apiEndpoint,
+    authenticatedUser,
     closeShareSettings,
     refreshMetadataInBackground
   ]);
@@ -7096,6 +7165,41 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
                   })}
                 </div>
               </section>
+
+              {shareVisibility === 'public' && (
+                <section>
+                  <h3 className="text-sm font-semibold text-text-primary uppercase tracking-wide mb-3">
+                    Content Classification
+                  </h3>
+                  <div className="flex items-center justify-between border border-neutral-800 bg-neutral-900/70 rounded-lg px-4 py-3">
+                    <div className="flex-1">
+                      <p className="text-sm font-semibold text-white uppercase tracking-wide mb-1">
+                        NSFW Content
+                      </p>
+                      <p className="text-xs text-text-secondary">
+                        Mark this content as Not Safe For Work (18+). This affects how it appears in public feeds.
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      role="switch"
+                      aria-checked={shareNSFW}
+                      onClick={() => setShareNSFW(!shareNSFW)}
+                      className={`
+                        relative inline-flex h-6 w-11 items-center rounded-full transition-colors
+                        ${shareNSFW ? 'bg-red-600' : 'bg-neutral-700'}
+                      `}
+                    >
+                      <span
+                        className={`
+                          inline-block h-4 w-4 transform rounded-full bg-white transition-transform
+                          ${shareNSFW ? 'translate-x-6' : 'translate-x-1'}
+                        `}
+                      />
+                    </button>
+                  </div>
+                </section>
+              )}
 
               <section>
                 <div className="flex items-center justify-between mb-3">
