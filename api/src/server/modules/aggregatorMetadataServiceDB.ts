@@ -152,6 +152,7 @@ export class AggregatorMetadataServiceDB {
         FROM aggregator_metadata am
         LEFT JOIN feed_posts fp ON am.file_id = fp.file_id
         WHERE am.metadata->>'isPublic' = 'true'
+        AND (am.metadata->>'isNSFW' IS NULL OR am.metadata->>'isNSFW' = 'false')
         GROUP BY am.file_id, am.metadata, am.submitted_at, am.pn_identifier
       `;
       const params: any[] = [];
@@ -235,6 +236,110 @@ export class AggregatorMetadataServiceDB {
       return entries;
     } catch (error) {
       console.error('❌ Failed to get public metadata:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get all NSFW metadata with optional filters
+   * 
+   * Returns only files with `isPublic = 'true'` AND `isNSFW = 'true'`
+   * This is the NSFW index endpoint for users over 18
+   */
+  async getNSFWMetadata(filters?: {
+    tags?: string[];
+    fileType?: string;
+    authorDid?: string;
+    indexerId?: string;
+  }): Promise<CentralIndexEntry[]> {
+    const db = getDatabasePool();
+
+    try {
+      let query = `
+        SELECT 
+          am.file_id, 
+          am.metadata, 
+          am.submitted_at, 
+          am.pn_identifier,
+          COALESCE(ARRAY_AGG(DISTINCT fp.feed_id::text) FILTER (WHERE fp.feed_id IS NOT NULL), ARRAY[]::text[]) as feed_ids
+        FROM aggregator_metadata am
+        LEFT JOIN feed_posts fp ON am.file_id = fp.file_id
+        WHERE am.metadata->>'isPublic' = 'true'
+        AND am.metadata->>'isNSFW' = 'true'
+        GROUP BY am.file_id, am.metadata, am.submitted_at, am.pn_identifier
+      `;
+      const params: any[] = [];
+      let paramIndex = 1;
+
+      // Apply filters
+      if (filters?.fileType) {
+        query += ` AND am.metadata->>'fileType' = $${paramIndex}`;
+        params.push(filters.fileType);
+        paramIndex++;
+      }
+
+      if (filters?.indexerId) {
+        const idxParam = `$${paramIndex}`;
+        query += ` AND (
+          am.metadata->'indexingPermissions' IS NULL
+          OR am.metadata->'indexingPermissions'->>'mode' IS NULL
+          OR (
+            am.metadata->'indexingPermissions'->>'mode' = 'all'
+            AND NOT (COALESCE(am.metadata->'indexingPermissions'->'blocked', '[]'::jsonb) ? ${idxParam})
+          )
+          OR (
+            am.metadata->'indexingPermissions'->>'mode' = 'custom'
+            AND (COALESCE(am.metadata->'indexingPermissions'->'allowed', '[]'::jsonb) ? ${idxParam})
+            AND NOT (COALESCE(am.metadata->'indexingPermissions'->'blocked', '[]'::jsonb) ? ${idxParam})
+          )
+        )`;
+        params.push(filters.indexerId);
+        paramIndex++;
+      }
+
+      query += ` ORDER BY am.updated_at DESC`;
+
+      const result = await db.query(query, params);
+      let entries: CentralIndexEntry[] = result.rows.map(row => {
+        const metadata = row.metadata as PublicMetadata & { feedIds?: string[] };
+        // Add feedIds to metadata if they exist
+        if (row.feed_ids && row.feed_ids.length > 0) {
+          metadata.feedIds = row.feed_ids.map((id: string) => id.toString());
+        }
+        return {
+          fileId: row.file_id,
+          metadata,
+          submittedAt: row.submitted_at.toISOString(),
+          pnIdentifier: row.pn_identifier
+        };
+      });
+
+      // Filter by tags (PostgreSQL JSONB array contains is complex, so filter in JS)
+      if (filters?.tags && filters.tags.length > 0) {
+        entries = entries.filter(entry => {
+          const keywords = entry.metadata.keywords || [];
+          return keywords.some((tag: string) => filters.tags!.includes(tag));
+        });
+      }
+
+      // Filter by authorDid (same pattern as tags - filter in JS to avoid SQL type issues)
+      if (filters?.authorDid) {
+        entries = entries.filter(entry => {
+          const pnId = entry.pnIdentifier;
+          const creatorId = entry.metadata.creator?.identifier?.value || entry.metadata.creator?.["@id"];
+          const authorDid = entry.metadata.author?.did;
+          
+          return pnId === filters.authorDid || 
+                 creatorId === filters.authorDid || 
+                 authorDid === filters.authorDid;
+        });
+      }
+
+      console.log(`📤 [getNSFWMetadata] Returning ${entries.length} NSFW files from database (isPublic = true AND isNSFW = true)`);
+      
+      return entries;
+    } catch (error) {
+      console.error('❌ Failed to get NSFW metadata:', error);
       throw error;
     }
   }
@@ -588,6 +693,30 @@ export class AggregatorMetadataServiceDB {
     
     let files = await this.getPublicMetadata(filters);
     console.log(`📤 [getIndexResponse] Returning ${files.length} file(s) after cleanup`);
+    
+    const stats = await this.getStats();
+
+    return {
+      files,
+      updatedAt: stats.lastUpdated,
+      totalFiles: files.length
+    };
+  }
+
+  /**
+   * Get full NSFW index response
+   * Returns NSFW content only (isPublic = true AND isNSFW = true)
+   */
+  async getNSFWIndexResponse(filters?: {
+    tags?: string[];
+    fileType?: string;
+    authorDid?: string;
+    indexerId?: string;
+  }): Promise<CentralIndexResponse> {
+    console.log(`🔍 [getNSFWIndexResponse] Fetching NSFW files...`);
+    
+    let files = await this.getNSFWMetadata(filters);
+    console.log(`📤 [getNSFWIndexResponse] Returning ${files.length} NSFW file(s)`);
     
     const stats = await this.getStats();
 
@@ -1378,7 +1507,7 @@ export class AggregatorMetadataServiceDB {
       fileType?: string;
       textPost?: any;
       thought?: any;
-      contentRating?: string;
+      isNSFW?: boolean;
     }
   ): Promise<PublicMetadata | null> {
     const db = getDatabasePool();
@@ -1406,7 +1535,7 @@ export class AggregatorMetadataServiceDB {
         ...(updates.fileType && { fileType: updates.fileType }),
         ...(updates.textPost && { textPost: updates.textPost }),
         ...(updates.thought && { thought: updates.thought }),
-        ...(updates.contentRating && { contentRating: updates.contentRating }),
+        ...(updates.isNSFW !== undefined && { isNSFW: updates.isNSFW === true }),
         // Update schema.org fields (merge with existing schema)
         schema: {
           ...existingSchema,

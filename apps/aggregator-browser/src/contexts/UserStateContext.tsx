@@ -75,21 +75,23 @@ export function UserStateProvider({ children }: { children: ReactNode }) {
             subscribedCategories: []
           };
         }
-        // Migrate old content ratings to new 4-tier system
-        if (parsed.preferences?.maxRating) {
-          const oldRating = parsed.preferences.maxRating;
-          const validRatings: ContentRating[] = ['GA', '18+', 'NSFW', 'X'];
-          if (!validRatings.includes(oldRating as ContentRating)) {
-            // Map old ratings to new ones
-            const ratingMap: Record<string, ContentRating> = {
-              'FF': 'GA',
-              'T13+': 'GA',
-              'YA16+': '18+',
-              'M18+': '18+',
-              'X18+': 'X'
-            };
-            parsed.preferences.maxRating = ratingMap[oldRating] || 'GA';
+        // Migrate old rating preferences to new NSFW system
+        // Remove old maxRating, ageVerified, verifiedAge if they exist
+        if (parsed.preferences) {
+          // Initialize new fields if not present
+          if (parsed.preferences.hasAgeZKP === undefined) {
+            parsed.preferences.hasAgeZKP = false;
           }
+          if (parsed.preferences.isOver18 === undefined) {
+            parsed.preferences.isOver18 = false;
+          }
+          if (parsed.preferences.showNSFW === undefined) {
+            parsed.preferences.showNSFW = false;
+          }
+          // Remove old fields
+          delete parsed.preferences.maxRating;
+          delete parsed.preferences.ageVerified;
+          delete parsed.preferences.verifiedAge;
         }
         console.log('Loaded user state from localStorage, subscribedCategories:', parsed.preferences?.subscribedCategories);
         return parsed;
@@ -140,9 +142,9 @@ export function UserStateProvider({ children }: { children: ReactNode }) {
               preferences: {
                 ...prev.preferences,
                 ...(data.preferences.subscribedCategories && { subscribedCategories: data.preferences.subscribedCategories }),
-                ...(data.preferences.maxRating && { maxRating: data.preferences.maxRating as ContentRating }),
-                ...(data.preferences.ageVerified !== undefined && { ageVerified: data.preferences.ageVerified }),
-                ...(data.preferences.verifiedAge !== undefined && { verifiedAge: data.preferences.verifiedAge })
+                ...(data.preferences.hasAgeZKP !== undefined && { hasAgeZKP: data.preferences.hasAgeZKP }),
+                ...(data.preferences.isOver18 !== undefined && { isOver18: data.preferences.isOver18 }),
+                ...(data.preferences.showNSFW !== undefined && { showNSFW: data.preferences.showNSFW })
               }
             }));
             console.log('Loaded preferences from Google Drive:', data.preferences);
@@ -166,8 +168,8 @@ export function UserStateProvider({ children }: { children: ReactNode }) {
       return;
     }
 
-    // Only check if not already verified
-    if (userState.preferences.ageVerified) {
+    // Only check if not already checked
+    if (userState.preferences.hasAgeZKP) {
       return;
     }
 
@@ -228,21 +230,19 @@ export function UserStateProvider({ children }: { children: ReactNode }) {
             console.log('[Age ZKP Check] Verification result:', verification);
             
             if (verification && verification.isValid) {
-                // Age ZKP is shared and valid (age >= 18) - allow 18+ and NSFW content
-                // GA content is always available (no age check needed)
+                // Age ZKP is shared and valid (age >= 18) - user can access NSFW content
               setUserState(prev => {
                 const newState = {
                   ...prev,
                   preferences: {
                     ...prev.preferences,
-                    ageVerified: true,
-                    verifiedAge: 18, // Minimum age, not actual age
-                    // Allow 18+ and NSFW if age ZKP is shared and valid
-                    // Don't override if user has already set a higher rating
-                    maxRating: prev.preferences.maxRating === 'GA' ? 'NSFW' : prev.preferences.maxRating
+                    hasAgeZKP: true,
+                    isOver18: true,
+                    // showNSFW defaults to false even if eligible - user must toggle it
+                    showNSFW: prev.preferences.showNSFW || false
                   }
                 };
-                console.log('✅ Age ZKP shared and verified (age >= 18) - 18+ and NSFW content now accessible. New state:', newState);
+                console.log('✅ Age ZKP shared and verified (age >= 18) - NSFW content now accessible. New state:', newState);
                 return newState;
               });
             } else {
@@ -279,7 +279,17 @@ export function UserStateProvider({ children }: { children: ReactNode }) {
             // Retry once in case permissions are still being stored
             setTimeout(() => checkZKPAgeVerification(retryCount + 1), 2000);
           } else {
-            console.log('ℹ️ Age ZKP not shared - only GA content available');
+            console.log('ℹ️ Age ZKP not shared - only public content available');
+            // Age ZKP not shared
+            setUserState(prev => ({
+              ...prev,
+              preferences: {
+                ...prev.preferences,
+                hasAgeZKP: false,
+                isOver18: false,
+                showNSFW: false
+              }
+            }));
           }
         }
       } catch (error) {
@@ -287,6 +297,17 @@ export function UserStateProvider({ children }: { children: ReactNode }) {
         // Retry on error
         if (retryCount < 2) {
           setTimeout(() => checkZKPAgeVerification(retryCount + 1), 2000 * (retryCount + 1));
+        } else {
+          // Final retry failed - assume no age ZKP
+          setUserState(prev => ({
+            ...prev,
+            preferences: {
+              ...prev.preferences,
+              hasAgeZKP: false,
+              isOver18: false,
+              showNSFW: false
+            }
+          }));
         }
       }
     };
@@ -296,13 +317,13 @@ export function UserStateProvider({ children }: { children: ReactNode }) {
     
     // Also check again after a delay to account for async permission storage
     const delayedCheck = setTimeout(() => {
-      if (!userState.preferences.ageVerified) {
+      if (!userState.preferences.hasAgeZKP) {
         checkZKPAgeVerification(1);
       }
     }, 3000);
 
     return () => clearTimeout(delayedCheck);
-  }, [userState.isUnlocked, userState.pnIdentifier, userState.preferences.ageVerified]);
+  }, [userState.isUnlocked, userState.pnIdentifier, userState.preferences.hasAgeZKP]);
 
   const setUnlocked = (pnIdentifier: string) => {
     setUserState(prev => ({
@@ -320,13 +341,16 @@ export function UserStateProvider({ children }: { children: ReactNode }) {
     }));
   };
 
-  const updateMaxRating = async (rating: ContentRating) => {
+  const setAgeZKPStatus = async (hasAgeZKP: boolean, isOver18: boolean) => {
     // Update local state immediately
     setUserState(prev => ({
       ...prev,
       preferences: {
         ...prev.preferences,
-        maxRating: rating
+        hasAgeZKP,
+        isOver18,
+        // Reset showNSFW if user is not over 18
+        showNSFW: isOver18 ? prev.preferences.showNSFW : false
       }
     }));
 
@@ -336,7 +360,7 @@ export function UserStateProvider({ children }: { children: ReactNode }) {
         const { PNOAuthService } = await import('../services/pnOAuthService');
         const session = PNOAuthService.loadSession();
         if (!session?.accessToken) {
-          console.warn('No access token, cannot save maxRating to Google Drive');
+          console.warn('No access token, cannot save age ZKP status to Google Drive');
           return;
         }
 
@@ -348,31 +372,37 @@ export function UserStateProvider({ children }: { children: ReactNode }) {
             'Authorization': `Bearer ${session.accessToken}`
           },
           body: JSON.stringify({
-            maxRating: rating
+            hasAgeZKP,
+            isOver18
           })
         });
 
         if (response.ok) {
-          console.log('✅ Saved maxRating to Google Drive:', rating);
+          console.log('✅ Saved age ZKP status to Google Drive:', { hasAgeZKP, isOver18 });
         } else if (response.status === 404) {
           console.warn('Preferences endpoint not available, keeping local state only');
         } else {
-          console.warn('Failed to save maxRating to Google Drive:', response.status);
+          console.warn('Failed to save age ZKP status to Google Drive:', response.status);
         }
       } catch (error) {
-        console.warn('Error saving maxRating to Google Drive:', error);
+        console.warn('Error saving age ZKP status to Google Drive:', error);
       }
     }
   };
 
-  const setAgeVerified = async (age: number) => {
+  const toggleShowNSFW = async (show: boolean) => {
+    // Only allow toggling if user has age ZKP and is over 18
+    if (!userState.preferences.hasAgeZKP || !userState.preferences.isOver18) {
+      console.warn('Cannot toggle NSFW - user does not have age ZKP or is not over 18');
+      return;
+    }
+
     // Update local state immediately
     setUserState(prev => ({
       ...prev,
       preferences: {
         ...prev.preferences,
-        ageVerified: true,
-        verifiedAge: age
+        showNSFW: show
       }
     }));
 
@@ -382,7 +412,7 @@ export function UserStateProvider({ children }: { children: ReactNode }) {
         const { PNOAuthService } = await import('../services/pnOAuthService');
         const session = PNOAuthService.loadSession();
         if (!session?.accessToken) {
-          console.warn('No access token, cannot save ageVerified to Google Drive');
+          console.warn('No access token, cannot save showNSFW preference to Google Drive');
           return;
         }
 
@@ -394,20 +424,19 @@ export function UserStateProvider({ children }: { children: ReactNode }) {
             'Authorization': `Bearer ${session.accessToken}`
           },
           body: JSON.stringify({
-            ageVerified: true,
-            verifiedAge: age
+            showNSFW: show
           })
         });
 
         if (response.ok) {
-          console.log('✅ Saved ageVerified to Google Drive:', age);
+          console.log('✅ Saved showNSFW preference to Google Drive:', show);
         } else if (response.status === 404) {
           console.warn('Preferences endpoint not available, keeping local state only');
         } else {
-          console.warn('Failed to save ageVerified to Google Drive:', response.status);
+          console.warn('Failed to save showNSFW preference to Google Drive:', response.status);
         }
       } catch (error) {
-        console.warn('Error saving ageVerified to Google Drive:', error);
+        console.warn('Error saving showNSFW preference to Google Drive:', error);
       }
     }
   };
@@ -531,8 +560,8 @@ export function UserStateProvider({ children }: { children: ReactNode }) {
         userState,
         setUnlocked,
         setLocked,
-        updateMaxRating,
-        setAgeVerified,
+        setAgeZKPStatus,
+        toggleShowNSFW,
         subscribeToFeed,
         unsubscribeFromFeed,
         isSubscribedToFeed,

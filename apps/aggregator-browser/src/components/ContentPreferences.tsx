@@ -5,11 +5,10 @@
  */
 
 import React, { useState, useMemo, useRef } from 'react';
-import { X, Settings, Globe, Shield } from 'lucide-react';
+import { X, Settings, Globe } from 'lucide-react';
 import { useUserState } from '../contexts/UserStateContext';
 import { FEED_CATEGORIES, FEED_CATEGORY_LIST } from '../constants/feedCategories';
-import { Feed, ContentRating } from '../types/aggregator';
-import { CONTENT_RATINGS, RATING_ORDER } from '../constants/contentRatings';
+import { Feed } from '../types/aggregator';
 import { PNOAuthService } from '../services/pnOAuthService';
 
 interface ContentPreferencesProps {
@@ -18,9 +17,8 @@ interface ContentPreferencesProps {
 }
 
 export function ContentPreferences({ onClose, feeds }: ContentPreferencesProps) {
-  const { userState, subscribeToCategory, unsubscribeFromCategory, isSubscribedToCategory, updateMaxRating, setAgeVerified } = useUserState();
+  const { userState, subscribeToCategory, unsubscribeFromCategory, isSubscribedToCategory } = useUserState();
   const [isLoading, setIsLoading] = useState(false);
-  const selectRef = useRef<HTMLSelectElement>(null);
 
   // Group feeds by category
   const feedsByCategory = useMemo(() => {
@@ -124,143 +122,7 @@ export function ContentPreferences({ onClose, feeds }: ContentPreferencesProps) 
 
         {/* Content */}
         <div className="flex-1 overflow-y-auto p-6 space-y-6 pb-6">
-          {/* Content Rating Preferences - First */}
-          <section>
-            <div className="flex items-center space-x-2 mb-4">
-              <Shield className="h-5 w-5 text-blue-400" />
-              <h3 className="text-lg font-semibold text-white">Content Rating</h3>
-            </div>
-            <div className="bg-neutral-800/50 rounded-lg p-4">
-              <select
-                ref={selectRef}
-                value={userState.preferences.maxRating}
-                onChange={async (e) => {
-                  const newRating = e.target.value as ContentRating;
-                  const previousRating = userState.preferences.maxRating;
-                  const ratingInfo = CONTENT_RATINGS[newRating];
-                  console.log('[Rating Select] Rating changed:', { newRating, previousRating, ratingInfo, ageVerified: userState.preferences.ageVerified });
-                  
-                  // If rating requires verification, verify through ZKP
-                  if (ratingInfo.requiresVerification && !userState.preferences.ageVerified) {
-                    console.log('[Rating Select] Verification required for rating:', newRating);
-                    
-                    if (!userState.isUnlocked || !userState.pnIdentifier) {
-                      console.warn('[Rating Select] User not unlocked - blocking change');
-                      alert('Please unlock your pN to verify age for this rating');
-                      // Reset select to previous value
-                      if (selectRef.current) {
-                        selectRef.current.value = previousRating;
-                      }
-                      return;
-                    }
-                    
-                    setIsLoading(true);
-                    try {
-                      const { PNOAuthService } = await import('../services/pnOAuthService');
-                      const session = PNOAuthService.loadSession();
-                      if (!session?.accessToken) {
-                        console.warn('[Rating Select] No access token - blocking change');
-                        alert('Please authenticate to verify age');
-                        // Reset select to previous value
-                        if (selectRef.current) {
-                          selectRef.current.value = previousRating;
-                        }
-                        return;
-                      }
-                      
-                      const apiEndpoint = process.env.REACT_APP_API_ENDPOINT || 'https://api.parnoir.com';
-                      const condition = `age >= ${ratingInfo.ageRestriction}`;
-                      console.log('[Rating Select] Verifying age:', { condition, dataPointId: 'age_attestation' });
-                      
-                      const verifyResponse = await fetch(
-                        `${apiEndpoint}/api/users/${userState.pnIdentifier}/zkp-data-points/verify`,
-                        {
-                          method: 'POST',
-                          headers: {
-                            'Content-Type': 'application/json',
-                            'Authorization': `Bearer ${session.accessToken}`
-                          },
-                          body: JSON.stringify({
-                            dataPointId: 'age_attestation',
-                            condition
-                          })
-                        }
-                      );
-                      
-                      if (verifyResponse.ok) {
-                        const verifyData = await verifyResponse.json();
-                        console.log('[Rating Select] Verify response:', verifyData);
-                        
-                        if (verifyData.verification?.isValid) {
-                          // Age verified - update rating
-                          console.log('[Rating Select] ✅ Verification passed, updating rating to:', newRating);
-                          await setAgeVerified(ratingInfo.ageRestriction);
-                          await updateMaxRating(newRating);
-                        } else {
-                          console.warn('[Rating Select] ❌ Verification failed - blocking change:', verifyData.verification);
-                          alert(`Age verification failed. You must be at least ${ratingInfo.ageRestriction} to view ${newRating} content.`);
-                          // Reset select to previous value
-                          if (selectRef.current) {
-                            selectRef.current.value = previousRating;
-                          }
-                        }
-                      } else {
-                        const errorText = await verifyResponse.text().catch(() => 'Unknown error');
-                        console.warn('[Rating Select] ❌ Verify request failed - blocking change:', {
-                          status: verifyResponse.status,
-                          error: errorText
-                        });
-                        alert(`Age verification failed. Please ensure you have attested your age in the dashboard.`);
-                        // Reset select to previous value
-                        if (selectRef.current) {
-                          selectRef.current.value = previousRating;
-                        }
-                      }
-                    } catch (error) {
-                      console.error('[Rating Select] ❌ Error verifying age - blocking change:', error);
-                      alert('Failed to verify age. Please try again.');
-                      // Reset select to previous value
-                      if (selectRef.current) {
-                        selectRef.current.value = previousRating;
-                      }
-                    } finally {
-                      setIsLoading(false);
-                    }
-                  } else {
-                    // No verification needed or already verified
-                    console.log('[Rating Select] No verification needed, updating rating to:', newRating);
-                    await updateMaxRating(newRating);
-                  }
-                }}
-                disabled={isLoading}
-                className="w-full p-3 bg-neutral-900 rounded-lg border border-neutral-700 text-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {RATING_ORDER.map((rating) => {
-                  const ratingInfo = CONTENT_RATINGS[rating];
-                  const isDisabled = ratingInfo.requiresVerification && !userState.preferences.ageVerified;
-                  return (
-                    <option
-                      key={rating}
-                      value={rating}
-                      disabled={isDisabled}
-                    >
-                      {rating} {ratingInfo.requiresVerification && !userState.preferences.ageVerified ? '(Verification Required)' : ''}
-                    </option>
-                  );
-                })}
-              </select>
-              
-              {!userState.preferences.ageVerified && (
-                <div className="mt-4 p-3 bg-yellow-500/10 border border-yellow-500/20 rounded-lg">
-                  <p className="text-xs text-yellow-400">
-                    Some ratings require age verification. You'll be prompted when selecting them.
-                  </p>
-                </div>
-              )}
-            </div>
-          </section>
-
-          {/* Niche Feeds Section - Second */}
+          {/* Niche Feeds Section */}
           <section>
             <div className="flex items-center space-x-2 mb-4">
               <Globe className="h-5 w-5 text-blue-400" />
@@ -279,7 +141,7 @@ export function ContentPreferences({ onClose, feeds }: ContentPreferencesProps) 
               ) : (
                 <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3 max-h-96 overflow-y-auto">
                   {FEED_CATEGORY_LIST.filter(cat => 
-                    cat.id !== 'adults-only' || userState.preferences.ageVerified
+                    cat.id !== 'adults-only' || userState.preferences.isOver18
                   ).map(category => {
                     const isSubscribed = isCategorySubscribed(category.id);
 

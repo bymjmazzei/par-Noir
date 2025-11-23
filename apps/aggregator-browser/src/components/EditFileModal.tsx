@@ -4,10 +4,9 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { X, Globe, Lock, Users, Star, Shield } from 'lucide-react';
-import { IndexedFile, ContentRating } from '../types/aggregator';
+import { X, Globe, Lock, Users, Star } from 'lucide-react';
+import { IndexedFile } from '../types/aggregator';
 import { useUserState } from '../contexts/UserStateContext';
-import { CONTENT_RATINGS, RATING_ORDER, getDefaultContentRating } from '../constants/contentRatings';
 
 interface EditFileModalProps {
   file: IndexedFile;
@@ -24,8 +23,8 @@ export function EditFileModal({ file, onClose, onSave }: EditFileModalProps) {
   const [description, setDescription] = useState(file.metadata.description || '');
   const [tags, setTags] = useState((file.metadata.keywords || file.metadata.tags || []).join(', '));
   const [isTopPost, setIsTopPost] = useState(file.metadata.isTopPost || false);
-  const [contentRating, setContentRating] = useState<ContentRating>(
-    (file.metadata.contentRating as ContentRating) || getDefaultContentRating(userState.preferences.ageVerified)
+  const [isNSFW, setIsNSFW] = useState<boolean>(
+    file.metadata.isNSFW === true
   );
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -57,7 +56,7 @@ export function EditFileModal({ file, onClose, onSave }: EditFileModalProps) {
           isPublic: visibility === 'public',
           visibility: visibility,
           isTopPost: isTopPost,
-          contentRating: contentRating
+          isNSFW: isNSFW
         }),
       });
 
@@ -82,7 +81,7 @@ export function EditFileModal({ file, onClose, onSave }: EditFileModalProps) {
           keywords: tags.split(',').map(t => t.trim()).filter(Boolean),
           tags: tags.split(',').map(t => t.trim()).filter(Boolean),
           isTopPost: isTopPost,
-          contentRating: contentRating
+          isNSFW: isNSFW
         }
       };
 
@@ -198,27 +197,22 @@ export function EditFileModal({ file, onClose, onSave }: EditFileModalProps) {
             <p className="text-xs text-neutral-400 mt-1">Separate tags with commas</p>
           </div>
 
-          {/* Content Rating */}
+          {/* NSFW Toggle */}
           <div>
-            <label className="block text-white font-medium mb-2">Content Rating</label>
-            <select
-              value={contentRating}
-              onChange={(e) => setContentRating(e.target.value as ContentRating)}
-              className="w-full px-4 py-2 bg-neutral-800 border border-neutral-700 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-            >
-              {RATING_ORDER.map((rating) => {
-                const ratingInfo = CONTENT_RATINGS[rating];
-                const isDisabled = ratingInfo.requiresVerification && !userState.preferences.ageVerified;
-                return (
-                  <option key={rating} value={rating} disabled={isDisabled}>
-                    {rating} {isDisabled ? '(Verification Required)' : ''}
-                  </option>
-                );
-              })}
-            </select>
-            <p className="text-xs text-neutral-400 mt-1">
-              {CONTENT_RATINGS[contentRating]?.description}
-            </p>
+            <label className="flex items-center space-x-3 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={isNSFW}
+                onChange={(e) => setIsNSFW(e.target.checked)}
+                className="w-4 h-4 text-blue-600 bg-neutral-800 border-neutral-700 rounded focus:ring-blue-500 focus:ring-2"
+              />
+              <div>
+                <span className="text-white font-medium">NSFW Content</span>
+                <p className="text-xs text-neutral-400 mt-1">
+                  Mark this content as Not Safe For Work (18+)
+                </p>
+              </div>
+            </label>
           </div>
 
           {/* Top Post */}

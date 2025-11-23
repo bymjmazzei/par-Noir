@@ -51,7 +51,7 @@ import { CreatorFeedPage } from './components/CreatorFeedPage';
 import { Inbox } from './components/Inbox';
 import { saveToFeed, getSavedFeed } from './services/savedFeedService';
 import { getUserProfile } from './services/profileService';
-import { isRatingAcceptable } from './constants/contentRatings';
+import { isNSFWContent } from './constants/contentRatings';
 
 // Shared types - importing from id-dashboard
 // In production, these would come from a shared package
@@ -528,7 +528,7 @@ function App() {
         clearTimeout(discoverFilesTimeoutRef.current);
       }
     };
-  }, [activeFeedId, userState.preferences.maxRating]);
+  }, [activeFeedId, userState.preferences.showNSFW]);
 
   // Reset feed index when feed changes (unless navigating to a specific file)
   useEffect(() => {
@@ -604,27 +604,29 @@ function App() {
 
   // Memoize filtered files by active feed
   const filteredFilesByFeed = useMemo(() => {
-    const maxRating = userState.preferences.maxRating;
+    const showNSFW = userState.preferences.showNSFW;
     
-    // Helper to check if file's content rating is acceptable
-    const isFileRatingAcceptable = (file: IndexedFile): boolean => {
-      const fileRating = file.metadata.contentRating as string | undefined;
-      if (!fileRating) {
-        // If no rating specified, allow it (default to most restrictive)
-        return true;
+    // Helper to check if file should be shown based on NSFW preference
+    const shouldShowFile = (file: IndexedFile): boolean => {
+      const isNSFW = isNSFWContent(file.metadata);
+      // If NSFW content and user doesn't want to see NSFW, hide it
+      if (isNSFW && !showNSFW) {
+        return false;
       }
-      return isRatingAcceptable(fileRating as any, maxRating);
+      // Show public content and NSFW content if user has it enabled
+      return true;
     };
 
     if (activeFeedId === 'public') {
-      // Public feed: filter by content rating if user is unlocked
+      // Public feed: filter by NSFW preference if user is unlocked
       if (userState.isUnlocked) {
-        return indexedFiles.filter(isFileRatingAcceptable);
+        return indexedFiles.filter(shouldShowFile);
       }
-      return indexedFiles;
+      // Locked users see all public content (NSFW filtering happens at index level)
+      return indexedFiles.filter(file => !isNSFWContent(file.metadata));
     }
     if (activeFeedId === 'curated') {
-      // Curated feed = all files from subscribed categories (niche feeds), filtered by content rating
+      // Curated feed = all files from subscribed categories (niche feeds), filtered by NSFW preference
       const subscribedCategories = userState.preferences.subscribedCategories || [];
       const subscribedFeedIds = userState.preferences.subscribedFeedIds || [];
       
@@ -645,8 +647,8 @@ function App() {
         // Must match at least one subscription (category or feed)
         if (!matchesCategory && !inSubscribedFeed) return false;
         
-        // Must meet content rating requirement
-        return isFileRatingAcceptable(file);
+        // Filter by NSFW preference
+        return shouldShowFile(file);
       });
     }
     if (activeFeedId === 'discovery') {
@@ -669,21 +671,28 @@ function App() {
         return fileFeeds.some(feed => feed.feedCategory === categoryId);
       });
       
+      // Filter by NSFW preference if user is unlocked
       if (userState.isUnlocked) {
-        filtered = filtered.filter(isFileRatingAcceptable);
+        filtered = filtered.filter(shouldShowFile);
+      } else {
+        // Locked users don't see NSFW content
+        filtered = filtered.filter(file => !isNSFWContent(file.metadata));
       }
       return filtered;
     }
     
-    // Individual feed: filter by content rating if user is unlocked
+    // Individual feed: filter by NSFW preference if user is unlocked
     let filtered = indexedFiles.filter(file => 
       file.metadata.feedIds?.includes(activeFeedId)
     );
     if (userState.isUnlocked) {
-      filtered = filtered.filter(isFileRatingAcceptable);
+      filtered = filtered.filter(shouldShowFile);
+    } else {
+      // Locked users don't see NSFW content
+      filtered = filtered.filter(file => !isNSFWContent(file.metadata));
     }
     return filtered;
-  }, [indexedFiles, activeFeedId, userState.preferences.subscribedFeedIds, userState.preferences.maxRating, userState.isUnlocked, feeds]);
+  }, [indexedFiles, activeFeedId, userState.preferences.subscribedFeedIds, userState.preferences.showNSFW, userState.isUnlocked, feeds]);
 
   // Navigation handlers (memoized)
 
@@ -886,9 +895,8 @@ function App() {
         ...(searchQuery ? { tags: searchQuery.split(',').map(t => t.trim()).filter(Boolean) } : {}),
         // DON'T apply rating filter to public feed - public feed shows all public files
         // Only apply rating filter to non-public feeds (but not virtual feeds)
-        ...(activeFeedId === 'public' || isVirtualFeed || isNicheCategoryFeed
-          ? {} 
-          : { maxRating: userState.preferences.maxRating }),
+        // NSFW filtering is handled in filteredFilesByFeed based on showNSFW preference
+        // No need to filter here at the API level
         // Filter by active feed (but not for virtual feeds)
         // For niche category feeds, filter by feedCategory instead of feedId
         ...(isVirtualFeed
@@ -899,7 +907,74 @@ function App() {
       };
       
       // Discover public files from all users (with optional force refresh)
-      const discoveredFiles = await metadataIndexService.discoverFiles(finalFilters, forceRefresh);
+      const publicFiles = await metadataIndexService.discoverFiles(finalFilters, forceRefresh);
+      
+      // If user has age ZKP and is over 18, also load NSFW index
+      let nsfwFiles: IndexedFile[] = [];
+      if (userState.preferences.hasAgeZKP && userState.preferences.isOver18) {
+        try {
+          const { CentralMetadataAggregator } = await import('./services/storage/CentralMetadataAggregator');
+          const nsfwEntries = await CentralMetadataAggregator.fetchNSFWIndex({
+            tags: finalFilters?.tags,
+            fileType: finalFilters?.fileType,
+            authorDid: finalFilters?.authorDid
+          }, forceRefresh);
+          
+          // Transform NSFW entries to IndexedFile format (same as public files)
+          nsfwFiles = nsfwEntries
+            .filter((entry: any) => {
+              const metadata = entry.metadata || {};
+              const isPublic = metadata.isPublic;
+              const hasPublicToken = metadata.publicToken != null;
+              return (isPublic !== false || hasPublicToken) && metadata.isNSFW === true;
+            })
+            .map((entry: any) => {
+              const pnId = entry.pnIdentifier;
+              const normalizedPnId = pnId && pnId.startsWith('pn-') ? pnId.substring(3) : pnId;
+              const metadata = entry.metadata || {};
+              
+              return {
+                metadata: {
+                  ...metadata,
+                  textPost: metadata.textPost || metadata.thought,
+                  thought: metadata.thought || metadata.textPost,
+                  creatorId: normalizedPnId || metadata.creatorId,
+                  publicToken: entry.publicToken || metadata.publicToken
+                },
+                thumbnail: metadata.thumbnail,
+                publicToken: entry.publicToken || metadata.publicToken,
+                pnIdentifier: entry.pnIdentifier || normalizedPnId
+              };
+            });
+          
+          console.log(`✅ Discovered ${nsfwFiles.length} NSFW files`);
+        } catch (nsfwError) {
+          console.warn('Failed to fetch NSFW index:', nsfwError);
+          // Continue with public files only if NSFW fetch fails
+        }
+      }
+      
+      // Merge public and NSFW files, deduplicate by fileId
+      const allFilesMap = new Map<string, IndexedFile>();
+      
+      // Add public files first
+      for (const file of publicFiles) {
+        allFilesMap.set(file.metadata.fileId, file);
+      }
+      
+      // Add NSFW files (will override public if same fileId, but shouldn't happen)
+      for (const file of nsfwFiles) {
+        if (!allFilesMap.has(file.metadata.fileId)) {
+          allFilesMap.set(file.metadata.fileId, file);
+        }
+      }
+      
+      // Convert back to array, sorted by uploadDate (newest first)
+      const discoveredFiles = Array.from(allFilesMap.values()).sort((a, b) => {
+        const aDate = new Date(a.metadata.uploadDate || 0).getTime();
+        const bDate = new Date(b.metadata.uploadDate || 0).getTime();
+        return bDate - aDate;
+      });
       
       // Only update state if content actually changed (compare fileIds to avoid unnecessary re-renders)
       setIndexedFiles(prev => {
@@ -974,7 +1049,7 @@ function App() {
       setIsLoading(false);
       isDiscoveringRef.current = false;
     }
-  }, [filters, searchQuery, userState.preferences.maxRating, activeFeedId, viewMode]);
+  }, [filters, searchQuery, userState.preferences.showNSFW, activeFeedId, viewMode]);
   
   // Store discoverFiles in ref so it can be called from OAuth callback
   useEffect(() => {
@@ -3466,8 +3541,8 @@ function App() {
                           {isVideo ? 'Video' : file.fileType === 'image' ? 'Image' : file.fileType || 'File'} • {new Date(file.uploadDate).toLocaleDateString()}
                         </p>
                       </div>
-                      {file.contentRating && (
-                        <ContentRatingBadge rating={file.contentRating} size="sm" className="ml-2 flex-shrink-0" />
+                      {file.metadata.isNSFW && (
+                        <ContentRatingBadge isNSFW={true} size="sm" className="ml-2 flex-shrink-0" />
                       )}
                     </div>
 

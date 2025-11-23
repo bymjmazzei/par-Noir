@@ -1238,6 +1238,64 @@ class ProductionServer {
       }
     });
 
+    // GET /api/aggregator/nsfw-index - Query NSFW metadata
+    this.app.get('/api/aggregator/nsfw-index', async (req, res) => {
+      try {
+        const { AggregatorMetadataServiceDB } = await import('./server/modules/aggregatorMetadataServiceDB');
+        const service = AggregatorMetadataServiceDB.getInstance();
+
+        // Parse query parameters
+        const tags = req.query.tags ? (req.query.tags as string).split(',').map(t => t.trim()) : undefined;
+        const fileType = req.query.fileType as string | undefined;
+        const authorDid = req.query.authorDid as string | undefined;
+        const indexerId = req.query.indexerId as string | undefined;
+        const debug = req.query.debug === 'true';
+
+        const response = await service.getNSFWIndexResponse({
+          tags,
+          fileType,
+          authorDid,
+          indexerId
+        });
+
+        if (debug) {
+          // Debug mode: return additional info
+          const db = (await import('./server/utils/database')).getDatabasePool();
+          const allFiles = await db.query(`
+            SELECT file_id, metadata->>'isPublic' as is_public, metadata->>'isNSFW' as is_nsfw, metadata->>'name' as name, updated_at
+            FROM aggregator_metadata
+            WHERE metadata->>'isPublic' = 'true' AND metadata->>'isNSFW' = 'true'
+            ORDER BY updated_at DESC
+            LIMIT 100
+          `);
+          
+          return res.json({
+            ...response,
+            debug: {
+              totalInDatabase: allFiles.rows.length,
+              nsfwInDatabase: allFiles.rows.filter((r: any) => r.is_nsfw === 'true').length,
+              sampleFiles: allFiles.rows.slice(0, 10).map((r: any) => ({
+                fileId: r.file_id,
+                isPublic: r.is_public,
+                isNSFW: r.is_nsfw,
+                name: r.name,
+                updatedAt: r.updated_at
+              }))
+            }
+          });
+        }
+
+        console.log(`📤 [GET /api/aggregator/nsfw-index] Returning ${response.files.length} NSFW files`);
+        return res.json(response);
+      } catch (error: any) {
+        console.error('❌ [GET /api/aggregator/nsfw-index] Error:', error);
+        return res.status(500).json({ 
+          error: 'Failed to fetch NSFW metadata index',
+          message: error.message 
+        });
+      }
+    });
+
     // GET /api/aggregator/my-files - Get ALL files (public + private) for authenticated user
     this.app.get('/api/aggregator/my-files', async (req, res) => {
       try {
@@ -1736,7 +1794,7 @@ class ProductionServer {
           textPost,
           thought,
           fileType,
-          contentRating
+          isNSFW
         } = req.body;
 
         if (!fileId) {
@@ -1816,7 +1874,7 @@ class ProductionServer {
               ...(publicToken && { publicToken }),
               ...(textPost && { textPost }),
               ...(thought && { thought }),
-              ...(contentRating && { contentRating }),
+              ...(isNSFW !== undefined && { isNSFW: isNSFW === true }),
               "@context": ['https://schema.org/', 'https://parnoir.com/ns/v1#'],
               "@id": `https://parnoir.com/resource/${fileId}`,
               engagement: {
@@ -1851,7 +1909,7 @@ class ProductionServer {
               isPublic: isPublic !== undefined ? isPublic : defaultIsPublic,
               ...(textPost && { textPost }),
               ...(thought && { thought }),
-              ...(contentRating && { contentRating }),
+              ...(isNSFW !== undefined && { isNSFW: isNSFW === true }),
               "@context": ['https://schema.org/', 'https://parnoir.com/ns/v1#'],
               "@id": `https://parnoir.com/resource/${fileId}`,
               engagement: {
@@ -1894,7 +1952,7 @@ class ProductionServer {
           fileType,
           textPost,
           thought,
-          contentRating
+          isNSFW
         });
 
         // Also update isPublic if provided (or default for text posts)
@@ -1918,7 +1976,7 @@ class ProductionServer {
               ...(textPost && { textPost }),
               ...(thought && { thought }),
               ...(fileType && { fileType }),
-              ...(contentRating && { contentRating })
+              ...(isNSFW !== undefined && { isNSFW: isNSFW === true })
             };
             const db = (await import('./server/utils/database')).getDatabasePool();
             await db.query(

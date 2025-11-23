@@ -11,9 +11,8 @@ import { EncryptionManager } from '../utils/encryptionManager';
 import { getEncryptionService } from '../services/encryptionService';
 import { FEED_CATEGORIES, FEED_CATEGORY_LIST } from '../constants/feedCategories';
 import { LICENSE_TYPES } from '../constants/licenses';
-import { FeedCategory, ContentRating } from '../types/aggregator';
+import { FeedCategory } from '../types/aggregator';
 import { useUserState } from '../contexts/UserStateContext';
-import { CONTENT_RATINGS, RATING_ORDER, getDefaultContentRating } from '../constants/contentRatings';
 
 const apiEndpoint = process.env.REACT_APP_API_ENDPOINT || 'https://api.parnoir.com';
 
@@ -828,7 +827,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
     locationName: string;
     locationAddress: string;
     license: string;
-    contentRating: ContentRating;
+    isNSFW: boolean;
   }>({
     name: '',
     description: '',
@@ -838,7 +837,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
     locationName: '',
     locationAddress: '',
     license: 'all-rights-reserved',
-    contentRating: 'GA'
+    isNSFW: false
   });
   const [fileMetadataMap, setFileMetadataMap] = useState<Map<string, any>>(new Map());
 
@@ -961,8 +960,8 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
     const license = metadata?.license || metadata?.schema?.license || '';
     const licenseString = typeof license === 'object' && license?.name ? license.name : (typeof license === 'string' ? license : '') || 'all-rights-reserved';
     
-    // Extract content rating
-    const contentRating = (metadata?.contentRating as ContentRating) || getDefaultContentRating(userState.preferences.ageVerified);
+    // Extract isNSFW (default to false for public content)
+    const isNSFW = metadata?.isNSFW === true;
     
     setEditForm({
       name: metadata?.name || (file.name.endsWith('.encrypted') ? file.name.replace('.encrypted', '') : file.name),
@@ -973,7 +972,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
       locationName: locationName,
       locationAddress: locationAddress,
       license: licenseString,
-      contentRating: contentRating
+      isNSFW: isNSFW
     });
     setEditingFile(file);
   };
@@ -1044,7 +1043,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
           category: editForm.category || undefined,
           locationCreated: locationCreated,
           license: editForm.license || undefined,
-          contentRating: editForm.contentRating
+          isNSFW: editForm.isNSFW
         }),
       });
 
@@ -1096,7 +1095,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
         locationName: '',
         locationAddress: '',
         license: '',
-        contentRating: 'GA'
+        isNSFW: false
       });
     } catch (err: any) {
       const errorMessage = err instanceof Error ? err.message : 'Failed to update metadata';
@@ -1729,8 +1728,8 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
           : file.type.startsWith('audio/') ? 'audio'
           : 'document';
 
-        // Get default content rating based on user's verification status
-        const defaultRating = getDefaultContentRating(userState.preferences.ageVerified);
+        // Default to public content (isNSFW: false)
+        // Users can mark content as NSFW during upload or edit
         
         // Create metadata entry via API (this also updates owner index automatically)
         const metadataResponse = await fetch(`${apiEndpoint}/api/aggregator/metadata-index/${fileId}`, {
@@ -1748,7 +1747,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
             isPublic: false, // Default to private
             publicToken: shareToken ? JSON.stringify(shareToken) : undefined, // Store share token for future use
             uploadDate: new Date().toISOString(),
-            contentRating: defaultRating, // Set default rating based on user's highest accessible rating
+            isNSFW: false, // Default to public content
             // Include accountId in query params if needed
           }),
         });
@@ -2279,7 +2278,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
                       locationLng: '',
                       license: '',
                       language: '',
-                      contentRating: 'GA'
+                      isNSFW: false
                     });
                 }}
                 className="text-text-secondary hover:text-text-primary transition-colors"
@@ -2407,27 +2406,20 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
                 
                 <div className="space-y-4">
                   <div>
-                    <label className="block text-sm font-medium text-text-secondary mb-1">
-                      Rating
+                    <label className="flex items-center space-x-3 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={editForm.isNSFW}
+                        onChange={(e) => setEditForm({ ...editForm, isNSFW: e.target.checked })}
+                        className="w-4 h-4 text-blue-600 bg-neutral-700 border-neutral-600 rounded focus:ring-blue-500 focus:ring-2"
+                      />
+                      <div>
+                        <span className="text-sm font-medium text-text-primary">NSFW Content</span>
+                        <p className="text-xs text-text-secondary mt-1">
+                          Mark this content as Not Safe For Work (18+)
+                        </p>
+                      </div>
                     </label>
-                    <select
-                      value={editForm.contentRating}
-                      onChange={(e) => setEditForm({ ...editForm, contentRating: e.target.value as ContentRating })}
-                      className="w-full px-3 py-2 bg-neutral-700 border border-neutral-600 rounded-lg text-text-primary focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    >
-                      {RATING_ORDER.map((rating) => {
-                        const ratingInfo = CONTENT_RATINGS[rating];
-                        const isDisabled = ratingInfo.requiresVerification && !userState.preferences.ageVerified;
-                        return (
-                          <option key={rating} value={rating} disabled={isDisabled}>
-                            {rating} {isDisabled ? '(Verification Required)' : ''}
-                          </option>
-                        );
-                      })}
-                    </select>
-                    <p className="text-xs text-text-secondary mt-1">
-                      {CONTENT_RATINGS[editForm.contentRating]?.description}
-                    </p>
                   </div>
                 </div>
               </div>
@@ -2474,7 +2466,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
         locationName: '',
         locationAddress: '',
         license: 'all-rights-reserved',
-        contentRating: 'GA'
+        isNSFW: false
       });
                   }}
                   className="px-4 py-2 text-sm font-medium text-text-secondary hover:text-text-primary transition-colors"

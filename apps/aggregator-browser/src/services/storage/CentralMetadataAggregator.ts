@@ -191,5 +191,91 @@ export class CentralMetadataAggregator {
       return [];
     }
   }
+
+  /**
+   * Fetch NSFW metadata index from central service
+   * Only callable by users with age ZKP and over 18
+   * Same structure as public index but filters for NSFW content
+   */
+  static async fetchNSFWIndex(
+    filters?: { tags?: string[]; fileType?: string; authorDid?: string },
+    forceRefresh: boolean = false
+  ): Promise<CentralIndexEntry[]> {
+    // Create a unique key for this request to deduplicate
+    const requestKey = `nsfw-${JSON.stringify(filters || {})}`;
+    
+    // If there's already a pending request with the same filters, return it
+    if (!forceRefresh && this.pendingRequests.has(requestKey)) {
+      console.log('⏸️ [CentralMetadataAggregator] NSFW request already in progress, reusing promise');
+      return this.pendingRequests.get(requestKey)!;
+    }
+    
+    // Create the request promise
+    const requestPromise = this._fetchNSFWWithRetry(filters);
+    
+    // Store it for deduplication
+    this.pendingRequests.set(requestKey, requestPromise);
+    
+    // Clean up after request completes
+    requestPromise.finally(() => {
+      this.pendingRequests.delete(requestKey);
+    });
+    
+    return requestPromise;
+  }
+
+  /**
+   * Internal method to fetch NSFW index with exponential backoff retry for 429 errors
+   */
+  private static async _fetchNSFWWithRetry(
+    filters?: { tags?: string[]; fileType?: string; authorDid?: string },
+    retryCount: number = 0
+  ): Promise<CentralIndexEntry[]> {
+    const maxRetries = 3;
+    const baseDelay = 1000; // 1 second
+    
+    try {
+      // Query NSFW index endpoint
+      const params = new URLSearchParams();
+      if (filters?.tags) params.append('tags', filters.tags.join(','));
+      if (filters?.fileType) params.append('fileType', filters.fileType);
+      if (filters?.authorDid) params.append('authorDid', filters.authorDid);
+
+      const nsfwIndexPath = '/api/aggregator/nsfw-index';
+      console.log(`🔍 [CentralMetadataAggregator] Fetching NSFW index from API: ${this.API_ENDPOINT}${nsfwIndexPath}`);
+
+      const response = await fetch(
+        `${this.API_ENDPOINT}${nsfwIndexPath}?${params.toString()}`,
+        {
+          method: 'GET',
+          headers: {
+            'Content-Type': 'application/json'
+          }
+        }
+      );
+
+      if (response.ok) {
+        const data: CentralIndexResponse = await response.json();
+        console.log(`✅ [CentralMetadataAggregator] Received ${data.files?.length || 0} NSFW files from API`);
+        return data.files || [];
+      } else if (response.status === 429 && retryCount < maxRetries) {
+        // Rate limited - retry with exponential backoff
+        const delay = baseDelay * Math.pow(2, retryCount);
+        console.warn(`⏳ [CentralMetadataAggregator] NSFW index rate limited (429), retrying in ${delay}ms (attempt ${retryCount + 1}/${maxRetries})`);
+        await new Promise(resolve => setTimeout(resolve, delay));
+        return this._fetchNSFWWithRetry(filters, retryCount + 1);
+      } else {
+        const errorText = await response.text().catch(() => 'Unknown error');
+        console.error(`❌ [CentralMetadataAggregator] NSFW index API returned ${response.status}:`, errorText);
+        // Return empty array if 403/401 (not eligible) or other errors
+        return [];
+      }
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      console.error('❌ [CentralMetadataAggregator] Failed to fetch NSFW index from API:', errorMessage);
+      // Return empty array - no fallback cache
+      return [];
+    }
+  }
 }
 

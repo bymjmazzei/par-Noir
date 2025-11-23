@@ -14,7 +14,7 @@ interface SettingsPanelProps {
 }
 
 export function SettingsPanel({ onClose }: SettingsPanelProps) {
-  const { userState, setLocked } = useUserState();
+  const { userState, setLocked, toggleShowNSFW } = useUserState();
 
   return (
     <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
@@ -81,22 +81,45 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
             <div className="bg-neutral-800/50 rounded-lg p-4 space-y-4">
               <div>
                 <p className="text-white text-sm mb-2">Age Verification</p>
-                {userState.preferences.ageVerified ? (
+                {userState.preferences.hasAgeZKP && userState.preferences.isOver18 ? (
                   <p className="text-text-secondary text-xs">
-                    Verified age: {userState.preferences.verifiedAge}+
+                    Age verified: Over 18
                   </p>
                 ) : (
                   <p className="text-text-secondary text-xs">
-                    Age verification required for 18+ content
+                    Age verification required for NSFW content
                   </p>
                 )}
               </div>
-              <div>
-                <p className="text-white text-sm mb-2">Content Filtering</p>
-                <p className="text-text-secondary text-xs">
-                  Content is filtered based on your rating preferences. You can adjust these settings above.
-                </p>
-              </div>
+              {userState.preferences.hasAgeZKP && userState.preferences.isOver18 ? (
+                <div>
+                  <label className="flex items-center space-x-3 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={userState.preferences.showNSFW || false}
+                      onChange={async (e) => {
+                        if (toggleShowNSFW) {
+                          await toggleShowNSFW(e.target.checked);
+                        }
+                      }}
+                      className="w-4 h-4 text-blue-600 bg-neutral-700 border-neutral-600 rounded focus:ring-blue-500 focus:ring-2"
+                    />
+                    <div>
+                      <span className="text-white text-sm font-medium">Show NSFW Content</span>
+                      <p className="text-text-secondary text-xs mt-1">
+                        Enable to view NSFW (18+) content in your feed
+                      </p>
+                    </div>
+                  </label>
+                </div>
+              ) : (
+                <div>
+                  <p className="text-white text-sm mb-2">Content Filtering</p>
+                  <p className="text-text-secondary text-xs">
+                    Age verification required to access NSFW content.
+                  </p>
+                </div>
+              )}
             </div>
           </section>
 

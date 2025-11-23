@@ -597,12 +597,20 @@ If issues are discovered after deployment:
 - ✅ Added `isNSFW: boolean` to PublicMetadata and TextPostData interfaces
 - ✅ Updated MetadataFilters to use `includeNSFW: boolean` instead of rating filters
 - ✅ Simplified `contentRatings.ts` to basic helper functions
-- ✅ Started updating UserStateContext interfaces but need to complete implementation
+- ✅ Updated UserStateContext interfaces (removed maxRating, added hasAgeZKP, isOver18, showNSFW)
+- ✅ Removed RatingPreferences from SettingsPanel (will be replaced with NSFW toggle in Phase 7)
+- ✅ Updated MetadataIndexService to use isNSFW filtering instead of rating filtering
+- ✅ Updated ContentRatingBadge to simple NSFW badge component
 
 ### Remaining Work for Phase 1:
-- Need to update UserStateContext methods (remove updateMaxRating, setAgeVerified, replace with new methods)
-- Need to update all files that import ContentRating or contentRatings constants (9 files identified)
-- Need to update App.tsx filtering logic
-- Need to update upload/edit UI components
+- ⚠️ FileStorageAggregator.tsx - needs to replace rating dropdown with Public/NSFW toggle (Phase 1.3)
+- ⚠️ EditFileModal.tsx - needs to replace rating dropdown with Public/NSFW toggle (Phase 1.3)
+- ⚠️ TextPostEditor.tsx - needs to replace rating dropdown with Public/NSFW toggle (Phase 1.3)
+- ⚠️ App.tsx - needs to remove rating filtering logic, replace with isNSFW filtering (Phase 1.4)
+- ⚠️ UserStateContext.tsx - needs to remove old methods (updateMaxRating, setAgeVerified) and replace with new methods (Phase 1.6)
+- ⚠️ ContentPreferences.tsx - needs to remove rating logic (Phase 1.5)
+- ⚠️ Other files that import ContentRating or rating constants
 
-**Note**: Current changes will cause compilation errors until all files are updated. This is expected during refactoring.
+**Current Status**: Foundation work complete. Compilation errors remain until all files are updated. Working systematically through remaining files.
+
+**Last Commit**: f35c26f - Phase 1: Continue removing rating system - update components
