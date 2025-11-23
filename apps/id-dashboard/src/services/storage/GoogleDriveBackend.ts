@@ -846,7 +846,6 @@ export class GoogleDriveBackend extends AbstractStorageBackend {
     const data = await response.json();
     const fileList = data.files || [];
     console.log(`📋 [listFiles] Google Drive returned ${fileList.length} item(s) from folder ${folderId.substring(0, 12)}...`);
-    console.log(`📋 [listFiles] File names:`, fileList.map((f: any) => f.name).slice(0, 10));
 
     // Filter out metadata files and any remaining folders (safety check)
     const filteredFileList = fileList.filter((f: any) => {
@@ -863,23 +862,6 @@ export class GoogleDriveBackend extends AbstractStorageBackend {
 
     if (filteredFileList.length !== fileList.length) {
       console.log(`📋 [listFiles] Filtered out ${fileList.length - filteredFileList.length} metadata/folder item(s) - showing ${filteredFileList.length} file(s)`);
-    }
-    
-    // Log PDF and thought files specifically
-    const pdfFiles = filteredFileList.filter((f: any) => {
-      const name = (f.name || '').toLowerCase();
-      return name.endsWith('.pdf') || name.includes('.pdf.encrypted') || f.mimeType === 'application/pdf';
-    });
-    const thoughtFiles = filteredFileList.filter((f: any) => {
-      const name = (f.name || '').toLowerCase().replace(/\.encrypted$/i, '');
-      return /^thought-\d+\.png$/i.test(name);
-    });
-    
-    if (pdfFiles.length > 0) {
-      console.log(`📋 [listFiles] Found ${pdfFiles.length} PDF file(s):`, pdfFiles.map((f: any) => f.name));
-    }
-    if (thoughtFiles.length > 0) {
-      console.log(`📋 [listFiles] Found ${thoughtFiles.length} thought file(s):`, thoughtFiles.map((f: any) => f.name));
     }
 
     return filteredFileList.map((f: any) => ({

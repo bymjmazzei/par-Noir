@@ -3131,28 +3131,6 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
           });
           
           if (filesNotInIndex.length > 0) {
-            console.warn(`[FileStorageAggregator] Found ${filesNotInIndex.length} file(s) in Drive that aren't in owner index`, {
-              backendId,
-              fileNames: filesNotInIndex.map((f: any) => f.name).slice(0, 10)
-            });
-            
-            // Check for PDFs and thoughts in files not in index
-            const pdfFilesNotInIndex = filesNotInIndex.filter((f: any) => {
-              const name = (f.name || '').toLowerCase();
-              return name.endsWith('.pdf') || name.includes('.pdf.encrypted') || f.mimeType === 'application/pdf';
-            });
-            const thoughtFilesNotInIndex = filesNotInIndex.filter((f: any) => {
-              const name = (f.name || '').toLowerCase().replace(/\.encrypted$/i, '');
-              return /^thought-\d+\.png$/i.test(name);
-            });
-            
-            if (pdfFilesNotInIndex.length > 0) {
-              console.warn(`[FileStorageAggregator] Found ${pdfFilesNotInIndex.length} PDF file(s) not in index:`, pdfFilesNotInIndex.map((f: any) => f.name));
-            }
-            if (thoughtFilesNotInIndex.length > 0) {
-              console.warn(`[FileStorageAggregator] Found ${thoughtFilesNotInIndex.length} thought file(s) not in index:`, thoughtFilesNotInIndex.map((f: any) => f.name));
-            }
-            
             // Add files not in index to filesForBackend
             const additionalFiles = filesNotInIndex.map((file: any) => ({
               id: file.id,
@@ -3169,7 +3147,6 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
             
             filesForBackend.push(...additionalFiles);
             filesNeedingMetadata.push(...additionalFiles);
-            console.warn(`[FileStorageAggregator] Added ${additionalFiles.length} file(s) from Drive scan that weren't in owner index`);
           }
 
           // Process metadata from owner index, filtering out orphaned entries
@@ -3299,32 +3276,11 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
           console.debug('ℹ️ [loadFiles] Owner index empty; scanning Drive contents', { backendId });
           try {
             const scannedFiles = await backend.listFiles(undefined, currentPnIdentifier);
-            console.warn(`[FileStorageAggregator] Scanned ${scannedFiles.length} files from Drive for backend ${backendId}`);
-            console.warn(`[FileStorageAggregator] File names:`, scannedFiles.map((f: any) => f.name).slice(0, 10));
-            
-            // Check for PDFs and thoughts
-            const pdfFiles = scannedFiles.filter((f: any) => {
-              const name = (f.name || '').toLowerCase();
-              return name.endsWith('.pdf') || name.includes('.pdf.encrypted') || f.mimeType === 'application/pdf';
-            });
-            const thoughtFiles = scannedFiles.filter((f: any) => {
-              const name = (f.name || '').toLowerCase().replace(/\.encrypted$/i, '');
-              return /^thought-\d+\.png$/i.test(name);
-            });
-            
-            if (pdfFiles.length > 0) {
-              console.warn(`[FileStorageAggregator] Found ${pdfFiles.length} PDF file(s) in scan:`, pdfFiles.map((f: any) => f.name));
-            }
-            if (thoughtFiles.length > 0) {
-              console.warn(`[FileStorageAggregator] Found ${thoughtFiles.length} thought file(s) in scan:`, thoughtFiles.map((f: any) => f.name));
-            }
-            
             filesForBackend = scannedFiles.map((file: any) => ({
               ...file,
               backend: backendId,
               backendFileId: file.id,
             }));
-            console.warn(`[FileStorageAggregator] Mapped ${filesForBackend.length} files for backend ${backendId}`);
             filesNeedingMetadata.push(...filesForBackend);
 
             if (ownerIndex?.files?.length) {
@@ -3375,31 +3331,8 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
         }
 
         aggregatedAllFiles.push(...filesForBackend);
-        console.warn(`[FileStorageAggregator] Added ${filesForBackend.length} files from backend ${backendId}`, {
-          totalFiles: aggregatedAllFiles.length,
-          fileNames: filesForBackend.map(f => f.name).slice(0, 5)
-        });
       }
 
-      const pdfCount = aggregatedAllFiles.filter(f => {
-        const name = (f.name || '').toLowerCase();
-        return name.endsWith('.pdf') || name.includes('.pdf.encrypted') || f.mimeType === 'application/pdf';
-      }).length;
-      const thoughtCount = aggregatedAllFiles.filter(f => {
-        const name = (f.name || '').toLowerCase().replace(/\.encrypted$/i, '');
-        return /^thought-\d+\.png$/i.test(name);
-      }).length;
-      
-      console.warn(`[FileStorageAggregator] Total files loaded: ${aggregatedAllFiles.length}`, {
-        pdfFiles: pdfCount,
-        thoughtFiles: thoughtCount,
-        allFileNames: aggregatedAllFiles.map(f => f.name).slice(0, 10)
-      });
-      
-      if (pdfCount === 0 && thoughtCount === 0) {
-        console.error(`[FileStorageAggregator] WARNING: No PDFs or thoughts found! Check if files exist in Google Drive.`);
-      }
-      
       setFiles(aggregatedAllFiles);
       const normalizedMetadataMap = new Map<string, PublicMetadata>();
       aggregatedMetadataMap.forEach((metadata, key) => {
