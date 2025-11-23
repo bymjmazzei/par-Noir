@@ -39,6 +39,7 @@
     "ipfs-http-client": "^60.0.1",
     "jsqr": "^1.4.0",
     "lucide-react": "^0.263.1",
+    "pdfjs-dist": "^5.4.394",
     "qrcode": "^1.5.4",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",

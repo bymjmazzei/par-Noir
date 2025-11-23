@@ -20,6 +20,58 @@ import { LICENSE_TYPES } from '../../constants/licenses';
 import { FEED_CATEGORIES, FEED_CATEGORY_LIST } from '../../constants/feedCategories';
 // ContentRating removed - using isNSFW boolean instead
 
+// Helper function to create PDF thumbnail (first page)
+async function createPDFThumbnail(blob: Blob, maxWidth: number, maxHeight: number): Promise<Blob> {
+  try {
+    const pdfjsLib = await import('pdfjs-dist');
+    pdfjsLib.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.js`;
+    
+    const url = URL.createObjectURL(blob);
+    const loadingTask = pdfjsLib.getDocument({ url });
+    const pdf = await loadingTask.promise;
+    
+    // Get first page
+    const page = await pdf.getPage(1);
+    const viewport = page.getViewport({ scale: 1.0 });
+    
+    // Calculate scale to fit max dimensions
+    const scale = Math.min(maxWidth / viewport.width, maxHeight / viewport.height, 1.0);
+    const scaledViewport = page.getViewport({ scale });
+    
+    // Create canvas
+    const canvas = document.createElement('canvas');
+    canvas.width = scaledViewport.width;
+    canvas.height = scaledViewport.height;
+    
+    const ctx = canvas.getContext('2d');
+    if (!ctx) {
+      URL.revokeObjectURL(url);
+      throw new Error('Failed to get canvas context');
+    }
+    
+    // Render PDF page to canvas
+    await page.render({
+      canvasContext: ctx,
+      viewport: scaledViewport
+    }).promise;
+    
+    URL.revokeObjectURL(url);
+    
+    // Convert canvas to blob
+    return new Promise((resolve, reject) => {
+      canvas.toBlob((thumbnailBlob) => {
+        if (thumbnailBlob) {
+          resolve(thumbnailBlob);
+        } else {
+          reject(new Error('Failed to create PDF thumbnail blob'));
+        }
+      }, 'image/jpeg', 0.8);
+    });
+  } catch (error) {
+    throw new Error(`Failed to create PDF thumbnail: ${error}`);
+  }
+}
+
 const GOOGLE_DRIVE_ICON_URL = GoogleDriveIconUrl;
 const DRIVE_ACCOUNTS_STORAGE_KEY = 'pn_google_drive_accounts';
 const METADATA_SYNC_MIN_INTERVAL_MS = 90_000;
@@ -5396,12 +5448,13 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
       return;
     }
 
-    // Only load previews for images and videos - check mimeType and file extension
+    // Load previews for images, videos, and PDFs - check mimeType and file extension
     const mimeType = file.mimeType || '';
     const fileName = file.originalName || file.name || '';
     const isImage = mimeType.startsWith('image/') || /\.(jpg|jpeg|png|gif|webp|svg|bmp|ico)$/i.test(fileName);
     const isVideo = mimeType.startsWith('video/') || /\.(mp4|mov|avi|webm|mkv|flv|wmv)$/i.test(fileName);
-    if (!isImage && !isVideo) {
+    const isPDF = mimeType === 'application/pdf' || /\.pdf$/i.test(fileName);
+    if (!isImage && !isVideo && !isPDF) {
       return;
     }
 
@@ -5459,7 +5512,14 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
 
           const { decryptWithToken } = await import('../../utils/tokenDecryption');
           const decryptedBlob = await decryptWithToken(token);
-          previewUrl = URL.createObjectURL(decryptedBlob);
+          
+          // Check if it's a PDF and generate thumbnail from first page
+          if (isPDF) {
+            const thumbnailBlob = await createPDFThumbnail(decryptedBlob, 300, 300);
+            previewUrl = URL.createObjectURL(thumbnailBlob);
+          } else {
+            previewUrl = URL.createObjectURL(decryptedBlob);
+          }
           previewRetryCounts.current.delete(file.id);
         } catch (tokenError) {
           console.warn('⚠️ [Preview] Token-based decryption failed, will attempt owner fallback:', tokenError);
@@ -5522,7 +5582,13 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
             session
           );
 
-          previewUrl = URL.createObjectURL(decryptedBlob);
+          // Check if it's a PDF and generate thumbnail from first page
+          if (isPDF) {
+            const thumbnailBlob = await createPDFThumbnail(decryptedBlob, 300, 300);
+            previewUrl = URL.createObjectURL(thumbnailBlob);
+          } else {
+            previewUrl = URL.createObjectURL(decryptedBlob);
+          }
           previewRetryCounts.current.delete(file.id);
 
           // Cache metadata fields for future reference
@@ -5624,14 +5690,15 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
         fileCount: files.length,
         metadataMapSize: fileMetadataMap.size
       });
-      // Load previews for all image/video files automatically (token-based, no credentials needed)
+      // Load previews for all image/video/PDF files automatically (token-based, no credentials needed)
       files.forEach(file => {
         const mimeType = file.mimeType || '';
         const fileName = file.originalName || file.name || '';
         const isImage = mimeType.startsWith('image/') || /\.(jpg|jpeg|png|gif|webp|svg|bmp|ico)$/i.test(fileName);
         const isVideo = mimeType.startsWith('video/') || /\.(mp4|mov|avi|webm|mkv|flv|wmv)$/i.test(fileName);
+        const isPDF = mimeType === 'application/pdf' || /\.pdf$/i.test(fileName);
         
-        if ((isImage || isVideo) && !filePreviewUrls.has(file.id) && !loadingPreviews.has(file.id)) {
+        if ((isImage || isVideo || isPDF) && !filePreviewUrls.has(file.id) && !loadingPreviews.has(file.id)) {
           console.log('🔄 [Auto-Preview] Loading preview for file:', file.id, file.name);
           loadFilePreview(file).catch(err => {
             // Silently fail for auto-preview - don't show error modal
@@ -6499,6 +6566,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
                       const fileName = file.originalName || file.name || '';
                       const isImage = mimeType.startsWith('image/') || /\.(jpg|jpeg|png|gif|webp|svg|bmp|ico)$/i.test(fileName);
                       const isVideo = mimeType.startsWith('video/') || /\.(mp4|mov|avi|webm|mkv|flv|wmv)$/i.test(fileName);
+                      const isPDF = mimeType === 'application/pdf' || /\.pdf$/i.test(fileName);
 
                       return (
                         <div
@@ -6509,7 +6577,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
                           <div
                             className="relative aspect-square bg-neutral-700/50 overflow-hidden"
                             onMouseEnter={() => {
-                              if ((isImage || isVideo) && !previewUrl && !isLoadingPreview) {
+                              if ((isImage || isVideo || isPDF) && !previewUrl && !isLoadingPreview) {
                                 loadFilePreview(file);
                               }
                             }}
@@ -6527,6 +6595,12 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
                                 muted
                                 loop
                               />
+                            ) : previewUrl && isPDF ? (
+                              <img
+                                src={previewUrl}
+                                alt={file.encrypted ? file.originalName : file.name}
+                                className="w-full h-full object-cover"
+                              />
                             ) : isLoadingPreview ? (
                               <div className="w-full h-full flex items-center justify-center">
                                 <RefreshCw className="h-6 w-6 text-text-secondary animate-spin" />
@@ -6541,7 +6615,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
                                 <Globe className="h-3 w-3 text-white" />
                               </div>
                             )}
-                            {(isImage || isVideo) && (
+                            {(isImage || isVideo || isPDF) && (
                               <div className="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-colors flex items-center justify-center opacity-0 group-hover:opacity-100">
                                 <Eye className="h-6 w-6 text-white" />
                               </div>
