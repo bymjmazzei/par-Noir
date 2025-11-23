@@ -13,6 +13,7 @@ interface PDFSlideshowProps {
   publicToken: string | ShareToken | object;
   fileName?: string;
   pdfPageFileIds?: string[]; // Pre-rendered PNG page file IDs for fast loading
+  accountId?: string; // Account ID for downloading PNG pages
 }
 
 export function PDFSlideshow({ fileId, publicToken, fileName, pdfPageFileIds, accountId }: PDFSlideshowProps) {
@@ -33,26 +34,13 @@ export function PDFSlideshow({ fileId, publicToken, fileName, pdfPageFileIds, ac
       return;
     }
 
-    const loadPreRenderedPages = async () => {
-      try {
-        setLoading(true);
-        setError(null);
-        setUsePreRenderedPages(true);
-        
-        // Set pages based on number of PNG files
-        setPages(Array.from({ length: pdfPageFileIds.length }, (_, i) => i + 1));
-        setCurrentPage(1);
-        setLoading(false);
-        
-        console.log(`✅ [PDFSlideshow] Using ${pdfPageFileIds.length} pre-rendered PNG pages for fast loading`);
-      } catch (err: any) {
-        console.error('Failed to load pre-rendered pages:', err);
-        // Fall back to PDF.js rendering
-        setUsePreRenderedPages(false);
-      }
-    };
-
-    loadPreRenderedPages();
+    // Initialize pre-rendered pages mode
+    setUsePreRenderedPages(true);
+    setPages(Array.from({ length: pdfPageFileIds.length }, (_, i) => i + 1));
+    setCurrentPage(1);
+    setLoading(false);
+    
+    console.log(`✅ [PDFSlideshow] Using ${pdfPageFileIds.length} pre-rendered PNG pages for fast loading`);
   }, [pdfPageFileIds]);
 
   // Load and decrypt PDF (fallback if no pre-rendered pages)
@@ -116,12 +104,14 @@ export function PDFSlideshow({ fileId, publicToken, fileName, pdfPageFileIds, ac
   // Load pre-rendered PNG pages from file IDs
   const [preRenderedPageUrls, setPreRenderedPageUrls] = useState<Map<number, string>>(new Map());
   const [loadingPages, setLoadingPages] = useState<Set<number>>(new Set());
+  const loadedPagesRef = useRef<Set<number>>(new Set());
 
   useEffect(() => {
-    if (!usePreRenderedPages || !pdfPageFileIds || pdfPageFileIds.length === 0 || pages.length === 0) return;
+    if (!usePreRenderedPages || !pdfPageFileIds || pdfPageFileIds.length === 0) return;
 
     const loadPreRenderedPage = async (pageNum: number, pageFileId: string) => {
-      if (preRenderedPageUrls.has(pageNum) || loadingPages.has(pageNum)) return;
+      // Skip if already loaded or currently loading
+      if (loadedPagesRef.current.has(pageNum) || loadingPages.has(pageNum)) return;
       
       setLoadingPages(prev => new Set(prev).add(pageNum));
       
@@ -134,57 +124,25 @@ export function PDFSlideshow({ fileId, publicToken, fileName, pdfPageFileIds, ac
           throw new Error('No access token');
         }
 
-        // Get accountId from session (needed for API call)
-        const session = PNOAuthService.loadSession();
-        if (!session?.did) {
-          throw new Error('No session');
-        }
-
-        // Download PNG page (decrypted by API)
-        const downloadUrl = accountId 
-          ? `${apiEndpoint}/api/drive/files/${pageFileId}?accountId=${encodeURIComponent(accountId)}&download=true`
-          : `${apiEndpoint}/api/drive/files/${pageFileId}?download=true`;
+        // Use thumbnail endpoint which returns decrypted image
+        const thumbnailUrl = accountId
+          ? `${apiEndpoint}/api/drive/files/${pageFileId}?accountId=${encodeURIComponent(accountId)}&thumbnail=true`
+          : `${apiEndpoint}/api/drive/files/${pageFileId}?thumbnail=true`;
         
-        const response = await fetch(downloadUrl, {
+        const response = await fetch(thumbnailUrl, {
           headers: {
             'Authorization': `Bearer ${accessToken}`
           }
         });
-
+        
         if (!response.ok) {
-          throw new Error(`Failed to load page ${pageNum}: ${response.status}`);
-        }
-
-        // Decrypt the PNG page (it's stored as encrypted JSON package)
-        const encryptedJson = await response.json();
-        const { decryptWithToken } = await import('../utils/tokenDecryption');
-        
-        // Create a share token for this PNG page (using the same structure as PDF)
-        // Note: In production, each PNG page should have its own share token stored in metadata
-        // For now, we'll try to decrypt using the PDF's token structure
-        const pngBlob = await decryptWithToken(publicToken as ShareToken);
-        
-        // Actually, the PNG pages are encrypted files, so we need to decrypt them properly
-        // Let's use the API's decryption endpoint or decrypt client-side
-        // For now, let's try downloading as thumbnail which should be decrypted
-        const thumbnailResponse = await fetch(
-          accountId
-            ? `${apiEndpoint}/api/drive/files/${pageFileId}?accountId=${encodeURIComponent(accountId)}&thumbnail=true`
-            : `${apiEndpoint}/api/drive/files/${pageFileId}?thumbnail=true`,
-          {
-            headers: {
-              'Authorization': `Bearer ${accessToken}`
-            }
-          }
-        );
-        
-        if (!thumbnailResponse.ok) {
-          throw new Error(`Failed to load page ${pageNum} thumbnail`);
+          throw new Error(`Failed to load page ${pageNum} thumbnail: ${response.status}`);
         }
         
-        const blob = await thumbnailResponse.blob();
+        const blob = await response.blob();
         const url = URL.createObjectURL(blob);
         
+        loadedPagesRef.current.add(pageNum);
         setPreRenderedPageUrls(prev => {
           const next = new Map(prev);
           next.set(pageNum, url);
@@ -201,12 +159,14 @@ export function PDFSlideshow({ fileId, publicToken, fileName, pdfPageFileIds, ac
       }
     };
 
-    // Load all pages
+    // Load all pages (only once)
     pdfPageFileIds.forEach((pageFileId, index) => {
       const pageNum = index + 1;
-      loadPreRenderedPage(pageNum, pageFileId);
+      if (!loadedPagesRef.current.has(pageNum)) {
+        loadPreRenderedPage(pageNum, pageFileId);
+      }
     });
-  }, [usePreRenderedPages, pdfPageFileIds, pages.length]);
+  }, [usePreRenderedPages, pdfPageFileIds, accountId]);
 
   // Render PDF pages as images (progressive - first page immediately, others in background)
   // Only used if NOT using pre-rendered pages
@@ -305,7 +265,7 @@ export function PDFSlideshow({ fileId, publicToken, fileName, pdfPageFileIds, ac
     };
 
     renderPages();
-  }, [pdfBlob, pages]);
+  }, [pdfBlob, pages, usePreRenderedPages]);
 
   // Scroll to current page
   useEffect(() => {
