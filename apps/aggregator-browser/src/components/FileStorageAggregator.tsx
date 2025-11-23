@@ -745,6 +745,10 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
           displayName: file.name.replace(/\.encrypted$/i, '')
         }));
         
+        console.log(`[FileStorageAggregator] Loaded ${allFiles.length} files from API, checking for folders...`);
+        const folders = allFiles.filter((f: DriveFile) => f.mimeType === 'application/vnd.google-apps.folder');
+        console.log(`[FileStorageAggregator] Found ${folders.length} folders:`, folders.map((f: DriveFile) => ({ name: f.name, id: f.id })));
+        
         // Filter to show only media files (images/videos/PDFs), excluding metadata, index, encrypted, and system files
         const mediaFiles = allFiles.filter((file: DriveFile) => {
           const name = file.name.toLowerCase();
@@ -755,9 +759,13 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
           if (mimeType === 'application/vnd.google-apps.folder') {
             // Check if this is a PDF slideshow folder (ends with "-pages")
             const nameWithoutEncrypted = file.name.replace(/\.encrypted$/i, '');
-            if (nameWithoutEncrypted.toLowerCase().endsWith('-pages')) {
+            const isPDFSlideshowFolder = nameWithoutEncrypted.toLowerCase().endsWith('-pages');
+            console.log(`[FileFilter] Checking folder: ${file.name}, mimeType: ${mimeType}, isPDFSlideshowFolder: ${isPDFSlideshowFolder}`);
+            if (isPDFSlideshowFolder) {
+              console.log(`✅ [FileFilter] Including PDF slideshow folder: ${file.name}`);
               return true; // Include PDF slideshow folders
             }
+            console.log(`❌ [FileFilter] Excluding folder: ${file.name}`);
             return false; // Exclude other folders
           }
           
@@ -830,6 +838,10 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
           displayName: file.name.replace(/\.encrypted$/i, '')
         }));
         
+        console.log(`[FileStorageAggregator] Loaded ${allFiles.length} files from API, checking for folders...`);
+        const folders = allFiles.filter((f: DriveFile) => f.mimeType === 'application/vnd.google-apps.folder');
+        console.log(`[FileStorageAggregator] Found ${folders.length} folders:`, folders.map((f: DriveFile) => ({ name: f.name, id: f.id })));
+        
         // Filter to show only media files (images/videos/PDFs), excluding metadata, index, encrypted, and system files
         const mediaFiles = allFiles.filter((file: DriveFile) => {
           const name = file.name.toLowerCase();
@@ -840,9 +852,13 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
           if (mimeType === 'application/vnd.google-apps.folder') {
             // Check if this is a PDF slideshow folder (ends with "-pages")
             const nameWithoutEncrypted = file.name.replace(/\.encrypted$/i, '');
-            if (nameWithoutEncrypted.toLowerCase().endsWith('-pages')) {
+            const isPDFSlideshowFolder = nameWithoutEncrypted.toLowerCase().endsWith('-pages');
+            console.log(`[FileFilter] Checking folder: ${file.name}, mimeType: ${mimeType}, isPDFSlideshowFolder: ${isPDFSlideshowFolder}`);
+            if (isPDFSlideshowFolder) {
+              console.log(`✅ [FileFilter] Including PDF slideshow folder: ${file.name}`);
               return true; // Include PDF slideshow folders
             }
+            console.log(`❌ [FileFilter] Excluding folder: ${file.name}`);
             return false; // Exclude other folders
           }
           
