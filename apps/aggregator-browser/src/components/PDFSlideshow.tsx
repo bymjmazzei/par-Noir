@@ -29,18 +29,24 @@ export function PDFSlideshow({ fileId, publicToken, fileName, pdfPageFileIds, ac
 
   // Load pre-rendered PNG pages if available (much faster than PDF.js rendering)
   useEffect(() => {
+    console.log(`[PDFSlideshow] Checking for pre-rendered pages:`, { 
+      pdfPageFileIds, 
+      hasPages: pdfPageFileIds && pdfPageFileIds.length > 0,
+      count: pdfPageFileIds?.length 
+    });
+    
     if (!pdfPageFileIds || pdfPageFileIds.length === 0) {
+      console.log(`[PDFSlideshow] No pre-rendered pages, will use PDF.js`);
       setUsePreRenderedPages(false);
       return;
     }
 
     // Initialize pre-rendered pages mode
+    console.log(`✅ [PDFSlideshow] Using ${pdfPageFileIds.length} pre-rendered PNG pages for fast loading`);
     setUsePreRenderedPages(true);
     setPages(Array.from({ length: pdfPageFileIds.length }, (_, i) => i + 1));
     setCurrentPage(1);
     setLoading(false);
-    
-    console.log(`✅ [PDFSlideshow] Using ${pdfPageFileIds.length} pre-rendered PNG pages for fast loading`);
   }, [pdfPageFileIds]);
 
   // Load and decrypt PDF (fallback if no pre-rendered pages)
@@ -107,12 +113,21 @@ export function PDFSlideshow({ fileId, publicToken, fileName, pdfPageFileIds, ac
   const loadedPagesRef = useRef<Set<number>>(new Set());
 
   useEffect(() => {
-    if (!usePreRenderedPages || !pdfPageFileIds || pdfPageFileIds.length === 0) return;
+    if (!usePreRenderedPages || !pdfPageFileIds || pdfPageFileIds.length === 0) {
+      console.log(`[PDFSlideshow] Skipping PNG load:`, { usePreRenderedPages, pdfPageFileIds: pdfPageFileIds?.length });
+      return;
+    }
+
+    console.log(`[PDFSlideshow] Starting to load ${pdfPageFileIds.length} PNG pages...`);
 
     const loadPreRenderedPage = async (pageNum: number, pageFileId: string) => {
       // Skip if already loaded or currently loading
-      if (loadedPagesRef.current.has(pageNum) || loadingPages.has(pageNum)) return;
+      if (loadedPagesRef.current.has(pageNum) || loadingPages.has(pageNum)) {
+        console.log(`[PDFSlideshow] Skipping page ${pageNum} (already loaded/loading)`);
+        return;
+      }
       
+      console.log(`[PDFSlideshow] Loading PNG page ${pageNum}/${pdfPageFileIds.length}...`);
       setLoadingPages(prev => new Set(prev).add(pageNum));
       
       try {
@@ -129,6 +144,9 @@ export function PDFSlideshow({ fileId, publicToken, fileName, pdfPageFileIds, ac
           ? `${apiEndpoint}/api/drive/files/${pageFileId}?accountId=${encodeURIComponent(accountId)}&thumbnail=true`
           : `${apiEndpoint}/api/drive/files/${pageFileId}?thumbnail=true`;
         
+        console.log(`[PDFSlideshow] Fetching thumbnail for page ${pageNum} from:`, thumbnailUrl);
+        const startTime = Date.now();
+        
         const response = await fetch(thumbnailUrl, {
           headers: {
             'Authorization': `Bearer ${accessToken}`
@@ -141,6 +159,9 @@ export function PDFSlideshow({ fileId, publicToken, fileName, pdfPageFileIds, ac
         
         const blob = await response.blob();
         const url = URL.createObjectURL(blob);
+        const loadTime = Date.now() - startTime;
+        
+        console.log(`✅ [PDFSlideshow] Loaded PNG page ${pageNum} in ${loadTime}ms`);
         
         loadedPagesRef.current.add(pageNum);
         setPreRenderedPageUrls(prev => {
@@ -149,7 +170,7 @@ export function PDFSlideshow({ fileId, publicToken, fileName, pdfPageFileIds, ac
           return next;
         });
       } catch (err) {
-        console.error(`Failed to load pre-rendered page ${pageNum}:`, err);
+        console.error(`❌ [PDFSlideshow] Failed to load pre-rendered page ${pageNum}:`, err);
       } finally {
         setLoadingPages(prev => {
           const next = new Set(prev);
@@ -159,11 +180,11 @@ export function PDFSlideshow({ fileId, publicToken, fileName, pdfPageFileIds, ac
       }
     };
 
-    // Load all pages (only once)
+    // Load all pages in parallel for faster loading
     pdfPageFileIds.forEach((pageFileId, index) => {
       const pageNum = index + 1;
       if (!loadedPagesRef.current.has(pageNum)) {
-        loadPreRenderedPage(pageNum, pageFileId);
+        loadPreRenderedPage(pageNum, pageFileId); // Don't await - load in parallel
       }
     });
   }, [usePreRenderedPages, pdfPageFileIds, accountId]);
