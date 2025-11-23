@@ -29,8 +29,12 @@ async function createPDFThumbnail(blob: Blob, maxWidth: number, maxHeight: numbe
       pdfjsLib.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs';
     }
     
-    const url = URL.createObjectURL(blob);
-    const loadingTask = pdfjsLib.getDocument({ url });
+    // Convert blob to ArrayBuffer for PDF.js (avoids blob URL XHR issues)
+    const arrayBuffer = await blob.arrayBuffer();
+    const uint8Array = new Uint8Array(arrayBuffer);
+    
+    // Use data directly instead of URL to avoid blob URL XHR issues
+    const loadingTask = pdfjsLib.getDocument({ data: uint8Array });
     const pdf = await loadingTask.promise;
     
     // Get first page
@@ -57,8 +61,6 @@ async function createPDFThumbnail(blob: Blob, maxWidth: number, maxHeight: numbe
       canvasContext: ctx,
       viewport: scaledViewport
     }).promise;
-    
-    URL.revokeObjectURL(url);
     
     // Convert canvas to blob
     return new Promise((resolve, reject) => {

@@ -39,7 +39,11 @@ export function PDFSlideshow({ fileId, publicToken, fileName }: PDFSlideshowProp
         const blob = await decryptWithToken(token);
         setPdfBlob(blob);
         
-        // Create object URL for PDF
+        // Convert blob to ArrayBuffer for PDF.js (avoids blob URL XHR issues)
+        const arrayBuffer = await blob.arrayBuffer();
+        const uint8Array = new Uint8Array(arrayBuffer);
+        
+        // Create object URL for display purposes (but don't use for PDF.js)
         const url = URL.createObjectURL(blob);
         setPdfUrl(url);
 
@@ -50,8 +54,8 @@ export function PDFSlideshow({ fileId, publicToken, fileName }: PDFSlideshowProp
           pdfjsLib.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs';
         }
 
-        // Load PDF document
-        const loadingTask = pdfjsLib.getDocument({ url });
+        // Load PDF document using data directly instead of URL (avoids blob URL XHR issues)
+        const loadingTask = pdfjsLib.getDocument({ data: uint8Array });
         const pdf = await loadingTask.promise;
         
         // Get number of pages
@@ -84,12 +88,19 @@ export function PDFSlideshow({ fileId, publicToken, fileName }: PDFSlideshowProp
 
     const renderPages = async () => {
       try {
+        if (!pdfBlob) return;
+        
+        // Convert blob to ArrayBuffer for PDF.js (avoids blob URL XHR issues)
+        const arrayBuffer = await pdfBlob.arrayBuffer();
+        const uint8Array = new Uint8Array(arrayBuffer);
+        
         const pdfjsLib = await import('pdfjs-dist');
         // Ensure worker is set before loading document
         if (!pdfjsLib.GlobalWorkerOptions.workerSrc) {
           pdfjsLib.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs';
         }
-        const loadingTask = pdfjsLib.getDocument({ url: pdfUrl });
+        // Use data directly instead of URL to avoid blob URL XHR issues
+        const loadingTask = pdfjsLib.getDocument({ data: uint8Array });
         const pdf = await loadingTask.promise;
 
         const newRenderedPages = new Map<number, string>();
