@@ -534,31 +534,45 @@ export function FullScreenFeed({
         }
         
         // FALLBACK: If fileType is 'text' or 'thought' but textPost/thought data is missing,
-        // try to reconstruct it from other metadata fields (description, name, etc.)
+        // OR if filename suggests it's a thought (thought-*.png), try to reconstruct it from other metadata fields
         // This handles cases where the metadata was created before textPost/thought fields were added
-        if (!textPostData && (file.fileType === 'text' || file.fileType === 'thought' || 
-            indexedFile.metadata?.fileType === 'text' || indexedFile.metadata?.fileType === 'thought')) {
+        const isLikelyThought = !textPostData && (
+          file.fileType === 'text' || 
+          file.fileType === 'thought' || 
+          indexedFile.metadata?.fileType === 'text' || 
+          indexedFile.metadata?.fileType === 'thought' ||
+          (file.name && /thought-\d+\.png/i.test(file.name)) ||
+          (file.title && /thought-\d+\.png/i.test(file.title))
+        );
+        
+        if (isLikelyThought) {
           const content = file.description || file.name || file.title || '';
-          if (content) {
-            textPostData = {
-              content: content,
-              style: {
-                backgroundColor: '#000000',
-                textColor: '#FFFFFF',
-                fontSize: 48,
-                fontFamily: 'Arial',
-                textAlign: 'center',
-                padding: 40,
-                dropShadowColor: '#000000',
-                dropShadowBlur: 10,
-                dropShadowOffsetX: 2,
-                dropShadowOffsetY: 2
-              }
-            };
-            console.warn('[FullScreenFeed] Reconstructed textPostData from metadata for fileType=text:', {
-              fileId,
-              content: content.substring(0, 50)
-            });
+          if (content && content.trim().length > 0) {
+            // Skip if content looks like a filename (contains .png, .jpg, etc.)
+            if (!/\.(png|jpg|jpeg|gif|webp|svg|mp4|mov|avi|webm)$/i.test(content)) {
+              textPostData = {
+                content: content,
+                style: {
+                  backgroundColor: '#000000',
+                  textColor: '#FFFFFF',
+                  fontSize: 48,
+                  fontFamily: 'Arial',
+                  textAlign: 'center',
+                  padding: 40,
+                  dropShadowColor: '#000000',
+                  dropShadowBlur: 10,
+                  dropShadowOffsetX: 2,
+                  dropShadowOffsetY: 2
+                }
+              };
+              console.warn('[FullScreenFeed] Reconstructed textPostData from metadata (fallback):', {
+                fileId,
+                fileType: file.fileType,
+                metadataFileType: indexedFile.metadata?.fileType,
+                fileName: file.name,
+                content: content.substring(0, 50)
+              });
+            }
           }
         }
         

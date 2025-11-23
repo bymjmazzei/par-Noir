@@ -1862,13 +1862,17 @@ class ProductionServer {
             // Create initial metadata entry
             // IMPORTANT: Default isPublic to true for text posts, false for other files
             const defaultIsPublic = (textPost || thought) ? true : false;
+            // IMPORTANT: If textPost or thought is present, fileType should be 'text', not 'image' (even though the file is a PNG)
+            const determinedFileType = fileType || 
+                                      ((textPost || thought) ? 'text' : 
+                                       (driveFile.mimeType?.startsWith('image/') ? 'image' : 
+                                        driveFile.mimeType?.startsWith('video/') ? 'video' : 'other'));
             const initialMetadata: any = {
               fileId: fileId,
               backendFileId: fileId,
               backend: 'google_drive',
               name: name || driveFile.name?.replace(/\.encrypted$/i, '') || fileId,
-              fileType: fileType || (driveFile.mimeType?.startsWith('image/') ? 'image' : 
-                        driveFile.mimeType?.startsWith('video/') ? 'video' : 'other'),
+              fileType: determinedFileType,
               uploadDate: driveFile.createdTime || new Date().toISOString(),
               isPublic: isPublic !== undefined ? isPublic : defaultIsPublic,
               ...(publicToken && { publicToken }),
@@ -1899,12 +1903,14 @@ class ProductionServer {
             // Continue anyway - create entry with minimal info
             // IMPORTANT: Default isPublic to true for text posts, false for other files
             const defaultIsPublic = (textPost || thought) ? true : false;
+            // IMPORTANT: If textPost or thought is present, fileType should be 'text', not 'other'
+            const determinedFileType = fileType || ((textPost || thought) ? 'text' : 'other');
             const minimalMetadata: any = {
               fileId: fileId,
               backendFileId: fileId,
               backend: 'google_drive',
               name: name || fileId,
-              fileType: fileType || 'other',
+              fileType: determinedFileType,
               uploadDate: new Date().toISOString(),
               isPublic: isPublic !== undefined ? isPublic : defaultIsPublic,
               ...(textPost && { textPost }),
