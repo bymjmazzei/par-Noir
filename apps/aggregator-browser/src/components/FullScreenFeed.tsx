@@ -799,8 +799,8 @@ export function FullScreenFeed({
               );
             })()}
             
-            {/* Full-screen image */}
-            {isImage && thumbnails.get(fileId) && (() => {
+            {/* Full-screen image - Only render if NOT a text post */}
+            {isImage && !isTextPost && !textPostData && thumbnails.get(fileId) && (() => {
               const containerHeight = window.innerHeight - 64; // Account for bottom nav
               const containerWidth = window.innerWidth;
               const containerAspect = containerWidth / containerHeight;
@@ -876,8 +876,8 @@ export function FullScreenFeed({
               );
             })()}
 
-            {/* Loading state */}
-            {((isImage || isVideo) && !thumbnails.get(fileId) && !videoBlobs.get(fileId)) && (
+            {/* Loading state - Only show if NOT a text post */}
+            {!isTextPost && !textPostData && ((isImage || isVideo) && !thumbnails.get(fileId) && !videoBlobs.get(fileId)) && (
               <div className="flex flex-col items-center justify-center text-neutral-500">
                 <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-400 mb-2"></div>
                 <span className="text-xs">Loading...</span>
