@@ -1845,13 +1845,9 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
             throw new Error('No access token for folder creation');
           }
           
-          // Use the same pattern as regular file uploads: let the API find/create the pN folder automatically
-          // We'll create the PDF pages folder and let the API put it in the pN folder
-          // First, try to find the pN folder by searching for it via the file upload endpoint pattern
-          const pnFolderName = `par Noir - pn-${pnIdentifier}`;
-          
-          // Create PDF pages folder - the API will automatically find the pN folder and create this inside it
-          console.log(`📁 [Upload] Creating PDF pages folder via API: ${pdfPagesFolderName} (will be created inside pN folder)`);
+          // Use the same pattern as regular file uploads: don't specify a parent, let the API automatically find the pN folder
+          // The API will search for the pN folder using pnIdentifier from the token and create the folder inside it
+          console.log(`📁 [Upload] Creating PDF pages folder via API: ${pdfPagesFolderName} (API will automatically find pN folder)`);
           const createPagesFolderResponse = await fetch(`${apiEndpoint}/api/drive/folders`, {
             method: 'POST',
             headers: {
@@ -1860,7 +1856,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
             },
             body: JSON.stringify({
               folderName: pdfPagesFolderName,
-              parentFolderName: pnFolderName, // Let API find/create the pN folder automatically
+              // Don't specify parentFolderName - let API auto-find pN folder (same as file uploads)
               accountId: accountId
             })
           });

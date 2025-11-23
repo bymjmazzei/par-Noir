@@ -4961,6 +4961,58 @@ class ProductionServer {
             }
           }
         }
+        
+        // If no parent specified, automatically find the pN folder (same logic as file uploads)
+        if (!finalParentFolderId && pnIdentifier && accountId) {
+          try {
+            console.log(`[CreateFolder] No parent specified, searching for pN folder automatically...`);
+            const pnFolderName = `par Noir - pn-${pnIdentifier}`;
+            const folderSearchQuery = `name='${pnFolderName.replace(/'/g, "\\'")}' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
+            const folderSearchUrl = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(folderSearchQuery)}&fields=files(id,name)&pageSize=10`;
+            
+            console.log(`[CreateFolder] Searching for pN folder: "${pnFolderName}"`);
+            
+            const folderResponse = await fetch(folderSearchUrl, {
+              headers: {
+                'Authorization': `Bearer ${accessToken}`
+              }
+            });
+            
+            if (folderResponse.ok) {
+              const folderData = await folderResponse.json() as { files?: Array<{ id: string; name: string }> };
+              const folderFiles = folderData.files || [];
+              
+              if (folderFiles.length > 0) {
+                finalParentFolderId = folderFiles[0].id;
+                console.log(`[CreateFolder] ✅ Found pN folder "${pnFolderName}" (ID: ${finalParentFolderId}), creating folder there`);
+              } else {
+                // Fallback: try without "pn-" prefix
+                const altFolderName = `par Noir - ${pnIdentifier}`;
+                const altFolderSearchQuery = `name='${altFolderName.replace(/'/g, "\\'")}' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
+                const altFolderSearchUrl = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(altFolderSearchQuery)}&fields=files(id,name)&pageSize=10`;
+                
+                const altFolderResponse = await fetch(altFolderSearchUrl, {
+                  headers: {
+                    'Authorization': `Bearer ${accessToken}`
+                  }
+                });
+                
+                if (altFolderResponse.ok) {
+                  const altFolderData = await altFolderResponse.json() as { files?: Array<{ id: string; name: string }> };
+                  const altFolderFiles = altFolderData.files || [];
+                  
+                  if (altFolderFiles.length > 0) {
+                    finalParentFolderId = altFolderFiles[0].id;
+                    console.log(`[CreateFolder] ✅ Found pN folder "${altFolderName}" (ID: ${finalParentFolderId}), creating folder there`);
+                  }
+                }
+              }
+            }
+          } catch (folderError: any) {
+            console.warn(`[CreateFolder] Error searching for pN folder:`, folderError?.message || folderError);
+            // Continue without folder - folder will be created in root
+          }
+        }
 
         // Create the requested folder
         const createFolderBody: any = {
