@@ -8,6 +8,7 @@ import React from 'react';
 import { IndexedFile } from '../types/aggregator';
 import { User, Calendar, Tag, ArrowLeft } from 'lucide-react';
 import { EngagementActions } from './EngagementActions';
+import { ContentRatingBadge } from './ContentRatingBadge';
 
 interface CreatorIndexProps {
   creatorId: string;
@@ -98,12 +99,10 @@ export function CreatorIndex({ creatorId, creatorName, files, onFileClick, onBac
 
                     <div className="flex items-center space-x-2 text-xs text-text-secondary mb-3">
                       <span>{new Date(file.uploadDate).toLocaleDateString()}</span>
-                      {file.contentRating && (
+                      {file.isNSFW && (
                         <>
                           <span>•</span>
-                          <span className="px-2 py-0.5 bg-blue-500/20 text-blue-400 rounded">
-                            {file.contentRating}
-                          </span>
+                          <ContentRatingBadge isNSFW={file.isNSFW} size="sm" />
                         </>
                       )}
                     </div>

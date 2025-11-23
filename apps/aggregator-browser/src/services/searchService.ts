@@ -4,7 +4,7 @@
  */
 
 const API_ENDPOINT = process.env.REACT_APP_API_ENDPOINT || 'https://api.parnoir.com';
-import { IndexedFile, MetadataFilters, ContentRating } from '../types/aggregator';
+import { IndexedFile, MetadataFilters } from '../types/aggregator';
 import { PNOAuthService } from './pnOAuthService';
 
 // Helper function to get auth headers

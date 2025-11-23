@@ -6,7 +6,7 @@
 import React from 'react';
 import { ArrowLeft, Settings, Users, Calendar, Tag, Sparkles } from 'lucide-react';
 import { Feed, IndexedFile } from '../types/aggregator';
-import { ContentRatingBadge } from './ContentRatingBadge';
+import { ContentRatingBadge } from './ContentRatingBadge'; // Still used for isNSFW badge
 import { EngagementActions } from './EngagementActions';
 import { useEngagement } from '../hooks/useEngagement';
 
@@ -90,15 +90,6 @@ export function BrandedFeedPage({ feed, files, onBack, onFileClick }: BrandedFee
                 </div>
               </div>
 
-              {/* Rating Range */}
-              {feed.feedRatingRange && feed.feedRatingRange.length > 0 && (
-                <div className="mt-4 flex items-center space-x-2">
-                  <span className="text-text-secondary text-sm">Content ratings:</span>
-                  {feed.feedRatingRange.map((rating) => (
-                    <ContentRatingBadge key={rating} rating={rating} size="sm" />
-                  ))}
-                </div>
-              )}
             </div>
 
             {/* Actions */}
@@ -155,9 +146,9 @@ export function BrandedFeedPage({ feed, files, onBack, onFileClick }: BrandedFee
                           </div>
                         </div>
                       )}
-                      {file.contentRating && (
+                      {file.isNSFW && (
                         <div className="absolute top-2 right-2">
-                          <ContentRatingBadge rating={file.contentRating} size="sm" />
+                          <ContentRatingBadge isNSFW={file.isNSFW} size="sm" />
                         </div>
                       )}
                     </div>

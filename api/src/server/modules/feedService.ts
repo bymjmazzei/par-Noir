@@ -28,21 +28,13 @@ export type FeedCategory =
   | 'humor-meme-culture'
   | 'adults-only';
 
-export type ContentRating =
-  | 'GA'
-  | 'FF'
-  | 'T13+'
-  | 'YA16+'
-  | 'M18+'
-  | 'NSFW'
-  | 'X18+';
+// ContentRating removed - feeds now accept all content (public and NSFW based on user preferences)
 
 export interface Feed {
   feedId: string;
   feedName: string;
   feedCategory: FeedCategory;
   feedDescription?: string;
-  feedRatingRange: ContentRating[];
   creatorId: string;
   creatorTier: 'feed' | 'self-hosted';
   branding?: {
@@ -63,7 +55,7 @@ export interface FeedRow {
   feed_description: string | null;
   creator_did: string;
   creator_tier: string;
-  rating_range: ContentRating[];
+  rating_range: any[]; // Legacy field - kept for DB compatibility but not used
   branding: {
     bannerImage?: string;
     avatar?: string;
@@ -85,7 +77,7 @@ export class FeedService {
     feedDescription?: string;
     creatorDid: string;
     creatorTier?: 'free' | 'feed' | 'self-hosted';
-    feedRatingRange?: ContentRating[];
+    // feedRatingRange removed - feeds accept all content
     branding?: {
       bannerImage?: string;
       avatar?: string;
@@ -106,7 +98,7 @@ export class FeedService {
       data.feedDescription || null,
       data.creatorDid,
       data.creatorTier || 'free',
-      JSON.stringify(data.feedRatingRange || []),
+      JSON.stringify([]), // Legacy field - always empty now
       JSON.stringify(data.branding || {})
     ]);
 
@@ -780,7 +772,7 @@ export class FeedService {
       feedName: row.feed_name,
       feedCategory: (row.feed_category as FeedCategory) || 'beauty-fashion', // Default category
       feedDescription: row.feed_description || undefined,
-      feedRatingRange: row.rating_range || [],
+      // feedRatingRange removed - feeds accept all content
       creatorId: row.creator_did,
       creatorTier: creatorTier,
       branding: row.branding || undefined,

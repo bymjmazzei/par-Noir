@@ -1952,7 +1952,8 @@ class ProductionServer {
           fileType,
           textPost,
           thought,
-          isNSFW
+          isNSFW,
+          isPublic
         });
 
         // Also update isPublic if provided (or default for text posts)
@@ -3286,7 +3287,7 @@ class ProductionServer {
     this.app.post('/api/feeds', async (req, res) => {
       try {
         const { FeedService } = await import('./server/modules/feedService');
-        const { feedName, feedCategory, feedDescription, creatorDid, creatorTier, feedRatingRange, branding } = req.body;
+        const { feedName, feedCategory, feedDescription, creatorDid, creatorTier, branding } = req.body;
 
         if (!feedName || !creatorDid) {
           return res.status(400).json({ error: 'feedName and creatorDid are required' });
@@ -3303,7 +3304,7 @@ class ProductionServer {
           feedDescription,
           creatorDid,
           creatorTier: creatorTier || 'feed',
-          feedRatingRange,
+          // feedRatingRange removed - feeds accept all content
           branding
         });
 

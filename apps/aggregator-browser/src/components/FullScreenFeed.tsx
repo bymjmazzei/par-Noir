@@ -1004,15 +1004,10 @@ export function FullScreenFeed({
                     </div>
                   )}
                   
-                  {/* Content Rating */}
-                  {file.contentRating && (
+                  {/* NSFW Badge */}
+                  {file.metadata.isNSFW && (
                     <div className="flex items-center space-x-2">
-                      <ContentRatingBadge rating={file.contentRating} size="sm" />
-                      {file.warningTags && file.warningTags.length > 0 && (
-                        <span className="text-white/70 text-xs">
-                          {file.warningTags.join(', ')}
-                        </span>
-                      )}
+                      <ContentRatingBadge isNSFW={file.metadata.isNSFW} size="sm" />
                     </div>
                   )}
                 </div>

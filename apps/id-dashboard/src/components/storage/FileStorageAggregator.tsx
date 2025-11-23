@@ -6920,39 +6920,58 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
                 <h4 className="text-sm font-semibold text-text-primary mb-3">Visibility & Content Rating</h4>
                 
                 <div className="space-y-4">
-                  <div>
-                    <label className="flex items-center space-x-3 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={editForm.isPublic}
-                        onChange={(e) => setEditForm({ ...editForm, isPublic: e.target.checked })}
-                        className="w-4 h-4 text-blue-600 bg-neutral-700 border-neutral-600 rounded focus:ring-blue-500 focus:ring-2"
+                  <div className="flex items-center justify-between">
+                    <div className="flex-1">
+                      <p className="text-sm font-medium text-text-primary mb-1">Public Content</p>
+                      <p className="text-xs text-text-secondary">
+                        Make this content visible on the public feed
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      role="switch"
+                      aria-checked={editForm.isPublic}
+                      onClick={() => setEditForm({ ...editForm, isPublic: !editForm.isPublic })}
+                      className={`
+                        relative inline-flex h-6 w-11 items-center rounded-full transition-colors
+                        ${editForm.isPublic ? 'bg-blue-600' : 'bg-neutral-700'}
+                      `}
+                    >
+                      <span
+                        className={`
+                          inline-block h-4 w-4 transform rounded-full bg-white transition-transform
+                          ${editForm.isPublic ? 'translate-x-6' : 'translate-x-1'}
+                        `}
                       />
-                      <div>
-                        <span className="text-sm font-medium text-text-primary">Public Content</span>
-                        <p className="text-xs text-text-secondary mt-1">
-                          Make this content visible on the public feed
-                        </p>
-                      </div>
-                    </label>
+                    </button>
                   </div>
-                  <div>
-                    <label className="flex items-center space-x-3 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={editForm.isNSFW}
-                        onChange={(e) => setEditForm({ ...editForm, isNSFW: e.target.checked })}
-                        disabled={!editForm.isPublic}
-                        className="w-4 h-4 text-blue-600 bg-neutral-700 border-neutral-600 rounded focus:ring-blue-500 focus:ring-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                  <div className="flex items-center justify-between">
+                    <div className="flex-1">
+                      <p className={`text-sm font-medium ${!editForm.isPublic ? 'text-text-secondary' : 'text-text-primary'} mb-1`}>NSFW Content</p>
+                      <p className="text-xs text-text-secondary">
+                        Mark this content as Not Safe For Work (18+)
+                        {!editForm.isPublic && <span className="block mt-1 text-orange-400">Must be public to mark as NSFW</span>}
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      role="switch"
+                      aria-checked={editForm.isNSFW}
+                      onClick={() => editForm.isPublic && setEditForm({ ...editForm, isNSFW: !editForm.isNSFW })}
+                      disabled={!editForm.isPublic}
+                      className={`
+                        relative inline-flex h-6 w-11 items-center rounded-full transition-colors
+                        ${editForm.isNSFW ? 'bg-red-600' : 'bg-neutral-700'}
+                        ${!editForm.isPublic ? 'opacity-50 cursor-not-allowed' : ''}
+                      `}
+                    >
+                      <span
+                        className={`
+                          inline-block h-4 w-4 transform rounded-full bg-white transition-transform
+                          ${editForm.isNSFW ? 'translate-x-6' : 'translate-x-1'}
+                        `}
                       />
-                      <div>
-                        <span className={`text-sm font-medium ${!editForm.isPublic ? 'text-text-secondary' : 'text-text-primary'}`}>NSFW Content</span>
-                        <p className="text-xs text-text-secondary mt-1">
-                          Mark this content as Not Safe For Work (18+)
-                          {!editForm.isPublic && <span className="block mt-1 text-orange-400">Must be public to mark as NSFW</span>}
-                        </p>
-                      </div>
-                    </label>
+                    </button>
                   </div>
                 </div>
               </div>

@@ -1508,6 +1508,7 @@ export class AggregatorMetadataServiceDB {
       textPost?: any;
       thought?: any;
       isNSFW?: boolean;
+      isPublic?: boolean;
     }
   ): Promise<PublicMetadata | null> {
     const db = getDatabasePool();
@@ -1536,6 +1537,7 @@ export class AggregatorMetadataServiceDB {
         ...(updates.textPost && { textPost: updates.textPost }),
         ...(updates.thought && { thought: updates.thought }),
         ...(updates.isNSFW !== undefined && { isNSFW: updates.isNSFW === true }),
+        ...(updates.isPublic !== undefined && { isPublic: updates.isPublic === true }),
         // Update schema.org fields (merge with existing schema)
         schema: {
           ...existingSchema,

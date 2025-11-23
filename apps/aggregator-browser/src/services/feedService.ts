@@ -14,7 +14,7 @@ export interface CreateFeedRequest {
   feedDescription?: string;
   creatorDid: string;
   creatorTier?: 'feed' | 'self-hosted';
-  feedRatingRange?: string[];
+  // feedRatingRange removed - feeds accept all content
   branding?: {
     bannerImage?: string;
     avatar?: string;
@@ -26,7 +26,7 @@ export interface UpdateFeedRequest {
   feedName?: string;
   feedDescription?: string;
   feedCategory?: FeedCategory;
-  ratingRange?: string[];
+  // ratingRange removed - feeds accept all content
   branding?: {
     bannerImage?: string;
     avatar?: string;

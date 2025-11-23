@@ -2253,7 +2253,8 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
               locationName: '',
               locationAddress: '',
               license: '',
-              contentRating: 'GA'
+              isNSFW: false,
+              isPublic: false
             });
           }}
         >

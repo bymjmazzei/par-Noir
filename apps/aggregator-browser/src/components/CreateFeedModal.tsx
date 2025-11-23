@@ -7,10 +7,9 @@ import React, { useState } from 'react';
 import { X, Plus, Image as ImageIcon, Sparkles, AlertCircle, Check } from 'lucide-react';
 import { useUserState } from '../contexts/UserStateContext';
 import { useToast } from '../hooks/useToast';
-import { FeedCategory, ContentRating } from '../types/aggregator';
+import { FeedCategory } from '../types/aggregator';
 import { FeedService } from '../services/feedService';
 import { FEED_CATEGORIES, getAllFeedCategories } from '../constants/feedCategories';
-import { ContentRatingBadge } from './ContentRatingBadge';
 
 interface CreateFeedModalProps {
   onClose: () => void;
@@ -23,7 +22,6 @@ export function CreateFeedModal({ onClose, onFeedCreated }: CreateFeedModalProps
   const [feedName, setFeedName] = useState('');
   const [feedDescription, setFeedDescription] = useState('');
   const [feedCategory, setFeedCategory] = useState<FeedCategory | ''>('');
-  const [ratingRange, setRatingRange] = useState<ContentRating[]>(['GA', '18+']);
   const [bannerImage, setBannerImage] = useState<string>('');
   const [avatar, setAvatar] = useState<string>('');
   const [bio, setBio] = useState('');
@@ -32,16 +30,6 @@ export function CreateFeedModal({ onClose, onFeedCreated }: CreateFeedModalProps
   // Check if user is paid tier (in production, check actual tier)
   const isPaidTier = userState.isUnlocked && userState.pnIdentifier; // Simplified check
 
-  const handleRatingToggle = (rating: ContentRating) => {
-    if (ratingRange.includes(rating)) {
-      setRatingRange(ratingRange.filter(r => r !== rating));
-    } else {
-      setRatingRange([...ratingRange, rating].sort((a, b) => {
-        const order: ContentRating[] = ['GA', '18+', 'NSFW', 'X'];
-        return order.indexOf(a) - order.indexOf(b);
-      }));
-    }
-  };
 
   const handleCreateFeed = async () => {
     if (!feedName.trim()) {
@@ -68,7 +56,6 @@ export function CreateFeedModal({ onClose, onFeedCreated }: CreateFeedModalProps
         feedCategory: feedCategory || undefined,
         creatorDid: userState.pnIdentifier,
         creatorTier: 'feed', // In production, get actual tier
-        feedRatingRange: ratingRange,
         branding: {
           bannerImage: bannerImage || undefined,
           avatar: avatar || undefined,
@@ -189,35 +176,6 @@ export function CreateFeedModal({ onClose, onFeedCreated }: CreateFeedModalProps
             </select>
           </div>
 
-          {/* Content Rating Range */}
-          <div>
-            <label className="block text-sm font-medium text-white mb-2">
-              Content Rating Range
-            </label>
-            <p className="text-text-secondary text-sm mb-3">
-              Select which content ratings your feed will accept
-            </p>
-            <div className="flex flex-wrap gap-2">
-              {(['GA', '18+', 'NSFW', 'X'] as ContentRating[]).map((rating) => {
-                const isSelected = ratingRange.includes(rating);
-                return (
-                  <button
-                    key={rating}
-                    type="button"
-                    onClick={() => handleRatingToggle(rating)}
-                    className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
-                      isSelected
-                        ? 'bg-blue-600 text-white'
-                        : 'bg-neutral-800 text-text-secondary hover:bg-neutral-700'
-                    }`}
-                  >
-                    {isSelected && <Check className="h-3 w-3 inline mr-1" />}
-                    <ContentRatingBadge rating={rating} />
-                  </button>
-                );
-              })}
-            </div>
-          </div>
 
           {/* Branding Section */}
           <div className="border-t border-neutral-700 pt-6">
