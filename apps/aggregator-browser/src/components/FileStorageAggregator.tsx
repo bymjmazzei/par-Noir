@@ -1729,114 +1729,141 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
           const baseFileName = file.name.replace(/\.pdf$/i, '');
           
           for (let pageNum = 1; pageNum <= numPages; pageNum++) {
-            const page = await pdf.getPage(pageNum);
-            const viewport = page.getViewport({ scale: 2.0 }); // High quality
-            
-            // Render to canvas
-            const canvas = document.createElement('canvas');
-            const context = canvas.getContext('2d');
-            if (!context) continue;
-            
-            canvas.height = viewport.height;
-            canvas.width = viewport.width;
-            
-            await page.render({
-              canvasContext: context,
-              viewport: viewport
-            }).promise;
-            
-            // Convert canvas to PNG blob
-            const pngBlob = await new Promise<Blob>((resolve, reject) => {
-              canvas.toBlob((blob) => {
-                if (blob) resolve(blob);
-                else reject(new Error('Failed to convert canvas to blob'));
-              }, 'image/png', 1.0);
-            });
-            
-            // Encrypt PNG
-            const pngArrayBuffer = await pngBlob.arrayBuffer();
-            const pngData = new Uint8Array(pngArrayBuffer);
-            const pngEncrypted = await encryptionManager.encrypt(
-              pngData,
-              session.did,
-              publicKey
-            );
-            
-            // Create encrypted package for PNG
-            const pngPackage: EncryptedFilePackage = {
-              encrypted: pngEncrypted.encrypted,
-              iv: pngEncrypted.iv,
-              salt: pngEncrypted.salt,
-              metadata: {
-                originalName: `${baseFileName}-page-${pageNum}.png`,
-                originalSize: pngBlob.size,
-                originalMimeType: 'image/png',
-              },
-            };
-            
-            // Generate share token for PNG page
-            let pngShareToken: any = undefined;
             try {
-              const encryptionService = getEncryptionService();
-              pngShareToken = await encryptionService.generateShareToken(
-                pngPackage,
-                {
-                  id: session.did,
-                  publicKey: publicKey
-                }
-              );
-            } catch (tokenError) {
-              console.warn(`⚠️ [Upload] Share token generation failed for page ${pageNum}`);
-            }
-            
-            // Convert to JSON string
-            const pngEncryptedBlob = new Blob([JSON.stringify(pngPackage)], {
-              type: 'application/json',
-            });
-            
-            const pngBase64 = await new Promise<string>((resolve, reject) => {
-              const reader = new FileReader();
-              reader.onload = () => {
-                const result = reader.result as string;
-                const base64 = result.includes(',') ? result.split(',')[1] : result;
-                resolve(base64);
-              };
-              reader.onerror = () => reject(new Error('Failed to read PNG encrypted file'));
-              reader.readAsDataURL(pngEncryptedBlob);
-            });
-            
-            // Upload PNG page
-            const pngEncryptedFileName = `${baseFileName}-page-${pageNum}.png.encrypted`;
-            const pngResponse = await fetch(`${apiEndpoint}/api/drive/files`, {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${accessToken}`
-              },
-              body: JSON.stringify({
-                fileData: pngBase64,
-                fileName: pngEncryptedFileName,
-                mimeType: 'application/json',
-                accountId: accountId
-              })
-            });
-            
-            if (pngResponse.ok) {
-              const pngUploadResult = await pngResponse.json();
-              if (pngUploadResult.file?.id) {
-                pageFileIds.push(pngUploadResult.file.id);
-                console.log(`✅ [Upload] Page ${pageNum}/${numPages} uploaded as PNG`);
+              // Refresh access token before each upload to prevent expiration
+              const freshAccessToken = await PNOAuthService.getValidAccessToken();
+              if (!freshAccessToken) {
+                console.warn(`⚠️ [Upload] No access token for page ${pageNum}, skipping PNG conversion`);
+                break; // Stop conversion if we can't get a token
               }
-            } else {
-              console.warn(`⚠️ [Upload] Failed to upload page ${pageNum} PNG`);
+              
+              const page = await pdf.getPage(pageNum);
+              const viewport = page.getViewport({ scale: 2.0 }); // High quality
+              
+              // Render to canvas
+              const canvas = document.createElement('canvas');
+              const context = canvas.getContext('2d');
+              if (!context) {
+                console.warn(`⚠️ [Upload] Failed to get canvas context for page ${pageNum}`);
+                continue;
+              }
+              
+              canvas.height = viewport.height;
+              canvas.width = viewport.width;
+              
+              await page.render({
+                canvasContext: context,
+                viewport: viewport
+              }).promise;
+              
+              // Convert canvas to PNG blob
+              const pngBlob = await new Promise<Blob>((resolve, reject) => {
+                canvas.toBlob((blob) => {
+                  if (blob) resolve(blob);
+                  else reject(new Error('Failed to convert canvas to blob'));
+                }, 'image/png', 1.0);
+              });
+              
+              // Encrypt PNG
+              const pngArrayBuffer = await pngBlob.arrayBuffer();
+              const pngData = new Uint8Array(pngArrayBuffer);
+              const pngEncrypted = await encryptionManager.encrypt(
+                pngData,
+                session.did,
+                publicKey
+              );
+              
+              // Create encrypted package for PNG
+              const pngPackage: EncryptedFilePackage = {
+                encrypted: pngEncrypted.encrypted,
+                iv: pngEncrypted.iv,
+                salt: pngEncrypted.salt,
+                metadata: {
+                  originalName: `${baseFileName}-page-${pageNum}.png`,
+                  originalSize: pngBlob.size,
+                  originalMimeType: 'image/png',
+                },
+              };
+              
+              // Generate share token for PNG page (optional, don't fail if it doesn't work)
+              let pngShareToken: any = undefined;
+              try {
+                const encryptionService = getEncryptionService();
+                pngShareToken = await encryptionService.generateShareToken(
+                  pngPackage,
+                  {
+                    id: session.did,
+                    publicKey: publicKey
+                  }
+                );
+              } catch (tokenError) {
+                console.warn(`⚠️ [Upload] Share token generation failed for page ${pageNum} (non-critical)`);
+              }
+              
+              // Convert to JSON string
+              const pngEncryptedBlob = new Blob([JSON.stringify(pngPackage)], {
+                type: 'application/json',
+              });
+              
+              const pngBase64 = await new Promise<string>((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = () => {
+                  const result = reader.result as string;
+                  const base64 = result.includes(',') ? result.split(',')[1] : result;
+                  resolve(base64);
+                };
+                reader.onerror = () => reject(new Error('Failed to read PNG encrypted file'));
+                reader.readAsDataURL(pngEncryptedBlob);
+              });
+              
+              // Upload PNG page with fresh token
+              const pngEncryptedFileName = `${baseFileName}-page-${pageNum}.png.encrypted`;
+              const pngResponse = await fetch(`${apiEndpoint}/api/drive/files`, {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                  'Authorization': `Bearer ${freshAccessToken}`
+                },
+                body: JSON.stringify({
+                  fileData: pngBase64,
+                  fileName: pngEncryptedFileName,
+                  mimeType: 'application/json',
+                  accountId: accountId
+                })
+              });
+              
+              if (pngResponse.ok) {
+                const pngUploadResult = await pngResponse.json();
+                if (pngUploadResult.file?.id) {
+                  pageFileIds.push(pngUploadResult.file.id);
+                  console.log(`✅ [Upload] Page ${pageNum}/${numPages} uploaded as PNG`);
+                } else {
+                  console.warn(`⚠️ [Upload] Page ${pageNum} upload succeeded but no file ID returned`);
+                }
+              } else {
+                const errorText = await pngResponse.text().catch(() => 'Unknown error');
+                console.warn(`⚠️ [Upload] Failed to upload page ${pageNum} PNG: ${pngResponse.status} - ${errorText}`);
+                // Continue with other pages even if one fails
+              }
+            } catch (pageError: any) {
+              console.error(`❌ [Upload] Error converting page ${pageNum}:`, pageError?.message || pageError);
+              // Continue with other pages even if one fails
             }
           }
           
-          console.log(`✅ [Upload] Converted PDF to ${pageFileIds.length} PNG pages`);
+          console.log(`✅ [Upload] Converted PDF to ${pageFileIds.length} PNG pages (out of ${numPages} total)`);
         } catch (pdfError: any) {
-          console.error('❌ [Upload] PDF conversion failed:', pdfError);
-          // Continue with regular PDF upload as fallback
+          console.error('❌ [Upload] PDF conversion failed:', pdfError?.message || pdfError);
+          console.log('📄 [Upload] Continuing with regular PDF upload (PNG conversion is optional)');
+          // Continue with regular PDF upload as fallback - don't fail the entire upload
+          pageFileIds = []; // Clear any partial page IDs
         }
+      }
+
+      // Refresh access token before uploading main PDF file (in case it expired during PNG conversion)
+      const freshAccessToken = await PNOAuthService.getValidAccessToken();
+      if (!freshAccessToken) {
+        throw new Error('No valid access token available for upload');
       }
 
       // Encrypt file using the same standard as dashboard
@@ -1901,13 +1928,13 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
         reader.readAsDataURL(encryptedBlob);
       });
 
-      // Upload encrypted file with .encrypted extension
+      // Upload encrypted file with .encrypted extension (use fresh token)
       const encryptedFileName = `${file.name}.encrypted`;
       const response = await fetch(`${apiEndpoint}/api/drive/files`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${accessToken}`
+          'Authorization': `Bearer ${freshAccessToken}`
         },
         body: JSON.stringify({
           fileData: base64File,
