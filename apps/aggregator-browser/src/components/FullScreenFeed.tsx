@@ -822,7 +822,7 @@ export function FullScreenFeed({
             )}
 
             {/* Text Post / Thought */}
-            {isTextPost && (
+            {(isTextPost || textPostData) && (
               <div 
                 className="w-full h-full flex items-center justify-center"
                 style={{
