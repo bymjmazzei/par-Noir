@@ -80,8 +80,11 @@ export function PDFSlideshow({ fileId, publicToken, fileName }: PDFSlideshowProp
     };
   }, [publicToken]);
 
-  // Render PDF pages as images
+  // Render PDF pages as images (progressive - first page immediately, others in background)
   const [renderedPages, setRenderedPages] = useState<Map<number, string>>(new Map());
+  const [renderingPages, setRenderingPages] = useState<Set<number>>(new Set());
+  const renderedPagesRef = useRef<Map<number, string>>(new Map());
+  const renderingPagesRef = useRef<Set<number>>(new Set());
 
   useEffect(() => {
     if (!pdfBlob || pages.length === 0) return;
@@ -103,33 +106,70 @@ export function PDFSlideshow({ fileId, publicToken, fileName }: PDFSlideshowProp
         const loadingTask = pdfjsLib.getDocument({ data: uint8Array });
         const pdf = await loadingTask.promise;
 
-        const newRenderedPages = new Map<number, string>();
+        // Render individual page function
+        const renderPage = async (pageNum: number) => {
+          // Skip if already rendered or currently rendering (check refs for current state)
+          if (renderedPagesRef.current.has(pageNum) || renderingPagesRef.current.has(pageNum)) return;
+          
+          renderingPagesRef.current.add(pageNum);
+          setRenderingPages(prev => new Set(prev).add(pageNum));
+          
+          try {
+            const page = await pdf.getPage(pageNum);
+            const viewport = page.getViewport({ scale: 2.0 }); // Higher scale for better quality
 
-        // Render all pages
-        for (let pageNum = 1; pageNum <= pages.length; pageNum++) {
-          const page = await pdf.getPage(pageNum);
-          const viewport = page.getViewport({ scale: 2.0 }); // Higher scale for better quality
+            // Create canvas
+            const canvas = document.createElement('canvas');
+            const context = canvas.getContext('2d');
+            if (!context) {
+              renderingPagesRef.current.delete(pageNum);
+              setRenderingPages(prev => {
+                const next = new Set(prev);
+                next.delete(pageNum);
+                return next;
+              });
+              return;
+            }
 
-          // Create canvas
-          const canvas = document.createElement('canvas');
-          const context = canvas.getContext('2d');
-          if (!context) continue;
+            canvas.height = viewport.height;
+            canvas.width = viewport.width;
 
-          canvas.height = viewport.height;
-          canvas.width = viewport.width;
+            // Render page to canvas
+            await page.render({
+              canvasContext: context,
+              viewport: viewport
+            }).promise;
 
-          // Render page to canvas
-          await page.render({
-            canvasContext: context,
-            viewport: viewport
-          }).promise;
+            // Convert to data URL
+            const dataUrl = canvas.toDataURL('image/png');
+            
+            renderedPagesRef.current.set(pageNum, dataUrl);
+            setRenderedPages(prev => {
+              const next = new Map(prev);
+              next.set(pageNum, dataUrl);
+              return next;
+            });
+          } catch (err) {
+            console.error(`Failed to render page ${pageNum}:`, err);
+          } finally {
+            renderingPagesRef.current.delete(pageNum);
+            setRenderingPages(prev => {
+              const next = new Set(prev);
+              next.delete(pageNum);
+              return next;
+            });
+          }
+        };
 
-          // Convert to data URL
-          const dataUrl = canvas.toDataURL('image/png');
-          newRenderedPages.set(pageNum, dataUrl);
+        // Render first page immediately for instant display
+        await renderPage(1);
+
+        // Render other pages in background (with small delay between each to avoid blocking)
+        for (let pageNum = 2; pageNum <= pages.length; pageNum++) {
+          // Small delay to prevent blocking the UI
+          await new Promise(resolve => setTimeout(resolve, 50));
+          renderPage(pageNum); // Don't await - render in parallel
         }
-
-        setRenderedPages(newRenderedPages);
       } catch (err) {
         console.error('Failed to render PDF pages:', err);
       }
@@ -310,10 +350,14 @@ export function PDFSlideshow({ fileId, publicToken, fileName }: PDFSlideshowProp
                       maxHeight: 'calc(100vh - 64px - env(safe-area-inset-bottom, 0px))'
                     }}
                   />
-                ) : (
+                ) : renderingPages.has(pageNum) ? (
                   <div className="text-white text-center">
                     <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-white mx-auto mb-2"></div>
                     <p className="text-sm">Rendering page {pageNum}...</p>
+                  </div>
+                ) : (
+                  <div className="text-white text-center">
+                    <p className="text-sm">Page {pageNum} queued...</p>
                   </div>
                 )}
               </div>
