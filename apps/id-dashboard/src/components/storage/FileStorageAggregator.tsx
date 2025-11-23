@@ -123,6 +123,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
     locationAddress: string;
     license: string;
     isNSFW: boolean;
+    isPublic: boolean;
   }>({ 
     name: '', 
     description: '', 
@@ -132,7 +133,8 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
     locationName: '',
     locationAddress: '',
     license: 'all-rights-reserved',
-    isNSFW: false
+    isNSFW: false,
+    isPublic: false
   });
   const [openMenuFor, setOpenMenuFor] = useState<string | null>(null);
   const actionMenuRef = React.useRef<HTMLDivElement | null>(null);
@@ -4994,6 +4996,8 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
     
     // Extract isNSFW (default to false for public content)
     const isNSFW = ((metadata as any)?.isNSFW === true);
+    // Extract isPublic (default to false if not set)
+    const isPublic = metadata?.isPublic === true || (metadata as any)?.visibility === 'public';
     
     setEditForm({
       name: metadata?.name || file.encrypted ? file.originalName || file.name.replace('.encrypted', '') : file.name,
@@ -5004,7 +5008,8 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
       locationName: locationName,
       locationAddress: locationAddress,
       license: licenseString,
-      isNSFW: isNSFW
+      isNSFW: isNSFW,
+      isPublic: isPublic
     });
     setEditingFile(file);
   };
@@ -5071,7 +5076,8 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
           category: editForm.category || undefined,
           locationCreated: locationCreated,
           license: editForm.license || undefined,
-          isNSFW: editForm.isNSFW
+          isNSFW: editForm.isNSFW,
+          isPublic: editForm.isPublic
         }),
       });
 
@@ -5273,7 +5279,8 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
         locationName: '',
         locationAddress: '',
         license: 'all-rights-reserved',
-        isNSFW: false
+        isNSFW: false,
+        isPublic: false
       });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to update metadata');
@@ -6762,7 +6769,8 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
         locationName: '',
         locationAddress: '',
         license: 'all-rights-reserved',
-        isNSFW: false
+        isNSFW: false,
+        isPublic: false
       });
           }}
         >
@@ -6784,7 +6792,8 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
         locationName: '',
         locationAddress: '',
         license: 'all-rights-reserved',
-        isNSFW: false
+        isNSFW: false,
+        isPublic: false
       });
                 }}
                 className="text-text-secondary hover:text-text-primary transition-colors"
@@ -6908,21 +6917,39 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
               </div>
 
               <div className="border-t border-neutral-700 pt-4 mt-4">
-                <h4 className="text-sm font-semibold text-text-primary mb-3">Content Rating</h4>
+                <h4 className="text-sm font-semibold text-text-primary mb-3">Visibility & Content Rating</h4>
                 
                 <div className="space-y-4">
                   <div>
                     <label className="flex items-center space-x-3 cursor-pointer">
                       <input
                         type="checkbox"
-                        checked={editForm.isNSFW}
-                        onChange={(e) => setEditForm({ ...editForm, isNSFW: e.target.checked })}
+                        checked={editForm.isPublic}
+                        onChange={(e) => setEditForm({ ...editForm, isPublic: e.target.checked })}
                         className="w-4 h-4 text-blue-600 bg-neutral-700 border-neutral-600 rounded focus:ring-blue-500 focus:ring-2"
                       />
                       <div>
-                        <span className="text-sm font-medium text-text-primary">NSFW Content</span>
+                        <span className="text-sm font-medium text-text-primary">Public Content</span>
+                        <p className="text-xs text-text-secondary mt-1">
+                          Make this content visible on the public feed
+                        </p>
+                      </div>
+                    </label>
+                  </div>
+                  <div>
+                    <label className="flex items-center space-x-3 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={editForm.isNSFW}
+                        onChange={(e) => setEditForm({ ...editForm, isNSFW: e.target.checked })}
+                        disabled={!editForm.isPublic}
+                        className="w-4 h-4 text-blue-600 bg-neutral-700 border-neutral-600 rounded focus:ring-blue-500 focus:ring-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                      />
+                      <div>
+                        <span className={`text-sm font-medium ${!editForm.isPublic ? 'text-text-secondary' : 'text-text-primary'}`}>NSFW Content</span>
                         <p className="text-xs text-text-secondary mt-1">
                           Mark this content as Not Safe For Work (18+)
+                          {!editForm.isPublic && <span className="block mt-1 text-orange-400">Must be public to mark as NSFW</span>}
                         </p>
                       </div>
                     </label>
@@ -6972,7 +6999,8 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
         locationName: '',
         locationAddress: '',
         license: 'all-rights-reserved',
-        isNSFW: false
+        isNSFW: false,
+        isPublic: false
       });
                   }}
                   className="px-4 py-2 text-sm font-medium text-text-secondary hover:text-text-primary transition-colors"
