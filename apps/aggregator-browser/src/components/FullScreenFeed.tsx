@@ -641,7 +641,8 @@ export function FullScreenFeed({
           file.fileType === 'document' ||
           file.fileType === 'pdf' ||
           (file.name || file.title || '').match(/\.pdf$/i) ||
-          file.mimeType === 'application/pdf'
+          file.mimeType === 'application/pdf' ||
+          (file.mimeType === 'application/vnd.google-apps.folder' && (file.name.toLowerCase().endsWith('-pages') || file.metadata?.pdfPagesFolderId)) // Treat PDF slideshow folders as PDFs
         );
         
         // Debug logging for ALL files to see what's happening
