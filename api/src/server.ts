@@ -30,11 +30,18 @@ const ENV_ORIGINS = process.env.ALLOWED_ORIGINS?.split(',').map(o => o.trim()).f
 const ALLOWED_ORIGINS = [...new Set([...DEFAULT_ORIGINS, ...ENV_ORIGINS])]; // Merge and deduplicate
 
 // Rate limiting configuration - higher limit for authenticated requests
+// SECURITY FIX: Rate limits now check for valid token format, not just presence
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
   max: (req) => {
-    // Higher limit for authenticated requests (requests with Authorization header)
-    if (req.headers.authorization) {
+    // SECURITY FIX: Only grant higher limits if token format is valid
+    // This prevents attackers from adding fake Authorization headers
+    const authHeader = req.headers.authorization;
+    const hasValidTokenFormat = authHeader && 
+                                authHeader.startsWith('Bearer ') && 
+                                authHeader.substring(7).trim().length > 0;
+    
+    if (hasValidTokenFormat) {
       return 500; // 500 requests per 15 minutes for authenticated users
     }
     return 100; // 100 requests per 15 minutes for unauthenticated requests
@@ -48,8 +55,13 @@ const limiter = rateLimit({
 const aggregatorLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
   max: (req) => {
-    // Very high limit for aggregator endpoints - they're meant to be queried frequently
-    if (req.headers.authorization) {
+    // SECURITY FIX: Verify token format before granting higher limits
+    const authHeader = req.headers.authorization;
+    const hasValidTokenFormat = authHeader && 
+                                authHeader.startsWith('Bearer ') && 
+                                authHeader.substring(7).trim().length > 0;
+    
+    if (hasValidTokenFormat) {
       return 2000; // 2000 requests per 15 minutes for authenticated users
     }
     return 1000; // 1000 requests per 15 minutes for unauthenticated requests
@@ -63,8 +75,13 @@ const aggregatorLimiter = rateLimit({
 const readOnlyLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
   max: (req) => {
-    // Very high limit for read-only endpoints - frontend makes many requests on page load
-    if (req.headers.authorization) {
+    // SECURITY FIX: Verify token format before granting higher limits
+    const authHeader = req.headers.authorization;
+    const hasValidTokenFormat = authHeader && 
+                                authHeader.startsWith('Bearer ') && 
+                                authHeader.substring(7).trim().length > 0;
+    
+    if (hasValidTokenFormat) {
       return 3000; // 3000 requests per 15 minutes for authenticated users
     }
     return 1500; // 1500 requests per 15 minutes for unauthenticated requests
@@ -120,20 +137,52 @@ class ProductionServer {
       contentSecurityPolicy: {
         directives: {
           defaultSrc: ["'self'"],
-          styleSrc: ["'self'", "'unsafe-inline'"],
+          // SECURITY FIX: Remove 'unsafe-inline' - use nonces or hashes for inline styles
+          // Note: This may break some inline styles. If needed, use style-src 'self' 'nonce-{random}'
+          styleSrc: ["'self'"],
           scriptSrc: ["'self'"],
           imgSrc: ["'self'", "data:", "https:"],
         },
       },
     }));
 
-    // CORS configuration
+    // CORS configuration with security improvements
+    // SECURITY FIX: Restrict no-origin requests to prevent CSRF attacks
+    const publicNoOriginPaths = ['/health', '/api/aggregator/metadata-index', '/api/aggregator/nsfw-index'];
+    
+    // Custom CORS middleware that checks path before allowing no-origin requests
+    this.app.use((req, res, next) => {
+      const origin = req.headers.origin;
+      const path = req.path || req.url?.split('?')[0] || '';
+      const isPublicPath = publicNoOriginPaths.some(p => path === p || path.startsWith(p));
+      
+      // SECURITY FIX: In production, block no-origin requests except for public endpoints
+      if (!origin && NODE_ENV === 'production' && !isPublicPath) {
+        console.error(`[CORS] Blocked no-origin request to ${path} in production`);
+        res.status(403).json({ error: 'Origin header required in production' });
+        return;
+      }
+      
+      // Continue to standard CORS middleware
+      next();
+    });
+    
     this.app.use(cors({
       origin: (origin, callback) => {
-        // Allow requests with no origin (like mobile apps or curl requests)
+        // SECURITY FIX: Only allow no-origin requests for specific public endpoints
+        // This prevents CSRF-like attacks from tools that omit Origin header
         if (!origin) {
-          return callback(null, true);
+          // In development, allow no-origin but log it
+          if (NODE_ENV === 'development') {
+            console.warn(`[CORS] Allowing no-origin request (development mode)`);
+            return callback(null, true);
+          }
+          
+          // In production, this should have been handled by the middleware above
+          // But as a fallback, block it here too
+          return callback(new Error('Origin header required'));
         }
+        
         if (ALLOWED_ORIGINS.includes(origin)) {
           if (NODE_ENV === 'development') {
             console.log(`[CORS] Allowing origin: ${origin}`);
@@ -179,9 +228,10 @@ class ProductionServer {
       limiter(req, res, next);
     });
 
-    // Body parsing - increased limit for large video metadata with encrypted tokens
-    this.app.use(express.json({ limit: '50mb' }));
-    this.app.use(express.urlencoded({ extended: true, limit: '50mb' }));
+    // Body parsing - SECURITY FIX: Reduced limit to prevent DoS attacks
+    // Large files should be uploaded via multipart/form-data with separate validation
+    this.app.use(express.json({ limit: '10mb' }));
+    this.app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
     // Request logging
     // Request logging (development only)

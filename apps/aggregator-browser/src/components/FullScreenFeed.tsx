@@ -4,6 +4,7 @@
  */
 
 import React, { useRef, useEffect, useState, useCallback } from 'react';
+import DOMPurify from 'dompurify';
 import { IndexedFile } from '../types/aggregator';
 import { FeedEngagementSidebar } from './FeedEngagementSidebar';
 import { EngagementOverlay } from './EngagementOverlay';
@@ -723,9 +724,15 @@ export function FullScreenFeed({
                   {(() => {
                     // Handle different content formats
                     if (textPostData?.content) {
-                      // If content is HTML, render it safely
+                      // If content is HTML, sanitize it before rendering
                       if (typeof textPostData.content === 'string' && textPostData.content.includes('<')) {
-                        return <div dangerouslySetInnerHTML={{ __html: textPostData.content }} />;
+                        // SECURITY: Sanitize HTML to prevent XSS attacks
+                        const sanitizedContent = DOMPurify.sanitize(textPostData.content, {
+                          ALLOWED_TAGS: ['p', 'br', 'strong', 'em', 'u', 'a', 'ul', 'ol', 'li', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6'],
+                          ALLOWED_ATTR: ['href', 'target', 'rel'],
+                          ALLOW_DATA_ATTR: false
+                        });
+                        return <div dangerouslySetInnerHTML={{ __html: sanitizedContent }} />;
                       }
                       return textPostData.content;
                     }
