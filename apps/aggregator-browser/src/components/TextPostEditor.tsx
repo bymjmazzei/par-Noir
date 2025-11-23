@@ -6,9 +6,8 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { X, Check, Palette, Type, Image as ImageIcon, Upload, AlignLeft, AlignCenter, AlignRight, AlignJustify, Layers, Minus, Plus as PlusIcon, Send, Bold } from 'lucide-react';
-import { TextPostData, TextPostStyle, FeedCategory } from '../types/aggregator';
+import { TextPostData, TextPostStyle } from '../types/aggregator';
 import { useUserState } from '../contexts/UserStateContext';
-import { FEED_CATEGORY_LIST } from '../constants/feedCategories';
 
 // Helper function to convert hex to RGB
 const hexToRgb = (hex: string): { r: number; g: number; b: number } => {
@@ -243,8 +242,6 @@ export function TextPostEditor({ onSave, onCancel }: TextPostEditorProps) {
   const [textAlign, setTextAlign] = useState<'left' | 'center' | 'right' | 'justify'>('center');
   const [textStyle, setTextStyle] = useState<'plain' | 'bold' | 'italic' | 'strikethrough'>('plain');
   const [padding, setPadding] = useState(40);
-  const [isNSFW, setIsNSFW] = useState<boolean>(false);
-  const [category, setCategory] = useState<FeedCategory | ''>('');
   const [showTextColorPicker, setShowTextColorPicker] = useState(false);
   const [showBackgroundColorPicker, setShowBackgroundColorPicker] = useState(false);
   const [showDropShadowColorPicker, setShowDropShadowColorPicker] = useState(false);
@@ -492,8 +489,6 @@ export function TextPostEditor({ onSave, onCancel }: TextPostEditorProps) {
         textStyle,
         padding,
       },
-      isNSFW: isNSFW,
-      category: category || undefined
     };
 
     onSave(textPost);
@@ -1183,39 +1178,6 @@ export function TextPostEditor({ onSave, onCancel }: TextPostEditorProps) {
           </button>
         </div>
 
-        {/* Rating and Category Selection */}
-        <div className="px-4 pb-4 space-y-3 border-t border-neutral-700 pt-3">
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="flex items-center space-x-2 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={isNSFW}
-                  onChange={(e) => setIsNSFW(e.target.checked)}
-                  className="w-4 h-4 text-blue-600 bg-neutral-800 border-neutral-700 rounded focus:ring-blue-500 focus:ring-2"
-                />
-                <span className="text-xs text-neutral-400">NSFW Content</span>
-              </label>
-            </div>
-            <div>
-              <label className="block text-xs text-neutral-400 mb-1">Category</label>
-              <select
-                value={category}
-                onChange={(e) => setCategory(e.target.value as FeedCategory | '')}
-                className="w-full px-3 py-2 bg-neutral-800 border border-neutral-700 rounded-lg text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-              >
-                <option value="">Select category</option>
-                {FEED_CATEGORY_LIST
-                  .filter(cat => cat.id !== 'adults-only' || userState.preferences.isOver18)
-                  .map(cat => (
-                    <option key={cat.id} value={cat.id}>
-                      {cat.name}
-                    </option>
-                  ))}
-              </select>
-            </div>
-          </div>
-        </div>
       </div>
 
       {/* Popup Menus */}
