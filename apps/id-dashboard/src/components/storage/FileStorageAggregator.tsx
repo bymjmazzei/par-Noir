@@ -24,7 +24,8 @@ import { FEED_CATEGORIES, FEED_CATEGORY_LIST } from '../../constants/feedCategor
 async function createPDFThumbnail(blob: Blob, maxWidth: number, maxHeight: number): Promise<Blob> {
   try {
     const pdfjsLib = await import('pdfjs-dist');
-    pdfjsLib.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.js`;
+    // Use unpkg CDN which is more reliable
+    pdfjsLib.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjsLib.version}/build/pdf.worker.min.js`;
     
     const url = URL.createObjectURL(blob);
     const loadingTask = pdfjsLib.getDocument({ url });

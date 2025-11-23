@@ -45,7 +45,8 @@ export function PDFSlideshow({ fileId, publicToken, fileName }: PDFSlideshowProp
 
         // Load PDF.js dynamically
         const pdfjsLib = await import('pdfjs-dist');
-        pdfjsLib.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.js`;
+        // Use unpkg CDN which is more reliable
+        pdfjsLib.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjsLib.version}/build/pdf.worker.min.js`;
 
         // Load PDF document
         const loadingTask = pdfjsLib.getDocument({ url });
@@ -82,6 +83,10 @@ export function PDFSlideshow({ fileId, publicToken, fileName }: PDFSlideshowProp
     const renderPages = async () => {
       try {
         const pdfjsLib = await import('pdfjs-dist');
+        // Ensure worker is set before loading document
+        if (!pdfjsLib.GlobalWorkerOptions.workerSrc) {
+          pdfjsLib.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjsLib.version}/build/pdf.worker.min.js`;
+        }
         const loadingTask = pdfjsLib.getDocument({ url: pdfUrl });
         const pdf = await loadingTask.promise;
 
