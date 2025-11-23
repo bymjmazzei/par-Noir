@@ -641,6 +641,15 @@ function App() {
       const subscribedSubjects = userState.preferences.subscribedSubjects || [];
       const blockedSubjects = userState.preferences.blockedSubjects || [];
       
+      console.log('🔍 [Curated Feed Filter] Starting filter:', {
+        totalFiles: indexedFiles.length,
+        blockedCategories,
+        blockedCategoriesCount: blockedCategories.length,
+        subscribedFeedIds,
+        subscribedSubjects,
+        blockedSubjects
+      });
+      
       return indexedFiles.filter(file => {
         // Check if file matches blocked categories
         // Check both feedCategories (array) and category (single string) fields
@@ -656,6 +665,18 @@ function App() {
         // Normalize categories for comparison
         const normalizedFileCategories = allFileCategories.map(cat => String(cat).toLowerCase().trim());
         const normalizedBlocked = blockedCategories.map(cat => String(cat).toLowerCase().trim());
+        
+        // Debug logging for every file
+        if (normalizedBlocked.length > 0) {
+          console.log('🔍 [Curated Feed Filter] Checking file:', {
+            fileId: file.metadata.fileId,
+            fileCategories: normalizedFileCategories,
+            blockedCategories: normalizedBlocked,
+            feedCategories: file.metadata.feedCategories,
+            category: file.metadata.category,
+            willBeFiltered: normalizedFileCategories.some(cat => normalizedBlocked.includes(cat))
+          });
+        }
         
         const hasBlockedCategory = normalizedBlocked.length > 0 && 
           normalizedFileCategories.some(cat => normalizedBlocked.includes(cat));
