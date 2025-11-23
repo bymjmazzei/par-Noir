@@ -200,7 +200,7 @@ export class FeedService {
       feedName?: string;
       feedDescription?: string;
       feedCategory?: FeedCategory;
-      ratingRange?: ContentRating[];
+      // ratingRange removed - feeds accept all content
       branding?: {
         bannerImage?: string;
         avatar?: string;
@@ -232,11 +232,7 @@ export class FeedService {
       params.push(updates.feedCategory);
     }
 
-    if (updates.ratingRange !== undefined) {
-      paramCount++;
-      updateFields.push(`rating_range = $${paramCount}`);
-      params.push(JSON.stringify(updates.ratingRange));
-    }
+    // ratingRange update removed - feeds accept all content
 
     if (updates.branding !== undefined) {
       paramCount++;
