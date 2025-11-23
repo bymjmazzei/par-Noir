@@ -4823,6 +4823,173 @@ class ProductionServer {
       }
     });
 
+    // Create folder endpoint
+    this.app.post('/api/drive/folders', async (req, res) => {
+      try {
+        // Extract pN OAuth token from Authorization header
+        const authHeader = req.headers.authorization;
+        if (!authHeader || !authHeader.startsWith('Bearer ')) {
+          return res.status(401).json({
+            error: 'unauthorized',
+            error_description: 'Missing or invalid Authorization header'
+          });
+        }
+
+        const token = authHeader.substring(7);
+        const { PNOAuthService } = await import('./server/modules/pnOAuthService');
+        const tokenPayload = PNOAuthService.validateAccessToken(token);
+        
+        if (!tokenPayload) {
+          return res.status(401).json({
+            error: 'unauthorized',
+            error_description: 'Invalid or expired access token'
+          });
+        }
+
+        const pnIdentifier = tokenPayload.pnIdentifier;
+        if (!pnIdentifier) {
+          return res.status(400).json({
+            error: 'pnIdentifier required',
+            error_description: 'Token must include pnIdentifier for storage access'
+          });
+        }
+        const userIdentifier = pnIdentifier;
+        
+        const identifierCandidates: string[] = [pnIdentifier];
+        
+        const { googleDriveProxyService } = await import('./server/modules/googleDriveProxy');
+        
+        const { folderName, parentFolderName, accountId } = req.body;
+        
+        if (!folderName) {
+          return res.status(400).json({
+            error: 'Missing required fields',
+            error_description: 'folderName is required'
+          });
+        }
+
+        // Get access token for Google Drive operations
+        const accessToken = await googleDriveProxyService.getAccessToken(userIdentifier, accountId, identifierCandidates);
+        if (!accessToken) {
+          return res.status(401).json({
+            error: 'Failed to get Google Drive access token',
+            error_description: 'Could not retrieve Google Drive credentials'
+          });
+        }
+
+        let parentFolderId: string | null = null;
+
+        // If parentFolderName is provided, find or create it
+        if (parentFolderName) {
+          const parentFolderSearchQuery = `name='${parentFolderName.replace(/'/g, "\\'")}' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
+          const parentFolderSearchUrl = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(parentFolderSearchQuery)}&fields=files(id,name)&pageSize=1`;
+          
+          const parentFolderResponse = await fetch(parentFolderSearchUrl, {
+            headers: {
+              'Authorization': `Bearer ${accessToken}`
+            }
+          });
+          
+          if (parentFolderResponse.ok) {
+            const parentFolderData = await parentFolderResponse.json() as { files?: Array<{ id: string; name: string }> };
+            const parentFolderFiles = parentFolderData.files || [];
+            if (parentFolderFiles.length > 0) {
+              parentFolderId = parentFolderFiles[0].id;
+            }
+          }
+
+          // If parent folder not found, try alternative name format
+          if (!parentFolderId && parentFolderName.includes('pn-')) {
+            const altParentFolderName = parentFolderName.replace('pn-', '');
+            const altParentFolderSearchQuery = `name='${altParentFolderName.replace(/'/g, "\\'")}' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
+            const altParentFolderSearchUrl = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(altParentFolderSearchQuery)}&fields=files(id,name)&pageSize=1`;
+            
+            const altParentFolderResponse = await fetch(altParentFolderSearchUrl, {
+              headers: {
+                'Authorization': `Bearer ${accessToken}`
+              }
+            });
+            
+            if (altParentFolderResponse.ok) {
+              const altParentFolderData = await altParentFolderResponse.json() as { files?: Array<{ id: string; name: string }> };
+              const altParentFolderFiles = altParentFolderData.files || [];
+              if (altParentFolderFiles.length > 0) {
+                parentFolderId = altParentFolderFiles[0].id;
+              }
+            }
+          }
+
+          // If parent folder still not found, create it
+          if (!parentFolderId) {
+            console.log(`[CreateFolder] Creating parent folder: ${parentFolderName}`);
+            const createParentFolderResponse = await fetch('https://www.googleapis.com/drive/v3/files', {
+              method: 'POST',
+              headers: {
+                'Authorization': `Bearer ${accessToken}`,
+                'Content-Type': 'application/json'
+              },
+              body: JSON.stringify({
+                name: parentFolderName,
+                mimeType: 'application/vnd.google-apps.folder'
+              })
+            });
+            
+            if (createParentFolderResponse.ok) {
+              const createdParentFolder = await createParentFolderResponse.json() as { id: string };
+              parentFolderId = createdParentFolder.id;
+              console.log(`[CreateFolder] Created parent folder: ${parentFolderName} (ID: ${parentFolderId})`);
+            } else {
+              const errorText = await createParentFolderResponse.text().catch(() => 'Unknown error');
+              console.error(`[CreateFolder] Failed to create parent folder: ${createParentFolderResponse.status} - ${errorText}`);
+              return res.status(500).json({
+                error: 'Failed to create parent folder',
+                error_description: errorText
+              });
+            }
+          }
+        }
+
+        // Create the requested folder
+        const createFolderBody: any = {
+          name: folderName,
+          mimeType: 'application/vnd.google-apps.folder'
+        };
+        
+        if (parentFolderId) {
+          createFolderBody.parents = [parentFolderId];
+        }
+
+        const createFolderResponse = await fetch('https://www.googleapis.com/drive/v3/files', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${accessToken}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify(createFolderBody)
+        });
+
+        if (!createFolderResponse.ok) {
+          const errorText = await createFolderResponse.text().catch(() => 'Unknown error');
+          console.error(`[CreateFolder] Failed to create folder: ${createFolderResponse.status} - ${errorText}`);
+          return res.status(500).json({
+            error: 'Failed to create folder',
+            error_description: errorText
+          });
+        }
+
+        const createdFolder = await createFolderResponse.json() as { id: string; name: string };
+        console.log(`[CreateFolder] Created folder: ${folderName} (ID: ${createdFolder.id})`);
+        
+        return res.json({ folder: createdFolder });
+      } catch (error: any) {
+        console.error('Error creating folder:', error);
+        return res.status(500).json({
+          error: 'Failed to create folder',
+          error_description: error.message || 'Failed to create folder in Google Drive'
+        });
+      }
+    });
+
     this.app.get('/api/drive/files/:fileId', async (req, res) => {
       try {
         // Extract pN OAuth token from Authorization header
