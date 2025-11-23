@@ -1962,7 +1962,7 @@ class ProductionServer {
           isNSFW,
           isPublic
         });
-        console.log(`[MetadataIndex PUT] Update complete for ${fileId}, isNSFW in result: ${updated?.metadata?.isNSFW}`);
+        console.log(`[MetadataIndex PUT] Update complete for ${fileId}, isNSFW in result: ${updated?.isNSFW}`);
 
         // Also update isPublic if provided (or default for text posts)
         // If making file public for the first time, create companion metadata file
