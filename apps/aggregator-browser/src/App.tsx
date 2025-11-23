@@ -1208,19 +1208,27 @@ function App() {
       return;
     }
     
-    // If viewing own profile and unlocked, load directly from Google Drive
+    // If viewing own profile and unlocked, use authenticated endpoint to get ALL files (public + private)
     if (viewingCreatorId === userState.pnIdentifier && userState.isUnlocked) {
       const loadUserFiles = async () => {
         try {
-          // Query API for ALL files, then filter client-side by pnIdentifier
-          // This ensures we get files from all Google Drive accounts
+          // Use authenticated endpoint to get ALL files (public + private) for the user
           const apiEndpoint = process.env.REACT_APP_API_ENDPOINT || 'https://api.parnoir.com';
+          const { PNOAuthService } = await import('./services/pnOAuthService');
+          const accessToken = await PNOAuthService.getValidAccessToken();
+          
+          if (!accessToken) {
+            console.warn('⚠️ No access token available for authenticated file fetch');
+            return;
+          }
+
           const response = await fetch(
-            `${apiEndpoint}/api/aggregator/metadata-index`,
+            `${apiEndpoint}/api/aggregator/my-files`,
             {
               method: 'GET',
               headers: {
-                'Content-Type': 'application/json'
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${accessToken}`
               }
             }
           );
@@ -1229,55 +1237,12 @@ function App() {
           if (response.ok) {
             const data = await response.json();
             if (data.files && Array.isArray(data.files)) {
-              // Filter by pnIdentifier (which is the same as the user's identifier)
-              // Note: Dashboard stores pnIdentifier as "pn-{hash}" but browser uses just "{hash}"
-              // So we need to normalize both formats for comparison
-              const normalizeIdentifier = (id: string | undefined | null): string => {
-                if (!id) return '';
-                // Remove "pn-" prefix if present, then normalize
-                const cleaned = id.startsWith('pn-') ? id.substring(3) : id;
-                return cleaned.trim().toLowerCase();
-              };
+              // The /api/aggregator/my-files endpoint already returns all files (public + private) for the authenticated user
+              // No need to filter - the server already filtered by pnIdentifier
+              console.log(`📊 Loaded ${data.files.length} files (public + private) from authenticated endpoint for user ${viewingCreatorId}`);
               
-              const userIdentifier = normalizeIdentifier(viewingCreatorId);
-              console.log(`🔍 Filtering files for user: ${viewingCreatorId} (normalized: ${userIdentifier})`);
-              console.log(`🔍 Total files from API: ${data.files.length}`);
-              
-              // Log first few files to debug
-              data.files.slice(0, 3).forEach((entry: any, idx: number) => {
-                const metadata = entry.metadata || {};
-                console.log(`📄 File ${idx + 1}:`, {
-                  fileId: entry.fileId,
-                  pnIdentifier: entry.pnIdentifier,
-                  normalizedPnId: normalizeIdentifier(entry.pnIdentifier),
-                  creator: metadata.creator,
-                  author: metadata.author,
-                  creatorId: metadata.creatorId
-                });
-              });
-              
-              const userFiles = data.files.filter((entry: any) => {
-                // Check pnIdentifier field (top-level in entry) - normalize it
-                const entryPnId = normalizeIdentifier(entry.pnIdentifier);
-                // Also check metadata creator/author fields - normalize them too
-                const metadata = entry.metadata || {};
-                const creatorIdRaw = metadata.creator?.identifier?.value ||
-                                    metadata.creator?.["@id"] ||
-                                    metadata.author?.did ||
-                                    metadata.creatorId;
-                const creatorId = normalizeIdentifier(creatorIdRaw);
-                
-                const matches = entryPnId === userIdentifier || creatorId === userIdentifier;
-                if (matches) {
-                  console.log(`✅ Found owned file: ${entry.fileId}, pnIdentifier: ${entry.pnIdentifier} (normalized: ${entryPnId}), creatorId: ${creatorIdRaw} (normalized: ${creatorId})`);
-                } else {
-                  console.log(`❌ File ${entry.fileId} doesn't match: entryPnId="${entry.pnIdentifier}" (normalized: "${entryPnId}"), creatorId="${creatorIdRaw}" (normalized: "${creatorId}"), user="${viewingCreatorId}" (normalized: "${userIdentifier}")`);
-                }
-                return matches;
-              });
-
-              // Convert filtered entries to IndexedFile format
-              apiFiles = userFiles.map((entry: any) => {
+              // Convert entries to IndexedFile format
+              apiFiles = data.files.map((entry: any) => {
                 const metadata = entry.metadata || {};
                 return {
                   metadata: {
@@ -1297,7 +1262,6 @@ function App() {
                   pnIdentifier: entry.pnIdentifier
                 } as IndexedFile;
               });
-              console.log(`📊 Loaded ${apiFiles.length} files from API for user ${viewingCreatorId} (filtered from ${data.files.length} total files)`);
             }
           } else {
             const errorText = await response.text().catch(() => 'Unknown error');

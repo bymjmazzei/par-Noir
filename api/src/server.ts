@@ -1238,6 +1238,63 @@ class ProductionServer {
       }
     });
 
+    // GET /api/aggregator/my-files - Get ALL files (public + private) for authenticated user
+    this.app.get('/api/aggregator/my-files', async (req, res) => {
+      try {
+        // Require authentication
+        const authHeader = req.headers.authorization;
+        if (!authHeader || !authHeader.startsWith('Bearer ')) {
+          return res.status(401).json({
+            error: 'unauthorized',
+            error_description: 'Missing or invalid Authorization header'
+          });
+        }
+
+        const token = authHeader.substring(7);
+        const { PNOAuthService } = await import('./server/modules/pnOAuthService');
+        const tokenPayload = PNOAuthService.validateAccessToken(token);
+        
+        if (!tokenPayload) {
+          return res.status(401).json({
+            error: 'unauthorized',
+            error_description: 'Invalid or expired access token'
+          });
+        }
+
+        const pnIdentifier = tokenPayload.pnIdentifier;
+        if (!pnIdentifier) {
+          return res.status(400).json({
+            error: 'Missing pnIdentifier in token'
+          });
+        }
+
+        const { AggregatorMetadataServiceDB } = await import('./server/modules/aggregatorMetadataServiceDB');
+        const service = AggregatorMetadataServiceDB.getInstance();
+
+        // Parse query parameters
+        const tags = req.query.tags ? (req.query.tags as string).split(',').map(t => t.trim()) : undefined;
+        const fileType = req.query.fileType as string | undefined;
+
+        const files = await service.getAllFilesForUser(pnIdentifier, {
+          tags,
+          fileType
+        });
+
+        console.log(`📤 [GET /api/aggregator/my-files] Returning ${files.length} files for user ${pnIdentifier}`);
+        return res.json({
+          files,
+          updatedAt: new Date().toISOString(),
+          totalFiles: files.length
+        });
+      } catch (error: any) {
+        console.error('❌ [GET /api/aggregator/my-files] Error:', error);
+        return res.status(500).json({ 
+          error: 'Failed to fetch user files',
+          message: error.message 
+        });
+      }
+    });
+
     // POST /api/aggregator/cleanup - Manually trigger cleanup (for debugging)
     this.app.post('/api/aggregator/cleanup', async (req, res) => {
       try {

@@ -269,6 +269,72 @@ export class AggregatorMetadataServiceDB {
   }
 
   /**
+   * Get ALL files (public + private) for a specific user
+   * Used for authenticated users viewing their own content
+   */
+  async getAllFilesForUser(pnIdentifier: string, filters?: {
+    tags?: string[];
+    fileType?: string;
+  }): Promise<CentralIndexEntry[]> {
+    const db = getDatabasePool();
+
+    try {
+      let query = `
+        SELECT 
+          am.file_id, 
+          am.metadata, 
+          am.submitted_at, 
+          am.pn_identifier,
+          COALESCE(ARRAY_AGG(DISTINCT fp.feed_id::text) FILTER (WHERE fp.feed_id IS NOT NULL), ARRAY[]::text[]) as feed_ids
+        FROM aggregator_metadata am
+        LEFT JOIN feed_posts fp ON am.file_id = fp.file_id
+        WHERE am.pn_identifier = $1
+        GROUP BY am.file_id, am.metadata, am.submitted_at, am.pn_identifier
+      `;
+      const params: any[] = [pnIdentifier];
+      let paramIndex = 2;
+
+      // Apply filters
+      if (filters?.fileType) {
+        query += ` AND am.metadata->>'fileType' = $${paramIndex}`;
+        params.push(filters.fileType);
+        paramIndex++;
+      }
+
+      query += ` ORDER BY am.updated_at DESC`;
+
+      const result = await db.query(query, params);
+      let entries: CentralIndexEntry[] = result.rows.map(row => {
+        const metadata = row.metadata as PublicMetadata & { feedIds?: string[] };
+        // Add feedIds to metadata if they exist
+        if (row.feed_ids && row.feed_ids.length > 0) {
+          metadata.feedIds = row.feed_ids.map((id: string) => id.toString());
+        }
+        return {
+          fileId: row.file_id,
+          metadata,
+          submittedAt: row.submitted_at.toISOString(),
+          pnIdentifier: row.pn_identifier
+        };
+      });
+
+      // Filter by tags (PostgreSQL JSONB array contains is complex, so filter in JS)
+      if (filters?.tags && filters.tags.length > 0) {
+        entries = entries.filter(entry => {
+          const keywords = entry.metadata.keywords || [];
+          return keywords.some((tag: string) => filters.tags!.includes(tag));
+        });
+      }
+
+      console.log(`📤 [getAllFilesForUser] Returning ${entries.length} files (public + private) for user ${pnIdentifier}`);
+      return entries;
+    } catch (error) {
+      console.error('❌ Failed to get all files for user:', error);
+      throw error;
+    }
+  }
+
+  /**
    * Get index stats
    */
   async getStats(): Promise<{ totalFiles: number; lastUpdated: string }> {
