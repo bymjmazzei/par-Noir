@@ -14,7 +14,8 @@ export interface UserPreferences {
   
   // Feed subscriptions
   subscribedFeedIds: string[]; // Individual feed subscriptions
-  subscribedCategories: string[]; // Niche category subscriptions (for curated feed)
+  subscribedCategories: string[]; // Legacy: Niche category subscriptions (deprecated, use blockedCategories)
+  blockedCategories: string[]; // Categories to exclude from curated feed (negative filter)
   
   // Subject niche preferences
   subscribedSubjects: string[]; // Subjects user wants to see (e.g., ["cowboy", "horses"])
@@ -41,9 +42,12 @@ interface UserStateContextType {
   subscribeToFeed: (feedId: string) => void;
   unsubscribeFromFeed: (feedId: string) => void;
   isSubscribedToFeed: (feedId: string) => boolean;
-  subscribeToCategory: (categoryId: string) => void;
-  unsubscribeFromCategory: (categoryId: string) => void;
-  isSubscribedToCategory: (categoryId: string) => boolean;
+  subscribeToCategory: (categoryId: string) => void; // Legacy function
+  unsubscribeFromCategory: (categoryId: string) => void; // Legacy function
+  isSubscribedToCategory: (categoryId: string) => boolean; // Legacy function
+  blockCategory: (categoryId: string) => void;
+  unblockCategory: (categoryId: string) => void;
+  isBlockedCategory: (categoryId: string) => boolean;
   subscribeToSubject: (subject: string) => void;
   unsubscribeFromSubject: (subject: string) => void;
   isSubscribedToSubject: (subject: string) => boolean;
@@ -62,6 +66,7 @@ const defaultPreferences: UserPreferences = {
   showNSFW: false,
   subscribedFeedIds: [],
   subscribedCategories: [],
+  blockedCategories: [],
   subscribedSubjects: [],
   blockedSubjects: []
 };
@@ -98,6 +103,13 @@ export function UserStateProvider({ children }: { children: ReactNode }) {
           parsed.preferences = {
             ...parsed.preferences,
             blockedSubjects: []
+          };
+        }
+        // Ensure blockedCategories exists for backward compatibility
+        if (!parsed.preferences?.blockedCategories) {
+          parsed.preferences = {
+            ...parsed.preferences,
+            blockedCategories: []
           };
         }
         // Migrate old rating preferences to new NSFW system
@@ -170,6 +182,7 @@ export function UserStateProvider({ children }: { children: ReactNode }) {
               preferences: {
                 ...prev.preferences,
                 ...(data.preferences.subscribedCategories && { subscribedCategories: data.preferences.subscribedCategories }),
+                ...(data.preferences.blockedCategories && { blockedCategories: data.preferences.blockedCategories }),
                 ...(data.preferences.subscribedSubjects && { subscribedSubjects: data.preferences.subscribedSubjects }),
                 ...(data.preferences.blockedSubjects && { blockedSubjects: data.preferences.blockedSubjects }),
                 ...(data.preferences.hasAgeZKP !== undefined && { hasAgeZKP: data.preferences.hasAgeZKP }),
@@ -535,6 +548,36 @@ export function UserStateProvider({ children }: { children: ReactNode }) {
     return (userState.preferences.subscribedCategories || []).includes(categoryId);
   };
 
+  const blockCategory = (categoryId: string) => {
+    setUserState(prev => {
+      const currentBlocked = prev.preferences.blockedCategories || [];
+      if (currentBlocked.includes(categoryId)) {
+        return prev; // Already blocked
+      }
+      return {
+        ...prev,
+        preferences: {
+          ...prev.preferences,
+          blockedCategories: [...currentBlocked, categoryId]
+        }
+      };
+    });
+  };
+
+  const unblockCategory = (categoryId: string) => {
+    setUserState(prev => ({
+      ...prev,
+      preferences: {
+        ...prev.preferences,
+        blockedCategories: (prev.preferences.blockedCategories || []).filter(id => id !== categoryId)
+      }
+    }));
+  };
+
+  const isBlockedCategory = (categoryId: string): boolean => {
+    return (userState.preferences.blockedCategories || []).includes(categoryId);
+  };
+
   const subscribeToSubject = (subject: string) => {
     setUserState(prev => {
       const normalizedSubject = subject.toLowerCase().trim();
@@ -666,6 +709,9 @@ export function UserStateProvider({ children }: { children: ReactNode }) {
         subscribeToCategory,
         unsubscribeFromCategory,
         isSubscribedToCategory,
+        blockCategory,
+        unblockCategory,
+        isBlockedCategory,
         subscribeToSubject,
         unsubscribeFromSubject,
         isSubscribedToSubject,

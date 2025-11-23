@@ -634,28 +634,23 @@ function App() {
       return indexedFiles.filter(shouldShowFile);
     }
     if (activeFeedId === 'curated') {
-      // Curated feed = all files from subscribed categories (niche feeds), filtered by NSFW preference and subjects
-      const subscribedCategories = userState.preferences.subscribedCategories || [];
+      // Curated feed = all content EXCEPT blocked categories (negative filter)
+      // Also respects subscribed feeds and subject filters for backward compatibility
+      const blockedCategories = userState.preferences.blockedCategories || [];
       const subscribedFeedIds = userState.preferences.subscribedFeedIds || [];
       const subscribedSubjects = userState.preferences.subscribedSubjects || [];
       const blockedSubjects = userState.preferences.blockedSubjects || [];
       
-      if (subscribedCategories.length === 0 && subscribedFeedIds.length === 0 && subscribedSubjects.length === 0) {
-        // If no subscriptions at all, show all content (like unlocked user)
-        return indexedFiles.filter(file => shouldShowFile(file));
-      }
-      
       return indexedFiles.filter(file => {
-        // Check if file matches subscribed categories
+        // Check if file matches blocked categories
         const fileCategories = file.metadata.feedCategories || [];
-        const matchesCategory = subscribedCategories.length > 0 && 
-          fileCategories.some(cat => subscribedCategories.includes(cat));
+        const hasBlockedCategory = blockedCategories.length > 0 && 
+          fileCategories.some(cat => blockedCategories.includes(cat));
         
-        // Check if file is in a subscribed feed
-        const inSubscribedFeed = subscribedFeedIds.length > 0 &&
-          file.metadata.feedIds?.some(feedId => subscribedFeedIds.includes(feedId));
+        // Exclude if matches blocked category
+        if (hasBlockedCategory) return false;
         
-        // Subject filtering
+        // Subject filtering (backward compatibility)
         const fileSubjects = (file.metadata.subjects || []).map(s => s.toLowerCase().trim());
         
         // If user has subscribed subjects, only show matching content
@@ -676,14 +671,17 @@ function App() {
           );
         }
         
-        // Must match at least one subscription (category, feed, or subject)
-        // If user has subscribed subjects, must match those too
-        const matchesSubscription = matchesCategory || inSubscribedFeed;
-        const subjectFilterPasses = subscribedSubjects.length === 0 ? true : matchesSubject;
-        
-        if (!matchesSubscription && !subjectFilterPasses) return false;
+        // If user has subscribed subjects, must match those
+        if (subscribedSubjects.length > 0 && !matchesSubject) return false;
         if (hasBlockedSubject) return false;
         
+        // Check if file is in a subscribed feed (backward compatibility)
+        if (subscribedFeedIds.length > 0) {
+          const inSubscribedFeed = file.metadata.feedIds?.some(feedId => subscribedFeedIds.includes(feedId));
+          if (inSubscribedFeed) return shouldShowFile(file); // Show subscribed feed content
+        }
+        
+        // Default: show all content (negative filter - only exclude blocked)
         // Filter by NSFW preference
         return shouldShowFile(file);
       });
@@ -719,7 +717,7 @@ function App() {
     );
     filtered = filtered.filter(shouldShowFile);
     return filtered;
-  }, [indexedFiles, activeFeedId, userState.preferences.subscribedFeedIds, userState.preferences.subscribedCategories, userState.preferences.subscribedSubjects, userState.preferences.blockedSubjects, userState.preferences.showNSFW, userState.preferences.hasAgeZKP, userState.preferences.isOver18, userState.isUnlocked, feeds]);
+  }, [indexedFiles, activeFeedId, userState.preferences.subscribedFeedIds, userState.preferences.blockedCategories, userState.preferences.subscribedSubjects, userState.preferences.blockedSubjects, userState.preferences.showNSFW, userState.preferences.hasAgeZKP, userState.preferences.isOver18, userState.isUnlocked, feeds]);
 
   // Navigation handlers (memoized)
 

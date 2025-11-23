@@ -1,6 +1,6 @@
 /**
  * Content Preferences Panel Component
- * Simple preferences UI for content categories
+ * Simple preferences UI for blocking content categories (negative filter)
  */
 
 import React, { useState } from 'react';
@@ -19,9 +19,9 @@ interface ContentPreferencesPanelProps {
 export function ContentPreferencesPanel({ onClose }: ContentPreferencesPanelProps) {
   const { 
     userState, 
-    subscribeToCategory, 
-    unsubscribeFromCategory, 
-    isSubscribedToCategory,
+    blockCategory, 
+    unblockCategory, 
+    isBlockedCategory,
     toggleShowNSFW
   } = useUserState();
 
@@ -46,7 +46,7 @@ export function ContentPreferencesPanel({ onClose }: ContentPreferencesPanelProp
           'Authorization': `Bearer ${session.accessToken}`
         },
         body: JSON.stringify({
-          subscribedCategories: userState.preferences.subscribedCategories || [],
+          blockedCategories: userState.preferences.blockedCategories || [],
           showNSFW: userState.preferences.showNSFW || false
         })
       });
@@ -63,38 +63,38 @@ export function ContentPreferencesPanel({ onClose }: ContentPreferencesPanelProp
     }
   };
 
-  // Handle category add
-  const handleAddCategory = async (categoryId: FeedCategory) => {
+  // Handle category block
+  const handleBlockCategory = async (categoryId: FeedCategory) => {
     if (!userState.isUnlocked || !userState.pnIdentifier) {
-      alert('Please unlock your pN to manage feed subscriptions');
+      alert('Please unlock your pN to manage content preferences');
       return;
     }
 
-    if (!isSubscribedToCategory(categoryId)) {
-      subscribeToCategory(categoryId);
+    if (!isBlockedCategory(categoryId)) {
+      blockCategory(categoryId);
       await savePreferences();
     }
     setShowCategoryPicker(false);
   };
 
-  // Handle category remove
-  const handleRemoveCategory = async (categoryId: FeedCategory) => {
+  // Handle category unblock
+  const handleUnblockCategory = async (categoryId: FeedCategory) => {
     if (!userState.isUnlocked || !userState.pnIdentifier) {
       return;
     }
 
-    unsubscribeFromCategory(categoryId);
+    unblockCategory(categoryId);
     await savePreferences();
   };
 
-  // Get subscribed categories
-  const subscribedCategories = FEED_CATEGORY_LIST.filter(cat => 
-    isSubscribedToCategory(cat.id)
+  // Get blocked categories
+  const blockedCategories = FEED_CATEGORY_LIST.filter(cat => 
+    isBlockedCategory(cat.id)
   );
 
-  // Get available categories (not yet subscribed)
+  // Get available categories (not yet blocked)
   const availableCategories = FEED_CATEGORY_LIST.filter(cat => 
-    !isSubscribedToCategory(cat.id)
+    !isBlockedCategory(cat.id)
   );
 
   return (
@@ -171,56 +171,56 @@ export function ContentPreferencesPanel({ onClose }: ContentPreferencesPanelProp
             </div>
           </section>
 
-          {/* Categories Section */}
+          {/* Blocked Categories Section */}
           <section>
             <div className="flex items-center space-x-2 mb-4">
-              <h3 className="text-lg font-semibold text-white">Content Categories</h3>
+              <h3 className="text-lg font-semibold text-white">Block Categories</h3>
             </div>
             <div className="bg-neutral-800/50 rounded-lg p-4">
               <p className="text-text-secondary text-sm mb-4">
-                Select content categories to include in your curated feed.
+                Block categories you don't want to see. Your curated feed will show all content except blocked categories.
               </p>
               {!userState.isUnlocked ? (
                 <div className="bg-yellow-500/10 border border-yellow-500/20 rounded-lg p-3">
                   <p className="text-yellow-400 text-sm">
-                    Please unlock your pN to manage feed subscriptions.
+                    Please unlock your pN to manage content preferences.
                   </p>
                 </div>
               ) : (
                 <div className="space-y-4">
-                  {/* Selected Categories as Tiles */}
+                  {/* Blocked Categories as Tiles */}
                   <div className="flex flex-wrap gap-2">
-                    {subscribedCategories.map(category => (
+                    {blockedCategories.map(category => (
                       <div
                         key={category.id}
-                        className="flex items-center gap-2 px-4 py-2 bg-blue-500/20 border border-blue-500 rounded-lg text-white"
+                        className="flex items-center gap-2 px-4 py-2 bg-red-500/20 border border-red-500 rounded-lg text-white"
                       >
                         <span className="text-sm font-medium">{category.name}</span>
                         <button
-                          onClick={() => handleRemoveCategory(category.id)}
-                          className="text-blue-400 hover:text-blue-300 transition-colors"
-                          aria-label={`Remove ${category.name}`}
+                          onClick={() => handleUnblockCategory(category.id)}
+                          className="text-red-400 hover:text-red-300 transition-colors"
+                          aria-label={`Unblock ${category.name}`}
                         >
                           <X className="h-4 w-4" />
                         </button>
                       </div>
                     ))}
                     
-                    {/* Add Preference Button */}
+                    {/* Block Category Button */}
                     {availableCategories.length > 0 && (
                       <button
                         onClick={() => setShowCategoryPicker(true)}
                         className="flex items-center gap-2 px-4 py-2 bg-neutral-700 hover:bg-neutral-600 border border-neutral-600 rounded-lg text-white transition-colors"
                       >
                         <Plus className="h-4 w-4" />
-                        <span className="text-sm font-medium">Add Preference</span>
+                        <span className="text-sm font-medium">Block Category</span>
                       </button>
                     )}
                   </div>
 
-                  {subscribedCategories.length === 0 && availableCategories.length === 0 && (
+                  {blockedCategories.length === 0 && (
                     <p className="text-text-secondary text-sm">
-                      All categories are subscribed.
+                      No categories blocked. Your curated feed shows all content.
                     </p>
                   )}
                 </div>
@@ -236,7 +236,7 @@ export function ContentPreferencesPanel({ onClose }: ContentPreferencesPanelProp
           <div className="bg-neutral-900 rounded-xl max-w-lg w-full max-h-[80vh] flex flex-col border border-neutral-700">
             {/* Modal Header */}
             <div className="flex items-center justify-between p-6 border-b border-neutral-700">
-              <h3 className="text-xl font-bold text-white">Select Category</h3>
+              <h3 className="text-xl font-bold text-white">Block Category</h3>
               <button
                 onClick={() => setShowCategoryPicker(false)}
                 className="text-text-secondary hover:text-white transition-colors"
@@ -251,8 +251,8 @@ export function ContentPreferencesPanel({ onClose }: ContentPreferencesPanelProp
                 {availableCategories.map(category => (
                   <button
                     key={category.id}
-                    onClick={() => handleAddCategory(category.id)}
-                    className="p-4 rounded-lg bg-neutral-800 hover:bg-neutral-700 border border-neutral-700 hover:border-blue-500 text-left transition-all"
+                    onClick={() => handleBlockCategory(category.id)}
+                    className="p-4 rounded-lg bg-neutral-800 hover:bg-neutral-700 border border-neutral-700 hover:border-red-500 text-left transition-all"
                   >
                     <div className="font-medium text-white mb-1">{category.name}</div>
                     <div className="text-xs text-text-secondary">{category.description}</div>
