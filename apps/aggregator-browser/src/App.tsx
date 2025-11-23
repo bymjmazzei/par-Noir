@@ -643,12 +643,34 @@ function App() {
       
       return indexedFiles.filter(file => {
         // Check if file matches blocked categories
-        const fileCategories = file.metadata.feedCategories || [];
-        const hasBlockedCategory = blockedCategories.length > 0 && 
-          fileCategories.some(cat => blockedCategories.includes(cat));
+        // Check both feedCategories (array) and category (single string) fields
+        const fileCategoriesArray = file.metadata.feedCategories || [];
+        const fileCategorySingle = file.metadata.category;
+        
+        // Combine all possible category sources
+        const allFileCategories = [
+          ...(Array.isArray(fileCategoriesArray) ? fileCategoriesArray : [fileCategoriesArray]),
+          ...(fileCategorySingle ? [fileCategorySingle] : [])
+        ].filter(Boolean); // Remove any null/undefined values
+        
+        // Normalize categories for comparison
+        const normalizedFileCategories = allFileCategories.map(cat => String(cat).toLowerCase().trim());
+        const normalizedBlocked = blockedCategories.map(cat => String(cat).toLowerCase().trim());
+        
+        const hasBlockedCategory = normalizedBlocked.length > 0 && 
+          normalizedFileCategories.some(cat => normalizedBlocked.includes(cat));
         
         // Exclude if matches blocked category
-        if (hasBlockedCategory) return false;
+        if (hasBlockedCategory) {
+          console.log('🚫 Filtered out file due to blocked category:', {
+            fileId: file.metadata.fileId,
+            fileCategories: normalizedFileCategories,
+            blockedCategories: normalizedBlocked,
+            feedCategories: file.metadata.feedCategories,
+            category: file.metadata.category
+          });
+          return false;
+        }
         
         // Subject filtering (backward compatibility)
         const fileSubjects = (file.metadata.subjects || []).map(s => s.toLowerCase().trim());
