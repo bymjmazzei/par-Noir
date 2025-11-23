@@ -1157,11 +1157,21 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
 
   // Handle save share settings
   const handleSaveShareSettings = async () => {
-    if (!sharingFile) return;
+    console.log('🔵 [ShareSettings] Save button clicked!', {
+      sharingFile: sharingFile?.id,
+      shareNSFW,
+      shareVisibility
+    });
+    
+    if (!sharingFile) {
+      console.error('❌ [ShareSettings] No sharingFile, aborting');
+      return;
+    }
 
     try {
       setIsSavingShare(true);
       setError(null);
+      console.log('🔵 [ShareSettings] Starting save process...');
 
       const accessToken = await PNOAuthService.getValidAccessToken();
       if (!accessToken) {
@@ -1304,8 +1314,17 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
         const accountIdParam = sharingAccountId ? `?accountId=${encodeURIComponent(sharingAccountId)}` : '';
         const updateBody: any = {};
         
+        console.log('🔵 [ShareSettings] Building update body:', {
+          makePublic,
+          isCurrentlyPublic,
+          shareNSFW,
+          existingIsNSFW,
+          existingMetadataIsNSFW: existingMetadata?.isNSFW
+        });
+        
         if (makePublic !== isCurrentlyPublic) {
           updateBody.isPublic = makePublic;
+          console.log('📤 [ShareSettings] isPublic changed, adding to updateBody');
         }
         
         // ALWAYS update NSFW status if file is public (whether making public or already public)
@@ -1318,7 +1337,8 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
             existingMetadataIsNSFW: existingMetadata?.isNSFW,
             makePublic,
             isCurrentlyPublic,
-            willSend: true
+            willSend: true,
+            updateBodyKeys: Object.keys(updateBody)
           });
         } else {
           // File is private - only update if changed
@@ -1339,6 +1359,13 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
             });
           }
         }
+        
+        console.log('🔵 [ShareSettings] Final updateBody before API call:', {
+          updateBody,
+          updateBodyKeys: Object.keys(updateBody),
+          hasIsNSFW: 'isNSFW' in updateBody,
+          isNSFWValue: updateBody.isNSFW
+        });
         
         // Always include publicToken if we have one (newly generated or existing)
         // This ensures the API has the token for public files
