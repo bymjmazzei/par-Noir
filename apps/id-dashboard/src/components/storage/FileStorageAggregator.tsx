@@ -122,7 +122,6 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
     locationName: string;
     locationAddress: string;
     license: string;
-    isPublic: boolean;
   }>({ 
     name: '', 
     description: '', 
@@ -131,8 +130,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
     category: '',
     locationName: '',
     locationAddress: '',
-    license: 'all-rights-reserved',
-    isPublic: false
+    license: 'all-rights-reserved'
   });
   const [openMenuFor, setOpenMenuFor] = useState<string | null>(null);
   const actionMenuRef = React.useRef<HTMLDivElement | null>(null);
@@ -5061,9 +5059,6 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
     const license = (metadata as any)?.license || (metadata as any)?.schema?.license || '';
     const licenseString = typeof license === 'object' && license?.name ? license.name : (typeof license === 'string' ? license : '') || 'all-rights-reserved';
     
-    // Extract isPublic (default to false if not set)
-    const isPublic = metadata?.isPublic === true || (metadata as any)?.visibility === 'public';
-    
     setEditForm({
       name: metadata?.name || file.encrypted ? file.originalName || file.name.replace('.encrypted', '') : file.name,
       description: metadata?.description || '',
@@ -5072,8 +5067,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
       category: category as FeedCategory | '',
       locationName: locationName,
       locationAddress: locationAddress,
-      license: licenseString,
-      isPublic: isPublic
+      license: licenseString
     });
     setEditingFile(file);
   };
@@ -5139,8 +5133,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
           feedCategories: editForm.category ? [editForm.category as FeedCategory] : undefined,
           category: editForm.category || undefined,
           locationCreated: locationCreated,
-          license: editForm.license || undefined,
-          isPublic: editForm.isPublic
+          license: editForm.license || undefined
         }),
       });
 
@@ -6977,38 +6970,6 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
                     />
                   </div>
 
-                </div>
-              </div>
-
-              <div className="border-t border-neutral-700 pt-4 mt-4">
-                <h4 className="text-sm font-semibold text-text-primary mb-3">Visibility</h4>
-                
-                <div className="space-y-4">
-                  <div className="flex items-center justify-between">
-                    <div className="flex-1">
-                      <p className="text-sm font-medium text-text-primary mb-1">Public Content</p>
-                      <p className="text-xs text-text-secondary">
-                        Make this content visible on the public feed. Use Share Settings to manage NSFW classification.
-                      </p>
-                    </div>
-                    <button
-                      type="button"
-                      role="switch"
-                      aria-checked={editForm.isPublic}
-                      onClick={() => setEditForm({ ...editForm, isPublic: !editForm.isPublic })}
-                      className={`
-                        relative inline-flex h-6 w-11 items-center rounded-full transition-colors
-                        ${editForm.isPublic ? 'bg-blue-600' : 'bg-neutral-700'}
-                      `}
-                    >
-                      <span
-                        className={`
-                          inline-block h-4 w-4 transform rounded-full bg-white transition-transform
-                          ${editForm.isPublic ? 'translate-x-6' : 'translate-x-1'}
-                        `}
-                      />
-                    </button>
-                  </div>
                 </div>
               </div>
 
