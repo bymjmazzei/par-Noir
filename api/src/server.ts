@@ -4881,8 +4881,11 @@ class ProductionServer {
 
         // If parentFolderName is provided, find or create it
         if (parentFolderName) {
+          console.log(`[CreateFolder] Searching for parent folder: ${parentFolderName}`);
           const parentFolderSearchQuery = `name='${parentFolderName.replace(/'/g, "\\'")}' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
           const parentFolderSearchUrl = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(parentFolderSearchQuery)}&fields=files(id,name)&pageSize=1`;
+          
+          console.log(`[CreateFolder] Parent folder search query: ${parentFolderSearchQuery}`);
           
           const parentFolderResponse = await fetch(parentFolderSearchUrl, {
             headers: {
@@ -4893,9 +4896,14 @@ class ProductionServer {
           if (parentFolderResponse.ok) {
             const parentFolderData = await parentFolderResponse.json() as { files?: Array<{ id: string; name: string }> };
             const parentFolderFiles = parentFolderData.files || [];
+            console.log(`[CreateFolder] Found ${parentFolderFiles.length} parent folder(s):`, parentFolderFiles);
             if (parentFolderFiles.length > 0) {
               parentFolderId = parentFolderFiles[0].id;
+              console.log(`[CreateFolder] Using parent folder ID: ${parentFolderId}`);
             }
+          } else {
+            const errorText = await parentFolderResponse.text().catch(() => 'Unknown error');
+            console.error(`[CreateFolder] Failed to search for parent folder: ${parentFolderResponse.status} - ${errorText}`);
           }
 
           // If parent folder not found, try alternative name format
@@ -4977,8 +4985,8 @@ class ProductionServer {
           });
         }
 
-        const createdFolder = await createFolderResponse.json() as { id: string; name: string };
-        console.log(`[CreateFolder] Created folder: ${folderName} (ID: ${createdFolder.id})`);
+        const createdFolder = await createFolderResponse.json() as { id: string; name: string; parents?: string[] };
+        console.log(`[CreateFolder] Created folder: ${folderName} (ID: ${createdFolder.id}, parents: ${createdFolder.parents?.join(', ') || 'none'})`);
         
         return res.json({ folder: createdFolder });
       } catch (error: any) {

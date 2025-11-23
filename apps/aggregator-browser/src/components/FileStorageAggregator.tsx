@@ -747,7 +747,8 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
         
         console.log(`[FileStorageAggregator] Loaded ${allFiles.length} files from API, checking for folders...`);
         const folders = allFiles.filter((f: DriveFile) => f.mimeType === 'application/vnd.google-apps.folder');
-        console.log(`[FileStorageAggregator] Found ${folders.length} folders:`, folders.map((f: DriveFile) => ({ name: f.name, id: f.id })));
+        console.log(`[FileStorageAggregator] Found ${folders.length} folders:`, folders.map((f: DriveFile) => ({ name: f.name, id: f.id, mimeType: f.mimeType })));
+        console.log(`[FileStorageAggregator] All files:`, allFiles.map((f: DriveFile) => ({ name: f.name, id: f.id, mimeType: f.mimeType })));
         
         // Filter to show only media files (images/videos/PDFs), excluding metadata, index, encrypted, and system files
         const mediaFiles = allFiles.filter((file: DriveFile) => {
@@ -840,7 +841,8 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
         
         console.log(`[FileStorageAggregator] Loaded ${allFiles.length} files from API, checking for folders...`);
         const folders = allFiles.filter((f: DriveFile) => f.mimeType === 'application/vnd.google-apps.folder');
-        console.log(`[FileStorageAggregator] Found ${folders.length} folders:`, folders.map((f: DriveFile) => ({ name: f.name, id: f.id })));
+        console.log(`[FileStorageAggregator] Found ${folders.length} folders:`, folders.map((f: DriveFile) => ({ name: f.name, id: f.id, mimeType: f.mimeType })));
+        console.log(`[FileStorageAggregator] All files:`, allFiles.map((f: DriveFile) => ({ name: f.name, id: f.id, mimeType: f.mimeType })));
         
         // Filter to show only media files (images/videos/PDFs), excluding metadata, index, encrypted, and system files
         const mediaFiles = allFiles.filter((file: DriveFile) => {
@@ -1878,6 +1880,22 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
           }
           
           console.log(`✅ [Upload] Created PDF pages folder: ${pdfPagesFolderName} (ID: ${pdfPagesFolderId})`);
+          console.log(`📋 [Upload] Folder details:`, pagesFolderData.folder);
+          
+          // Verify folder was created in the correct location by querying it directly
+          try {
+            const verifyResponse = await fetch(`${apiEndpoint}/api/drive/files/${pdfPagesFolderId}?accountId=${encodeURIComponent(accountId)}`, {
+              headers: {
+                'Authorization': `Bearer ${apiAccessToken}`
+              }
+            });
+            if (verifyResponse.ok) {
+              const verifyData = await verifyResponse.json();
+              console.log(`✅ [Upload] Verified folder exists:`, verifyData.file);
+            }
+          } catch (verifyError) {
+            console.warn(`⚠️ [Upload] Could not verify folder:`, verifyError);
+          }
           
           // Now convert PDF to PNG pages
           const pdfjsLib = await import('pdfjs-dist');
