@@ -1745,6 +1745,8 @@ class ProductionServer {
             const driveFile = await driveResponse.json() as { name?: string; mimeType?: string; createdTime?: string };
             
             // Create initial metadata entry
+            // IMPORTANT: Default isPublic to true for text posts, false for other files
+            const defaultIsPublic = (textPost || thought) ? true : false;
             const initialMetadata: any = {
               fileId: fileId,
               backendFileId: fileId,
@@ -1753,7 +1755,7 @@ class ProductionServer {
               fileType: fileType || (driveFile.mimeType?.startsWith('image/') ? 'image' : 
                         driveFile.mimeType?.startsWith('video/') ? 'video' : 'other'),
               uploadDate: driveFile.createdTime || new Date().toISOString(),
-              isPublic: isPublic || false,
+              isPublic: isPublic !== undefined ? isPublic : defaultIsPublic,
               ...(publicToken && { publicToken }),
               ...(textPost && { textPost }),
               ...(thought && { thought }),
@@ -1780,6 +1782,8 @@ class ProductionServer {
           } catch (driveError: any) {
             console.error(`[MetadataIndex] Failed to fetch file info for ${fileId}:`, driveError);
             // Continue anyway - create entry with minimal info
+            // IMPORTANT: Default isPublic to true for text posts, false for other files
+            const defaultIsPublic = (textPost || thought) ? true : false;
             const minimalMetadata: any = {
               fileId: fileId,
               backendFileId: fileId,
@@ -1787,7 +1791,7 @@ class ProductionServer {
               name: name || fileId,
               fileType: fileType || 'other',
               uploadDate: new Date().toISOString(),
-              isPublic: isPublic || false,
+              isPublic: isPublic !== undefined ? isPublic : defaultIsPublic,
               ...(textPost && { textPost }),
               ...(thought && { thought }),
               ...(contentRating && { contentRating }),
@@ -1836,19 +1840,22 @@ class ProductionServer {
           contentRating
         });
 
-        // Also update isPublic if provided
+        // Also update isPublic if provided (or default for text posts)
         // If making file public for the first time, create companion metadata file
         // If making file private, remove from public index
-        if (isPublic !== undefined) {
+        // IMPORTANT: Text posts default to public if isPublic is not explicitly set
+        const shouldUpdateIsPublic = isPublic !== undefined || textPost || thought;
+        if (shouldUpdateIsPublic) {
+          const finalIsPublic = isPublic !== undefined ? isPublic : ((textPost || thought) ? true : false);
           current = await service.getFileMetadata(fileId);
           const wasPublic = current?.metadata?.isPublic || false;
-          const isBecomingPublic = isPublic && !wasPublic;
-          const isBecomingPrivate = !isPublic && wasPublic;
+          const isBecomingPublic = finalIsPublic && !wasPublic;
+          const isBecomingPrivate = !finalIsPublic && wasPublic;
           
           if (current) {
             const updatedMetadata = {
               ...current.metadata,
-              isPublic: isPublic,
+              isPublic: finalIsPublic,
               ...(publicToken && { publicToken }),
               // Preserve textPost and thought when updating isPublic
               ...(textPost && { textPost }),
