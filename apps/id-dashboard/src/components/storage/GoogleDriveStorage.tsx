@@ -214,27 +214,156 @@ export const GoogleDriveStorage: React.FC = () => {
         console.log('Demo service returned files:', demoFiles.length);
         setFiles(demoFiles);
       } else {
-      const token = localStorage.getItem('google_drive_token');
-      if (!token) {
-        throw new Error('No access token found');
-      }
-      
-      const response = await fetch(
-        'https://www.googleapis.com/drive/v3/files?fields=files(id,name,modifiedTime,size,mimeType)',
-        {
-          headers: {
-            'Authorization': `Bearer ${token}`,
-            'Content-Type': 'application/json'
+        // Try to use pN API endpoint first (filters to pN folder, includes thoughts)
+        const authenticatedUserStr = localStorage.getItem('authenticated_user');
+        const apiEndpoint = process.env.REACT_APP_API_ENDPOINT || 'https://api.parnoir.com';
+        
+        // Try to get pN identifier and accountId
+        let pnIdentifier: string | null = null;
+        let accountId: string | null = null;
+        
+        if (authenticatedUserStr) {
+          try {
+            const authenticatedUser = JSON.parse(authenticatedUserStr);
+            const { VolumeIdGenerator } = await import('../../utils/crypto/volumeIdGenerator');
+            const { SecureCredentialManager } = await import('../../utils/secureCredentialManager');
+            
+            const sessionId = authenticatedUser.id || authenticatedUser.publicKey || null;
+            const credentials = sessionId ? SecureCredentialManager.getCredentials(sessionId) : null;
+            const pnName = authenticatedUser.pnName || authenticatedUser.username;
+            const publicKey = authenticatedUser.publicKey;
+            
+            if (pnName && credentials?.passcode && publicKey) {
+              pnIdentifier = await VolumeIdGenerator.generateVolumeId({
+                pnName,
+                passcode: credentials.passcode,
+                publicKey
+              });
+              
+              // Try to get accountId from storage credentials
+              try {
+                const credResponse = await fetch(`${apiEndpoint}/api/storage/credentials/${encodeURIComponent(pnIdentifier)}`);
+                if (credResponse.ok) {
+                  const credData = await credResponse.json();
+                  // Get first Google Drive account ID
+                  if (credData.credentials?.googleDriveAccounts) {
+                    const accounts = Object.keys(credData.credentials.googleDriveAccounts);
+                    if (accounts.length > 0) {
+                      accountId = accounts[0];
+                    }
+                  }
+                }
+              } catch (err) {
+                console.warn('Could not fetch accountId:', err);
+              }
+            }
+          } catch (err) {
+            console.warn('Could not generate pn identifier:', err);
           }
         }
-      );
-      
-      if (!response.ok) {
-        throw new Error('Failed to fetch files');
-      }
-      
-      const data = await response.json();
-      setFiles(data.files || []);
+        
+        // Try pN API endpoint if we have pnIdentifier and accountId
+        if (pnIdentifier && accountId) {
+          try {
+            // Get access token (use Google Drive token as fallback, but ideally should use pN OAuth)
+            const token = localStorage.getItem('google_drive_token');
+            if (token) {
+              const response = await fetch(`${apiEndpoint}/api/drive/files?accountId=${encodeURIComponent(accountId)}`, {
+                headers: {
+                  'Authorization': `Bearer ${token}`,
+                  'Content-Type': 'application/json'
+                }
+              });
+              
+              if (response.ok) {
+                const data = await response.json();
+                const allFiles = (data.files || []).map((file: any) => ({
+                  id: file.id,
+                  name: file.name.replace(/\.encrypted$/i, ''),
+                  modifiedTime: file.modifiedTime,
+                  size: file.size,
+                  mimeType: file.mimeType
+                }));
+                
+                // Filter to show media files (images/videos/PDFs/thoughts), excluding metadata and system files
+                const mediaFiles = allFiles.filter((file: GoogleDriveFile) => {
+                  const name = file.name.toLowerCase();
+                  const mimeType = file.mimeType || '';
+                  
+                  // Exclude folders
+                  if (mimeType === 'application/vnd.google-apps.folder') {
+                    return false;
+                  }
+                  
+                  // Exclude metadata files
+                  if (name.endsWith('.metadata.json') || name === '_metadata') {
+                    return false;
+                  }
+                  
+                  // Exclude index files
+                  if (name.includes('file-index.json') || name.includes('index.json')) {
+                    return false;
+                  }
+                  
+                  // Check MIME types
+                  const isImageMime = mimeType.startsWith('image/');
+                  const isVideoMime = mimeType.startsWith('video/');
+                  const isPDFMime = mimeType === 'application/pdf' || mimeType.includes('pdf');
+                  
+                  // Check file extensions
+                  const nameWithoutEncrypted = file.name.replace(/\.encrypted$/i, '');
+                  const hasImageExt = /\.(jpg|jpeg|png|gif|webp|bmp|svg|heic|heif)$/i.test(nameWithoutEncrypted);
+                  const hasVideoExt = /\.(mp4|mov|avi|mkv|webm|flv|wmv|m4v|3gp)$/i.test(nameWithoutEncrypted);
+                  const hasPDFExt = /\.pdf$/i.test(nameWithoutEncrypted);
+                  const isThought = /^thought-\d+\.png$/i.test(nameWithoutEncrypted);
+                  
+                  // Include images, videos, PDFs, and thoughts
+                  return isImageMime || isVideoMime || isPDFMime || hasImageExt || hasVideoExt || hasPDFExt || isThought;
+                });
+                
+                setFiles(mediaFiles);
+                return;
+              }
+            }
+          } catch (err) {
+            console.warn('Failed to load files from pN API, falling back to direct Google Drive API:', err);
+          }
+        }
+        
+        // Fallback to direct Google Drive API (shows all files, not just pN folder)
+        const token = localStorage.getItem('google_drive_token');
+        if (!token) {
+          throw new Error('No access token found');
+        }
+        
+        const response = await fetch(
+          'https://www.googleapis.com/drive/v3/files?fields=files(id,name,modifiedTime,size,mimeType)',
+          {
+            headers: {
+              'Authorization': `Bearer ${token}`,
+              'Content-Type': 'application/json'
+            }
+          }
+        );
+        
+        if (!response.ok) {
+          throw new Error('Failed to fetch files');
+        }
+        
+        const data = await response.json();
+        // Filter to show thoughts and media files
+        const filteredFiles = (data.files || []).filter((file: GoogleDriveFile) => {
+          const name = file.name.toLowerCase();
+          const nameWithoutEncrypted = name.replace(/\.encrypted$/i, '');
+          const isThought = /^thought-\d+\.png$/i.test(nameWithoutEncrypted);
+          const isImage = file.mimeType?.startsWith('image/') || /\.(jpg|jpeg|png|gif|webp|bmp|svg|heic|heif)$/i.test(nameWithoutEncrypted);
+          const isVideo = file.mimeType?.startsWith('video/') || /\.(mp4|mov|avi|mkv|webm|flv|wmv|m4v|3gp)$/i.test(nameWithoutEncrypted);
+          const isPDF = file.mimeType === 'application/pdf' || /\.pdf$/i.test(nameWithoutEncrypted);
+          
+          return isThought || isImage || isVideo || isPDF;
+        });
+        
+        setFiles(filteredFiles);
       }
     } catch (err) {
       setError('Failed to load files');
