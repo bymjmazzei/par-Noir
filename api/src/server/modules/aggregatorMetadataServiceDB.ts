@@ -1551,6 +1551,11 @@ export class AggregatorMetadataServiceDB {
       // Preserve existing schema metadata (static/auto-extracted fields)
       const existingSchema = (metadata as any).schema || {};
 
+      // Preserve textPost/thought from existing metadata if not explicitly updated
+      // These fields are critical for rendering thoughts and should never be lost
+      const existingTextPost = (metadata as any).textPost;
+      const existingThought = (metadata as any).thought;
+      
       // Apply updates
       const updatedMetadata: PublicMetadata = {
         ...metadata,
@@ -1560,8 +1565,9 @@ export class AggregatorMetadataServiceDB {
         // Keep legacy tags for backward compatibility
         ...(updates.tags && { tags: updates.tags, keywords: updates.tags }),
         ...(updates.fileType && { fileType: updates.fileType }),
-        ...(updates.textPost && { textPost: updates.textPost }),
-        ...(updates.thought && { thought: updates.thought }),
+        // Always preserve textPost/thought - use update if provided, otherwise keep existing (if it exists)
+        ...(updates.textPost !== undefined ? { textPost: updates.textPost } : (existingTextPost !== undefined ? { textPost: existingTextPost } : {})),
+        ...(updates.thought !== undefined ? { thought: updates.thought } : (existingThought !== undefined ? { thought: existingThought } : {})),
         ...(updates.isNSFW !== undefined && { isNSFW: updates.isNSFW === true }),
         ...(updates.isPublic !== undefined && { isPublic: updates.isPublic === true }),
         // Update schema.org fields (merge with existing schema)
