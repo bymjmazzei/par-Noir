@@ -3345,7 +3345,7 @@ function App() {
               <FullScreenFeed
                 files={filteredFilesByFeed}
                 currentIndex={currentFeedIndex}
-                thumbnails={thumbnails}
+                thumbnails={undefined}
                 videoBlobs={videoBlobs}
                 onIndexChange={setCurrentFeedIndex}
                 onSwipeLeft={handleNextFeed}

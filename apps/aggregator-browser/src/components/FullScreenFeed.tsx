@@ -763,7 +763,9 @@ export function FullScreenFeed({
                       // Full viewport height - parent padding prevents overlap with bottom nav
                       maxHeight: '100vh',
                       height: 'auto',
-                      width: '100%'
+                      width: '100%',
+                      imageRendering: 'auto',
+                      WebkitImageRendering: 'auto'
                     }}
                   />
                 </>
@@ -820,6 +822,9 @@ export function FullScreenFeed({
                     wordWrap: 'break-word',
                     overflowWrap: 'break-word',
                     whiteSpace: 'pre-wrap',
+                    WebkitFontSmoothing: 'antialiased',
+                    MozOsxFontSmoothing: 'grayscale',
+                    textRendering: 'optimizeLegibility',
                   }}
                 >
                   {textPostData?.content || file.description || file.name || file.title || 'Thought'}
