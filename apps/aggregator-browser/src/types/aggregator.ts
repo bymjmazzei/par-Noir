@@ -343,6 +343,9 @@ export interface PublicMetadata {
   textPost?: TextPostData;
   thought?: TextPostData; // Alias for textPost
   
+  // PDF Pre-rendered Pages (for fast loading)
+  pdfPageFileIds?: string[]; // File IDs of pre-rendered PNG pages
+  
   // Allow any additional semantic web properties
   [key: string]: any;
 }

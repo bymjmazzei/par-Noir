@@ -246,7 +246,6 @@ async function createPDFThumbnail(blob: Blob, maxWidth: number, maxHeight: numbe
     
     const ctx = canvas.getContext('2d');
     if (!ctx) {
-      URL.revokeObjectURL(url);
       throw new Error('Failed to get canvas context');
     }
     
@@ -1702,6 +1701,141 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
 
       console.log('📤 [Upload] Starting upload...', { fileName: file.name, fileSize: file.size });
 
+      // Check if this is a PDF - if so, convert to PNG pages first
+      const isPDF = file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
+      let pageFileIds: string[] = [];
+      
+      if (isPDF) {
+        console.log('📄 [Upload] PDF detected, converting to PNG pages...');
+        try {
+          const pdfjsLib = await import('pdfjs-dist');
+          if (!pdfjsLib.GlobalWorkerOptions.workerSrc) {
+            pdfjsLib.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs';
+          }
+          
+          // Load PDF
+          const arrayBuffer = await file.arrayBuffer();
+          const uint8Array = new Uint8Array(arrayBuffer);
+          const loadingTask = pdfjsLib.getDocument({ data: uint8Array });
+          const pdf = await loadingTask.promise;
+          
+          const numPages = pdf.numPages;
+          console.log(`📄 [Upload] PDF has ${numPages} pages, converting to PNGs...`);
+          
+          // Convert each page to PNG and upload
+          const baseFileName = file.name.replace(/\.pdf$/i, '');
+          
+          for (let pageNum = 1; pageNum <= numPages; pageNum++) {
+            const page = await pdf.getPage(pageNum);
+            const viewport = page.getViewport({ scale: 2.0 }); // High quality
+            
+            // Render to canvas
+            const canvas = document.createElement('canvas');
+            const context = canvas.getContext('2d');
+            if (!context) continue;
+            
+            canvas.height = viewport.height;
+            canvas.width = viewport.width;
+            
+            await page.render({
+              canvasContext: context,
+              viewport: viewport
+            }).promise;
+            
+            // Convert canvas to PNG blob
+            const pngBlob = await new Promise<Blob>((resolve, reject) => {
+              canvas.toBlob((blob) => {
+                if (blob) resolve(blob);
+                else reject(new Error('Failed to convert canvas to blob'));
+              }, 'image/png', 1.0);
+            });
+            
+            // Encrypt PNG
+            const pngArrayBuffer = await pngBlob.arrayBuffer();
+            const pngData = new Uint8Array(pngArrayBuffer);
+            const pngEncrypted = await encryptionManager.encrypt(
+              pngData,
+              session.did,
+              publicKey
+            );
+            
+            // Create encrypted package for PNG
+            const pngPackage: EncryptedFilePackage = {
+              encrypted: pngEncrypted.encrypted,
+              iv: pngEncrypted.iv,
+              salt: pngEncrypted.salt,
+              metadata: {
+                originalName: `${baseFileName}-page-${pageNum}.png`,
+                originalSize: pngBlob.size,
+                originalMimeType: 'image/png',
+              },
+            };
+            
+            // Generate share token for PNG page
+            let pngShareToken: any = undefined;
+            try {
+              const encryptionService = getEncryptionService();
+              pngShareToken = await encryptionService.generateShareToken(
+                pngPackage,
+                {
+                  id: session.did,
+                  publicKey: publicKey
+                }
+              );
+            } catch (tokenError) {
+              console.warn(`⚠️ [Upload] Share token generation failed for page ${pageNum}`);
+            }
+            
+            // Convert to JSON string
+            const pngEncryptedBlob = new Blob([JSON.stringify(pngPackage)], {
+              type: 'application/json',
+            });
+            
+            const pngBase64 = await new Promise<string>((resolve, reject) => {
+              const reader = new FileReader();
+              reader.onload = () => {
+                const result = reader.result as string;
+                const base64 = result.includes(',') ? result.split(',')[1] : result;
+                resolve(base64);
+              };
+              reader.onerror = () => reject(new Error('Failed to read PNG encrypted file'));
+              reader.readAsDataURL(pngEncryptedBlob);
+            });
+            
+            // Upload PNG page
+            const pngEncryptedFileName = `${baseFileName}-page-${pageNum}.png.encrypted`;
+            const pngResponse = await fetch(`${apiEndpoint}/api/drive/files`, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${accessToken}`
+              },
+              body: JSON.stringify({
+                fileData: pngBase64,
+                fileName: pngEncryptedFileName,
+                mimeType: 'application/json',
+                accountId: accountId
+              })
+            });
+            
+            if (pngResponse.ok) {
+              const pngUploadResult = await pngResponse.json();
+              if (pngUploadResult.file?.id) {
+                pageFileIds.push(pngUploadResult.file.id);
+                console.log(`✅ [Upload] Page ${pageNum}/${numPages} uploaded as PNG`);
+              }
+            } else {
+              console.warn(`⚠️ [Upload] Failed to upload page ${pageNum} PNG`);
+            }
+          }
+          
+          console.log(`✅ [Upload] Converted PDF to ${pageFileIds.length} PNG pages`);
+        } catch (pdfError: any) {
+          console.error('❌ [Upload] PDF conversion failed:', pdfError);
+          // Continue with regular PDF upload as fallback
+        }
+      }
+
       // Encrypt file using the same standard as dashboard
       const fileArrayBuffer = await file.arrayBuffer();
       const fileData = new Uint8Array(fileArrayBuffer);
@@ -1826,6 +1960,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
             publicToken: shareToken ? JSON.stringify(shareToken) : undefined, // Store share token for future use
             uploadDate: new Date().toISOString(),
             isNSFW: false, // Default to public content
+            pdfPageFileIds: pageFileIds.length > 0 ? pageFileIds : undefined, // Store PNG page file IDs for fast loading
             // Include accountId in query params if needed
           }),
         });

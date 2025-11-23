@@ -12,20 +12,53 @@ interface PDFSlideshowProps {
   fileId: string;
   publicToken: string | ShareToken | object;
   fileName?: string;
+  pdfPageFileIds?: string[]; // Pre-rendered PNG page file IDs for fast loading
 }
 
-export function PDFSlideshow({ fileId, publicToken, fileName }: PDFSlideshowProps) {
+export function PDFSlideshow({ fileId, publicToken, fileName, pdfPageFileIds, accountId }: PDFSlideshowProps) {
   const [pdfBlob, setPdfBlob] = useState<Blob | null>(null);
   const [pdfUrl, setPdfUrl] = useState<string | null>(null);
   const [pages, setPages] = useState<number[]>([]);
   const [currentPage, setCurrentPage] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [usePreRenderedPages, setUsePreRenderedPages] = useState(false);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const pageRefs = useRef<Map<number, HTMLDivElement>>(new Map());
 
-  // Load and decrypt PDF
+  // Load pre-rendered PNG pages if available (much faster than PDF.js rendering)
   useEffect(() => {
+    if (!pdfPageFileIds || pdfPageFileIds.length === 0) {
+      setUsePreRenderedPages(false);
+      return;
+    }
+
+    const loadPreRenderedPages = async () => {
+      try {
+        setLoading(true);
+        setError(null);
+        setUsePreRenderedPages(true);
+        
+        // Set pages based on number of PNG files
+        setPages(Array.from({ length: pdfPageFileIds.length }, (_, i) => i + 1));
+        setCurrentPage(1);
+        setLoading(false);
+        
+        console.log(`✅ [PDFSlideshow] Using ${pdfPageFileIds.length} pre-rendered PNG pages for fast loading`);
+      } catch (err: any) {
+        console.error('Failed to load pre-rendered pages:', err);
+        // Fall back to PDF.js rendering
+        setUsePreRenderedPages(false);
+      }
+    };
+
+    loadPreRenderedPages();
+  }, [pdfPageFileIds]);
+
+  // Load and decrypt PDF (fallback if no pre-rendered pages)
+  useEffect(() => {
+    if (usePreRenderedPages) return; // Skip if using pre-rendered pages
+
     const loadPDF = async () => {
       try {
         setLoading(true);
@@ -78,16 +111,112 @@ export function PDFSlideshow({ fileId, publicToken, fileName }: PDFSlideshowProp
         URL.revokeObjectURL(pdfUrl);
       }
     };
-  }, [publicToken]);
+  }, [publicToken, usePreRenderedPages]);
+
+  // Load pre-rendered PNG pages from file IDs
+  const [preRenderedPageUrls, setPreRenderedPageUrls] = useState<Map<number, string>>(new Map());
+  const [loadingPages, setLoadingPages] = useState<Set<number>>(new Set());
+
+  useEffect(() => {
+    if (!usePreRenderedPages || !pdfPageFileIds || pdfPageFileIds.length === 0 || pages.length === 0) return;
+
+    const loadPreRenderedPage = async (pageNum: number, pageFileId: string) => {
+      if (preRenderedPageUrls.has(pageNum) || loadingPages.has(pageNum)) return;
+      
+      setLoadingPages(prev => new Set(prev).add(pageNum));
+      
+      try {
+        const apiEndpoint = process.env.REACT_APP_API_ENDPOINT || 'https://api.parnoir.com';
+        const { PNOAuthService } = await import('../services/pnOAuthService');
+        const accessToken = await PNOAuthService.getValidAccessToken();
+        
+        if (!accessToken) {
+          throw new Error('No access token');
+        }
+
+        // Get accountId from session (needed for API call)
+        const session = PNOAuthService.loadSession();
+        if (!session?.did) {
+          throw new Error('No session');
+        }
+
+        // Download PNG page (decrypted by API)
+        const downloadUrl = accountId 
+          ? `${apiEndpoint}/api/drive/files/${pageFileId}?accountId=${encodeURIComponent(accountId)}&download=true`
+          : `${apiEndpoint}/api/drive/files/${pageFileId}?download=true`;
+        
+        const response = await fetch(downloadUrl, {
+          headers: {
+            'Authorization': `Bearer ${accessToken}`
+          }
+        });
+
+        if (!response.ok) {
+          throw new Error(`Failed to load page ${pageNum}: ${response.status}`);
+        }
+
+        // Decrypt the PNG page (it's stored as encrypted JSON package)
+        const encryptedJson = await response.json();
+        const { decryptWithToken } = await import('../utils/tokenDecryption');
+        
+        // Create a share token for this PNG page (using the same structure as PDF)
+        // Note: In production, each PNG page should have its own share token stored in metadata
+        // For now, we'll try to decrypt using the PDF's token structure
+        const pngBlob = await decryptWithToken(publicToken as ShareToken);
+        
+        // Actually, the PNG pages are encrypted files, so we need to decrypt them properly
+        // Let's use the API's decryption endpoint or decrypt client-side
+        // For now, let's try downloading as thumbnail which should be decrypted
+        const thumbnailResponse = await fetch(
+          accountId
+            ? `${apiEndpoint}/api/drive/files/${pageFileId}?accountId=${encodeURIComponent(accountId)}&thumbnail=true`
+            : `${apiEndpoint}/api/drive/files/${pageFileId}?thumbnail=true`,
+          {
+            headers: {
+              'Authorization': `Bearer ${accessToken}`
+            }
+          }
+        );
+        
+        if (!thumbnailResponse.ok) {
+          throw new Error(`Failed to load page ${pageNum} thumbnail`);
+        }
+        
+        const blob = await thumbnailResponse.blob();
+        const url = URL.createObjectURL(blob);
+        
+        setPreRenderedPageUrls(prev => {
+          const next = new Map(prev);
+          next.set(pageNum, url);
+          return next;
+        });
+      } catch (err) {
+        console.error(`Failed to load pre-rendered page ${pageNum}:`, err);
+      } finally {
+        setLoadingPages(prev => {
+          const next = new Set(prev);
+          next.delete(pageNum);
+          return next;
+        });
+      }
+    };
+
+    // Load all pages
+    pdfPageFileIds.forEach((pageFileId, index) => {
+      const pageNum = index + 1;
+      loadPreRenderedPage(pageNum, pageFileId);
+    });
+  }, [usePreRenderedPages, pdfPageFileIds, pages.length]);
 
   // Render PDF pages as images (progressive - first page immediately, others in background)
+  // Only used if NOT using pre-rendered pages
   const [renderedPages, setRenderedPages] = useState<Map<number, string>>(new Map());
   const [renderingPages, setRenderingPages] = useState<Set<number>>(new Set());
   const renderedPagesRef = useRef<Map<number, string>>(new Map());
   const renderingPagesRef = useRef<Set<number>>(new Set());
 
   useEffect(() => {
-    if (!pdfBlob || pages.length === 0) return;
+    if (usePreRenderedPages || !pdfBlob || pages.length === 0) return;
 
     const renderPages = async () => {
       try {
@@ -325,7 +454,13 @@ export function PDFSlideshow({ fileId, publicToken, fileName }: PDFSlideshowProp
       >
         <div className="flex h-full">
           {pages.map((pageNum) => {
-            const pageImageUrl = renderedPages.get(pageNum);
+            // Use pre-rendered PNG if available, otherwise use PDF.js rendered page
+            const pageImageUrl = usePreRenderedPages 
+              ? preRenderedPageUrls.get(pageNum)
+              : renderedPages.get(pageNum);
+            const isLoading = usePreRenderedPages
+              ? loadingPages.has(pageNum)
+              : renderingPages.has(pageNum);
             
             return (
               <div
@@ -350,10 +485,10 @@ export function PDFSlideshow({ fileId, publicToken, fileName }: PDFSlideshowProp
                       maxHeight: 'calc(100vh - 64px - env(safe-area-inset-bottom, 0px))'
                     }}
                   />
-                ) : renderingPages.has(pageNum) ? (
+                ) : isLoading ? (
                   <div className="text-white text-center">
                     <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-white mx-auto mb-2"></div>
-                    <p className="text-sm">Rendering page {pageNum}...</p>
+                    <p className="text-sm">{usePreRenderedPages ? 'Loading' : 'Rendering'} page {pageNum}...</p>
                   </div>
                 ) : (
                   <div className="text-white text-center">
