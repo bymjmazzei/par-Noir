@@ -953,9 +953,8 @@ export function FullScreenFeed({
               console.log('[FullScreenFeed] PDF file metadata:', {
                 fileId,
                 fileName,
-                hasPdfPageFileIds: !!file.metadata?.pdfPageFileIds,
-                pdfPageFileIds: file.metadata?.pdfPageFileIds,
-                pdfPageFileIdsLength: file.metadata?.pdfPageFileIds?.length,
+                hasPdfPagesFolderId: !!file.metadata?.pdfPagesFolderId,
+                pdfPagesFolderId: file.metadata?.pdfPagesFolderId,
                 fullMetadata: file.metadata
               });
               
@@ -965,7 +964,7 @@ export function FullScreenFeed({
                     fileId={fileId}
                     publicToken={token}
                     fileName={fileName}
-                    pdfPageFileIds={file.metadata?.pdfPageFileIds}
+                    pdfPagesFolderId={file.metadata?.pdfPagesFolderId}
                     accountId={file.backendFileId ? undefined : undefined} // TODO: Get accountId from file metadata
                   />
                 </div>

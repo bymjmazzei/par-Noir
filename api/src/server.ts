@@ -1797,7 +1797,7 @@ class ProductionServer {
           isNSFW,
           subjects,
           feedCategories,
-          pdfPageFileIds
+          pdfPagesFolderId
         } = req.body;
 
         if (!fileId) {
@@ -1965,7 +1965,7 @@ class ProductionServer {
           isPublic,
           subjects,
           feedCategories,
-          pdfPageFileIds
+          pdfPagesFolderId
         });
 
         // Also update isPublic if provided (or default for text posts)

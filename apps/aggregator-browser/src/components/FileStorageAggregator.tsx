@@ -1706,11 +1706,98 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
 
       // Check if this is a PDF - if so, convert to PNG pages first
       const isPDF = file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
-      let pageFileIds: string[] = [];
+      let pdfPagesFolderId: string | undefined = undefined;
       
       if (isPDF) {
         console.log('📄 [Upload] PDF detected, converting to PNG pages...');
         try {
+          // First, find the pN folder to create the PDF pages folder inside it
+          const pnIdentifier = session.did; // Use DID as identifier
+          const pnFolderName = `par Noir - pn-${pnIdentifier}`;
+          
+          // Get access token for folder operations
+          const folderAccessToken = await PNOAuthService.getValidAccessToken();
+          if (!folderAccessToken) {
+            throw new Error('No access token for folder creation');
+          }
+          
+          // Search for pN folder
+          const folderSearchQuery = `name='${pnFolderName.replace(/'/g, "\\'")}' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
+          const folderSearchUrl = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(folderSearchQuery)}&fields=files(id,name)&pageSize=1`;
+          
+          const folderResponse = await fetch(folderSearchUrl, {
+            headers: {
+              'Authorization': `Bearer ${folderAccessToken}`
+            }
+          });
+          
+          let pnFolderId: string | null = null;
+          if (folderResponse.ok) {
+            const folderData = await folderResponse.json() as { files?: Array<{ id: string; name: string }> };
+            const folderFiles = folderData.files || [];
+            if (folderFiles.length > 0) {
+              pnFolderId = folderFiles[0].id;
+            }
+          }
+          
+          // If pN folder not found, try alternative name
+          if (!pnFolderId) {
+            const altFolderName = `par Noir - ${pnIdentifier}`;
+            const altFolderSearchQuery = `name='${altFolderName.replace(/'/g, "\\'")}' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
+            const altFolderSearchUrl = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(altFolderSearchQuery)}&fields=files(id,name)&pageSize=1`;
+            
+            const altFolderResponse = await fetch(altFolderSearchUrl, {
+              headers: {
+                'Authorization': `Bearer ${folderAccessToken}`
+              }
+            });
+            
+            if (altFolderResponse.ok) {
+              const altFolderData = await altFolderResponse.json() as { files?: Array<{ id: string; name: string }> };
+              const altFolderFiles = altFolderData.files || [];
+              if (altFolderFiles.length > 0) {
+                pnFolderId = altFolderFiles[0].id;
+              }
+            }
+          }
+          
+          if (!pnFolderId) {
+            console.warn('⚠️ [Upload] Could not find pN folder, PNG pages will be uploaded to root');
+          }
+          
+          // Create PDF pages folder inside pN folder
+          const baseFileName = file.name.replace(/\.pdf$/i, '');
+          const pdfPagesFolderName = `${baseFileName}-pages`;
+          
+          if (pnFolderId) {
+            try {
+              const createFolderResponse = await fetch('https://www.googleapis.com/drive/v3/files', {
+                method: 'POST',
+                headers: {
+                  'Authorization': `Bearer ${folderAccessToken}`,
+                  'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                  name: pdfPagesFolderName,
+                  mimeType: 'application/vnd.google-apps.folder',
+                  parents: [pnFolderId]
+                })
+              });
+              
+              if (createFolderResponse.ok) {
+                const createdFolder = await createFolderResponse.json() as { id: string };
+                pdfPagesFolderId = createdFolder.id;
+                console.log(`✅ [Upload] Created PDF pages folder: ${pdfPagesFolderName} (ID: ${pdfPagesFolderId})`);
+              } else {
+                const errorText = await createFolderResponse.text().catch(() => 'Unknown error');
+                console.warn(`⚠️ [Upload] Failed to create PDF pages folder: ${createFolderResponse.status} - ${errorText}`);
+              }
+            } catch (folderError: any) {
+              console.warn(`⚠️ [Upload] Error creating PDF pages folder:`, folderError?.message || folderError);
+            }
+          }
+          
+          // Now convert PDF to PNG pages
           const pdfjsLib = await import('pdfjs-dist');
           if (!pdfjsLib.GlobalWorkerOptions.workerSrc) {
             pdfjsLib.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs';
@@ -1725,9 +1812,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
           const numPages = pdf.numPages;
           console.log(`📄 [Upload] PDF has ${numPages} pages, converting to PNGs...`);
           
-          // Convert each page to PNG and upload
-          const baseFileName = file.name.replace(/\.pdf$/i, '');
-          
+          // Convert each page to PNG and upload to folder
           for (let pageNum = 1; pageNum <= numPages; pageNum++) {
             try {
               // Refresh access token before each upload to prevent expiration
@@ -1816,7 +1901,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
                 reader.readAsDataURL(pngEncryptedBlob);
               });
               
-              // Upload PNG page with fresh token
+              // Upload PNG page to folder with fresh token
               const pngEncryptedFileName = `${baseFileName}-page-${pageNum}.png.encrypted`;
               const pngResponse = await fetch(`${apiEndpoint}/api/drive/files`, {
                 method: 'POST',
@@ -1828,6 +1913,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
                   fileData: pngBase64,
                   fileName: pngEncryptedFileName,
                   mimeType: 'application/json',
+                  parents: pdfPagesFolderId ? [pdfPagesFolderId] : undefined, // Upload to folder if available
                   accountId: accountId
                 })
               });
@@ -1835,8 +1921,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
               if (pngResponse.ok) {
                 const pngUploadResult = await pngResponse.json();
                 if (pngUploadResult.file?.id) {
-                  pageFileIds.push(pngUploadResult.file.id);
-                  console.log(`✅ [Upload] Page ${pageNum}/${numPages} uploaded as PNG`);
+                  console.log(`✅ [Upload] Page ${pageNum}/${numPages} uploaded as PNG${pdfPagesFolderId ? ' to folder' : ''}`);
                 } else {
                   console.warn(`⚠️ [Upload] Page ${pageNum} upload succeeded but no file ID returned`);
                 }
@@ -1851,12 +1936,16 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
             }
           }
           
-          console.log(`✅ [Upload] Converted PDF to ${pageFileIds.length} PNG pages (out of ${numPages} total)`);
+          if (pdfPagesFolderId) {
+            console.log(`✅ [Upload] Converted PDF to PNG pages in folder: ${pdfPagesFolderName}`);
+          } else {
+            console.log(`✅ [Upload] Converted PDF to PNG pages (folder creation failed, pages uploaded to root)`);
+          }
         } catch (pdfError: any) {
           console.error('❌ [Upload] PDF conversion failed:', pdfError?.message || pdfError);
           console.log('📄 [Upload] Continuing with regular PDF upload (PNG conversion is optional)');
           // Continue with regular PDF upload as fallback - don't fail the entire upload
-          pageFileIds = []; // Clear any partial page IDs
+          pdfPagesFolderId = undefined; // Clear folder ID
         }
       }
 
@@ -1974,7 +2063,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
         // Users can mark content as NSFW during upload or edit
         
         // Create metadata entry via API (this also updates owner index automatically)
-        console.log(`📝 [Upload] Saving metadata with ${pageFileIds.length} PNG page file IDs`);
+        console.log(`📝 [Upload] Saving metadata${pdfPagesFolderId ? ` with PDF pages folder ID: ${pdfPagesFolderId}` : ''}`);
         const metadataResponse = await fetch(`${apiEndpoint}/api/aggregator/metadata-index/${fileId}`, {
           method: 'PUT',
           headers: {
@@ -1991,7 +2080,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
             publicToken: shareToken ? JSON.stringify(shareToken) : undefined, // Store share token for future use
             uploadDate: new Date().toISOString(),
             isNSFW: false, // Default to public content
-            pdfPageFileIds: pageFileIds.length > 0 ? pageFileIds : undefined, // Store PNG page file IDs for fast loading
+            pdfPagesFolderId: pdfPagesFolderId, // Store PDF pages folder ID for slideshow
             // Include accountId in query params if needed
           }),
         });

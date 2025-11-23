@@ -12,11 +12,11 @@ interface PDFSlideshowProps {
   fileId: string;
   publicToken: string | ShareToken | object;
   fileName?: string;
-  pdfPageFileIds?: string[]; // Pre-rendered PNG page file IDs for fast loading
+  pdfPagesFolderId?: string; // Folder ID containing pre-rendered PNG pages
   accountId?: string; // Account ID for downloading PNG pages
 }
 
-export function PDFSlideshow({ fileId, publicToken, fileName, pdfPageFileIds, accountId }: PDFSlideshowProps) {
+export function PDFSlideshow({ fileId, publicToken, fileName, pdfPagesFolderId, accountId }: PDFSlideshowProps) {
   const [pdfBlob, setPdfBlob] = useState<Blob | null>(null);
   const [pdfUrl, setPdfUrl] = useState<string | null>(null);
   const [pages, setPages] = useState<number[]>([]);
@@ -27,27 +27,91 @@ export function PDFSlideshow({ fileId, publicToken, fileName, pdfPageFileIds, ac
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const pageRefs = useRef<Map<number, HTMLDivElement>>(new Map());
 
-  // Load pre-rendered PNG pages if available (much faster than PDF.js rendering)
+  // State for folder-based PNG pages
+  const [folderPageFiles, setFolderPageFiles] = useState<Array<{ id: string; name: string; pageNum: number }>>([]);
+
+  // Load pre-rendered PNG pages from folder if available (much faster than PDF.js rendering)
   useEffect(() => {
-    console.log(`[PDFSlideshow] Checking for pre-rendered pages:`, { 
-      pdfPageFileIds, 
-      hasPages: pdfPageFileIds && pdfPageFileIds.length > 0,
-      count: pdfPageFileIds?.length 
+    console.log(`[PDFSlideshow] Checking for PDF pages folder:`, { 
+      pdfPagesFolderId,
+      hasFolder: !!pdfPagesFolderId
     });
     
-    if (!pdfPageFileIds || pdfPageFileIds.length === 0) {
-      console.log(`[PDFSlideshow] No pre-rendered pages, will use PDF.js`);
+    if (!pdfPagesFolderId) {
+      console.log(`[PDFSlideshow] No PDF pages folder, will use PDF.js`);
       setUsePreRenderedPages(false);
       return;
     }
 
-    // Initialize pre-rendered pages mode
-    console.log(`✅ [PDFSlideshow] Using ${pdfPageFileIds.length} pre-rendered PNG pages for fast loading`);
-    setUsePreRenderedPages(true);
-    setPages(Array.from({ length: pdfPageFileIds.length }, (_, i) => i + 1));
-    setCurrentPage(1);
-    setLoading(false);
-  }, [pdfPageFileIds]);
+    // List files in folder
+    const loadFolderPages = async () => {
+      try {
+        setLoading(true);
+        const apiEndpoint = process.env.REACT_APP_API_ENDPOINT || 'https://api.parnoir.com';
+        const { PNOAuthService } = await import('../services/pnOAuthService');
+        const accessToken = await PNOAuthService.getValidAccessToken();
+        
+        if (!accessToken) {
+          throw new Error('No access token');
+        }
+
+        // Query files in folder using Google Drive API query
+        const folderQuery = `'${pdfPagesFolderId}' in parents and trashed=false`;
+        const filesUrl = `${apiEndpoint}/api/drive/files?q=${encodeURIComponent(folderQuery)}&pageSize=1000${accountId ? `&accountId=${encodeURIComponent(accountId)}` : ''}`;
+        
+        console.log(`[PDFSlideshow] Fetching files from folder:`, filesUrl);
+        
+        const response = await fetch(filesUrl, {
+          headers: {
+            'Authorization': `Bearer ${accessToken}`
+          }
+        });
+        
+        if (!response.ok) {
+          throw new Error(`Failed to list folder files: ${response.status}`);
+        }
+        
+        const data = await response.json();
+        const files = data.files || [];
+        
+        // Extract page numbers from filenames (format: "{name}-page-{num}.png.encrypted")
+        const pageFiles = files
+          .map((file: any) => {
+            const match = file.name.match(/-page-(\d+)\.png\.encrypted$/i);
+            if (match) {
+              return {
+                id: file.id,
+                name: file.name,
+                pageNum: parseInt(match[1], 10)
+              };
+            }
+            return null;
+          })
+          .filter((f: any) => f !== null)
+          .sort((a: any, b: any) => a.pageNum - b.pageNum); // Sort by page number
+        
+        console.log(`✅ [PDFSlideshow] Found ${pageFiles.length} PNG pages in folder`);
+        
+        if (pageFiles.length > 0) {
+          setFolderPageFiles(pageFiles);
+          setUsePreRenderedPages(true);
+          setPages(Array.from({ length: pageFiles.length }, (_, i) => i + 1));
+          setCurrentPage(1);
+          setLoading(false);
+        } else {
+          console.warn(`⚠️ [PDFSlideshow] No PNG pages found in folder, falling back to PDF.js`);
+          setUsePreRenderedPages(false);
+          setLoading(false);
+        }
+      } catch (err: any) {
+        console.error(`❌ [PDFSlideshow] Failed to load folder pages:`, err);
+        setUsePreRenderedPages(false);
+        setLoading(false);
+      }
+    };
+
+    loadFolderPages();
+  }, [pdfPagesFolderId, accountId]);
 
   // Load and decrypt PDF (fallback if no pre-rendered pages)
   useEffect(() => {
@@ -107,27 +171,28 @@ export function PDFSlideshow({ fileId, publicToken, fileName, pdfPageFileIds, ac
     };
   }, [publicToken, usePreRenderedPages]);
 
-  // Load pre-rendered PNG pages from file IDs
+  // Load pre-rendered PNG pages from folder files
   const [preRenderedPageUrls, setPreRenderedPageUrls] = useState<Map<number, string>>(new Map());
   const [loadingPages, setLoadingPages] = useState<Set<number>>(new Set());
   const loadedPagesRef = useRef<Set<number>>(new Set());
 
   useEffect(() => {
-    if (!usePreRenderedPages || !pdfPageFileIds || pdfPageFileIds.length === 0) {
-      console.log(`[PDFSlideshow] Skipping PNG load:`, { usePreRenderedPages, pdfPageFileIds: pdfPageFileIds?.length });
+    if (!usePreRenderedPages || folderPageFiles.length === 0) {
       return;
     }
 
-    console.log(`[PDFSlideshow] Starting to load ${pdfPageFileIds.length} PNG pages...`);
+    console.log(`[PDFSlideshow] Starting to load ${folderPageFiles.length} PNG pages from folder...`);
 
-    const loadPreRenderedPage = async (pageNum: number, pageFileId: string) => {
+    const loadPreRenderedPage = async (pageFile: { id: string; name: string; pageNum: number }) => {
+      const pageNum = pageFile.pageNum;
+      
       // Skip if already loaded or currently loading
       if (loadedPagesRef.current.has(pageNum) || loadingPages.has(pageNum)) {
         console.log(`[PDFSlideshow] Skipping page ${pageNum} (already loaded/loading)`);
         return;
       }
       
-      console.log(`[PDFSlideshow] Loading PNG page ${pageNum}/${pdfPageFileIds.length}...`);
+      console.log(`[PDFSlideshow] Loading PNG page ${pageNum}/${folderPageFiles.length}...`);
       setLoadingPages(prev => new Set(prev).add(pageNum));
       
       try {
@@ -141,8 +206,8 @@ export function PDFSlideshow({ fileId, publicToken, fileName, pdfPageFileIds, ac
 
         // Use thumbnail endpoint which returns decrypted image
         const thumbnailUrl = accountId
-          ? `${apiEndpoint}/api/drive/files/${pageFileId}?accountId=${encodeURIComponent(accountId)}&thumbnail=true`
-          : `${apiEndpoint}/api/drive/files/${pageFileId}?thumbnail=true`;
+          ? `${apiEndpoint}/api/drive/files/${pageFile.id}?accountId=${encodeURIComponent(accountId)}&thumbnail=true`
+          : `${apiEndpoint}/api/drive/files/${pageFile.id}?thumbnail=true`;
         
         console.log(`[PDFSlideshow] Fetching thumbnail for page ${pageNum} from:`, thumbnailUrl);
         const startTime = Date.now();
@@ -181,13 +246,12 @@ export function PDFSlideshow({ fileId, publicToken, fileName, pdfPageFileIds, ac
     };
 
     // Load all pages in parallel for faster loading
-    pdfPageFileIds.forEach((pageFileId, index) => {
-      const pageNum = index + 1;
-      if (!loadedPagesRef.current.has(pageNum)) {
-        loadPreRenderedPage(pageNum, pageFileId); // Don't await - load in parallel
+    folderPageFiles.forEach((pageFile) => {
+      if (!loadedPagesRef.current.has(pageFile.pageNum)) {
+        loadPreRenderedPage(pageFile); // Don't await - load in parallel
       }
     });
-  }, [usePreRenderedPages, pdfPageFileIds, accountId]);
+  }, [usePreRenderedPages, folderPageFiles, accountId]);
 
   // Render PDF pages as images (progressive - first page immediately, others in background)
   // Only used if NOT using pre-rendered pages
