@@ -1860,10 +1860,6 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
                       className="hidden"
                       disabled={isLoading}
                       onChange={(e) => {
-                        // File input onChange triggered 
-                          accountId: account.accountId,
-                          files: e.target.files?.length || 0
-                        });
                         handleUploadForAccount(account.accountId, e);
                       }}
                     />
