@@ -265,8 +265,18 @@ export const GoogleDriveStorage: React.FC = () => {
         // Try pN API endpoint if we have pnIdentifier and accountId
         if (pnIdentifier && accountId) {
           try {
-            // Get access token (use Google Drive token as fallback, but ideally should use pN OAuth)
-            const token = localStorage.getItem('google_drive_token');
+            // Try to get pN OAuth token from authenticated user
+            let token: string | null = null;
+            const authenticatedUser = authenticatedUserStr ? JSON.parse(authenticatedUserStr) : null;
+            
+            // Try to get pN access token from authenticated user
+            if (authenticatedUser?.accessToken) {
+              token = authenticatedUser.accessToken;
+            } else {
+              // Fallback to Google Drive token (might work if stored server-side)
+              token = localStorage.getItem('google_drive_token');
+            }
+            
             if (token) {
               const response = await fetch(`${apiEndpoint}/api/drive/files?accountId=${encodeURIComponent(accountId)}`, {
                 headers: {
@@ -277,6 +287,7 @@ export const GoogleDriveStorage: React.FC = () => {
               
               if (response.ok) {
                 const data = await response.json();
+                console.log(`[GoogleDriveStorage] Loaded ${data.files?.length || 0} files from pN API`);
                 const allFiles = (data.files || []).map((file: any) => ({
                   id: file.id,
                   name: file.name.replace(/\.encrypted$/i, ''),
@@ -321,13 +332,19 @@ export const GoogleDriveStorage: React.FC = () => {
                   return isImageMime || isVideoMime || isPDFMime || hasImageExt || hasVideoExt || hasPDFExt || isThought;
                 });
                 
+                console.log(`[GoogleDriveStorage] Filtered to ${mediaFiles.length} media files (thoughts/PDFs/images/videos)`);
                 setFiles(mediaFiles);
                 return;
+              } else {
+                const errorText = await response.text().catch(() => 'Unknown error');
+                console.warn(`[GoogleDriveStorage] pN API returned ${response.status}:`, errorText);
               }
             }
           } catch (err) {
-            console.warn('Failed to load files from pN API, falling back to direct Google Drive API:', err);
+            console.warn('[GoogleDriveStorage] Failed to load files from pN API, falling back to direct Google Drive API:', err);
           }
+        } else {
+          console.warn('[GoogleDriveStorage] Missing pnIdentifier or accountId, using direct Google Drive API');
         }
         
         // Fallback to direct Google Drive API (shows all files, not just pN folder)

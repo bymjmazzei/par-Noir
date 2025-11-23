@@ -129,10 +129,21 @@ const ThumbnailImage: React.FC<{ fileId: string; accountId: string; fileName: st
             type: encryptedPackage.metadata.originalMimeType || 'image/jpeg'
           });
           
-          const thumbnailBlob = await createThumbnailFromBlob(decryptedBlob, 300, 300);
-          blobUrl = URL.createObjectURL(thumbnailBlob);
-          setThumbnailUrl(blobUrl);
-          setError(false);
+          // Check if it's a PDF
+          const isPDF = encryptedPackage.metadata.originalMimeType === 'application/pdf' || 
+                       encryptedPackage.metadata.originalName.toLowerCase().endsWith('.pdf');
+          
+          if (isPDF) {
+            const thumbnailBlob = await createPDFThumbnail(decryptedBlob, 300, 300);
+            blobUrl = URL.createObjectURL(thumbnailBlob);
+            setThumbnailUrl(blobUrl);
+            setError(false);
+          } else {
+            const thumbnailBlob = await createThumbnailFromBlob(decryptedBlob, 300, 300);
+            blobUrl = URL.createObjectURL(thumbnailBlob);
+            setThumbnailUrl(blobUrl);
+            setError(false);
+          }
         } else {
           // Non-encrypted files: try to load thumbnail from Google Drive, fallback to downloading full file
           const thumbnailUrl = `${apiEndpoint}/api/drive/files/${fileId}?thumbnail=true&accountId=${accountId}`;
@@ -161,12 +172,19 @@ const ThumbnailImage: React.FC<{ fileId: string; accountId: string; fileName: st
             if (response.ok) {
               const fileBlob = await response.blob();
               
-              // Check if it's an image or video
+              // Check if it's an image, video, or PDF
               const mimeType = fileBlob.type || '';
               const isImage = mimeType.startsWith('image/');
               const isVideo = mimeType.startsWith('video/');
+              const isPDF = mimeType === 'application/pdf' || fileName.toLowerCase().endsWith('.pdf');
               
-              if (isImage || isVideo) {
+              if (isPDF) {
+                // Generate PDF thumbnail (first page)
+                const thumbnailBlob = await createPDFThumbnail(fileBlob, 300, 300);
+                blobUrl = URL.createObjectURL(thumbnailBlob);
+                setThumbnailUrl(blobUrl);
+                setError(false);
+              } else if (isImage || isVideo) {
                 // Generate thumbnail from the full file
                 const thumbnailBlob = await createThumbnailFromBlob(fileBlob, 300, 300);
                 blobUrl = URL.createObjectURL(thumbnailBlob);
@@ -195,6 +213,58 @@ const ThumbnailImage: React.FC<{ fileId: string; accountId: string; fileName: st
       }
     };
   }, [fileId, accountId, isEncrypted, fileName]);
+
+// Helper function to create PDF thumbnail (first page)
+async function createPDFThumbnail(blob: Blob, maxWidth: number, maxHeight: number): Promise<Blob> {
+  try {
+    const pdfjsLib = await import('pdfjs-dist');
+    pdfjsLib.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.js`;
+    
+    const url = URL.createObjectURL(blob);
+    const loadingTask = pdfjsLib.getDocument({ url });
+    const pdf = await loadingTask.promise;
+    
+    // Get first page
+    const page = await pdf.getPage(1);
+    const viewport = page.getViewport({ scale: 1.0 });
+    
+    // Calculate scale to fit max dimensions
+    const scale = Math.min(maxWidth / viewport.width, maxHeight / viewport.height, 1.0);
+    const scaledViewport = page.getViewport({ scale });
+    
+    // Create canvas
+    const canvas = document.createElement('canvas');
+    canvas.width = scaledViewport.width;
+    canvas.height = scaledViewport.height;
+    
+    const ctx = canvas.getContext('2d');
+    if (!ctx) {
+      URL.revokeObjectURL(url);
+      throw new Error('Failed to get canvas context');
+    }
+    
+    // Render PDF page to canvas
+    await page.render({
+      canvasContext: ctx,
+      viewport: scaledViewport
+    }).promise;
+    
+    URL.revokeObjectURL(url);
+    
+    // Convert canvas to blob
+    return new Promise((resolve, reject) => {
+      canvas.toBlob((thumbnailBlob) => {
+        if (thumbnailBlob) {
+          resolve(thumbnailBlob);
+        } else {
+          reject(new Error('Failed to create PDF thumbnail blob'));
+        }
+      }, 'image/jpeg', 0.8);
+    });
+  } catch (error) {
+    throw new Error(`Failed to create PDF thumbnail: ${error}`);
+  }
+}
 
 // Helper function to create thumbnail from blob
 async function createThumbnailFromBlob(blob: Blob, maxWidth: number, maxHeight: number): Promise<Blob> {
