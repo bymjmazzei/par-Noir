@@ -1812,14 +1812,34 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
         try {
           // Use API endpoint to create folders (handles Google Drive authentication properly)
           // Get pnIdentifier from userState (set when user unlocks)
-          const pnIdentifier = userState.pnIdentifier;
+          // Also check session as fallback, but prefer userState
+          let pnIdentifier = userState.pnIdentifier;
+          
+          // Debug logging
+          console.log('🔍 [Upload] Checking pnIdentifier:', {
+            userState_pnIdentifier: userState.pnIdentifier,
+            userState_isUnlocked: userState.isUnlocked,
+            session_did: session?.did,
+            session_pnIdentifier: session?.pnIdentifier
+          });
+          
+          // If userState doesn't have it or it's a DID, try to get from session
+          if (!pnIdentifier || pnIdentifier.startsWith('did:key:')) {
+            console.warn('⚠️ [Upload] userState.pnIdentifier is missing or is a DID, checking session...');
+            pnIdentifier = session?.pnIdentifier || session?.did;
+          }
+          
           if (!pnIdentifier) {
             throw new Error('No pnIdentifier available. Please unlock your pN.');
           }
+          
           // Validate that we have a pnIdentifier, not a DID
           if (pnIdentifier.startsWith('did:key:')) {
+            console.error('❌ [Upload] pnIdentifier is still a DID:', pnIdentifier);
             throw new Error('pnIdentifier is still a DID. Please reconnect your pN to get the correct identifier.');
           }
+          
+          console.log('✅ [Upload] Using pnIdentifier:', pnIdentifier);
           const pnFolderName = `par Noir - pn-${pnIdentifier}`;
           const baseFileName = file.name.replace(/\.pdf$/i, '');
           const pdfPagesFolderName = `${baseFileName}-pages`;

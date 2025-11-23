@@ -2718,8 +2718,14 @@ function App() {
                   publicKey: userInfo.public_key // Store publicKey from OAuth for file decryption
                 };
                 
-                PNOAuthService.saveSession(session);
+                // Save session with pnIdentifier if available
+                const sessionWithIdentifier = {
+                  ...session,
+                  pnIdentifier: userInfo.pn_identifier || session.pnIdentifier
+                };
+                PNOAuthService.saveSession(sessionWithIdentifier);
                 console.log('🔐 [OAuth] Session saved with publicKey:', session.publicKey ? `${session.publicKey.substring(0, 30)}...` : 'undefined');
+                console.log('🔐 [OAuth] Session saved with pnIdentifier:', sessionWithIdentifier.pnIdentifier || 'undefined');
                 console.log('🔐 Calling setUnlocked with pN identifier:', userInfo.pn_identifier || userInfo.did);
                 // Use pN identifier from API if available, otherwise fall back to DID
                 // But only set unlocked if we have a pN identifier (not a DID)
