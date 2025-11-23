@@ -161,7 +161,8 @@ export class AggregatorMetadataServiceDB {
         FROM aggregator_metadata am
         LEFT JOIN feed_posts fp ON am.file_id = fp.file_id
         WHERE am.metadata->>'isPublic' = 'true'
-        AND (am.metadata->>'isNSFW' IS NULL OR am.metadata->>'isNSFW' = 'false')
+        AND (am.metadata->>'isNSFW' IS NULL 
+             OR LOWER(am.metadata->>'isNSFW') != 'true')
         GROUP BY am.file_id, am.metadata, am.submitted_at, am.pn_identifier
       `;
       const params: any[] = [];
