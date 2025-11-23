@@ -5,9 +5,18 @@
 
 /**
  * Check if content is NSFW
+ * Handles both boolean and string values (API might return string "true"/"false")
  */
-export function isNSFWContent(metadata?: { isNSFW?: boolean } | null): boolean {
-  return metadata?.isNSFW === true;
+export function isNSFWContent(metadata?: { isNSFW?: boolean | string } | null): boolean {
+  if (!metadata) return false;
+  const isNSFW = metadata.isNSFW;
+  // Handle boolean true
+  if (isNSFW === true) return true;
+  // Handle string "true"
+  if (isNSFW === 'true') return true;
+  // Handle string "True" (case-insensitive)
+  if (typeof isNSFW === 'string' && isNSFW.toLowerCase() === 'true') return true;
+  return false;
 }
 
 /**

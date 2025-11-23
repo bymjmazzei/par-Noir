@@ -605,25 +605,45 @@ function App() {
   // Memoize filtered files by active feed
   const filteredFilesByFeed = useMemo(() => {
     const showNSFW = userState.preferences.showNSFW;
+    const hasAgeZKP = userState.preferences.hasAgeZKP;
+    const isOver18 = userState.preferences.isOver18;
     
     // Helper to check if file should be shown based on NSFW preference
+    // ALWAYS filter out NSFW content if user doesn't have it enabled
     const shouldShowFile = (file: IndexedFile): boolean => {
       const isNSFW = isNSFWContent(file.metadata);
-      // If NSFW content and user doesn't want to see NSFW, hide it
-      if (isNSFW && !showNSFW) {
-        return false;
+      
+      // Debug logging for NSFW files
+      if (isNSFW && activeFeedId === 'public') {
+        console.log('[Filter] NSFW file detected:', {
+          fileId: file.metadata.fileId,
+          fileName: file.metadata.name,
+          isNSFW: true,
+          metadataIsNSFW: file.metadata.isNSFW,
+          showNSFW,
+          hasAgeZKP,
+          isOver18,
+          willShow: hasAgeZKP && isOver18 && showNSFW
+        });
       }
-      // Show public content and NSFW content if user has it enabled
+      
+      // If content is NSFW, only show if:
+      // 1. User has age ZKP AND is over 18 AND showNSFW is enabled
+      if (isNSFW) {
+        if (!hasAgeZKP || !isOver18 || !showNSFW) {
+          return false; // Hide NSFW content
+        }
+        return true; // Show NSFW content
+      }
+      
+      // Show public (non-NSFW) content
       return true;
     };
 
     if (activeFeedId === 'public') {
-      // Public feed: filter by NSFW preference if user is unlocked
-      if (userState.isUnlocked) {
-        return indexedFiles.filter(shouldShowFile);
-      }
-      // Locked users see all public content (NSFW filtering happens at index level)
-      return indexedFiles.filter(file => !isNSFWContent(file.metadata));
+      // Public feed: ALWAYS filter out NSFW content unless user has it enabled
+      // This ensures NSFW content never appears in public feed unless explicitly enabled
+      return indexedFiles.filter(shouldShowFile);
     }
     if (activeFeedId === 'curated') {
       // Curated feed = all files from subscribed categories (niche feeds), filtered by NSFW preference
@@ -671,28 +691,18 @@ function App() {
         return fileFeeds.some(feed => feed.feedCategory === categoryId);
       });
       
-      // Filter by NSFW preference if user is unlocked
-      if (userState.isUnlocked) {
-        filtered = filtered.filter(shouldShowFile);
-      } else {
-        // Locked users don't see NSFW content
-        filtered = filtered.filter(file => !isNSFWContent(file.metadata));
-      }
+      // ALWAYS filter by NSFW preference (for both unlocked and locked users)
+      filtered = filtered.filter(shouldShowFile);
       return filtered;
     }
     
-    // Individual feed: filter by NSFW preference if user is unlocked
+    // Individual feed: ALWAYS filter by NSFW preference
     let filtered = indexedFiles.filter(file => 
       file.metadata.feedIds?.includes(activeFeedId)
     );
-    if (userState.isUnlocked) {
-      filtered = filtered.filter(shouldShowFile);
-    } else {
-      // Locked users don't see NSFW content
-      filtered = filtered.filter(file => !isNSFWContent(file.metadata));
-    }
+    filtered = filtered.filter(shouldShowFile);
     return filtered;
-  }, [indexedFiles, activeFeedId, userState.preferences.subscribedFeedIds, userState.preferences.showNSFW, userState.isUnlocked, feeds]);
+  }, [indexedFiles, activeFeedId, userState.preferences.subscribedFeedIds, userState.preferences.showNSFW, userState.preferences.hasAgeZKP, userState.preferences.isOver18, userState.isUnlocked, feeds]);
 
   // Navigation handlers (memoized)
 
