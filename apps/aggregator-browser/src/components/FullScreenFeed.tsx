@@ -893,34 +893,45 @@ export function FullScreenFeed({
                     alt=""
                     className="absolute"
                     style={backgroundStyle}
+                    loading="eager"
+                    decoding="async"
                   />
-                  {/* Main image */}
-                  <img
-                    ref={(el) => {
-                      if (el) {
-                        imageRefs.current.set(fileId, el);
-                        // Track dimensions when loaded
-                        el.addEventListener('load', () => {
-                          setMediaDimensions(prev => {
-                            const newMap = new Map(prev);
-                            newMap.set(fileId, { width: el.naturalWidth, height: el.naturalHeight });
-                            return newMap;
+                  {/* Main image container - centers image */}
+                  <div className="w-full h-full flex items-center justify-center relative z-10">
+                    <img
+                      ref={(el) => {
+                        if (el) {
+                          imageRefs.current.set(fileId, el);
+                          // Track dimensions when loaded
+                          el.addEventListener('load', () => {
+                            setMediaDimensions(prev => {
+                              const newMap = new Map(prev);
+                              newMap.set(fileId, { width: el.naturalWidth, height: el.naturalHeight });
+                              return newMap;
+                            });
                           });
-                        });
-                      }
-                    }}
-                    src={thumbnails.get(fileId)!}
-                    alt={fileName}
-                    className="w-full object-contain relative z-10"
-                    style={{ 
-                      // Full viewport height - parent padding prevents overlap with bottom nav
-                      maxHeight: '100vh',
-                      height: 'auto',
-                      width: '100%',
-                      imageRendering: 'auto',
-                      WebkitImageRendering: 'auto'
-                    }}
-                  />
+                        }
+                      }}
+                      src={thumbnails.get(fileId)!}
+                      alt={fileName}
+                      style={{ 
+                        // Display at natural size, scaled to fit container while maintaining aspect ratio
+                        maxHeight: 'calc(100vh - 64px - env(safe-area-inset-bottom, 0px))',
+                        maxWidth: '100%',
+                        height: 'auto',
+                        width: 'auto',
+                        objectFit: 'contain',
+                        imageRendering: 'smooth',
+                        WebkitImageRendering: 'smooth',
+                        // Prevent pixelation and ensure high quality
+                        backfaceVisibility: 'hidden',
+                        WebkitBackfaceVisibility: 'hidden',
+                        transform: 'translateZ(0)' // Force hardware acceleration
+                      }}
+                      loading="eager"
+                      decoding="sync"
+                    />
+                  </div>
                 </>
               );
             })()}
