@@ -6,12 +6,10 @@
 import React, { useState, useEffect } from 'react';
 import { FileStorageAggregator } from './FileStorageAggregator';
 import { TextPostEditor } from './TextPostEditor';
-import { ContentPreferences } from './ContentPreferences';
 import { useUserState } from '../contexts/UserStateContext';
 import { TextPostData, Feed } from '../types/aggregator';
 import { createTextPost } from '../services/textPostService';
 import { PNOAuthService } from '../services/pnOAuthService';
-import { Settings } from 'lucide-react';
 import { FeedService } from '../services/feedService';
 
 const apiEndpoint = process.env.REACT_APP_API_ENDPOINT || 'https://api.parnoir.com';
@@ -25,7 +23,6 @@ interface UploadModalProps {
 export function UploadModal({ feeds: propsFeeds, onClose, onUploadComplete }: UploadModalProps) {
   const { userState } = useUserState();
   const [showTextEditor, setShowTextEditor] = useState(false);
-  const [showContentPreferences, setShowContentPreferences] = useState(false);
   const [accountId, setAccountId] = useState<string | null>(null);
   const [feeds, setFeeds] = useState<Feed[]>(propsFeeds || []);
   
@@ -146,32 +143,14 @@ export function UploadModal({ feeds: propsFeeds, onClose, onUploadComplete }: Up
 
   return (
     <div className="h-full w-full bg-neutral-900 flex flex-col overflow-y-auto" style={{ paddingBottom: '64px' }}>
-      {/* Railway Header with Settings Button */}
+      {/* Railway Header */}
       <div 
-        className="fixed top-0 left-0 right-0 h-12 flex items-center justify-between px-4 z-[100] bg-neutral-900 border-b border-neutral-800"
+        className="fixed top-0 left-0 right-0 h-12 flex items-center justify-center px-4 z-[100] bg-neutral-900 border-b border-neutral-800"
       >
-        {/* Left side - Settings button with same positioning and size as lock button */}
-        {/* Match lock button's top-3 (12px) positioning */}
-        <button
-          onClick={(e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            setShowContentPreferences(true);
-          }}
-          className="p-2 text-white/85 hover:text-white transition-colors flex items-center justify-center flex-shrink-0"
-          title="Content Preferences"
-          style={{ marginTop: '12px' }}
-        >
-          <Settings className="h-5 w-5" />
-        </button>
-        
         {/* Center - Title */}
-        <h2 className="text-sm font-medium uppercase tracking-wide text-white flex-1 text-center">
+        <h2 className="text-sm font-medium uppercase tracking-wide text-white">
           Upload from Secure Cloud
         </h2>
-        
-        {/* Right side - Spacer for lock button */}
-        <div className="w-9 h-9 flex-shrink-0" />
       </div>
 
       {/* FileStorageAggregator Component */}
@@ -186,13 +165,6 @@ export function UploadModal({ feeds: propsFeeds, onClose, onUploadComplete }: Up
         />
       </div>
 
-      {/* Content Preferences Modal */}
-      {showContentPreferences && (
-        <ContentPreferences
-          feeds={feeds}
-          onClose={() => setShowContentPreferences(false)}
-        />
-      )}
     </div>
   );
 }

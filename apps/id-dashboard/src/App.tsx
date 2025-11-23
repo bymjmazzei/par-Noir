@@ -5656,61 +5656,30 @@ This invitation expires in 24 hours.`;
                   {activeTab === 'privacy' && (
                     <div className="space-y-6">
                       <div>
-                        <div className="flex items-center justify-between mb-4">
-                          <h3 className="text-lg font-semibold text-text-primary">Privacy & Sharing Settings</h3>
-                          
-                          {/* Notifications Setting - Top Right */}
-                          <div className="flex items-center space-x-2">
-                            <span className="text-sm text-text-secondary">Notifications</span>
-                            <button
-                              onClick={() => {
-                                const currentSettings = notificationsService.getSettings();
-                                notificationsService.updateSettings({ enabled: !currentSettings.enabled });
-                                setPrivacySettings({ ...privacySettings });
-                              }}
-                              className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors border-2 ${
-                                notificationsService.getSettings().enabled 
-                                  ? 'bg-primary border-primary' 
-                                  : 'bg-white border-border'
-                              }`}
-                            >
-                              <span
-                                className={`inline-block h-4 w-4 transform rounded-full shadow-sm transition-transform ${
-                                  notificationsService.getSettings().enabled 
-                                    ? 'bg-white translate-x-6' 
-                                    : 'bg-gray-600 translate-x-1'
-                                }`}
-                              />
-                            </button>
-                          </div>
-                          </div>
-
-                        {/* Identity Verification Button */}
-                        <div className="bg-secondary rounded-lg p-4 mb-6">
-                          <div className="flex items-center justify-between">
-                            <div>
-                              <h4 className="font-medium text-text-primary mb-1">Identity Verification</h4>
-                              <p className="text-sm text-text-secondary">
-                                {verifiedDataPoints.size > 0 
-                                  ? `${verifiedDataPoints.size} data points verified` 
-                                  : 'Verify your identity to create ZKPs for your data points'
-                                }
-                              </p>
+                        <h3 className="text-lg font-semibold text-text-primary mb-4">Privacy & Sharing Settings</h3>
+                        
+                        {/* Age Verification Section */}
+                        <div className="bg-secondary rounded-lg p-6 mb-6">
+                          <h4 className="font-medium text-text-primary mb-2">Age Verification</h4>
+                          <p className="text-sm text-text-secondary mb-4">
+                            Verify your age to create ZKPs for age-restricted content access. Your age data point is used to generate proofs that you are over 18 or over 21 without revealing your actual date of birth.
+                          </p>
+                          {(verifiedDataPoints.has('age_attestation') || attestedDataPoints.has('age_attestation')) ? (
+                            <div className="flex items-center gap-2 p-3 bg-green-900/20 border border-green-600 rounded-lg">
+                              <CheckCircle className="w-5 h-5 text-green-400" />
+                              <span className="text-text-primary">Age verified - You can share age ZKP with apps</span>
                             </div>
+                          ) : (
                             <button
                               onClick={() => setShowVerificationModal(true)}
-                              className={`px-4 py-2 rounded-lg font-medium ${
-                                verifiedDataPoints.size > 0
-                                  ? 'bg-green-600 text-white hover:bg-green-700'
-                                  : 'bg-blue-600 text-white hover:bg-blue-700'
-                              }`}
+                              className="px-4 py-2 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700"
                             >
-                              {verifiedDataPoints.size > 0 ? 'RE-VERIFY' : 'VERIFY'}
+                              Verify Age (Create Age ZKP)
                             </button>
-                          </div>
+                          )}
                         </div>
 
-                        {/* Global Settings - All Active Permissions */}
+                        {/* Global Settings Section - Simplified */}
                         <div className="bg-secondary rounded-lg mb-6">
                           <button
                             onClick={() => setGlobalSettingsExpanded(!globalSettingsExpanded)}
@@ -5725,104 +5694,35 @@ This invitation expires in 24 hours.`;
                           
                           {globalSettingsExpanded && (
                             <div className="px-6 pb-6">
-                            <div className="space-y-3">
-                              {/* pN Identifier - Static, not editable */}
-                              {STANDARD_DATA_POINTS['pn_identifier'] && (
-                                <PermissionTile
-                                  key="pn_identifier"
-                                  title={STANDARD_DATA_POINTS['pn_identifier'].name}
-                                  hasData={attestedDataPoints.has('pn_identifier') || verifiedDataPoints.has('pn_identifier')}
-                                  isVerified={verifiedDataPoints.has('pn_identifier')}
-                                  isStatic={true}
-                                  onClick={() => {}}
-                                />
-                              )}
-                              
-                              {/* Name fields */}
-                              {STANDARD_DATA_POINTS['first_name'] && (
-                                <PermissionTile
-                                  key="first_name"
-                                  title={STANDARD_DATA_POINTS['first_name'].name}
-                                  hasData={attestedDataPoints.has('first_name') || verifiedDataPoints.has('first_name')}
-                                  isVerified={verifiedDataPoints.has('first_name')}
-                                  onClick={() => handleRequestDataPoint('first_name')}
-                                />
-                              )}
-                              {STANDARD_DATA_POINTS['middle_name'] && (
-                                <PermissionTile
-                                  key="middle_name"
-                                  title={STANDARD_DATA_POINTS['middle_name'].name}
-                                  hasData={attestedDataPoints.has('middle_name') || verifiedDataPoints.has('middle_name')}
-                                  isVerified={verifiedDataPoints.has('middle_name')}
-                                  onClick={() => handleRequestDataPoint('middle_name')}
-                                />
-                              )}
-                              {STANDARD_DATA_POINTS['last_name'] && (
-                                <PermissionTile
-                                  key="last_name"
-                                  title={STANDARD_DATA_POINTS['last_name'].name}
-                                  hasData={attestedDataPoints.has('last_name') || verifiedDataPoints.has('last_name')}
-                                  isVerified={verifiedDataPoints.has('last_name')}
-                                  onClick={() => handleRequestDataPoint('last_name')}
-                                />
-                              )}
-                              {STANDARD_DATA_POINTS['suffix'] && (
-                                <PermissionTile
-                                  key="suffix"
-                                  title={STANDARD_DATA_POINTS['suffix'].name}
-                                  hasData={attestedDataPoints.has('suffix') || verifiedDataPoints.has('suffix')}
-                                  isVerified={verifiedDataPoints.has('suffix')}
-                                  onClick={() => handleRequestDataPoint('suffix')}
-                                />
-                              )}
-                              
-                              {/* Age */}
-                              {STANDARD_DATA_POINTS['age_attestation'] && (
-                                <PermissionTile
-                                  key="age_attestation"
-                                  title={STANDARD_DATA_POINTS['age_attestation'].name}
-                                  hasData={attestedDataPoints.has('age_attestation') || verifiedDataPoints.has('age_attestation')}
-                                  isVerified={verifiedDataPoints.has('age_attestation')}
-                                  onClick={() => handleRequestDataPoint('age_attestation')}
-                                />
-                              )}
-                              
-                              {/* Location */}
-                              {STANDARD_DATA_POINTS['location_verification'] && (
-                                <PermissionTile
-                                  key="location_verification"
-                                  title={STANDARD_DATA_POINTS['location_verification'].name}
-                                  hasData={attestedDataPoints.has('location_verification') || verifiedDataPoints.has('location_verification')}
-                                  isVerified={verifiedDataPoints.has('location_verification')}
-                                  onClick={() => handleRequestDataPoint('location_verification')}
-                                />
-                              )}
-                              
-                              {/* Contact */}
-                              {STANDARD_DATA_POINTS['email_verification'] && (
-                                <PermissionTile
-                                  key="email_verification"
-                                  title={STANDARD_DATA_POINTS['email_verification'].name}
-                                  hasData={attestedDataPoints.has('email_verification') || verifiedDataPoints.has('email_verification')}
-                                  isVerified={verifiedDataPoints.has('email_verification')}
-                                  onClick={() => handleRequestDataPoint('email_verification')}
-                                />
-                              )}
-                              {STANDARD_DATA_POINTS['phone_verification'] && (
-                                <PermissionTile
-                                  key="phone_verification"
-                                  title={STANDARD_DATA_POINTS['phone_verification'].name}
-                                  hasData={attestedDataPoints.has('phone_verification') || verifiedDataPoints.has('phone_verification')}
-                                  isVerified={verifiedDataPoints.has('phone_verification')}
-                                  onClick={() => handleRequestDataPoint('phone_verification')}
-                                />
-                              )}
-                          </div>
+                              <div className="space-y-3">
+                                {/* Age Attestation - Primary focus */}
+                                {STANDARD_DATA_POINTS['age_attestation'] && (
+                                  <div className="flex items-center justify-between p-3 bg-modal-bg border border-border rounded-lg">
+                                    <div className="flex-1">
+                                      <div className="flex items-center gap-2 mb-1">
+                                        <span className="font-medium text-text-primary">{STANDARD_DATA_POINTS['age_attestation'].name}</span>
+                                        {(verifiedDataPoints.has('age_attestation') || attestedDataPoints.has('age_attestation')) && (
+                                          <CheckCircle className="w-4 h-4 text-green-400" />
+                                        )}
+                                      </div>
+                                      <p className="text-xs text-text-secondary">{STANDARD_DATA_POINTS['age_attestation'].description}</p>
+                                    </div>
+                                    {!(verifiedDataPoints.has('age_attestation') || attestedDataPoints.has('age_attestation')) && (
+                                      <button
+                                        onClick={() => handleRequestDataPoint('age_attestation')}
+                                        className="px-3 py-1 text-sm bg-blue-600 text-white rounded hover:bg-blue-700"
+                                      >
+                                        Add
+                                      </button>
+                                    )}
+                                  </div>
+                                )}
+                              </div>
                             </div>
                           )}
                         </div>
 
-                        {/* Third-Party Permissions */}
+                        {/* Third-Party Permissions Section */}
                         <div className="bg-secondary rounded-lg">
                           <button
                             onClick={() => setThirdPartyExpanded(!thirdPartyExpanded)}
@@ -5837,35 +5737,74 @@ This invitation expires in 24 hours.`;
                           
                           {thirdPartyExpanded && (
                             <div className="px-6 pb-6">
-                          
-                          {Object.keys(privacySettings.toolPermissions).length === 0 ? (
-                            <div className="text-center py-8 text-text-secondary">
-                              <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                                <Smartphone className="w-8 h-8 text-gray-400" />
-                              </div>
-                              <p className="text-sm font-medium mb-2">No third-party tools connected</p>
-                              <p className="text-xs">When you connect tools, you'll be able to manage their individual permissions here</p>
+                              {Object.keys(privacySettings.toolPermissions).length === 0 ? (
+                                <div className="text-center py-8 text-text-secondary">
+                                  <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                                    <Smartphone className="w-8 h-8 text-gray-400" />
+                                  </div>
+                                  <p className="text-sm font-medium mb-2">No third-party tools connected</p>
+                                  <p className="text-xs">When you connect tools, you'll be able to manage their individual permissions here</p>
+                                </div>
+                              ) : (
+                                <div className="space-y-4">
+                                  {Object.entries(privacySettings.toolPermissions).map(([toolId, tool]) => {
+                                    const hasAgeZKP = verifiedDataPoints.has('age_attestation') || attestedDataPoints.has('age_attestation');
+                                    const ageShared = tool.dataPoints?.includes('age_attestation') || false;
+                                    const ageAvailable = tool.optionalDataPoints?.includes('age_attestation') || false;
+                                    
+                                    return (
+                                      <div key={toolId} className="border border-border rounded-lg p-4">
+                                        <div className="mb-3">
+                                          <h5 className="font-medium text-text-primary">{tool.toolName}</h5>
+                                          <p className="text-xs text-text-secondary">{tool.toolDescription}</p>
+                                        </div>
+                                        
+                                        {/* Age ZKP Toggle - Only show if user has age ZKP AND tool supports it */}
+                                        {hasAgeZKP && ageAvailable && (
+                                          <div className="flex items-center justify-between pt-3 border-t border-border">
+                                            <div className="flex-1">
+                                              <p className="text-sm font-medium text-text-primary">Share Age ZKP</p>
+                                              <p className="text-xs text-text-secondary">
+                                                Allow {tool.toolName} to verify your age (18+) for NSFW content access
+                                              </p>
+                                            </div>
+                                            <button
+                                              type="button"
+                                              role="switch"
+                                              aria-checked={ageShared}
+                                              onClick={() => handleToggleToolDataPoint(toolId, 'age_attestation', !ageShared)}
+                                              className={`
+                                                relative inline-flex h-6 w-11 items-center rounded-full transition-colors
+                                                ${ageShared ? 'bg-blue-600' : 'bg-neutral-700'}
+                                              `}
+                                            >
+                                              <span
+                                                className={`
+                                                  inline-block h-4 w-4 transform rounded-full bg-white transition-transform
+                                                  ${ageShared ? 'translate-x-6' : 'translate-x-1'}
+                                                `}
+                                              />
+                                            </button>
+                                          </div>
+                                        )}
+                                        
+                                        {hasAgeZKP && !ageAvailable && (
+                                          <p className="text-xs text-text-secondary pt-3 border-t border-border">
+                                            Age verification not available for this app
+                                          </p>
+                                        )}
+                                        
+                                        {!hasAgeZKP && ageAvailable && (
+                                          <p className="text-xs text-orange-400 pt-3 border-t border-border">
+                                            Create an age ZKP first to share it with this app
+                                          </p>
+                                        )}
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              )}
                             </div>
-                          ) : (
-                            <div className="space-y-3">
-                              {Object.entries(privacySettings.toolPermissions).map(([toolId, tool]) => (
-                                <IntegratorTile
-                                  key={toolId}
-                                  toolId={toolId}
-                                  toolName={tool.toolName}
-                                  toolDescription={tool.toolDescription}
-                                  dataPoints={tool.dataPoints || []}
-                                  requiredDataPoints={tool.requiredDataPoints || []}
-                                  optionalDataPoints={tool.optionalDataPoints || []}
-                                  onToggleDataPoint={(dataPointId, enabled) => 
-                                    handleToggleToolDataPoint(toolId, dataPointId, enabled)
-                                  }
-                                  globalDataPointSettings={privacySettings.dataPoints}
-                                />
-                            ))}
-                          </div>
-                          )}
-                          </div>
                           )}
                         </div>
                       </div>
