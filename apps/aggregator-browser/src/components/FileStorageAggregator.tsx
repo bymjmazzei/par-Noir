@@ -1811,7 +1811,11 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
         console.log('📄 [Upload] PDF detected, converting to PNG pages...');
         try {
           // Use API endpoint to create folders (handles Google Drive authentication properly)
-          const pnIdentifier = session.did; // Use DID as identifier
+          // Get pnIdentifier from userState (set when user unlocks)
+          const pnIdentifier = userState.pnIdentifier;
+          if (!pnIdentifier) {
+            throw new Error('No pnIdentifier available. Please unlock your pN.');
+          }
           const pnFolderName = `par Noir - pn-${pnIdentifier}`;
           const baseFileName = file.name.replace(/\.pdf$/i, '');
           const pdfPagesFolderName = `${baseFileName}-pages`;
@@ -1861,7 +1865,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
             },
             body: JSON.stringify({
               folderName: pdfPagesFolderName,
-              parentFolderName: pnFolderName,
+              parentFolderId: pnFolderId, // Use folder ID directly instead of name
               accountId: accountId
             })
           });

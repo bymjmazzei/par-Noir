@@ -4859,7 +4859,7 @@ class ProductionServer {
         
         const { googleDriveProxyService } = await import('./server/modules/googleDriveProxy');
         
-        const { folderName, parentFolderName, accountId } = req.body;
+        const { folderName, parentFolderName, parentFolderId, accountId } = req.body;
         
         if (!folderName) {
           return res.status(400).json({
@@ -4877,10 +4877,15 @@ class ProductionServer {
           });
         }
 
-        let parentFolderId: string | null = null;
+        let finalParentFolderId: string | null = null;
 
-        // If parentFolderName is provided, find or create it
-        if (parentFolderName) {
+        // If parentFolderId is provided, use it directly (preferred)
+        if (parentFolderId) {
+          finalParentFolderId = parentFolderId;
+          console.log(`[CreateFolder] Using provided parent folder ID: ${parentFolderId}`);
+        }
+        // Otherwise, if parentFolderName is provided, find or create it
+        else if (parentFolderName) {
           console.log(`[CreateFolder] Searching for parent folder: ${parentFolderName}`);
           const parentFolderSearchQuery = `name='${parentFolderName.replace(/'/g, "\\'")}' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
           const parentFolderSearchUrl = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(parentFolderSearchQuery)}&fields=files(id,name)&pageSize=1`;
@@ -4898,8 +4903,8 @@ class ProductionServer {
             const parentFolderFiles = parentFolderData.files || [];
             console.log(`[CreateFolder] Found ${parentFolderFiles.length} parent folder(s):`, parentFolderFiles);
             if (parentFolderFiles.length > 0) {
-              parentFolderId = parentFolderFiles[0].id;
-              console.log(`[CreateFolder] Using parent folder ID: ${parentFolderId}`);
+              finalParentFolderId = parentFolderFiles[0].id;
+              console.log(`[CreateFolder] Using parent folder ID: ${finalParentFolderId}`);
             }
           } else {
             const errorText = await parentFolderResponse.text().catch(() => 'Unknown error');
@@ -4907,7 +4912,7 @@ class ProductionServer {
           }
 
           // If parent folder not found, try alternative name format
-          if (!parentFolderId && parentFolderName.includes('pn-')) {
+          if (!finalParentFolderId && parentFolderName.includes('pn-')) {
             const altParentFolderName = parentFolderName.replace('pn-', '');
             const altParentFolderSearchQuery = `name='${altParentFolderName.replace(/'/g, "\\'")}' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
             const altParentFolderSearchUrl = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(altParentFolderSearchQuery)}&fields=files(id,name)&pageSize=1`;
@@ -4922,13 +4927,13 @@ class ProductionServer {
               const altParentFolderData = await altParentFolderResponse.json() as { files?: Array<{ id: string; name: string }> };
               const altParentFolderFiles = altParentFolderData.files || [];
               if (altParentFolderFiles.length > 0) {
-                parentFolderId = altParentFolderFiles[0].id;
+                finalParentFolderId = altParentFolderFiles[0].id;
               }
             }
           }
 
           // If parent folder still not found, create it
-          if (!parentFolderId) {
+          if (!finalParentFolderId) {
             console.log(`[CreateFolder] Creating parent folder: ${parentFolderName}`);
             const createParentFolderResponse = await fetch('https://www.googleapis.com/drive/v3/files', {
               method: 'POST',
@@ -4944,8 +4949,8 @@ class ProductionServer {
             
             if (createParentFolderResponse.ok) {
               const createdParentFolder = await createParentFolderResponse.json() as { id: string };
-              parentFolderId = createdParentFolder.id;
-              console.log(`[CreateFolder] Created parent folder: ${parentFolderName} (ID: ${parentFolderId})`);
+              finalParentFolderId = createdParentFolder.id;
+              console.log(`[CreateFolder] Created parent folder: ${parentFolderName} (ID: ${finalParentFolderId})`);
             } else {
               const errorText = await createParentFolderResponse.text().catch(() => 'Unknown error');
               console.error(`[CreateFolder] Failed to create parent folder: ${createParentFolderResponse.status} - ${errorText}`);
@@ -4963,8 +4968,11 @@ class ProductionServer {
           mimeType: 'application/vnd.google-apps.folder'
         };
         
-        if (parentFolderId) {
-          createFolderBody.parents = [parentFolderId];
+        if (finalParentFolderId) {
+          createFolderBody.parents = [finalParentFolderId];
+          console.log(`[CreateFolder] Creating folder "${folderName}" inside parent folder ID: ${finalParentFolderId}`);
+        } else {
+          console.warn(`[CreateFolder] No parent folder ID, creating folder "${folderName}" in root`);
         }
 
         const createFolderResponse = await fetch('https://www.googleapis.com/drive/v3/files', {
