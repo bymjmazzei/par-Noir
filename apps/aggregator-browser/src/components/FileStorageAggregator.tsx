@@ -936,7 +936,6 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
 
   // Handle edit metadata
   const handleEditMetadata = async (file: DriveFile, accountId: string) => {
-    console.log('[FileStorageAggregator] Edit metadata clicked for:', file.name);
     
     // Load existing metadata
     const metadata = await loadFileMetadata(file.id);
@@ -1102,7 +1101,6 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
 
   // Handle share settings
   const handleShareSettings = async (file: DriveFile, accountId: string) => {
-    console.log('[FileStorageAggregator] Share settings clicked for:', file.name);
     
     // Load existing metadata to determine current visibility
     const metadata = await loadFileMetadata(file.id);
@@ -1329,10 +1327,6 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
         } else if (hasValidToken && existingPublicToken) {
           // If file already has a token, preserve it by sending it to API
           updateBody.publicToken = existingPublicToken;
-          console.log('📤 [ShareSettings] Preserving existing publicToken:', {
-            hasToken: !!existingPublicToken,
-            tokenLength: String(existingPublicToken).length
-          });
         } else if (makePublic) {
           console.warn('⚠️ [ShareSettings] Making file public but no publicToken available - file may not load in public feed');
         }
@@ -1496,7 +1490,6 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
         const updatedMetadata = { ...metadata, isTopPost: newIsTopPost };
         setFileMetadataMap(prev => new Map(prev).set(file.id, updatedMetadata));
         setOpenMenuFor(null);
-        console.log(`[FileStorageAggregator] ${newIsTopPost ? 'Set' : 'Unset'} top post for ${file.name}`);
       } else {
         const errorText = await response.text();
         throw new Error(`Failed to update top post: ${errorText}`);
@@ -1538,7 +1531,6 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
       }
       
       // Close menu if clicking outside
-      console.log('[FileStorageAggregator] Click outside detected, closing menu');
       setOpenMenuFor(null);
     };
 
@@ -1888,7 +1880,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
                       className="hidden"
                       disabled={isLoading}
                       onChange={(e) => {
-                        console.log('[FileStorageAggregator] File input onChange triggered', { 
+                        // File input onChange triggered 
                           accountId: account.accountId,
                           files: e.target.files?.length || 0
                         });
@@ -2010,10 +2002,8 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
                   const hasImageExt = /\.(jpg|jpeg|png|gif|webp|bmp|svg|heic|heif)$/i.test(nameWithoutEncrypted);
                   const hasVideoExt = /\.(mp4|mov|avi|mkv|webm|flv|wmv|m4v|3gp)$/i.test(nameWithoutEncrypted);
                   isMediaFile = hasImageExt || hasVideoExt;
-                  console.log(`[FileStorageAggregator] Encrypted file check: nameWithoutEncrypted=${nameWithoutEncrypted}, hasImageExt=${hasImageExt}, hasVideoExt=${hasVideoExt}, isMediaFile=${isMediaFile}`);
                 }
                 
-                console.log(`[FileStorageAggregator] Final decision for ${file.name}: isMediaFile=${isMediaFile}, will render ThumbnailImage=${isMediaFile}`);
 
                 return (
                   <div
@@ -2071,7 +2061,6 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
                             } else {
                               setMenuPosition(null);
                             }
-                            console.log('[FileStorageAggregator] Menu button clicked (grid):', { fileId: file.id, currentState: openMenuFor, newState, willOpen: newState !== null });
                             setOpenMenuFor(newState);
                           }}
                           onMouseDown={(e) => {
@@ -2178,7 +2167,6 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
                             } else {
                               setMenuPosition(null);
                             }
-                            console.log('[FileStorageAggregator] Menu button clicked (list):', { fileId: file.id, currentState: openMenuFor, newState });
                             setOpenMenuFor(newState);
                           }}
                           style={{
