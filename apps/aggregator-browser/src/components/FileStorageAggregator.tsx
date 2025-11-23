@@ -1110,15 +1110,6 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
                           typeof metadata.publicToken === 'string' && 
                           metadata.publicToken.trim().length > 0;
     
-    console.log('[FileStorageAggregator] File metadata loaded:', {
-      fileId: file.id,
-      fileName: file.name,
-      isPublic,
-      isNSFW,
-      hasPublicToken,
-      publicTokenType: typeof metadata?.publicToken,
-      publicTokenLength: metadata?.publicToken ? String(metadata.publicToken).length : 0
-    });
     
     setShareVisibility(isPublic ? 'public' : 'private');
     
@@ -1239,11 +1230,6 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
               const fileBlob = await downloadResponse.blob();
               const contentType = downloadResponse.headers.get('content-type') || '';
               
-              console.log('📥 [ShareSettings] Downloaded file for token generation:', {
-                fileId: targetFileId,
-                blobSize: fileBlob.size,
-                contentType
-              });
               
               // Encrypted files are stored as JSON, so parse as text
               const fileText = await fileBlob.text();
@@ -1281,11 +1267,6 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
                   }
                 );
                 publicToken = JSON.stringify(shareToken);
-                console.log('✅ [ShareSettings] Generated share token for public file', {
-                  hasShareKey: !!shareToken.shareKey,
-                  hasShareEncrypted: !!shareToken.shareEncrypted,
-                  tokenLength: publicToken.length
-                });
               } else {
                 console.warn('⚠️ [ShareSettings] Missing session data for token generation');
               }
@@ -1359,7 +1340,6 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
           console.log('🔄 [ShareSettings] Waiting for API to update indexes...');
           // Give API time to update owner index and public index
           await new Promise(resolve => setTimeout(resolve, 2000));
-          console.log('🔄 [ShareSettings] Reloading files after making file public...');
           await loadFilesForAccount(sharingAccountId);
         }
       }
