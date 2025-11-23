@@ -328,12 +328,6 @@ export function FullScreenFeed({
 
   // Load video blobs and thumbnails for visible files (only if not provided externally)
   useEffect(() => {
-    // Skip if thumbnails/videoBlobs are provided externally AND they're not empty - they're already loaded
-    // But if they're undefined or empty Maps, we need to load them ourselves
-    if ((externalThumbnails && externalThumbnails.size > 0) || (externalVideoBlobs && externalVideoBlobs.size > 0)) {
-      return;
-    }
-    
     const loadMedia = async () => {
       // Load current file and adjacent files
       const indicesToLoad = [
@@ -352,43 +346,53 @@ export function FullScreenFeed({
         const isImage = file.fileType === 'image' || 
                        (file.name || file.title || '').match(/\.(jpg|jpeg|png|gif|webp|svg|bmp|ico)$/i);
 
+        // Only load video if not provided externally or if external map doesn't have this file
         if (isVideo && file.publicToken && !videoBlobs.has(fileId)) {
-          try {
-            let token: ShareToken;
+          // Check if external videoBlobs has this file
+          const hasExternalVideo = externalVideoBlobs && externalVideoBlobs.has(fileId);
+          if (!hasExternalVideo) {
             try {
-              token = typeof file.publicToken === 'string' ? JSON.parse(file.publicToken) : file.publicToken;
-            } catch (e) {
-              continue;
+              let token: ShareToken;
+              try {
+                token = typeof file.publicToken === 'string' ? JSON.parse(file.publicToken) : file.publicToken;
+              } catch (e) {
+                continue;
+              }
+              const decryptedBlob = await decryptWithToken(token);
+              const videoUrl = URL.createObjectURL(decryptedBlob);
+              setVideoBlobs(prev => {
+                const newMap = new Map(prev);
+                newMap.set(fileId, videoUrl);
+                return newMap;
+              });
+            } catch (err) {
+              console.warn('Failed to load video:', err);
             }
-            const decryptedBlob = await decryptWithToken(token);
-            const videoUrl = URL.createObjectURL(decryptedBlob);
-            setVideoBlobs(prev => {
-              const newMap = new Map(prev);
-              newMap.set(fileId, videoUrl);
-              return newMap;
-            });
-          } catch (err) {
-            console.warn('Failed to load video:', err);
           }
         }
 
+        // Only load image if not provided externally or if external map doesn't have this file
         if (isImage && file.publicToken && !thumbnails.has(fileId)) {
-          try {
-            let token: ShareToken;
+          // Check if external thumbnails has this file
+          const hasExternalThumbnail = externalThumbnails && externalThumbnails.has(fileId);
+          if (!hasExternalThumbnail) {
             try {
-              token = typeof file.publicToken === 'string' ? JSON.parse(file.publicToken) : file.publicToken;
-            } catch (e) {
-              continue;
+              let token: ShareToken;
+              try {
+                token = typeof file.publicToken === 'string' ? JSON.parse(file.publicToken) : file.publicToken;
+              } catch (e) {
+                continue;
+              }
+              const decryptedBlob = await decryptWithToken(token);
+              const thumbnailUrl = URL.createObjectURL(decryptedBlob);
+              setThumbnails(prev => {
+                const newMap = new Map(prev);
+                newMap.set(fileId, thumbnailUrl);
+                return newMap;
+              });
+            } catch (err) {
+              console.warn('Failed to load thumbnail:', err);
             }
-            const decryptedBlob = await decryptWithToken(token);
-            const thumbnailUrl = URL.createObjectURL(decryptedBlob);
-            setThumbnails(prev => {
-              const newMap = new Map(prev);
-              newMap.set(fileId, thumbnailUrl);
-              return newMap;
-            });
-          } catch (err) {
-            console.warn('Failed to load thumbnail:', err);
           }
         }
       }
