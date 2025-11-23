@@ -218,8 +218,8 @@ const ThumbnailImage: React.FC<{ fileId: string; accountId: string; fileName: st
 async function createPDFThumbnail(blob: Blob, maxWidth: number, maxHeight: number): Promise<Blob> {
   try {
     const pdfjsLib = await import('pdfjs-dist');
-    // Use local worker file to avoid CORS issues
-    pdfjsLib.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.js';
+    // Use jsdelivr CDN which has better CORS support
+    pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdn.jsdelivr.net/npm/pdfjs-dist@${pdfjsLib.version}/build/pdf.worker.min.js`;
     
     const url = URL.createObjectURL(blob);
     const loadingTask = pdfjsLib.getDocument({ url });
