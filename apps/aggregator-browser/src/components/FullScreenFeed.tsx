@@ -624,6 +624,69 @@ export function FullScreenFeed({
               position: 'relative' // Ensure proper stacking context
             }}
           >
+            {/* Text Post / Thought - Render FIRST to prevent being overridden by image/video */}
+            {(isTextPost || textPostData) && (
+              <div 
+                className="w-full h-full flex items-center justify-center relative z-30"
+                style={{
+                  backgroundColor: textPostData?.style?.backgroundColor || '#000000',
+                  backgroundImage: textPostData?.style?.backgroundImage 
+                    ? `url(${textPostData.style.backgroundImage})` 
+                    : 'none',
+                  backgroundSize: 'cover',
+                  backgroundPosition: 'center',
+                }}
+              >
+                <div
+                  className="w-full text-center"
+                  style={{
+                    fontFamily: textPostData?.style?.fontFamily || 'Arial',
+                    fontSize: `${textPostData?.style?.fontSize || 48}px`,
+                    color: textPostData?.style?.textColor || '#FFFFFF',
+                    fontWeight: textPostData?.style?.textStyle === 'bold' ? 'bold' : 'normal',
+                    fontStyle: textPostData?.style?.textStyle === 'italic' ? 'italic' : 'normal',
+                    textDecoration: textPostData?.style?.textStyle === 'strikethrough' ? 'line-through' : 'none',
+                    textAlign: (textPostData?.style?.textAlign || 'center') as 'left' | 'center' | 'right' | 'justify',
+                    textShadow: `
+                      ${textPostData?.style?.dropShadowOffsetX || 2}px 
+                      ${textPostData?.style?.dropShadowOffsetY || 2}px 
+                      ${textPostData?.style?.dropShadowBlur || 10}px 
+                      ${textPostData?.style?.dropShadowColor || '#000000'}
+                    `,
+                    // Use responsive padding that maintains layout as screen size changes
+                    padding: (() => {
+                      const basePadding = textPostData?.style?.padding || 40;
+                      // Scale padding proportionally with viewport width to maintain layout
+                      const viewportWidth = window.innerWidth;
+                      const baseViewportWidth = 375; // iPhone base width
+                      const paddingScale = viewportWidth / baseViewportWidth;
+                      return `${basePadding * paddingScale}px`;
+                    })(),
+                    lineHeight: 1.2,
+                    wordWrap: 'break-word',
+                    overflowWrap: 'break-word',
+                    whiteSpace: 'pre-wrap',
+                    WebkitFontSmoothing: 'antialiased',
+                    MozOsxFontSmoothing: 'grayscale',
+                    textRendering: 'optimizeLegibility',
+                  }}
+                >
+                  {(() => {
+                    // Handle different content formats
+                    if (textPostData?.content) {
+                      // If content is HTML, render it safely
+                      if (typeof textPostData.content === 'string' && textPostData.content.includes('<')) {
+                        return <div dangerouslySetInnerHTML={{ __html: textPostData.content }} />;
+                      }
+                      return textPostData.content;
+                    }
+                    // Fallback to description, name, or title
+                    return file.description || file.name || file.title || 'Thought';
+                  })()}
+                </div>
+              </div>
+            )}
+
             {/* Full-screen video */}
             {isVideo && videoBlobs.get(fileId) && (() => {
               const containerHeight = window.innerHeight - 64; // Account for bottom nav
@@ -821,71 +884,8 @@ export function FullScreenFeed({
               </div>
             )}
 
-            {/* Text Post / Thought */}
-            {(isTextPost || textPostData) && (
-              <div 
-                className="w-full h-full flex items-center justify-center"
-                style={{
-                  backgroundColor: textPostData?.style?.backgroundColor || '#000000',
-                  backgroundImage: textPostData?.style?.backgroundImage 
-                    ? `url(${textPostData.style.backgroundImage})` 
-                    : 'none',
-                  backgroundSize: 'cover',
-                  backgroundPosition: 'center',
-                }}
-              >
-                <div
-                  className="w-full text-center"
-                  style={{
-                    fontFamily: textPostData?.style?.fontFamily || 'Arial',
-                    fontSize: `${textPostData?.style?.fontSize || 48}px`,
-                    color: textPostData?.style?.textColor || '#FFFFFF',
-                    fontWeight: textPostData?.style?.textStyle === 'bold' ? 'bold' : 'normal',
-                    fontStyle: textPostData?.style?.textStyle === 'italic' ? 'italic' : 'normal',
-                    textDecoration: textPostData?.style?.textStyle === 'strikethrough' ? 'line-through' : 'none',
-                    textAlign: (textPostData?.style?.textAlign || 'center') as 'left' | 'center' | 'right' | 'justify',
-                    textShadow: `
-                      ${textPostData?.style?.dropShadowOffsetX || 2}px 
-                      ${textPostData?.style?.dropShadowOffsetY || 2}px 
-                      ${textPostData?.style?.dropShadowBlur || 10}px 
-                      ${textPostData?.style?.dropShadowColor || '#000000'}
-                    `,
-                    // Use responsive padding that maintains layout as screen size changes
-                    padding: (() => {
-                      const basePadding = textPostData?.style?.padding || 40;
-                      // Scale padding proportionally with viewport width to maintain layout
-                      const viewportWidth = window.innerWidth;
-                      const baseViewportWidth = 375; // iPhone base width
-                      const paddingScale = viewportWidth / baseViewportWidth;
-                      return `${basePadding * paddingScale}px`;
-                    })(),
-                    lineHeight: 1.2,
-                    wordWrap: 'break-word',
-                    overflowWrap: 'break-word',
-                    whiteSpace: 'pre-wrap',
-                    WebkitFontSmoothing: 'antialiased',
-                    MozOsxFontSmoothing: 'grayscale',
-                    textRendering: 'optimizeLegibility',
-                  }}
-                >
-                  {(() => {
-                    // Handle different content formats
-                    if (textPostData?.content) {
-                      // If content is HTML, render it safely
-                      if (typeof textPostData.content === 'string' && textPostData.content.includes('<')) {
-                        return <div dangerouslySetInnerHTML={{ __html: textPostData.content }} />;
-                      }
-                      return textPostData.content;
-                    }
-                    // Fallback to description, name, or title
-                    return file.description || file.name || file.title || 'Thought';
-                  })()}
-                </div>
-              </div>
-            )}
-
             {/* Non-image/video/text file */}
-            {!isImage && !isVideo && !isTextPost && (
+            {!isImage && !isVideo && !isTextPost && !textPostData && (
               <div className="flex flex-col items-center justify-center text-neutral-500">
                 <File className="h-24 w-24 mb-4" />
                 <h3 className="text-white text-xl font-medium mb-2">{fileName}</h3>
