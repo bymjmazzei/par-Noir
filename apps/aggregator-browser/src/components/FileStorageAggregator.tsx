@@ -49,6 +49,65 @@ const ThumbnailImage: React.FC<{ fileId: string; accountId: string; fileName: st
           return;
         }
 
+        // Check if this is a PDF slideshow folder (folder ending with "-pages")
+        const nameWithoutEncrypted = fileName.replace(/\.encrypted$/i, '');
+        const isPDFSlideshowFolder = nameWithoutEncrypted.toLowerCase().endsWith('-pages');
+        
+        // For PDF slideshow folders, get the first PNG page as thumbnail
+        if (isPDFSlideshowFolder) {
+          try {
+            // List files in folder and get the first PNG page
+            const folderQuery = `'${fileId}' in parents and trashed=false`;
+            const filesUrl = `${apiEndpoint}/api/drive/files?q=${encodeURIComponent(folderQuery)}&pageSize=1000${accountId ? `&accountId=${encodeURIComponent(accountId)}` : ''}`;
+            
+            const folderResponse = await fetch(filesUrl, {
+              headers: {
+                'Authorization': `Bearer ${accessToken}`
+              }
+            });
+            
+            if (folderResponse.ok) {
+              const folderData = await folderResponse.json();
+              const files = folderData.files || [];
+              
+              // Find the first PNG page (sorted by page number)
+              const pageFiles = files
+                .map((f: any) => {
+                  const match = f.name.match(/-page-(\d+)\.png\.encrypted$/i);
+                  if (match) {
+                    return { ...f, pageNum: parseInt(match[1], 10) };
+                  }
+                  return null;
+                })
+                .filter((f: any) => f !== null)
+                .sort((a: any, b: any) => a.pageNum - b.pageNum);
+              
+              if (pageFiles.length > 0) {
+                // Use the first page as thumbnail
+                const firstPageId = pageFiles[0].id;
+                const thumbnailUrl = `${apiEndpoint}/api/drive/files/${firstPageId}?accountId=${encodeURIComponent(accountId)}&thumbnail=true`;
+                
+                const thumbResponse = await fetch(thumbnailUrl, {
+                  headers: {
+                    'Authorization': `Bearer ${accessToken}`
+                  }
+                });
+                
+                if (thumbResponse.ok) {
+                  const thumbBlob = await thumbResponse.blob();
+                  const url = URL.createObjectURL(thumbBlob);
+                  setThumbnailUrl(url);
+                  setError(false);
+                  return;
+                }
+              }
+            }
+          } catch (folderError) {
+            console.warn('[ThumbnailImage] Failed to load folder thumbnail:', folderError);
+            // Fall through to regular handling
+          }
+        }
+
         if (isEncrypted) {
           // For encrypted files: download, decrypt, and generate thumbnail
           const session = PNOAuthService.loadSession();
@@ -691,9 +750,15 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
           const name = file.name.toLowerCase();
           const mimeType = file.mimeType || '';
           
-          // Exclude folders
+          // Allow PDF slideshow folders (folders ending with "-pages") to show as files
+          // These represent PDF slideshows and should appear as single file items
           if (mimeType === 'application/vnd.google-apps.folder') {
-            return false;
+            // Check if this is a PDF slideshow folder (ends with "-pages")
+            const nameWithoutEncrypted = file.name.replace(/\.encrypted$/i, '');
+            if (nameWithoutEncrypted.toLowerCase().endsWith('-pages')) {
+              return true; // Include PDF slideshow folders
+            }
+            return false; // Exclude other folders
           }
           
           // Exclude PDF page PNGs (these are stored in folders and shouldn't show in main file list)
@@ -770,9 +835,15 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
           const name = file.name.toLowerCase();
           const mimeType = file.mimeType || '';
           
-          // Exclude folders
+          // Allow PDF slideshow folders (folders ending with "-pages") to show as files
+          // These represent PDF slideshows and should appear as single file items
           if (mimeType === 'application/vnd.google-apps.folder') {
-            return false;
+            // Check if this is a PDF slideshow folder (ends with "-pages")
+            const nameWithoutEncrypted = file.name.replace(/\.encrypted$/i, '');
+            if (nameWithoutEncrypted.toLowerCase().endsWith('-pages')) {
+              return true; // Include PDF slideshow folders
+            }
+            return false; // Exclude other folders
           }
           
           // Exclude PDF page PNGs (these are stored in folders and shouldn't show in main file list)
@@ -2329,18 +2400,28 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
                 const isImage = file.mimeType?.startsWith('image/');
                 const isVideo = file.mimeType?.startsWith('video/');
                 const isEncrypted = file.name.toLowerCase().endsWith('.encrypted');
+                const nameWithoutEncrypted = file.name.replace(/\.encrypted$/i, '');
                 
-                console.log(`[FileStorageAggregator] Processing file for thumbnail: ${file.name}, mimeType: ${file.mimeType}, isImage: ${isImage}, isVideo: ${isVideo}, isEncrypted: ${isEncrypted}`);
+                // Check if this is a PDF slideshow folder (folder ending with "-pages")
+                const isPDFSlideshowFolder = file.mimeType === 'application/vnd.google-apps.folder' && 
+                                             nameWithoutEncrypted.toLowerCase().endsWith('-pages');
+                
+                console.log(`[FileStorageAggregator] Processing file for thumbnail: ${file.name}, mimeType: ${file.mimeType}, isImage: ${isImage}, isVideo: ${isVideo}, isEncrypted: ${isEncrypted}, isPDFSlideshowFolder: ${isPDFSlideshowFolder}`);
                 
                 // For encrypted files, check if they're media files by extension
-                const isPDF = file.mimeType === 'application/pdf' || /\.pdf$/i.test(file.name);
+                // Also treat PDF slideshow folders as PDF files
+                const isPDF = file.mimeType === 'application/pdf' || /\.pdf$/i.test(file.name) || isPDFSlideshowFolder;
                 let isMediaFile = isImage || isVideo || isPDF;
                 if (isEncrypted) {
-                  const nameWithoutEncrypted = file.name.replace(/\.encrypted$/i, '');
                   const hasImageExt = /\.(jpg|jpeg|png|gif|webp|bmp|svg|heic|heif)$/i.test(nameWithoutEncrypted);
                   const hasVideoExt = /\.(mp4|mov|avi|mkv|webm|flv|wmv|m4v|3gp)$/i.test(nameWithoutEncrypted);
                   const hasPDFExt = /\.pdf$/i.test(nameWithoutEncrypted);
                   isMediaFile = hasImageExt || hasVideoExt || hasPDFExt;
+                }
+                
+                // PDF slideshow folders are always media files
+                if (isPDFSlideshowFolder) {
+                  isMediaFile = true;
                 }
                 
 
