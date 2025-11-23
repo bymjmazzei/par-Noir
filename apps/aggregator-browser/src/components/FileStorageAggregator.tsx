@@ -2057,12 +2057,14 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
                 console.log(`[FileStorageAggregator] Processing file for thumbnail: ${file.name}, mimeType: ${file.mimeType}, isImage: ${isImage}, isVideo: ${isVideo}, isEncrypted: ${isEncrypted}`);
                 
                 // For encrypted files, check if they're media files by extension
-                let isMediaFile = isImage || isVideo;
+                const isPDF = mimeType === 'application/pdf' || /\.pdf$/i.test(file.name);
+                let isMediaFile = isImage || isVideo || isPDF;
                 if (isEncrypted) {
                   const nameWithoutEncrypted = file.name.replace(/\.encrypted$/i, '');
                   const hasImageExt = /\.(jpg|jpeg|png|gif|webp|bmp|svg|heic|heif)$/i.test(nameWithoutEncrypted);
                   const hasVideoExt = /\.(mp4|mov|avi|mkv|webm|flv|wmv|m4v|3gp)$/i.test(nameWithoutEncrypted);
-                  isMediaFile = hasImageExt || hasVideoExt;
+                  const hasPDFExt = /\.pdf$/i.test(nameWithoutEncrypted);
+                  isMediaFile = hasImageExt || hasVideoExt || hasPDFExt;
                 }
                 
 
@@ -2162,12 +2164,14 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
                 const isEncrypted = file.name.toLowerCase().endsWith('.encrypted');
                 
                 // For encrypted files, check if they're media files by extension
-                let isMediaFile = isImage || isVideo;
+                const isPDF = mimeType === 'application/pdf' || /\.pdf$/i.test(file.name);
+                let isMediaFile = isImage || isVideo || isPDF;
                 if (isEncrypted) {
                   const nameWithoutEncrypted = file.name.replace(/\.encrypted$/i, '');
                   const hasImageExt = /\.(jpg|jpeg|png|gif|webp|bmp|svg|heic|heif)$/i.test(nameWithoutEncrypted);
                   const hasVideoExt = /\.(mp4|mov|avi|mkv|webm|flv|wmv|m4v|3gp)$/i.test(nameWithoutEncrypted);
-                  isMediaFile = hasImageExt || hasVideoExt;
+                  const hasPDFExt = /\.pdf$/i.test(nameWithoutEncrypted);
+                  isMediaFile = hasImageExt || hasVideoExt || hasPDFExt;
                 }
 
                 return (
