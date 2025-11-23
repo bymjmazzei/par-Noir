@@ -1308,10 +1308,21 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
           updateBody.isPublic = makePublic;
         }
         
-        // Update NSFW status if changed
-        if (shareNSFW !== existingIsNSFW) {
+        // Always update NSFW status if file is public (to ensure it's saved)
+        // This ensures NSFW status is persisted even if it wasn't explicitly changed
+        if (makePublic) {
           updateBody.isNSFW = shareNSFW;
-          console.log('📤 [ShareSettings] Updating isNSFW:', {
+          console.log('📤 [ShareSettings] Setting isNSFW for public file:', {
+            shareNSFW,
+            existingIsNSFW,
+            existingMetadataIsNSFW: existingMetadata?.isNSFW,
+            makePublic,
+            willSend: true
+          });
+        } else if (shareNSFW !== existingIsNSFW) {
+          // Only update if changed when making private
+          updateBody.isNSFW = shareNSFW;
+          console.log('📤 [ShareSettings] Updating isNSFW (changed):', {
             shareNSFW,
             existingIsNSFW,
             existingMetadataIsNSFW: existingMetadata?.isNSFW,
@@ -1322,6 +1333,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
             shareNSFW,
             existingIsNSFW,
             existingMetadataIsNSFW: existingMetadata?.isNSFW,
+            makePublic,
             willSend: false
           });
         }

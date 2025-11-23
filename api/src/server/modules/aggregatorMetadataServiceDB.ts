@@ -1602,7 +1602,8 @@ export class AggregatorMetadataServiceDB {
         // Always preserve textPost/thought - use update if provided, otherwise keep existing (if it exists)
         ...(updates.textPost !== undefined ? { textPost: updates.textPost } : (existingTextPost !== undefined ? { textPost: existingTextPost } : {})),
         ...(updates.thought !== undefined ? { thought: updates.thought } : (existingThought !== undefined ? { thought: existingThought } : {})),
-        ...(updates.isNSFW !== undefined && { isNSFW: updates.isNSFW === true }),
+        // Always update isNSFW if provided (even if false, to ensure it's saved)
+        ...(updates.isNSFW !== undefined && { isNSFW: Boolean(updates.isNSFW) }),
         ...(updates.isPublic !== undefined && { isPublic: updates.isPublic === true }),
         // Update schema.org fields (merge with existing schema)
         schema: {
