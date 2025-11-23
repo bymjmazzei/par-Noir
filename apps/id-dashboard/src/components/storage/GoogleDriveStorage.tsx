@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { HardDrive, Upload, Download, Trash2, File, Folder, RefreshCw, AlertCircle, Play, Image, Video, Music, FileText, Archive, Code, Lock } from 'lucide-react';
+import { HardDrive, Upload, Download, Trash2, File, Folder, RefreshCw, AlertCircle, Play, Image, Video, Music, FileText, Archive, Code, Lock, Type } from 'lucide-react';
 import { googleDriveDemoService } from '../../services/googleDriveDemoService';
 import { MockGoogleOAuth } from './MockGoogleOAuth';
 
@@ -9,7 +9,135 @@ interface GoogleDriveFile {
   modifiedTime: string;
   size?: string;
   mimeType: string;
+  accountId?: string; // Add accountId for API calls
 }
+
+// Thumbnail loader component for encrypted files
+const ThumbnailLoader: React.FC<{ fileId: string; fileName: string; mimeType: string; isPDF: boolean; isThought: boolean }> = ({ fileId, fileName, mimeType, isPDF, isThought }) => {
+  const [thumbnailUrl, setThumbnailUrl] = useState<string | null>(null);
+  const [error, setError] = useState(false);
+  const apiEndpoint = process.env.REACT_APP_API_ENDPOINT || 'https://api.parnoir.com';
+
+  useEffect(() => {
+    const loadThumbnail = async () => {
+      try {
+        // Get accountId from file or try to find it
+        const authenticatedUserStr = localStorage.getItem('authenticated_user');
+        const token = localStorage.getItem('google_drive_token');
+        
+        if (!token) {
+          setError(true);
+          return;
+        }
+
+        // Try to get accountId
+        let accountId: string | null = null;
+        if (authenticatedUserStr) {
+          try {
+            const authenticatedUser = JSON.parse(authenticatedUserStr);
+            const { VolumeIdGenerator } = await import('../../utils/crypto/volumeIdGenerator');
+            const { SecureCredentialManager } = await import('../../utils/secureCredentialManager');
+            
+            const sessionId = authenticatedUser.id || authenticatedUser.publicKey || null;
+            const credentials = sessionId ? SecureCredentialManager.getCredentials(sessionId) : null;
+            const pnName = authenticatedUser.pnName || authenticatedUser.username;
+            const publicKey = authenticatedUser.publicKey;
+            
+            if (pnName && credentials?.passcode && publicKey) {
+              const pnIdentifier = await VolumeIdGenerator.generateVolumeId({
+                pnName,
+                passcode: credentials.passcode,
+                publicKey
+              });
+              
+              const credResponse = await fetch(`${apiEndpoint}/api/storage/credentials/${encodeURIComponent(pnIdentifier)}`);
+              if (credResponse.ok) {
+                const credData = await credResponse.json();
+                if (credData.credentials?.googleDriveAccounts) {
+                  const accounts = Object.keys(credData.credentials.googleDriveAccounts);
+                  if (accounts.length > 0) {
+                    accountId = accounts[0];
+                  }
+                }
+              }
+            }
+          } catch (err) {
+            console.warn('Could not get accountId for thumbnail:', err);
+          }
+        }
+
+        if (!accountId) {
+          setError(true);
+          return;
+        }
+
+        // Try to load thumbnail from API
+        const thumbnailUrl = `${apiEndpoint}/api/drive/files/${fileId}?thumbnail=true&accountId=${accountId}`;
+        const response = await fetch(thumbnailUrl, {
+          headers: {
+            'Authorization': `Bearer ${token}`
+          }
+        });
+
+        if (response.ok) {
+          const blob = await response.blob();
+          const url = URL.createObjectURL(blob);
+          setThumbnailUrl(url);
+          setError(false);
+        } else {
+          setError(true);
+        }
+      } catch (err) {
+        console.error('Failed to load thumbnail:', err);
+        setError(true);
+      }
+    };
+
+    loadThumbnail();
+
+    return () => {
+      if (thumbnailUrl) {
+        URL.revokeObjectURL(thumbnailUrl);
+      }
+    };
+  }, [fileId, fileName, mimeType, isPDF, isThought]);
+
+  if (error || !thumbnailUrl) {
+    // Show appropriate icon based on file type
+    if (isPDF) {
+      return (
+        <div className="w-24 h-24 bg-red-50 rounded-lg flex items-center justify-center border border-red-200">
+          <div className="text-center">
+            <FileText className="h-6 w-6 text-red-600 mx-auto mb-1" />
+            <div className="text-xs text-red-600 font-medium">PDF</div>
+          </div>
+        </div>
+      );
+    } else if (isThought) {
+      return (
+        <div className="w-24 h-24 bg-gray-100 rounded-lg flex items-center justify-center">
+          <Type className="h-8 w-8 text-blue-400" />
+        </div>
+      );
+    } else {
+      return (
+        <div className="w-24 h-24 bg-gray-100 rounded-lg flex items-center justify-center">
+          <Lock className="h-8 w-8 text-blue-400" />
+        </div>
+      );
+    }
+  }
+
+  return (
+    <div className="w-24 h-24 bg-gray-100 rounded-lg overflow-hidden">
+      <img 
+        src={thumbnailUrl} 
+        alt={fileName}
+        className="w-full h-full object-cover"
+      />
+    </div>
+  );
+};
 
 export const GoogleDriveStorage: React.FC = () => {
   const [isConnected, setIsConnected] = useState(false);
@@ -293,7 +421,8 @@ export const GoogleDriveStorage: React.FC = () => {
                   name: file.name.replace(/\.encrypted$/i, ''),
                   modifiedTime: file.modifiedTime,
                   size: file.size,
-                  mimeType: file.mimeType
+                  mimeType: file.mimeType,
+                  accountId: accountId // Include accountId for thumbnail loading
                 }));
                 
                 // Filter to show media files (images/videos/PDFs/thoughts), excluding metadata and system files
@@ -662,6 +791,13 @@ export const GoogleDriveStorage: React.FC = () => {
 
   const getFileThumbnail = (file: GoogleDriveFile) => {
     const mimeType = file.mimeType.toLowerCase();
+    const fileName = file.name.toLowerCase();
+    const isEncrypted = fileName.endsWith('.encrypted');
+    const nameWithoutEncrypted = file.name.replace(/\.encrypted$/i, '');
+    const isPDF = mimeType === 'application/pdf' || mimeType.includes('pdf') || /\.pdf$/i.test(nameWithoutEncrypted);
+    const isThought = /^thought-\d+\.png$/i.test(nameWithoutEncrypted);
+    const isImage = mimeType.startsWith('image/') || /\.(jpg|jpeg|png|gif|webp|bmp|svg|heic|heif)$/i.test(nameWithoutEncrypted);
+    const isVideo = mimeType.startsWith('video/') || /\.(mp4|mov|avi|mkv|webm|flv|wmv|m4v|3gp)$/i.test(nameWithoutEncrypted);
 
     if (mimeType.includes('folder')) {
       return (
@@ -669,7 +805,14 @@ export const GoogleDriveStorage: React.FC = () => {
           <Folder className="h-8 w-8 text-blue-400" />
         </div>
       );
-    } else if (mimeType.includes('image')) {
+    } else if (isImage || isThought || isPDF || isVideo) {
+      // For encrypted files (images, thoughts, PDFs, videos), load thumbnail from API
+      if (isEncrypted && !isDemoMode) {
+        return <ThumbnailLoader fileId={file.id} fileName={file.name} mimeType={mimeType} isPDF={isPDF} isThought={isThought} />;
+      }
+      
+      // For non-encrypted or demo files
+      if (isImage || isThought) {
       // For images, use actual image data if available
       if (file.fileData) {
         return (
@@ -809,47 +952,6 @@ export const GoogleDriveStorage: React.FC = () => {
           <Music className="h-8 w-8 text-yellow-400" />
         </div>
       );
-    } else if (mimeType.includes('pdf')) {
-      // For PDF files, try to load from public directory
-      const demoFileMap: { [key: string]: string } = {
-        'demo-image-1': '/demo-files/IMG_5431.JPG',
-        'demo-video-1': '/demo-files/IMG_1116.MOV',
-        'demo-spreadsheet-1': '/demo-files/2024 Wrap Sheet.xlsx',
-        'demo-pdf-1': '/demo-files/Halloween Harvest Haunt 2024 Deck (3).pdf',
-        'demo-doc-1': '/demo-files/sample-document.txt',
-        'demo-config-1': '/demo-files/config.json'
-      };
-      
-      const filePath = demoFileMap[file.id];
-      if (filePath) {
-        return (
-          <div className="w-24 h-24 bg-red-50 rounded-lg border border-red-200 overflow-hidden">
-            <iframe 
-              src={filePath}
-              className="w-full h-full border-0 pointer-events-none"
-              title={file.name}
-              onError={(e) => {
-                // Fallback to icon if PDF fails to load
-                const target = e.target as HTMLIFrameElement;
-                target.style.display = 'none';
-                const parent = target.parentElement;
-                if (parent) {
-                  parent.innerHTML = '<div class="w-full h-full flex items-center justify-center"><div class="text-center"><svg class="h-6 w-6 text-red-600 mx-auto mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg><div class="text-xs text-red-600 font-medium">PDF</div></div></div>';
-                }
-              }}
-            />
-          </div>
-        );
-      } else {
-        return (
-          <div className="w-24 h-24 bg-red-50 rounded-lg flex items-center justify-center border border-red-200">
-            <div className="text-center">
-              <FileText className="h-6 w-6 text-red-600 mx-auto mb-1" />
-              <div className="text-xs text-red-600 font-medium">PDF</div>
-            </div>
-          </div>
-        );
-      }
     } else if (mimeType.includes('spreadsheet') || mimeType.includes('excel') || mimeType.includes('sheet') || mimeType.includes('csv')) {
       // For CSV files, show content preview if available
       if (file.fileData && mimeType.includes('csv')) {
