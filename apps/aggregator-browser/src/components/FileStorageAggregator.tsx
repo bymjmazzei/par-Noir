@@ -28,7 +28,7 @@ interface EncryptedFilePackage {
 }
 
 // Thumbnail component that handles authenticated loading
-const ThumbnailImage: React.FC<{ fileId: string; accountId: string; fileName: string; alt: string; className?: string }> = ({ fileId, accountId, fileName, alt, className = 'w-full h-full object-cover' }) => {
+const ThumbnailImage: React.FC<{ fileId: string; accountId: string; fileName: string; alt: string; className?: string; mimeType?: string }> = ({ fileId, accountId, fileName, alt, className = 'w-full h-full object-cover', mimeType }) => {
   const [thumbnailUrl, setThumbnailUrl] = useState<string | null>(null);
   const [error, setError] = useState(false);
 
@@ -51,7 +51,7 @@ const ThumbnailImage: React.FC<{ fileId: string; accountId: string; fileName: st
 
         // Check if this is a PDF slideshow folder (folder ending with "-pages")
         const nameWithoutEncrypted = fileName.replace(/\.encrypted$/i, '');
-        const isPDFSlideshowFolder = nameWithoutEncrypted.toLowerCase().endsWith('-pages');
+        const isPDFSlideshowFolder = mimeType === 'application/vnd.google-apps.folder' && nameWithoutEncrypted.toLowerCase().endsWith('-pages');
         
         // For PDF slideshow folders, get the first PNG page as thumbnail
         if (isPDFSlideshowFolder) {
@@ -2495,6 +2495,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
                           accountId={file.accountId || account.accountId}
                           fileName={file.name}
                           alt={file.name}
+                          mimeType={file.mimeType}
                         />
                       ) : (
                         <div className="w-full h-full flex items-center justify-center">

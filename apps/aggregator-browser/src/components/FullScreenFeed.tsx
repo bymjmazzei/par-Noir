@@ -971,8 +971,8 @@ export function FullScreenFeed({
                     fileId={fileId}
                     publicToken={token}
                     fileName={fileName}
-                    pdfPagesFolderId={file.metadata?.pdfPagesFolderId}
-                    accountId={file.backendFileId ? undefined : undefined} // TODO: Get accountId from file metadata
+                    pdfPagesFolderId={file.metadata?.pdfPagesFolderId || fileId} // Use fileId if pdfPagesFolderId not in metadata (folder IS the file)
+                    accountId={file.accountId || file.backendFileId} // Get accountId from file
                   />
                 </div>
               );
