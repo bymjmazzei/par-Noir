@@ -612,7 +612,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
           displayName: file.name.replace(/\.encrypted$/i, '')
         }));
         
-        // Filter to show only media files (images/videos), excluding metadata, index, encrypted, and system files
+        // Filter to show only media files (images/videos/PDFs), excluding metadata, index, encrypted, and system files
         const mediaFiles = allFiles.filter((file: DriveFile) => {
           const name = file.name.toLowerCase();
           const mimeType = file.mimeType || '';
@@ -633,12 +633,13 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
           }
           
           // Exclude system files/folders (but allow actual media files that might start with _)
-          if ((name.startsWith('_') || name === 'metadata') && !mimeType.startsWith('image/') && !mimeType.startsWith('video/')) {
+          if ((name.startsWith('_') || name === 'metadata') && !mimeType.startsWith('image/') && !mimeType.startsWith('video/') && mimeType !== 'application/pdf' && !mimeType.includes('pdf')) {
             // Check if it's a media file by extension even if MIME type doesn't match
             const nameWithoutEncrypted = file.name.replace(/\.encrypted$/i, '');
             const hasImageExt = /\.(jpg|jpeg|png|gif|webp|bmp|svg|heic|heif)$/i.test(nameWithoutEncrypted);
             const hasVideoExt = /\.(mp4|mov|avi|mkv|webm|flv|wmv|m4v|3gp)$/i.test(nameWithoutEncrypted);
-            if (!hasImageExt && !hasVideoExt) {
+            const hasPDFExt = /\.pdf$/i.test(nameWithoutEncrypted);
+            if (!hasImageExt && !hasVideoExt && !hasPDFExt) {
               return false;
             }
           }
@@ -646,12 +647,14 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
           // Check MIME types
           const isImageMime = mimeType.startsWith('image/');
           const isVideoMime = mimeType.startsWith('video/');
+          const isPDFMime = mimeType === 'application/pdf' || mimeType.includes('pdf');
           
           // Check file extensions (including encrypted files which have .encrypted suffix)
           // Remove .encrypted suffix first to check original extension
           const nameWithoutEncrypted = file.name.replace(/\.encrypted$/i, '');
           const hasImageExt = /\.(jpg|jpeg|png|gif|webp|bmp|svg|heic|heif)$/i.test(nameWithoutEncrypted);
           const hasVideoExt = /\.(mp4|mov|avi|mkv|webm|flv|wmv|m4v|3gp)$/i.test(nameWithoutEncrypted);
+          const hasPDFExt = /\.pdf$/i.test(nameWithoutEncrypted);
           
           // Check if file name suggests it's an image (e.g., "img123", "image123", "photo123")
           // This handles files without extensions that are likely images
@@ -660,9 +663,9 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
                                  nameLower.startsWith('img') || 
                                  nameLower.startsWith('image');
           
-          // Include if it's an image/video by MIME type OR by file extension OR looks like an image
-          // This allows encrypted files to show if they have image/video extensions or look like images
-          return isImageMime || isVideoMime || hasImageExt || hasVideoExt || looksLikeImage;
+          // Include if it's an image/video/PDF by MIME type OR by file extension OR looks like an image
+          // This allows encrypted files to show if they have image/video/PDF extensions or look like images
+          return isImageMime || isVideoMime || isPDFMime || hasImageExt || hasVideoExt || hasPDFExt || looksLikeImage;
         });
         
         setFilesByAccount(prev => {
@@ -683,7 +686,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
           displayName: file.name.replace(/\.encrypted$/i, '')
         }));
         
-        // Filter to show only media files (images/videos), excluding metadata, index, encrypted, and system files
+        // Filter to show only media files (images/videos/PDFs), excluding metadata, index, encrypted, and system files
         const mediaFiles = allFiles.filter((file: DriveFile) => {
           const name = file.name.toLowerCase();
           const mimeType = file.mimeType || '';
@@ -704,12 +707,13 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
           }
           
           // Exclude system files/folders (but allow actual media files that might start with _)
-          if ((name.startsWith('_') || name === 'metadata') && !mimeType.startsWith('image/') && !mimeType.startsWith('video/')) {
+          if ((name.startsWith('_') || name === 'metadata') && !mimeType.startsWith('image/') && !mimeType.startsWith('video/') && mimeType !== 'application/pdf' && !mimeType.includes('pdf')) {
             // Check if it's a media file by extension even if MIME type doesn't match
             const nameWithoutEncrypted = file.name.replace(/\.encrypted$/i, '');
             const hasImageExt = /\.(jpg|jpeg|png|gif|webp|bmp|svg|heic|heif)$/i.test(nameWithoutEncrypted);
             const hasVideoExt = /\.(mp4|mov|avi|mkv|webm|flv|wmv|m4v|3gp)$/i.test(nameWithoutEncrypted);
-            if (!hasImageExt && !hasVideoExt) {
+            const hasPDFExt = /\.pdf$/i.test(nameWithoutEncrypted);
+            if (!hasImageExt && !hasVideoExt && !hasPDFExt) {
               return false;
             }
           }
@@ -717,12 +721,14 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
           // Check MIME types
           const isImageMime = mimeType.startsWith('image/');
           const isVideoMime = mimeType.startsWith('video/');
+          const isPDFMime = mimeType === 'application/pdf' || mimeType.includes('pdf');
           
           // Check file extensions (including encrypted files which have .encrypted suffix)
           // Remove .encrypted suffix first to check original extension
           const nameWithoutEncrypted = file.name.replace(/\.encrypted$/i, '');
           const hasImageExt = /\.(jpg|jpeg|png|gif|webp|bmp|svg|heic|heif)$/i.test(nameWithoutEncrypted);
           const hasVideoExt = /\.(mp4|mov|avi|mkv|webm|flv|wmv|m4v|3gp)$/i.test(nameWithoutEncrypted);
+          const hasPDFExt = /\.pdf$/i.test(nameWithoutEncrypted);
           
           // Check if file name suggests it's an image (e.g., "img123", "image123", "photo123")
           // This handles files without extensions that are likely images
@@ -731,9 +737,9 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
                                  nameLower.startsWith('img') || 
                                  nameLower.startsWith('image');
           
-          // Include if it's an image/video by MIME type OR by file extension OR looks like an image
-          // This allows encrypted files to show if they have image/video extensions or look like images
-          return isImageMime || isVideoMime || hasImageExt || hasVideoExt || looksLikeImage;
+          // Include if it's an image/video/PDF by MIME type OR by file extension OR looks like an image
+          // This allows encrypted files to show if they have image/video/PDF extensions or look like images
+          return isImageMime || isVideoMime || isPDFMime || hasImageExt || hasVideoExt || hasPDFExt || looksLikeImage;
         });
         
         setFilesByAccount(prev => {
