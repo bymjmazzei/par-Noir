@@ -1811,8 +1811,8 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
         console.log('📄 [Upload] PDF detected, converting to PNG pages...');
         try {
           // Use API endpoint to create folders (handles Google Drive authentication properly)
-          // IMPORTANT: Read pnIdentifier directly from session, not from userState closure
-          // This avoids React closure issues where userState might be stale
+          // CRITICAL: Read pnIdentifier directly from session at upload time, not from React state
+          // React closures can capture stale state values, so we need to read fresh from session
           const currentSession = PNOAuthService.loadSession();
           let pnIdentifier = currentSession?.pnIdentifier;
           
@@ -2101,97 +2101,97 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
           throw new Error('No valid access token available for upload');
         }
 
-        // Encrypt file using the same standard as dashboard
-        const fileArrayBuffer = await file.arrayBuffer();
-        const fileData = new Uint8Array(fileArrayBuffer);
-        
+      // Encrypt file using the same standard as dashboard
+      const fileArrayBuffer = await file.arrayBuffer();
+      const fileData = new Uint8Array(fileArrayBuffer);
+      
         // encryptionManager already initialized above
-        const encrypted = await encryptionManager.encrypt(
-          fileData,
-          session.did, // Use DID as pnId (matches dashboard)
-          publicKey
+      const encrypted = await encryptionManager.encrypt(
+        fileData,
+        session.did, // Use DID as pnId (matches dashboard)
+        publicKey
+      );
+
+      // Create encrypted file package (same format as dashboard)
+      const packageData: EncryptedFilePackage = {
+        encrypted: encrypted.encrypted,
+        iv: encrypted.iv,
+        salt: encrypted.salt,
+        metadata: {
+          originalName: file.name,
+          originalSize: file.size,
+          originalMimeType: file.type,
+        },
+      };
+
+      // Generate share token now (during upload) so it's ready for public sharing
+      // This matches the dashboard's behavior and avoids having to regenerate it later
+      console.log('🔑 [Upload] Generating share token for future public sharing...');
+      try {
+        const encryptionService = getEncryptionService();
+        shareToken = await encryptionService.generateShareToken(
+          packageData,
+          {
+            id: session.did,
+            publicKey: publicKey
+          }
         );
+        console.log('✅ [Upload] Share token generated successfully');
+      } catch (tokenError: any) {
+        console.error('❌ [Upload] Share token generation failed:', {
+          error: tokenError?.message || tokenError,
+        });
+        // Don't fail the upload if token generation fails - user can try making it public later
+        shareToken = undefined;
+      }
 
-        // Create encrypted file package (same format as dashboard)
-        const packageData: EncryptedFilePackage = {
-          encrypted: encrypted.encrypted,
-          iv: encrypted.iv,
-          salt: encrypted.salt,
-          metadata: {
-            originalName: file.name,
-            originalSize: file.size,
-            originalMimeType: file.type,
-          },
+      // Convert to JSON string (will be uploaded as .encrypted file)
+      const encryptedBlob = new Blob([JSON.stringify(packageData)], {
+        type: 'application/json',
+      });
+
+      // Convert encrypted blob to base64
+      const base64File = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => {
+          const result = reader.result as string;
+          const base64 = result.includes(',') ? result.split(',')[1] : result;
+          resolve(base64);
         };
-
-        // Generate share token now (during upload) so it's ready for public sharing
-        // This matches the dashboard's behavior and avoids having to regenerate it later
-        console.log('🔑 [Upload] Generating share token for future public sharing...');
-        try {
-          const encryptionService = getEncryptionService();
-          shareToken = await encryptionService.generateShareToken(
-            packageData,
-            {
-              id: session.did,
-              publicKey: publicKey
-            }
-          );
-          console.log('✅ [Upload] Share token generated successfully');
-        } catch (tokenError: any) {
-          console.error('❌ [Upload] Share token generation failed:', {
-            error: tokenError?.message || tokenError,
-          });
-          // Don't fail the upload if token generation fails - user can try making it public later
-          shareToken = undefined;
-        }
-
-        // Convert to JSON string (will be uploaded as .encrypted file)
-        const encryptedBlob = new Blob([JSON.stringify(packageData)], {
-          type: 'application/json',
-        });
-
-        // Convert encrypted blob to base64
-        const base64File = await new Promise<string>((resolve, reject) => {
-          const reader = new FileReader();
-          reader.onload = () => {
-            const result = reader.result as string;
-            const base64 = result.includes(',') ? result.split(',')[1] : result;
-            resolve(base64);
-          };
-          reader.onerror = () => reject(new Error('Failed to read encrypted file'));
-          reader.readAsDataURL(encryptedBlob);
-        });
+        reader.onerror = () => reject(new Error('Failed to read encrypted file'));
+        reader.readAsDataURL(encryptedBlob);
+      });
 
         // Upload encrypted file with .encrypted extension (use fresh token)
-        const encryptedFileName = `${file.name}.encrypted`;
-        const response = await fetch(`${apiEndpoint}/api/drive/files`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
+      const encryptedFileName = `${file.name}.encrypted`;
+      const response = await fetch(`${apiEndpoint}/api/drive/files`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
             'Authorization': `Bearer ${freshAccessToken}`
-          },
-          body: JSON.stringify({
-            fileData: base64File,
-            fileName: encryptedFileName,
-            mimeType: 'application/json', // Encrypted files are stored as JSON
-            accountId: accountId
-          })
-        });
+        },
+        body: JSON.stringify({
+          fileData: base64File,
+          fileName: encryptedFileName,
+          mimeType: 'application/json', // Encrypted files are stored as JSON
+          accountId: accountId
+        })
+      });
 
-        if (!response.ok) {
-          const errorText = await response.text().catch(() => 'Unknown error');
-          throw new Error(`Upload failed: ${errorText}`);
-        }
+      if (!response.ok) {
+        const errorText = await response.text().catch(() => 'Unknown error');
+        throw new Error(`Upload failed: ${errorText}`);
+      }
 
-        const uploadResult = await response.json();
-        const uploadedFile = uploadResult.file;
-        
-        if (!uploadedFile || !uploadedFile.id) {
-          throw new Error('Upload succeeded but no file ID returned');
-        }
+      const uploadResult = await response.json();
+      const uploadedFile = uploadResult.file;
+      
+      if (!uploadedFile || !uploadedFile.id) {
+        throw new Error('Upload succeeded but no file ID returned');
+      }
 
         fileId = uploadedFile.id;
-        console.log('✅ [Upload] File uploaded successfully, fileId:', fileId);
+      console.log('✅ [Upload] File uploaded successfully, fileId:', fileId);
       }
 
       // Create initial metadata entry (matches dashboard behavior)
