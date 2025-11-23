@@ -533,6 +533,35 @@ export function FullScreenFeed({
                         metadata.content?.thought;
         }
         
+        // FALLBACK: If fileType is 'text' or 'thought' but textPost/thought data is missing,
+        // try to reconstruct it from other metadata fields (description, name, etc.)
+        // This handles cases where the metadata was created before textPost/thought fields were added
+        if (!textPostData && (file.fileType === 'text' || file.fileType === 'thought' || 
+            indexedFile.metadata?.fileType === 'text' || indexedFile.metadata?.fileType === 'thought')) {
+          const content = file.description || file.name || file.title || '';
+          if (content) {
+            textPostData = {
+              content: content,
+              style: {
+                backgroundColor: '#000000',
+                textColor: '#FFFFFF',
+                fontSize: 48,
+                fontFamily: 'Arial',
+                textAlign: 'center',
+                padding: 40,
+                dropShadowColor: '#000000',
+                dropShadowBlur: 10,
+                dropShadowOffsetX: 2,
+                dropShadowOffsetY: 2
+              }
+            };
+            console.warn('[FullScreenFeed] Reconstructed textPostData from metadata for fileType=text:', {
+              fileId,
+              content: content.substring(0, 50)
+            });
+          }
+        }
+        
         // Parse textPost if it's a string (could be JSON string or plain string)
         if (textPostData && typeof textPostData === 'string') {
           try {

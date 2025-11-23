@@ -76,7 +76,16 @@ export class AggregatorMetadataServiceDB {
       const displayTitle = validatedMetadata.name || validatedMetadata.title || 'Untitled';
       const authorDid = validatedMetadata.creator?.identifier?.value || validatedMetadata.creator?.["@id"] || validatedMetadata.author?.did;
       const authorDisplay = authorDid ? authorDid.substring(0, 12) + '...' : 'Unknown';
-      console.log(`✅ Added public metadata for file: ${validatedMetadata.fileId} (${displayTitle}) by ${authorDisplay}`);
+      const hasTextPost = !!(validatedMetadata as any).textPost;
+      const hasThought = !!(validatedMetadata as any).thought;
+      const fileType = validatedMetadata.fileType;
+      console.log(`✅ Added public metadata for file: ${validatedMetadata.fileId} (${displayTitle}) by ${authorDisplay}`, {
+        fileType,
+        hasTextPost,
+        hasThought,
+        textPostKeys: hasTextPost ? Object.keys((validatedMetadata as any).textPost || {}) : [],
+        thoughtKeys: hasThought ? Object.keys((validatedMetadata as any).thought || {}) : []
+      });
 
       await this.syncFileVisibilityOverrides(validatedMetadata.fileId, validatedMetadata.indexingPermissions);
     } catch (error) {
@@ -196,6 +205,23 @@ export class AggregatorMetadataServiceDB {
         if (row.feed_ids && row.feed_ids.length > 0) {
           metadata.feedIds = row.feed_ids.map((id: string) => id.toString());
         }
+        
+        // Debug logging for text files to verify textPost/thought are in the response
+        if (metadata.fileType === 'text' || metadata.fileType === 'thought') {
+          const hasTextPost = !!(metadata as any).textPost;
+          const hasThought = !!(metadata as any).thought;
+          if (!hasTextPost && !hasThought) {
+            console.warn(`⚠️ [getPublicMetadata] Text file ${row.file_id} missing textPost/thought fields:`, {
+              fileId: row.file_id,
+              fileType: metadata.fileType,
+              metadataKeys: Object.keys(metadata),
+              hasTextPost,
+              hasThought,
+              description: metadata.description?.substring(0, 50)
+            });
+          }
+        }
+        
         return {
           fileId: row.file_id,
           metadata,
