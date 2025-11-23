@@ -1311,6 +1311,19 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
         // Update NSFW status if changed
         if (shareNSFW !== existingIsNSFW) {
           updateBody.isNSFW = shareNSFW;
+          console.log('📤 [ShareSettings] Updating isNSFW:', {
+            shareNSFW,
+            existingIsNSFW,
+            existingMetadataIsNSFW: existingMetadata?.isNSFW,
+            willSend: true
+          });
+        } else {
+          console.log('ℹ️ [ShareSettings] isNSFW unchanged:', {
+            shareNSFW,
+            existingIsNSFW,
+            existingMetadataIsNSFW: existingMetadata?.isNSFW,
+            willSend: false
+          });
         }
         
         // Always include publicToken if we have one (newly generated or existing)
@@ -1333,6 +1346,12 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
           console.warn('⚠️ [ShareSettings] Making file public but no publicToken available - file may not load in public feed');
         }
         
+        console.log('📤 [ShareSettings] Sending update to API:', {
+          fileId: targetFileId,
+          updateBody,
+          updateBodyString: JSON.stringify(updateBody)
+        });
+        
         const metadataResponse = await fetch(`${apiEndpoint}/api/aggregator/metadata-index/${targetFileId}${accountIdParam}`, {
           method: 'PUT',
           headers: {
@@ -1340,6 +1359,21 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
             'Authorization': `Bearer ${accessToken}`
           },
           body: JSON.stringify(updateBody),
+        });
+        
+        if (!metadataResponse.ok) {
+          const errorText = await metadataResponse.text().catch(() => 'Unknown error');
+          console.error('❌ [ShareSettings] API update failed:', {
+            status: metadataResponse.status,
+            statusText: metadataResponse.statusText,
+            error: errorText
+          });
+          throw new Error(`Failed to update file visibility: ${errorText}`);
+        }
+        
+        const responseData = await metadataResponse.json().catch(() => null);
+        console.log('✅ [ShareSettings] API update successful:', {
+          response: responseData
         });
 
         if (!metadataResponse.ok) {
