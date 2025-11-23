@@ -328,8 +328,9 @@ export function FullScreenFeed({
 
   // Load video blobs and thumbnails for visible files (only if not provided externally)
   useEffect(() => {
-    // Skip if thumbnails/videoBlobs are provided externally - they're already loaded
-    if (externalThumbnails || externalVideoBlobs) {
+    // Skip if thumbnails/videoBlobs are provided externally AND they're not empty - they're already loaded
+    // But if they're undefined or empty Maps, we need to load them ourselves
+    if ((externalThumbnails && externalThumbnails.size > 0) || (externalVideoBlobs && externalVideoBlobs.size > 0)) {
       return;
     }
     

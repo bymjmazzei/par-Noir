@@ -23,9 +23,6 @@ export function EditFileModal({ file, onClose, onSave }: EditFileModalProps) {
   const [description, setDescription] = useState(file.metadata.description || '');
   const [tags, setTags] = useState((file.metadata.keywords || file.metadata.tags || []).join(', '));
   const [isTopPost, setIsTopPost] = useState(file.metadata.isTopPost || false);
-  const [isNSFW, setIsNSFW] = useState<boolean>(
-    file.metadata?.isNSFW === true
-  );
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -55,8 +52,7 @@ export function EditFileModal({ file, onClose, onSave }: EditFileModalProps) {
           tags: tags.split(',').map(t => t.trim()).filter(Boolean),
           isPublic: visibility === 'public',
           visibility: visibility,
-          isTopPost: isTopPost,
-          isNSFW: isNSFW
+          isTopPost: isTopPost
         }),
       });
 
@@ -80,8 +76,7 @@ export function EditFileModal({ file, onClose, onSave }: EditFileModalProps) {
           description: description.trim() || undefined,
           keywords: tags.split(',').map(t => t.trim()).filter(Boolean),
           tags: tags.split(',').map(t => t.trim()).filter(Boolean),
-          isTopPost: isTopPost,
-          isNSFW: isNSFW
+          isTopPost: isTopPost
         }
       };
 
@@ -195,24 +190,6 @@ export function EditFileModal({ file, onClose, onSave }: EditFileModalProps) {
               placeholder="tag1, tag2, tag3"
             />
             <p className="text-xs text-neutral-400 mt-1">Separate tags with commas</p>
-          </div>
-
-          {/* NSFW Toggle */}
-          <div>
-            <label className="flex items-center space-x-3 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={isNSFW}
-                onChange={(e) => setIsNSFW(e.target.checked)}
-                className="w-4 h-4 text-blue-600 bg-neutral-800 border-neutral-700 rounded focus:ring-blue-500 focus:ring-2"
-              />
-              <div>
-                <span className="text-white font-medium">NSFW Content</span>
-            <p className="text-xs text-neutral-400 mt-1">
-                  Mark this content as Not Safe For Work (18+)
-            </p>
-              </div>
-            </label>
           </div>
 
           {/* Top Post */}
