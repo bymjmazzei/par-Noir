@@ -516,10 +516,22 @@ export function FullScreenFeed({
         
         // Check for text post FIRST before checking image/video
         // This prevents thoughts from being misclassified as images/videos
-        let textPostData: any = (indexedFile.metadata as any).textPost || 
-                            (indexedFile.metadata as any).thought ||
-                            (file as any).textPost ||
-                            (file as any).thought;
+        // Check multiple possible locations for thought data
+        let textPostData: any = (indexedFile.metadata as any)?.textPost || 
+                            (indexedFile.metadata as any)?.thought ||
+                            (file as any)?.textPost ||
+                            (file as any)?.thought ||
+                            (indexedFile as any)?.textPost ||
+                            (indexedFile as any)?.thought;
+        
+        // Also check nested metadata structure
+        if (!textPostData && indexedFile.metadata) {
+          const metadata = indexedFile.metadata as any;
+          textPostData = metadata.data?.textPost || 
+                        metadata.data?.thought ||
+                        metadata.content?.textPost ||
+                        metadata.content?.thought;
+        }
         
         // Parse textPost if it's a string (could be JSON string or plain string)
         if (textPostData && typeof textPostData === 'string') {
@@ -569,35 +581,37 @@ export function FullScreenFeed({
           (file.name || file.title || '').match(/\.(jpg|jpeg|png|gif|webp|svg|bmp|ico)$/i)
         );
         
-        // Debug logging for thoughts
-        if (hasTextFileType || hasTextPostData) {
-          console.log('[FullScreenFeed] Thought detected:', {
-            fileId,
-            fileType: file.fileType,
-            metadataFileType: indexedFile.metadata.fileType,
-            hasTextPostData,
-            hasTextFileType,
-            isTextPost,
-            textPostData: textPostData ? { 
-              content: textPostData.content?.substring(0, 50), 
-              hasStyle: !!textPostData.style,
-              hasContent: !!textPostData.content,
-              styleKeys: textPostData.style ? Object.keys(textPostData.style) : []
-            } : null,
-            rawMetadata: {
-              hasTextPost: !!(indexedFile.metadata as any).textPost,
-              hasThought: !!(indexedFile.metadata as any).thought,
-              hasFileTextPost: !!(file as any).textPost,
-              hasFileThought: !!(file as any).thought,
-              // Show actual values to debug
-              textPostValue: (indexedFile.metadata as any).textPost,
-              thoughtValue: (indexedFile.metadata as any).thought,
-              fullMetadataKeys: Object.keys(indexedFile.metadata),
-              // Sample of metadata to see structure
-              metadataSample: JSON.stringify(indexedFile.metadata).substring(0, 500)
-            }
-          });
-        }
+        // Debug logging for ALL files to see what's happening
+        console.log('[FullScreenFeed] File analysis:', {
+          fileId,
+          fileType: file.fileType,
+          metadataFileType: indexedFile.metadata?.fileType,
+          hasTextPostData,
+          hasTextFileType,
+          isTextPost,
+          isImage,
+          isVideo,
+          textPostData: textPostData ? { 
+            content: typeof textPostData.content === 'string' ? textPostData.content.substring(0, 50) : textPostData.content,
+            hasStyle: !!textPostData.style,
+            hasContent: !!textPostData.content,
+            type: typeof textPostData,
+            styleKeys: textPostData.style ? Object.keys(textPostData.style) : []
+          } : null,
+          rawMetadata: {
+            hasTextPost: !!(indexedFile.metadata as any)?.textPost,
+            hasThought: !!(indexedFile.metadata as any)?.thought,
+            hasFileTextPost: !!(file as any)?.textPost,
+            hasFileThought: !!(file as any)?.thought,
+            // Show actual values to debug
+            textPostValue: (indexedFile.metadata as any)?.textPost,
+            thoughtValue: (indexedFile.metadata as any)?.thought,
+            fullMetadataKeys: indexedFile.metadata ? Object.keys(indexedFile.metadata) : [],
+            // Sample of metadata to see structure
+            metadataSample: indexedFile.metadata ? JSON.stringify(indexedFile.metadata).substring(0, 500) : 'no metadata',
+            fullFileSample: JSON.stringify(file).substring(0, 300)
+          }
+        });
         
         const fileName = file.name || file.title || 'Untitled';
         // Get creatorId - this is now the pN identifier (set from entry.pnIdentifier during conversion)
