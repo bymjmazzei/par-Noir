@@ -6,8 +6,8 @@
 /**
  * Check if content is NSFW
  */
-export function isNSFWContent(metadata: { isNSFW?: boolean }): boolean {
-  return metadata.isNSFW === true;
+export function isNSFWContent(metadata?: { isNSFW?: boolean } | null): boolean {
+  return metadata?.isNSFW === true;
 }
 
 /**

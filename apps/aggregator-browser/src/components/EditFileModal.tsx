@@ -24,7 +24,7 @@ export function EditFileModal({ file, onClose, onSave }: EditFileModalProps) {
   const [tags, setTags] = useState((file.metadata.keywords || file.metadata.tags || []).join(', '));
   const [isTopPost, setIsTopPost] = useState(file.metadata.isTopPost || false);
   const [isNSFW, setIsNSFW] = useState<boolean>(
-    file.metadata.isNSFW === true
+    file.metadata?.isNSFW === true
   );
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);

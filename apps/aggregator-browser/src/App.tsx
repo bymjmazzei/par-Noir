@@ -3541,7 +3541,7 @@ function App() {
                           {isVideo ? 'Video' : file.fileType === 'image' ? 'Image' : file.fileType || 'File'} • {new Date(file.uploadDate).toLocaleDateString()}
                         </p>
                       </div>
-                      {file.metadata.isNSFW && (
+                      {file.metadata?.isNSFW && (
                         <ContentRatingBadge isNSFW={true} size="sm" className="ml-2 flex-shrink-0" />
                       )}
                     </div>

@@ -1005,7 +1005,7 @@ export function FullScreenFeed({
                   )}
                   
                   {/* NSFW Badge */}
-                  {file.metadata.isNSFW && (
+                  {file.metadata?.isNSFW && (
                     <div className="flex items-center space-x-2">
                       <ContentRatingBadge isNSFW={file.metadata.isNSFW} size="sm" />
                     </div>
