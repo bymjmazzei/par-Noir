@@ -519,10 +519,39 @@ export function FullScreenFeed({
                        (file.name || file.title || '').match(/\.(jpg|jpeg|png|gif|webp|svg|bmp|ico)$/i);
         // Check for text post in metadata (fileType is stored in PublicMetadata)
         // Access textPost from metadata first (it's stored in PublicMetadata)
-        const textPostData = (indexedFile.metadata as any).textPost || 
+        let textPostData: any = (indexedFile.metadata as any).textPost || 
                             (indexedFile.metadata as any).thought ||
                             (file as any).textPost ||
                             (file as any).thought;
+        
+        // Parse textPost if it's a string (could be JSON string or plain string)
+        if (textPostData && typeof textPostData === 'string') {
+          try {
+            // Try to parse as JSON first
+            const parsed = JSON.parse(textPostData);
+            if (parsed && typeof parsed === 'object') {
+              textPostData = parsed;
+            } else {
+              // If parsing returns a primitive, treat original string as content
+              textPostData = { content: textPostData };
+            }
+          } catch (e) {
+            // Not JSON, treat as plain text content
+            textPostData = { content: textPostData };
+          }
+        }
+        
+        // If textPostData is an object but doesn't have content, try to extract from it
+        if (textPostData && typeof textPostData === 'object' && !textPostData.content) {
+          // Check if it has HTML content or other fields
+          if (textPostData.html) {
+            textPostData.content = textPostData.html;
+          } else if (textPostData.text) {
+            textPostData.content = textPostData.text;
+          } else if (textPostData.value) {
+            textPostData.content = textPostData.value;
+          }
+        }
         
         // Check fileType and textPost data presence
         const hasTextPostData = !!textPostData;
@@ -832,7 +861,18 @@ export function FullScreenFeed({
                     textRendering: 'optimizeLegibility',
                   }}
                 >
-                  {textPostData?.content || file.description || file.name || file.title || 'Thought'}
+                  {(() => {
+                    // Handle different content formats
+                    if (textPostData?.content) {
+                      // If content is HTML, render it safely
+                      if (typeof textPostData.content === 'string' && textPostData.content.includes('<')) {
+                        return <div dangerouslySetInnerHTML={{ __html: textPostData.content }} />;
+                      }
+                      return textPostData.content;
+                    }
+                    // Fallback to description, name, or title
+                    return file.description || file.name || file.title || 'Thought';
+                  })()}
                 </div>
               </div>
             )}
