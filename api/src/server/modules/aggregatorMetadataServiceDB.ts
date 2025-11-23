@@ -163,7 +163,17 @@ export class AggregatorMetadataServiceDB {
         WHERE am.metadata->>'isPublic' = 'true'
         AND (
           am.metadata->>'isNSFW' IS NULL 
-          OR LOWER(COALESCE(am.metadata->>'isNSFW', '')) != 'true'
+          OR am.metadata->>'isNSFW' = 'false'
+          OR am.metadata->>'isNSFW' = 'False'
+          OR am.metadata->>'isNSFW' = 'FALSE'
+          OR (am.metadata->>'isNSFW')::text = 'false'
+        )
+        AND NOT (
+          am.metadata->>'isNSFW' = 'true'
+          OR am.metadata->>'isNSFW' = 'True'
+          OR am.metadata->>'isNSFW' = 'TRUE'
+          OR (am.metadata->>'isNSFW')::text = 'true'
+          OR (am.metadata->'isNSFW')::boolean = true
         )
         GROUP BY am.file_id, am.metadata, am.submitted_at, am.pn_identifier
       `;
