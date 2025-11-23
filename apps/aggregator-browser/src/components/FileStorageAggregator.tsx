@@ -2197,7 +2197,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
                 console.log(`[FileStorageAggregator] Processing file for thumbnail: ${file.name}, mimeType: ${file.mimeType}, isImage: ${isImage}, isVideo: ${isVideo}, isEncrypted: ${isEncrypted}`);
                 
                 // For encrypted files, check if they're media files by extension
-                const isPDF = mimeType === 'application/pdf' || /\.pdf$/i.test(file.name);
+                const isPDF = file.mimeType === 'application/pdf' || /\.pdf$/i.test(file.name);
                 let isMediaFile = isImage || isVideo || isPDF;
                 if (isEncrypted) {
                   const nameWithoutEncrypted = file.name.replace(/\.encrypted$/i, '');
@@ -2304,7 +2304,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
                 const isEncrypted = file.name.toLowerCase().endsWith('.encrypted');
                 
                 // For encrypted files, check if they're media files by extension
-                const isPDF = mimeType === 'application/pdf' || /\.pdf$/i.test(file.name);
+                const isPDF = file.mimeType === 'application/pdf' || /\.pdf$/i.test(file.name);
                 let isMediaFile = isImage || isVideo || isPDF;
                 if (isEncrypted) {
                   const nameWithoutEncrypted = file.name.replace(/\.encrypted$/i, '');
