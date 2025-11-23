@@ -513,12 +513,9 @@ export function FullScreenFeed({
       {files.map((indexedFile, idx) => {
         const file = indexedFile.metadata;
         const fileId = file.fileId;
-        const isVideo = file.fileType === 'video' || 
-                       (file.name || file.title || '').match(/\.(mp4|mov|avi|webm|mkv|flv|wmv)$/i);
-        const isImage = file.fileType === 'image' || 
-                       (file.name || file.title || '').match(/\.(jpg|jpeg|png|gif|webp|svg|bmp|ico)$/i);
-        // Check for text post in metadata (fileType is stored in PublicMetadata)
-        // Access textPost from metadata first (it's stored in PublicMetadata)
+        
+        // Check for text post FIRST before checking image/video
+        // This prevents thoughts from being misclassified as images/videos
         let textPostData: any = (indexedFile.metadata as any).textPost || 
                             (indexedFile.metadata as any).thought ||
                             (file as any).textPost ||
@@ -553,7 +550,6 @@ export function FullScreenFeed({
           }
         }
         
-        // Check fileType and textPost data presence
         const hasTextPostData = !!textPostData;
         const hasTextFileType = file.fileType === 'text' || 
                                file.fileType === 'thought' ||
@@ -561,6 +557,17 @@ export function FullScreenFeed({
                                indexedFile.metadata.fileType === 'thought';
         
         const isTextPost = hasTextFileType || hasTextPostData;
+        
+        // Only check for image/video if it's NOT a text post
+        // This prevents thoughts with image-like filenames from being misclassified
+        const isVideo = !isTextPost && (
+          file.fileType === 'video' || 
+          (file.name || file.title || '').match(/\.(mp4|mov|avi|webm|mkv|flv|wmv)$/i)
+        );
+        const isImage = !isTextPost && (
+          file.fileType === 'image' || 
+          (file.name || file.title || '').match(/\.(jpg|jpeg|png|gif|webp|svg|bmp|ico)$/i)
+        );
         
         // Debug logging for thoughts
         if (hasTextFileType || hasTextPostData) {
