@@ -93,13 +93,15 @@ export function UserStateProvider({ children }: { children: ReactNode }) {
           delete parsed.preferences.ageVerified;
           delete parsed.preferences.verifiedAge;
         }
-        console.log('Loaded user state from localStorage, subscribedCategories:', parsed.preferences?.subscribedCategories);
+        // Debug logging removed for cleaner console
+        // console.log('Loaded user state from localStorage, subscribedCategories:', parsed.preferences?.subscribedCategories);
         return parsed;
       }
     } catch (e) {
       console.warn('Failed to load user state from localStorage:', e);
     }
-    console.log('Using default user state');
+    // Debug logging removed for cleaner console
+    // console.log('Using default user state');
     return defaultUserState;
   });
 
@@ -107,7 +109,8 @@ export function UserStateProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     try {
       localStorage.setItem('pn_user_state', JSON.stringify(userState));
-      console.log('Saved user state to localStorage, subscribedCategories:', userState.preferences.subscribedCategories);
+      // Debug logging removed for cleaner console
+      // console.log('Saved user state to localStorage, subscribedCategories:', userState.preferences.subscribedCategories);
     } catch (e) {
       console.warn('Failed to save user state to localStorage:', e);
     }

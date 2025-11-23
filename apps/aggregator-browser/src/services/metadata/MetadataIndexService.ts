@@ -86,18 +86,10 @@ export class MetadataIndexService {
           // Preserve textPost and thought data from metadata
           const metadata = entry.metadata || {};
           
-          // Debug logging for text files to see what's in the API response
-          if (metadata.fileType === 'text') {
-            console.log('[MetadataIndexService] Text file from API:', {
-              fileId: entry.file_id || metadata.fileId,
-              hasTextPost: !!metadata.textPost,
-              hasThought: !!metadata.thought,
-              textPostType: typeof metadata.textPost,
-              thoughtType: typeof metadata.thought,
-              metadataKeys: Object.keys(metadata),
-              textPostSample: metadata.textPost ? JSON.stringify(metadata.textPost).substring(0, 200) : null
-            });
-          }
+          // Debug logging removed for cleaner console - uncomment if needed for debugging
+          // if (metadata.fileType === 'text') {
+          //   console.log('[MetadataIndexService] Text file from API:', {...});
+          // }
           
           return {
             metadata: {

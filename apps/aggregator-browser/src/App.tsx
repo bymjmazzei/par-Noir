@@ -2493,16 +2493,7 @@ function App() {
     setCommentingFile(indexedFile);
   }, []);
   
-  // Debug: Track commentingFile changes and render status
-  useEffect(() => {
-    console.log('[App] commentingFile state changed', { 
-      hasCommentingFile: !!commentingFile,
-      commentingFileId: commentingFile?.metadata?.fileId,
-      viewingCreatorId,
-      viewMode,
-      willRenderModal: !!commentingFile
-    });
-  }, [commentingFile, viewingCreatorId, viewMode]);
+  // Debug logging removed for cleaner console
   
   // CommentModal render logic (logging removed - was too verbose)
 

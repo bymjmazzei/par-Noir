@@ -637,44 +637,10 @@ export function FullScreenFeed({
         );
         
         // Debug logging for ALL files to see what's happening
-        const fullMetadata = indexedFile.metadata ? JSON.stringify(indexedFile.metadata, null, 2) : 'no metadata';
-        const fullFile = JSON.stringify(file, null, 2);
-        const fullIndexedFile = JSON.stringify(indexedFile, null, 2);
-        
-        console.log('[FullScreenFeed] File analysis:', {
-          fileId,
-          fileType: file.fileType,
-          metadataFileType: indexedFile.metadata?.fileType,
-          hasTextPostData,
-          hasTextFileType,
-          isTextPost,
-          isImage,
-          isVideo,
-          textPostData: textPostData ? { 
-            content: typeof textPostData.content === 'string' ? textPostData.content.substring(0, 50) : textPostData.content,
-            hasStyle: !!textPostData.style,
-            hasContent: !!textPostData.content,
-            type: typeof textPostData,
-            styleKeys: textPostData.style ? Object.keys(textPostData.style) : []
-          } : null,
-          rawMetadata: {
-            hasTextPost: !!(indexedFile.metadata as any)?.textPost,
-            hasThought: !!(indexedFile.metadata as any)?.thought,
-            hasFileTextPost: !!(file as any)?.textPost,
-            hasFileThought: !!(file as any)?.thought,
-            // Show actual values to debug
-            textPostValue: (indexedFile.metadata as any)?.textPost,
-            thoughtValue: (indexedFile.metadata as any)?.thought,
-            fullMetadataKeys: indexedFile.metadata ? Object.keys(indexedFile.metadata) : [],
-            fullFileKeys: file ? Object.keys(file) : [],
-            fullIndexedFileKeys: indexedFile ? Object.keys(indexedFile) : []
-          },
-          // Full structures for deep inspection
-          fullMetadata,
-          fullFile,
-          fullIndexedFile
-        });
-        
+        // Debug logging removed for cleaner console - uncomment if needed for debugging
+        // const fullMetadata = indexedFile.metadata ? JSON.stringify(indexedFile.metadata, null, 2) : 'no metadata';
+        // const fullFile = JSON.stringify(file, null, 2);
+        // const fullIndexedFile = JSON.stringify(indexedFile, null, 2);
         const fileName = file.name || file.title || 'Untitled';
         // Get creatorId - this is now the pN identifier (set from entry.pnIdentifier during conversion)
         const creatorId = (indexedFile.metadata as any).creatorId || 
