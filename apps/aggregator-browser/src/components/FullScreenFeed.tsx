@@ -565,10 +565,22 @@ export function FullScreenFeed({
         const hasTextPostData = !!textPostData;
         const hasTextFileType = file.fileType === 'text' || 
                                file.fileType === 'thought' ||
-                               indexedFile.metadata.fileType === 'text' || 
-                               indexedFile.metadata.fileType === 'thought';
+                               indexedFile.metadata?.fileType === 'text' || 
+                               indexedFile.metadata?.fileType === 'thought';
         
-        const isTextPost = hasTextFileType || hasTextPostData;
+        // If we have textPost/thought data, it's definitely a thought, regardless of fileType
+        // This handles cases where fileType might be 'other' due to API defaults
+        const isTextPost = hasTextPostData || hasTextFileType;
+        
+        // If it's a thought but fileType is wrong, log it for debugging
+        if (hasTextPostData && !hasTextFileType) {
+          console.warn('[FullScreenFeed] Thought detected by data but fileType is incorrect:', {
+            fileId,
+            fileType: file.fileType,
+            metadataFileType: indexedFile.metadata?.fileType,
+            hasTextPostData: true
+          });
+        }
         
         // Only check for image/video if it's NOT a text post
         // This prevents thoughts with image-like filenames from being misclassified
@@ -582,6 +594,10 @@ export function FullScreenFeed({
         );
         
         // Debug logging for ALL files to see what's happening
+        const fullMetadata = indexedFile.metadata ? JSON.stringify(indexedFile.metadata, null, 2) : 'no metadata';
+        const fullFile = JSON.stringify(file, null, 2);
+        const fullIndexedFile = JSON.stringify(indexedFile, null, 2);
+        
         console.log('[FullScreenFeed] File analysis:', {
           fileId,
           fileType: file.fileType,
@@ -607,10 +623,13 @@ export function FullScreenFeed({
             textPostValue: (indexedFile.metadata as any)?.textPost,
             thoughtValue: (indexedFile.metadata as any)?.thought,
             fullMetadataKeys: indexedFile.metadata ? Object.keys(indexedFile.metadata) : [],
-            // Sample of metadata to see structure
-            metadataSample: indexedFile.metadata ? JSON.stringify(indexedFile.metadata).substring(0, 500) : 'no metadata',
-            fullFileSample: JSON.stringify(file).substring(0, 300)
-          }
+            fullFileKeys: file ? Object.keys(file) : [],
+            fullIndexedFileKeys: indexedFile ? Object.keys(indexedFile) : []
+          },
+          // Full structures for deep inspection
+          fullMetadata,
+          fullFile,
+          fullIndexedFile
         });
         
         const fileName = file.name || file.title || 'Untitled';
