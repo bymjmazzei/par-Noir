@@ -122,7 +122,6 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
     locationName: string;
     locationAddress: string;
     license: string;
-    isNSFW: boolean;
     isPublic: boolean;
   }>({ 
     name: '', 
@@ -133,7 +132,6 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
     locationName: '',
     locationAddress: '',
     license: 'all-rights-reserved',
-    isNSFW: false,
     isPublic: false
   });
   const [openMenuFor, setOpenMenuFor] = useState<string | null>(null);
@@ -5063,8 +5061,6 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
     const license = (metadata as any)?.license || (metadata as any)?.schema?.license || '';
     const licenseString = typeof license === 'object' && license?.name ? license.name : (typeof license === 'string' ? license : '') || 'all-rights-reserved';
     
-    // Extract isNSFW (default to false for public content)
-    const isNSFW = ((metadata as any)?.isNSFW === true);
     // Extract isPublic (default to false if not set)
     const isPublic = metadata?.isPublic === true || (metadata as any)?.visibility === 'public';
     
@@ -5077,7 +5073,6 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
       locationName: locationName,
       locationAddress: locationAddress,
       license: licenseString,
-      isNSFW: isNSFW,
       isPublic: isPublic
     });
     setEditingFile(file);
@@ -5145,7 +5140,6 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
           category: editForm.category || undefined,
           locationCreated: locationCreated,
           license: editForm.license || undefined,
-          isNSFW: editForm.isNSFW,
           isPublic: editForm.isPublic
         }),
       });
@@ -5274,7 +5268,8 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
                 ...(editForm.category && { feedCategories: [editForm.category as FeedCategory] }),
                 ...(locationCreated && { locationCreated }),
                 ...(editForm.license && { license: editForm.license }),
-                isNSFW: editForm.isNSFW || false
+                // Preserve existing NSFW value (managed via Share Settings)
+                ...(currentMetadata.isNSFW !== undefined && { isNSFW: currentMetadata.isNSFW })
               },
               engagement: currentMetadata.engagement || {
                 views: 0,
@@ -6986,14 +6981,14 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
               </div>
 
               <div className="border-t border-neutral-700 pt-4 mt-4">
-                <h4 className="text-sm font-semibold text-text-primary mb-3">Visibility & Content</h4>
+                <h4 className="text-sm font-semibold text-text-primary mb-3">Visibility</h4>
                 
                 <div className="space-y-4">
                   <div className="flex items-center justify-between">
                     <div className="flex-1">
                       <p className="text-sm font-medium text-text-primary mb-1">Public Content</p>
                       <p className="text-xs text-text-secondary">
-                        Make this content visible on the public feed
+                        Make this content visible on the public feed. Use Share Settings to manage NSFW classification.
                       </p>
                     </div>
                     <button
@@ -7010,34 +7005,6 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
                         className={`
                           inline-block h-4 w-4 transform rounded-full bg-white transition-transform
                           ${editForm.isPublic ? 'translate-x-6' : 'translate-x-1'}
-                        `}
-                      />
-                    </button>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <div className="flex-1">
-                      <p className={`text-sm font-medium ${!editForm.isPublic ? 'text-text-secondary' : 'text-text-primary'} mb-1`}>NSFW Content</p>
-                      <p className="text-xs text-text-secondary">
-                        Mark this content as Not Safe For Work (18+)
-                        {!editForm.isPublic && <span className="block mt-1 text-orange-400">Must be public to mark as NSFW</span>}
-                      </p>
-                    </div>
-                    <button
-                      type="button"
-                      role="switch"
-                      aria-checked={editForm.isNSFW}
-                      onClick={() => editForm.isPublic && setEditForm({ ...editForm, isNSFW: !editForm.isNSFW })}
-                      disabled={!editForm.isPublic}
-                      className={`
-                        relative inline-flex h-6 w-11 items-center rounded-full transition-colors
-                        ${editForm.isNSFW ? 'bg-red-600' : 'bg-neutral-700'}
-                        ${!editForm.isPublic ? 'opacity-50 cursor-not-allowed' : ''}
-                      `}
-                    >
-                      <span
-                        className={`
-                          inline-block h-4 w-4 transform rounded-full bg-white transition-transform
-                          ${editForm.isNSFW ? 'translate-x-6' : 'translate-x-1'}
                         `}
                       />
                     </button>
