@@ -5262,6 +5262,91 @@ class ProductionServer {
           }
         }
 
+        // Check if user has age_attestation ZKP available (only for browser-app)
+        // Only include age permission in optionalDataPoints if user actually has age ZKP
+        let hasAgeZKP = false;
+        let availableOptionalDataPoints: string[] = [];
+        
+        if (client_id === 'browser-app' && pnName && passcode && public_key) {
+          try {
+            // Derive pN identifier to check for age ZKP
+            const combined = `${pnName}:${passcode}:${public_key}`;
+            const crypto = await import('crypto');
+            const utf8Bytes = Buffer.from(combined, 'utf8');
+            const hash = crypto.createHash('sha256').update(utf8Bytes).digest('hex');
+            const shortHash = hash.substring(0, 12);
+            const pnIdentifier = `pn-${shortHash}`;
+            const normalizedPnIdentifier = pnIdentifier.startsWith('pn-') ? pnIdentifier : `pn-${pnIdentifier}`;
+
+            // Get user's credentials to check for age ZKP
+            const { googleDriveProxyService } = await import('./server/modules/googleDriveProxy');
+            const { storageCredentialsService } = await import('./server/modules/storageCredentialsService');
+            const { ZKPDataPointsService } = await import('./server/modules/zkpDataPointsService');
+            
+            const userCredentials = await storageCredentialsService.getCredentials(normalizedPnIdentifier);
+            
+            if (userCredentials?.credentials) {
+              const googleDriveAccounts = userCredentials.credentials.googleDriveAccounts || 
+                (userCredentials.credentials.googleDrive ? [userCredentials.credentials.googleDrive] : []);
+              
+              if (googleDriveAccounts.length > 0) {
+                const account = googleDriveAccounts[0];
+                const accountId = (account as any).accountId || (account as any).id;
+                const userAccessToken = await googleDriveProxyService.getAccessToken(normalizedPnIdentifier, accountId);
+                
+                // Find pN folder and _metadata folder
+                const pnFolderName = `par Noir - ${pnIdentifier}`;
+                const pnFolderSearchQuery = `name='${pnFolderName.replace(/'/g, "\\'")}' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
+                const pnFolderSearchUrl = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(pnFolderSearchQuery)}&fields=files(id,name)&pageSize=1`;
+                
+                const pnFolderResponse = await fetch(pnFolderSearchUrl, {
+                  headers: { 'Authorization': `Bearer ${userAccessToken}` }
+                });
+                
+                if (pnFolderResponse.ok) {
+                  const pnFolderData = await pnFolderResponse.json() as { files?: Array<{ id: string; name: string }> };
+                  if (pnFolderData.files && pnFolderData.files.length > 0) {
+                    const pnFolderId = pnFolderData.files[0].id;
+                    
+                    // Find _metadata folder
+                    const metadataFolderName = '_metadata';
+                    const metadataSearchQuery = `name='${metadataFolderName}' and '${pnFolderId}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`;
+                    const metadataSearchUrl = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(metadataSearchQuery)}&fields=files(id)&pageSize=1`;
+                    
+                    const metadataFolderResponse = await fetch(metadataSearchUrl, {
+                      headers: { 'Authorization': `Bearer ${userAccessToken}` }
+                    });
+                    
+                    if (metadataFolderResponse.ok) {
+                      const metadataFolderData = await metadataFolderResponse.json() as { files?: Array<{ id: string }> };
+                      if (metadataFolderData.files && metadataFolderData.files.length > 0) {
+                        const metadataFolderId = metadataFolderData.files[0].id;
+                        
+                        // Check if user has age_attestation ZKP
+                        const availableDataPoints = await ZKPDataPointsService.getAvailableDataPoints(
+                          userAccessToken,
+                          metadataFolderId
+                        );
+                        
+                        hasAgeZKP = availableDataPoints.some(dp => dp.dataPointId === 'age_attestation');
+                        console.log(`[OAuth Auth] User ${pnIdentifier} has age ZKP: ${hasAgeZKP}`);
+                        
+                        // Only include age_attestation in optional data points if user has it
+                        if (hasAgeZKP) {
+                          availableOptionalDataPoints = ['age_attestation'];
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          } catch (ageCheckError: any) {
+            // Log but don't fail - age check is optional
+            console.log('[OAuth Auth] Could not check for age ZKP:', ageCheckError?.message || ageCheckError);
+          }
+        }
+
         // Generate authorization code
         // Store public_key, pnName, and passcode so we can derive pN identifier using VolumeIdGenerator
         const scopes = scope ? scope.split(' ') : ['openid', 'profile'];
@@ -5277,11 +5362,12 @@ class ProductionServer {
           passcode: passcode // Store passcode for VolumeIdGenerator (temporarily, not persisted)
         });
 
-        // Return authorization code and existing permissions (if any)
+        // Return authorization code, existing permissions, and available optional data points
         return res.json({
           code,
           state: state || undefined,
-          existingPermissions // Include existing permissions if found
+          existingPermissions, // Include existing permissions if found
+          availableOptionalDataPoints: availableOptionalDataPoints.length > 0 ? availableOptionalDataPoints : undefined // Only include if user has age ZKP
         });
       } catch (error: any) {
         console.error('OAuth authentication error:', error);
@@ -5397,8 +5483,33 @@ class ProductionServer {
                             dataPoints = dataPoints.filter(dp => dp !== 'age_attestation');
                           }
                           
-                          // Static: requiredDataPoints and optionalDataPoints are always the same
-                          // These are defined by the third party and never change
+                          // Check if user has age ZKP before including it in optionalDataPoints
+                          // We need to check again here because we might not have checked during /oauth/auth
+                          let userHasAgeZKP = false;
+                          let optionalDataPointsForUser: string[] = [];
+                          
+                          try {
+                            const { ZKPDataPointsService } = await import('./server/modules/zkpDataPointsService');
+                            const availableDataPoints = await ZKPDataPointsService.getAvailableDataPoints(
+                              userAccessToken,
+                              metadataFolderId
+                            );
+                            userHasAgeZKP = availableDataPoints.some(dp => dp.dataPointId === 'age_attestation');
+                            
+                            // Only include age_attestation in optionalDataPoints if user actually has it
+                            if (userHasAgeZKP) {
+                              optionalDataPointsForUser = ['age_attestation'];
+                            }
+                            
+                            console.log(`[OAuth Token] User has age ZKP: ${userHasAgeZKP}, optionalDataPoints:`, optionalDataPointsForUser);
+                          } catch (ageCheckError: any) {
+                            console.log('[OAuth Token] Could not check for age ZKP:', ageCheckError?.message || ageCheckError);
+                            // If check fails, default to empty (don't show age permission)
+                            optionalDataPointsForUser = [];
+                          }
+                          
+                          // Static: requiredDataPoints is always empty
+                          // optionalDataPoints is dynamic based on what user actually has
                           permissions['browser-app'] = {
                             toolId: 'browser-app',
                             toolName: 'par Noir Browser',
@@ -5406,7 +5517,7 @@ class ProductionServer {
                             permissions: existingBrowserApp?.permissions || ['openid', 'profile', 'cloud:read'],
                             dataPoints: dataPoints, // User's granted permissions (can change)
                             requiredDataPoints: [], // Static: No required data points for browser
-                            optionalDataPoints: ['age_attestation'], // Static: Age is always optional
+                            optionalDataPoints: optionalDataPointsForUser, // Dynamic: Only include age if user has age ZKP
                             grantedAt: existingBrowserApp?.grantedAt || new Date().toISOString(),
                             status: 'active' as const
                           };
