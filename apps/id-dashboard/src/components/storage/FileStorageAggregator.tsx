@@ -3083,6 +3083,10 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
           // Create a set of file IDs that actually exist in Google Drive
           const existingFileIds = new Set(scannedFiles.map((f: any) => f.id));
           
+          // Create a set of file IDs that are in the owner index
+          const ownerIndexFileIds = new Set(ownerIndex.files.map((entry: any) => entry.googleDriveFileId).filter(Boolean));
+          
+          // Files from owner index that exist in Drive
           filesForBackend = ownerIndex.files
             .filter((entry: any) => {
               // Filter out orphaned entries that don't exist in Google Drive
@@ -3119,6 +3123,54 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
                 aggregatedAt: entry.uploadedAt || new Date().toISOString(),
               };
             });
+          
+          // IMPORTANT: Also include files from Drive scan that aren't in the owner index
+          // This ensures PDFs, thoughts, and other files uploaded directly to Drive are shown
+          const filesNotInIndex = scannedFiles.filter((scannedFile: any) => {
+            return !ownerIndexFileIds.has(scannedFile.id);
+          });
+          
+          if (filesNotInIndex.length > 0) {
+            console.warn(`[FileStorageAggregator] Found ${filesNotInIndex.length} file(s) in Drive that aren't in owner index`, {
+              backendId,
+              fileNames: filesNotInIndex.map((f: any) => f.name).slice(0, 10)
+            });
+            
+            // Check for PDFs and thoughts in files not in index
+            const pdfFilesNotInIndex = filesNotInIndex.filter((f: any) => {
+              const name = (f.name || '').toLowerCase();
+              return name.endsWith('.pdf') || name.includes('.pdf.encrypted') || f.mimeType === 'application/pdf';
+            });
+            const thoughtFilesNotInIndex = filesNotInIndex.filter((f: any) => {
+              const name = (f.name || '').toLowerCase().replace(/\.encrypted$/i, '');
+              return /^thought-\d+\.png$/i.test(name);
+            });
+            
+            if (pdfFilesNotInIndex.length > 0) {
+              console.warn(`[FileStorageAggregator] Found ${pdfFilesNotInIndex.length} PDF file(s) not in index:`, pdfFilesNotInIndex.map((f: any) => f.name));
+            }
+            if (thoughtFilesNotInIndex.length > 0) {
+              console.warn(`[FileStorageAggregator] Found ${thoughtFilesNotInIndex.length} thought file(s) not in index:`, thoughtFilesNotInIndex.map((f: any) => f.name));
+            }
+            
+            // Add files not in index to filesForBackend
+            const additionalFiles = filesNotInIndex.map((file: any) => ({
+              id: file.id,
+              backend: backendId,
+              backendFileId: file.id,
+              name: file.name,
+              originalName: file.originalName || file.name.replace('.encrypted', ''),
+              mimeType: file.mimeType,
+              size: file.size?.toString() || '0',
+              encrypted: file.name.endsWith('.encrypted'),
+              visibility: 'private' as const,
+              aggregatedAt: file.modifiedTime || new Date().toISOString(),
+            }));
+            
+            filesForBackend.push(...additionalFiles);
+            filesNeedingMetadata.push(...additionalFiles);
+            console.warn(`[FileStorageAggregator] Added ${additionalFiles.length} file(s) from Drive scan that weren't in owner index`);
+          }
 
           // Process metadata from owner index, filtering out orphaned entries
           // Reuse existingFileIds from above
