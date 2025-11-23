@@ -114,7 +114,7 @@ export function useFeedNavigation(
 
       // 2. Niche Feeds (up to 20)
       const nicheFeeds = feeds
-        .filter(feed => feed.feedCategory && feed.feedCategory !== 'adults-only')
+        .filter(feed => feed.feedCategory)
         .slice(0, 20);
       
       nicheFeeds.forEach((feed, idx) => {

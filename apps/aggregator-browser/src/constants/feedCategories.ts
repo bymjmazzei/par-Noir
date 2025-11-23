@@ -1,6 +1,6 @@
 /**
  * Feed Category Constants
- * Defines the 20 initial niche categories for curated feeds
+ * Defines the 9 content type categories for curated feeds
  */
 
 import { FeedCategory } from '../types/aggregator';
@@ -13,105 +13,50 @@ export interface FeedCategoryInfo {
 }
 
 export const FEED_CATEGORIES: Record<FeedCategory, FeedCategoryInfo> = {
-  'beauty-fashion': {
-    id: 'beauty-fashion',
-    name: 'Beauty & Fashion',
-    description: 'Makeup tutorials, fashion trends, skincare, style inspiration'
+  'entertainment': {
+    id: 'entertainment',
+    name: 'Entertainment',
+    description: 'Movies, TV shows, music, games, and other entertainment content'
   },
-  'sports-fitness': {
-    id: 'sports-fitness',
-    name: 'Sports & Fitness',
-    description: 'Athletic performance, workout routines, sports highlights, nutrition'
+  'education': {
+    id: 'education',
+    name: 'Education',
+    description: 'Educational content, tutorials, courses, and learning resources'
   },
-  'tv-film-entertainment': {
-    id: 'tv-film-entertainment',
-    name: 'TV, Film & Entertainment',
-    description: 'Movie reviews, TV show discussions, celebrity news, trailers'
+  'news': {
+    id: 'news',
+    name: 'News',
+    description: 'Current events, breaking news, and journalism'
   },
-  'music-performing-arts': {
-    id: 'music-performing-arts',
-    name: 'Music & Performing Arts',
-    description: 'Music production, concerts, dance, theater, album reviews'
+  'opinion': {
+    id: 'opinion',
+    name: 'Opinion',
+    description: 'Opinions, commentary, reviews, and personal perspectives'
   },
-  'gaming-esports': {
-    id: 'gaming-esports',
-    name: 'Gaming & Esports',
-    description: 'Game reviews, esports tournaments, streaming, game development'
+  'promotion': {
+    id: 'promotion',
+    name: 'Promotion',
+    description: 'Marketing, advertising, product promotions, and sponsored content'
   },
-  'technology-gadgets': {
-    id: 'technology-gadgets',
-    name: 'Technology & Gadgets',
-    description: 'Tech reviews, gadget unboxings, software tutorials, AI/ML'
+  'art': {
+    id: 'art',
+    name: 'Art',
+    description: 'Visual art, digital art, photography, and creative works'
   },
-  'home-interior-design': {
-    id: 'home-interior-design',
-    name: 'Home & Interior Design',
-    description: 'Home decor, DIY projects, renovation, organization, architecture'
+  'community': {
+    id: 'community',
+    name: 'Community',
+    description: 'Community events, discussions, social connections, and group activities'
   },
-  'food-culinary': {
-    id: 'food-culinary',
-    name: 'Food & Culinary',
-    description: 'Recipes, restaurant reviews, cooking tutorials, food photography'
+  'ideology': {
+    id: 'ideology',
+    name: 'Ideology',
+    description: 'Political views, beliefs, philosophy, and ideological content'
   },
-  'travel-adventure': {
-    id: 'travel-adventure',
-    name: 'Travel & Adventure',
-    description: 'Travel guides, destination reviews, adventure sports, photography'
-  },
-  'wellness-mental-health': {
-    id: 'wellness-mental-health',
-    name: 'Wellness & Mental Health',
-    description: 'Meditation, therapy, self-care, mindfulness, holistic health'
-  },
-  'business-entrepreneurship': {
-    id: 'business-entrepreneurship',
-    name: 'Business & Entrepreneurship',
-    description: 'Startup advice, business strategies, marketing, finance'
-  },
-  'science-education': {
-    id: 'science-education',
-    name: 'Science & Education',
-    description: 'Educational content, scientific discoveries, tutorials, research'
-  },
-  'art-design': {
-    id: 'art-design',
-    name: 'Art & Design',
-    description: 'Digital art, traditional art, graphic design, illustration'
-  },
-  'diy-maker-culture': {
-    id: 'diy-maker-culture',
-    name: 'DIY & Maker Culture',
-    description: 'Crafts, woodworking, electronics, 3D printing, repairs'
-  },
-  'parenting-family-life': {
-    id: 'parenting-family-life',
-    name: 'Parenting & Family Life',
-    description: 'Parenting advice, family activities, child development'
-  },
-  'eco-sustainability': {
-    id: 'eco-sustainability',
-    name: 'Eco & Sustainability',
-    description: 'Environmentalism, sustainable living, climate action, zero waste'
-  },
-  'finance-investing': {
-    id: 'finance-investing',
-    name: 'Finance & Investing',
-    description: 'Personal finance, investing strategies, crypto, real estate'
-  },
-  'motors-automotive': {
-    id: 'motors-automotive',
-    name: 'Motors & Automotive',
-    description: 'Car reviews, modifications, racing, motorcycles, restoration'
-  },
-  'humor-meme-culture': {
-    id: 'humor-meme-culture',
-    name: 'Humor & Meme Culture',
-    description: 'Memes, comedy sketches, parodies, internet humor'
-  },
-  'adults-only': {
-    id: 'adults-only',
-    name: 'Adults Only (18+)',
-    description: 'Umbrella category for all 18+ restricted content'
+  'lifestyle': {
+    id: 'lifestyle',
+    name: 'Lifestyle',
+    description: 'Fashion, food, travel, wellness, home, and lifestyle content'
   }
 };
 
@@ -130,4 +75,3 @@ export function getFeedCategory(categoryId: FeedCategory): FeedCategoryInfo {
 export function getAllFeedCategories(): FeedCategoryInfo[] {
   return FEED_CATEGORY_LIST;
 }
-

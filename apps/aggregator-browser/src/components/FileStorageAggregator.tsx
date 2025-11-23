@@ -2333,7 +2333,6 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
                     >
                       <option value="">Select a category</option>
                       {FEED_CATEGORY_LIST
-                        .filter(cat => cat.id !== 'adults-only' || userState.preferences.ageVerified)
                         .map(category => (
                           <option key={category.id} value={category.id}>
                             {category.name}

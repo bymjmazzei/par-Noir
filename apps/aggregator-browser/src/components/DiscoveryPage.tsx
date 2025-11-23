@@ -524,7 +524,6 @@ export function DiscoveryPage({
           </button>
           
           {Object.values(FEED_CATEGORIES)
-            .filter(cat => cat.id !== 'adults-only' || userState.preferences.ageVerified)
             .map(category => {
               const isActive = selectedNiche === category.id;
               return (

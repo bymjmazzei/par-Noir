@@ -7,26 +7,15 @@ import { getDatabasePool } from '../utils/database';
 
 // Types (duplicated from frontend to avoid circular dependencies)
 export type FeedCategory =
-  | 'beauty-fashion'
-  | 'sports-fitness'
-  | 'tv-film-entertainment'
-  | 'music-performing-arts'
-  | 'gaming-esports'
-  | 'technology-gadgets'
-  | 'home-interior-design'
-  | 'food-culinary'
-  | 'travel-adventure'
-  | 'wellness-mental-health'
-  | 'business-entrepreneurship'
-  | 'science-education'
-  | 'art-design'
-  | 'diy-maker-culture'
-  | 'parenting-family-life'
-  | 'eco-sustainability'
-  | 'finance-investing'
-  | 'motors-automotive'
-  | 'humor-meme-culture'
-  | 'adults-only';
+  | 'entertainment'
+  | 'education'
+  | 'news'
+  | 'opinion'
+  | 'promotion'
+  | 'art'
+  | 'community'
+  | 'ideology'
+  | 'lifestyle';
 
 // ContentRating removed - feeds now accept all content (public and NSFW based on user preferences)
 
@@ -766,7 +755,7 @@ export class FeedService {
     return {
       feedId: row.feed_id,
       feedName: row.feed_name,
-      feedCategory: (row.feed_category as FeedCategory) || 'beauty-fashion', // Default category
+      feedCategory: (row.feed_category as FeedCategory) || 'lifestyle', // Default category
       feedDescription: row.feed_description || undefined,
       // feedRatingRange removed - feeds accept all content
       creatorId: row.creator_did,

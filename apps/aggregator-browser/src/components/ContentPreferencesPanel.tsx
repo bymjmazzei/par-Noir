@@ -296,9 +296,7 @@ export function ContentPreferencesPanel({ onClose }: ContentPreferencesPanelProp
                 </div>
               ) : (
                 <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3 max-h-96 overflow-y-auto">
-                  {FEED_CATEGORY_LIST.filter(cat => 
-                    cat.id !== 'adults-only' || userState.preferences.isOver18
-                  ).map(category => {
+                  {FEED_CATEGORY_LIST.map(category => {
                     const isSubscribed = isSubscribedToCategory(category.id);
 
                     return (
@@ -365,7 +363,7 @@ export function ContentPreferencesPanel({ onClose }: ContentPreferencesPanelProp
                       className="w-full px-4 py-2 bg-neutral-900 border border-neutral-700 rounded-lg text-white focus:outline-none focus:border-blue-500"
                     >
                       <option value="">All Categories</option>
-                      {FEED_CATEGORY_LIST.filter(cat => cat.id !== 'adults-only' || userState.preferences.isOver18).map(cat => (
+                      {FEED_CATEGORY_LIST.map(cat => (
                         <option key={cat.id} value={cat.id}>{cat.name}</option>
                       ))}
                     </select>

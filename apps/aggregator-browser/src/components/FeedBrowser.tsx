@@ -263,7 +263,6 @@ export function FeedBrowser({ feeds, onClose, onFeedClick, onCreateFeed }: FeedB
             >
               <option value="all">All Categories</option>
               {categories
-                .filter(cat => cat.category !== 'adults-only' || userState.preferences.ageVerified)
                 .map(({ category, count }) => {
                   const catInfo = FEED_CATEGORIES[category];
                   return (
@@ -297,7 +296,6 @@ export function FeedBrowser({ feeds, onClose, onFeedClick, onCreateFeed }: FeedB
               {viewMode === 'categories' && selectedCategory === 'all' && !searchQuery && (
                 <div className="space-y-8">
                   {categories
-                    .filter(cat => cat.category !== 'adults-only' || userState.preferences.ageVerified)
                     .map(({ category, count }) => {
                       const catFeeds = categoryFeeds.get(category) || [];
                       const catInfo = FEED_CATEGORIES[category];

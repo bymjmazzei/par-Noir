@@ -167,7 +167,6 @@ export function CreateFeedModal({ onClose, onFeedCreated }: CreateFeedModalProps
             >
               <option value="">Select a category (optional)</option>
               {getAllFeedCategories()
-                .filter(cat => cat.id !== 'adults-only' || userState.preferences.ageVerified)
                 .map(category => (
                   <option key={category.id} value={category.id}>
                     {category.name}

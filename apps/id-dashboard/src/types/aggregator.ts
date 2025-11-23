@@ -64,26 +64,15 @@ export interface EncryptedFilePackage {
 }
 
 export type FeedCategory =
-  | 'beauty-fashion'
-  | 'sports-fitness'
-  | 'tv-film-entertainment'
-  | 'music-performing-arts'
-  | 'gaming-esports'
-  | 'technology-gadgets'
-  | 'home-interior-design'
-  | 'food-culinary'
-  | 'travel-adventure'
-  | 'wellness-mental-health'
-  | 'business-entrepreneurship'
-  | 'science-education'
-  | 'art-design'
-  | 'diy-maker-culture'
-  | 'parenting-family-life'
-  | 'eco-sustainability'
-  | 'finance-investing'
-  | 'motors-automotive'
-  | 'humor-meme-culture'
-  | 'adults-only';
+  | 'entertainment'
+  | 'education'
+  | 'news'
+  | 'opinion'
+  | 'promotion'
+  | 'art'
+  | 'community'
+  | 'ideology'
+  | 'lifestyle';
 
 // ContentRating removed - using isNSFW boolean instead
 
