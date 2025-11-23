@@ -84,7 +84,7 @@ export function PDFSlideshow({ fileId, publicToken, fileName }: PDFSlideshowProp
   const [renderedPages, setRenderedPages] = useState<Map<number, string>>(new Map());
 
   useEffect(() => {
-    if (!pdfUrl || pages.length === 0) return;
+    if (!pdfBlob || pages.length === 0) return;
 
     const renderPages = async () => {
       try {
@@ -136,7 +136,7 @@ export function PDFSlideshow({ fileId, publicToken, fileName }: PDFSlideshowProp
     };
 
     renderPages();
-  }, [pdfUrl, pages]);
+  }, [pdfBlob, pages]);
 
   // Scroll to current page
   useEffect(() => {
