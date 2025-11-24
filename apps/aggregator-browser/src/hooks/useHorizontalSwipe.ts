@@ -42,7 +42,10 @@ export function useHorizontalSwipe({
   }, [onSwipeLeft, onSwipeRight]);
 
   useEffect(() => {
-    if (!enabled) return;
+    if (!enabled) {
+      console.log('[useHorizontalSwipe] Hook disabled');
+      return;
+    }
 
     const handleTouchStart = (e: TouchEvent) => {
       const touch = e.touches[0];
@@ -51,6 +54,7 @@ export function useHorizontalSwipe({
         y: touch.clientY,
         time: Date.now()
       };
+      console.log('[useHorizontalSwipe] Touch start:', { x: touch.clientX, y: touch.clientY });
     };
 
     const handleTouchMove = (e: TouchEvent) => {
@@ -81,11 +85,25 @@ export function useHorizontalSwipe({
       const deltaTime = Date.now() - touchStartRef.current.time;
       const viewportWidth = window.innerWidth;
 
+      console.log('[useHorizontalSwipe] Touch end:', { 
+        deltaX, 
+        deltaY, 
+        deltaTime, 
+        absDeltaX: Math.abs(deltaX),
+        absDeltaY: Math.abs(deltaY),
+        threshold,
+        percentageMoved: Math.abs(deltaX) / viewportWidth,
+        snapThreshold
+      });
+
       // Reset
       touchStartRef.current = null;
 
       // Ignore if too slow (not a swipe)
-      if (deltaTime > 300) return;
+      if (deltaTime > 300) {
+        console.log('[useHorizontalSwipe] Swipe too slow, ignoring');
+        return;
+      }
 
       // Check if horizontal movement is dominant
       const absDeltaX = Math.abs(deltaX);
@@ -95,6 +113,7 @@ export function useHorizontalSwipe({
       // This allows horizontal swipes even when there's some vertical scrolling
       if (absDeltaX <= absDeltaY * 1.5) {
         // Vertical movement is dominant, ignore
+        console.log('[useHorizontalSwipe] Vertical movement dominant, ignoring');
         return;
       }
 
@@ -105,26 +124,30 @@ export function useHorizontalSwipe({
       if (absDeltaX > threshold && percentageMoved >= snapThreshold) {
         if (deltaX < 0 && onSwipeLeft) {
           // Swipe left (negative deltaX) = next feed
+          console.log('[useHorizontalSwipe] Triggering swipe LEFT');
           handleSwipe('left');
         } else if (deltaX > 0 && onSwipeRight) {
           // Swipe right (positive deltaX) = previous feed
+          console.log('[useHorizontalSwipe] Triggering swipe RIGHT');
           handleSwipe('right');
         }
+      } else {
+        console.log('[useHorizontalSwipe] Swipe threshold not met:', { absDeltaX, threshold, percentageMoved, snapThreshold });
       }
     };
 
-    // Use a function to get current element - this ensures we always use the latest ref value
-    const attachListeners = () => {
-      const element = elementRef.current || document;
-      element.addEventListener('touchstart', handleTouchStart, { passive: true });
-      element.addEventListener('touchmove', handleTouchMove, { passive: false });
-      element.addEventListener('touchend', handleTouchEnd, { passive: true });
-      return element;
-    };
-
-    const element = attachListeners();
+    // Get the current element - check periodically to handle ref changes
+    const getElement = () => elementRef.current || document;
+    
+    const element = getElement();
+    console.log('[useHorizontalSwipe] Attaching listeners to:', element === document ? 'document' : 'element', elementRef.current ? 'has ref' : 'no ref');
+    
+    element.addEventListener('touchstart', handleTouchStart, { passive: true });
+    element.addEventListener('touchmove', handleTouchMove, { passive: false });
+    element.addEventListener('touchend', handleTouchEnd, { passive: true });
 
     return () => {
+      console.log('[useHorizontalSwipe] Removing listeners');
       element.removeEventListener('touchstart', handleTouchStart);
       element.removeEventListener('touchmove', handleTouchMove);
       element.removeEventListener('touchend', handleTouchEnd);

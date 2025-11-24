@@ -1604,11 +1604,21 @@ export function FullScreenFeed({
               // Only attach swipe ref if this PDF is currently visible
               const isVisiblePdf = visibleFileId === fileId;
               
+              console.log(`[FullScreenFeed] Rendering PDF ${fileId}, isVisiblePdf: ${isVisiblePdf}, visibleFileId: ${visibleFileId}`);
+              
               return (
                 <div
-                  ref={isVisiblePdf ? pdfHorizontalSwipeRef : undefined}
+                  ref={(el) => {
+                    // Always update ref, but hook will check visibility
+                    if (el) {
+                      (pdfHorizontalSwipeRef as any).current = el;
+                      console.log(`[FullScreenFeed] PDF ref attached for ${fileId}, isVisiblePdf: ${isVisiblePdf}`);
+                    } else {
+                      (pdfHorizontalSwipeRef as any).current = null;
+                    }
+                  }}
                   className="w-full h-full relative"
-                  style={{ touchAction: 'pan-y' }} // Allow vertical scrolling but enable horizontal swipe
+                  style={{ touchAction: 'pan-y pan-x' }} // Allow both vertical and horizontal panning
                 >
                   {/* Blurred background PDF page */}
                   <img
