@@ -576,25 +576,36 @@ export function ImageSlideshow({ fileId, fileName, accountId, pdfFileId }: Image
       }
     }, [pdfFileId]);
 
-  // Load all thumbnails in parallel (they're small ~50KB each, so load all at once)
+  // Load thumbnails sequentially (like the feed) to avoid blocking UI with decryption
+  // Decryption is CPU-intensive and blocks the main thread, so sequential loading feels smoother
   useEffect(() => {
     if (folderPageFiles.length === 0) return;
+    
+    let cancelled = false;
     
     (async () => {
       const finalAccountId = await fetchAccountIdOnce();
       
-      // Load all thumbnails in parallel for instant slideshow navigation
-      // Thumbnails are small (~50KB), so loading all at once is fine
-      const thumbnailPromises = folderPageFiles.map(pageFile => 
-        loadImagePage(pageFile, finalAccountId, false) // Load thumbnails
-      );
+      // Load first page immediately for instant display
+      if (folderPageFiles.length > 0 && !cancelled) {
+        await loadImagePage(folderPageFiles[0], finalAccountId, false);
+      }
       
-      // Don't await all - let them load in parallel
-      // First page will appear quickly, others will follow
-      Promise.all(thumbnailPromises).catch(err => {
-        console.warn('[ImageSlideshow] Some thumbnails failed to load:', err);
-      });
+      // Load remaining pages sequentially in background (non-blocking)
+      // This matches the feed's behavior - smooth scrolling, no UI blocking
+      for (let i = 1; i < folderPageFiles.length; i++) {
+        if (cancelled) break;
+        
+        // Small delay between loads to prevent UI blocking
+        // Decryption is CPU-intensive, so spacing it out feels smoother
+        await new Promise(resolve => setTimeout(resolve, 100));
+        await loadImagePage(folderPageFiles[i], finalAccountId, false);
+      }
     })();
+    
+    return () => {
+      cancelled = true;
+    };
   }, [folderPageFiles, accountId, loadImagePage]);
 
   // Horizontal swipe navigation
