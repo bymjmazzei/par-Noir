@@ -202,13 +202,17 @@ export async function createTextPost(
       throw new Error('No publicKey available for encryption. Please unlock your pN.');
     }
 
-    // Render text post to blob
-    console.log('🎨 [TextPost] Rendering text post to image...');
-    const imageBlob = await renderTextPostToBlob(textPost);
-
-    // Create file from blob
-    const fileName = `thought-${Date.now()}.png`;
-    const file = new File([imageBlob], fileName, { type: 'image/png' });
+    // Store thought as JSON with raw HTML/CSS data (not PNG)
+    // Thoughts are rendered on the client side for display
+    const thoughtData = {
+      textPost: textPost,
+      version: '1.0',
+      createdAt: new Date().toISOString()
+    };
+    
+    const fileName = `thought-${Date.now()}.thought`;
+    const fileContent = JSON.stringify(thoughtData);
+    const file = new File([fileContent], fileName, { type: 'application/json' });
 
     console.log('📤 [TextPost] Starting upload...', { fileName, fileSize: file.size });
 
@@ -333,7 +337,7 @@ export async function createTextPost(
         description: metadata?.description || textPost.content,
         keywords: metadata?.keywords || [],
         tags: metadata?.tags || [],
-        fileType: 'text', // Mark as text type
+        fileType: 'thought', // Custom filetype for thoughts (not PNG)
         isPublic: metadata?.isPublic ?? true, // Thoughts are public by default
         publicToken: shareToken ? JSON.stringify(shareToken) : undefined,
         uploadDate: new Date().toISOString(),
