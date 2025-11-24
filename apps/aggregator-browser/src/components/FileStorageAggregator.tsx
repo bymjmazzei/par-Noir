@@ -1955,6 +1955,204 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
 
   const hasConnectedBackends = driveAccounts.length > 0;
 
+  // Thumbnail generation helpers (defined inside component to ensure scope)
+  const createThumbnailFromBlobLocal = async (blob: Blob, maxWidth: number, maxHeight: number): Promise<Blob> => {
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      const url = URL.createObjectURL(blob);
+      
+      img.onload = () => {
+        URL.revokeObjectURL(url);
+        
+        const canvas = document.createElement('canvas');
+        let width = img.width;
+        let height = img.height;
+        
+        // Calculate dimensions maintaining aspect ratio
+        if (width > height) {
+          if (width > maxWidth) {
+            height = (height * maxWidth) / width;
+            width = maxWidth;
+          }
+        } else {
+          if (height > maxHeight) {
+            width = (width * maxHeight) / height;
+            height = maxHeight;
+          }
+        }
+        
+        canvas.width = width;
+        canvas.height = height;
+        
+        const ctx = canvas.getContext('2d');
+        if (!ctx) {
+          reject(new Error('Failed to get canvas context'));
+          return;
+        }
+        
+        ctx.drawImage(img, 0, 0, width, height);
+        
+        canvas.toBlob((thumbnailBlob) => {
+          if (thumbnailBlob) {
+            resolve(thumbnailBlob);
+          } else {
+            reject(new Error('Failed to create thumbnail blob'));
+          }
+        }, 'image/jpeg', 0.8);
+      };
+      
+      img.onerror = () => {
+        URL.revokeObjectURL(url);
+        reject(new Error('Failed to load image for thumbnail'));
+      };
+      
+      img.src = url;
+    });
+  };
+
+  const createVideoThumbnailLocal = async (videoFile: File, maxWidth: number, maxHeight: number): Promise<Blob> => {
+    return new Promise((resolve, reject) => {
+      const video = document.createElement('video');
+      const url = URL.createObjectURL(videoFile);
+      
+      video.onloadedmetadata = () => {
+        // Seek to 1 second or first frame
+        video.currentTime = Math.min(1, video.duration / 2);
+      };
+      
+      video.onseeked = () => {
+        const canvas = document.createElement('canvas');
+        let width = video.videoWidth;
+        let height = video.videoHeight;
+        
+        // Calculate dimensions maintaining aspect ratio
+        if (width > height) {
+          if (width > maxWidth) {
+            height = (height * maxWidth) / width;
+            width = maxWidth;
+          }
+        } else {
+          if (height > maxHeight) {
+            width = (width * maxHeight) / height;
+            height = maxHeight;
+          }
+        }
+        
+        canvas.width = width;
+        canvas.height = height;
+        
+        const ctx = canvas.getContext('2d');
+        if (!ctx) {
+          URL.revokeObjectURL(url);
+          reject(new Error('Failed to get canvas context'));
+          return;
+        }
+        
+        ctx.drawImage(video, 0, 0, width, height);
+        
+        canvas.toBlob((thumbnailBlob) => {
+          URL.revokeObjectURL(url);
+          if (thumbnailBlob) {
+            resolve(thumbnailBlob);
+          } else {
+            reject(new Error('Failed to create video thumbnail blob'));
+          }
+        }, 'image/jpeg', 0.8);
+      };
+      
+      video.onerror = () => {
+        URL.revokeObjectURL(url);
+        reject(new Error('Failed to load video for thumbnail'));
+      };
+      
+      video.preload = 'metadata';
+      video.muted = true;
+      video.playsInline = true;
+      video.src = url;
+    });
+  };
+
+  const uploadThumbnailLocal = async (
+    thumbnailBlob: Blob,
+    originalFileName: string,
+    encryptionManager: EncryptionManager,
+    session: any,
+    publicKey: string,
+    accessToken: string,
+    accountId: string
+  ): Promise<string | undefined> => {
+    try {
+      console.log('🖼️ [Upload] Generating thumbnail...');
+      
+      // Encrypt thumbnail
+      const thumbnailArrayBuffer = await thumbnailBlob.arrayBuffer();
+      const thumbnailData = new Uint8Array(thumbnailArrayBuffer);
+      const encryptedThumbnail = await encryptionManager.encrypt(
+        thumbnailData,
+        session.did,
+        publicKey
+      );
+      
+      // Create encrypted thumbnail package
+      const thumbnailPackage: EncryptedFilePackage = {
+        encrypted: encryptedThumbnail.encrypted,
+        iv: encryptedThumbnail.iv,
+        salt: encryptedThumbnail.salt,
+        metadata: {
+          originalName: `thumb_${originalFileName}`,
+          originalSize: thumbnailBlob.size,
+          originalMimeType: 'image/jpeg', // Thumbnails are always JPEG
+        },
+      };
+      
+      // Convert to base64
+      const thumbnailBlobJson = new Blob([JSON.stringify(thumbnailPackage)], {
+        type: 'application/json',
+      });
+      
+      const thumbnailBase64 = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => {
+          const result = reader.result as string;
+          resolve(result.includes(',') ? result.split(',')[1] : result);
+        };
+        reader.onerror = () => reject(new Error('Failed to read thumbnail'));
+        reader.readAsDataURL(thumbnailBlobJson);
+      });
+      
+      // Upload encrypted thumbnail
+      const thumbnailFileName = `thumb_${originalFileName}.encrypted`;
+      const thumbnailResponse = await fetch(`${apiEndpoint}/api/drive/files`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${accessToken}`
+        },
+        body: JSON.stringify({
+          fileData: thumbnailBase64,
+          fileName: thumbnailFileName,
+          mimeType: 'application/json',
+          accountId: accountId
+        })
+      });
+      
+      if (thumbnailResponse.ok) {
+        const thumbnailResult = await thumbnailResponse.json();
+        const thumbnailFileId = thumbnailResult.file?.id;
+        if (thumbnailFileId) {
+          console.log('✅ [Upload] Thumbnail uploaded:', thumbnailFileId);
+          return thumbnailFileId;
+        }
+      }
+      
+      console.warn('⚠️ [Upload] Thumbnail upload failed, continuing without thumbnail');
+      return undefined;
+    } catch (error: any) {
+      console.error('❌ [Upload] Thumbnail generation/upload failed:', error);
+      return undefined;
+    }
+  };
+
   const handleUploadForAccount = async (accountId: string, event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     
@@ -2367,19 +2565,19 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
             let thumbnailBlob: Blob;
             
             if (isImage) {
-              // Generate thumbnail from image using the helper function
+              // Generate thumbnail from image using the local helper function
               // File extends Blob, so we can pass it directly
-              thumbnailBlob = await createThumbnailFromBlob(file, 800, 800);
+              thumbnailBlob = await createThumbnailFromBlobLocal(file, 800, 800);
             } else if (isVideo) {
               // Generate thumbnail from video (extract first frame)
-              thumbnailBlob = await createVideoThumbnail(file, 800, 800);
+              thumbnailBlob = await createVideoThumbnailLocal(file, 800, 800);
             } else {
               throw new Error('Unsupported file type for thumbnail generation');
             }
             
-            // Upload thumbnail using the helper function
-            if (thumbnailBlob && typeof uploadThumbnail === 'function') {
-              thumbnailFileId = await uploadThumbnail(
+            // Upload thumbnail using the local helper function
+            if (thumbnailBlob) {
+              thumbnailFileId = await uploadThumbnailLocal(
                 thumbnailBlob,
                 file.name,
                 encryptionManager,
@@ -2389,7 +2587,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
                 accountId
               );
             } else {
-              throw new Error('Thumbnail blob or upload function not available');
+              throw new Error('Thumbnail blob not available');
             }
           } catch (thumbError: any) {
             console.warn('⚠️ [Upload] Thumbnail generation failed:', thumbError);
