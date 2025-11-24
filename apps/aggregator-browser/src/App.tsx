@@ -727,18 +727,12 @@ function App() {
         }).length,
         videos: filtered.filter(f => f.metadata.fileType === 'video').length,
         pdfs: filtered.filter(f => f.metadata.fileType === 'document').length,
-        fileDetails: filtered.map(f => {
-          const normalizedType = normalizeFileType(f);
-          return {
-            fileId: f.metadata.fileId,
-            originalFileType: f.metadata.fileType,
-            normalizedFileType: normalizedType,
-            fileName: f.metadata.name || f.metadata.title,
-            hasTextPost: !!(f.metadata as any).textPost || !!(f.metadata as any).thought,
-            isMedia: isMedia(f),
-            isThought: isThought(f)
-          };
-        })
+        fileDetails: filtered.map(f => ({
+          fileId: f.metadata.fileId,
+          fileType: f.metadata.fileType,
+          fileName: f.metadata.name || f.metadata.title,
+          hasTextPost: !!(f.metadata as any).textPost || !!(f.metadata as any).thought
+        }))
       });
       
       return filtered;
