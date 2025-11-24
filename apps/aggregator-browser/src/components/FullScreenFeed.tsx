@@ -1625,8 +1625,21 @@ export function FullScreenFeed({
                 >
                   {/* Render all PDF pages in horizontal scrollable container */}
                   {Array.from({ length: totalPages }, (_, pageIndex) => {
-                    const pageThumbnailUrl = pdfPageThumbnails.get(fileId)?.get(pageIndex) || 
-                                            (pageIndex === 0 ? thumbnails.get(fileId) : null);
+                    // Get thumbnail URL - check pdfPageThumbnails first, then fallback to main thumbnails for page 0
+                    let pageThumbnailUrl = pdfPageThumbnails.get(fileId)?.get(pageIndex);
+                    if (!pageThumbnailUrl && pageIndex === 0) {
+                      pageThumbnailUrl = thumbnails.get(fileId) || null;
+                    }
+                    
+                    // Trigger loading if thumbnail not available and page is near current page
+                    if (!pageThumbnailUrl) {
+                      const currentPage = pdfCurrentPage.get(fileId) || 0;
+                      // Load if it's the current page or within 2 pages
+                      if (Math.abs(pageIndex - currentPage) <= 2) {
+                        const thumbnailId = pdfPageThumbnailIds[pageIndex];
+                        loadPdfPageThumbnail(fileId, thumbnailId, pageIndex, indexedFile).catch(() => {});
+                      }
+                    }
                     
                     // Calculate aspect ratio for background blur (same as images)
                     const containerHeight = window.innerHeight - 64; // Account for bottom nav
