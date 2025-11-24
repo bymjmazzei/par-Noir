@@ -52,24 +52,27 @@ export function ImageSlideshow({ thumbnailIds, fileName, accountId, pdfFileId, i
     setPages(Array.from({ length: thumbnailIds.length }, (_, i) => i + 1));
     setCurrentPage(1);
     // Reset state when thumbnailIds change (but preserve initial thumbnail if provided)
-    if (!initialThumbnailUrl) {
-      setPageUrls(new Map());
-      loadedPagesRef.current.clear();
-    } else {
-      // Keep the initial thumbnail when thumbnailIds change
-      const preserved = new Map<number, string>();
-      if (pageUrls.has(1)) {
-        preserved.set(1, pageUrls.get(1)!);
+    // Use functional update to access current pageUrls state without including it in deps
+    setPageUrls(prev => {
+      if (!initialThumbnailUrl) {
+        loadedPagesRef.current.clear();
+        return new Map();
+      } else {
+        // Keep the initial thumbnail when thumbnailIds change
+        const preserved = new Map<number, string>();
+        if (prev.has(1)) {
+          preserved.set(1, prev.get(1)!);
+          loadedPagesRef.current.clear();
+          loadedPagesRef.current.add(1);
+        } else {
+          loadedPagesRef.current.clear();
+        }
+        return preserved;
       }
-      setPageUrls(preserved);
-      loadedPagesRef.current.clear();
-      if (preserved.has(1)) {
-        loadedPagesRef.current.add(1);
-      }
-    }
+    });
     loadingPagesRef.current.clear();
     failedPagesRef.current.clear();
-  }, [thumbnailIds, initialThumbnailUrl, pageUrls]);
+  }, [thumbnailIds, initialThumbnailUrl]);
 
   // Fetch accountId helper (non-blocking, returns null if unavailable)
   const fetchAccountIdOnce = useCallback(async (): Promise<string | null> => {
@@ -558,17 +561,21 @@ export function ImageSlideshow({ thumbnailIds, fileName, accountId, pdfFileId, i
   // CRITICAL: Update pageUrls immediately when initialThumbnailUrl becomes available
   // This handles the case where FullScreenFeed finishes loading after ImageSlideshow mounts
   useEffect(() => {
-    if (initialThumbnailUrl && thumbnailIds.length > 0 && !pageUrls.has(1) && !loadingPagesRef.current.has(1)) {
-      console.log(`[ImageSlideshow] Adding pre-loaded first thumbnail from FullScreenFeed - INSTANT UPDATE!`);
+    if (initialThumbnailUrl && thumbnailIds.length > 0) {
+      // Use functional update to check current state without including it in deps
       setPageUrls(prev => {
-        const newMap = new Map(prev);
-        newMap.set(1, initialThumbnailUrl);
-        return newMap;
+        if (!prev.has(1) && !loadingPagesRef.current.has(1)) {
+          console.log(`[ImageSlideshow] Adding pre-loaded first thumbnail from FullScreenFeed - INSTANT UPDATE!`);
+          const newMap = new Map(prev);
+          newMap.set(1, initialThumbnailUrl);
+          setPageIsThumbnail(prevThumb => new Map(prevThumb).set(1, true));
+          loadedPagesRef.current.add(1);
+          return newMap;
+        }
+        return prev; // No change needed
       });
-      setPageIsThumbnail(prev => new Map(prev).set(1, true));
-      loadedPagesRef.current.add(1);
     }
-  }, [initialThumbnailUrl, thumbnailIds.length, pageUrls]);
+  }, [initialThumbnailUrl, thumbnailIds.length]);
 
   // LAZY LOAD: Only load thumbnails as needed (first page + adjacent pages + visible pages)
   useEffect(() => {
@@ -577,17 +584,23 @@ export function ImageSlideshow({ thumbnailIds, fileName, accountId, pdfFileId, i
     let cancelled = false;
     
     // If no initial thumbnail provided and first page not loaded, start loading immediately
-    if (!initialThumbnailUrl && thumbnailIds[0] && !pageUrls.has(1) && !loadingPagesRef.current.has(1)) {
-      console.log(`[ImageSlideshow] Loading first thumbnail (no initial provided)`);
-      loadThumbnail(thumbnailIds[0], 1, accountId || null, false).catch(() => {
-        // Errors already handled in loadThumbnail
+    // Use functional update to check current state without including it in deps
+    if (!initialThumbnailUrl && thumbnailIds[0]) {
+      setPageUrls(current => {
+        if (!current.has(1) && !loadingPagesRef.current.has(1)) {
+          console.log(`[ImageSlideshow] Loading first thumbnail (no initial provided)`);
+          loadThumbnail(thumbnailIds[0], 1, accountId || null, false).catch(() => {
+            // Errors already handled in loadThumbnail
+          });
+        }
+        return current; // Don't change state, just check
       });
     }
     
     return () => {
       cancelled = true;
     };
-  }, [thumbnailIds, accountId, loadThumbnail, pageUrls, initialThumbnailUrl]);
+  }, [thumbnailIds, accountId, loadThumbnail, initialThumbnailUrl]);
 
   // Load adjacent pages (current +/- 1) for smooth scrolling
   useEffect(() => {
