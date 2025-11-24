@@ -677,7 +677,7 @@ function App() {
       // This ensures NSFW content never appears in public feed unless explicitly enabled
       const filtered = indexedFiles.filter(shouldShowFile);
       
-      // Debug logging for public feed
+      // Debug logging for public feed (don't call isMedia/isThought here to avoid initialization issues)
       console.log(`[Public Feed] Filtered ${filtered.length} files from ${indexedFiles.length} indexed files:`, {
         images: filtered.filter(f => f.metadata.fileType === 'image' || !!(f.metadata.name || '').match(/\.(jpg|jpeg|png|gif|webp|svg|bmp|ico)$/i)).length,
         thoughts: filtered.filter(f => {
@@ -690,15 +690,11 @@ function App() {
         }).length,
         videos: filtered.filter(f => f.metadata.fileType === 'video').length,
         pdfs: filtered.filter(f => f.metadata.fileType === 'document').length,
-        isMediaCount: filtered.filter(f => isMedia(f)).length,
-        isThoughtCount: filtered.filter(f => isThought(f)).length,
         fileDetails: filtered.map(f => ({
           fileId: f.metadata.fileId,
           fileType: f.metadata.fileType,
           fileName: f.metadata.name || f.metadata.title,
-          hasTextPost: !!(f.metadata as any).textPost || !!(f.metadata as any).thought,
-          isMedia: isMedia(f),
-          isThought: isThought(f)
+          hasTextPost: !!(f.metadata as any).textPost || !!(f.metadata as any).thought
         }))
       });
       
@@ -2479,25 +2475,10 @@ function App() {
           console.log(`[Me Page All Tab] Filtering ${allFiles.length} files:`, {
             totalFiles: allFiles.length,
             filteredFiles: filtered.length,
-            mediaFiles: filtered.filter(f => isMedia(f)).length,
-            thoughtFiles: filtered.filter(f => isThought(f)).length,
-            excludedFiles: allFiles.filter(f => {
-              if (isRawPdf(f)) return true;
-              return !isMedia(f) && !isThought(f);
-            }).map(f => ({
-              fileId: f.metadata.fileId,
-              fileType: f.metadata.fileType,
-              fileName: f.metadata.name || f.metadata.title,
-              isMedia: isMedia(f),
-              isThought: isThought(f),
-              isRawPdf: isRawPdf(f)
-            })),
             fileDetails: filtered.map(f => ({
               fileId: f.metadata.fileId,
               fileType: f.metadata.fileType,
-              fileName: f.metadata.name || f.metadata.title,
-              isMedia: isMedia(f),
-              isThought: isThought(f)
+              fileName: f.metadata.name || f.metadata.title
             }))
           });
           break;
