@@ -250,6 +250,18 @@ export function ImageSlideshow({ thumbnailIds, fileName, accountId, pdfFileId }:
             }
           }
         }
+        
+        // Check response status BEFORE reading blob
+        if (!response.ok) {
+          if (response.status === 401) {
+            console.warn(`[ImageSlideshow] Thumbnail ${thumbnailId} requires authentication`);
+          } else {
+            console.warn(`[ImageSlideshow] Thumbnail ${thumbnailId} failed: ${response.status}`);
+          }
+          failedPagesRef.current.add(pageNum);
+          loadingPagesRef.current.delete(pageNum);
+          return;
+        }
       } catch (fetchError: any) {
         console.error(`[ImageSlideshow] Fetch error for thumbnail ${thumbnailId}:`, fetchError);
         failedPagesRef.current.add(pageNum);
@@ -257,69 +269,134 @@ export function ImageSlideshow({ thumbnailIds, fileName, accountId, pdfFileId }:
         return;
       }
       
-      // Handle response
-      if (!response.ok) {
-        if (response.status === 401) {
-          console.warn(`[ImageSlideshow] Thumbnail ${thumbnailId} requires authentication`);
-        } else {
-          console.warn(`[ImageSlideshow] Thumbnail ${thumbnailId} failed: ${response.status}`);
-        }
+      // Only read blob if response is OK
+      const contentType = response.headers.get('content-type') || '';
+      let blob: Blob;
+      try {
+        blob = await response.blob();
+      } catch (blobError) {
+        console.error(`[ImageSlideshow] Failed to read blob for thumbnail ${thumbnailId}:`, blobError);
         failedPagesRef.current.add(pageNum);
         loadingPagesRef.current.delete(pageNum);
         return;
       }
       
-      const contentType = response.headers.get('content-type') || '';
-      const blob = await response.blob();
-      
       let imageUrl: string;
-      if (contentType.includes('application/json') || contentType.includes('application/octet-stream')) {
-        // Encrypted file - need session to decrypt
-        const { EncryptionManager } = await import('../utils/encryptionManager');
-        const session = PNOAuthService.loadSession();
-        if (!session?.did) {
-          console.warn(`[ImageSlideshow] Cannot decrypt thumbnail ${thumbnailId} - no session`);
-          failedPagesRef.current.add(pageNum);
-          loadingPagesRef.current.delete(pageNum);
-          return;
-        }
-        
-        const pnId = session.did;
-        let publicKey = session?.publicKey;
-        if (!publicKey && session.did.startsWith('did:key:')) {
-          publicKey = session.did.substring(8);
-        }
-        if (!publicKey) {
-          console.warn(`[ImageSlideshow] Cannot decrypt thumbnail ${thumbnailId} - no public key`);
-          failedPagesRef.current.add(pageNum);
-          loadingPagesRef.current.delete(pageNum);
-          return;
-        }
-        
+      // Check if this is an encrypted file (JSON with encrypted package structure)
+      if (contentType.includes('application/json')) {
+        // Could be encrypted file OR error JSON - check content
         try {
-          const encryptedText = await blob.text();
-          const encryptedPackage = JSON.parse(encryptedText);
-          const encryptionManager = new EncryptionManager();
-          const decryptedData = await encryptionManager.decrypt(
-            encryptedPackage.encrypted,
-            encryptedPackage.iv,
-            encryptedPackage.salt,
-            pnId,
-            publicKey
-          );
+          const text = await blob.text();
+          const parsed = JSON.parse(text);
           
-          const decryptedBlob = new Blob([decryptedData], {
-            type: encryptedPackage.metadata.originalMimeType || 'image/jpeg'
-          });
-          imageUrl = URL.createObjectURL(decryptedBlob);
-        } catch (decryptError) {
-          console.error(`[ImageSlideshow] Failed to decrypt thumbnail ${thumbnailId}:`, decryptError);
+          // Check if it's an encrypted package (has encrypted, iv, salt fields)
+          if (parsed.encrypted && parsed.iv && parsed.salt) {
+            // Encrypted file - need session to decrypt
+            const { EncryptionManager } = await import('../utils/encryptionManager');
+            const session = PNOAuthService.loadSession();
+            if (!session?.did) {
+              console.warn(`[ImageSlideshow] Cannot decrypt thumbnail ${thumbnailId} - no session`);
+              failedPagesRef.current.add(pageNum);
+              loadingPagesRef.current.delete(pageNum);
+              return;
+            }
+            
+            const pnId = session.did;
+            let publicKey = session?.publicKey;
+            if (!publicKey && session.did.startsWith('did:key:')) {
+              publicKey = session.did.substring(8);
+            }
+            if (!publicKey) {
+              console.warn(`[ImageSlideshow] Cannot decrypt thumbnail ${thumbnailId} - no public key`);
+              failedPagesRef.current.add(pageNum);
+              loadingPagesRef.current.delete(pageNum);
+              return;
+            }
+            
+            try {
+              const encryptionManager = new EncryptionManager();
+              const decryptedData = await encryptionManager.decrypt(
+                parsed.encrypted,
+                parsed.iv,
+                parsed.salt,
+                pnId,
+                publicKey
+              );
+              
+              const decryptedBlob = new Blob([decryptedData], {
+                type: parsed.metadata?.originalMimeType || 'image/jpeg'
+              });
+              imageUrl = URL.createObjectURL(decryptedBlob);
+            } catch (decryptError) {
+              console.error(`[ImageSlideshow] Failed to decrypt thumbnail ${thumbnailId}:`, decryptError);
+              failedPagesRef.current.add(pageNum);
+              loadingPagesRef.current.delete(pageNum);
+              return;
+            }
+          } else {
+            // Not an encrypted package - might be error JSON, skip it
+            console.warn(`[ImageSlideshow] Unexpected JSON response for thumbnail ${thumbnailId}:`, parsed);
+            failedPagesRef.current.add(pageNum);
+            loadingPagesRef.current.delete(pageNum);
+            return;
+          }
+        } catch (parseError) {
+          // Not valid JSON - treat as error
+          console.error(`[ImageSlideshow] Failed to parse JSON response for thumbnail ${thumbnailId}:`, parseError);
+          failedPagesRef.current.add(pageNum);
+          loadingPagesRef.current.delete(pageNum);
+          return;
+        }
+      } else if (contentType.includes('application/octet-stream')) {
+        // Octet stream might be encrypted - try to decrypt if session available
+        const session = PNOAuthService.loadSession();
+        if (session?.did) {
+          try {
+            const text = await blob.text();
+            const parsed = JSON.parse(text);
+            if (parsed.encrypted && parsed.iv && parsed.salt) {
+              // Encrypted - decrypt it
+              const { EncryptionManager } = await import('../utils/encryptionManager');
+              const pnId = session.did;
+              let publicKey = session?.publicKey;
+              if (!publicKey && session.did.startsWith('did:key:')) {
+                publicKey = session.did.substring(8);
+              }
+              if (publicKey) {
+                const encryptionManager = new EncryptionManager();
+                const decryptedData = await encryptionManager.decrypt(
+                  parsed.encrypted,
+                  parsed.iv,
+                  parsed.salt,
+                  pnId,
+                  publicKey
+                );
+                const decryptedBlob = new Blob([decryptedData], {
+                  type: parsed.metadata?.originalMimeType || 'image/jpeg'
+                });
+                imageUrl = URL.createObjectURL(decryptedBlob);
+              } else {
+                failedPagesRef.current.add(pageNum);
+                loadingPagesRef.current.delete(pageNum);
+                return;
+              }
+            } else {
+              // Not encrypted - use directly
+              imageUrl = URL.createObjectURL(blob);
+            }
+          } catch (e) {
+            // Not JSON - use directly
+            imageUrl = URL.createObjectURL(blob);
+          }
+        } else {
+          // No session - can't decrypt, skip
+          console.warn(`[ImageSlideshow] Cannot decrypt octet-stream thumbnail ${thumbnailId} - no session`);
           failedPagesRef.current.add(pageNum);
           loadingPagesRef.current.delete(pageNum);
           return;
         }
       } else {
-        // Non-encrypted file - use directly
+        // Image file (jpeg, png, etc.) - use directly
         imageUrl = URL.createObjectURL(blob);
       }
       
