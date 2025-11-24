@@ -133,6 +133,7 @@ export function ImageSlideshow({ fileId, fileName, accountId }: ImageSlideshowPr
           setPages(Array.from({ length: pageFiles.length }, (_, i) => i + 1));
           setCurrentPage(1);
           setLoading(false);
+          console.log(`[ImageSlideshow] ✅ Folder pages loaded, set loading=false`);
         } else {
           throw new Error('No image pages found in folder');
         }

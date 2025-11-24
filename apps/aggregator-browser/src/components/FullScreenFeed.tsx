@@ -331,12 +331,15 @@ export function FullScreenFeed({
   // Load video blobs and thumbnails for visible files (only if not provided externally)
   useEffect(() => {
     const loadMedia = async () => {
+      console.log(`[FullScreenFeed] loadMedia: ${files.length} total files, currentIndex: ${currentIndex}`);
       // Load current file and adjacent files
       const indicesToLoad = [
         currentIndex - 1,
         currentIndex,
         currentIndex + 1
       ].filter(idx => idx >= 0 && idx < files.length);
+      
+      console.log(`[FullScreenFeed] loadMedia: Processing indices:`, indicesToLoad);
 
       for (const idx of indicesToLoad) {
         const indexedFile = files[idx];
