@@ -329,22 +329,20 @@ export function ImageSlideshow({ fileId, fileName, accountId }: ImageSlideshowPr
       }
     };
 
-    // Load pages progressively: first page immediately, others in background
+    // Load pages progressively: first page immediately, others sequentially
     (async () => {
       const finalAccountId = await fetchAccountIdOnce();
       
       // Load first page immediately for instant display
       if (folderPageFiles.length > 0) {
-        loadImagePage(folderPageFiles[0], finalAccountId);
+        await loadImagePage(folderPageFiles[0], finalAccountId);
       }
       
-      // Load other pages progressively (with small delay between each)
-      // This prevents overwhelming the network/decryption with all pages at once
-      for (let i = 1; i < folderPageFiles.length; i++) {
-        // Load next page after a short delay (staggered loading)
-        setTimeout(() => {
-          loadImagePage(folderPageFiles[i], finalAccountId);
-        }, i * 200); // 200ms delay between each page
+      // Load next page in background (preload for smooth navigation)
+      // Remaining pages will load on-demand when user navigates (via useEffect watching currentPage)
+      if (folderPageFiles.length > 1) {
+        // Don't await - let it load in background while user can already see first page
+        loadImagePage(folderPageFiles[1], finalAccountId);
       }
     })();
   }, [folderPageFiles, accountId]);
@@ -364,6 +362,52 @@ export function ImageSlideshow({ fileId, fileName, accountId }: ImageSlideshowPr
     threshold: 50,
     snapThreshold: 0.2
   });
+
+  // Load pages on-demand when navigating
+  useEffect(() => {
+    // Load current page and adjacent pages if not already loaded
+    const pagesToLoad = [
+      currentPage,
+      currentPage + 1, // Next page
+      currentPage - 1  // Previous page
+    ].filter(p => p >= 1 && p <= pages.length);
+    
+    pagesToLoad.forEach(pageNum => {
+      const pageFile = folderPageFiles.find(f => f.pageNum === pageNum);
+      if (pageFile && !loadedPagesRef.current.has(pageNum) && !loadingPages.has(pageNum)) {
+        // Fetch accountId if needed
+        (async () => {
+          let finalAccountId = accountId;
+          if (!finalAccountId || !finalAccountId.includes('::')) {
+            try {
+              const apiEndpoint = process.env.REACT_APP_API_ENDPOINT || 'https://api.parnoir.com';
+              const { PNOAuthService } = await import('../services/pnOAuthService');
+              const accessToken = await PNOAuthService.getValidAccessToken();
+              if (accessToken) {
+                const session = PNOAuthService.loadSession();
+                if (session?.did || session?.pnIdentifier) {
+                  const userId = session.pnIdentifier || session.did;
+                  const accountsResponse = await fetch(`${apiEndpoint}/api/storage/accounts/${userId}`, {
+                    headers: { 'Authorization': `Bearer ${accessToken}` }
+                  });
+                  if (accountsResponse.ok) {
+                    const accountsData = await accountsResponse.json();
+                    const accounts = accountsData.accounts || [];
+                    if (accounts.length > 0) {
+                      finalAccountId = accounts[0].accountId;
+                    }
+                  }
+                }
+              }
+            } catch (err) {
+              // Silently fail
+            }
+          }
+          loadImagePage(pageFile, finalAccountId);
+        })();
+      }
+    });
+  }, [currentPage, folderPageFiles, accountId]);
 
   // Scroll to current page
   useEffect(() => {
