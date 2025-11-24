@@ -1100,6 +1100,113 @@ export function FullScreenFeed({
     }
   }, [visibleFileId, files, videoBlobs]);
 
+  // Track scroll position for PDF pages to update current page
+  // Use a ref to track cleanup functions
+  const scrollListenersSetupRef = useRef<Map<string, () => void>>(new Map());
+  
+  useEffect(() => {
+    // Check for all containers (both new and existing)
+    const containers = Array.from(pdfScrollRefs.current.entries());
+    console.log(`[FullScreenFeed] Checking scroll listeners: ${containers.length} containers found`);
+    
+    const handlePdfScroll = (fileId: string, container: HTMLDivElement) => {
+      const scrollLeft = container.scrollLeft;
+      const pageWidth = container.clientWidth;
+      // Use Math.round for better snap detection, but also check if we're closer to a different page
+      let newPage = Math.round(scrollLeft / pageWidth);
+      
+      // More accurate calculation: check which page center we're closest to
+      const scrollCenter = scrollLeft + (pageWidth / 2);
+      const calculatedPage = Math.floor(scrollCenter / pageWidth);
+      if (calculatedPage !== newPage && calculatedPage >= 0) {
+        newPage = calculatedPage;
+      }
+      
+      const currentFile = files.find(f => f.metadata.fileId === fileId);
+      if (!currentFile) return;
+      
+      const pdfPageThumbnailIds = currentFile.metadata?.pdfPageThumbnailIds;
+      if (!pdfPageThumbnailIds) return;
+      
+      const totalPages = pdfPageThumbnailIds.length;
+      const currentPage = pdfCurrentPage.get(fileId) || 0;
+      
+      // Clamp to valid range
+      newPage = Math.max(0, Math.min(newPage, totalPages - 1));
+      
+      console.log(`[FullScreenFeed] PDF scroll event for ${fileId}: scrollLeft=${scrollLeft}, pageWidth=${pageWidth}, scrollCenter=${scrollCenter}, newPage=${newPage}, currentPage=${currentPage}`);
+      
+      // Always update current page based on scroll position (for pagination circles)
+      // Update even if it's the same to ensure state is fresh
+      if (newPage >= 0 && newPage < totalPages) {
+        if (newPage !== currentPage) {
+          console.log(`[FullScreenFeed] Scroll detected: page ${currentPage + 1} -> ${newPage + 1} for ${fileId}`);
+        }
+        setPdfCurrentPage(prev => {
+          const newMap = new Map(prev);
+          const oldValue = newMap.get(fileId) || 0;
+          if (oldValue !== newPage) {
+            newMap.set(fileId, newPage);
+            console.log(`[FullScreenFeed] Updated pdfCurrentPage state: ${oldValue + 1} -> ${newPage + 1}`);
+            return newMap;
+          }
+          return prev; // Return same reference if no change
+        });
+        
+        // Load thumbnail if not loaded (on-demand loading)
+        const pageThumbnails = pdfPageThumbnails.get(fileId);
+        if (!pageThumbnails?.has(newPage)) {
+          console.log(`[FullScreenFeed] Loading thumbnail for page ${newPage + 1} on scroll`);
+          const thumbnailId = pdfPageThumbnailIds[newPage];
+          loadPdfPageThumbnail(fileId, thumbnailId, newPage, currentFile).catch(() => {});
+        }
+        
+        // Also preload adjacent pages
+        if (newPage + 1 < totalPages && !pageThumbnails?.has(newPage + 1)) {
+          const nextThumbnailId = pdfPageThumbnailIds[newPage + 1];
+          loadPdfPageThumbnail(fileId, nextThumbnailId, newPage + 1, currentFile).catch(() => {});
+        }
+        if (newPage - 1 >= 0 && !pageThumbnails?.has(newPage - 1)) {
+          const prevThumbnailId = pdfPageThumbnailIds[newPage - 1];
+          loadPdfPageThumbnail(fileId, prevThumbnailId, newPage - 1, currentFile).catch(() => {});
+        }
+      }
+    };
+    
+    // Set up listeners for all containers
+    containers.forEach(([fileId, container]) => {
+      if (!container) return;
+      
+      // Remove old listener if exists
+      const oldCleanup = scrollListenersSetupRef.current.get(fileId);
+      if (oldCleanup) {
+        oldCleanup();
+      }
+      
+      console.log(`[FullScreenFeed] Attaching scroll listener to PDF container for ${fileId}`);
+      const handler = () => handlePdfScroll(fileId, container);
+      container.addEventListener('scroll', handler, { passive: true });
+      
+      // Store cleanup function
+      const cleanup = () => {
+        container.removeEventListener('scroll', handler);
+        scrollListenersSetupRef.current.delete(fileId);
+      };
+      scrollListenersSetupRef.current.set(fileId, cleanup);
+      
+      // Trigger initial scroll check to set current page
+      setTimeout(() => {
+        handlePdfScroll(fileId, container);
+      }, 100);
+    });
+    
+    return () => {
+      console.log(`[FullScreenFeed] Cleaning up scroll listeners`);
+      scrollListenersSetupRef.current.forEach(cleanup => cleanup());
+      scrollListenersSetupRef.current.clear();
+    };
+  }, [files, pdfCurrentPage, pdfPageThumbnails, loadPdfPageThumbnail, visibleFileId]); // Re-run when visibleFileId changes
+
   // Enable PDF horizontal swipe when viewing PDF (handled by ref in render)
 
   // Intersection Observer for auto-playing videos
