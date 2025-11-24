@@ -1679,11 +1679,20 @@ export function FullScreenFeed({
                           entries.forEach((entry) => {
                             if (entry.isIntersecting) {
                               console.log(`[FullScreenFeed] Page ${pageIndex + 1} is intersecting!`);
-                              const currentPage = pdfCurrentPage.get(fileId) || 0;
-                              console.log(`[FullScreenFeed] Current page: ${currentPage + 1}, checking if page ${pageIndex + 1} should load (within 2 pages)`);
-                              // Load if it's the current page or within 2 pages
-                              if (Math.abs(pageIndex - currentPage) <= 2) {
-                                console.log(`[FullScreenFeed] Page ${pageIndex + 1} is visible and within range, loading thumbnail`);
+                              // Update current page based on which page is visible (for pagination dots)
+                              setPdfCurrentPage(prev => {
+                                const newMap = new Map(prev);
+                                const oldPage = newMap.get(fileId) || 0;
+                                if (pageIndex !== oldPage) {
+                                  console.log(`[FullScreenFeed] Updating current page from ${oldPage + 1} to ${pageIndex + 1} based on visibility`);
+                                  newMap.set(fileId, pageIndex);
+                                }
+                                return newMap;
+                              });
+                              
+                              // Always load if page is visible (no range restriction)
+                              if (!pageThumbnailUrl) {
+                                console.log(`[FullScreenFeed] Page ${pageIndex + 1} is visible, loading thumbnail`);
                                 const thumbnailId = pdfPageThumbnailIds[pageIndex];
                                 loadPdfPageThumbnail(fileId, thumbnailId, pageIndex, indexedFile).then(() => {
                                   console.log(`[FullScreenFeed] Successfully loaded page ${pageIndex + 1} thumbnail`);
@@ -1692,7 +1701,8 @@ export function FullScreenFeed({
                                 });
                                 observer.disconnect();
                               } else {
-                                console.log(`[FullScreenFeed] Page ${pageIndex + 1} is visible but too far from current page ${currentPage + 1}`);
+                                console.log(`[FullScreenFeed] Page ${pageIndex + 1} already has thumbnail, disconnecting observer`);
+                                observer.disconnect();
                               }
                             }
                           });
