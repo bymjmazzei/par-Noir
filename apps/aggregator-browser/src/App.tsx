@@ -2305,31 +2305,19 @@ function App() {
   // Helper function to identify text posts (thoughts) - MUST be defined before any useMemo/useEffect that uses it
   // Use same detection logic as FullScreenFeed for consistency
   const isThought = (file: IndexedFile): boolean => {
-    // Check multiple locations for thought data (same as FullScreenFeed)
-    const textPostData = (file.metadata as any)?.textPost ||
-                        (file.metadata as any)?.thought ||
-                        (file as any)?.textPost ||
-                        (file as any)?.thought;
+    const fileType = file.metadata.fileType;
+    const fileName = file.metadata.name || file.metadata.title || '';
     
-    // Check fileType in ALL possible locations
-    const fileTypeFromMetadata = file.metadata?.fileType;
-    const fileTypeFromFile = (file as any)?.fileType;
-    const actualFileType = fileTypeFromMetadata || fileTypeFromFile;
+    // Check for textPost/thought data
+    const hasTextPostData = !!(file.metadata as any).textPost || !!(file.metadata as any).thought;
     
-    const hasTextFileType = actualFileType === 'text' || actualFileType === 'thought';
+    // Check for fileType
+    const hasTextFileType = fileType === 'text' || fileType === 'thought';
     
     // Check for thought filename pattern (new .thought format or legacy .png format)
-    // Check filename in multiple locations (file.name might be content, not filename)
-    const thoughtFileName = file.metadata.name || 
-                           file.metadata.title || 
-                           (file.metadata as any).originalName ||
-                           (file as any).name ||
-                           '';
-    const isThoughtFile = /^thought-\d+\.(thought|png)/i.test(thoughtFileName);
+    const isThoughtFile = /^thought-\d+\.(thought|png)/i.test(fileName);
     
-    // IMPORTANT: Prioritize hasTextPostData and hasTextFileType FIRST (same as FullScreenFeed)
-    // This ensures thoughts are detected consistently
-    return !!textPostData || hasTextFileType || isThoughtFile;
+    return hasTextPostData || hasTextFileType || isThoughtFile;
   };
 
   // Helper function to check if a file is a PDF slideshow (has page thumbnails)
@@ -2385,10 +2373,8 @@ function App() {
               .map(f => [f.metadata.fileId, f])).values()
           );
           // Separate media and thoughts (exclude raw PDFs)
-          // IMPORTANT: Filter out thoughts first, then check for media
-          // This ensures thoughts aren't misclassified as media
+          const mediaFiles = allFiles.filter(f => isMedia(f));
           const thoughtFiles = allFiles.filter(f => isThought(f));
-          const mediaFiles = allFiles.filter(f => !isThought(f) && isMedia(f));
           // Show media first, then thoughts
           filtered = [...mediaFiles, ...thoughtFiles];
           break;
@@ -2500,10 +2486,8 @@ function App() {
               .map(f => [f.metadata.fileId, f])).values()
           );
           // Separate media and thoughts (exclude raw PDFs)
-          // IMPORTANT: Filter out thoughts first, then check for media
-          // This ensures thoughts aren't misclassified as media
+          const mediaFilesOther = allFilesOther.filter(f => isMedia(f));
           const thoughtFilesOther = allFilesOther.filter(f => isThought(f));
-          const mediaFilesOther = allFilesOther.filter(f => !isThought(f) && isMedia(f));
           // Show media first, then thoughts
           filtered = [...mediaFilesOther, ...thoughtFilesOther];
           break;
