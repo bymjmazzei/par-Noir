@@ -15,6 +15,7 @@ import { useVerticalSwipe } from '../hooks/useVerticalSwipe';
 import { useHorizontalSwipe } from '../hooks/useHorizontalSwipe';
 import { formatTimestamp } from '../utils/formatTimestamp';
 import { decryptWithToken, ShareToken } from '../utils/tokenDecryption';
+import { ImageSlideshow } from './ImageSlideshow';
 
 interface FullScreenFeedProps {
   files: IndexedFile[];
@@ -1339,14 +1340,6 @@ export function FullScreenFeed({
           <div
             key={fileId}
             data-file-id={fileId}
-            ref={(el) => {
-              if (el && isPdfDoc) {
-                // Attach PDF swipe handler to this element
-                if (pdfHorizontalSwipeRef.current !== el) {
-                  (pdfHorizontalSwipeRef as React.MutableRefObject<HTMLDivElement | null>).current = el;
-                }
-              }
-            }}
             className="w-full snap-start flex items-center justify-center bg-black relative"
             style={{ 
               // Height excludes bottom nav bar (64px) and safe area
@@ -1542,8 +1535,27 @@ export function FullScreenFeed({
               );
             })()}
             
-            {/* Full-screen image OR PDF page - Only render if NOT a text post */}
-            {(isImage || isImageSlideshowFolder) && !isTextPost && !textPostData && thumbnails.get(fileId) && (() => {
+            {/* PDF slideshow - Use ImageSlideshow for PDF documents with multiple pages */}
+            {isPdfDoc && !isTextPost && !textPostData && pdfPageThumbnailIds && pdfPageThumbnailIds.length > 0 && (() => {
+              // Get accountId for ImageSlideshow (needed for loading thumbnails)
+              const accountId = indexedFile.accountId || indexedFile.backendFileId;
+              // Pass public access info for loading thumbnails when locked
+              const isPublic = file.isPublic !== false || !!file.publicToken;
+              
+              return (
+                <ImageSlideshow
+                  thumbnailIds={pdfPageThumbnailIds}
+                  fileName={fileName}
+                  accountId={accountId}
+                  pdfFileId={indexedFile.metadata?.pdfFileId}
+                  isPublic={isPublic}
+                  publicToken={file.publicToken}
+                />
+              );
+            })()}
+            
+            {/* Full-screen image (single image, not PDF) - Only render if NOT a text post and NOT PDF */}
+            {isImage && !isPdfDoc && !isTextPost && !textPostData && thumbnails.get(fileId) && (() => {
               const containerHeight = window.innerHeight - 64; // Account for bottom nav
               const containerWidth = window.innerWidth;
               const containerAspect = containerWidth / containerHeight;
@@ -1658,9 +1670,10 @@ export function FullScreenFeed({
               ) : null;
             })()}
 
-            {/* Loading state - Only show if NOT a text post AND NOT PDF document */}
-            {/* PDF documents load first page immediately like images */}
-            {!isTextPost && !textPostData && !isImageSlideshowFolder && ((isImage || isVideo) && !thumbnails.get(fileId) && !videoBlobs.get(fileId)) && (
+            {/* Loading state - Only show if NOT a text post AND NOT PDF document AND NOT single image */}
+            {/* PDF documents use ImageSlideshow which handles its own loading */}
+            {/* Single images show loading until thumbnail is loaded */}
+            {!isTextPost && !textPostData && !isPdfDoc && ((isImage || isVideo) && !thumbnails.get(fileId) && !videoBlobs.get(fileId)) && (
               <div className="flex flex-col items-center justify-center text-neutral-500">
                 <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-400 mb-2"></div>
                 <span className="text-xs">Loading...</span>
@@ -1668,7 +1681,7 @@ export function FullScreenFeed({
             )}
 
             {/* Non-image/video/text/slideshow file */}
-            {!isImage && !isVideo && !isImageSlideshowFolder && !isTextPost && !textPostData && (
+            {!isImage && !isVideo && !isPdfDoc && !isTextPost && !textPostData && (
               <div className="flex flex-col items-center justify-center text-neutral-500">
                 <File className="h-24 w-24 mb-4" />
                 <h3 className="text-white text-xl font-medium mb-2">{fileName}</h3>

@@ -15,9 +15,11 @@ interface ImageSlideshowProps {
   fileName?: string;
   accountId?: string; // Account ID for downloading images
   pdfFileId?: string; // PDF file ID for on-demand rendering (if PDF slideshow)
+  isPublic?: boolean; // Whether the file is public (allows loading without auth)
+  publicToken?: string; // Public token for accessing public files
 }
 
-export function ImageSlideshow({ thumbnailIds, fileName, accountId, pdfFileId }: ImageSlideshowProps) {
+export function ImageSlideshow({ thumbnailIds, fileName, accountId, pdfFileId, isPublic, publicToken }: ImageSlideshowProps) {
   // Initialize pages synchronously from thumbnailIds - INSTANT display, no loading screen!
   const initialPages = thumbnailIds.length > 0 
     ? Array.from({ length: thumbnailIds.length }, (_, i) => i + 1)
@@ -236,20 +238,15 @@ export function ImageSlideshow({ thumbnailIds, fileName, accountId, pdfFileId }:
       }
       
       // Load thumbnail - EXACT COPY of FullScreenFeed pattern
+      // SECURITY FIX: Allow loading public thumbnails even when locked (no auth required for public files)
       const apiEndpoint = process.env.REACT_APP_API_ENDPOINT || 'https://api.parnoir.com';
       const { PNOAuthService } = await import('../services/pnOAuthService');
       const accessToken = await PNOAuthService.getValidAccessToken();
+      const fileIsPublic = isPublic !== false || !!publicToken; // Public if explicitly public or has publicToken
       
-      if (!accessToken) {
-        console.warn(`[ImageSlideshow] No access token for thumbnail ${thumbnailId}`);
-        failedPagesRef.current.add(pageNum);
-        loadingPagesRef.current.delete(pageNum);
-        return;
-      }
-      
-      // Get accountId like FullScreenFeed does (inside the function, after getting token)
+      // Get accountId like FullScreenFeed does (only needed if authenticated and file is not public)
       let accountIdToUse = accountIdHint || accountId;
-      if (!accountIdToUse || !accountIdToUse.includes('::')) {
+      if (accessToken && (!fileIsPublic || !accountIdToUse || !accountIdToUse.includes('::'))) {
         try {
           const session = PNOAuthService.loadSession();
           if (session?.did || session?.pnIdentifier) {
@@ -275,21 +272,40 @@ export function ImageSlideshow({ thumbnailIds, fileName, accountId, pdfFileId }:
       if (accountIdToUse && accountIdToUse.includes('::')) {
         thumbnailUrl += `&accountId=${encodeURIComponent(accountIdToUse)}`;
       }
+      if (publicToken && !accessToken) {
+        thumbnailUrl += `&publicToken=${encodeURIComponent(publicToken)}`;
+      }
       
-      // Fetch with auth token (EXACT pattern from FullScreenFeed)
+      // Fetch with auth token if available, otherwise try public access
       let response: Response;
       try {
-        response = await fetch(thumbnailUrl, {
-          headers: { 'Authorization': `Bearer ${accessToken}` }
-        });
-        
-        if (response.status === 401) {
-          const refreshedToken = await PNOAuthService.getValidAccessToken(true);
-          if (refreshedToken) {
-            response = await fetch(thumbnailUrl, {
-              headers: { 'Authorization': `Bearer ${refreshedToken}` }
-            });
+        if (accessToken) {
+          // Try with auth first (for private files or better performance)
+          response = await fetch(thumbnailUrl, {
+            headers: { 'Authorization': `Bearer ${accessToken}` }
+          });
+          
+          if (response.status === 401) {
+            const refreshedToken = await PNOAuthService.getValidAccessToken(true);
+            if (refreshedToken) {
+              response = await fetch(thumbnailUrl, {
+                headers: { 'Authorization': `Bearer ${refreshedToken}` }
+              });
+            } else if (fileIsPublic) {
+              // Fallback to public access if auth refresh failed but file is public
+              console.log(`[ImageSlideshow] Auth refresh failed, trying public access for thumbnail ${thumbnailId}`);
+              response = await fetch(thumbnailUrl);
+            }
           }
+        } else if (fileIsPublic) {
+          // Try public access without auth
+          console.log(`[ImageSlideshow] Loading public thumbnail ${thumbnailId} without auth`);
+          response = await fetch(thumbnailUrl);
+        } else {
+          console.warn(`[ImageSlideshow] No access token and file is not public for thumbnail ${thumbnailId}`);
+          failedPagesRef.current.add(pageNum);
+          loadingPagesRef.current.delete(pageNum);
+          return;
         }
       } catch (fetchError: any) {
         console.error(`[ImageSlideshow] Fetch error for thumbnail ${thumbnailId}:`, fetchError);
@@ -337,6 +353,14 @@ export function ImageSlideshow({ thumbnailIds, fileName, accountId, pdfFileId }:
               typeof parsed.iv === 'string' && 
               typeof parsed.salt === 'string') {
             // Encrypted file - need session to decrypt
+            // SECURITY FIX: Only attempt decryption if we have an access token
+            if (!accessToken) {
+              console.warn(`[ImageSlideshow] Cannot decrypt encrypted thumbnail ${thumbnailId} - no access token (user may be locked)`);
+              failedPagesRef.current.add(pageNum);
+              loadingPagesRef.current.delete(pageNum);
+              return;
+            }
+            
             const { EncryptionManager } = await import('../utils/encryptionManager');
             const session = PNOAuthService.loadSession();
             if (!session?.did) {
