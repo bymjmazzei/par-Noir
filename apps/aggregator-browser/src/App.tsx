@@ -603,10 +603,40 @@ function App() {
   }, [indexedFiles]);
 
   // Memoize filtered files by active feed
+  // Helper function to normalize fileType based on file extension
+  // This fixes cases where fileType is 'other' but should be 'image', 'video', etc.
+  const normalizeFileType = (file: IndexedFile): string => {
+    const fileType = file.metadata.fileType;
+    const fileName = file.metadata.name || file.metadata.title || '';
+    
+    // If fileType is already correct, return it
+    if (fileType === 'image' || fileType === 'video' || fileType === 'document' || fileType === 'text' || fileType === 'thought') {
+      return fileType;
+    }
+    
+    // Determine fileType from extension
+    if (fileName.match(/\.(jpg|jpeg|png|gif|webp|svg|bmp|ico)$/i)) {
+      return 'image';
+    }
+    if (fileName.match(/\.(mp4|mov|avi|webm|mkv|flv|wmv)$/i)) {
+      return 'video';
+    }
+    if (fileName.match(/\.(pdf)$/i)) {
+      return 'document';
+    }
+    if (fileName.match(/\.(thought)$/i) || /^thought-\d+\.(thought|png)/i.test(fileName)) {
+      return 'thought';
+    }
+    
+    // Return original fileType if we can't determine from extension
+    return fileType || 'other';
+  };
+
   // Helper function to identify text posts (thoughts) - MUST be defined before filteredFilesByFeed
   // Use same detection logic as FullScreenFeed for consistency
   const isThought = (file: IndexedFile): boolean => {
-    const fileType = file.metadata.fileType;
+    // Normalize fileType first to ensure correct detection
+    const normalizedFileType = normalizeFileType(file);
     const fileName = file.metadata.name || file.metadata.title || '';
     
     // Check for textPost/thought data in multiple locations (same as FullScreenFeed)
@@ -615,9 +645,11 @@ function App() {
                            !!(file as any).textPost ||
                            !!(file as any).thought;
     
-    // Check for fileType in multiple locations
-    const hasTextFileType = fileType === 'text' || 
-                           fileType === 'thought' ||
+    // Check for fileType in multiple locations (use normalized fileType)
+    const hasTextFileType = normalizedFileType === 'text' || 
+                           normalizedFileType === 'thought' ||
+                           file.metadata.fileType === 'text' ||
+                           file.metadata.fileType === 'thought' ||
                            (file.metadata as any).fileType === 'text' ||
                            (file.metadata as any).fileType === 'thought';
     
@@ -629,8 +661,13 @@ function App() {
                            '';
     const isThoughtFile = /^thought-\d+\.(thought|png)/i.test(thoughtFileName);
     
-    // Prioritize hasTextPostData and hasTextFileType first (same as FullScreenFeed)
-    return hasTextPostData || hasTextFileType || isThoughtFile;
+    // IMPORTANT: If file has image/video extension, it's NOT a thought (unless it's thought-*.png)
+    const hasMediaExtension = !isThoughtFile && (
+      !!(fileName.match(/\.(jpg|jpeg|png|gif|webp|svg|bmp|ico|mp4|mov|avi|webm|mkv|flv|wmv)$/i))
+    );
+    
+    // Prioritize hasTextPostData and hasTextFileType first, but exclude media files
+    return (hasTextPostData || hasTextFileType || isThoughtFile) && !hasMediaExtension;
   };
 
   // Helper function to check if a feed is media-only (should exclude thoughts)
@@ -2408,17 +2445,16 @@ function App() {
     
     if (isRawPdf(file)) return false; // Raw PDFs should not be shown
     
-    const fileType = file.metadata.fileType;
+    // Normalize fileType based on extension - this fixes 'other' types
+    const normalizedFileType = normalizeFileType(file);
     const fileName = file.metadata.name || file.metadata.title || '';
     
-    // Check for images (use !! to convert match result to boolean)
-    // Also check for 'other' fileType with image extension (common case)
-    const isImage = fileType === 'image' || 
-                   fileType === 'other' && !!(fileName.match(/\.(jpg|jpeg|png|gif|webp|svg|bmp|ico)$/i)) ||
+    // Check for images using normalized fileType
+    const isImage = normalizedFileType === 'image' || 
                    !!(fileName.match(/\.(jpg|jpeg|png|gif|webp|svg|bmp|ico)$/i));
     
-    // Check for videos (use !! to convert match result to boolean)
-    const isVideo = fileType === 'video' || 
+    // Check for videos using normalized fileType
+    const isVideo = normalizedFileType === 'video' || 
                    !!(fileName.match(/\.(mp4|mov|avi|webm|mkv|flv|wmv)$/i));
     
     // Check for PDF slideshows
@@ -2427,17 +2463,17 @@ function App() {
     const result = isImage || isVideo || isSlideshow;
     
     // Debug logging for files that should be media but aren't detected
-    if (!result && (fileType === 'image' || fileType === 'other' || !!fileName.match(/\.(jpg|jpeg|png|gif|webp|svg|bmp|ico)$/i))) {
+    if (!result && (normalizedFileType === 'image' || normalizedFileType === 'video' || !!fileName.match(/\.(jpg|jpeg|png|gif|webp|svg|bmp|ico|mp4|mov|avi|webm)$/i))) {
       console.warn(`[App] File not detected as media:`, {
         fileId: file.metadata.fileId,
-        fileType,
+        originalFileType: file.metadata.fileType,
+        normalizedFileType,
         fileName,
         isThought: thoughtCheck,
         isRawPdf: isRawPdf(file),
         isImage,
         isVideo,
-        isSlideshow,
-        fileNameMatch: !!fileName.match(/\.(jpg|jpeg|png|gif|webp|svg|bmp|ico)$/i)
+        isSlideshow
       });
     }
     
