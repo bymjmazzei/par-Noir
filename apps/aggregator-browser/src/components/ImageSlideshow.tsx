@@ -218,8 +218,19 @@ export function ImageSlideshow({ fileId, fileName, accountId }: ImageSlideshowPr
           // This is an encrypted file - decrypt it
           console.log(`[ImageSlideshow] Page ${pageNum} is encrypted, decrypting...`);
           
-          const { EncryptionManager } = await import('../utils/encryption/encryptionManager');
-          const { EncryptedFilePackage } = await import('../types/storage');
+          const { EncryptionManager } = await import('../utils/encryptionManager');
+          
+          // Define EncryptedFilePackage inline (same as FileStorageAggregator)
+          interface EncryptedFilePackage {
+            encrypted: string;
+            iv: string;
+            salt: string;
+            metadata: {
+              originalName: string;
+              originalSize: number;
+              originalMimeType: string;
+            };
+          }
           
           const session = PNOAuthService.loadSession();
           if (!session?.did) {
