@@ -2449,23 +2449,27 @@ function App() {
     if (isOwnIndex) {
       switch (mePageTab) {
         case 'all':
-          // Combine all files, then separate media and thoughts
+          // Combine all files - show everything that is either media OR thoughts (or both)
           const allFiles = Array.from(
             new Map([...creatorFiles, ...userLikedFiles, ...userCommentedFiles]
               .map(f => [f.metadata.fileId, f])).values()
           );
-          // Separate media and thoughts (exclude raw PDFs)
-          const mediaFiles = allFiles.filter(f => isMedia(f));
-          const thoughtFiles = allFiles.filter(f => isThought(f));
+          // Show all files that are either media OR thoughts (exclude raw PDFs)
+          // Don't separate them - just filter out raw PDFs
+          filtered = allFiles.filter(f => {
+            // Exclude raw PDFs
+            if (isRawPdf(f)) return false;
+            // Include everything else (media, thoughts, or both)
+            return isMedia(f) || isThought(f);
+          });
           
           // Debug logging for me page "all" tab
           console.log(`[Me Page All Tab] Filtering ${allFiles.length} files:`, {
             totalFiles: allFiles.length,
-            mediaFiles: mediaFiles.length,
-            thoughtFiles: thoughtFiles.length,
-            mediaFileIds: mediaFiles.map(f => f.metadata.fileId),
-            thoughtFileIds: thoughtFiles.map(f => f.metadata.fileId),
-            allFileDetails: allFiles.map(f => ({
+            filteredFiles: filtered.length,
+            mediaFiles: filtered.filter(f => isMedia(f)).length,
+            thoughtFiles: filtered.filter(f => isThought(f)).length,
+            fileDetails: filtered.map(f => ({
               fileId: f.metadata.fileId,
               fileType: f.metadata.fileType,
               fileName: f.metadata.name || f.metadata.title,
@@ -2473,9 +2477,6 @@ function App() {
               isThought: isThought(f)
             }))
           });
-          
-          // Show media first, then thoughts
-          filtered = [...mediaFiles, ...thoughtFiles];
           break;
         case 'media':
           // Only show images, videos, and PDF slideshows (exclude thoughts and raw PDFs)
@@ -2579,16 +2580,18 @@ function App() {
     } else if (viewingCreatorId) {
       switch (mePageTab) {
         case 'all':
-          // Combine all files, then separate media and thoughts
+          // Combine all files - show everything that is either media OR thoughts (or both)
           const allFilesOther = Array.from(
             new Map([...creatorFiles, ...viewedUserLikedFiles, ...viewedUserCommentedFiles]
               .map(f => [f.metadata.fileId, f])).values()
           );
-          // Separate media and thoughts (exclude raw PDFs)
-          const mediaFilesOther = allFilesOther.filter(f => isMedia(f));
-          const thoughtFilesOther = allFilesOther.filter(f => isThought(f));
-          // Show media first, then thoughts
-          filtered = [...mediaFilesOther, ...thoughtFilesOther];
+          // Show all files that are either media OR thoughts (exclude raw PDFs)
+          filtered = allFilesOther.filter(f => {
+            // Exclude raw PDFs
+            if (isRawPdf(f)) return false;
+            // Include everything else (media, thoughts, or both)
+            return isMedia(f) || isThought(f);
+          });
           break;
         case 'media':
           // Only show images, videos, and PDF slideshows (exclude thoughts and raw PDFs)

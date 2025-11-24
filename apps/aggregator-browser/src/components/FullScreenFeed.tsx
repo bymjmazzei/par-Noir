@@ -1299,6 +1299,41 @@ export function FullScreenFeed({
                           (file.description && file.description.trim().length > 0 && 
                            !actualFileType && !thoughtFileName.match(/\.(jpg|jpeg|png|gif|webp|svg|bmp|ico|mp4|mov|avi|webm|mkv|flv|wmv|pdf)$/i));
         
+        // CRITICAL FIX: If isTextPost is true but textPostData is missing, create it from available data
+        // This ensures thoughts render even when textPostData isn't populated
+        if (isTextPost && !textPostData) {
+          // Use description, name, or title as content
+          const content = file.description || file.name || file.title || '';
+          if (content && content.trim().length > 0) {
+            // Skip if content looks like a filename
+            if (!/\.(png|jpg|jpeg|gif|webp|svg|mp4|mov|avi|webm|pdf)$/i.test(content)) {
+              textPostData = {
+                content: content,
+                style: {
+                  backgroundColor: '#000000',
+                  textColor: '#FFFFFF',
+                  fontSize: 48,
+                  fontFamily: 'Arial',
+                  textAlign: 'center',
+                  padding: 40,
+                  dropShadowColor: '#000000',
+                  dropShadowBlur: 10,
+                  dropShadowOffsetX: 2,
+                  dropShadowOffsetY: 2
+                }
+              };
+              console.log('[FullScreenFeed] Created textPostData for thought:', {
+                fileId,
+                content: content.substring(0, 50),
+                isTextPost,
+                hasTextPostData: false,
+                hasTextFileType,
+                isThoughtFile
+              });
+            }
+          }
+        }
+        
         // If it's a thought but fileType is wrong, log it for debugging
         if (hasTextPostData && !hasTextFileType) {
           console.warn('[FullScreenFeed] Thought detected by data but fileType is incorrect:', {
