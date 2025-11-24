@@ -1787,33 +1787,48 @@ export function FullScreenFeed({
                   })}
                   
                   {/* Page indicator dots - fixed position overlay */}
-                  {totalPages > 1 && (
-                    <div 
-                      className="absolute bottom-6 left-1/2 transform -translate-x-1/2 z-50 flex items-center gap-2 pointer-events-none"
-                    >
-                      {Array.from({ length: totalPages }, (_, index) => (
-                        <button
-                          key={index}
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            e.preventDefault();
-                            const container = pdfScrollRefs.current.get(fileId);
-                            if (container) {
-                              const pageWidth = container.clientWidth;
-                              container.scrollTo({ left: index * pageWidth, behavior: 'smooth' });
-                            }
-                          }}
-                          className={`transition-all duration-200 rounded-full cursor-pointer pointer-events-auto ${
-                            currentPage === index
-                              ? 'w-2.5 h-2.5 bg-white'
-                              : 'w-2 h-2 bg-white/40 hover:bg-white/60'
-                          }`}
-                          aria-label={`Go to page ${index + 1}`}
-                        />
-                      ))}
-                    </div>
-                  )}
+                  {totalPages > 1 && (() => {
+                    const currentPage = pdfCurrentPage.get(fileId) || 0;
+                    console.log(`[FullScreenFeed] Rendering pagination dots for ${fileId}: currentPage=${currentPage + 1} of ${totalPages}`);
+                    return (
+                      <div 
+                        className="absolute bottom-6 left-1/2 transform -translate-x-1/2 z-50 flex items-center gap-2 pointer-events-none"
+                      >
+                        {Array.from({ length: totalPages }, (_, index) => {
+                          const isActive = currentPage === index;
+                          console.log(`[FullScreenFeed] Pagination dot ${index + 1}: isActive=${isActive}, currentPage=${currentPage + 1}`);
+                          return (
+                            <button
+                              key={index}
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                e.preventDefault();
+                                const container = pdfScrollRefs.current.get(fileId);
+                                if (container) {
+                                  const pageWidth = container.clientWidth;
+                                  console.log(`[FullScreenFeed] Clicked pagination dot ${index + 1}, scrolling to page ${index + 1}`);
+                                  container.scrollTo({ left: index * pageWidth, behavior: 'smooth' });
+                                  // Also update current page immediately
+                                  setPdfCurrentPage(prev => {
+                                    const newMap = new Map(prev);
+                                    newMap.set(fileId, index);
+                                    return newMap;
+                                  });
+                                }
+                              }}
+                              className={`transition-all duration-200 rounded-full cursor-pointer pointer-events-auto ${
+                                isActive
+                                  ? 'w-2.5 h-2.5 bg-white'
+                                  : 'w-2 h-2 bg-white/40 hover:bg-white/60'
+                              }`}
+                              aria-label={`Go to page ${index + 1}`}
+                            />
+                          );
+                        })}
+                      </div>
+                    );
+                  })()}
                 </div>
               );
             })()}
