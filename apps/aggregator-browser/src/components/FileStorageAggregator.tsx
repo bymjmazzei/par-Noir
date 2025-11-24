@@ -1432,62 +1432,90 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
         // Generate share token if making public OR if already public but missing token
         if (needsTokenGeneration) {
           try {
-            // Download the encrypted file to generate share token
-            const downloadResponse = await fetch(
-              `${apiEndpoint}/api/drive/files/${targetFileId}?accountId=${encodeURIComponent(sharingAccountId || '')}&download=true`,
-              {
-                headers: {
-                  'Authorization': `Bearer ${accessToken}`
-                }
-              }
-            );
-
-            if (downloadResponse.ok) {
-              const fileBlob = await downloadResponse.blob();
-              const contentType = downloadResponse.headers.get('content-type') || '';
+            // Check if this is a PDF slideshow folder (folders can't be downloaded)
+            const isPDFSlideshowFolder = sharingFile?.mimeType === 'application/vnd.google-apps.folder' && 
+                                         (sharingFile?.name || '').toLowerCase().endsWith('-pages');
+            
+            if (isPDFSlideshowFolder) {
+              // For folders, create a special share token that references the folder ID
+              // The viewer will know to list files in the folder instead of downloading
+              console.log('📁 [ShareSettings] Generating share token for PDF slideshow folder:', targetFileId);
               
-              
-              // Encrypted files are stored as JSON, so parse as text
-              const fileText = await fileBlob.text();
-              
-              if (!fileText || fileText.trim().length === 0) {
-                throw new Error('Downloaded file is empty');
-              }
-              
-              // Parse encrypted file package (JSON format)
-              let encryptedPackage: EncryptedFilePackage;
-              try {
-                encryptedPackage = JSON.parse(fileText);
-              } catch (parseError: any) {
-                console.error('❌ [ShareSettings] Failed to parse encrypted file package:', {
-                  error: parseError?.message,
-                  fileTextPreview: fileText.substring(0, 200)
-                });
-                throw new Error(`Failed to parse encrypted file: ${parseError?.message}`);
-              }
-              
-              // Validate package structure
-              if (!encryptedPackage.encrypted || !encryptedPackage.iv || !encryptedPackage.salt) {
-                throw new Error('Invalid encrypted file package structure - missing required fields');
-              }
-              
-              // Get user session for token generation
               const session = PNOAuthService.loadSession();
               if (session?.did && session?.publicKey) {
-                const encryptionService = getEncryptionService();
-                const shareToken = await encryptionService.generateShareToken(
-                  encryptedPackage,
-                  {
-                    id: session.did,
-                    publicKey: session.publicKey
-                  }
-                );
-                publicToken = JSON.stringify(shareToken);
+                // Create a minimal share token structure for folders
+                // The folder itself doesn't need encryption - the PNG files inside are already encrypted
+                const folderShareToken = {
+                  fileId: targetFileId,
+                  folderId: targetFileId, // Same as fileId for folders
+                  type: 'folder-slideshow', // Indicates this is a folder-based slideshow
+                  permissions: ['read'],
+                  expiresAt: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString(), // 1 year expiry
+                  createdBy: session.did
+                };
+                publicToken = JSON.stringify(folderShareToken);
+                console.log('✅ [ShareSettings] Generated folder share token');
               } else {
-                console.warn('⚠️ [ShareSettings] Missing session data for token generation');
+                console.warn('⚠️ [ShareSettings] Missing session data for folder token generation');
               }
             } else {
-              console.warn('⚠️ [ShareSettings] Failed to download file for token generation:', downloadResponse.status);
+              // Regular file - download and generate share token as usual
+              const downloadResponse = await fetch(
+                `${apiEndpoint}/api/drive/files/${targetFileId}?accountId=${encodeURIComponent(sharingAccountId || '')}&download=true`,
+                {
+                  headers: {
+                    'Authorization': `Bearer ${accessToken}`
+                  }
+                }
+              );
+
+              if (downloadResponse.ok) {
+                const fileBlob = await downloadResponse.blob();
+                const contentType = downloadResponse.headers.get('content-type') || '';
+                
+                
+                // Encrypted files are stored as JSON, so parse as text
+                const fileText = await fileBlob.text();
+                
+                if (!fileText || fileText.trim().length === 0) {
+                  throw new Error('Downloaded file is empty');
+                }
+                
+                // Parse encrypted file package (JSON format)
+                let encryptedPackage: EncryptedFilePackage;
+                try {
+                  encryptedPackage = JSON.parse(fileText);
+                } catch (parseError: any) {
+                  console.error('❌ [ShareSettings] Failed to parse encrypted file package:', {
+                    error: parseError?.message,
+                    fileTextPreview: fileText.substring(0, 200)
+                  });
+                  throw new Error(`Failed to parse encrypted file: ${parseError?.message}`);
+                }
+                
+                // Validate package structure
+                if (!encryptedPackage.encrypted || !encryptedPackage.iv || !encryptedPackage.salt) {
+                  throw new Error('Invalid encrypted file package structure - missing required fields');
+                }
+                
+                // Get user session for token generation
+                const session = PNOAuthService.loadSession();
+                if (session?.did && session?.publicKey) {
+                  const encryptionService = getEncryptionService();
+                  const shareToken = await encryptionService.generateShareToken(
+                    encryptedPackage,
+                    {
+                      id: session.did,
+                      publicKey: session.publicKey
+                    }
+                  );
+                  publicToken = JSON.stringify(shareToken);
+                } else {
+                  console.warn('⚠️ [ShareSettings] Missing session data for token generation');
+                }
+              } else {
+                console.warn('⚠️ [ShareSettings] Failed to download file for token generation:', downloadResponse.status);
+              }
             }
           } catch (tokenError: any) {
             console.error('❌ [ShareSettings] Failed to generate share token:', tokenError);
