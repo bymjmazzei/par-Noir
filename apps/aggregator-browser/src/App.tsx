@@ -631,7 +631,30 @@ function App() {
     if (activeFeedId === 'public') {
       // Public feed: ALWAYS filter out NSFW content unless user has it enabled
       // This ensures NSFW content never appears in public feed unless explicitly enabled
-        return indexedFiles.filter(shouldShowFile);
+      const filtered = indexedFiles.filter(shouldShowFile);
+      
+      // Debug logging for public feed
+      console.log(`[Public Feed] Filtered ${filtered.length} files from ${indexedFiles.length} indexed files:`, {
+        images: filtered.filter(f => f.metadata.fileType === 'image' || (f.metadata.name || '').match(/\.(jpg|jpeg|png|gif|webp|svg|bmp|ico)$/i)).length,
+        thoughts: filtered.filter(f => {
+          const fileType = f.metadata.fileType;
+          const hasTextPostData = !!(f.metadata as any).textPost || !!(f.metadata as any).thought;
+          const hasTextFileType = fileType === 'text' || fileType === 'thought';
+          const fileName = f.metadata.name || f.metadata.title || '';
+          const isThoughtFile = /^thought-\d+\.(thought|png)/i.test(fileName);
+          return hasTextPostData || hasTextFileType || isThoughtFile;
+        }).length,
+        videos: filtered.filter(f => f.metadata.fileType === 'video').length,
+        pdfs: filtered.filter(f => f.metadata.fileType === 'document').length,
+        fileDetails: filtered.map(f => ({
+          fileId: f.metadata.fileId,
+          fileType: f.metadata.fileType,
+          fileName: f.metadata.name || f.metadata.title,
+          hasTextPost: !!(f.metadata as any).textPost || !!(f.metadata as any).thought
+        }))
+      });
+      
+      return filtered;
     }
     if (activeFeedId === 'curated') {
       // Curated feed = all content EXCEPT blocked categories (negative filter)
@@ -2365,7 +2388,23 @@ function App() {
     // Check for PDF slideshows
     const isSlideshow = isPdfSlideshow(file);
     
-    return isImage || isVideo || isSlideshow;
+    const result = isImage || isVideo || isSlideshow;
+    
+    // Debug logging for files that should be media but aren't detected
+    if (!result && (fileType === 'image' || fileName.match(/\.(jpg|jpeg|png|gif|webp|svg|bmp|ico)$/i))) {
+      console.warn(`[App] File not detected as media:`, {
+        fileId: file.metadata.fileId,
+        fileType,
+        fileName,
+        isThought: isThought(file),
+        isRawPdf: isRawPdf(file),
+        isImage,
+        isVideo,
+        isSlideshow
+      });
+    }
+    
+    return result;
   };
 
   // Prepare data for conditional rendering
@@ -2387,6 +2426,23 @@ function App() {
           // Separate media and thoughts (exclude raw PDFs)
           const mediaFiles = allFiles.filter(f => isMedia(f));
           const thoughtFiles = allFiles.filter(f => isThought(f));
+          
+          // Debug logging for me page "all" tab
+          console.log(`[Me Page All Tab] Filtering ${allFiles.length} files:`, {
+            totalFiles: allFiles.length,
+            mediaFiles: mediaFiles.length,
+            thoughtFiles: thoughtFiles.length,
+            mediaFileIds: mediaFiles.map(f => f.metadata.fileId),
+            thoughtFileIds: thoughtFiles.map(f => f.metadata.fileId),
+            allFileDetails: allFiles.map(f => ({
+              fileId: f.metadata.fileId,
+              fileType: f.metadata.fileType,
+              fileName: f.metadata.name || f.metadata.title,
+              isMedia: isMedia(f),
+              isThought: isThought(f)
+            }))
+          });
+          
           // Show media first, then thoughts
           filtered = [...mediaFiles, ...thoughtFiles];
           break;
