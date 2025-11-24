@@ -259,8 +259,7 @@ export function FullScreenFeed({
   };
 
   // Load PDF page thumbnail on-demand
-  // NOTE: PDF page thumbnails are separate files, so they need API calls (can't use PDF's publicToken)
-  // We optimize by caching accountId to avoid repeated fetches
+  // USE PDF'S PUBLICTOKEN - thumbnails inherit PDF's public access, no API calls needed!
   const loadPdfPageThumbnail = async (
     fileId: string,
     thumbnailId: string,
@@ -268,6 +267,62 @@ export function FullScreenFeed({
     indexedFile: IndexedFile
   ) => {
     try {
+      const file = indexedFile.metadata;
+      
+      // If PDF has publicToken, use it to decrypt thumbnails (same as images - NO API CALLS!)
+      if (file?.publicToken) {
+        try {
+          let token: ShareToken;
+          try {
+            token = typeof file.publicToken === 'string' ? JSON.parse(file.publicToken) : file.publicToken;
+          } catch (e) {
+            console.warn(`[FullScreenFeed] Failed to parse PDF publicToken for thumbnail:`, e);
+            return; // Can't proceed without valid token
+          }
+          
+          if (token) {
+            // Use PDF's publicToken to decrypt thumbnail (thumbnails inherit PDF's public access)
+            try {
+              const decryptedBlob = await decryptWithToken(token);
+              const thumbnailUrl = URL.createObjectURL(decryptedBlob);
+              
+              // Store in PDF pages map
+              setPdfPageThumbnails(prev => {
+                const newMap = new Map(prev);
+                if (!newMap.has(fileId)) {
+                  newMap.set(fileId, new Map());
+                }
+                const pageMap = newMap.get(fileId)!;
+                pageMap.set(pageIndex, thumbnailUrl);
+                return newMap;
+              });
+              
+              // If this is the current page, update main thumbnail too
+              const currentPage = pdfCurrentPage.get(fileId) || 0;
+              if (pageIndex === currentPage) {
+                setThumbnails(prev => {
+                  const newMap = new Map(prev);
+                  newMap.set(fileId, thumbnailUrl);
+                  return newMap;
+                });
+              }
+              
+              console.log(`✅ [FullScreenFeed] Loaded PDF page ${pageIndex + 1} thumbnail via publicToken (NO API CALLS!)`);
+              return; // Success - NO API CALLS!
+            } catch (decryptErr) {
+              console.warn(`[FullScreenFeed] Failed to decrypt PDF thumbnail with token:`, decryptErr);
+              return; // Don't fall back to API - user doesn't want API calls
+            }
+          }
+        } catch (err) {
+          console.warn(`[FullScreenFeed] Error using publicToken for PDF thumbnail:`, err);
+          return; // Don't fall back to API
+        }
+      }
+      
+      // No publicToken - can't load without API (but user doesn't want API calls)
+      console.warn(`[FullScreenFeed] PDF thumbnail has no publicToken - cannot load without API`);
+      return;
       const { PNOAuthService } = await import('../services/pnOAuthService');
       const apiEndpoint = process.env.REACT_APP_API_ENDPOINT || 'https://api.parnoir.com';
       const accessToken = await PNOAuthService.getValidAccessToken();
@@ -898,10 +953,80 @@ export function FullScreenFeed({
           }
         }
 
-        // Load PDF document FIRST thumbnail
-        // NOTE: PDF page thumbnails are separate files, so they can't use PDF's publicToken
-        // They need to go through API, but we optimize by caching accountId
+        // Load PDF document FIRST thumbnail - USE PUBLICTOKEN (NO API CALLS!)
         if (isPdfDocument && pdfPageThumbnailIds && pdfPageThumbnailIds.length > 0 && !thumbnails.has(fileId)) {
+          const firstThumbnailId = pdfPageThumbnailIds[0];
+          console.log(`[FullScreenFeed] Loading FIRST PDF thumbnail for ${fileId} using publicToken (NO API CALLS!)`);
+          
+          // Use PDF's publicToken to decrypt first thumbnail (same as images - instant, no API!)
+          if (file.publicToken) {
+            try {
+              let token: ShareToken;
+              try {
+                token = typeof file.publicToken === 'string' ? JSON.parse(file.publicToken) : file.publicToken;
+              } catch (e) {
+                console.warn(`[FullScreenFeed] Failed to parse PDF publicToken:`, e);
+                return; // Can't proceed
+              }
+              
+              if (token) {
+                try {
+                  const decryptedBlob = await decryptWithToken(token);
+                  const thumbnailUrlObj = URL.createObjectURL(decryptedBlob);
+                  
+                  console.log(`✅ [FullScreenFeed] Loaded FIRST PDF thumbnail via publicToken (NO API CALLS!)`);
+                  setThumbnails(prev => {
+                    const newMap = new Map(prev);
+                    newMap.set(fileId, thumbnailUrlObj);
+                    return newMap;
+                  });
+                  
+                  // Initialize PDF page state
+                  setPdfCurrentPage(prev => {
+                    const newMap = new Map(prev);
+                    if (!newMap.has(fileId)) {
+                      newMap.set(fileId, 0);
+                    }
+                    return newMap;
+                  });
+                  
+                  // Store first thumbnail in PDF pages map
+                  setPdfPageThumbnails(prev => {
+                    const newMap = new Map(prev);
+                    if (!newMap.has(fileId)) {
+                      newMap.set(fileId, new Map());
+                    }
+                    const pageMap = newMap.get(fileId)!;
+                    pageMap.set(0, thumbnailUrlObj);
+                    return newMap;
+                  });
+                  
+                  // Preload adjacent pages in background (they'll also use publicToken - NO API!)
+                  if (pdfPageThumbnailIds.length > 1) {
+                    loadPdfPageThumbnail(fileId, pdfPageThumbnailIds[1], 1, indexedFile).catch(() => {});
+                    if (pdfPageThumbnailIds.length > 2) {
+                      loadPdfPageThumbnail(fileId, pdfPageThumbnailIds[2], 2, indexedFile).catch(() => {});
+                    }
+                  }
+                  
+                  return; // Success - NO API CALLS!
+                } catch (decryptErr) {
+                  console.warn(`[FullScreenFeed] Failed to decrypt PDF thumbnail with token:`, decryptErr);
+                  return; // Don't fall back to API
+                }
+              }
+            } catch (err) {
+              console.warn(`[FullScreenFeed] Error using publicToken for PDF thumbnail:`, err);
+              return; // Don't fall back to API
+            }
+          } else {
+            console.warn(`[FullScreenFeed] PDF has no publicToken - cannot load without API`);
+            return;
+          }
+        }
+        
+        // OLD API METHOD - REMOVED (user doesn't want API calls)
+        if (false && isPdfDocument && pdfPageThumbnailIds && pdfPageThumbnailIds.length > 0 && !thumbnails.has(fileId)) {
           const firstThumbnailId = pdfPageThumbnailIds[0];
           console.log(`[FullScreenFeed] Loading FIRST PDF thumbnail for ${fileId} from page thumbnail: ${firstThumbnailId}`);
           
