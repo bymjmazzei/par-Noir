@@ -1473,7 +1473,8 @@ export function FullScreenFeed({
               paddingTop: '0',
               boxSizing: 'border-box',
               overflow: 'hidden', // Ensure background doesn't overflow
-              position: 'relative' // Ensure proper stacking context
+              position: 'relative', // Ensure proper stacking context
+              zIndex: 0 // Ensure all tiles are on the same z-index level
             }}
           >
             {/* Text Post / Thought - Render as its own tile, not an overlay */}
@@ -1487,6 +1488,10 @@ export function FullScreenFeed({
                     : 'none',
                   backgroundSize: 'cover',
                   backgroundPosition: 'center',
+                  position: 'relative', // Ensure it's in normal flow, not absolute
+                  zIndex: 0, // Same z-index as other content types
+                  width: '100%',
+                  height: '100%'
                 }}
               >
                 <div
