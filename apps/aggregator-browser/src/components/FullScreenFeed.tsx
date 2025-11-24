@@ -1292,7 +1292,9 @@ export function FullScreenFeed({
             ref={(el) => {
               if (el && isPdfDoc) {
                 // Attach PDF swipe handler to this element
-                (pdfHorizontalSwipeRef as any).current.element = el;
+                if (pdfHorizontalSwipeRef.current !== el) {
+                  (pdfHorizontalSwipeRef as React.MutableRefObject<HTMLDivElement | null>).current = el;
+                }
               }
             }}
             className="w-full snap-start flex items-center justify-center bg-black relative"
