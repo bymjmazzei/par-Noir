@@ -1413,15 +1413,16 @@ export function FullScreenFeed({
         // This prevents thoughts with image-like filenames from being misclassified
         const isVideo = !isTextPost && (
           file.fileType === 'video' || 
-          (file.name || file.title || '').match(/\.(mp4|mov|avi|webm|mkv|flv|wmv)$/i)
+          !!(file.name || file.title || '').match(/\.(mp4|mov|avi|webm|mkv|flv|wmv)$/i)
         );
         
         // IMPORTANT: If it's a thought, it should NEVER be detected as an image, even if filename matches image pattern
         // This prevents flickering where thoughts are detected as both thoughts and images
         // isThoughtFile is already defined above (line 1356)
+        // Use !! to convert match result (array or null) to boolean
         const isImage = !isTextPost && !isThoughtFile && !hasTextPostData && (
           file.fileType === 'image' || 
-          (file.name || file.title || '').match(/\.(jpg|jpeg|png|gif|webp|svg|bmp|ico)$/i)
+          !!(file.name || file.title || '').match(/\.(jpg|jpeg|png|gif|webp|svg|bmp|ico)$/i)
         );
         
         // Check if this is an image slideshow folder (folder ending with "-pages")

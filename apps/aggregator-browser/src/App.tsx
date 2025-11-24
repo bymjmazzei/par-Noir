@@ -2377,13 +2377,13 @@ function App() {
     const fileType = file.metadata.fileType;
     const fileName = file.metadata.name || file.metadata.title || '';
     
-    // Check for images
+    // Check for images (use !! to convert match result to boolean)
     const isImage = fileType === 'image' || 
-                   fileName.match(/\.(jpg|jpeg|png|gif|webp|svg|bmp|ico)$/i);
+                   !!(fileName.match(/\.(jpg|jpeg|png|gif|webp|svg|bmp|ico)$/i));
     
-    // Check for videos
+    // Check for videos (use !! to convert match result to boolean)
     const isVideo = fileType === 'video' || 
-                   fileName.match(/\.(mp4|mov|avi|webm|mkv|flv|wmv)$/i);
+                   !!(fileName.match(/\.(mp4|mov|avi|webm|mkv|flv|wmv)$/i));
     
     // Check for PDF slideshows
     const isSlideshow = isPdfSlideshow(file);
