@@ -40,7 +40,7 @@ export function ImageSlideshow({ thumbnailIds, fileName, accountId, pdfFileId }:
     console.log(`[ImageSlideshow] Initializing ${thumbnailIds.length} pages from thumbnail IDs`);
     setPages(Array.from({ length: thumbnailIds.length }, (_, i) => i + 1));
     setCurrentPage(1);
-    // Keep loading=true - will be set to false once first page starts loading
+    setLoading(false); // Show UI immediately - pages will load progressively
   }, [thumbnailIds]);
 
   // Fetch accountId helper
@@ -333,9 +333,7 @@ export function ImageSlideshow({ thumbnailIds, fileName, accountId, pdfFileId }:
       
       // Load first page immediately (don't await - let UI appear while it loads)
       if (thumbnailIds.length > 0 && !cancelled) {
-        // Hide loading screen immediately - first page will show "Loading..." while decrypting
-        setLoading(false);
-        // Start loading first page (non-blocking)
+        // Start loading first page (non-blocking) - UI already visible
         loadThumbnail(thumbnailIds[0], 1, finalAccountId, false).catch(() => {});
       }
       
