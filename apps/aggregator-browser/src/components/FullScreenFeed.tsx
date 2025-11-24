@@ -1468,10 +1468,10 @@ export function FullScreenFeed({
               position: 'relative' // Ensure proper stacking context
             }}
           >
-            {/* Text Post / Thought - Render FIRST with highest z-index to prevent being overridden by image/video */}
+            {/* Text Post / Thought - Render as its own tile, not an overlay */}
             {(isTextPost || textPostData) && (
               <div 
-                className="w-full h-full flex items-center justify-center absolute inset-0 z-50"
+                className="w-full h-full flex items-center justify-center relative"
                 style={{
                   backgroundColor: textPostData?.style?.backgroundColor || '#000000',
                   backgroundImage: textPostData?.style?.backgroundImage 
