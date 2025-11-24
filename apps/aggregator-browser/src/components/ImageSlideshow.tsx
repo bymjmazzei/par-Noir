@@ -576,23 +576,23 @@ export function ImageSlideshow({ fileId, fileName, accountId, pdfFileId }: Image
       }
     }, [pdfFileId]);
 
-  // Load pages progressively: first page immediately, next 2 pages in parallel
+  // Load all thumbnails in parallel (they're small ~50KB each, so load all at once)
   useEffect(() => {
     if (folderPageFiles.length === 0) return;
     
     (async () => {
       const finalAccountId = await fetchAccountIdOnce();
       
-      // Load first page immediately for instant display (thumbnail first)
-      if (folderPageFiles.length > 0) {
-        await loadImagePage(folderPageFiles[0], finalAccountId, false);
-      }
+      // Load all thumbnails in parallel for instant slideshow navigation
+      // Thumbnails are small (~50KB), so loading all at once is fine
+      const thumbnailPromises = folderPageFiles.map(pageFile => 
+        loadImagePage(pageFile, finalAccountId, false) // Load thumbnails
+      );
       
-      // Load next 2 pages in parallel (preload thumbnails for smooth navigation)
-      // Remaining pages will load on-demand when user navigates (via useEffect watching currentPage)
-      const pagesToPreload = folderPageFiles.slice(1, 3); // Pages 2 and 3
-      pagesToPreload.forEach(pageFile => {
-        loadImagePage(pageFile, finalAccountId, false); // Load thumbnails first
+      // Don't await all - let them load in parallel
+      // First page will appear quickly, others will follow
+      Promise.all(thumbnailPromises).catch(err => {
+        console.warn('[ImageSlideshow] Some thumbnails failed to load:', err);
       });
     })();
   }, [folderPageFiles, accountId, loadImagePage]);
