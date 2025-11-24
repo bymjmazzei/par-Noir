@@ -2364,34 +2364,43 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
         
         if ((isImage || isVideo) && !thumbnailFileId) {
           try {
-            // Ensure functions are available (safety check)
-            if (typeof createThumbnailFromBlob !== 'function' || typeof createVideoThumbnail !== 'function') {
-              throw new Error('Thumbnail generation functions not available');
-            }
-            
             let thumbnailBlob: Blob;
             
             if (isImage) {
-              // Generate thumbnail from image (File extends Blob, so this works)
-              thumbnailBlob = await createThumbnailFromBlob(file as Blob, 800, 800);
-            } else {
+              // Generate thumbnail from image using the helper function
+              // File extends Blob, so we can pass it directly
+              thumbnailBlob = await createThumbnailFromBlob(file, 800, 800);
+            } else if (isVideo) {
               // Generate thumbnail from video (extract first frame)
               thumbnailBlob = await createVideoThumbnail(file, 800, 800);
+            } else {
+              throw new Error('Unsupported file type for thumbnail generation');
             }
             
-            // Upload thumbnail
-            thumbnailFileId = await uploadThumbnail(
-              thumbnailBlob,
-              file.name,
-              encryptionManager,
-              session,
-              publicKey,
-              freshAccessToken,
-              accountId
-            );
+            // Upload thumbnail using the helper function
+            if (thumbnailBlob && typeof uploadThumbnail === 'function') {
+              thumbnailFileId = await uploadThumbnail(
+                thumbnailBlob,
+                file.name,
+                encryptionManager,
+                session,
+                publicKey,
+                freshAccessToken,
+                accountId
+              );
+            } else {
+              throw new Error('Thumbnail blob or upload function not available');
+            }
           } catch (thumbError: any) {
             console.warn('⚠️ [Upload] Thumbnail generation failed:', thumbError);
-            console.error('⚠️ [Upload] Thumbnail error details:', thumbError?.message, thumbError?.stack);
+            console.error('⚠️ [Upload] Thumbnail error details:', {
+              message: thumbError?.message,
+              stack: thumbError?.stack,
+              name: thumbError?.name,
+              createThumbnailFromBlob: typeof createThumbnailFromBlob,
+              createVideoThumbnail: typeof createVideoThumbnail,
+              uploadThumbnail: typeof uploadThumbnail
+            });
             // Don't fail upload if thumbnail fails
           }
         }
