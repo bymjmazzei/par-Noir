@@ -418,8 +418,8 @@ export class GoogleDriveProxyService {
   /**
    * Download file from Google Drive
    */
-  async downloadFile(userDid: string, fileId: string, accountId?: string): Promise<Blob> {
-    const accessToken = await this.getAccessToken(userDid, accountId);
+  async downloadFile(userDid: string, fileId: string, accountId?: string, additionalCandidates?: string[]): Promise<Blob> {
+    const accessToken = await this.getAccessToken(userDid, accountId, additionalCandidates);
 
     const response = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`, {
       headers: {

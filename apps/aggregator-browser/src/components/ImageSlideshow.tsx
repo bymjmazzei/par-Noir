@@ -187,7 +187,8 @@ export function ImageSlideshow({ fileId, fileName, accountId }: ImageSlideshowPr
           }
         }
 
-        // Use thumbnail endpoint which returns decrypted image
+        // Use thumbnail endpoint - for encrypted files, API will return the full encrypted file
+        // which we'll decrypt client-side
         let thumbnailUrl = `${apiEndpoint}/api/drive/files/${pageFile.id}?thumbnail=true`;
         // Add accountId if we have a valid one
         if (finalAccountId && finalAccountId.includes('::')) {
@@ -207,16 +208,68 @@ export function ImageSlideshow({ fileId, fileName, accountId }: ImageSlideshowPr
           throw new Error(`Failed to load page ${pageNum} thumbnail: ${response.status}`);
         }
         
+        const contentType = response.headers.get('content-type') || '';
         const blob = await response.blob();
-        const url = URL.createObjectURL(blob);
-        const loadTime = Date.now() - startTime;
         
+        // Check if this is an encrypted file (JSON) or a direct image
+        let imageUrl: string;
+        
+        if (contentType.includes('application/json') || contentType.includes('application/octet-stream')) {
+          // This is an encrypted file - decrypt it
+          console.log(`[ImageSlideshow] Page ${pageNum} is encrypted, decrypting...`);
+          
+          const { EncryptionManager } = await import('../utils/encryption/encryptionManager');
+          const { EncryptedFilePackage } = await import('../types/storage');
+          
+          const session = PNOAuthService.loadSession();
+          if (!session?.did) {
+            throw new Error('No session for decryption');
+          }
+          
+          const pnId = session.did;
+          let publicKey = session?.publicKey;
+          
+          if (!publicKey && session.did.startsWith('did:key:')) {
+            publicKey = session.did.substring(8);
+          }
+          
+          if (!publicKey) {
+            throw new Error('No public key for decryption');
+          }
+          
+          // Parse encrypted package
+          const encryptedText = await blob.text();
+          const encryptedPackage: EncryptedFilePackage = JSON.parse(encryptedText);
+          
+          // Decrypt
+          const encryptionManager = new EncryptionManager();
+          const decryptedData = await encryptionManager.decrypt(
+            encryptedPackage.encrypted,
+            encryptedPackage.iv,
+            encryptedPackage.salt,
+            pnId,
+            publicKey
+          );
+          
+          // Create image blob from decrypted data
+          const decryptedBlob = new Blob([decryptedData], {
+            type: encryptedPackage.metadata.originalMimeType || 'image/png'
+          });
+          
+          imageUrl = URL.createObjectURL(decryptedBlob);
+          console.log(`✅ [ImageSlideshow] Decrypted PNG page ${pageNum}`);
+        } else {
+          // Direct image (non-encrypted or already decrypted by API)
+          imageUrl = URL.createObjectURL(blob);
+        }
+        
+        const loadTime = Date.now() - startTime;
         console.log(`✅ [ImageSlideshow] Loaded image page ${pageNum} in ${loadTime}ms`);
         
         loadedPagesRef.current.add(pageNum);
         setPageUrls(prev => {
           const next = new Map(prev);
-          next.set(pageNum, url);
+          next.set(pageNum, imageUrl);
           return next;
         });
       } catch (err) {

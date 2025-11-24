@@ -5157,6 +5157,28 @@ class ProductionServer {
               res.setHeader('Content-Type', thumbnailBlob.type || 'image/jpeg');
               res.setHeader('Cache-Control', 'public, max-age=3600'); // Cache thumbnails for 1 hour
               return res.send(buffer);
+            } else if (thumbnailResponse.status === 404) {
+              // Google Drive can't generate thumbnails for encrypted files
+              // Fall back to downloading the full file - client will decrypt and generate thumbnail
+              console.log(`[DriveFiles] Thumbnail not available (likely encrypted file), downloading full file for client-side thumbnail generation`);
+              
+              try {
+                const fileBlob = await googleDriveProxyService.downloadFile(userIdentifier, fileId, accountId, identifierCandidates);
+                const arrayBuffer = await fileBlob.arrayBuffer();
+                const buffer = Buffer.from(arrayBuffer);
+                
+                // Return the encrypted file - client will decrypt and use it as thumbnail
+                // For PNG files, the client can use the image directly (maybe resized)
+                res.setHeader('Content-Type', fileBlob.type || 'application/octet-stream');
+                res.setHeader('Cache-Control', 'public, max-age=3600');
+                return res.send(buffer);
+              } catch (downloadError: any) {
+                console.error(`[DriveFiles] Failed to download file for thumbnail fallback:`, downloadError);
+                return res.status(500).json({
+                  error: 'Failed to fetch thumbnail',
+                  error_description: 'Thumbnail not available and file download failed'
+                });
+              }
             } else {
               const errorText = await thumbnailResponse.text().catch(() => 'Unknown error');
               console.error(`[DriveFiles] Thumbnail fetch failed: ${thumbnailResponse.status} - ${errorText}`);
