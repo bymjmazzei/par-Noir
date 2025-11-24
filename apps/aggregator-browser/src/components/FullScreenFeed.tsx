@@ -1559,15 +1559,7 @@ export function FullScreenFeed({
               
               return (
                 <div
-                  ref={(el) => {
-                    // Attach PDF swipe handler to PDF content area
-                    // The hook uses elementRef.current internally - set it directly
-                    if (el && visibleFileId === fileId && isPdfDoc) {
-                      (pdfHorizontalSwipeRef as any).current = el;
-                    } else {
-                      (pdfHorizontalSwipeRef as any).current = null;
-                    }
-                  }}
+                  ref={visibleFileId === fileId && isPdfDoc ? pdfHorizontalSwipeRef : undefined}
                   className="w-full h-full relative"
                 >
                   {/* Blurred background PDF page */}
