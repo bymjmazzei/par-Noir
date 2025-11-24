@@ -624,16 +624,15 @@ export function ImageSlideshow({ thumbnailIds, fileName, accountId, pdfFileId }:
                 ) : hasFailed ? (
                   <div className="text-white/50 text-center">
                     <p className="text-sm">Page {pageNum}</p>
-                    <p className="text-xs mt-1">Authentication required</p>
-                  </div>
-                ) : isLoading ? (
-                  <div className="text-white/70 text-center">
-                    <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-white/50 mx-auto mb-2"></div>
-                    <p className="text-xs">Loading...</p>
+                    <p className="text-xs mt-1 opacity-70">Authentication required</p>
                   </div>
                 ) : (
-                  <div className="text-white/50 text-center">
-                    <p className="text-xs">Page {pageNum}</p>
+                  // Show placeholder immediately - no loading spinner to avoid "loading screen" appearance
+                  <div className="text-white/40 text-center">
+                    <p className="text-sm">Page {pageNum}</p>
+                    {isLoading && (
+                      <p className="text-xs mt-1 opacity-50">Loading...</p>
+                    )}
                   </div>
                 )}
               </div>
