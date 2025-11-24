@@ -1343,7 +1343,9 @@ export function FullScreenFeed({
         // Also check if file has thought-like content even if metadata is missing
         const isTextPost = hasTextPostData || hasTextFileType || 
                           (file.description && file.description.trim().length > 0 && 
-                           !file.fileType && !file.name?.match(/\.(jpg|jpeg|png|gif|webp|svg|bmp|ico|mp4|mov|avi|webm|mkv|flv|wmv|pdf)$/i));
+                           !file.fileType && !file.name?.match(/\.(jpg|jpeg|png|gif|webp|svg|bmp|ico|mp4|mov|avi|webm|mkv|flv|wmv|pdf)$/i)) ||
+                          (file.fileType === 'text' || file.fileType === 'thought' || 
+                           indexedFile.metadata?.fileType === 'text' || indexedFile.metadata?.fileType === 'thought');
         
         // If it's a thought but fileType is wrong, log it for debugging
         if (hasTextPostData && !hasTextFileType) {
