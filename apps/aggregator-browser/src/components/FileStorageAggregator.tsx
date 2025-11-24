@@ -772,6 +772,8 @@ interface DriveFile {
   modifiedTime?: string;
   isPublic?: boolean;
   accountId?: string; // Track which account this file belongs to
+  mainFileId?: string; // ID of the main file (if this is a thumbnail)
+  isThumbnail?: boolean; // Whether this file is a thumbnail
 }
 
 interface FileStorageAggregatorProps {
@@ -898,76 +900,61 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
         console.log(`[FileStorageAggregator] Found ${folders.length} folders:`, folders.map((f: DriveFile) => ({ name: f.name, id: f.id, mimeType: f.mimeType })));
         console.log(`[FileStorageAggregator] All files:`, allFiles.map((f: DriveFile) => ({ name: f.name, id: f.id, mimeType: f.mimeType })));
         
-        // Filter to show only media files (images/videos/PDFs), excluding metadata, index, encrypted, and system files
-        const mediaFiles = allFiles.filter((file: DriveFile) => {
+        // Separate thumbnails and main files
+        const thumbnails = allFiles.filter((file: DriveFile) => {
+          const name = file.name.toLowerCase();
+          return name.startsWith('thumb_') && name.endsWith('.encrypted');
+        });
+        
+        const mainFiles = allFiles.filter((file: DriveFile) => {
+          const name = file.name.toLowerCase();
+          return !name.startsWith('thumb_');
+        });
+        
+        // Map thumbnails to their main files and create display entries
+        const thumbnailEntries = thumbnails.map((thumb: DriveFile) => {
+          // Remove "thumb_" prefix and ".encrypted" suffix to find main file
+          const thumbNameWithoutPrefix = thumb.name.replace(/^thumb_/i, '').replace(/\.encrypted$/i, '');
+          
+          // Find the corresponding main file
+          const mainFile = mainFiles.find((mf: DriveFile) => {
+            const mainFileName = mf.name.replace(/\.encrypted$/i, '');
+            return mainFileName === thumbNameWithoutPrefix;
+          });
+          
+          // Clean display name: remove thumb_ prefix and file extension
+          let displayName = thumb.name.replace(/^thumb_/i, '').replace(/\.encrypted$/i, '');
+          // Remove file extension
+          displayName = displayName.replace(/\.[^.]+$/, '');
+          
+          return {
+            ...thumb,
+            isThumbnail: true,
+            mainFileId: mainFile?.id || thumb.id, // Use main file ID if found, fallback to thumb ID
+            displayName: displayName
+          };
+        });
+        
+        // Filter to show only thumbnails (representing main files) and PDF slideshow folders
+        const mediaFiles = thumbnailEntries.concat(
+          allFiles.filter((file: DriveFile) => {
           const name = file.name.toLowerCase();
           const mimeType = file.mimeType || '';
           
           // Allow PDF slideshow folders (folders ending with "-pages") to show as files
-          // These represent PDF slideshows and should appear as single file items
           if (mimeType === 'application/vnd.google-apps.folder') {
-            // Check if this is a PDF slideshow folder (ends with "-pages")
             const nameWithoutEncrypted = file.name.replace(/\.encrypted$/i, '');
             const isPDFSlideshowFolder = nameWithoutEncrypted.toLowerCase().endsWith('-pages');
-            console.log(`[FileFilter] Checking folder: ${file.name}, mimeType: ${mimeType}, isPDFSlideshowFolder: ${isPDFSlideshowFolder}`);
             if (isPDFSlideshowFolder) {
-              console.log(`✅ [FileFilter] Including PDF slideshow folder: ${file.name}`);
               return true; // Include PDF slideshow folders
             }
-            console.log(`❌ [FileFilter] Excluding folder: ${file.name}`);
             return false; // Exclude other folders
           }
           
-          // Exclude PDF page PNGs (these are stored in folders and shouldn't show in main file list)
-          if (name.match(/-page-\d+\.png\.encrypted$/i)) {
-            return false;
-          }
-          
-          // Exclude metadata files
-          if (name.endsWith('.metadata.json') || name === '_metadata') {
-            return false;
-          }
-          
-          // Exclude index files
-          if (name.includes('file-index.json') || name.includes('index.json')) {
-            return false;
-          }
-          
-          // Exclude system files/folders (but allow actual media files that might start with _)
-          if ((name.startsWith('_') || name === 'metadata') && !mimeType.startsWith('image/') && !mimeType.startsWith('video/') && mimeType !== 'application/pdf' && !mimeType.includes('pdf')) {
-            // Check if it's a media file by extension even if MIME type doesn't match
-            const nameWithoutEncrypted = file.name.replace(/\.encrypted$/i, '');
-            const hasImageExt = /\.(jpg|jpeg|png|gif|webp|bmp|svg|heic|heif)$/i.test(nameWithoutEncrypted);
-            const hasVideoExt = /\.(mp4|mov|avi|mkv|webm|flv|wmv|m4v|3gp)$/i.test(nameWithoutEncrypted);
-            const hasPDFExt = /\.pdf$/i.test(nameWithoutEncrypted);
-            if (!hasImageExt && !hasVideoExt && !hasPDFExt) {
-              return false;
-            }
-          }
-          
-          // Check MIME types
-          const isImageMime = mimeType.startsWith('image/');
-          const isVideoMime = mimeType.startsWith('video/');
-          const isPDFMime = mimeType === 'application/pdf' || mimeType.includes('pdf');
-          
-          // Check file extensions (including encrypted files which have .encrypted suffix)
-          // Remove .encrypted suffix first to check original extension
-          const nameWithoutEncrypted = file.name.replace(/\.encrypted$/i, '');
-          const hasImageExt = /\.(jpg|jpeg|png|gif|webp|bmp|svg|heic|heif)$/i.test(nameWithoutEncrypted);
-          const hasVideoExt = /\.(mp4|mov|avi|mkv|webm|flv|wmv|m4v|3gp)$/i.test(nameWithoutEncrypted);
-          const hasPDFExt = /\.pdf$/i.test(nameWithoutEncrypted);
-          
-          // Check if file name suggests it's an image (e.g., "img123", "image123", "photo123")
-          // This handles files without extensions that are likely images
-          const nameLower = nameWithoutEncrypted.toLowerCase();
-          const looksLikeImage = /^(img|image|photo|pic|picture|snap|shot)\d+/i.test(nameLower) || 
-                                 nameLower.startsWith('img') || 
-                                 nameLower.startsWith('image');
-          
-          // Include if it's an image/video/PDF by MIME type OR by file extension OR looks like an image
-          // This allows encrypted files to show if they have image/video/PDF extensions or look like images
-          return isImageMime || isVideoMime || isPDFMime || hasImageExt || hasVideoExt || hasPDFExt || looksLikeImage;
-        });
+          // Exclude everything else (main files, thumbnails already handled above)
+          return false;
+        })
+        );
         
         setFilesByAccount(prev => {
           const next = new Map(prev);
@@ -992,8 +979,44 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
         console.log(`[FileStorageAggregator] Found ${folders.length} folders:`, folders.map((f: DriveFile) => ({ name: f.name, id: f.id, mimeType: f.mimeType })));
         console.log(`[FileStorageAggregator] All files:`, allFiles.map((f: DriveFile) => ({ name: f.name, id: f.id, mimeType: f.mimeType })));
         
-        // Filter to show only media files (images/videos/PDFs), excluding metadata, index, encrypted, and system files
-        const mediaFiles = allFiles.filter((file: DriveFile) => {
+        // Separate thumbnails and main files
+        const thumbnails = allFiles.filter((file: DriveFile) => {
+          const name = file.name.toLowerCase();
+          return name.startsWith('thumb_') && name.endsWith('.encrypted');
+        });
+        
+        const mainFiles = allFiles.filter((file: DriveFile) => {
+          const name = file.name.toLowerCase();
+          return !name.startsWith('thumb_');
+        });
+        
+        // Map thumbnails to their main files and create display entries
+        const thumbnailEntries = thumbnails.map((thumb: DriveFile) => {
+          // Remove "thumb_" prefix and ".encrypted" suffix to find main file
+          const thumbNameWithoutPrefix = thumb.name.replace(/^thumb_/i, '').replace(/\.encrypted$/i, '');
+          
+          // Find the corresponding main file
+          const mainFile = mainFiles.find((mf: DriveFile) => {
+            const mainFileName = mf.name.replace(/\.encrypted$/i, '');
+            return mainFileName === thumbNameWithoutPrefix;
+          });
+          
+          // Clean display name: remove thumb_ prefix and file extension
+          let displayName = thumb.name.replace(/^thumb_/i, '').replace(/\.encrypted$/i, '');
+          // Remove file extension
+          displayName = displayName.replace(/\.[^.]+$/, '');
+          
+          return {
+            ...thumb,
+            isThumbnail: true,
+            mainFileId: mainFile?.id || thumb.id, // Use main file ID if found, fallback to thumb ID
+            displayName: displayName
+          };
+        });
+        
+        // Filter to show only thumbnails (representing main files) and PDF slideshow folders
+        const mediaFiles = thumbnailEntries.concat(
+          allFiles.filter((file: DriveFile) => {
           const name = file.name.toLowerCase();
           const mimeType = file.mimeType || '';
           
@@ -1118,7 +1141,39 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
         throw new Error('No valid access token');
       }
 
-      const response = await fetch(`${apiEndpoint}/api/drive/files/${file.id}?accountId=${accountId}`, {
+      // Use main file ID if this is a thumbnail, otherwise use file ID
+      const fileIdToDownload = file.mainFileId || file.id;
+      
+      // Get the original filename for download
+      let downloadFileName = file.name;
+      if (file.isThumbnail) {
+        // For thumbnails, try to get the original filename from metadata
+        try {
+          const metadataResponse = await fetch(`${apiEndpoint}/api/aggregator/metadata-index/${fileIdToDownload}`, {
+            headers: {
+              'Authorization': `Bearer ${accessToken}`
+            }
+          });
+          
+          if (metadataResponse.ok) {
+            const metadata = await metadataResponse.json();
+            if (metadata.metadata?.name) {
+              downloadFileName = metadata.metadata.name;
+            } else {
+              // Fallback: reconstruct from display name (add back extension if we can infer it)
+              downloadFileName = file.displayName || file.name.replace(/^thumb_/i, '').replace(/\.encrypted$/i, '');
+            }
+          } else {
+            // Fallback: reconstruct from display name
+            downloadFileName = file.displayName || file.name.replace(/^thumb_/i, '').replace(/\.encrypted$/i, '');
+          }
+        } catch (metadataError) {
+          // Fallback: reconstruct from display name
+          downloadFileName = file.displayName || file.name.replace(/^thumb_/i, '').replace(/\.encrypted$/i, '');
+        }
+      }
+
+      const response = await fetch(`${apiEndpoint}/api/drive/files/${fileIdToDownload}?accountId=${accountId}`, {
         headers: {
           'Authorization': `Bearer ${accessToken}`
         }
@@ -1129,7 +1184,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
-        a.download = file.name;
+        a.download = downloadFileName;
         document.body.appendChild(a);
         a.click();
         document.body.removeChild(a);
