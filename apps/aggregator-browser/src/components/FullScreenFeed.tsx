@@ -1107,7 +1107,6 @@ export function FullScreenFeed({
   useEffect(() => {
     // Check for all containers (both new and existing)
     const containers = Array.from(pdfScrollRefs.current.entries());
-    console.log(`[FullScreenFeed] Checking scroll listeners: ${containers.length} containers found`);
     
     const handlePdfScroll = (fileId: string, container: HTMLDivElement) => {
       const scrollLeft = container.scrollLeft;
@@ -1134,29 +1133,17 @@ export function FullScreenFeed({
       // Clamp to valid range
       newPage = Math.max(0, Math.min(newPage, totalPages - 1));
       
-      console.log(`[FullScreenFeed] PDF scroll event for ${fileId}: scrollLeft=${scrollLeft}, pageWidth=${pageWidth}, scrollCenter=${scrollCenter}, newPage=${newPage}, currentPage=${currentPage}`);
-      
       // Always update current page based on scroll position (for pagination circles)
-      // Update even if it's the same to ensure state is fresh
-      if (newPage >= 0 && newPage < totalPages) {
-        if (newPage !== currentPage) {
-          console.log(`[FullScreenFeed] Scroll detected: page ${currentPage + 1} -> ${newPage + 1} for ${fileId}`);
-        }
+      if (newPage >= 0 && newPage < totalPages && newPage !== currentPage) {
         setPdfCurrentPage(prev => {
           const newMap = new Map(prev);
-          const oldValue = newMap.get(fileId) || 0;
-          if (oldValue !== newPage) {
-            newMap.set(fileId, newPage);
-            console.log(`[FullScreenFeed] Updated pdfCurrentPage state: ${oldValue + 1} -> ${newPage + 1}`);
-            return newMap;
-          }
-          return prev; // Return same reference if no change
+          newMap.set(fileId, newPage);
+          return newMap;
         });
         
         // Load thumbnail if not loaded (on-demand loading)
         const pageThumbnails = pdfPageThumbnails.get(fileId);
         if (!pageThumbnails?.has(newPage)) {
-          console.log(`[FullScreenFeed] Loading thumbnail for page ${newPage + 1} on scroll`);
           const thumbnailId = pdfPageThumbnailIds[newPage];
           loadPdfPageThumbnail(fileId, thumbnailId, newPage, currentFile).catch(() => {});
         }
@@ -1183,7 +1170,6 @@ export function FullScreenFeed({
         oldCleanup();
       }
       
-      console.log(`[FullScreenFeed] Attaching scroll listener to PDF container for ${fileId}`);
       const handler = () => handlePdfScroll(fileId, container);
       container.addEventListener('scroll', handler, { passive: true });
       
@@ -1201,7 +1187,6 @@ export function FullScreenFeed({
     });
     
     return () => {
-      console.log(`[FullScreenFeed] Cleaning up scroll listeners`);
       scrollListenersSetupRef.current.forEach(cleanup => cleanup());
       scrollListenersSetupRef.current.clear();
     };
@@ -1779,19 +1764,15 @@ export function FullScreenFeed({
                       if (!el) return; // No element
                       if (pageThumbnailUrl) return; // Already loaded
                       
-                      console.log(`[FullScreenFeed] Setting up IntersectionObserver for page ${pageIndex + 1} of ${fileId}`);
-                      
                       const observer = new IntersectionObserver(
                         (entries) => {
                           entries.forEach((entry) => {
                             if (entry.isIntersecting) {
-                              console.log(`[FullScreenFeed] Page ${pageIndex + 1} is intersecting!`);
                               // Update current page based on which page is visible (for pagination dots)
                               setPdfCurrentPage(prev => {
                                 const newMap = new Map(prev);
                                 const oldPage = newMap.get(fileId) || 0;
                                 if (pageIndex !== oldPage) {
-                                  console.log(`[FullScreenFeed] Updating current page from ${oldPage + 1} to ${pageIndex + 1} based on visibility`);
                                   newMap.set(fileId, pageIndex);
                                 }
                                 return newMap;
@@ -1799,16 +1780,12 @@ export function FullScreenFeed({
                               
                               // Always load if page is visible (no range restriction)
                               if (!pageThumbnailUrl) {
-                                console.log(`[FullScreenFeed] Page ${pageIndex + 1} is visible, loading thumbnail`);
                                 const thumbnailId = pdfPageThumbnailIds[pageIndex];
-                                loadPdfPageThumbnail(fileId, thumbnailId, pageIndex, indexedFile).then(() => {
-                                  console.log(`[FullScreenFeed] Successfully loaded page ${pageIndex + 1} thumbnail`);
-                                }).catch((err) => {
+                                loadPdfPageThumbnail(fileId, thumbnailId, pageIndex, indexedFile).catch((err) => {
                                   console.error(`[FullScreenFeed] Failed to load page ${pageIndex + 1} thumbnail:`, err);
                                 });
                                 observer.disconnect();
                               } else {
-                                console.log(`[FullScreenFeed] Page ${pageIndex + 1} already has thumbnail, disconnecting observer`);
                                 observer.disconnect();
                               }
                             }
@@ -1896,14 +1873,12 @@ export function FullScreenFeed({
                   {/* Page indicator dots - fixed position overlay */}
                   {totalPages > 1 && (() => {
                     const currentPage = pdfCurrentPage.get(fileId) || 0;
-                    console.log(`[FullScreenFeed] Rendering pagination dots for ${fileId}: currentPage=${currentPage + 1} of ${totalPages}`);
                     return (
                       <div 
                         className="absolute bottom-6 left-1/2 transform -translate-x-1/2 z-50 flex items-center gap-2 pointer-events-none"
                       >
                         {Array.from({ length: totalPages }, (_, index) => {
                           const isActive = currentPage === index;
-                          console.log(`[FullScreenFeed] Pagination dot ${index + 1}: isActive=${isActive}, currentPage=${currentPage + 1}`);
                           return (
                             <button
                               key={index}
@@ -1914,7 +1889,6 @@ export function FullScreenFeed({
                                 const container = pdfScrollRefs.current.get(fileId);
                                 if (container) {
                                   const pageWidth = container.clientWidth;
-                                  console.log(`[FullScreenFeed] Clicked pagination dot ${index + 1}, scrolling to page ${index + 1}`);
                                   container.scrollTo({ left: index * pageWidth, behavior: 'smooth' });
                                   // Also update current page immediately
                                   setPdfCurrentPage(prev => {
