@@ -1941,8 +1941,22 @@ export function FullScreenFeed({
             })()}
             
             {/* Full-screen image (single image, not PDF) - Only render if NOT a text post and NOT PDF */}
-            {/* Show image if thumbnail is loaded */}
-            {isImageFinal && !isPdfDocFinal && !isTextPost && !textPostData && thumbnails.get(fileId) && (() => {
+            {/* Show image if detected as image (show placeholder if thumbnail not loaded yet) */}
+            {isImageFinal && !isPdfDocFinal && !isTextPost && !textPostData && (() => {
+              const thumbnailUrl = thumbnails.get(fileId);
+              if (!thumbnailUrl) {
+                // Show placeholder while thumbnail loads
+                return (
+                  <div className="w-full h-full flex items-center justify-center">
+                    <div className="flex flex-col items-center justify-center text-neutral-500">
+                      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-400 mb-2"></div>
+                      <span className="text-xs">Loading image...</span>
+                    </div>
+                  </div>
+                );
+              }
+              
+              return (
               const containerHeight = window.innerHeight - 64; // Account for bottom nav
               const containerWidth = window.innerWidth;
               const containerAspect = containerWidth / containerHeight;
