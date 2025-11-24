@@ -16,9 +16,14 @@ interface ImageSlideshowProps {
 }
 
 export function ImageSlideshow({ thumbnailIds, fileName, accountId, pdfFileId }: ImageSlideshowProps) {
-  const [pages, setPages] = useState<number[]>([]);
+  // Initialize pages synchronously from thumbnailIds - no loading delay!
+  // This matches the vertical feed pattern: show structure immediately, load thumbnails progressively
+  const initialPages = thumbnailIds.length > 0 
+    ? Array.from({ length: thumbnailIds.length }, (_, i) => i + 1)
+    : [];
+  
+  const [pages, setPages] = useState<number[]>(initialPages);
   const [currentPage, setCurrentPage] = useState(1);
-  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const pageRefs = useRef<Map<number, HTMLDivElement>>(new Map());
@@ -29,18 +34,17 @@ export function ImageSlideshow({ thumbnailIds, fileName, accountId, pdfFileId }:
   const loadingPagesRef = useRef<Set<number>>(new Set());
   const fullSizeLoadedRef = useRef<Set<number>>(new Set());
 
-  // Initialize pages from thumbnail IDs (no folder listing needed!)
+  // Update pages when thumbnailIds change (but don't block initial render)
   useEffect(() => {
     if (thumbnailIds.length === 0) {
       setError('No thumbnail IDs provided');
-      setLoading(false);
+      setPages([]);
       return;
     }
 
     console.log(`[ImageSlideshow] Initializing ${thumbnailIds.length} pages from thumbnail IDs`);
     setPages(Array.from({ length: thumbnailIds.length }, (_, i) => i + 1));
     setCurrentPage(1);
-    setLoading(false); // Show UI immediately - pages will load progressively
   }, [thumbnailIds]);
 
   // Fetch accountId helper (non-blocking - can return null)
@@ -415,18 +419,8 @@ export function ImageSlideshow({ thumbnailIds, fileName, accountId, pdfFileId }:
     };
   }, [pageUrls]);
 
-  if (loading || pages.length === 0) {
-    return (
-      <div className="w-full h-full flex items-center justify-center bg-black text-white">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-white mx-auto mb-4"></div>
-          <p>Loading slideshow...</p>
-        </div>
-      </div>
-    );
-  }
-
-  if (error) {
+  // Show error if no thumbnails provided, but don't block on loading
+  if (error || (pages.length === 0 && thumbnailIds.length === 0)) {
     return (
       <div className="w-full h-full flex items-center justify-center bg-black text-white">
         <div className="text-center">
