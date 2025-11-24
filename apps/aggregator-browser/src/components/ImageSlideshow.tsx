@@ -185,8 +185,8 @@ export function ImageSlideshow({ fileId, fileName, accountId, pdfFileId }: Image
           setFolderPageFiles(pageFiles);
           setPages(Array.from({ length: pageFiles.length }, (_, i) => i + 1));
           setCurrentPage(1);
-          setLoading(false);
-          console.log(`[ImageSlideshow] ✅ Folder pages loaded, set loading=false`);
+          setLoading(false); // Show slideshow UI immediately, pages will decrypt progressively
+          console.log(`[ImageSlideshow] ✅ Folder pages loaded, set loading=false (pages will decrypt progressively)`);
         } else {
           throw new Error('No image pages found in folder');
         }
@@ -586,9 +586,12 @@ export function ImageSlideshow({ fileId, fileName, accountId, pdfFileId }: Image
     (async () => {
       const finalAccountId = await fetchAccountIdOnce();
       
-      // Load first page immediately for instant display
+      // Start loading first page immediately (don't await - let UI show while decrypting)
+      // The page will appear when decryption completes (~2-3 seconds)
       if (folderPageFiles.length > 0 && !cancelled) {
-        await loadImagePage(folderPageFiles[0], finalAccountId, false);
+        loadImagePage(folderPageFiles[0], finalAccountId, false).catch(err => {
+          console.warn('[ImageSlideshow] Failed to load first page:', err);
+        });
       }
       
       // Load remaining pages sequentially in background (non-blocking)
