@@ -2219,7 +2219,9 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
         console.log('📝 [Upload] Creating initial metadata entry...');
         
         // Determine file type from MIME type
-        const fileType = file.type.startsWith('image/') ? 'image' 
+        // For PDF slideshow folders, set fileType to 'document' so they're treated as media files
+        const fileType = (isPDF && pdfPagesFolderId) ? 'document' // PDF slideshow folder
+          : file.type.startsWith('image/') ? 'image' 
           : file.type.startsWith('video/') ? 'video'
           : file.type.startsWith('audio/') ? 'audio'
           : 'document';
@@ -2236,7 +2238,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
             'Authorization': `Bearer ${freshAccessToken}` // Use fresh token
           },
           body: JSON.stringify({
-            name: file.name,
+            name: isPDF && pdfPagesFolderId ? file.name.replace(/\.pdf$/i, '') : file.name, // Remove .pdf extension for folder name
             description: '',
             keywords: [],
             tags: [],
@@ -2245,7 +2247,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
             publicToken: shareToken ? JSON.stringify(shareToken) : undefined, // Store share token for future use
             uploadDate: new Date().toISOString(),
             isNSFW: false, // Default to public content
-            pdfPagesFolderId: pdfPagesFolderId, // Store PDF pages folder ID for slideshow
+            pdfPagesFolderId: pdfPagesFolderId, // Store PDF pages folder ID for slideshow (same as fileId for folders)
             // Include accountId in query params if needed
           }),
         });
