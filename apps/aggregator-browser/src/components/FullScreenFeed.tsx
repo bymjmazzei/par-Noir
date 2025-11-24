@@ -14,7 +14,6 @@ import { File } from 'lucide-react';
 import { useVerticalSwipe } from '../hooks/useVerticalSwipe';
 import { useHorizontalSwipe } from '../hooks/useHorizontalSwipe';
 import { formatTimestamp } from '../utils/formatTimestamp';
-import { HorizontalThumbnailFeed } from './HorizontalThumbnailFeed';
 import { decryptWithToken, ShareToken } from '../utils/tokenDecryption';
 
 interface FullScreenFeedProps {
@@ -74,6 +73,8 @@ export function FullScreenFeed({
   const imageRefs = useRef<Map<string, HTMLImageElement>>(new Map());
   const [videoBlobs, setVideoBlobs] = useState<Map<string, string>>(externalVideoBlobs || new Map());
   const [thumbnails, setThumbnails] = useState<Map<string, string>>(externalThumbnails || new Map());
+  const [pdfPageThumbnails, setPdfPageThumbnails] = useState<Map<string, Map<number, string>>>(new Map()); // fileId -> pageIndex -> thumbnailUrl
+  const [pdfCurrentPage, setPdfCurrentPage] = useState<Map<string, number>>(new Map()); // fileId -> current page index (0-based)
   
   // Sync external thumbnails/videoBlobs when they change
   useEffect(() => {
@@ -112,7 +113,7 @@ export function FullScreenFeed({
     snapThreshold: 0.2
   });
 
-  // Handle horizontal swipe for feed switching
+  // Handle horizontal swipe for feed switching (disabled when viewing PDF - PDF uses its own swipe)
   const horizontalSwipeRef = useHorizontalSwipe({
     onSwipeLeft,
     onSwipeRight,
@@ -120,6 +121,208 @@ export function FullScreenFeed({
     threshold: 40,
     snapThreshold: 0.2
   });
+
+  // Handle horizontal swipe for PDF pages (only active when viewing PDF)
+  const pdfHorizontalSwipeRef = useHorizontalSwipe({
+    onSwipeLeft: () => {
+      const currentFile = files[currentIndex];
+      if (!currentFile) return;
+      const fileId = currentFile.metadata.fileId;
+      const pdfPageThumbnailIds = currentFile.metadata?.pdfPageThumbnailIds;
+      const currentPage = pdfCurrentPage.get(fileId) || 0;
+      
+      if (pdfPageThumbnailIds && currentPage < pdfPageThumbnailIds.length - 1) {
+        const nextPageIndex = currentPage + 1;
+        const pageThumbnails = pdfPageThumbnails.get(fileId);
+        
+        // Update page index immediately
+        setPdfCurrentPage(prev => {
+          const newMap = new Map(prev);
+          newMap.set(fileId, nextPageIndex);
+          return newMap;
+        });
+        
+        // Update thumbnail immediately if already loaded, otherwise load it
+        if (pageThumbnails?.has(nextPageIndex)) {
+          setThumbnails(prev => {
+            const newMap = new Map(prev);
+            newMap.set(fileId, pageThumbnails.get(nextPageIndex)!);
+            return newMap;
+          });
+        } else {
+          // Load next page thumbnail
+          const nextThumbnailId = pdfPageThumbnailIds[nextPageIndex];
+          loadPdfPageThumbnail(fileId, nextThumbnailId, nextPageIndex, currentFile).then(() => {
+            // Update thumbnail once loaded
+            const updatedPageThumbnails = pdfPageThumbnails.get(fileId);
+            if (updatedPageThumbnails?.has(nextPageIndex)) {
+              setThumbnails(prev => {
+                const newMap = new Map(prev);
+                newMap.set(fileId, updatedPageThumbnails.get(nextPageIndex)!);
+                return newMap;
+              });
+            }
+          }).catch(() => {});
+        }
+      }
+    },
+    onSwipeRight: () => {
+      const currentFile = files[currentIndex];
+      if (!currentFile) return;
+      const fileId = currentFile.metadata.fileId;
+      const pdfPageThumbnailIds = currentFile.metadata?.pdfPageThumbnailIds;
+      const currentPage = pdfCurrentPage.get(fileId) || 0;
+      
+      if (pdfPageThumbnailIds && currentPage > 0) {
+        const prevPageIndex = currentPage - 1;
+        const pageThumbnails = pdfPageThumbnails.get(fileId);
+        
+        // Update page index immediately
+        setPdfCurrentPage(prev => {
+          const newMap = new Map(prev);
+          newMap.set(fileId, prevPageIndex);
+          return newMap;
+        });
+        
+        // Update thumbnail immediately if already loaded, otherwise load it
+        if (pageThumbnails?.has(prevPageIndex)) {
+          setThumbnails(prev => {
+            const newMap = new Map(prev);
+            newMap.set(fileId, pageThumbnails.get(prevPageIndex)!);
+            return newMap;
+          });
+        } else {
+          // Load previous page thumbnail
+          const prevThumbnailId = pdfPageThumbnailIds[prevPageIndex];
+          loadPdfPageThumbnail(fileId, prevThumbnailId, prevPageIndex, currentFile).then(() => {
+            // Update thumbnail once loaded
+            const updatedPageThumbnails = pdfPageThumbnails.get(fileId);
+            if (updatedPageThumbnails?.has(prevPageIndex)) {
+              setThumbnails(prev => {
+                const newMap = new Map(prev);
+                newMap.set(fileId, updatedPageThumbnails.get(prevPageIndex)!);
+                return newMap;
+              });
+            }
+          }).catch(() => {});
+        }
+      }
+    },
+    enabled: false, // Will be enabled dynamically based on PDF detection
+    threshold: 50,
+    snapThreshold: 0.2
+  });
+
+  // Load PDF page thumbnail on-demand
+  const loadPdfPageThumbnail = async (
+    fileId: string,
+    thumbnailId: string,
+    pageIndex: number,
+    indexedFile: IndexedFile
+  ) => {
+    try {
+      const { PNOAuthService } = await import('../services/pnOAuthService');
+      const apiEndpoint = process.env.REACT_APP_API_ENDPOINT || 'https://api.parnoir.com';
+      const accessToken = await PNOAuthService.getValidAccessToken();
+      
+      if (!accessToken) return;
+      
+      // Get accountId
+      let accountId = indexedFile.accountId || indexedFile.backendFileId;
+      if (!accountId || !accountId.includes('::')) {
+        try {
+          const session = PNOAuthService.loadSession();
+          if (session?.did || session?.pnIdentifier) {
+            const userId = session.pnIdentifier || session.did;
+            const accountsResponse = await fetch(`${apiEndpoint}/api/storage/accounts/${userId}`, {
+              headers: { 'Authorization': `Bearer ${accessToken}` }
+            });
+            if (accountsResponse.ok) {
+              const accountsData = await accountsResponse.json();
+              const accounts = accountsData.accounts || [];
+              if (accounts.length > 0) {
+                accountId = accounts[0].accountId;
+              }
+            }
+          }
+        } catch (err) {
+          console.warn(`[FullScreenFeed] Failed to fetch accountId for PDF page thumbnail:`, err);
+        }
+      }
+      
+      // Load thumbnail
+      let thumbnailUrl = `${apiEndpoint}/api/drive/files/${thumbnailId}?thumbnail=true`;
+      if (accountId && accountId.includes('::')) {
+        thumbnailUrl += `&accountId=${encodeURIComponent(accountId)}`;
+      }
+      
+      let response = await fetch(thumbnailUrl, {
+        headers: { 'Authorization': `Bearer ${accessToken}` }
+      });
+      
+      if (response.status === 401) {
+        const refreshedToken = await PNOAuthService.getValidAccessToken(true);
+        if (refreshedToken) {
+          response = await fetch(thumbnailUrl, {
+            headers: { 'Authorization': `Bearer ${refreshedToken}` }
+          });
+        }
+      }
+      
+      if (response.ok) {
+        const contentType = response.headers.get('content-type') || '';
+        const blob = await response.blob();
+        
+        // Decrypt if encrypted
+        let thumbnailBlob: Blob;
+        if (contentType.includes('application/json') || contentType.includes('application/octet-stream')) {
+          const { EncryptionManager } = await import('../utils/encryptionManager');
+          const session = PNOAuthService.loadSession();
+          if (session?.did) {
+            const pnId = session.did;
+            let publicKey = session?.publicKey;
+            if (!publicKey && session.did.startsWith('did:key:')) {
+              publicKey = session.did.substring(8);
+            }
+            if (publicKey) {
+              const encryptedText = await blob.text();
+              const encryptedPackage = JSON.parse(encryptedText);
+              const encryptionManager = new EncryptionManager();
+              const decryptedData = await encryptionManager.decrypt(
+                encryptedPackage.encrypted,
+                encryptedPackage.iv,
+                encryptedPackage.salt,
+                pnId,
+                publicKey
+              );
+              thumbnailBlob = new Blob([decryptedData], {
+                type: encryptedPackage.metadata?.originalMimeType || 'image/jpeg'
+              });
+            } else {
+              return;
+            }
+          } else {
+            return;
+          }
+        } else {
+          thumbnailBlob = blob;
+        }
+        
+        const thumbnailUrlObj = URL.createObjectURL(thumbnailBlob);
+        setPdfPageThumbnails(prev => {
+          const newMap = new Map(prev);
+          if (!newMap.has(fileId)) {
+            newMap.set(fileId, new Map());
+          }
+          const pageMap = newMap.get(fileId)!;
+          pageMap.set(pageIndex, thumbnailUrlObj);
+          return newMap;
+        });
+      }
+    } catch (err) {
+      console.error(`[FullScreenFeed] Failed to load PDF page thumbnail:`, err);
+    }
+  };
 
   // Function to get popular comments for a file
   const getPopularComments = useCallback((fileId: string): any[] => {
@@ -359,6 +562,10 @@ export function FullScreenFeed({
           (file as any).mimeType?.startsWith('image/') // Check mimeType if available
         );
         
+        // Check for PDF document with page thumbnails
+        const pdfPageThumbnailIds = indexedFile.metadata?.pdfPageThumbnailIds;
+        const isPdfDocument = !isTextPost && file.fileType === 'document' && pdfPageThumbnailIds && pdfPageThumbnailIds.length > 0;
+        
         console.log(`[FullScreenFeed] loadMedia for file ${fileId}:`, {
           fileName: file.name || file.title,
           fileType: file.fileType,
@@ -366,6 +573,8 @@ export function FullScreenFeed({
           isTextPost,
           isImage,
           isVideo,
+          isPdfDocument,
+          pdfPageCount: pdfPageThumbnailIds?.length || 0,
           hasPublicToken: !!file.publicToken,
           thumbnailExists: thumbnails.has(fileId),
           videoBlobExists: videoBlobs.has(fileId)
@@ -680,6 +889,133 @@ export function FullScreenFeed({
             }
           }
         }
+
+        // Load PDF document FIRST thumbnail (EXACT same pattern as images - loads immediately)
+        if (isPdfDocument && pdfPageThumbnailIds && pdfPageThumbnailIds.length > 0 && !thumbnails.has(fileId)) {
+          const firstThumbnailId = pdfPageThumbnailIds[0];
+          console.log(`[FullScreenFeed] Loading FIRST PDF thumbnail for ${fileId} from page thumbnail: ${firstThumbnailId}`);
+          
+          try {
+            const { PNOAuthService } = await import('../services/pnOAuthService');
+            const apiEndpoint = process.env.REACT_APP_API_ENDPOINT || 'https://api.parnoir.com';
+            const accessToken = await PNOAuthService.getValidAccessToken();
+            
+            if (accessToken) {
+              // Get accountId (same pattern as images)
+              let accountId = indexedFile.accountId || indexedFile.backendFileId;
+              if (!accountId || !accountId.includes('::')) {
+                try {
+                  const session = PNOAuthService.loadSession();
+                  if (session?.did || session?.pnIdentifier) {
+                    const userId = session.pnIdentifier || session.did;
+                    const accountsResponse = await fetch(`${apiEndpoint}/api/storage/accounts/${userId}`, {
+                      headers: { 'Authorization': `Bearer ${accessToken}` }
+                    });
+                    if (accountsResponse.ok) {
+                      const accountsData = await accountsResponse.json();
+                      const accounts = accountsData.accounts || [];
+                      if (accounts.length > 0) {
+                        accountId = accounts[0].accountId;
+                      }
+                    }
+                  }
+                } catch (err) {
+                  console.warn(`[FullScreenFeed] Failed to fetch accountId for PDF thumbnail:`, err);
+                }
+              }
+              
+              // Load FIRST thumbnail (EXACT same pattern as images)
+              let thumbnailUrl = `${apiEndpoint}/api/drive/files/${firstThumbnailId}?thumbnail=true`;
+              if (accountId && accountId.includes('::')) {
+                thumbnailUrl += `&accountId=${encodeURIComponent(accountId)}`;
+              }
+              
+              let response = await fetch(thumbnailUrl, {
+                headers: { 'Authorization': `Bearer ${accessToken}` }
+              });
+              
+              if (response.status === 401) {
+                const refreshedToken = await PNOAuthService.getValidAccessToken(true);
+                if (refreshedToken) {
+                  response = await fetch(thumbnailUrl, {
+                    headers: { 'Authorization': `Bearer ${refreshedToken}` }
+                  });
+                }
+              }
+              
+              if (response.ok) {
+                const contentType = response.headers.get('content-type') || '';
+                const blob = await response.blob();
+                
+                // Decrypt thumbnail if encrypted (EXACT same pattern as images)
+                let thumbnailBlob: Blob;
+                if (contentType.includes('application/json') || contentType.includes('application/octet-stream')) {
+                  const { EncryptionManager } = await import('../utils/encryptionManager');
+                  const session = PNOAuthService.loadSession();
+                  if (session?.did) {
+                    const pnId = session.did;
+                    let publicKey = session?.publicKey;
+                    if (!publicKey && session.did.startsWith('did:key:')) {
+                      publicKey = session.did.substring(8);
+                    }
+                    if (publicKey) {
+                      const encryptedText = await blob.text();
+                      const encryptedPackage = JSON.parse(encryptedText);
+                      const encryptionManager = new EncryptionManager();
+                      const decryptedData = await encryptionManager.decrypt(
+                        encryptedPackage.encrypted,
+                        encryptedPackage.iv,
+                        encryptedPackage.salt,
+                        pnId,
+                        publicKey
+                      );
+                      thumbnailBlob = new Blob([decryptedData], {
+                        type: encryptedPackage.metadata?.originalMimeType || 'image/jpeg'
+                      });
+                    } else {
+                      continue; // Skip if can't decrypt
+                    }
+                  } else {
+                    continue; // Skip if no session
+                  }
+                } else {
+                  thumbnailBlob = blob;
+                }
+                
+                // Store FIRST thumbnail in thumbnails Map (so it displays immediately like any image)
+                const thumbnailUrlObj = URL.createObjectURL(thumbnailBlob);
+                console.log(`✅ [FullScreenFeed] Loaded FIRST PDF thumbnail for ${fileId} (page 1 of ${pdfPageThumbnailIds.length})`);
+                setThumbnails(prev => {
+                  const newMap = new Map(prev);
+                  newMap.set(fileId, thumbnailUrlObj);
+                  return newMap;
+                });
+                
+                // Initialize PDF page state
+                setPdfCurrentPage(prev => {
+                  const newMap = new Map(prev);
+                  if (!newMap.has(fileId)) {
+                    newMap.set(fileId, 0); // Start at page 0 (first page)
+                  }
+                  return newMap;
+                });
+                
+                // Store first thumbnail in PDF pages map too
+                setPdfPageThumbnails(prev => {
+                  const newMap = new Map(prev);
+                  if (!newMap.has(fileId)) {
+                    newMap.set(fileId, new Map());
+                  }
+                  const pageMap = newMap.get(fileId)!;
+                  pageMap.set(0, thumbnailUrlObj);
+                  return newMap;
+                });
+              }
+            }
+          } catch (err) {
+            console.error(`[FullScreenFeed] Failed to load PDF thumbnail for ${fileId}:`, err);
+          }
+        }
       }
     };
 
@@ -946,10 +1282,20 @@ export function FullScreenFeed({
                           file.creator?.["@id"] || 
                           file.author?.did;
 
+        // Check if this is a PDF document
+        const pdfPageThumbnailIds = indexedFile.metadata?.pdfPageThumbnailIds;
+        const isPdfDoc = !isTextPost && file.fileType === 'document' && pdfPageThumbnailIds && pdfPageThumbnailIds.length > 0;
+        
         return (
           <div
             key={fileId}
             data-file-id={fileId}
+            ref={(el) => {
+              if (el && isPdfDoc) {
+                // Attach PDF swipe handler to this element
+                (pdfHorizontalSwipeRef as any).current.element = el;
+              }
+            }}
             className="w-full snap-start flex items-center justify-center bg-black relative"
             style={{ 
               // Height excludes bottom nav bar (64px) and safe area
@@ -1145,8 +1491,8 @@ export function FullScreenFeed({
               );
             })()}
             
-            {/* Full-screen image - Only render if NOT a text post */}
-            {isImage && !isTextPost && !textPostData && thumbnails.get(fileId) && (() => {
+            {/* Full-screen image OR PDF page - Only render if NOT a text post */}
+            {(isImage || isImageSlideshowFolder) && !isTextPost && !textPostData && thumbnails.get(fileId) && (() => {
               const containerHeight = window.innerHeight - 64; // Account for bottom nav
               const containerWidth = window.innerWidth;
               const containerAspect = containerWidth / containerHeight;
@@ -1246,31 +1592,23 @@ export function FullScreenFeed({
               );
             })()}
 
-            {/* Horizontal Thumbnail Feed (like vertical feed but horizontal) */}
-            {isImageSlideshowFolder && !isTextPost && (() => {
-              // For PDF documents: use pdfPageThumbnailIds array (loaded directly, no folder listing)
-              // Render feed immediately - shows multiple thumbnails side-by-side, loads progressively
-              const thumbnailIds = indexedFile.metadata?.pdfPageThumbnailIds || [];
-              const pdfFileId = indexedFile.metadata?.pdfFileId;
+            {/* PDF Page Indicator - Show when viewing PDF */}
+            {isImageSlideshowFolder && !isTextPost && thumbnails.get(fileId) && (() => {
+              const pdfPageThumbnailIds = indexedFile.metadata?.pdfPageThumbnailIds || [];
+              const currentPage = pdfCurrentPage.get(fileId) || 0;
+              const totalPages = pdfPageThumbnailIds.length;
               
-              // Get accountId from indexedFile or fetch it once
-              const feedAccountId = indexedFile.accountId || indexedFile.backendFileId;
-              
-              // Render horizontal feed IMMEDIATELY - matches vertical feed pattern
-              return (
-                <div className="w-full h-full relative z-10">
-                  <HorizontalThumbnailFeed
-                    thumbnailIds={thumbnailIds}
-                    fileName={fileName}
-                    accountId={feedAccountId}
-                    pdfFileId={pdfFileId}
-                  />
+              return totalPages > 1 ? (
+                <div className="absolute top-4 left-1/2 transform -translate-x-1/2 z-20 bg-black/60 px-4 py-2 rounded-full">
+                  <span className="text-white text-sm">
+                    Page {currentPage + 1} / {totalPages}
+                  </span>
                 </div>
-              );
+              ) : null;
             })()}
 
-            {/* Loading state - Only show if NOT a text post AND NOT a slideshow */}
-            {/* Slideshows show their own loading states internally */}
+            {/* Loading state - Only show if NOT a text post AND NOT PDF document */}
+            {/* PDF documents load first page immediately like images */}
             {!isTextPost && !textPostData && !isImageSlideshowFolder && ((isImage || isVideo) && !thumbnails.get(fileId) && !videoBlobs.get(fileId)) && (
               <div className="flex flex-col items-center justify-center text-neutral-500">
                 <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-400 mb-2"></div>
