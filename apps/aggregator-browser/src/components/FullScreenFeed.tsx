@@ -638,18 +638,11 @@ export function FullScreenFeed({
         );
         // Check if this is an image slideshow folder (folder ending with "-pages")
         // For folders, the fileId IS the pdfPagesFolderId (the folder itself)
-        // Check if pdfPagesFolderId exists in metadata and matches fileId, or if name ends with -pages
+        // Detection: pdfPagesFolderId exists and matches fileId, OR name ends with -pages
         const pdfPagesFolderId = indexedFile.metadata?.pdfPagesFolderId;
-        const isFolderByFileId = pdfPagesFolderId === fileId || pdfPagesFolderId === indexedFile.metadata.fileId;
-        const isImageSlideshowFolder = !isTextPost && (
-          file.mimeType === 'application/vnd.google-apps.folder' || 
-          isFolderByFileId ||
-          (file.name && file.name.toLowerCase().endsWith('-pages'))
-        ) && (
-          (file.name && file.name.toLowerCase().endsWith('-pages')) || 
-          isFolderByFileId ||
-          !!pdfPagesFolderId
-        );
+        const isFolderByFileId = pdfPagesFolderId && (pdfPagesFolderId === fileId || pdfPagesFolderId === indexedFile.metadata.fileId);
+        const nameEndsWithPages = file.name && file.name.toLowerCase().endsWith('-pages');
+        const isImageSlideshowFolder = !isTextPost && (isFolderByFileId || nameEndsWithPages);
         
         // No PDF support - only image slideshows from folders
         
