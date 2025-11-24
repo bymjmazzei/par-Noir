@@ -387,7 +387,6 @@ export function ImageSlideshow({ thumbnailIds, fileName, accountId, pdfFileId }:
 
   return (
     <div 
-      {...swipeRef.bind()}
       className="w-full h-full flex flex-col bg-black relative"
     >
       <div className="absolute top-4 left-1/2 transform -translate-x-1/2 z-20 bg-black/60 px-4 py-2 rounded-full">
@@ -417,7 +416,11 @@ export function ImageSlideshow({ thumbnailIds, fileName, accountId, pdfFileId }:
       )}
 
       <div
-        ref={scrollContainerRef}
+        ref={(el) => {
+          scrollContainerRef.current = el;
+          // Attach swipeRef to the scroll container for touch event handling
+          (swipeRef as any).current = el;
+        }}
         className="flex-1 overflow-x-auto snap-x snap-mandatory scrollbar-hide"
         style={{
           scrollbarWidth: 'none',
