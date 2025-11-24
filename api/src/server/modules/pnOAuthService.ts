@@ -111,7 +111,7 @@ export class PNOAuthService {
       nonce: params.nonce,
       did: params.did,
       publicKey: params.publicKey, // Store public key for file decryption
-      pnIdentifier: params.pnIdentifier // Store pN identifier directly (derived client-side)
+      pnIdentifier: params.pnIdentifier, // Store pN identifier directly (derived client-side)
       // SECURITY: pN name and passcode are NEVER stored - they're secrets
       expiresAt: Date.now() + this.CODE_EXPIRY
     });
