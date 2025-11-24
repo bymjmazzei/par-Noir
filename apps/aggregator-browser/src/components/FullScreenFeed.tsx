@@ -1580,99 +1580,52 @@ export function FullScreenFeed({
                       console.error(`[FullScreenFeed] Background PDF page failed to load for ${fileId}:`, e);
                     }}
                   />
-                  {/* Page indicator */}
+                  
+                  {/* Page indicator dots - only show if more than 1 page */}
                   {totalPages > 1 && (
-                    <div className="absolute top-4 left-1/2 transform -translate-x-1/2 z-20 bg-black/60 px-4 py-2 rounded-full">
-                      <span className="text-white text-sm">
-                        Page {currentPage + 1} / {totalPages}
-                      </span>
+                    <div className="absolute bottom-6 left-1/2 transform -translate-x-1/2 z-20 flex items-center gap-2">
+                      {Array.from({ length: totalPages }, (_, index) => (
+                        <button
+                          key={index}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setPdfCurrentPage(prev => {
+                              const newMap = new Map(prev);
+                              newMap.set(fileId, index);
+                              return newMap;
+                            });
+                            // Update thumbnail immediately if already loaded
+                            const pageThumbnails = pdfPageThumbnails.get(fileId);
+                            if (pageThumbnails?.has(index)) {
+                              setThumbnails(prev => {
+                                const newMap = new Map(prev);
+                                newMap.set(fileId, pageThumbnails.get(index)!);
+                                return newMap;
+                              });
+                            } else {
+                              // Load page thumbnail if not loaded
+                              const thumbnailId = pdfPageThumbnailIds[index];
+                              loadPdfPageThumbnail(fileId, thumbnailId, index, indexedFile).then(() => {
+                                const updatedPageThumbnails = pdfPageThumbnails.get(fileId);
+                                if (updatedPageThumbnails?.has(index)) {
+                                  setThumbnails(prev => {
+                                    const newMap = new Map(prev);
+                                    newMap.set(fileId, updatedPageThumbnails.get(index)!);
+                                    return newMap;
+                                  });
+                                }
+                              }).catch(() => {});
+                            }
+                          }}
+                          className={`transition-all duration-200 rounded-full ${
+                            currentPage === index
+                              ? 'w-2.5 h-2.5 bg-white'
+                              : 'w-2 h-2 bg-white/40 hover:bg-white/60'
+                          }`}
+                          aria-label={`Go to page ${index + 1}`}
+                        />
+                      ))}
                     </div>
-                  )}
-
-                  {/* Previous Page Button */}
-                  {currentPage > 0 && (
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        const prevPageIndex = currentPage - 1;
-                        setPdfCurrentPage(prev => {
-                          const newMap = new Map(prev);
-                          newMap.set(fileId, prevPageIndex);
-                          return newMap;
-                        });
-                        // Update thumbnail immediately if already loaded
-                        const pageThumbnails = pdfPageThumbnails.get(fileId);
-                        if (pageThumbnails?.has(prevPageIndex)) {
-                          setThumbnails(prev => {
-                            const newMap = new Map(prev);
-                            newMap.set(fileId, pageThumbnails.get(prevPageIndex)!);
-                            return newMap;
-                          });
-                        } else {
-                          // Load previous page thumbnail if not loaded (should be preloaded, but fallback)
-                          const prevThumbnailId = pdfPageThumbnailIds[prevPageIndex];
-                          loadPdfPageThumbnail(fileId, prevThumbnailId, prevPageIndex, indexedFile).then(() => {
-                            const updatedPageThumbnails = pdfPageThumbnails.get(fileId);
-                            if (updatedPageThumbnails?.has(prevPageIndex)) {
-                              setThumbnails(prev => {
-                                const newMap = new Map(prev);
-                                newMap.set(fileId, updatedPageThumbnails.get(prevPageIndex)!);
-                                return newMap;
-                              });
-                            }
-                          }).catch(() => {});
-                        }
-                      }}
-                      className="absolute left-4 top-1/2 transform -translate-y-1/2 z-20 bg-black/60 hover:bg-black/80 text-white p-3 rounded-full transition-colors"
-                      aria-label="Previous PDF page"
-                    >
-                      <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-                      </svg>
-                    </button>
-                  )}
-
-                  {/* Next Page Button */}
-                  {currentPage < totalPages - 1 && (
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        const nextPageIndex = currentPage + 1;
-                        setPdfCurrentPage(prev => {
-                          const newMap = new Map(prev);
-                          newMap.set(fileId, nextPageIndex);
-                          return newMap;
-                        });
-                        // Update thumbnail immediately if already loaded
-                        const pageThumbnails = pdfPageThumbnails.get(fileId);
-                        if (pageThumbnails?.has(nextPageIndex)) {
-                          setThumbnails(prev => {
-                            const newMap = new Map(prev);
-                            newMap.set(fileId, pageThumbnails.get(nextPageIndex)!);
-                            return newMap;
-                          });
-                        } else {
-                          // Load next page thumbnail if not loaded (should be preloaded, but fallback)
-                          const nextThumbnailId = pdfPageThumbnailIds[nextPageIndex];
-                          loadPdfPageThumbnail(fileId, nextThumbnailId, nextPageIndex, indexedFile).then(() => {
-                            const updatedPageThumbnails = pdfPageThumbnails.get(fileId);
-                            if (updatedPageThumbnails?.has(nextPageIndex)) {
-                              setThumbnails(prev => {
-                                const newMap = new Map(prev);
-                                newMap.set(fileId, updatedPageThumbnails.get(nextPageIndex)!);
-                                return newMap;
-                              });
-                            }
-                          }).catch(() => {});
-                        }
-                      }}
-                      className="absolute right-4 top-1/2 transform -translate-y-1/2 z-20 bg-black/60 hover:bg-black/80 text-white p-3 rounded-full transition-colors"
-                      aria-label="Next PDF page"
-                    >
-                      <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                      </svg>
-                    </button>
                   )}
 
                   {/* Main PDF Page Thumbnail */}
