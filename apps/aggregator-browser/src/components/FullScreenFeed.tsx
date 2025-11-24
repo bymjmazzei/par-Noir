@@ -680,6 +680,8 @@ export function FullScreenFeed({
                                indexedFile.metadata?.fileType === 'thought';
         const isThoughtFile = (file.name && (/^thought-\d+\.thought/i.test(file.name) || /^thought-\d+\.png/i.test(file.name))) ||
                               (file.title && (/^thought-\d+\.thought/i.test(file.title) || /^thought-\d+\.png/i.test(file.title)));
+        // IMPORTANT: Prioritize hasTextPostData and hasTextFileType FIRST (same as render logic)
+        // This ensures thoughts are detected consistently and don't flicker
         const isTextPost = !!textPostData || hasTextFileType || isThoughtFile;
         
         const isVideo = !isTextPost && (
@@ -1389,11 +1391,11 @@ export function FullScreenFeed({
           });
         }
         
-        // If we have textPost/thought data, it's definitely a thought, regardless of fileType
-        // This handles cases where fileType might be 'other' due to API defaults
-        // Also check if file has thought-like content even if metadata is missing
-        // IMPORTANT: Check isThoughtFile FIRST to prevent flickering
-        const isTextPost = isThoughtFile || hasTextPostData || hasTextFileType || 
+        // If we have textPost/thought data OR fileType is 'text'/'thought', it's DEFINITELY a thought
+        // This must be checked FIRST before any other type detection to prevent flickering
+        // IMPORTANT: hasTextPostData or hasTextFileType should ALWAYS make it a thought, regardless of filename
+        // This ensures thoughts are detected consistently and don't flicker
+        const isTextPost = hasTextPostData || hasTextFileType || isThoughtFile || 
                           (file.description && file.description.trim().length > 0 && 
                            !actualFileType && !thoughtFileName.match(/\.(jpg|jpeg|png|gif|webp|svg|bmp|ico|mp4|mov|avi|webm|mkv|flv|wmv|pdf)$/i));
         
