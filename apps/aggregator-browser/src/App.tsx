@@ -2308,15 +2308,27 @@ function App() {
     const fileType = file.metadata.fileType;
     const fileName = file.metadata.name || file.metadata.title || '';
     
-    // Check for textPost/thought data
-    const hasTextPostData = !!(file.metadata as any).textPost || !!(file.metadata as any).thought;
+    // Check for textPost/thought data in multiple locations (same as FullScreenFeed)
+    const hasTextPostData = !!(file.metadata as any).textPost || 
+                           !!(file.metadata as any).thought ||
+                           !!(file as any).textPost ||
+                           !!(file as any).thought;
     
-    // Check for fileType
-    const hasTextFileType = fileType === 'text' || fileType === 'thought';
+    // Check for fileType in multiple locations
+    const hasTextFileType = fileType === 'text' || 
+                           fileType === 'thought' ||
+                           (file.metadata as any).fileType === 'text' ||
+                           (file.metadata as any).fileType === 'thought';
     
     // Check for thought filename pattern (new .thought format or legacy .png format)
-    const isThoughtFile = /^thought-\d+\.(thought|png)/i.test(fileName);
+    // Also check originalName if available (file.name might be content, not filename)
+    const thoughtFileName = fileName || 
+                           (file.metadata as any).originalName ||
+                           (file.metadata as any).name ||
+                           '';
+    const isThoughtFile = /^thought-\d+\.(thought|png)/i.test(thoughtFileName);
     
+    // Prioritize hasTextPostData and hasTextFileType first (same as FullScreenFeed)
     return hasTextPostData || hasTextFileType || isThoughtFile;
   };
 
