@@ -10,7 +10,7 @@ import { useHorizontalSwipe } from '../hooks/useHorizontalSwipe';
 
 interface PDFSlideshowProps {
   fileId: string;
-  publicToken: string | ShareToken | object;
+  publicToken?: string | ShareToken | object | undefined; // Optional - not needed for folder-based slideshows
   fileName?: string;
   pdfPagesFolderId?: string; // Folder ID containing pre-rendered PNG pages
   accountId?: string; // Account ID for downloading PNG pages
@@ -118,6 +118,7 @@ export function PDFSlideshow({ fileId, publicToken, fileName, pdfPagesFolderId, 
   useEffect(() => {
     if (usePreRenderedPages) return; // Skip if using pre-rendered pages
     if (pdfPagesFolderId && pdfPagesFolderId === fileId) return; // Skip if folder IS the file (image slideshow, not PDF)
+    if (!publicToken) return; // Skip if no token (folder-based slideshows don't need tokens)
 
     const loadPDF = async () => {
       try {

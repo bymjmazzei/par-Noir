@@ -638,17 +638,18 @@ export function FullScreenFeed({
           (file.name || file.title || '').match(/\.(jpg|jpeg|png|gif|webp|svg|bmp|ico)$/i)
         );
         // Check if this is an image slideshow folder (folder ending with "-pages")
-        // Check mimeType directly, or infer from metadata.pdfPagesFolderId, or check if fileId matches pdfPagesFolderId
-        const hasPdfPagesFolderId = file.metadata?.pdfPagesFolderId && 
-          (file.metadata.pdfPagesFolderId === fileId || file.metadata.pdfPagesFolderId === indexedFile.metadata.fileId);
+        // For folders, the fileId IS the pdfPagesFolderId (the folder itself)
+        // Check if pdfPagesFolderId exists in metadata and matches fileId, or if name ends with -pages
+        const pdfPagesFolderId = indexedFile.metadata?.pdfPagesFolderId;
+        const isFolderByFileId = pdfPagesFolderId === fileId || pdfPagesFolderId === indexedFile.metadata.fileId;
         const isImageSlideshowFolder = !isTextPost && (
           file.mimeType === 'application/vnd.google-apps.folder' || 
-          hasPdfPagesFolderId ||
+          isFolderByFileId ||
           (file.name && file.name.toLowerCase().endsWith('-pages'))
         ) && (
           (file.name && file.name.toLowerCase().endsWith('-pages')) || 
-          hasPdfPagesFolderId ||
-          file.metadata?.pdfPagesFolderId
+          isFolderByFileId ||
+          !!pdfPagesFolderId
         );
         
         const isPDF = !isTextPost && !isImageSlideshowFolder && (
@@ -959,13 +960,15 @@ export function FullScreenFeed({
 
             {/* Image Slideshow (from PDF conversion folder) */}
             {isImageSlideshowFolder && !isTextPost && (() => {
-              // For image slideshow folders, use the folder ID directly (no token needed - images are loaded via API)
-              const folderId = file.metadata?.pdfPagesFolderId || fileId;
+              // For image slideshow folders, the fileId IS the folder ID
+              // pdfPagesFolderId should match fileId for folders
+              const folderId = indexedFile.metadata?.pdfPagesFolderId || fileId;
               
               console.log('[FullScreenFeed] Image slideshow folder metadata:', {
                 fileId,
                 folderId,
                 fileName,
+                pdfPagesFolderId: indexedFile.metadata?.pdfPagesFolderId,
                 accountId: file.accountId || file.backendFileId
               });
               
@@ -973,9 +976,9 @@ export function FullScreenFeed({
                 <div className="w-full h-full relative z-10">
                   <PDFSlideshow
                     fileId={folderId}
-                    publicToken={{}} // Empty token - not needed for folder-based images
+                    publicToken={undefined} // No token needed for folder-based images (they're loaded via API)
                     fileName={fileName}
-                    pdfPagesFolderId={folderId} // Folder ID containing PNG pages
+                    pdfPagesFolderId={folderId} // Folder ID containing PNG pages (same as fileId for folders)
                     accountId={file.accountId || file.backendFileId} // Get accountId from file
                   />
                 </div>
@@ -999,9 +1002,9 @@ export function FullScreenFeed({
               console.log('[FullScreenFeed] PDF file metadata:', {
                 fileId,
                 fileName,
-                hasPdfPagesFolderId: !!file.metadata?.pdfPagesFolderId,
-                pdfPagesFolderId: file.metadata?.pdfPagesFolderId,
-                fullMetadata: file.metadata
+                hasPdfPagesFolderId: !!indexedFile.metadata?.pdfPagesFolderId,
+                pdfPagesFolderId: indexedFile.metadata?.pdfPagesFolderId,
+                fullMetadata: indexedFile.metadata
               });
               
               return (
@@ -1010,7 +1013,7 @@ export function FullScreenFeed({
                     fileId={fileId}
                     publicToken={token}
                     fileName={fileName}
-                    pdfPagesFolderId={file.metadata?.pdfPagesFolderId} // Optional: pre-rendered pages folder
+                    pdfPagesFolderId={indexedFile.metadata?.pdfPagesFolderId} // Optional: pre-rendered pages folder
                     accountId={file.accountId || file.backendFileId} // Get accountId from file
                   />
                 </div>
