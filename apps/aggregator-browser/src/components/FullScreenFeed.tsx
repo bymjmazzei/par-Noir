@@ -1310,15 +1310,6 @@ export function FullScreenFeed({
           <div
             key={fileId}
             data-file-id={fileId}
-            ref={(el) => {
-              // Attach PDF swipe handler to PDF container element
-              if (el && isPdfDoc && visibleFileId === fileId) {
-                if (pdfHorizontalSwipeRef.current) {
-                  (pdfHorizontalSwipeRef as any).current.element = el;
-                  (pdfHorizontalSwipeRef as any).current.enabled = true;
-                }
-              }
-            }}
             className="w-full snap-start flex items-center justify-center bg-black relative"
             style={{ 
               // Height excludes bottom nav bar (64px) and safe area
