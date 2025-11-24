@@ -53,12 +53,25 @@ const ThumbnailImage: React.FC<{ fileId: string; accountId: string; fileName: st
         const nameWithoutEncrypted = fileName.replace(/\.encrypted$/i, '');
         const isPDFSlideshowFolder = mimeType === 'application/vnd.google-apps.folder' && nameWithoutEncrypted.toLowerCase().endsWith('-pages');
         
+        console.log('[ThumbnailImage] Checking folder:', {
+          fileName,
+          mimeType,
+          fileId,
+          accountId,
+          nameWithoutEncrypted,
+          isPDFSlideshowFolder,
+          endsWithPages: nameWithoutEncrypted.toLowerCase().endsWith('-pages')
+        });
+        
         // For PDF slideshow folders, get the first PNG page as thumbnail
         if (isPDFSlideshowFolder) {
+          console.log('[ThumbnailImage] Detected PDF slideshow folder, loading first PNG page...');
           try {
             // List files in folder and get the first PNG page
             const folderQuery = `'${fileId}' in parents and trashed=false`;
             const filesUrl = `${apiEndpoint}/api/drive/files?q=${encodeURIComponent(folderQuery)}&pageSize=1000${accountId ? `&accountId=${encodeURIComponent(accountId)}` : ''}`;
+            
+            console.log('[ThumbnailImage] Fetching files from folder:', filesUrl);
             
             const folderResponse = await fetch(filesUrl, {
               headers: {
@@ -69,6 +82,8 @@ const ThumbnailImage: React.FC<{ fileId: string; accountId: string; fileName: st
             if (folderResponse.ok) {
               const folderData = await folderResponse.json();
               const files = folderData.files || [];
+              
+              console.log(`[ThumbnailImage] Found ${files.length} files in folder`);
               
               // Find the first PNG page (sorted by page number)
               const pageFiles = files
@@ -82,10 +97,14 @@ const ThumbnailImage: React.FC<{ fileId: string; accountId: string; fileName: st
                 .filter((f: any) => f !== null)
                 .sort((a: any, b: any) => a.pageNum - b.pageNum);
               
+              console.log(`[ThumbnailImage] Found ${pageFiles.length} PNG pages in folder`);
+              
               if (pageFiles.length > 0) {
                 // Use the first page as thumbnail
                 const firstPageId = pageFiles[0].id;
                 const thumbnailUrl = `${apiEndpoint}/api/drive/files/${firstPageId}?accountId=${encodeURIComponent(accountId)}&thumbnail=true`;
+                
+                console.log('[ThumbnailImage] Loading thumbnail from:', thumbnailUrl);
                 
                 const thumbResponse = await fetch(thumbnailUrl, {
                   headers: {
@@ -98,12 +117,21 @@ const ThumbnailImage: React.FC<{ fileId: string; accountId: string; fileName: st
                   const url = URL.createObjectURL(thumbBlob);
                   setThumbnailUrl(url);
                   setError(false);
+                  console.log('[ThumbnailImage] ✅ Successfully loaded folder thumbnail');
                   return;
+                } else {
+                  const errorText = await thumbResponse.text().catch(() => 'Unknown error');
+                  console.error(`[ThumbnailImage] Failed to load thumbnail: ${thumbResponse.status} - ${errorText}`);
                 }
+              } else {
+                console.warn('[ThumbnailImage] No PNG pages found in folder');
               }
+            } else {
+              const errorText = await folderResponse.text().catch(() => 'Unknown error');
+              console.error(`[ThumbnailImage] Failed to list folder files: ${folderResponse.status} - ${errorText}`);
             }
-          } catch (folderError) {
-            console.warn('[ThumbnailImage] Failed to load folder thumbnail:', folderError);
+          } catch (folderError: any) {
+            console.error('[ThumbnailImage] Failed to load folder thumbnail:', folderError?.message || folderError);
             // Fall through to regular handling
           }
         }
