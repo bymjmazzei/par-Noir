@@ -1398,17 +1398,23 @@ export function FullScreenFeed({
           });
         }
         
-        // Debug logging for files that should be images
-        if (file.fileType === 'image' || (file.name || file.title || '').match(/\.(jpg|jpeg|png|gif|webp|svg|bmp|ico)$/i)) {
+        // Debug logging for files that should be images (reuse hasImageExt from above)
+        if (file.fileType === 'image' || file.fileType === 'other' || hasImageExt) {
           console.log(`[FullScreenFeed] Image file detected:`, {
             fileId,
             fileType: file.fileType,
-            fileName: file.name || file.title,
+            metadataFileType: indexedFile.metadata?.fileType,
+            fileName: fileNameForMediaCheck,
+            hasImageExt,
+            hasImageExtension,
             isImage,
             isImageFinal,
             isTextPost,
             hasTextPostData,
-            thumbnailUrl: thumbnails.get(fileId) ? 'exists' : 'missing'
+            isThoughtFile,
+            hasMediaExt,
+            thumbnailUrl: thumbnails.get(fileId) ? 'exists' : 'missing',
+            willRender: isImageFinal && !isPdfDocFinal && !isTextPost && !textPostData
           });
         }
         
