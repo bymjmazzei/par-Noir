@@ -212,12 +212,12 @@ export function ImageSlideshow({ thumbnailIds, fileName, accountId, pdfFileId }:
         return;
       }
       
-      // Load thumbnail directly by ID - NON-BLOCKING parallel fetch
+      // Load thumbnail directly by ID - Get access token FIRST (like FullScreenFeed does)
       const apiEndpoint = process.env.REACT_APP_API_ENDPOINT || 'https://api.parnoir.com';
       const { PNOAuthService } = await import('../services/pnOAuthService');
       
-      // Get access token (non-blocking - don't wait for it)
-      const accessTokenPromise = PNOAuthService.getValidAccessToken();
+      // Get access token FIRST before making request (these thumbnails require auth)
+      let accessToken = await PNOAuthService.getValidAccessToken();
       
       // Build fetch URL
       let fetchUrl = `${apiEndpoint}/api/drive/files/${thumbnailId}?thumbnail=true`;
@@ -225,30 +225,27 @@ export function ImageSlideshow({ thumbnailIds, fileName, accountId, pdfFileId }:
         fetchUrl += `&accountId=${encodeURIComponent(accountIdToUse)}`;
       }
       
-      // Start fetch immediately - try without auth first for public content
+      // Make request with auth (like FullScreenFeed - these thumbnails require auth)
       let response: Response;
       try {
-        // Try without auth first (for public content)
-        response = await fetch(fetchUrl);
-        
-        // If 401, try with auth
-        if (response.status === 401) {
-          const accessToken = await accessTokenPromise;
-          if (accessToken) {
-            response = await fetch(fetchUrl, {
-              headers: { 'Authorization': `Bearer ${accessToken}` }
-            });
-            
-            // If still 401, try refreshing token
-            if (response.status === 401) {
-              const refreshedToken = await PNOAuthService.getValidAccessToken(true);
-              if (refreshedToken) {
-                response = await fetch(fetchUrl, {
-                  headers: { 'Authorization': `Bearer ${refreshedToken}` }
-                });
-              }
+        if (accessToken) {
+          // Include auth token in first request
+          response = await fetch(fetchUrl, {
+            headers: { 'Authorization': `Bearer ${accessToken}` }
+          });
+          
+          // If 401, try refreshing token
+          if (response.status === 401) {
+            const refreshedToken = await PNOAuthService.getValidAccessToken(true);
+            if (refreshedToken) {
+              response = await fetch(fetchUrl, {
+                headers: { 'Authorization': `Bearer ${refreshedToken}` }
+              });
             }
           }
+        } else {
+          // No access token available - try without auth (for public content)
+          response = await fetch(fetchUrl);
         }
         
         // Check response status BEFORE reading blob
