@@ -1446,13 +1446,34 @@ export function FullScreenFeed({
         const isImageFinal = isTextPost ? false : isImage;
         const isPdfDocFinal = isTextPost ? false : isPdfDoc;
         
-        // No PDF support - only image slideshows from folders
+        // Debug logging for image detection (after isImageFinal is defined)
+        if ((file.fileType === 'image' || (file.name || file.title || '').match(/\.(jpg|jpeg|png|gif|webp|svg|bmp|ico)$/i)) && !isImageFinal) {
+          console.warn(`[FullScreenFeed] Image not detected as image:`, {
+            fileId,
+            fileType: file.fileType,
+            fileName: file.name || file.title,
+            isTextPost,
+            isThoughtFile,
+            hasTextPostData,
+            isImage,
+            isImageFinal
+          });
+        }
         
-        // Debug logging for ALL files to see what's happening
-        // Debug logging removed for cleaner console - uncomment if needed for debugging
-        // const fullMetadata = indexedFile.metadata ? JSON.stringify(indexedFile.metadata, null, 2) : 'no metadata';
-        // const fullFile = JSON.stringify(file, null, 2);
-        // const fullIndexedFile = JSON.stringify(indexedFile, null, 2);
+        // Debug logging for files that should be images
+        if (file.fileType === 'image' || (file.name || file.title || '').match(/\.(jpg|jpeg|png|gif|webp|svg|bmp|ico)$/i)) {
+          console.log(`[FullScreenFeed] Image file detected:`, {
+            fileId,
+            fileType: file.fileType,
+            fileName: file.name || file.title,
+            isImage,
+            isImageFinal,
+            isTextPost,
+            hasTextPostData,
+            thumbnailUrl: thumbnails.get(fileId) ? 'exists' : 'missing'
+          });
+        }
+        
         const fileName = file.name || file.title || 'Untitled';
         // Get creatorId - this is now the pN identifier (set from entry.pnIdentifier during conversion)
         const creatorId = (indexedFile.metadata as any).creatorId || 
