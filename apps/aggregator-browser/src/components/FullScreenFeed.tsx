@@ -1363,7 +1363,12 @@ export function FullScreenFeed({
           file.fileType === 'video' || 
           (file.name || file.title || '').match(/\.(mp4|mov|avi|webm|mkv|flv|wmv)$/i)
         );
-        const isImage = !isTextPost && (
+        // Check for thoughts FIRST - they're stored as PNG files but should be treated as thoughts
+        // Thoughts have filenames like "thought-*.png" OR fileType 'text'/'thought' OR have textPost/thought data
+        const isThoughtFile = (file.name && /^thought-\d+\.png/i.test(file.name)) ||
+                              (file.title && /^thought-\d+\.png/i.test(file.title));
+        
+        const isImage = !isTextPost && !isThoughtFile && (
           file.fileType === 'image' || 
           (file.name || file.title || '').match(/\.(jpg|jpeg|png|gif|webp|svg|bmp|ico)$/i)
         );
