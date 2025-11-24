@@ -403,6 +403,7 @@ export function FullScreenFeed({
                 }
                 
                 const thumbnailUrl = URL.createObjectURL(decryptedBlob);
+                console.log(`[FullScreenFeed] Set thumbnail URL for ${fileId}:`, thumbnailUrl, `Blob size: ${decryptedBlob.size} bytes, type: ${decryptedBlob.type}`);
                 setThumbnails(prev => {
                   const newMap = new Map(prev);
                   newMap.set(fileId, thumbnailUrl);
@@ -537,6 +538,7 @@ export function FullScreenFeed({
                 }
 
                 const thumbnailUrlObj = URL.createObjectURL(imageBlob);
+                console.log(`[FullScreenFeed] Set thumbnail URL (API fallback) for ${fileId}:`, thumbnailUrlObj, `Blob size: ${imageBlob.size} bytes, type: ${imageBlob.type}`);
                 setThumbnails(prev => {
                   const newMap = new Map(prev);
                   newMap.set(fileId, thumbnailUrlObj);
@@ -1056,6 +1058,9 @@ export function FullScreenFeed({
                     style={backgroundStyle}
                     loading="eager"
                     decoding="async"
+                    onError={(e) => {
+                      console.error(`[FullScreenFeed] Background image failed to load for ${fileId}:`, e);
+                    }}
                   />
                   {/* Main image container - centers image */}
                   <div className="w-full h-full flex items-center justify-center relative z-10">
@@ -1065,11 +1070,17 @@ export function FullScreenFeed({
                         imageRefs.current.set(fileId, el);
                         // Track dimensions when loaded
                         el.addEventListener('load', () => {
+                          console.log(`[FullScreenFeed] Image loaded successfully for ${fileId}, dimensions: ${el.naturalWidth}x${el.naturalHeight}`);
                           setMediaDimensions(prev => {
                             const newMap = new Map(prev);
                             newMap.set(fileId, { width: el.naturalWidth, height: el.naturalHeight });
                             return newMap;
                           });
+                        });
+                        el.addEventListener('error', (err) => {
+                          console.error(`[FullScreenFeed] Image failed to load for ${fileId}:`, err);
+                          console.error(`[FullScreenFeed] Image src:`, el.src);
+                          console.error(`[FullScreenFeed] Thumbnail URL:`, thumbnails.get(fileId));
                         });
                       }
                     }}
@@ -1091,6 +1102,10 @@ export function FullScreenFeed({
                       }}
                       loading="eager"
                       decoding="sync"
+                      onError={(e) => {
+                        console.error(`[FullScreenFeed] Main image failed to load for ${fileId}:`, e);
+                        console.error(`[FullScreenFeed] Image src:`, (e.target as HTMLImageElement).src);
+                      }}
                     />
                   </div>
                 </>
