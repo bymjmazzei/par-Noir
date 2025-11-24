@@ -2310,22 +2310,26 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
           const pdf = await loadingTask.promise;
           
           const numPages = pdf.numPages;
-          console.log(`📄 [Upload] PDF has ${numPages} pages, converting to PNGs...`);
+          console.log(`📄 [Upload] PDF has ${numPages} pages, generating thumbnails...`);
           
-          // Convert each page to PNG and upload to folder
+          // Generate thumbnails for each page (only thumbnails, not full-size PNGs)
           for (let pageNum = 1; pageNum <= numPages; pageNum++) {
             try {
               // Refresh access token before each upload to prevent expiration
               const freshAccessToken = await PNOAuthService.getValidAccessToken();
               if (!freshAccessToken) {
-                console.warn(`⚠️ [Upload] No access token for page ${pageNum}, skipping PNG conversion`);
+                console.warn(`⚠️ [Upload] No access token for page ${pageNum}, skipping thumbnail generation`);
                 break; // Stop conversion if we can't get a token
               }
               
               const page = await pdf.getPage(pageNum);
-              const viewport = page.getViewport({ scale: 2.0 }); // High quality
+              const viewport = page.getViewport({ scale: 1.0 });
               
-              // Render to canvas
+              // Calculate thumbnail scale (800px max width/height)
+              const scale = Math.min(800 / viewport.width, 800 / viewport.height);
+              const thumbnailViewport = page.getViewport({ scale });
+              
+              // Render to canvas at thumbnail size
               const canvas = document.createElement('canvas');
               const context = canvas.getContext('2d');
               if (!context) {
@@ -2333,45 +2337,21 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
                 continue;
               }
               
-              canvas.height = viewport.height;
-              canvas.width = viewport.width;
+              canvas.width = thumbnailViewport.width;
+              canvas.height = thumbnailViewport.height;
               
               await page.render({
                 canvasContext: context,
-                viewport: viewport
+                viewport: thumbnailViewport
               }).promise;
               
-              // Convert canvas to PNG blob (full-size)
-              const pngBlob = await new Promise<Blob>((resolve, reject) => {
+              // Convert canvas to JPEG blob (thumbnail only, not PNG)
+              const thumbnailBlob = await new Promise<Blob>((resolve, reject) => {
                 canvas.toBlob((blob) => {
                   if (blob) resolve(blob);
                   else reject(new Error('Failed to convert canvas to blob'));
-                }, 'image/png', 1.0);
+                }, 'image/jpeg', 0.8); // JPEG for smaller file size
               });
-              
-              // Generate thumbnail from full-size PNG (800px max)
-              const thumbnailBlob = await createThumbnailFromBlobLocal(pngBlob, 800, 800);
-              
-              // Encrypt full-size PNG
-              const pngArrayBuffer = await pngBlob.arrayBuffer();
-              const pngData = new Uint8Array(pngArrayBuffer);
-              const pngEncrypted = await encryptionManager.encrypt(
-                pngData,
-                session.did,
-                publicKey
-              );
-              
-              // Create encrypted package for full-size PNG
-              const pngPackage: EncryptedFilePackage = {
-                encrypted: pngEncrypted.encrypted,
-                iv: pngEncrypted.iv,
-                salt: pngEncrypted.salt,
-                metadata: {
-                  originalName: `${baseFileName}-page-${pageNum}.png`,
-                  originalSize: pngBlob.size,
-                  originalMimeType: 'image/png',
-                },
-              };
               
               // Encrypt thumbnail
               const thumbnailArrayBuffer = await thumbnailBlob.arrayBuffer();
@@ -2394,18 +2374,10 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
                 },
               };
               
-              // Generate share tokens (optional, don't fail if it doesn't work)
-              let pngShareToken: any = undefined;
+              // Generate share token for thumbnail (optional, don't fail if it doesn't work)
               let thumbnailShareToken: any = undefined;
               try {
                 const encryptionService = getEncryptionService();
-                pngShareToken = await encryptionService.generateShareToken(
-                  pngPackage,
-                  {
-                    id: session.did,
-                    publicKey: publicKey
-                  }
-                );
                 thumbnailShareToken = await encryptionService.generateShareToken(
                   thumbnailPackage,
                   {
@@ -2416,22 +2388,6 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
               } catch (tokenError) {
                 console.warn(`⚠️ [Upload] Share token generation failed for page ${pageNum} (non-critical)`);
               }
-              
-              // Convert full-size PNG to JSON string
-              const pngEncryptedBlob = new Blob([JSON.stringify(pngPackage)], {
-                type: 'application/json',
-              });
-              
-              const pngBase64 = await new Promise<string>((resolve, reject) => {
-                const reader = new FileReader();
-                reader.onload = () => {
-                  const result = reader.result as string;
-                  const base64 = result.includes(',') ? result.split(',')[1] : result;
-                  resolve(base64);
-                };
-                reader.onerror = () => reject(new Error('Failed to read PNG encrypted file'));
-                reader.readAsDataURL(pngEncryptedBlob);
-              });
               
               // Convert thumbnail to JSON string
               const thumbnailEncryptedBlob = new Blob([JSON.stringify(thumbnailPackage)], {
@@ -2447,23 +2403,6 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
                 };
                 reader.onerror = () => reject(new Error('Failed to read thumbnail encrypted file'));
                 reader.readAsDataURL(thumbnailEncryptedBlob);
-              });
-              
-              // Upload full-size PNG page to folder
-              const pngEncryptedFileName = `${baseFileName}-page-${pageNum}.png.encrypted`;
-              const pngResponse = await fetch(`${apiEndpoint}/api/drive/files`, {
-                method: 'POST',
-                headers: {
-                  'Content-Type': 'application/json',
-                  'Authorization': `Bearer ${freshAccessToken}`
-                },
-                body: JSON.stringify({
-                  fileData: pngBase64,
-                  fileName: pngEncryptedFileName,
-                  mimeType: 'application/json',
-                  parents: pdfPagesFolderId ? [pdfPagesFolderId] : undefined,
-                  accountId: accountId
-                })
               });
               
               // Upload thumbnail to folder
@@ -2483,18 +2422,16 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
                 })
               });
               
-              if (pngResponse.ok && thumbnailResponse.ok) {
-                const pngUploadResult = await pngResponse.json();
+              if (thumbnailResponse.ok) {
                 const thumbnailUploadResult = await thumbnailResponse.json();
-                if (pngUploadResult.file?.id && thumbnailUploadResult.file?.id) {
-                  console.log(`✅ [Upload] Page ${pageNum}/${numPages} uploaded as PNG + thumbnail${pdfPagesFolderId ? ' to folder' : ''}`);
+                if (thumbnailUploadResult.file?.id) {
+                  console.log(`✅ [Upload] Page ${pageNum}/${numPages} thumbnail uploaded${pdfPagesFolderId ? ' to folder' : ''}`);
                 } else {
-                  console.warn(`⚠️ [Upload] Page ${pageNum} upload succeeded but some file IDs missing`);
+                  console.warn(`⚠️ [Upload] Page ${pageNum} thumbnail upload succeeded but no file ID returned`);
                 }
               } else {
-                const pngErrorText = pngResponse.ok ? '' : await pngResponse.text().catch(() => 'Unknown error');
-                const thumbErrorText = thumbnailResponse.ok ? '' : await thumbnailResponse.text().catch(() => 'Unknown error');
-                console.warn(`⚠️ [Upload] Failed to upload page ${pageNum}: PNG=${pngResponse.status}, Thumb=${thumbnailResponse.status}`);
+                const thumbErrorText = await thumbnailResponse.text().catch(() => 'Unknown error');
+                console.warn(`⚠️ [Upload] Failed to upload page ${pageNum} thumbnail: ${thumbnailResponse.status} - ${thumbErrorText}`);
                 // Continue with other pages even if one fails
               }
             } catch (pageError: any) {
@@ -2504,9 +2441,9 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
           }
           
           if (pdfPagesFolderId) {
-            console.log(`✅ [Upload] Converted PDF to PNG pages in folder: ${pdfPagesFolderName}`);
+            console.log(`✅ [Upload] Generated PDF thumbnails in folder: ${pdfPagesFolderName}`);
           } else {
-            console.log(`✅ [Upload] Converted PDF to PNG pages (folder creation failed, pages uploaded to root)`);
+            console.log(`✅ [Upload] Generated PDF thumbnails (folder creation failed, thumbnails uploaded to root)`);
           }
         } catch (pdfError: any) {
           console.error('❌ [Upload] PDF conversion failed:', pdfError?.message || pdfError);
@@ -2516,12 +2453,12 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
         }
       }
 
-      // Generate thumbnail for slideshow (from first PDF page)
+      // Generate thumbnail for slideshow (from first PDF page) - use first thumbnail from folder if available
       let thumbnailFileId: string | undefined = undefined;
       if (isPDF && pdfPagesFolderId) {
+        // The first thumbnail was already uploaded to the folder, we can use it
+        // For now, we'll generate a separate thumbnail for the feed (can optimize later)
         try {
-          // Get the first page canvas that was already rendered
-          // We need to re-render page 1 at thumbnail size
           const pdfjsLib = await import('pdfjs-dist');
           if (!pdfjsLib.GlobalWorkerOptions.workerSrc) {
             pdfjsLib.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs';
@@ -2576,25 +2513,96 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
         }
       }
       
-      // If PDF was successfully converted to PNG pages in a folder, skip uploading the original PDF
-      // The folder with PNG pages IS the slideshow, we don't need the original PDF file
+      // Upload the original PDF file (always upload PDF, even if thumbnails were created)
       let fileId: string | undefined = undefined;
+      let pdfFileId: string | undefined = undefined;
       let shareToken: any = undefined;
       let freshAccessToken: string | undefined = undefined;
       
       if (isPDF && pdfPagesFolderId) {
-        // PDF was converted to PNG slideshow - use folder ID as the "file" ID for metadata
-        console.log('📄 [Upload] PDF converted to slideshow folder, skipping original PDF upload');
-        fileId = pdfPagesFolderId; // Use folder ID as file ID for metadata purposes
+        // PDF thumbnails were created - upload the original PDF file
+        console.log('📄 [Upload] PDF thumbnails created, uploading original PDF file...');
         
-        // Get access token for metadata operations
+        // Get access token for PDF upload
         freshAccessToken = await PNOAuthService.getValidAccessToken();
         if (!freshAccessToken) {
-          throw new Error('No valid access token available for metadata');
+          throw new Error('No valid access token available for PDF upload');
         }
         
-        // Generate a placeholder share token (not used for folders, but needed for metadata structure)
-        shareToken = undefined;
+        // Upload the original PDF file
+        const pdfArrayBuffer = await file.arrayBuffer();
+        const pdfData = new Uint8Array(pdfArrayBuffer);
+        const pdfEncrypted = await encryptionManager.encrypt(
+          pdfData,
+          session.did,
+          publicKey
+        );
+        
+        const pdfPackage: EncryptedFilePackage = {
+          encrypted: pdfEncrypted.encrypted,
+          iv: pdfEncrypted.iv,
+          salt: pdfEncrypted.salt,
+          metadata: {
+            originalName: file.name,
+            originalSize: file.size,
+            originalMimeType: 'application/pdf',
+          },
+        };
+        
+        // Generate share token for PDF
+        try {
+          const encryptionService = getEncryptionService();
+          shareToken = await encryptionService.generateShareToken(
+            pdfPackage,
+            {
+              id: session.did,
+              publicKey: publicKey
+            }
+          );
+        } catch (tokenError) {
+          console.warn('⚠️ [Upload] Share token generation failed for PDF (non-critical)');
+        }
+        
+        const pdfEncryptedBlob = new Blob([JSON.stringify(pdfPackage)], {
+          type: 'application/json',
+        });
+        
+        const pdfBase64 = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => {
+            const result = reader.result as string;
+            const base64 = result.includes(',') ? result.split(',')[1] : result;
+            resolve(base64);
+          };
+          reader.onerror = () => reject(new Error('Failed to read PDF encrypted file'));
+          reader.readAsDataURL(pdfEncryptedBlob);
+        });
+        
+        const pdfEncryptedFileName = `${file.name}.encrypted`;
+        const pdfUploadResponse = await fetch(`${apiEndpoint}/api/drive/files`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${freshAccessToken}`
+          },
+          body: JSON.stringify({
+            fileData: pdfBase64,
+            fileName: pdfEncryptedFileName,
+            mimeType: 'application/json',
+            accountId: accountId
+          })
+        });
+        
+        if (pdfUploadResponse.ok) {
+          const pdfUploadResult = await pdfUploadResponse.json();
+          pdfFileId = pdfUploadResult.file?.id;
+          fileId = pdfFileId; // Use PDF file ID as the main file ID
+          console.log(`✅ [Upload] Original PDF uploaded (ID: ${pdfFileId})`);
+        } else {
+          const errorText = await pdfUploadResponse.text().catch(() => 'Unknown error');
+          console.error(`❌ [Upload] Failed to upload PDF: ${pdfUploadResponse.status} - ${errorText}`);
+          throw new Error(`Failed to upload PDF: ${errorText}`);
+        }
       } else {
         // Upload the original file (either not a PDF, or PDF conversion failed)
         // Refresh access token before uploading main file (in case it expired during PNG conversion)
@@ -2768,7 +2776,8 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
             publicToken: shareToken ? JSON.stringify(shareToken) : undefined, // Store share token for future use
             uploadDate: new Date().toISOString(),
             isNSFW: false, // Default to public content
-            pdfPagesFolderId: pdfPagesFolderId, // Store PDF pages folder ID for slideshow (same as fileId for folders)
+            pdfPagesFolderId: pdfPagesFolderId, // Store PDF thumbnails folder ID for slideshow
+            pdfFileId: pdfFileId, // Store original PDF file ID for on-demand rendering
             thumbnailFileId: thumbnailFileId, // Store thumbnail file ID for fast feed loading
             // Include accountId in query params if needed
           }),

@@ -1564,6 +1564,7 @@ export class AggregatorMetadataServiceDB {
       subjects?: string[];
       feedCategories?: string[];
       pdfPagesFolderId?: string;
+      pdfFileId?: string;
       thumbnailFileId?: string;
     }
   ): Promise<PublicMetadata | null> {
@@ -1621,6 +1622,7 @@ export class AggregatorMetadataServiceDB {
         ...(updates.feedCategories !== undefined && { feedCategories: updates.feedCategories }),
         // Update PDF pages folder ID
         ...(updates.pdfPagesFolderId !== undefined && { pdfPagesFolderId: updates.pdfPagesFolderId }),
+        ...(updates.pdfFileId !== undefined && { pdfFileId: updates.pdfFileId }),
         // Update thumbnail file ID
         ...(updates.thumbnailFileId !== undefined && { thumbnailFileId: updates.thumbnailFileId })
       };

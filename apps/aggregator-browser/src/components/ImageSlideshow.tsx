@@ -8,12 +8,13 @@ import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { useHorizontalSwipe } from '../hooks/useHorizontalSwipe';
 
 interface ImageSlideshowProps {
-  fileId: string; // Folder ID containing image pages
+  fileId: string; // Folder ID containing thumbnails
   fileName?: string;
   accountId?: string; // Account ID for downloading images
+  pdfFileId?: string; // PDF file ID for on-demand rendering (if PDF slideshow)
 }
 
-export function ImageSlideshow({ fileId, fileName, accountId }: ImageSlideshowProps) {
+export function ImageSlideshow({ fileId, fileName, accountId, pdfFileId }: ImageSlideshowProps) {
   const [pages, setPages] = useState<number[]>([]);
   const [currentPage, setCurrentPage] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -237,17 +238,168 @@ export function ImageSlideshow({ fileId, fileName, accountId }: ImageSlideshowPr
         return;
       }
       
-      // Determine which file to load: thumbnail first (if available and not forcing full-size), otherwise full-size
+      // Determine which file to load: thumbnail first (if available and not forcing full-size), otherwise render PDF on-demand
       const hasThumbnail = !!pageFile.thumbnailId;
       const shouldLoadThumbnail = hasThumbnail && !loadFullSize && !fullSizeLoadedRef.current.has(pageNum);
+      const shouldRenderPDF = loadFullSize && pdfFileId && !fullSizeLoadedRef.current.has(pageNum);
       const fileIdToLoad = shouldLoadThumbnail ? pageFile.thumbnailId! : pageFile.fullSizeId;
       const isThumbnailLoad = shouldLoadThumbnail;
       
-      console.log(`[ImageSlideshow] Loading ${isThumbnailLoad ? 'thumbnail' : 'full-size'} for page ${pageNum}...`);
+      console.log(`[ImageSlideshow] Loading ${isThumbnailLoad ? 'thumbnail' : shouldRenderPDF ? 'PDF page' : 'full-size'} for page ${pageNum}...`);
       loadingPagesRef.current.add(pageNum);
       setLoadingPages(prev => new Set(prev).add(pageNum));
 
       try {
+        // If we need to render PDF page on-demand
+        if (shouldRenderPDF && pdfFileId) {
+          const apiEndpoint = process.env.REACT_APP_API_ENDPOINT || 'https://api.parnoir.com';
+          const { PNOAuthService } = await import('../services/pnOAuthService');
+          const accessToken = await PNOAuthService.getValidAccessToken();
+          
+          if (!accessToken) {
+            throw new Error('No access token');
+          }
+
+          // Download PDF file
+          let pdfUrl = `${apiEndpoint}/api/drive/files/${pdfFileId}`;
+          if (finalAccountId && finalAccountId.includes('::')) {
+            pdfUrl += `?accountId=${encodeURIComponent(finalAccountId)}`;
+          }
+          
+          console.log(`[ImageSlideshow] Fetching PDF for on-demand rendering of page ${pageNum}...`);
+          const startTime = Date.now();
+          
+          let response = await fetch(pdfUrl, {
+            headers: {
+              'Authorization': `Bearer ${accessToken}`
+            }
+          });
+          
+          if (response.status === 401) {
+            const refreshedToken = await PNOAuthService.getValidAccessToken(true);
+            if (refreshedToken) {
+              response = await fetch(pdfUrl, {
+                headers: {
+                  'Authorization': `Bearer ${refreshedToken}`
+                }
+              });
+            }
+          }
+          
+          if (!response.ok) {
+            throw new Error(`Failed to load PDF: ${response.status}`);
+          }
+          
+          const contentType = response.headers.get('content-type') || '';
+          const blob = await response.blob();
+          
+          // Decrypt PDF if encrypted
+          let pdfBlob: Blob;
+          if (contentType.includes('application/json') || contentType.includes('application/octet-stream')) {
+            const { EncryptionManager } = await import('../utils/encryptionManager');
+            
+            interface EncryptedFilePackage {
+              encrypted: string;
+              iv: string;
+              salt: string;
+              metadata: {
+                originalName: string;
+                originalSize: number;
+                originalMimeType: string;
+              };
+            }
+            
+            const session = PNOAuthService.loadSession();
+            if (!session?.did) {
+              throw new Error('No session for decryption');
+            }
+            
+            const pnId = session.did;
+            let publicKey = session?.publicKey;
+            
+            if (!publicKey && session.did.startsWith('did:key:')) {
+              publicKey = session.did.substring(8);
+            }
+            
+            if (!publicKey) {
+              throw new Error('No public key for decryption');
+            }
+            
+            const encryptedText = await blob.text();
+            const encryptedPackage: EncryptedFilePackage = JSON.parse(encryptedText);
+            
+            const encryptionManager = new EncryptionManager();
+            const decryptedData = await encryptionManager.decrypt(
+              encryptedPackage.encrypted,
+              encryptedPackage.iv,
+              encryptedPackage.salt,
+              pnId,
+              publicKey
+            );
+            
+            pdfBlob = new Blob([decryptedData], {
+              type: 'application/pdf'
+            });
+          } else {
+            pdfBlob = blob;
+          }
+          
+          // Render PDF page using PDF.js
+          const pdfjsLib = await import('pdfjs-dist');
+          if (!pdfjsLib.GlobalWorkerOptions.workerSrc) {
+            pdfjsLib.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs';
+          }
+          
+          const arrayBuffer = await pdfBlob.arrayBuffer();
+          const uint8Array = new Uint8Array(arrayBuffer);
+          const loadingTask = pdfjsLib.getDocument({ data: uint8Array });
+          const pdf = await loadingTask.promise;
+          
+          const page = await pdf.getPage(pageNum);
+          const viewport = page.getViewport({ scale: 2.0 }); // High quality
+          
+          const canvas = document.createElement('canvas');
+          const context = canvas.getContext('2d');
+          if (!context) {
+            throw new Error('Failed to get canvas context');
+          }
+          
+          canvas.width = viewport.width;
+          canvas.height = viewport.height;
+          
+          await page.render({
+            canvasContext: context,
+            viewport: viewport
+          }).promise;
+          
+          // Convert canvas to blob
+          const imageBlob = await new Promise<Blob>((resolve, reject) => {
+            canvas.toBlob((blob) => {
+              if (blob) resolve(blob);
+              else reject(new Error('Failed to convert canvas to blob'));
+            }, 'image/png', 1.0);
+          });
+          
+          const imageUrl = URL.createObjectURL(imageBlob);
+          const loadTime = Date.now() - startTime;
+          console.log(`✅ [ImageSlideshow] Rendered PDF page ${pageNum} on-demand in ${loadTime}ms`);
+          
+          fullSizeLoadedRef.current.add(pageNum);
+          setPageUrls(prev => {
+            const next = new Map(prev);
+            next.set(pageNum, imageUrl);
+            return next;
+          });
+          setPageIsThumbnail(prev => {
+            const next = new Map(prev);
+            next.set(pageNum, false); // This is full-size, not thumbnail
+            return next;
+          });
+          
+          return;
+        }
+        
+        // Otherwise, load thumbnail or full-size image as before
         const apiEndpoint = process.env.REACT_APP_API_ENDPOINT || 'https://api.parnoir.com';
         const { PNOAuthService } = await import('../services/pnOAuthService');
         const accessToken = await PNOAuthService.getValidAccessToken();
@@ -287,6 +439,12 @@ export function ImageSlideshow({ fileId, fileName, accountId }: ImageSlideshowPr
         }
         
         if (!response.ok) {
+          // If thumbnail load failed but we have PDF for on-demand rendering, try that
+          if (isThumbnailLoad && pdfFileId) {
+            console.log(`[ImageSlideshow] Thumbnail failed for page ${pageNum}, will render from PDF on-demand...`);
+            loadingPagesRef.current.delete(pageNum);
+            return loadImagePage(pageFile, finalAccountId, true); // Retry with PDF rendering
+          }
           // If thumbnail load failed but we have a full-size option, try that
           if (isThumbnailLoad && pageFile.fullSizeId) {
             console.log(`[ImageSlideshow] Thumbnail failed for page ${pageNum}, falling back to full-size...`);
@@ -382,12 +540,12 @@ export function ImageSlideshow({ fileId, fileName, accountId }: ImageSlideshowPr
           return next;
         });
         
-        // If we loaded a thumbnail and full-size is available, preload full-size in background
-        if (isThumbnailLoad && pageFile.fullSizeId && !fullSizeLoadedRef.current.has(pageNum)) {
-          console.log(`[ImageSlideshow] Preloading full-size for page ${pageNum} in background...`);
+        // If we loaded a thumbnail and PDF is available, preload PDF rendering in background
+        if (isThumbnailLoad && pdfFileId && !fullSizeLoadedRef.current.has(pageNum)) {
+          console.log(`[ImageSlideshow] Preloading PDF page ${pageNum} rendering in background...`);
           // Don't await - let it load in background
           loadImagePage(pageFile, finalAccountId, true).catch(err => {
-            console.warn(`[ImageSlideshow] Background full-size load failed for page ${pageNum}:`, err);
+            console.warn(`[ImageSlideshow] Background PDF rendering failed for page ${pageNum}:`, err);
           });
         }
       } catch (err) {
@@ -400,7 +558,7 @@ export function ImageSlideshow({ fileId, fileName, accountId }: ImageSlideshowPr
           return next;
         });
       }
-    }, []);
+    }, [pdfFileId]);
 
   // Load pages progressively: first page immediately, next 2 pages in parallel
   useEffect(() => {

@@ -1848,6 +1848,7 @@ class ProductionServer {
           subjects,
           feedCategories,
           pdfPagesFolderId,
+          pdfFileId,
           thumbnailFileId
         } = req.body;
 
@@ -2017,6 +2018,7 @@ class ProductionServer {
           subjects,
           feedCategories,
           pdfPagesFolderId,
+          pdfFileId,
           thumbnailFileId
         });
 

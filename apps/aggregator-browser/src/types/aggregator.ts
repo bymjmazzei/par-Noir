@@ -343,8 +343,9 @@ export interface PublicMetadata {
   textPost?: TextPostData;
   thought?: TextPostData; // Alias for textPost
   
-  // PDF Pre-rendered Pages (for fast loading)
-  pdfPagesFolderId?: string; // Folder ID containing pre-rendered PNG pages
+  // PDF Slideshow Support
+  pdfPagesFolderId?: string; // Folder ID containing thumbnails for PDF slideshows
+  pdfFileId?: string; // ID of the original PDF file (for on-demand rendering)
   
   // Thumbnail for fast feed loading (images, videos, slideshows)
   thumbnailFileId?: string; // File ID of encrypted thumbnail (800px width, JPEG)
