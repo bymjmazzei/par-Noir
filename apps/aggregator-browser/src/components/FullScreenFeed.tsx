@@ -1956,7 +1956,6 @@ export function FullScreenFeed({
                 );
               }
               
-              return (
               const containerHeight = window.innerHeight - 64; // Account for bottom nav
               const containerWidth = window.innerWidth;
               const containerAspect = containerWidth / containerHeight;
