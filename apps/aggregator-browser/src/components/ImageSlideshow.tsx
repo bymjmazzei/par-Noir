@@ -323,27 +323,32 @@ export function ImageSlideshow({ thumbnailIds, fileName, accountId, pdfFileId }:
     }
   }, [pdfFileId, fetchAccountIdOnce]);
 
-  // Load thumbnails sequentially (like the feed) - start immediately, don't wait for accountId
+  // Load thumbnails sequentially (like the feed) - one at a time with delays
   useEffect(() => {
     if (thumbnailIds.length === 0) return;
     
     let cancelled = false;
     
-    // Start loading first page immediately (like vertical feed) - don't wait for accountId
-    if (thumbnailIds.length > 0 && !cancelled) {
-      // Start loading first page immediately - accountId will be fetched on-demand in loadThumbnail
-      loadThumbnail(thumbnailIds[0], 1, null, false).catch(() => {});
-    }
-    
-    // Fetch accountId in parallel (non-blocking) for remaining pages
+    // Load all thumbnails sequentially with delays to prevent token refresh conflicts
     (async () => {
-      const finalAccountId = await fetchAccountIdOnce();
+      // Fetch accountId once (non-blocking - start loading first page immediately)
+      const accountIdPromise = fetchAccountIdOnce();
       
-      // Load remaining pages sequentially with delay
-      for (let i = 1; i < thumbnailIds.length; i++) {
+      // Load ALL thumbnails sequentially (including first) with delays
+      // Small delay for first page (50ms) so UI appears immediately, then longer delays
+      for (let i = 0; i < thumbnailIds.length; i++) {
         if (cancelled) break;
-        await new Promise(resolve => setTimeout(resolve, 150));
-        loadThumbnail(thumbnailIds[i], i + 1, finalAccountId, false).catch(() => {});
+        
+        // Small delay for first page, longer for subsequent pages
+        if (i > 0) {
+          await new Promise(resolve => setTimeout(resolve, 200)); // Delay between loads
+        } else {
+          await new Promise(resolve => setTimeout(resolve, 50)); // Small delay for first page
+        }
+        
+        // Use accountId if available, otherwise fetch on-demand
+        const accountIdToUse = i === 0 ? null : await accountIdPromise;
+        loadThumbnail(thumbnailIds[i], i + 1, accountIdToUse, false).catch(() => {});
       }
     })();
     
