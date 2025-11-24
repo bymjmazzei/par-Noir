@@ -130,33 +130,17 @@ export function FullScreenFeed({
   // Handle horizontal swipe for PDF pages (only active when viewing PDF)
   const pdfHorizontalSwipeRef = useHorizontalSwipe({
     onSwipeLeft: () => {
-      console.log('[FullScreenFeed] PDF swipe LEFT detected');
       const currentFile = files[currentIndex];
-      if (!currentFile) {
-        console.log('[FullScreenFeed] No current file');
-        return;
-      }
+      if (!currentFile) return;
       const fileId = currentFile.metadata.fileId;
       const pdfPageThumbnailIds = currentFile.metadata?.pdfPageThumbnailIds;
       const isPdfDoc = currentFile.metadata.fileType === 'document' && pdfPageThumbnailIds && pdfPageThumbnailIds.length > 0;
       
-      console.log('[FullScreenFeed] Swipe check:', { 
-        isPdfDoc, 
-        visibleFileId, 
-        fileId, 
-        matches: visibleFileId === fileId,
-        pdfPageThumbnailIds: pdfPageThumbnailIds?.length 
-      });
-      
       // Only handle swipe if this is a PDF and it's visible
-      if (!isPdfDoc || visibleFileId !== fileId) {
-        console.log('[FullScreenFeed] Swipe ignored - not PDF or not visible');
-        return;
-      }
+      if (!isPdfDoc || visibleFileId !== fileId) return;
       
       const currentPage = pdfCurrentPage.get(fileId) || 0;
       const totalPages = pdfPageThumbnailIds.length;
-      console.log(`[FullScreenFeed] Navigating to next page: ${currentPage + 1} -> ${currentPage + 2} of ${totalPages}`);
       
       if (pdfPageThumbnailIds && currentPage < pdfPageThumbnailIds.length - 1) {
         const nextPageIndex = currentPage + 1;
@@ -194,33 +178,17 @@ export function FullScreenFeed({
       }
     },
     onSwipeRight: () => {
-      console.log('[FullScreenFeed] PDF swipe RIGHT detected');
       const currentFile = files[currentIndex];
-      if (!currentFile) {
-        console.log('[FullScreenFeed] No current file');
-        return;
-      }
+      if (!currentFile) return;
       const fileId = currentFile.metadata.fileId;
       const pdfPageThumbnailIds = currentFile.metadata?.pdfPageThumbnailIds;
       const isPdfDoc = currentFile.metadata.fileType === 'document' && pdfPageThumbnailIds && pdfPageThumbnailIds.length > 0;
       
-      console.log('[FullScreenFeed] Swipe check:', { 
-        isPdfDoc, 
-        visibleFileId, 
-        fileId, 
-        matches: visibleFileId === fileId,
-        pdfPageThumbnailIds: pdfPageThumbnailIds?.length 
-      });
-      
       // Only handle swipe if this is a PDF and it's visible
-      if (!isPdfDoc || visibleFileId !== fileId) {
-        console.log('[FullScreenFeed] Swipe ignored - not PDF or not visible');
-        return;
-      }
+      if (!isPdfDoc || visibleFileId !== fileId) return;
       
       const currentPage = pdfCurrentPage.get(fileId) || 0;
       const totalPages = pdfPageThumbnailIds.length;
-      console.log(`[FullScreenFeed] Navigating to previous page: ${currentPage + 1} -> ${currentPage} of ${totalPages}`);
       
       if (pdfPageThumbnailIds && currentPage > 0) {
         const prevPageIndex = currentPage - 1;
@@ -354,7 +322,6 @@ export function FullScreenFeed({
                 });
               }
               
-              console.log(`✅ [FullScreenFeed] Loaded PDF page ${pageIndex + 1} thumbnail via publicToken (NO API CALLS!)`);
               return; // Success - NO API CALLS!
             } catch (decryptErr) {
               console.warn(`[FullScreenFeed] Failed to decrypt PDF thumbnail with token:`, decryptErr);
@@ -685,15 +652,12 @@ export function FullScreenFeed({
   // Load video blobs and thumbnails for visible files (only if not provided externally)
   useEffect(() => {
     const loadMedia = async () => {
-      console.log(`[FullScreenFeed] loadMedia: ${files.length} total files, currentIndex: ${currentIndex}`);
       // Load current file and adjacent files
       const indicesToLoad = [
         currentIndex - 1,
         currentIndex,
         currentIndex + 1
       ].filter(idx => idx >= 0 && idx < files.length);
-      
-      console.log(`[FullScreenFeed] loadMedia: Processing indices:`, indicesToLoad);
 
       // Parallelize loading for better performance
       await Promise.all(indicesToLoad.map(async (idx) => {
@@ -718,19 +682,6 @@ export function FullScreenFeed({
         const pdfPageThumbnailIds = indexedFile.metadata?.pdfPageThumbnailIds;
         const isPdfDocument = !isTextPost && file.fileType === 'document' && pdfPageThumbnailIds && pdfPageThumbnailIds.length > 0;
         
-        console.log(`[FullScreenFeed] loadMedia for file ${fileId}:`, {
-          fileName: file.name || file.title,
-          fileType: file.fileType,
-          mimeType: (file as any).mimeType,
-          isTextPost,
-          isImage,
-          isVideo,
-          isPdfDocument,
-          pdfPageCount: pdfPageThumbnailIds?.length || 0,
-          hasPublicToken: !!file.publicToken,
-          thumbnailExists: thumbnails.has(fileId),
-          videoBlobExists: videoBlobs.has(fileId)
-        });
 
         // Only load video if not provided externally or if external map doesn't have this file
         if (isVideo && file.publicToken && !videoBlobs.has(fileId)) {
@@ -760,7 +711,6 @@ export function FullScreenFeed({
                 // Only load image if not provided externally or if external map doesn't have this file
                 // Skip if thumbnailFileId exists (we'll load thumbnail instead)
                 if (isImage && !thumbnails.has(fileId) && !file.thumbnailFileId) {
-          console.log(`[FullScreenFeed] Attempting to load image ${fileId}...`);
           // Check if external thumbnails has this file
           const hasExternalThumbnail = externalThumbnails && externalThumbnails.has(fileId);
           if (!hasExternalThumbnail) {
@@ -874,7 +824,6 @@ export function FullScreenFeed({
                 }
                 
                 const thumbnailUrl = URL.createObjectURL(decryptedBlob);
-                console.log(`[FullScreenFeed] Set thumbnail URL for ${fileId}:`, thumbnailUrl, `Blob size: ${decryptedBlob.size} bytes, type: ${decryptedBlob.type}`);
                 setThumbnails(prev => {
                   const newMap = new Map(prev);
                   newMap.set(fileId, thumbnailUrl);
@@ -985,7 +934,6 @@ export function FullScreenFeed({
                 }
 
                 const thumbnailUrlObj = URL.createObjectURL(imageBlob);
-                console.log(`[FullScreenFeed] Set thumbnail URL (API fallback) for ${fileId}:`, thumbnailUrlObj, `Blob size: ${imageBlob.size} bytes, type: ${imageBlob.type}`);
                 setThumbnails(prev => {
                   const newMap = new Map(prev);
                   newMap.set(fileId, thumbnailUrlObj);
@@ -1003,7 +951,6 @@ export function FullScreenFeed({
           const firstThumbnailId = pdfPageThumbnailIds[0];
           const pdfPageThumbnailTokens = (file as any)?.pdfPageThumbnailTokens as string[] | undefined;
           
-          console.log(`[FullScreenFeed] Loading FIRST PDF thumbnail for ${fileId} using thumbnail's publicToken (NO API CALLS!)`);
           
           // Use thumbnail's own publicToken from pdfPageThumbnailTokens array (NO API CALLS!)
           if (pdfPageThumbnailTokens && pdfPageThumbnailTokens[0]) {
@@ -1022,7 +969,6 @@ export function FullScreenFeed({
                   const decryptedBlob = await decryptWithToken(token);
                   const thumbnailUrlObj = URL.createObjectURL(decryptedBlob);
                   
-                  console.log(`✅ [FullScreenFeed] Loaded FIRST PDF thumbnail via thumbnail's publicToken (NO API CALLS!)`);
                   setThumbnails(prev => {
                     const newMap = new Map(prev);
                     newMap.set(fileId, thumbnailUrlObj);
@@ -1841,7 +1787,6 @@ export function FullScreenFeed({
                                 if (el && pageIndex === 0) {
                                   // Track dimensions when loaded (for background blur calculation)
                                   el.addEventListener('load', () => {
-                                    console.log(`[FullScreenFeed] PDF page loaded successfully for ${fileId} page ${pageIndex + 1}, dimensions: ${el.naturalWidth}x${el.naturalHeight}`);
                                     setMediaDimensions(prev => {
                                       const newMap = new Map(prev);
                                       newMap.set(fileId, { width: el.naturalWidth, height: el.naturalHeight });
@@ -1852,11 +1797,10 @@ export function FullScreenFeed({
                               }}
                               src={pageThumbnailUrl}
                               alt={`Page ${pageIndex + 1}${fileName ? ` of ${fileName}` : ''}`}
-                              className="max-w-full max-h-full object-contain"
+                              className="object-contain"
                               style={{
-                                maxHeight: 'calc(100vh - 64px - env(safe-area-inset-bottom, 0px))',
-                                height: 'auto',
-                                width: 'auto',
+                                height: '100%',
+                                width: '100%',
                                 objectFit: 'contain',
                                 imageRendering: 'smooth',
                                 WebkitImageRendering: 'smooth',
@@ -1984,7 +1928,6 @@ export function FullScreenFeed({
                         imageRefs.current.set(fileId, el);
                         // Track dimensions when loaded
                         el.addEventListener('load', () => {
-                          console.log(`[FullScreenFeed] Image loaded successfully for ${fileId}, dimensions: ${el.naturalWidth}x${el.naturalHeight}`);
                           setMediaDimensions(prev => {
                             const newMap = new Map(prev);
                             newMap.set(fileId, { width: el.naturalWidth, height: el.naturalHeight });

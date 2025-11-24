@@ -170,7 +170,6 @@ export function useHorizontalSwipe({
     const getElement = () => elementRef.current || document;
     
     const element = getElement();
-    console.log('[useHorizontalSwipe] Attaching listeners to:', element === document ? 'document' : 'element', elementRef.current ? 'has ref' : 'no ref');
     
     // Use CAPTURE phase to intercept touches BEFORE parent scroll container gets them
     // This is critical for PDF horizontal swipe - parent has overflow-y-scroll which captures all touches
@@ -181,7 +180,6 @@ export function useHorizontalSwipe({
     element.addEventListener('touchend', handleTouchEnd, { passive: true, capture: useCapture });
 
     return () => {
-      console.log('[useHorizontalSwipe] Removing listeners');
       element.removeEventListener('touchstart', handleTouchStart, { capture: useCapture } as any);
       element.removeEventListener('touchmove', handleTouchMove, { capture: useCapture } as any);
       element.removeEventListener('touchend', handleTouchEnd, { capture: useCapture } as any);
