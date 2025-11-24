@@ -922,9 +922,14 @@ export function FullScreenFeed({
         );
         // Check if this is an image slideshow folder (folder ending with "-pages")
         // PDF slideshow detection: check for pdfPageThumbnailIds array (thumbnails loaded directly, no folder listing)
+        // Check metadata immediately - don't wait for async operations
         const pdfFileId = indexedFile.metadata?.pdfFileId;
         const pdfPageThumbnailIds = indexedFile.metadata?.pdfPageThumbnailIds;
-        const isImageSlideshowFolder = !isTextPost && pdfPageThumbnailIds && pdfPageThumbnailIds.length > 0;
+        // Also check if fileType is 'document' - likely a PDF slideshow even if metadata not fully loaded
+        const isImageSlideshowFolder = !isTextPost && (
+          (pdfPageThumbnailIds && pdfPageThumbnailIds.length > 0) ||
+          (file.fileType === 'document' && pdfFileId) // PDF document - likely slideshow
+        );
         
         // No PDF support - only image slideshows from folders
         
@@ -1261,8 +1266,9 @@ export function FullScreenFeed({
               );
             })()}
 
-            {/* Loading state - Only show if NOT a text post */}
-            {!isTextPost && !textPostData && ((isImage || isVideo) && !thumbnails.get(fileId) && !videoBlobs.get(fileId)) && !isImageSlideshowFolder && (
+            {/* Loading state - Only show if NOT a text post AND NOT a slideshow */}
+            {/* Slideshows show their own loading states internally */}
+            {!isTextPost && !textPostData && !isImageSlideshowFolder && ((isImage || isVideo) && !thumbnails.get(fileId) && !videoBlobs.get(fileId)) && (
               <div className="flex flex-col items-center justify-center text-neutral-500">
                 <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-400 mb-2"></div>
                 <span className="text-xs">Loading...</span>
