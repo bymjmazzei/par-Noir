@@ -96,6 +96,9 @@ export function FullScreenFeed({
   const [videoPlaying, setVideoPlaying] = useState<Map<string, boolean>>(new Map());
   const [expandedCaptions, setExpandedCaptions] = useState<Set<string>>(new Set());
   const [currentCommentIndex, setCurrentCommentIndex] = useState<Map<string, number>>(new Map());
+  
+  // Refs for PDF horizontal scrolling (one per PDF file)
+  const pdfScrollRefs = useRef<Map<string, HTMLDivElement>>(new Map());
   const [commentOpacity, setCommentOpacity] = useState<Map<string, number>>(new Map());
 
   // Handle vertical swipe for next/previous media
@@ -1656,7 +1659,7 @@ export function FullScreenFeed({
               
               return (
                 <div
-                  ref={pdfScrollRef}
+                  ref={(el) => setPdfScrollRef(el)}
                   className="w-full h-full overflow-x-scroll snap-x snap-mandatory"
                   style={{ 
                     scrollbarWidth: 'none',
@@ -1792,9 +1795,10 @@ export function FullScreenFeed({
                           onClick={(e) => {
                             e.stopPropagation();
                             e.preventDefault();
-                            if (pdfScrollRef.current) {
-                              const pageWidth = pdfScrollRef.current.clientWidth;
-                              pdfScrollRef.current.scrollTo({ left: index * pageWidth, behavior: 'smooth' });
+                            const container = pdfScrollRefs.current.get(fileId);
+                            if (container) {
+                              const pageWidth = container.clientWidth;
+                              container.scrollTo({ left: index * pageWidth, behavior: 'smooth' });
                             }
                           }}
                           className={`transition-all duration-200 rounded-full cursor-pointer pointer-events-auto ${
