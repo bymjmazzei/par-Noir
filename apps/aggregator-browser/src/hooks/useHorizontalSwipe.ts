@@ -113,10 +113,16 @@ export function useHorizontalSwipe({
       }
     };
 
-    const element = elementRef.current || document;
-    element.addEventListener('touchstart', handleTouchStart, { passive: true });
-    element.addEventListener('touchmove', handleTouchMove, { passive: false });
-    element.addEventListener('touchend', handleTouchEnd, { passive: true });
+    // Use a function to get current element - this ensures we always use the latest ref value
+    const attachListeners = () => {
+      const element = elementRef.current || document;
+      element.addEventListener('touchstart', handleTouchStart, { passive: true });
+      element.addEventListener('touchmove', handleTouchMove, { passive: false });
+      element.addEventListener('touchend', handleTouchEnd, { passive: true });
+      return element;
+    };
+
+    const element = attachListeners();
 
     return () => {
       element.removeEventListener('touchstart', handleTouchStart);

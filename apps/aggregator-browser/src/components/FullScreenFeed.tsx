@@ -127,6 +127,7 @@ export function FullScreenFeed({
   // Handle horizontal swipe for PDF pages (only active when viewing PDF)
   const pdfHorizontalSwipeRef = useHorizontalSwipe({
     onSwipeLeft: () => {
+      console.log('[FullScreenFeed] PDF swipe LEFT detected');
       const currentFile = files[currentIndex];
       if (!currentFile) return;
       const fileId = currentFile.metadata.fileId;
@@ -134,9 +135,13 @@ export function FullScreenFeed({
       const isPdfDoc = currentFile.metadata.fileType === 'document' && pdfPageThumbnailIds && pdfPageThumbnailIds.length > 0;
       
       // Only handle swipe if this is a PDF and it's visible
-      if (!isPdfDoc || visibleFileId !== fileId) return;
+      if (!isPdfDoc || visibleFileId !== fileId) {
+        console.log('[FullScreenFeed] Swipe ignored - not PDF or not visible', { isPdfDoc, visibleFileId, fileId });
+        return;
+      }
       
       const currentPage = pdfCurrentPage.get(fileId) || 0;
+      console.log(`[FullScreenFeed] Navigating to next page: ${currentPage + 1} -> ${currentPage + 2}`);
       
       if (pdfPageThumbnailIds && currentPage < pdfPageThumbnailIds.length - 1) {
         const nextPageIndex = currentPage + 1;
@@ -174,6 +179,7 @@ export function FullScreenFeed({
       }
     },
     onSwipeRight: () => {
+      console.log('[FullScreenFeed] PDF swipe RIGHT detected');
       const currentFile = files[currentIndex];
       if (!currentFile) return;
       const fileId = currentFile.metadata.fileId;
@@ -181,9 +187,13 @@ export function FullScreenFeed({
       const isPdfDoc = currentFile.metadata.fileType === 'document' && pdfPageThumbnailIds && pdfPageThumbnailIds.length > 0;
       
       // Only handle swipe if this is a PDF and it's visible
-      if (!isPdfDoc || visibleFileId !== fileId) return;
+      if (!isPdfDoc || visibleFileId !== fileId) {
+        console.log('[FullScreenFeed] Swipe ignored - not PDF or not visible', { isPdfDoc, visibleFileId, fileId });
+        return;
+      }
       
       const currentPage = pdfCurrentPage.get(fileId) || 0;
+      console.log(`[FullScreenFeed] Navigating to previous page: ${currentPage + 1} -> ${currentPage}`);
       
       if (pdfPageThumbnailIds && currentPage > 0) {
         const prevPageIndex = currentPage - 1;
@@ -1593,6 +1603,8 @@ export function FullScreenFeed({
                           key={index}
                           onClick={(e) => {
                             e.stopPropagation();
+                            e.preventDefault();
+                            console.log(`[FullScreenFeed] Dot clicked: page ${index + 1} of ${totalPages}`);
                             setPdfCurrentPage(prev => {
                               const newMap = new Map(prev);
                               newMap.set(fileId, index);
