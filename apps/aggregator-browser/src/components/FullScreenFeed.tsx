@@ -1380,13 +1380,10 @@ export function FullScreenFeed({
           file.fileType === 'video' || 
           (file.name || file.title || '').match(/\.(mp4|mov|avi|webm|mkv|flv|wmv)$/i)
         );
-        // Check for thoughts FIRST - they're stored as .thought files (JSON) but should be treated as thoughts
-        // Thoughts have filenames like "thought-*.thought" (or legacy "thought-*.png") OR fileType 'text'/'thought' OR have textPost/thought data
-        const isThoughtFile = (file.name && (/^thought-\d+\.thought/i.test(file.name) || /^thought-\d+\.png/i.test(file.name))) ||
-                              (file.title && (/^thought-\d+\.thought/i.test(file.title) || /^thought-\d+\.png/i.test(file.title)));
         
         // IMPORTANT: If it's a thought, it should NEVER be detected as an image, even if filename matches image pattern
         // This prevents flickering where thoughts are detected as both thoughts and images
+        // isThoughtFile is already defined above (line 1356)
         const isImage = !isTextPost && !isThoughtFile && !hasTextPostData && (
           file.fileType === 'image' || 
           (file.name || file.title || '').match(/\.(jpg|jpeg|png|gif|webp|svg|bmp|ico)$/i)
