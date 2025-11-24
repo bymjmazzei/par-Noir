@@ -1669,16 +1669,21 @@ export function FullScreenFeed({
                     
                     // Use callback ref to set up IntersectionObserver (no hooks in loop!)
                     const pageRefCallback = (el: HTMLDivElement | null) => {
-                      if (!el || pageThumbnailUrl) return; // Already loaded or no element
+                      if (!el) return; // No element
+                      if (pageThumbnailUrl) return; // Already loaded
+                      
+                      console.log(`[FullScreenFeed] Setting up IntersectionObserver for page ${pageIndex + 1} of ${fileId}`);
                       
                       const observer = new IntersectionObserver(
                         (entries) => {
                           entries.forEach((entry) => {
                             if (entry.isIntersecting) {
+                              console.log(`[FullScreenFeed] Page ${pageIndex + 1} is intersecting!`);
                               const currentPage = pdfCurrentPage.get(fileId) || 0;
+                              console.log(`[FullScreenFeed] Current page: ${currentPage + 1}, checking if page ${pageIndex + 1} should load (within 2 pages)`);
                               // Load if it's the current page or within 2 pages
                               if (Math.abs(pageIndex - currentPage) <= 2) {
-                                console.log(`[FullScreenFeed] Page ${pageIndex + 1} is visible, loading thumbnail`);
+                                console.log(`[FullScreenFeed] Page ${pageIndex + 1} is visible and within range, loading thumbnail`);
                                 const thumbnailId = pdfPageThumbnailIds[pageIndex];
                                 loadPdfPageThumbnail(fileId, thumbnailId, pageIndex, indexedFile).then(() => {
                                   console.log(`[FullScreenFeed] Successfully loaded page ${pageIndex + 1} thumbnail`);
@@ -1686,11 +1691,13 @@ export function FullScreenFeed({
                                   console.error(`[FullScreenFeed] Failed to load page ${pageIndex + 1} thumbnail:`, err);
                                 });
                                 observer.disconnect();
+                              } else {
+                                console.log(`[FullScreenFeed] Page ${pageIndex + 1} is visible but too far from current page ${currentPage + 1}`);
                               }
                             }
                           });
                         },
-                        { threshold: 0.1 }
+                        { threshold: 0.1, rootMargin: '50px' } // Add rootMargin to trigger earlier
                       );
                       
                       observer.observe(el);
