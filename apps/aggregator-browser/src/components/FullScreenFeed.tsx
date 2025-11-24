@@ -1631,8 +1631,6 @@ export function FullScreenFeed({
                       pageThumbnailUrl = thumbnails.get(fileId) || null;
                     }
                     
-                    // Note: On-demand loading is handled by scroll handler and IntersectionObserver
-                    
                     // Calculate aspect ratio for background blur (same as images)
                     const containerHeight = window.innerHeight - 64; // Account for bottom nav
                     const containerWidth = window.innerWidth;
@@ -1660,8 +1658,8 @@ export function FullScreenFeed({
                             left: '50%',
                             transform: 'translateX(-50%) scale(1.1)'
                           }
-                        : { 
-                            height: 'auto', 
+                        : {
+                            height: 'auto',
                             width: '100%',
                             top: '50%',
                             transform: 'translateY(-50%) scale(1.1)'
@@ -1669,11 +1667,9 @@ export function FullScreenFeed({
                       )
                     };
                     
-                    // Use IntersectionObserver to detect when page comes into view for loading
-                    const pageRef = React.useRef<HTMLDivElement>(null);
-                    
-                    React.useEffect(() => {
-                      if (pageThumbnailUrl || !pageRef.current) return;
+                    // Use callback ref to set up IntersectionObserver (no hooks in loop!)
+                    const pageRefCallback = (el: HTMLDivElement | null) => {
+                      if (!el || pageThumbnailUrl) return; // Already loaded or no element
                       
                       const observer = new IntersectionObserver(
                         (entries) => {
@@ -1697,13 +1693,12 @@ export function FullScreenFeed({
                         { threshold: 0.1 }
                       );
                       
-                      observer.observe(pageRef.current);
-                      return () => observer.disconnect();
-                    }, [pageIndex, fileId, pageThumbnailUrl, pdfCurrentPage, pdfPageThumbnailIds, indexedFile]);
+                      observer.observe(el);
+                    };
                     
                     return (
                       <div
-                        ref={pageRef}
+                        ref={pageRefCallback}
                         key={pageIndex}
                         className="w-full h-full snap-start flex-shrink-0 relative"
                         style={{
