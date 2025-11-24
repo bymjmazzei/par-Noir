@@ -2364,11 +2364,16 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
         
         if ((isImage || isVideo) && !thumbnailFileId) {
           try {
+            // Ensure functions are available (safety check)
+            if (typeof createThumbnailFromBlob !== 'function' || typeof createVideoThumbnail !== 'function') {
+              throw new Error('Thumbnail generation functions not available');
+            }
+            
             let thumbnailBlob: Blob;
             
             if (isImage) {
-              // Generate thumbnail from image
-              thumbnailBlob = await createThumbnailFromBlob(file, 800, 800);
+              // Generate thumbnail from image (File extends Blob, so this works)
+              thumbnailBlob = await createThumbnailFromBlob(file as Blob, 800, 800);
             } else {
               // Generate thumbnail from video (extract first frame)
               thumbnailBlob = await createVideoThumbnail(file, 800, 800);
@@ -2386,6 +2391,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
             );
           } catch (thumbError: any) {
             console.warn('⚠️ [Upload] Thumbnail generation failed:', thumbError);
+            console.error('⚠️ [Upload] Thumbnail error details:', thumbError?.message, thumbError?.stack);
             // Don't fail upload if thumbnail fails
           }
         }
