@@ -210,7 +210,7 @@ export function FullScreenFeed({
         }
       }
     },
-    enabled: false, // Will be enabled dynamically based on PDF detection
+    enabled: true, // Always enabled - ref attachment controls when it's active
     threshold: 50,
     snapThreshold: 0.2
   });
@@ -1570,13 +1570,11 @@ export function FullScreenFeed({
                 <div
                   ref={(el) => {
                     // Attach PDF swipe handler to PDF content area
-                    if (el && visibleFileId === fileId) {
-                      if (pdfHorizontalSwipeRef.current) {
-                        (pdfHorizontalSwipeRef as any).current.element = el;
-                        (pdfHorizontalSwipeRef as any).current.enabled = true;
-                      }
-                    } else if (pdfHorizontalSwipeRef.current) {
-                      (pdfHorizontalSwipeRef as any).current.enabled = false;
+                    // The hook uses elementRef.current internally - set it directly
+                    if (el && visibleFileId === fileId && isPdfDoc) {
+                      (pdfHorizontalSwipeRef as any).current = el;
+                    } else {
+                      (pdfHorizontalSwipeRef as any).current = null;
                     }
                   }}
                   className="w-full h-full relative"
@@ -1678,7 +1676,7 @@ export function FullScreenFeed({
                       }}
                     />
                   </div>
-                </>
+                </div>
               );
             })()}
             
