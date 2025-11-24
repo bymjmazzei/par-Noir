@@ -53,25 +53,12 @@ const ThumbnailImage: React.FC<{ fileId: string; accountId: string; fileName: st
         const nameWithoutEncrypted = fileName.replace(/\.encrypted$/i, '');
         const isPDFSlideshowFolder = mimeType === 'application/vnd.google-apps.folder' && nameWithoutEncrypted.toLowerCase().endsWith('-pages');
         
-        console.log('[ThumbnailImage] Checking folder:', {
-          fileName,
-          mimeType,
-          fileId,
-          accountId,
-          nameWithoutEncrypted,
-          isPDFSlideshowFolder,
-          endsWithPages: nameWithoutEncrypted.toLowerCase().endsWith('-pages')
-        });
-        
         // For PDF slideshow folders, get the first PNG page as thumbnail
         if (isPDFSlideshowFolder) {
-          console.log('[ThumbnailImage] Detected PDF slideshow folder, loading first PNG page...');
           try {
             // List files in folder and get the first PNG page
             const folderQuery = `'${fileId}' in parents and trashed=false`;
             const filesUrl = `${apiEndpoint}/api/drive/files?q=${encodeURIComponent(folderQuery)}&pageSize=1000${accountId ? `&accountId=${encodeURIComponent(accountId)}` : ''}`;
-            
-            console.log('[ThumbnailImage] Fetching files from folder:', filesUrl);
             
             const folderResponse = await fetch(filesUrl, {
               headers: {
@@ -82,8 +69,6 @@ const ThumbnailImage: React.FC<{ fileId: string; accountId: string; fileName: st
             if (folderResponse.ok) {
               const folderData = await folderResponse.json();
               const files = folderData.files || [];
-              
-              console.log(`[ThumbnailImage] Found ${files.length} files in folder`);
               
               // Find the first PNG page (sorted by page number)
               const pageFiles = files
@@ -97,14 +82,10 @@ const ThumbnailImage: React.FC<{ fileId: string; accountId: string; fileName: st
                 .filter((f: any) => f !== null)
                 .sort((a: any, b: any) => a.pageNum - b.pageNum);
               
-              console.log(`[ThumbnailImage] Found ${pageFiles.length} PNG pages in folder`);
-              
               if (pageFiles.length > 0) {
                 // Use the first page as thumbnail
                 const firstPageId = pageFiles[0].id;
                 const thumbnailUrl = `${apiEndpoint}/api/drive/files/${firstPageId}?accountId=${encodeURIComponent(accountId)}&thumbnail=true`;
-                
-                console.log('[ThumbnailImage] Loading thumbnail from:', thumbnailUrl);
                 
                 const thumbResponse = await fetch(thumbnailUrl, {
                   headers: {
@@ -117,21 +98,11 @@ const ThumbnailImage: React.FC<{ fileId: string; accountId: string; fileName: st
                   const url = URL.createObjectURL(thumbBlob);
                   setThumbnailUrl(url);
                   setError(false);
-                  console.log('[ThumbnailImage] ✅ Successfully loaded folder thumbnail');
                   return;
-                } else {
-                  const errorText = await thumbResponse.text().catch(() => 'Unknown error');
-                  console.error(`[ThumbnailImage] Failed to load thumbnail: ${thumbResponse.status} - ${errorText}`);
                 }
-              } else {
-                console.warn('[ThumbnailImage] No PNG pages found in folder');
               }
-            } else {
-              const errorText = await folderResponse.text().catch(() => 'Unknown error');
-              console.error(`[ThumbnailImage] Failed to list folder files: ${folderResponse.status} - ${errorText}`);
             }
           } catch (folderError: any) {
-            console.error('[ThumbnailImage] Failed to load folder thumbnail:', folderError?.message || folderError);
             // Fall through to regular handling
           }
         }
@@ -2082,8 +2053,6 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
     accountId: string
   ): Promise<string | undefined> => {
     try {
-      console.log('🖼️ [Upload] Generating thumbnail...');
-      
       // Encrypt thumbnail
       const thumbnailArrayBuffer = await thumbnailBlob.arrayBuffer();
       const thumbnailData = new Uint8Array(thumbnailArrayBuffer);
@@ -2140,15 +2109,13 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
         const thumbnailResult = await thumbnailResponse.json();
         const thumbnailFileId = thumbnailResult.file?.id;
         if (thumbnailFileId) {
-          console.log('✅ [Upload] Thumbnail uploaded:', thumbnailFileId);
           return thumbnailFileId;
         }
       }
       
-      console.warn('⚠️ [Upload] Thumbnail upload failed, continuing without thumbnail');
       return undefined;
     } catch (error: any) {
-      console.error('❌ [Upload] Thumbnail generation/upload failed:', error);
+      console.error('[Upload] Thumbnail generation/upload failed:', error);
       return undefined;
     }
   };
@@ -2524,7 +2491,6 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
             }
           }
         } catch (thumbError: any) {
-          console.warn('⚠️ [Upload] Slideshow thumbnail generation failed:', thumbError);
           // Don't fail upload if thumbnail fails
         }
       }
@@ -2590,15 +2556,6 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
               throw new Error('Thumbnail blob not available');
             }
           } catch (thumbError: any) {
-            console.warn('⚠️ [Upload] Thumbnail generation failed:', thumbError);
-            console.error('⚠️ [Upload] Thumbnail error details:', {
-              message: thumbError?.message,
-              stack: thumbError?.stack,
-              name: thumbError?.name,
-              createThumbnailFromBlob: typeof createThumbnailFromBlob,
-              createVideoThumbnail: typeof createVideoThumbnail,
-              uploadThumbnail: typeof uploadThumbnail
-            });
             // Don't fail upload if thumbnail fails
           }
         }
@@ -2970,7 +2927,6 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
                 const isPDFSlideshowFolder = file.mimeType === 'application/vnd.google-apps.folder' && 
                                              nameWithoutEncrypted.toLowerCase().endsWith('-pages');
                 
-                console.log(`[FileStorageAggregator] Processing file for thumbnail: ${file.name}, mimeType: ${file.mimeType}, isImage: ${isImage}, isVideo: ${isVideo}, isEncrypted: ${isEncrypted}, isPDFSlideshowFolder: ${isPDFSlideshowFolder}`);
                 
                 // For encrypted files, check if they're media files by extension
                 // Also treat PDF slideshow folders as PDF files
