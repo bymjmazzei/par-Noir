@@ -1604,62 +1604,15 @@ export function FullScreenFeed({
                 )
               };
               
-              // Create a horizontal scrollable container for PDF pages (like vertical feed)
-              const pdfScrollRef = React.useRef<HTMLDivElement>(null);
-              
-              // Track scroll position to update current page
-              React.useEffect(() => {
-                if (!isVisiblePdf || !pdfScrollRef.current) return;
-                
-                const container = pdfScrollRef.current;
-                const handleScroll = () => {
-                  const scrollLeft = container.scrollLeft;
-                  const pageWidth = container.clientWidth;
-                  const newPage = Math.round(scrollLeft / pageWidth);
-                  
-                  if (newPage !== currentPage && newPage >= 0 && newPage < totalPages) {
-                    setPdfCurrentPage(prev => {
-                      const newMap = new Map(prev);
-                      newMap.set(fileId, newPage);
-                      return newMap;
-                    });
-                    
-                    // Update thumbnail if loaded
-                    const pageThumbnails = pdfPageThumbnails.get(fileId);
-                    if (pageThumbnails?.has(newPage)) {
-                      setThumbnails(prev => {
-                        const newMap = new Map(prev);
-                        newMap.set(fileId, pageThumbnails.get(newPage)!);
-                        return newMap;
-                      });
-                    } else {
-                      // Load thumbnail if not loaded
-                      const thumbnailId = pdfPageThumbnailIds[newPage];
-                      loadPdfPageThumbnail(fileId, thumbnailId, newPage, indexedFile).catch(() => {});
-                    }
-                  }
-                };
-                
-                container.addEventListener('scroll', handleScroll, { passive: true });
-                return () => container.removeEventListener('scroll', handleScroll);
-              }, [isVisiblePdf, fileId, currentPage, totalPages, pdfPageThumbnails, pdfPageThumbnailIds, indexedFile]);
-              
-              // Scroll to current page when it changes (from dot clicks)
-              React.useEffect(() => {
-                if (!isVisiblePdf || !pdfScrollRef.current) return;
-                const container = pdfScrollRef.current;
-                const pageWidth = container.clientWidth;
-                const targetScroll = currentPage * pageWidth;
-                
-                // Only scroll if we're not already at the right position (avoid infinite loop)
-                if (Math.abs(container.scrollLeft - targetScroll) > 10) {
-                  container.scrollTo({ left: targetScroll, behavior: 'smooth' });
-                }
-              }, [currentPage, isVisiblePdf]);
-              
               return (
                 <div
-                  ref={(el) => setPdfScrollRef(el)}
+                  ref={(el) => {
+                    if (el) {
+                      pdfScrollRefs.current.set(fileId, el);
+                    } else {
+                      pdfScrollRefs.current.delete(fileId);
+                    }
+                  }}
                   className="w-full h-full overflow-x-scroll snap-x snap-mandatory"
                   style={{ 
                     scrollbarWidth: 'none',
