@@ -257,54 +257,49 @@ export function HorizontalThumbnailFeed({
   });
 
   // Load thumbnails sequentially - prioritize current, then adjacent
+  // START LOADING IMMEDIATELY - don't wait for accountId (loadThumbnail fetches it internally)
   useEffect(() => {
     if (thumbnailIds.length === 0) return;
 
     let cancelled = false;
 
-    const loadSequentially = async () => {
-      const accountIdHint = await fetchAccountIdOnce();
-      
-      // Priority 1: Current thumbnail
-      if (!cancelled && thumbnailIds[currentIndex]) {
-        await loadThumbnail(thumbnailIds[currentIndex], currentIndex, accountIdHint);
+    // Priority 1: Current thumbnail - START IMMEDIATELY
+    if (thumbnailIds[currentIndex]) {
+      loadThumbnail(thumbnailIds[currentIndex], currentIndex, null).catch(() => {});
+    }
+    
+    // Priority 2: Next thumbnail (preload)
+    if (currentIndex + 1 < thumbnailIds.length) {
+      loadThumbnail(thumbnailIds[currentIndex + 1], currentIndex + 1, null).catch(() => {});
+    }
+    
+    // Priority 3: Previous thumbnail (preload)
+    if (currentIndex > 0) {
+      loadThumbnail(thumbnailIds[currentIndex - 1], currentIndex - 1, null).catch(() => {});
+    }
+    
+    // Priority 4: Load remaining thumbnails in background (non-blocking)
+    const remainingIndices = thumbnailIds
+      .map((_, index) => index)
+      .filter(index => 
+        index !== currentIndex && 
+        index !== currentIndex + 1 && 
+        index !== currentIndex - 1 &&
+        !loadedThumbnailsRef.current.has(index) &&
+        !loadingThumbnailsRef.current.has(index)
+      );
+    
+    // Load remaining in parallel (non-blocking)
+    remainingIndices.forEach(index => {
+      if (!cancelled) {
+        loadThumbnail(thumbnailIds[index], index, null).catch(() => {});
       }
-      
-      // Priority 2: Next thumbnail
-      if (!cancelled && currentIndex + 1 < thumbnailIds.length) {
-        await loadThumbnail(thumbnailIds[currentIndex + 1], currentIndex + 1, accountIdHint);
-      }
-      
-      // Priority 3: Previous thumbnail
-      if (!cancelled && currentIndex > 0) {
-        await loadThumbnail(thumbnailIds[currentIndex - 1], currentIndex - 1, accountIdHint);
-      }
-      
-      // Priority 4: Load remaining thumbnails in background (but don't block)
-      const remainingIndices = thumbnailIds
-        .map((_, index) => index)
-        .filter(index => 
-          index !== currentIndex && 
-          index !== currentIndex + 1 && 
-          index !== currentIndex - 1 &&
-          !loadedThumbnailsRef.current.has(index) &&
-          !loadingThumbnailsRef.current.has(index)
-        );
-      
-      // Load remaining in parallel (non-blocking)
-      remainingIndices.forEach(index => {
-        if (!cancelled) {
-          loadThumbnail(thumbnailIds[index], index, accountIdHint).catch(() => {});
-        }
-      });
-    };
-
-    loadSequentially();
+    });
 
     return () => {
       cancelled = true;
     };
-  }, [thumbnailIds, currentIndex, fetchAccountIdOnce, loadThumbnail]);
+  }, [thumbnailIds, currentIndex, loadThumbnail]);
 
   // Scroll to current thumbnail
   useEffect(() => {
