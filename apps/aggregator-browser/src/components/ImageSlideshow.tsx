@@ -17,9 +17,10 @@ interface ImageSlideshowProps {
   pdfFileId?: string; // PDF file ID for on-demand rendering (if PDF slideshow)
   isPublic?: boolean; // Whether the file is public (allows loading without auth)
   publicToken?: string; // Public token for accessing public files
+  initialThumbnailUrl?: string; // Already-loaded first thumbnail URL (from FullScreenFeed) - use immediately
 }
 
-export function ImageSlideshow({ thumbnailIds, fileName, accountId, pdfFileId, isPublic, publicToken }: ImageSlideshowProps) {
+export function ImageSlideshow({ thumbnailIds, fileName, accountId, pdfFileId, isPublic, publicToken, initialThumbnailUrl }: ImageSlideshowProps) {
   // Initialize pages synchronously from thumbnailIds - INSTANT display, no loading screen!
   const initialPages = thumbnailIds.length > 0 
     ? Array.from({ length: thumbnailIds.length }, (_, i) => i + 1)
@@ -38,6 +39,20 @@ export function ImageSlideshow({ thumbnailIds, fileName, accountId, pdfFileId, i
   const fullSizeLoadedRef = useRef<Set<number>>(new Set());
   const failedPagesRef = useRef<Set<number>>(new Set()); // Track failed pages
 
+  // Initialize with already-loaded first thumbnail if provided (from FullScreenFeed) - INSTANT display!
+  useEffect(() => {
+    if (initialThumbnailUrl && thumbnailIds.length > 0 && !pageUrls.has(1) && !loadedPagesRef.current.has(1)) {
+      console.log(`[ImageSlideshow] Using pre-loaded first thumbnail from FullScreenFeed - instant display!`);
+      setPageUrls(prev => {
+        const newMap = new Map(prev);
+        newMap.set(1, initialThumbnailUrl);
+        return newMap;
+      });
+      setPageIsThumbnail(prev => new Map(prev).set(1, true));
+      loadedPagesRef.current.add(1);
+    }
+  }, [initialThumbnailUrl, thumbnailIds.length, pageUrls]);
+
   // Update pages when thumbnailIds change (but don't block initial render)
   useEffect(() => {
     if (thumbnailIds.length === 0) {
@@ -49,12 +64,25 @@ export function ImageSlideshow({ thumbnailIds, fileName, accountId, pdfFileId, i
     console.log(`[ImageSlideshow] Initializing ${thumbnailIds.length} pages from thumbnail IDs`);
     setPages(Array.from({ length: thumbnailIds.length }, (_, i) => i + 1));
     setCurrentPage(1);
-    // Reset state when thumbnailIds change
-    setPageUrls(new Map());
-    loadedPagesRef.current.clear();
+    // Reset state when thumbnailIds change (but preserve initial thumbnail if provided)
+    if (!initialThumbnailUrl) {
+      setPageUrls(new Map());
+      loadedPagesRef.current.clear();
+    } else {
+      // Keep the initial thumbnail when thumbnailIds change
+      const preserved = new Map<number, string>();
+      if (pageUrls.has(1)) {
+        preserved.set(1, pageUrls.get(1)!);
+      }
+      setPageUrls(preserved);
+      loadedPagesRef.current.clear();
+      if (preserved.has(1)) {
+        loadedPagesRef.current.add(1);
+      }
+    }
     loadingPagesRef.current.clear();
     failedPagesRef.current.clear();
-  }, [thumbnailIds]);
+  }, [thumbnailIds, initialThumbnailUrl]);
 
   // Fetch accountId helper (non-blocking, returns null if unavailable)
   const fetchAccountIdOnce = useCallback(async (): Promise<string | null> => {
@@ -546,10 +574,12 @@ export function ImageSlideshow({ thumbnailIds, fileName, accountId, pdfFileId, i
     
     let cancelled = false;
     
-    // Load first page immediately WITHOUT waiting for accountId
-    // loadThumbnail will fetch accountId internally if needed, but won't block initial load
-    // This matches FullScreenFeed pattern for instant display
-    if (thumbnailIds[0] && !pageUrls.has(1) && !loadingPagesRef.current.has(1)) {
+    // If initialThumbnailUrl was provided, first page is already loaded - skip it
+    // Otherwise, load first page immediately WITHOUT waiting for accountId
+    if (initialThumbnailUrl && pageUrls.has(1)) {
+      // First page already loaded from FullScreenFeed - no need to reload
+      console.log(`[ImageSlideshow] Using pre-loaded first thumbnail from FullScreenFeed`);
+    } else if (thumbnailIds[0] && !pageUrls.has(1) && !loadingPagesRef.current.has(1)) {
       // Start loading immediately - accountId will be fetched inside loadThumbnail if needed
       loadThumbnail(thumbnailIds[0], 1, accountId || null, false).catch(() => {
         // Errors already handled in loadThumbnail
@@ -559,7 +589,7 @@ export function ImageSlideshow({ thumbnailIds, fileName, accountId, pdfFileId, i
     return () => {
       cancelled = true;
     };
-  }, [thumbnailIds, accountId, loadThumbnail, pageUrls]);
+  }, [thumbnailIds, accountId, loadThumbnail, pageUrls, initialThumbnailUrl]);
 
   // Load adjacent pages (current +/- 1) for smooth scrolling
   useEffect(() => {

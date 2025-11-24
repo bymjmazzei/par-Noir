@@ -1541,6 +1541,8 @@ export function FullScreenFeed({
               const accountId = indexedFile.accountId || indexedFile.backendFileId;
               // Pass public access info for loading thumbnails when locked
               const isPublic = file.isPublic !== false || !!file.publicToken;
+              // Pass already-loaded first thumbnail to avoid re-fetching (instant display!)
+              const firstThumbnailUrl = thumbnails.get(fileId);
               
               return (
                 <ImageSlideshow
@@ -1550,6 +1552,7 @@ export function FullScreenFeed({
                   pdfFileId={indexedFile.metadata?.pdfFileId}
                   isPublic={isPublic}
                   publicToken={file.publicToken}
+                  initialThumbnailUrl={firstThumbnailUrl}
                 />
               );
             })()}
