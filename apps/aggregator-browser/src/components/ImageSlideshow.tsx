@@ -40,7 +40,7 @@ export function ImageSlideshow({ thumbnailIds, fileName, accountId, pdfFileId }:
     console.log(`[ImageSlideshow] Initializing ${thumbnailIds.length} pages from thumbnail IDs`);
     setPages(Array.from({ length: thumbnailIds.length }, (_, i) => i + 1));
     setCurrentPage(1);
-    setLoading(false); // No folder listing = instant!
+    // Keep loading=true - will be set to false once first page starts loading
   }, [thumbnailIds]);
 
   // Fetch accountId helper
@@ -331,8 +331,11 @@ export function ImageSlideshow({ thumbnailIds, fileName, accountId, pdfFileId }:
         console.warn('[ImageSlideshow] Failed to refresh token before loading:', err);
       }
       
-      // Load first page immediately (don't await - let UI show while decrypting)
+      // Load first page immediately (don't await - let UI appear while it loads)
       if (thumbnailIds.length > 0 && !cancelled) {
+        // Hide loading screen immediately - first page will show "Loading..." while decrypting
+        setLoading(false);
+        // Start loading first page (non-blocking)
         loadThumbnail(thumbnailIds[0], 1, finalAccountId, false).catch(() => {});
       }
       
