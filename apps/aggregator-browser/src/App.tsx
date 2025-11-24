@@ -690,11 +690,15 @@ function App() {
         }).length,
         videos: filtered.filter(f => f.metadata.fileType === 'video').length,
         pdfs: filtered.filter(f => f.metadata.fileType === 'document').length,
+        isMediaCount: filtered.filter(f => isMedia(f)).length,
+        isThoughtCount: filtered.filter(f => isThought(f)).length,
         fileDetails: filtered.map(f => ({
           fileId: f.metadata.fileId,
           fileType: f.metadata.fileType,
           fileName: f.metadata.name || f.metadata.title,
-          hasTextPost: !!(f.metadata as any).textPost || !!(f.metadata as any).thought
+          hasTextPost: !!(f.metadata as any).textPost || !!(f.metadata as any).thought,
+          isMedia: isMedia(f),
+          isThought: isThought(f)
         }))
       });
       
@@ -2402,14 +2406,19 @@ function App() {
 
   // Helper function to check if a file is media (image, video, or PDF slideshow)
   const isMedia = (file: IndexedFile): boolean => {
-    if (isThought(file)) return false; // Thoughts are not media
+    // Check if it's a thought first - if so, it's not media
+    const thoughtCheck = isThought(file);
+    if (thoughtCheck) return false; // Thoughts are not media
+    
     if (isRawPdf(file)) return false; // Raw PDFs should not be shown
     
     const fileType = file.metadata.fileType;
     const fileName = file.metadata.name || file.metadata.title || '';
     
     // Check for images (use !! to convert match result to boolean)
+    // Also check for 'other' fileType with image extension (common case)
     const isImage = fileType === 'image' || 
+                   fileType === 'other' && !!(fileName.match(/\.(jpg|jpeg|png|gif|webp|svg|bmp|ico)$/i)) ||
                    !!(fileName.match(/\.(jpg|jpeg|png|gif|webp|svg|bmp|ico)$/i));
     
     // Check for videos (use !! to convert match result to boolean)
@@ -2422,16 +2431,17 @@ function App() {
     const result = isImage || isVideo || isSlideshow;
     
     // Debug logging for files that should be media but aren't detected
-    if (!result && (fileType === 'image' || !!fileName.match(/\.(jpg|jpeg|png|gif|webp|svg|bmp|ico)$/i))) {
+    if (!result && (fileType === 'image' || fileType === 'other' || !!fileName.match(/\.(jpg|jpeg|png|gif|webp|svg|bmp|ico)$/i))) {
       console.warn(`[App] File not detected as media:`, {
         fileId: file.metadata.fileId,
         fileType,
         fileName,
-        isThought: isThought(file),
+        isThought: thoughtCheck,
         isRawPdf: isRawPdf(file),
         isImage,
         isVideo,
-        isSlideshow
+        isSlideshow,
+        fileNameMatch: !!fileName.match(/\.(jpg|jpeg|png|gif|webp|svg|bmp|ico)$/i)
       });
     }
     
@@ -2460,7 +2470,9 @@ function App() {
             // Exclude raw PDFs
             if (isRawPdf(f)) return false;
             // Include everything else (media, thoughts, or both)
-            return isMedia(f) || isThought(f);
+            const isMediaFile = isMedia(f);
+            const isThoughtFile = isThought(f);
+            return isMediaFile || isThoughtFile;
           });
           
           // Debug logging for me page "all" tab
@@ -2469,6 +2481,17 @@ function App() {
             filteredFiles: filtered.length,
             mediaFiles: filtered.filter(f => isMedia(f)).length,
             thoughtFiles: filtered.filter(f => isThought(f)).length,
+            excludedFiles: allFiles.filter(f => {
+              if (isRawPdf(f)) return true;
+              return !isMedia(f) && !isThought(f);
+            }).map(f => ({
+              fileId: f.metadata.fileId,
+              fileType: f.metadata.fileType,
+              fileName: f.metadata.name || f.metadata.title,
+              isMedia: isMedia(f),
+              isThought: isThought(f),
+              isRawPdf: isRawPdf(f)
+            })),
             fileDetails: filtered.map(f => ({
               fileId: f.metadata.fileId,
               fileType: f.metadata.fileType,
