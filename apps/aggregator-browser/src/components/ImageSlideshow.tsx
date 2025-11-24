@@ -201,6 +201,7 @@ export function ImageSlideshow({ thumbnailIds, fileName, accountId, pdfFileId }:
       const apiEndpoint = process.env.REACT_APP_API_ENDPOINT || 'https://api.parnoir.com';
       const { PNOAuthService } = await import('../services/pnOAuthService');
       
+      // Try with accountId first, then without if it fails (for public content)
       let fetchUrl = `${apiEndpoint}/api/drive/files/${thumbnailId}?thumbnail=true`;
       if (finalAccountId && finalAccountId.includes('::')) {
         fetchUrl += `&accountId=${encodeURIComponent(finalAccountId)}`;
@@ -229,9 +230,20 @@ export function ImageSlideshow({ thumbnailIds, fileName, accountId, pdfFileId }:
         const refreshedToken = await PNOAuthService.getValidAccessToken(true); // Force refresh
         if (refreshedToken) {
           try {
+            // Retry with refreshed token
             response = await fetch(fetchUrl, {
               headers: { 'Authorization': `Bearer ${refreshedToken}` }
             });
+            
+            // If still 401 and we had accountId, try without accountId (might be public content)
+            if (response.status === 401 && finalAccountId && finalAccountId.includes('::')) {
+              console.log(`[ImageSlideshow] Still 401 with accountId, trying without accountId for thumbnail ${thumbnailId}...`);
+              const urlWithoutAccountId = `${apiEndpoint}/api/drive/files/${thumbnailId}?thumbnail=true`;
+              response = await fetch(urlWithoutAccountId, {
+                headers: { 'Authorization': `Bearer ${refreshedToken}` }
+              });
+            }
+            
             if (!response.ok) {
               console.warn(`[ImageSlideshow] Thumbnail ${thumbnailId} still failed after refresh: ${response.status}`);
               // Don't throw - just skip this thumbnail (might not exist)
