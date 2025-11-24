@@ -140,7 +140,42 @@ export function ImageSlideshow({ fileId, fileName, accountId }: ImageSlideshowPr
 
     console.log(`[ImageSlideshow] Starting to load ${folderPageFiles.length} images from folder...`);
 
-    const loadImagePage = async (pageFile: { id: string; name: string; pageNum: number }) => {
+    // Fetch accountId once at the start (not per page)
+    const fetchAccountIdOnce = async (): Promise<string | null> => {
+      if (accountId && accountId.includes('::')) {
+        return accountId;
+      }
+      
+      try {
+        const apiEndpoint = process.env.REACT_APP_API_ENDPOINT || 'https://api.parnoir.com';
+        const { PNOAuthService } = await import('../services/pnOAuthService');
+        const accessToken = await PNOAuthService.getValidAccessToken();
+        if (!accessToken) return null;
+        
+        const session = PNOAuthService.loadSession();
+        if (session?.did || session?.pnIdentifier) {
+          const userId = session.pnIdentifier || session.did;
+          const accountsResponse = await fetch(`${apiEndpoint}/api/storage/accounts/${userId}`, {
+            headers: {
+              'Authorization': `Bearer ${accessToken}`
+            }
+          });
+          
+          if (accountsResponse.ok) {
+            const accountsData = await accountsResponse.json();
+            const accounts = accountsData.accounts || [];
+            if (accounts.length > 0) {
+              return accounts[0].accountId;
+            }
+          }
+        }
+      } catch (err) {
+        // Silently fail
+      }
+      return null;
+    };
+
+    const loadImagePage = async (pageFile: { id: string; name: string; pageNum: number }, finalAccountId: string | null) => {
       const pageNum = pageFile.pageNum;
       
       // Skip if already loaded or currently loading
@@ -159,32 +194,6 @@ export function ImageSlideshow({ fileId, fileName, accountId }: ImageSlideshowPr
         
         if (!accessToken) {
           throw new Error('No access token');
-        }
-
-        // Try to get accountId from storage accounts if not provided
-        let finalAccountId = accountId;
-        if (!finalAccountId || !finalAccountId.includes('::')) {
-          try {
-            const session = PNOAuthService.loadSession();
-            if (session?.did || session?.pnIdentifier) {
-              const userId = session.pnIdentifier || session.did;
-              const accountsResponse = await fetch(`${apiEndpoint}/api/storage/accounts/${userId}`, {
-                headers: {
-                  'Authorization': `Bearer ${accessToken}`
-                }
-              });
-              
-              if (accountsResponse.ok) {
-                const accountsData = await accountsResponse.json();
-                const accounts = accountsData.accounts || [];
-                if (accounts.length > 0) {
-                  finalAccountId = accounts[0].accountId;
-                }
-              }
-            }
-          } catch (err) {
-            // Silently fail - will try without accountId
-          }
         }
 
         // Use thumbnail endpoint - for encrypted files, API will return the full encrypted file
@@ -294,12 +303,24 @@ export function ImageSlideshow({ fileId, fileName, accountId }: ImageSlideshowPr
       }
     };
 
-    // Load all pages in parallel for faster loading
-    folderPageFiles.forEach((pageFile) => {
-      if (!loadedPagesRef.current.has(pageFile.pageNum)) {
-        loadImagePage(pageFile);
+    // Load pages progressively: first page immediately, others in background
+    (async () => {
+      const finalAccountId = await fetchAccountIdOnce();
+      
+      // Load first page immediately for instant display
+      if (folderPageFiles.length > 0) {
+        loadImagePage(folderPageFiles[0], finalAccountId);
       }
-    });
+      
+      // Load other pages progressively (with small delay between each)
+      // This prevents overwhelming the network/decryption with all pages at once
+      for (let i = 1; i < folderPageFiles.length; i++) {
+        // Load next page after a short delay (staggered loading)
+        setTimeout(() => {
+          loadImagePage(folderPageFiles[i], finalAccountId);
+        }, i * 200); // 200ms delay between each page
+      }
+    })();
   }, [folderPageFiles, accountId]);
 
   // Horizontal swipe navigation
