@@ -549,30 +549,9 @@ export function ImageSlideshow({ thumbnailIds, fileName, accountId, pdfFileId }:
     };
   }, [thumbnailIds, fetchAccountIdOnce, loadThumbnail]);
 
-  // Load full-size PDF pages on-demand when navigating
-  useEffect(() => {
-    if (thumbnailIds.length === 0 || !pdfFileId) return;
-    
-    const pagesToLoad = [
-      currentPage,
-      currentPage + 1,
-      currentPage - 1
-    ].filter(p => p >= 1 && p <= thumbnailIds.length);
-    
-    (async () => {
-      const finalAccountId = await fetchAccountIdOnce();
-      
-      for (const pageNum of pagesToLoad) {
-        const thumbnailId = thumbnailIds[pageNum - 1];
-        const currentlyThumbnail = pageIsThumbnail.get(pageNum);
-        const shouldLoadFullSize = pageNum === currentPage && currentlyThumbnail;
-        
-        if (thumbnailId && shouldLoadFullSize && !fullSizeLoadedRef.current.has(pageNum)) {
-          loadThumbnail(thumbnailId, pageNum, finalAccountId, true).catch(() => {});
-        }
-      }
-    })();
-  }, [currentPage, thumbnailIds, pdfFileId, fetchAccountIdOnce, loadThumbnail, pageIsThumbnail]);
+  // Don't automatically load full-size PDF rendering
+  // Just show thumbnails like the vertical feed - full-size rendering can be added later if needed
+  // This matches the vertical feed pattern: show thumbnails immediately, no automatic full-size loading
 
   // Horizontal swipe navigation
   const swipeRef = useHorizontalSwipe({
