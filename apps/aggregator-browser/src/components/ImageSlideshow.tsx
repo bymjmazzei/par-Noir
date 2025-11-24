@@ -325,7 +325,7 @@ export function ImageSlideshow({ fileId, fileName, accountId }: ImageSlideshowPr
       }
     }, []);
 
-  // Load pages progressively: first page immediately, others sequentially
+  // Load pages progressively: first page immediately, next 2 pages in parallel
   useEffect(() => {
     if (folderPageFiles.length === 0) return;
     
@@ -337,12 +337,12 @@ export function ImageSlideshow({ fileId, fileName, accountId }: ImageSlideshowPr
         await loadImagePage(folderPageFiles[0], finalAccountId);
       }
       
-      // Load next page in background (preload for smooth navigation)
+      // Load next 2 pages in parallel (preload for smooth navigation)
       // Remaining pages will load on-demand when user navigates (via useEffect watching currentPage)
-      if (folderPageFiles.length > 1) {
-        // Don't await - let it load in background while user can already see first page
-        loadImagePage(folderPageFiles[1], finalAccountId);
-      }
+      const pagesToPreload = folderPageFiles.slice(1, 3); // Pages 2 and 3
+      pagesToPreload.forEach(pageFile => {
+        loadImagePage(pageFile, finalAccountId); // Don't await - load in parallel
+      });
     })();
   }, [folderPageFiles, accountId, loadImagePage]);
 
