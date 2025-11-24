@@ -6,7 +6,7 @@
  * Architecture: Show slideshow structure immediately, load thumbnails in parallel (non-blocking)
  */
 
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { useHorizontalSwipe } from '../hooks/useHorizontalSwipe';
 
@@ -32,26 +32,34 @@ export function ImageSlideshow({ thumbnailIds, fileName, accountId, pdfFileId, i
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const pageRefs = useRef<Map<number, HTMLDivElement>>(new Map());
 
-  const [pageUrls, setPageUrls] = useState<Map<number, string>>(new Map());
-  const [pageIsThumbnail, setPageIsThumbnail] = useState<Map<number, boolean>>(new Map());
-  const loadedPagesRef = useRef<Set<number>>(new Set());
+  // Initialize pageUrls with already-loaded first thumbnail IMMEDIATELY (not in useEffect!)
+  // This ensures instant display without waiting for useEffect to run
+  const initialPageUrls = useMemo(() => {
+    const map = new Map<number, string>();
+    if (initialThumbnailUrl && thumbnailIds.length > 0) {
+      map.set(1, initialThumbnailUrl);
+      console.log(`[ImageSlideshow] Initializing with pre-loaded first thumbnail - instant display!`);
+    }
+    return map;
+  }, [initialThumbnailUrl, thumbnailIds.length]);
+
+  const [pageUrls, setPageUrls] = useState<Map<number, string>>(initialPageUrls);
+  const [pageIsThumbnail, setPageIsThumbnail] = useState<Map<number, boolean>>(() => {
+    const map = new Map<number, boolean>();
+    if (initialThumbnailUrl && thumbnailIds.length > 0) {
+      map.set(1, true);
+    }
+    return map;
+  });
+  const loadedPagesRef = useRef<Set<number>>(new Set<number>());
+  
+  // Initialize loadedPagesRef with first page if initial thumbnail provided
+  if (initialThumbnailUrl && thumbnailIds.length > 0) {
+    loadedPagesRef.current.add(1);
+  }
   const loadingPagesRef = useRef<Set<number>>(new Set());
   const fullSizeLoadedRef = useRef<Set<number>>(new Set());
   const failedPagesRef = useRef<Set<number>>(new Set()); // Track failed pages
-
-  // Initialize with already-loaded first thumbnail if provided (from FullScreenFeed) - INSTANT display!
-  useEffect(() => {
-    if (initialThumbnailUrl && thumbnailIds.length > 0 && !pageUrls.has(1) && !loadedPagesRef.current.has(1)) {
-      console.log(`[ImageSlideshow] Using pre-loaded first thumbnail from FullScreenFeed - instant display!`);
-      setPageUrls(prev => {
-        const newMap = new Map(prev);
-        newMap.set(1, initialThumbnailUrl);
-        return newMap;
-      });
-      setPageIsThumbnail(prev => new Map(prev).set(1, true));
-      loadedPagesRef.current.add(1);
-    }
-  }, [initialThumbnailUrl, thumbnailIds.length, pageUrls]);
 
   // Update pages when thumbnailIds change (but don't block initial render)
   useEffect(() => {
@@ -71,8 +79,8 @@ export function ImageSlideshow({ thumbnailIds, fileName, accountId, pdfFileId, i
     } else {
       // Keep the initial thumbnail when thumbnailIds change
       const preserved = new Map<number, string>();
-      if (pageUrls.has(1)) {
-        preserved.set(1, pageUrls.get(1)!);
+      if (initialPageUrls.has(1)) {
+        preserved.set(1, initialPageUrls.get(1)!);
       }
       setPageUrls(preserved);
       loadedPagesRef.current.clear();
@@ -82,7 +90,7 @@ export function ImageSlideshow({ thumbnailIds, fileName, accountId, pdfFileId, i
     }
     loadingPagesRef.current.clear();
     failedPagesRef.current.clear();
-  }, [thumbnailIds, initialThumbnailUrl]);
+  }, [thumbnailIds, initialThumbnailUrl, initialPageUrls]);
 
   // Fetch accountId helper (non-blocking, returns null if unavailable)
   const fetchAccountIdOnce = useCallback(async (): Promise<string | null> => {
