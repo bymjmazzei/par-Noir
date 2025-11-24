@@ -2264,6 +2264,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
       // Check if this is a PDF - if so, convert to PNG pages first
       const isPDF = file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
       let pdfPageThumbnailIds: string[] = []; // Array of thumbnail file IDs (loaded directly, no folder listing)
+      let pdfPageThumbnailTokens: string[] = []; // Array of publicToken for each thumbnail (same order as pdfPageThumbnailIds) - NO API CALLS!
       
       if (isPDF) {
         console.log('📄 [Upload] PDF detected, converting to PNG pages...');
@@ -2424,7 +2425,14 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
                 const thumbnailUploadResult = await thumbnailResponse.json();
                 if (thumbnailUploadResult.file?.id) {
                   pdfPageThumbnailIds.push(thumbnailUploadResult.file.id); // Collect thumbnail ID
-                  console.log(`✅ [Upload] Page ${pageNum}/${numPages} thumbnail uploaded (ID: ${thumbnailUploadResult.file.id})`);
+                  // Store share token for this thumbnail (NO API CALLS!)
+                  if (thumbnailShareToken) {
+                    pdfPageThumbnailTokens.push(JSON.stringify(thumbnailShareToken));
+                  } else {
+                    pdfPageThumbnailTokens.push(''); // Placeholder - token generation failed
+                    console.warn(`⚠️ [Upload] No share token for page ${pageNum} thumbnail - will require API calls`);
+                  }
+                  console.log(`✅ [Upload] Page ${pageNum}/${numPages} thumbnail uploaded (ID: ${thumbnailUploadResult.file.id})${thumbnailShareToken ? ' with publicToken' : ''}`);
                 } else {
                   console.warn(`⚠️ [Upload] Page ${pageNum} thumbnail upload succeeded but no file ID returned`);
                 }
@@ -2449,6 +2457,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
           console.log('📄 [Upload] Continuing with regular PDF upload (PNG conversion is optional)');
           // Continue with regular PDF upload as fallback - don't fail the entire upload
           pdfPageThumbnailIds = []; // Clear thumbnail IDs
+          pdfPageThumbnailTokens = []; // Clear thumbnail tokens
         }
       }
 
@@ -2780,6 +2789,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
             uploadDate: new Date().toISOString(),
             isNSFW: false, // Default to public content
             pdfPageThumbnailIds: pdfPageThumbnailIds.length > 0 ? pdfPageThumbnailIds : undefined, // Store PDF page thumbnail IDs for slideshow
+            pdfPageThumbnailTokens: pdfPageThumbnailTokens.length > 0 ? pdfPageThumbnailTokens : undefined, // Store PDF page thumbnail tokens (NO API CALLS!)
             pdfFileId: pdfFileId, // Store original PDF file ID for on-demand rendering
             thumbnailFileId: thumbnailFileId, // Store thumbnail file ID for fast feed loading
             // Include accountId in query params if needed
