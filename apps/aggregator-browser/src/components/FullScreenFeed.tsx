@@ -15,6 +15,7 @@ import { useVerticalSwipe } from '../hooks/useVerticalSwipe';
 import { useHorizontalSwipe } from '../hooks/useHorizontalSwipe';
 import { formatTimestamp } from '../utils/formatTimestamp';
 import { ImageSlideshow } from './ImageSlideshow';
+import { decryptWithToken, ShareToken } from '../utils/tokenDecryption';
 
 interface FullScreenFeedProps {
   files: IndexedFile[];
@@ -954,8 +955,7 @@ export function FullScreenFeed({
                 fileId,
                 folderId,
                 fileName,
-                pdfPagesFolderId: indexedFile.metadata?.pdfPagesFolderId,
-                accountId: file.accountId || file.backendFileId
+                pdfPagesFolderId: indexedFile.metadata?.pdfPagesFolderId
               });
               
               return (
@@ -963,7 +963,7 @@ export function FullScreenFeed({
                   <ImageSlideshow
                     fileId={folderId}
                     fileName={fileName}
-                    accountId={file.accountId || file.backendFileId}
+                    accountId={undefined} // Don't pass accountId for public folders - API will use default account
                   />
                 </div>
               );

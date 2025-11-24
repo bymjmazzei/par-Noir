@@ -46,8 +46,15 @@ export function ImageSlideshow({ fileId, fileName, accountId }: ImageSlideshowPr
         }
 
         // Query files in folder using Google Drive API query
+        // accountId is optional - API will use default account if not provided
         const folderQuery = `'${fileId}' in parents and trashed=false`;
-        const filesUrl = `${apiEndpoint}/api/drive/files?q=${encodeURIComponent(folderQuery)}&pageSize=1000${accountId ? `&accountId=${encodeURIComponent(accountId)}` : ''}`;
+        let filesUrl = `${apiEndpoint}/api/drive/files?q=${encodeURIComponent(folderQuery)}&pageSize=1000`;
+        
+        // Only add accountId if it's a valid account ID format (contains "::" separator)
+        // Don't add if it looks like a folder ID (just alphanumeric/underscore/hyphen)
+        if (accountId && accountId.includes('::')) {
+          filesUrl += `&accountId=${encodeURIComponent(accountId)}`;
+        }
         
         console.log(`[ImageSlideshow] Fetching files from folder:`, filesUrl);
         
@@ -130,9 +137,12 @@ export function ImageSlideshow({ fileId, fileName, accountId }: ImageSlideshowPr
         }
 
         // Use thumbnail endpoint which returns decrypted image
-        const thumbnailUrl = accountId
-          ? `${apiEndpoint}/api/drive/files/${pageFile.id}?accountId=${encodeURIComponent(accountId)}&thumbnail=true`
-          : `${apiEndpoint}/api/drive/files/${pageFile.id}?thumbnail=true`;
+        // accountId is optional - API will use default account if not provided
+        let thumbnailUrl = `${apiEndpoint}/api/drive/files/${pageFile.id}?thumbnail=true`;
+        // Only add accountId if it's a valid account ID format (contains "::" separator)
+        if (accountId && accountId.includes('::')) {
+          thumbnailUrl += `&accountId=${encodeURIComponent(accountId)}`;
+        }
         
         console.log(`[ImageSlideshow] Fetching thumbnail for page ${pageNum} from:`, thumbnailUrl);
         const startTime = Date.now();
