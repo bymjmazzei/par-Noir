@@ -2,6 +2,8 @@
  * Image Slideshow Component
  * Displays image thumbnails as a horizontal scrolling slideshow with snap-to-page navigation
  * Loads thumbnails directly by ID (no folder listing needed!)
+ * 
+ * Architecture: Show slideshow structure immediately, load thumbnails in parallel (non-blocking)
  */
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
@@ -16,8 +18,7 @@ interface ImageSlideshowProps {
 }
 
 export function ImageSlideshow({ thumbnailIds, fileName, accountId, pdfFileId }: ImageSlideshowProps) {
-  // Initialize pages synchronously from thumbnailIds - no loading delay!
-  // This matches the vertical feed pattern: show structure immediately, load thumbnails progressively
+  // Initialize pages synchronously from thumbnailIds - INSTANT display, no loading screen!
   const initialPages = thumbnailIds.length > 0 
     ? Array.from({ length: thumbnailIds.length }, (_, i) => i + 1)
     : [];
@@ -33,6 +34,7 @@ export function ImageSlideshow({ thumbnailIds, fileName, accountId, pdfFileId }:
   const loadedPagesRef = useRef<Set<number>>(new Set());
   const loadingPagesRef = useRef<Set<number>>(new Set());
   const fullSizeLoadedRef = useRef<Set<number>>(new Set());
+  const failedPagesRef = useRef<Set<number>>(new Set()); // Track failed pages
 
   // Update pages when thumbnailIds change (but don't block initial render)
   useEffect(() => {
@@ -45,9 +47,14 @@ export function ImageSlideshow({ thumbnailIds, fileName, accountId, pdfFileId }:
     console.log(`[ImageSlideshow] Initializing ${thumbnailIds.length} pages from thumbnail IDs`);
     setPages(Array.from({ length: thumbnailIds.length }, (_, i) => i + 1));
     setCurrentPage(1);
+    // Reset state when thumbnailIds change
+    setPageUrls(new Map());
+    loadedPagesRef.current.clear();
+    loadingPagesRef.current.clear();
+    failedPagesRef.current.clear();
   }, [thumbnailIds]);
 
-  // Fetch accountId helper (non-blocking - can return null)
+  // Fetch accountId helper (non-blocking, returns null if unavailable)
   const fetchAccountIdOnce = useCallback(async (): Promise<string | null> => {
     if (accountId && accountId.includes('::')) {
       return accountId;
@@ -58,7 +65,7 @@ export function ImageSlideshow({ thumbnailIds, fileName, accountId, pdfFileId }:
       return cachedAccountId;
     }
 
-    // Don't block - return null if fetch fails, loadThumbnail will handle it
+    // Don't block - return null if fetch fails
     try {
       const apiEndpoint = process.env.REACT_APP_API_ENDPOINT || 'https://api.parnoir.com';
       const { PNOAuthService } = await import('../services/pnOAuthService');
@@ -69,9 +76,7 @@ export function ImageSlideshow({ thumbnailIds, fileName, accountId, pdfFileId }:
       if (session?.did || session?.pnIdentifier) {
         const userId = session.pnIdentifier || session.did;
         const accountsResponse = await fetch(`${apiEndpoint}/api/storage/accounts/${userId}`, {
-          headers: {
-            'Authorization': `Bearer ${accessToken}`
-          }
+          headers: { 'Authorization': `Bearer ${accessToken}` }
         });
         
         if (accountsResponse.ok) {
@@ -85,31 +90,31 @@ export function ImageSlideshow({ thumbnailIds, fileName, accountId, pdfFileId }:
         }
       }
     } catch (err) {
-      // Silently fail - return null, loadThumbnail will try without accountId
+      // Silently fail - return null
     }
     return null;
   }, [accountId]);
 
-  // Load individual thumbnail by ID
+  // Load individual thumbnail by ID (completely non-blocking)
   const loadThumbnail = useCallback(async (
     thumbnailId: string,
     pageNum: number,
-    finalAccountId: string | null,
+    accountIdToUse: string | null,
     loadFullSize: boolean = false
   ) => {
+    // Skip if already loaded or loading
     if (loadFullSize && fullSizeLoadedRef.current.has(pageNum)) {
       return;
     }
     if (loadingPagesRef.current.has(pageNum)) {
       return;
     }
+    if (failedPagesRef.current.has(pageNum) && !loadFullSize) {
+      return; // Don't retry failed thumbnails unless loading full size
+    }
     
     loadingPagesRef.current.add(pageNum);
     
-    // accountId is optional - start fetch immediately, try without it first if not provided
-    // This matches the vertical feed pattern (fast start, handle auth errors as they occur)
-    const accountIdToUse = finalAccountId;
-
     try {
       // If requesting full-size and PDF is available, render from PDF
       if (loadFullSize && pdfFileId) {
@@ -118,14 +123,12 @@ export function ImageSlideshow({ thumbnailIds, fileName, accountId, pdfFileId }:
         const accessToken = await PNOAuthService.getValidAccessToken();
         
         if (!accessToken) {
-          throw new Error('No access token');
+          throw new Error('No access token for PDF rendering');
         }
 
         let pdfUrl = `${apiEndpoint}/api/drive/files/${pdfFileId}`;
         if (accountIdToUse && accountIdToUse.includes('::')) {
           pdfUrl += `?accountId=${encodeURIComponent(accountIdToUse)}`;
-        } else {
-          pdfUrl += '?';
         }
         
         let response = await fetch(pdfUrl, {
@@ -205,77 +208,65 @@ export function ImageSlideshow({ thumbnailIds, fileName, accountId, pdfFileId }:
         fullSizeLoadedRef.current.add(pageNum);
         setPageUrls(prev => new Map(prev).set(pageNum, imageUrl));
         setPageIsThumbnail(prev => new Map(prev).set(pageNum, false));
+        loadingPagesRef.current.delete(pageNum);
         return;
       }
       
-      // Load thumbnail directly by ID - start fetch immediately (like vertical feed)
+      // Load thumbnail directly by ID - NON-BLOCKING parallel fetch
       const apiEndpoint = process.env.REACT_APP_API_ENDPOINT || 'https://api.parnoir.com';
       const { PNOAuthService } = await import('../services/pnOAuthService');
       
-      // Get access token (non-blocking - try with auth if available, but don't block)
-      const accessToken = await PNOAuthService.getValidAccessToken();
+      // Get access token (non-blocking - don't wait for it)
+      const accessTokenPromise = PNOAuthService.getValidAccessToken();
       
-      // Try without accountId first (faster, works for public content)
-      // If that fails, try with accountId
+      // Build fetch URL
       let fetchUrl = `${apiEndpoint}/api/drive/files/${thumbnailId}?thumbnail=true`;
-      
-      let response: Response;
-      try {
-        // Try with auth if available, otherwise try without (for public content)
-        const headers: HeadersInit = {};
-        if (accessToken) {
-          headers['Authorization'] = `Bearer ${accessToken}`;
-        }
-        
-        // Start fetch immediately (with or without auth)
-        response = await fetch(fetchUrl, { headers });
-      } catch (fetchError: any) {
-        console.error(`[ImageSlideshow] Fetch error for thumbnail ${thumbnailId}:`, fetchError);
-        loadingPagesRef.current.delete(pageNum);
-        return; // Skip this thumbnail
+      if (accountIdToUse && accountIdToUse.includes('::')) {
+        fetchUrl += `&accountId=${encodeURIComponent(accountIdToUse)}`;
       }
       
-      // If 401, try to get/refresh token and retry
-      if (response.status === 401) {
-        // Try to get access token if we don't have one, or refresh if we do
-        const tokenToUse = accessToken 
-          ? await PNOAuthService.getValidAccessToken(true) // Refresh existing token
-          : await PNOAuthService.getValidAccessToken(); // Try to get new token
+      // Start fetch immediately - try without auth first for public content
+      let response: Response;
+      try {
+        // Try without auth first (for public content)
+        response = await fetch(fetchUrl);
         
-        if (tokenToUse) {
-          try {
-            // Try with accountId if available
-            let retryUrl = fetchUrl;
-            if (accountIdToUse && accountIdToUse.includes('::')) {
-              retryUrl = `${fetchUrl}&accountId=${encodeURIComponent(accountIdToUse)}`;
-            }
-            
-            response = await fetch(retryUrl, {
-              headers: { 'Authorization': `Bearer ${tokenToUse}` }
+        // If 401, try with auth
+        if (response.status === 401) {
+          const accessToken = await accessTokenPromise;
+          if (accessToken) {
+            response = await fetch(fetchUrl, {
+              headers: { 'Authorization': `Bearer ${accessToken}` }
             });
             
-            if (!response.ok && response.status !== 401) {
-              console.warn(`[ImageSlideshow] Thumbnail ${thumbnailId} failed after auth: ${response.status}`);
-              loadingPagesRef.current.delete(pageNum);
-              return; // Skip this thumbnail
+            // If still 401, try refreshing token
+            if (response.status === 401) {
+              const refreshedToken = await PNOAuthService.getValidAccessToken(true);
+              if (refreshedToken) {
+                response = await fetch(fetchUrl, {
+                  headers: { 'Authorization': `Bearer ${refreshedToken}` }
+                });
+              }
             }
-          } catch (retryError: any) {
-            console.error(`[ImageSlideshow] Retry fetch error for thumbnail ${thumbnailId}:`, retryError);
-            loadingPagesRef.current.delete(pageNum);
-            return; // Skip this thumbnail
           }
         }
-        
-        // If still 401 after trying auth, this thumbnail requires auth and user isn't logged in
-        if (response.status === 401) {
-          console.warn(`[ImageSlideshow] Thumbnail ${thumbnailId} requires authentication (user not logged in)`);
-          loadingPagesRef.current.delete(pageNum);
-          return; // Skip this thumbnail - user needs to log in
-        }
-      } else if (!response.ok) {
-        console.warn(`[ImageSlideshow] Thumbnail ${thumbnailId} failed: ${response.status}`);
+      } catch (fetchError: any) {
+        console.error(`[ImageSlideshow] Fetch error for thumbnail ${thumbnailId}:`, fetchError);
+        failedPagesRef.current.add(pageNum);
         loadingPagesRef.current.delete(pageNum);
-        return; // Skip this thumbnail
+        return;
+      }
+      
+      // Handle response
+      if (!response.ok) {
+        if (response.status === 401) {
+          console.warn(`[ImageSlideshow] Thumbnail ${thumbnailId} requires authentication`);
+        } else {
+          console.warn(`[ImageSlideshow] Thumbnail ${thumbnailId} failed: ${response.status}`);
+        }
+        failedPagesRef.current.add(pageNum);
+        loadingPagesRef.current.delete(pageNum);
+        return;
       }
       
       const contentType = response.headers.get('content-type') || '';
@@ -287,9 +278,10 @@ export function ImageSlideshow({ thumbnailIds, fileName, accountId, pdfFileId }:
         const { EncryptionManager } = await import('../utils/encryptionManager');
         const session = PNOAuthService.loadSession();
         if (!session?.did) {
-          console.warn(`[ImageSlideshow] Cannot decrypt thumbnail ${thumbnailId} - no session (user not logged in)`);
+          console.warn(`[ImageSlideshow] Cannot decrypt thumbnail ${thumbnailId} - no session`);
+          failedPagesRef.current.add(pageNum);
           loadingPagesRef.current.delete(pageNum);
-          return; // Skip encrypted thumbnail if user not logged in
+          return;
         }
         
         const pnId = session.did;
@@ -299,8 +291,9 @@ export function ImageSlideshow({ thumbnailIds, fileName, accountId, pdfFileId }:
         }
         if (!publicKey) {
           console.warn(`[ImageSlideshow] Cannot decrypt thumbnail ${thumbnailId} - no public key`);
+          failedPagesRef.current.add(pageNum);
           loadingPagesRef.current.delete(pageNum);
-          return; // Skip if no public key
+          return;
         }
         
         try {
@@ -321,54 +314,59 @@ export function ImageSlideshow({ thumbnailIds, fileName, accountId, pdfFileId }:
           imageUrl = URL.createObjectURL(decryptedBlob);
         } catch (decryptError) {
           console.error(`[ImageSlideshow] Failed to decrypt thumbnail ${thumbnailId}:`, decryptError);
+          failedPagesRef.current.add(pageNum);
           loadingPagesRef.current.delete(pageNum);
-          return; // Skip if decryption fails
+          return;
         }
       } else {
         // Non-encrypted file - use directly
         imageUrl = URL.createObjectURL(blob);
       }
       
+      // Success! Update state
       loadedPagesRef.current.add(pageNum);
+      failedPagesRef.current.delete(pageNum); // Remove from failed if it was there
       setPageUrls(prev => new Map(prev).set(pageNum, imageUrl));
       setPageIsThumbnail(prev => new Map(prev).set(pageNum, true));
       
-      // Preload PDF rendering in background if available
+      // Preload full-size PDF rendering in background if available
       if (pdfFileId && !fullSizeLoadedRef.current.has(pageNum)) {
         loadThumbnail(thumbnailId, pageNum, accountIdToUse, true).catch(() => {});
       }
     } catch (err) {
       console.error(`❌ [ImageSlideshow] Failed to load page ${pageNum}:`, err);
+      failedPagesRef.current.add(pageNum);
     } finally {
       loadingPagesRef.current.delete(pageNum);
     }
-  }, [pdfFileId, fetchAccountIdOnce]);
+  }, [pdfFileId]);
 
-  // Load thumbnails sequentially (like the feed) - one at a time with delays
+  // Load ALL thumbnails in PARALLEL immediately (no delays, no blocking)
   useEffect(() => {
     if (thumbnailIds.length === 0) return;
     
     let cancelled = false;
     
-    // Load all thumbnails sequentially with delays to prevent token refresh conflicts
+    // Start loading ALL thumbnails in parallel immediately
+    // Don't wait for accountId - start fetching right away
     (async () => {
-      // Fetch accountId ONCE before starting (like vertical feed does)
-      // This prevents 401 retries and speeds up first thumbnail load
-      const accountIdToUse = await fetchAccountIdOnce();
+      // Fetch accountId in background (non-blocking)
+      const accountIdPromise = fetchAccountIdOnce();
       
-      // Load ALL thumbnails sequentially (including first) with delays
-      // Start first page immediately (no delay) - use accountId immediately
-      for (let i = 0; i < thumbnailIds.length; i++) {
-        if (cancelled) break;
+      // Start loading all thumbnails immediately in parallel
+      const loadPromises = thumbnailIds.map(async (thumbnailId, index) => {
+        if (cancelled) return;
         
-        // No delay for first page (start immediately), delay for subsequent pages
-        if (i > 0) {
-          await new Promise(resolve => setTimeout(resolve, 200)); // Delay between loads
-        }
-        
-        // Use accountId for all pages (including first) - prevents 401 retries
-        loadThumbnail(thumbnailIds[i], i + 1, accountIdToUse, false).catch(() => {});
-      }
+        const pageNum = index + 1;
+        // Don't wait for accountId - start fetch immediately, accountId will be used if available
+        const accountIdToUse = await accountIdPromise;
+        await loadThumbnail(thumbnailId, pageNum, accountIdToUse, false);
+      });
+      
+      // Don't await - let them load in parallel
+      Promise.all(loadPromises).catch(() => {
+        // Errors already handled in loadThumbnail
+      });
     })();
     
     return () => {
@@ -376,9 +374,9 @@ export function ImageSlideshow({ thumbnailIds, fileName, accountId, pdfFileId }:
     };
   }, [thumbnailIds, fetchAccountIdOnce, loadThumbnail]);
 
-  // Load pages on-demand when navigating
+  // Load full-size PDF pages on-demand when navigating
   useEffect(() => {
-    if (thumbnailIds.length === 0) return;
+    if (thumbnailIds.length === 0 || !pdfFileId) return;
     
     const pagesToLoad = [
       currentPage,
@@ -391,15 +389,15 @@ export function ImageSlideshow({ thumbnailIds, fileName, accountId, pdfFileId }:
       
       for (const pageNum of pagesToLoad) {
         const thumbnailId = thumbnailIds[pageNum - 1];
-        if (thumbnailId && !loadedPagesRef.current.has(pageNum) && !loadingPagesRef.current.has(pageNum)) {
-          const isCurrentPage = pageNum === currentPage;
-          const currentlyThumbnail = pageIsThumbnail.get(pageNum);
-          const shouldLoadFullSize = isCurrentPage && currentlyThumbnail && pdfFileId;
-          loadThumbnail(thumbnailId, pageNum, finalAccountId, shouldLoadFullSize).catch(() => {});
+        const currentlyThumbnail = pageIsThumbnail.get(pageNum);
+        const shouldLoadFullSize = pageNum === currentPage && currentlyThumbnail;
+        
+        if (thumbnailId && shouldLoadFullSize && !fullSizeLoadedRef.current.has(pageNum)) {
+          loadThumbnail(thumbnailId, pageNum, finalAccountId, true).catch(() => {});
         }
       }
     })();
-  }, [currentPage, thumbnailIds, fetchAccountIdOnce, loadThumbnail, pdfFileId, pageIsThumbnail]);
+  }, [currentPage, thumbnailIds, pdfFileId, fetchAccountIdOnce, loadThumbnail, pageIsThumbnail]);
 
   // Horizontal swipe navigation
   const swipeRef = useHorizontalSwipe({
@@ -438,7 +436,6 @@ export function ImageSlideshow({ thumbnailIds, fileName, accountId, pdfFileId }:
   }, [pageUrls]);
 
   // Show error only if we have an error AND no pages to show
-  // Don't block if pages exist (even if thumbnails are still loading)
   if (error && pages.length === 0) {
     return (
       <div className="w-full h-full flex items-center justify-center bg-black text-white">
@@ -450,7 +447,7 @@ export function ImageSlideshow({ thumbnailIds, fileName, accountId, pdfFileId }:
     );
   }
   
-  // If no pages and no thumbnail IDs, show a message (but this shouldn't happen with sync init)
+  // If no pages and no thumbnail IDs, show a message
   if (pages.length === 0 && thumbnailIds.length === 0) {
     return (
       <div className="w-full h-full flex items-center justify-center bg-black text-white">
@@ -494,7 +491,6 @@ export function ImageSlideshow({ thumbnailIds, fileName, accountId, pdfFileId }:
       <div
         ref={(el) => {
           scrollContainerRef.current = el;
-          // Attach swipeRef to the scroll container for touch event handling
           (swipeRef as any).current = el;
         }}
         className="flex-1 overflow-x-auto snap-x snap-mandatory scrollbar-hide"
@@ -509,6 +505,7 @@ export function ImageSlideshow({ thumbnailIds, fileName, accountId, pdfFileId }:
           {pages.map((pageNum) => {
             const pageImageUrl = pageUrls.get(pageNum);
             const isLoading = loadingPagesRef.current.has(pageNum);
+            const hasFailed = failedPagesRef.current.has(pageNum);
             
             return (
               <div
@@ -531,14 +528,19 @@ export function ImageSlideshow({ thumbnailIds, fileName, accountId, pdfFileId }:
                       maxHeight: 'calc(100vh - 64px - env(safe-area-inset-bottom, 0px))'
                     }}
                   />
+                ) : hasFailed ? (
+                  <div className="text-white/50 text-center">
+                    <p className="text-sm">Page {pageNum}</p>
+                    <p className="text-xs mt-1">Authentication required</p>
+                  </div>
                 ) : isLoading ? (
-                  <div className="text-white text-center">
-                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-white mx-auto mb-2"></div>
-                    <p className="text-sm">Loading page {pageNum}...</p>
+                  <div className="text-white/70 text-center">
+                    <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-white/50 mx-auto mb-2"></div>
+                    <p className="text-xs">Loading...</p>
                   </div>
                 ) : (
-                  <div className="text-white text-center">
-                    <p className="text-sm">Page {pageNum} queued...</p>
+                  <div className="text-white/50 text-center">
+                    <p className="text-xs">Page {pageNum}</p>
                   </div>
                 )}
               </div>
