@@ -1530,8 +1530,56 @@ export function FullScreenFeed({
               const totalPages = pdfPageThumbnailIds.length;
               const pageThumbnailUrl = pdfPageThumbnails.get(fileId)?.get(currentPage) || thumbnails.get(fileId)!;
               
+              // Calculate aspect ratio for background blur (same as images)
+              const containerHeight = window.innerHeight - 64; // Account for bottom nav
+              const containerWidth = window.innerWidth;
+              const containerAspect = containerWidth / containerHeight;
+              const dims = mediaDimensions.get(fileId);
+              const imageAspect = dims ? dims.width / dims.height : 16/9; // Default to 16:9
+              
+              // If image is wider than container (widescreen), scale background to fill height
+              // If image is taller than container (portrait), scale background to fill width
+              const isWidescreen = imageAspect > containerAspect;
+              const backgroundStyle: React.CSSProperties = {
+                filter: 'blur(40px)',
+                opacity: 0.6,
+                zIndex: 0,
+                position: 'absolute',
+                top: 0,
+                left: 0,
+                right: 0,
+                bottom: 0,
+                objectFit: 'cover', // Ensure it covers the entire area
+                ...(isWidescreen 
+                  ? { 
+                      width: 'auto', 
+                      height: '100%',
+                      left: '50%',
+                      transform: 'translateX(-50%) scale(1.1)'
+                    }
+                  : { 
+                      height: 'auto', 
+                      width: '100%',
+                      top: '50%',
+                      transform: 'translateY(-50%) scale(1.1)'
+                    }
+                )
+              };
+              
               return (
                 <>
+                  {/* Blurred background PDF page */}
+                  <img
+                    src={pageThumbnailUrl}
+                    alt=""
+                    className="absolute"
+                    style={backgroundStyle}
+                    loading="eager"
+                    decoding="async"
+                    onError={(e) => {
+                      console.error(`[FullScreenFeed] Background PDF page failed to load for ${fileId}:`, e);
+                    }}
+                  />
                   {/* Page indicator */}
                   {totalPages > 1 && (
                     <div className="absolute top-4 left-1/2 transform -translate-x-1/2 z-20 bg-black/60 px-4 py-2 rounded-full">
@@ -1630,6 +1678,19 @@ export function FullScreenFeed({
                   {/* Main PDF Page Thumbnail */}
                   <div className="w-full h-full flex items-center justify-center relative z-10">
                     <img
+                      ref={(el) => {
+                        if (el) {
+                          // Track dimensions when loaded (for background blur calculation)
+                          el.addEventListener('load', () => {
+                            console.log(`[FullScreenFeed] PDF page loaded successfully for ${fileId} page ${currentPage + 1}, dimensions: ${el.naturalWidth}x${el.naturalHeight}`);
+                            setMediaDimensions(prev => {
+                              const newMap = new Map(prev);
+                              newMap.set(fileId, { width: el.naturalWidth, height: el.naturalHeight });
+                              return newMap;
+                            });
+                          });
+                        }
+                      }}
                       src={pageThumbnailUrl}
                       alt={`Page ${currentPage + 1}${fileName ? ` of ${fileName}` : ''}`}
                       className="max-w-full max-h-full object-contain"
