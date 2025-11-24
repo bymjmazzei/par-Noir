@@ -107,6 +107,78 @@ const ThumbnailImage: React.FC<{ fileId: string; accountId: string; fileName: st
           }
         }
 
+        // Check if this is a PDF file - if so, try to use thumbnailFileId from metadata first
+        const isPDF = /\.pdf$/i.test(fileName.replace(/\.encrypted$/i, ''));
+        if (isPDF && isEncrypted) {
+          try {
+            // Try to get thumbnailFileId from metadata
+            const metadataResponse = await fetch(`${apiEndpoint}/api/aggregator/metadata-index/${fileId}`, {
+              headers: {
+                'Authorization': `Bearer ${accessToken}`
+              }
+            });
+            
+            if (metadataResponse.ok) {
+              const metadata = await metadataResponse.json();
+              const thumbnailFileId = metadata.metadata?.thumbnailFileId || metadata.thumbnailFileId;
+              
+              if (thumbnailFileId) {
+                // Use the thumbnail file directly
+                const thumbnailUrl = `${apiEndpoint}/api/drive/files/${thumbnailFileId}?thumbnail=true${accountId ? `&accountId=${encodeURIComponent(accountId)}` : ''}`;
+                const thumbResponse = await fetch(thumbnailUrl, {
+                  headers: {
+                    'Authorization': `Bearer ${accessToken}`
+                  }
+                });
+                
+                if (thumbResponse.ok) {
+                  const contentType = thumbResponse.headers.get('content-type') || '';
+                  const blob = await thumbResponse.blob();
+                  
+                  // Decrypt if encrypted
+                  if (contentType.includes('application/json') || contentType.includes('application/octet-stream')) {
+                    const session = PNOAuthService.loadSession();
+                    if (session?.did) {
+                      const pnId = session.did;
+                      let publicKey = session?.publicKey;
+                      if (!publicKey && session.did.startsWith('did:key:')) {
+                        publicKey = session.did.substring(8);
+                      }
+                      if (publicKey) {
+                        const { EncryptionManager } = await import('../utils/encryptionManager');
+                        const encryptedText = await blob.text();
+                        const encryptedPackage = JSON.parse(encryptedText);
+                        const encryptionManager = new EncryptionManager();
+                        const decryptedData = await encryptionManager.decrypt(
+                          encryptedPackage.encrypted,
+                          encryptedPackage.iv,
+                          encryptedPackage.salt,
+                          pnId,
+                          publicKey
+                        );
+                        const decryptedBlob = new Blob([decryptedData], {
+                          type: encryptedPackage.metadata.originalMimeType || 'image/jpeg'
+                        });
+                        const url = URL.createObjectURL(decryptedBlob);
+                        setThumbnailUrl(url);
+                        setError(false);
+                        return;
+                      }
+                    }
+                  } else {
+                    const url = URL.createObjectURL(blob);
+                    setThumbnailUrl(url);
+                    setError(false);
+                    return;
+                  }
+                }
+              }
+            }
+          } catch (metadataError) {
+            // Fall through to regular handling
+          }
+        }
+
         if (isEncrypted) {
           // For encrypted files: download, decrypt, and generate thumbnail
           const session = PNOAuthService.loadSession();
@@ -911,8 +983,14 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
           return !name.startsWith('thumb_');
         });
         
-        // Map thumbnails to their main files and create display entries
-        const thumbnailEntries = thumbnails.map((thumb: DriveFile) => {
+        // Filter out PDF page thumbnails (thumb_*-page-*.png.encrypted) - these are part of PDF slideshows
+        const regularThumbnails = thumbnails.filter((thumb: DriveFile) => {
+          const name = thumb.name.toLowerCase();
+          return !/^thumb_.+-page-\d+\.png\.encrypted$/i.test(name);
+        });
+        
+        // Map regular thumbnails to their main files and create display entries
+        const thumbnailEntries = regularThumbnails.map((thumb: DriveFile) => {
           // Remove "thumb_" prefix and ".encrypted" suffix to find main file
           const thumbNameWithoutPrefix = thumb.name.replace(/^thumb_/i, '').replace(/\.encrypted$/i, '');
           
@@ -935,20 +1013,15 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
           };
         });
         
-        // Filter to show thumbnails (representing main files), thoughts, and PDF slideshow folders
+        // Filter to show thumbnails (representing main files), PDF files (for slideshows), and thoughts
         const mediaFiles = thumbnailEntries.concat(
           allFiles.filter((file: DriveFile) => {
           const name = file.name.toLowerCase();
           const mimeType = file.mimeType || '';
           
-          // Allow PDF slideshow folders (folders ending with "-pages") to show as files
-          if (mimeType === 'application/vnd.google-apps.folder') {
-            const nameWithoutEncrypted = file.name.replace(/\.encrypted$/i, '');
-            const isPDFSlideshowFolder = nameWithoutEncrypted.toLowerCase().endsWith('-pages');
-            if (isPDFSlideshowFolder) {
-              return true; // Include PDF slideshow folders
-            }
-            return false; // Exclude other folders
+          // Include PDF files (they represent slideshows with pdfPageThumbnailIds)
+          if (name.endsWith('.pdf.encrypted')) {
+            return true; // Include PDF files (they'll show as slideshows in the feed)
           }
           
           // Include thoughts (they don't have thumbnails, show the thought file itself)
@@ -956,7 +1029,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
             return true;
           }
           
-          // Exclude everything else (main files, thumbnails already handled above)
+          // Exclude everything else (main files already have thumbnails, PDF page thumbnails are hidden)
           return false;
         })
         );
@@ -995,8 +1068,14 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
           return !name.startsWith('thumb_');
         });
         
-        // Map thumbnails to their main files and create display entries
-        const thumbnailEntries = thumbnails.map((thumb: DriveFile) => {
+        // Filter out PDF page thumbnails (thumb_*-page-*.png.encrypted) - these are part of PDF slideshows
+        const regularThumbnails = thumbnails.filter((thumb: DriveFile) => {
+          const name = thumb.name.toLowerCase();
+          return !/^thumb_.+-page-\d+\.png\.encrypted$/i.test(name);
+        });
+        
+        // Map regular thumbnails to their main files and create display entries
+        const thumbnailEntries = regularThumbnails.map((thumb: DriveFile) => {
           // Remove "thumb_" prefix and ".encrypted" suffix to find main file
           const thumbNameWithoutPrefix = thumb.name.replace(/^thumb_/i, '').replace(/\.encrypted$/i, '');
           
@@ -1019,20 +1098,15 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
           };
         });
         
-        // Filter to show thumbnails (representing main files), thoughts, and PDF slideshow folders
+        // Filter to show thumbnails (representing main files), PDF files (for slideshows), and thoughts
         const mediaFiles = thumbnailEntries.concat(
           allFiles.filter((file: DriveFile) => {
           const name = file.name.toLowerCase();
           const mimeType = file.mimeType || '';
           
-          // Allow PDF slideshow folders (folders ending with "-pages") to show as files
-          if (mimeType === 'application/vnd.google-apps.folder') {
-            const nameWithoutEncrypted = file.name.replace(/\.encrypted$/i, '');
-            const isPDFSlideshowFolder = nameWithoutEncrypted.toLowerCase().endsWith('-pages');
-            if (isPDFSlideshowFolder) {
-              return true; // Include PDF slideshow folders
-            }
-            return false; // Exclude other folders
+          // Include PDF files (they represent slideshows with pdfPageThumbnailIds)
+          if (name.endsWith('.pdf.encrypted')) {
+            return true; // Include PDF files (they'll show as slideshows in the feed)
           }
           
           // Include thoughts (they don't have thumbnails, show the thought file itself)
@@ -1040,7 +1114,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
             return true;
           }
           
-          // Exclude everything else (main files, thumbnails already handled above)
+          // Exclude everything else (main files already have thumbnails, PDF page thumbnails are hidden)
           return false;
         })
         );
