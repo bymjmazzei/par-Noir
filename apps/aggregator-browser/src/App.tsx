@@ -2310,6 +2310,42 @@ function App() {
            !!(file.metadata as any).thought;
   };
 
+  // Helper function to check if a file is a PDF slideshow (has page thumbnails)
+  const isPdfSlideshow = (file: IndexedFile): boolean => {
+    const pdfPageThumbnailIds = file.metadata?.pdfPageThumbnailIds;
+    return file.metadata.fileType === 'document' && 
+           pdfPageThumbnailIds && 
+           pdfPageThumbnailIds.length > 0;
+  };
+
+  // Helper function to check if a file is a raw PDF (document without thumbnails - should be excluded)
+  const isRawPdf = (file: IndexedFile): boolean => {
+    return file.metadata.fileType === 'document' && 
+           !isPdfSlideshow(file);
+  };
+
+  // Helper function to check if a file is media (image, video, or PDF slideshow)
+  const isMedia = (file: IndexedFile): boolean => {
+    if (isThought(file)) return false; // Thoughts are not media
+    if (isRawPdf(file)) return false; // Raw PDFs should not be shown
+    
+    const fileType = file.metadata.fileType;
+    const fileName = file.metadata.name || file.metadata.title || '';
+    
+    // Check for images
+    const isImage = fileType === 'image' || 
+                   fileName.match(/\.(jpg|jpeg|png|gif|webp|svg|bmp|ico)$/i);
+    
+    // Check for videos
+    const isVideo = fileType === 'video' || 
+                   fileName.match(/\.(mp4|mov|avi|webm|mkv|flv|wmv)$/i);
+    
+    // Check for PDF slideshows
+    const isSlideshow = isPdfSlideshow(file);
+    
+    return isImage || isVideo || isSlideshow;
+  };
+
   // Prepare data for conditional rendering
   // Use stable empty array reference to prevent unnecessary re-renders
   const creatorFiles = viewingCreatorId ? creatorFilesState : EMPTY_ARRAY;
@@ -2326,14 +2362,15 @@ function App() {
             new Map([...creatorFiles, ...userLikedFiles, ...userCommentedFiles]
               .map(f => [f.metadata.fileId, f])).values()
           );
-          // Separate media and thoughts
-          const mediaFiles = allFiles.filter(f => !isThought(f));
+          // Separate media and thoughts (exclude raw PDFs)
+          const mediaFiles = allFiles.filter(f => isMedia(f));
           const thoughtFiles = allFiles.filter(f => isThought(f));
           // Show media first, then thoughts
           filtered = [...mediaFiles, ...thoughtFiles];
           break;
         case 'media':
-          filtered = creatorFiles.filter(f => !isThought(f));
+          // Only show images, videos, and PDF slideshows (exclude thoughts and raw PDFs)
+          filtered = creatorFiles.filter(f => isMedia(f));
           break;
         case 'thoughts':
           filtered = creatorFiles.filter(f => isThought(f));
@@ -2438,14 +2475,15 @@ function App() {
             new Map([...creatorFiles, ...viewedUserLikedFiles, ...viewedUserCommentedFiles]
               .map(f => [f.metadata.fileId, f])).values()
           );
-          // Separate media and thoughts
-          const mediaFilesOther = allFilesOther.filter(f => !isThought(f));
+          // Separate media and thoughts (exclude raw PDFs)
+          const mediaFilesOther = allFilesOther.filter(f => isMedia(f));
           const thoughtFilesOther = allFilesOther.filter(f => isThought(f));
           // Show media first, then thoughts
           filtered = [...mediaFilesOther, ...thoughtFilesOther];
           break;
         case 'media':
-          filtered = creatorFiles.filter(f => !isThought(f));
+          // Only show images, videos, and PDF slideshows (exclude thoughts and raw PDFs)
+          filtered = creatorFiles.filter(f => isMedia(f));
           break;
         case 'thoughts':
           filtered = creatorFiles.filter(f => isThought(f));
