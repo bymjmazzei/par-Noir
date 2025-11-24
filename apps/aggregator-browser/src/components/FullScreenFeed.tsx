@@ -1636,8 +1636,13 @@ export function FullScreenFeed({
                       const currentPage = pdfCurrentPage.get(fileId) || 0;
                       // Load if it's the current page or within 2 pages
                       if (Math.abs(pageIndex - currentPage) <= 2) {
+                        console.log(`[FullScreenFeed] Triggering on-demand load for page ${pageIndex + 1} (current: ${currentPage + 1})`);
                         const thumbnailId = pdfPageThumbnailIds[pageIndex];
-                        loadPdfPageThumbnail(fileId, thumbnailId, pageIndex, indexedFile).catch(() => {});
+                        loadPdfPageThumbnail(fileId, thumbnailId, pageIndex, indexedFile).then(() => {
+                          console.log(`[FullScreenFeed] Successfully loaded page ${pageIndex + 1} thumbnail`);
+                        }).catch((err) => {
+                          console.error(`[FullScreenFeed] Failed to load page ${pageIndex + 1} thumbnail:`, err);
+                        });
                       }
                     }
                     
