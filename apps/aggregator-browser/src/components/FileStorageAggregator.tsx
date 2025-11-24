@@ -935,7 +935,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
           };
         });
         
-        // Filter to show only thumbnails (representing main files) and PDF slideshow folders
+        // Filter to show thumbnails (representing main files), thoughts, and PDF slideshow folders
         const mediaFiles = thumbnailEntries.concat(
           allFiles.filter((file: DriveFile) => {
           const name = file.name.toLowerCase();
@@ -949,6 +949,11 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
               return true; // Include PDF slideshow folders
             }
             return false; // Exclude other folders
+          }
+          
+          // Include thoughts (they don't have thumbnails, show the thought file itself)
+          if (name.startsWith('thought-') && name.endsWith('.png.encrypted')) {
+            return true;
           }
           
           // Exclude everything else (main files, thumbnails already handled above)
@@ -1014,7 +1019,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
           };
         });
         
-        // Filter to show only thumbnails (representing main files) and PDF slideshow folders
+        // Filter to show thumbnails (representing main files), thoughts, and PDF slideshow folders
         const mediaFiles = thumbnailEntries.concat(
           allFiles.filter((file: DriveFile) => {
           const name = file.name.toLowerCase();
@@ -1028,6 +1033,11 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
               return true; // Include PDF slideshow folders
             }
             return false; // Exclude other folders
+          }
+          
+          // Include thoughts (they don't have thumbnails, show the thought file itself)
+          if (name.startsWith('thought-') && name.endsWith('.png.encrypted')) {
+            return true;
           }
           
           // Exclude everything else (main files, thumbnails already handled above)
@@ -2483,7 +2493,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
             // Upload thumbnail
             const freshToken = await PNOAuthService.getValidAccessToken();
             if (freshToken) {
-              thumbnailFileId = await uploadThumbnail(
+              thumbnailFileId = await uploadThumbnailLocal(
                 thumbnailBlob,
                 file.name.replace(/\.pdf$/i, ''),
                 encryptionManager,
