@@ -200,28 +200,35 @@ export function ImageSlideshow({ thumbnailIds, fileName, accountId, pdfFileId }:
       // Load thumbnail directly by ID
       const apiEndpoint = process.env.REACT_APP_API_ENDPOINT || 'https://api.parnoir.com';
       const { PNOAuthService } = await import('../services/pnOAuthService');
-      const accessToken = await PNOAuthService.getValidAccessToken();
-      if (!accessToken) throw new Error('No access token');
-
+      
       let fetchUrl = `${apiEndpoint}/api/drive/files/${thumbnailId}?thumbnail=true`;
       if (finalAccountId && finalAccountId.includes('::')) {
         fetchUrl += `&accountId=${encodeURIComponent(finalAccountId)}`;
       }
       
+      // Get access token and retry with refresh if needed
+      let accessToken = await PNOAuthService.getValidAccessToken();
+      if (!accessToken) throw new Error('No access token');
+      
       let response = await fetch(fetchUrl, {
         headers: { 'Authorization': `Bearer ${accessToken}` }
       });
       
+      // If 401, refresh token and retry once
       if (response.status === 401) {
-        const refreshedToken = await PNOAuthService.getValidAccessToken(true);
+        console.log(`[ImageSlideshow] Got 401 for thumbnail ${thumbnailId}, refreshing token...`);
+        const refreshedToken = await PNOAuthService.getValidAccessToken(true); // Force refresh
         if (refreshedToken) {
           response = await fetch(fetchUrl, {
             headers: { 'Authorization': `Bearer ${refreshedToken}` }
           });
+          if (!response.ok) {
+            throw new Error(`Failed to load thumbnail after refresh: ${response.status}`);
+          }
+        } else {
+          throw new Error('Failed to refresh access token');
         }
-      }
-      
-      if (!response.ok) {
+      } else if (!response.ok) {
         throw new Error(`Failed to load thumbnail: ${response.status}`);
       }
       
@@ -284,15 +291,23 @@ export function ImageSlideshow({ thumbnailIds, fileName, accountId, pdfFileId }:
     (async () => {
       const finalAccountId = await fetchAccountIdOnce();
       
+      // Ensure we have a valid token before starting (refresh if needed)
+      try {
+        const { PNOAuthService } = await import('../services/pnOAuthService');
+        await PNOAuthService.getValidAccessToken(true); // Force refresh to ensure valid token
+      } catch (err) {
+        console.warn('[ImageSlideshow] Failed to refresh token before loading:', err);
+      }
+      
       // Load first page immediately (don't await - let UI show while decrypting)
       if (thumbnailIds.length > 0 && !cancelled) {
         loadThumbnail(thumbnailIds[0], 1, finalAccountId, false).catch(() => {});
       }
       
-      // Load remaining pages sequentially
+      // Load remaining pages sequentially with delay to avoid token refresh conflicts
       for (let i = 1; i < thumbnailIds.length; i++) {
         if (cancelled) break;
-        await new Promise(resolve => setTimeout(resolve, 100));
+        await new Promise(resolve => setTimeout(resolve, 150)); // Slightly longer delay
         loadThumbnail(thumbnailIds[i], i + 1, finalAccountId, false).catch(() => {});
       }
     })();
