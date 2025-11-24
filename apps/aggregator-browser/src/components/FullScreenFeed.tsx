@@ -1268,6 +1268,9 @@ export function FullScreenFeed({
           file.fileType === 'document' // PDF document - always treat as slideshow (even if thumbnails not loaded yet)
         );
         
+        // Check if this is a PDF document (reuse pdfPageThumbnailIds from above)
+        const isPdfDoc = !isTextPost && file.fileType === 'document' && pdfPageThumbnailIds && pdfPageThumbnailIds.length > 0;
+        
         // No PDF support - only image slideshows from folders
         
         // Debug logging for ALL files to see what's happening
@@ -1280,12 +1283,8 @@ export function FullScreenFeed({
         const creatorId = (indexedFile.metadata as any).creatorId || 
                           file.creator?.identifier?.value || 
                           file.creator?.["@id"] || 
-                          file.author?.did;
+                          file.author?.did;          
 
-        // Check if this is a PDF document
-        const pdfPageThumbnailIds = indexedFile.metadata?.pdfPageThumbnailIds;
-        const isPdfDoc = !isTextPost && file.fileType === 'document' && pdfPageThumbnailIds && pdfPageThumbnailIds.length > 0;
-        
         return (
           <div
             key={fileId}
