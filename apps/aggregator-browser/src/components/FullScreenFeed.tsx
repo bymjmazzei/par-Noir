@@ -396,8 +396,9 @@ export function FullScreenFeed({
           }
         }
 
-        // Only load image if not provided externally or if external map doesn't have this file
-        if (isImage && !thumbnails.has(fileId)) {
+                // Only load image if not provided externally or if external map doesn't have this file
+                // Skip if thumbnailFileId exists (we'll load thumbnail instead)
+                if (isImage && !thumbnails.has(fileId) && !file.thumbnailFileId) {
           console.log(`[FullScreenFeed] Attempting to load image ${fileId}...`);
           // Check if external thumbnails has this file
           const hasExternalThumbnail = externalThumbnails && externalThumbnails.has(fileId);

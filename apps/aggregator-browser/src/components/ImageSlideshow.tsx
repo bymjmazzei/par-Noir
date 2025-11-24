@@ -149,21 +149,37 @@ export function ImageSlideshow({ fileId, fileName, accountId, pdfFileId }: Image
           fullSizeId: string;
         }> = [];
         
-        // Use full-size pages as the base (they always exist)
-        fullSizePages.forEach((fullSize, pageNum) => {
-          pageFiles.push({
-            id: fullSize.id, // Default to full-size ID for backward compatibility
-            name: fullSize.name,
-            pageNum,
-            thumbnailId: thumbnails.get(pageNum)?.id,
-            fullSizeId: fullSize.id
+        // Use thumbnails as the base (we now only generate thumbnails, not full-size PNGs)
+        // If we have full-size pages (legacy), use those; otherwise use thumbnails
+        if (fullSizePages.size > 0) {
+          // Legacy format: full-size pages exist
+          fullSizePages.forEach((fullSize, pageNum) => {
+            pageFiles.push({
+              id: fullSize.id,
+              name: fullSize.name,
+              pageNum,
+              thumbnailId: thumbnails.get(pageNum)?.id,
+              fullSizeId: fullSize.id
+            });
           });
-        });
+        } else {
+          // New format: only thumbnails exist (use thumbnails as both thumbnail and "fullSize" ID)
+          // When pdfFileId is available, full-size will be rendered from PDF on-demand
+          thumbnails.forEach((thumb, pageNum) => {
+            pageFiles.push({
+              id: thumb.id, // Use thumbnail ID as default
+              name: thumb.name,
+              pageNum,
+              thumbnailId: thumb.id,
+              fullSizeId: thumb.id // Use thumbnail ID as fallback (PDF rendering will override)
+            });
+          });
+        }
         
         // Sort by page number
         pageFiles.sort((a, b) => a.pageNum - b.pageNum);
         
-        console.log(`✅ [ImageSlideshow] Found ${pageFiles.length} image pages (${thumbnails.size} with thumbnails)`);
+        console.log(`✅ [ImageSlideshow] Found ${pageFiles.length} pages (${thumbnails.size} thumbnails, ${fullSizePages.size} full-size)`);
         
         if (pageFiles.length > 0) {
           setFolderPageFiles(pageFiles);
