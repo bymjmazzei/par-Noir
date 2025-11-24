@@ -403,7 +403,112 @@ export function FullScreenFeed({
           const hasExternalThumbnail = externalThumbnails && externalThumbnails.has(fileId);
           if (!hasExternalThumbnail) {
             try {
-              // If image has publicToken, use decryptWithToken (for shared/public images)
+              // PRIORITY 1: Check for thumbnailFileId in metadata (fast thumbnail ~200ms)
+              const thumbnailFileId = file.thumbnailFileId;
+              if (thumbnailFileId) {
+                console.log(`[FullScreenFeed] Loading thumbnail for ${fileId} from thumbnailFileId: ${thumbnailFileId}`);
+                const { PNOAuthService } = await import('../services/pnOAuthService');
+                const apiEndpoint = process.env.REACT_APP_API_ENDPOINT || 'https://api.parnoir.com';
+                const accessToken = await PNOAuthService.getValidAccessToken();
+                
+                if (accessToken) {
+                  // Get accountId
+                  let accountId = indexedFile.accountId || indexedFile.backendFileId;
+                  if (!accountId || !accountId.includes('::')) {
+                    try {
+                      const session = PNOAuthService.loadSession();
+                      if (session?.did || session?.pnIdentifier) {
+                        const userId = session.pnIdentifier || session.did;
+                        const accountsResponse = await fetch(`${apiEndpoint}/api/storage/accounts/${userId}`, {
+                          headers: { 'Authorization': `Bearer ${accessToken}` }
+                        });
+                        if (accountsResponse.ok) {
+                          const accountsData = await accountsResponse.json();
+                          const accounts = accountsData.accounts || [];
+                          if (accounts.length > 0) {
+                            accountId = accounts[0].accountId;
+                          }
+                        }
+                      }
+                    } catch (err) {
+                      console.warn(`[FullScreenFeed] Failed to fetch accountId for thumbnail:`, err);
+                    }
+                  }
+                  
+                  // Load thumbnail file
+                  let thumbnailUrl = `${apiEndpoint}/api/drive/files/${thumbnailFileId}?thumbnail=true`;
+                  if (accountId && accountId.includes('::')) {
+                    thumbnailUrl += `&accountId=${encodeURIComponent(accountId)}`;
+                  }
+                  
+                  let response = await fetch(thumbnailUrl, {
+                    headers: { 'Authorization': `Bearer ${accessToken}` }
+                  });
+                  
+                  if (response.status === 401) {
+                    const refreshedToken = await PNOAuthService.getValidAccessToken(true);
+                    if (refreshedToken) {
+                      response = await fetch(thumbnailUrl, {
+                        headers: { 'Authorization': `Bearer ${refreshedToken}` }
+                      });
+                    }
+                  }
+                  
+                  if (response.ok) {
+                    const contentType = response.headers.get('content-type') || '';
+                    const blob = await response.blob();
+                    
+                    // Decrypt thumbnail if encrypted
+                    let thumbnailBlob: Blob;
+                    if (contentType.includes('application/json') || contentType.includes('application/octet-stream')) {
+                      const { EncryptionManager } = await import('../utils/encryptionManager');
+                      const session = PNOAuthService.loadSession();
+                      if (session?.did) {
+                        const pnId = session.did;
+                        let publicKey = session?.publicKey;
+                        if (!publicKey && session.did.startsWith('did:key:')) {
+                          publicKey = session.did.substring(8);
+                        }
+                        if (publicKey) {
+                          const encryptedText = await blob.text();
+                          const encryptedPackage = JSON.parse(encryptedText);
+                          const encryptionManager = new EncryptionManager();
+                          const decryptedData = await encryptionManager.decrypt(
+                            encryptedPackage.encrypted,
+                            encryptedPackage.iv,
+                            encryptedPackage.salt,
+                            pnId,
+                            publicKey
+                          );
+                          thumbnailBlob = new Blob([decryptedData], {
+                            type: encryptedPackage.metadata.originalMimeType || 'image/jpeg'
+                          });
+                        } else {
+                          continue; // Skip if can't decrypt
+                        }
+                      } else {
+                        continue; // Skip if no session
+                      }
+                    } else {
+                      thumbnailBlob = blob;
+                    }
+                    
+                    const thumbnailUrlObj = URL.createObjectURL(thumbnailBlob);
+                    console.log(`✅ [FullScreenFeed] Loaded thumbnail for ${fileId} (fast)`);
+                    setThumbnails(prev => {
+                      const newMap = new Map(prev);
+                      newMap.set(fileId, thumbnailUrlObj);
+                      return newMap;
+                    });
+                    
+                    // Load full image in background (optional - user can tap to load full quality)
+                    // This is handled by the existing logic below if needed
+                    continue; // Skip to next file, thumbnail is loaded
+                  }
+                }
+              }
+              
+              // PRIORITY 2: If image has publicToken, use decryptWithToken (for shared/public images)
               if (file.publicToken) {
                 let token: ShareToken;
                 try {

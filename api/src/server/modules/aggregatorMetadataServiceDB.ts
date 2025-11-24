@@ -1564,6 +1564,7 @@ export class AggregatorMetadataServiceDB {
       subjects?: string[];
       feedCategories?: string[];
       pdfPagesFolderId?: string;
+      thumbnailFileId?: string;
     }
   ): Promise<PublicMetadata | null> {
     const db = getDatabasePool();
@@ -1619,7 +1620,9 @@ export class AggregatorMetadataServiceDB {
         ...(updates.subjects !== undefined && { subjects: updates.subjects }),
         ...(updates.feedCategories !== undefined && { feedCategories: updates.feedCategories }),
         // Update PDF pages folder ID
-        ...(updates.pdfPagesFolderId !== undefined && { pdfPagesFolderId: updates.pdfPagesFolderId })
+        ...(updates.pdfPagesFolderId !== undefined && { pdfPagesFolderId: updates.pdfPagesFolderId }),
+        // Update thumbnail file ID
+        ...(updates.thumbnailFileId !== undefined && { thumbnailFileId: updates.thumbnailFileId })
       };
 
       // Ensure keywords and tags are in sync

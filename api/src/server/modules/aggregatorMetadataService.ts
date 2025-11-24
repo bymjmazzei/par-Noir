@@ -95,6 +95,9 @@ export interface PublicMetadata {
 
   // PDF Pre-rendered Pages (for fast loading)
   pdfPagesFolderId?: string; // Folder ID containing pre-rendered PNG pages
+  
+  // Thumbnail for fast feed loading (images, videos, slideshows)
+  thumbnailFileId?: string; // File ID of encrypted thumbnail (800px width, JPEG)
 
   // Text Post / Thought Support
   textPost?: {

@@ -412,6 +412,155 @@ async function createThumbnailFromBlob(blob: Blob, maxWidth: number, maxHeight: 
   });
 }
 
+/**
+ * Generate thumbnail from video by extracting first frame
+ */
+async function createVideoThumbnail(videoFile: File, maxWidth: number, maxHeight: number): Promise<Blob> {
+  return new Promise((resolve, reject) => {
+    const video = document.createElement('video');
+    const url = URL.createObjectURL(videoFile);
+    
+    video.onloadedmetadata = () => {
+      // Seek to 1 second or first frame
+      video.currentTime = Math.min(1, video.duration / 2);
+    };
+    
+    video.onseeked = () => {
+      const canvas = document.createElement('canvas');
+      let width = video.videoWidth;
+      let height = video.videoHeight;
+      
+      // Calculate dimensions maintaining aspect ratio
+      if (width > height) {
+        if (width > maxWidth) {
+          height = (height * maxWidth) / width;
+          width = maxWidth;
+        }
+      } else {
+        if (height > maxHeight) {
+          width = (width * maxHeight) / height;
+          height = maxHeight;
+        }
+      }
+      
+      canvas.width = width;
+      canvas.height = height;
+      
+      const ctx = canvas.getContext('2d');
+      if (!ctx) {
+        URL.revokeObjectURL(url);
+        reject(new Error('Failed to get canvas context'));
+        return;
+      }
+      
+      ctx.drawImage(video, 0, 0, width, height);
+      
+      canvas.toBlob((thumbnailBlob) => {
+        URL.revokeObjectURL(url);
+        if (thumbnailBlob) {
+          resolve(thumbnailBlob);
+        } else {
+          reject(new Error('Failed to create video thumbnail blob'));
+        }
+      }, 'image/jpeg', 0.8);
+    };
+    
+    video.onerror = () => {
+      URL.revokeObjectURL(url);
+      reject(new Error('Failed to load video for thumbnail'));
+    };
+    
+    video.preload = 'metadata';
+    video.muted = true;
+    video.playsInline = true;
+    video.src = url;
+  });
+}
+
+/**
+ * Upload encrypted thumbnail file
+ */
+async function uploadThumbnail(
+  thumbnailBlob: Blob,
+  originalFileName: string,
+  encryptionManager: EncryptionManager,
+  session: any,
+  publicKey: string,
+  accessToken: string,
+  accountId: string
+): Promise<string | undefined> {
+  try {
+    console.log('🖼️ [Upload] Generating thumbnail...');
+    
+    // Encrypt thumbnail
+    const thumbnailArrayBuffer = await thumbnailBlob.arrayBuffer();
+    const thumbnailData = new Uint8Array(thumbnailArrayBuffer);
+    const encryptedThumbnail = await encryptionManager.encrypt(
+      thumbnailData,
+      session.did,
+      publicKey
+    );
+    
+    // Create encrypted thumbnail package
+    const thumbnailPackage: EncryptedFilePackage = {
+      encrypted: encryptedThumbnail.encrypted,
+      iv: encryptedThumbnail.iv,
+      salt: encryptedThumbnail.salt,
+      metadata: {
+        originalName: `thumb_${originalFileName}`,
+        originalSize: thumbnailBlob.size,
+        originalMimeType: 'image/jpeg', // Thumbnails are always JPEG
+      },
+    };
+    
+    // Convert to base64
+    const thumbnailBlobJson = new Blob([JSON.stringify(thumbnailPackage)], {
+      type: 'application/json',
+    });
+    
+    const thumbnailBase64 = await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const result = reader.result as string;
+        resolve(result.includes(',') ? result.split(',')[1] : result);
+      };
+      reader.onerror = () => reject(new Error('Failed to read thumbnail'));
+      reader.readAsDataURL(thumbnailBlobJson);
+    });
+    
+    // Upload encrypted thumbnail
+    const thumbnailFileName = `thumb_${originalFileName}.encrypted`;
+    const thumbnailResponse = await fetch(`${apiEndpoint}/api/drive/files`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${accessToken}`
+      },
+      body: JSON.stringify({
+        fileData: thumbnailBase64,
+        fileName: thumbnailFileName,
+        mimeType: 'application/json',
+        accountId: accountId
+      })
+    });
+    
+    if (thumbnailResponse.ok) {
+      const thumbnailResult = await thumbnailResponse.json();
+      const thumbnailFileId = thumbnailResult.file?.id;
+      if (thumbnailFileId) {
+        console.log('✅ [Upload] Thumbnail uploaded:', thumbnailFileId);
+        return thumbnailFileId;
+      }
+    }
+    
+    console.warn('⚠️ [Upload] Thumbnail upload failed, continuing without thumbnail');
+    return undefined;
+  } catch (error: any) {
+    console.error('❌ [Upload] Thumbnail generation/upload failed:', error);
+    return undefined;
+  }
+}
+
   if (error || !thumbnailUrl) {
     return (
       <div className="w-full h-full flex items-center justify-center">
@@ -2121,6 +2270,67 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
         }
       }
 
+      // Generate thumbnail for slideshow (from first PDF page)
+      let thumbnailFileId: string | undefined = undefined;
+      if (isPDF && pdfPagesFolderId) {
+        try {
+          // Get the first page canvas that was already rendered
+          // We need to re-render page 1 at thumbnail size
+          const pdfjsLib = await import('pdfjs-dist');
+          if (!pdfjsLib.GlobalWorkerOptions.workerSrc) {
+            pdfjsLib.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs';
+          }
+          
+          const arrayBuffer = await file.arrayBuffer();
+          const uint8Array = new Uint8Array(arrayBuffer);
+          const loadingTask = pdfjsLib.getDocument({ data: uint8Array });
+          const pdf = await loadingTask.promise;
+          
+          // Render first page at thumbnail size (800px max width)
+          const page = await pdf.getPage(1);
+          const viewport = page.getViewport({ scale: 1.0 });
+          const scale = Math.min(800 / viewport.width, 800 / viewport.height);
+          const thumbnailViewport = page.getViewport({ scale });
+          
+          const canvas = document.createElement('canvas');
+          const context = canvas.getContext('2d');
+          if (context) {
+            canvas.width = thumbnailViewport.width;
+            canvas.height = thumbnailViewport.height;
+            
+            await page.render({
+              canvasContext: context,
+              viewport: thumbnailViewport
+            }).promise;
+            
+            // Convert to JPEG blob
+            const thumbnailBlob = await new Promise<Blob>((resolve, reject) => {
+              canvas.toBlob((blob) => {
+                if (blob) resolve(blob);
+                else reject(new Error('Failed to convert canvas to blob'));
+              }, 'image/jpeg', 0.8);
+            });
+            
+            // Upload thumbnail
+            const freshToken = await PNOAuthService.getValidAccessToken();
+            if (freshToken) {
+              thumbnailFileId = await uploadThumbnail(
+                thumbnailBlob,
+                file.name.replace(/\.pdf$/i, ''),
+                encryptionManager,
+                session,
+                publicKey,
+                freshToken,
+                accountId
+              );
+            }
+          }
+        } catch (thumbError: any) {
+          console.warn('⚠️ [Upload] Slideshow thumbnail generation failed:', thumbError);
+          // Don't fail upload if thumbnail fails
+        }
+      }
+      
       // If PDF was successfully converted to PNG pages in a folder, skip uploading the original PDF
       // The folder with PNG pages IS the slideshow, we don't need the original PDF file
       let fileId: string | undefined = undefined;
@@ -2146,6 +2356,38 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
         freshAccessToken = await PNOAuthService.getValidAccessToken();
         if (!freshAccessToken) {
           throw new Error('No valid access token available for upload');
+        }
+
+        // Generate thumbnail for images and videos BEFORE encryption
+        const isImage = file.type.startsWith('image/');
+        const isVideo = file.type.startsWith('video/');
+        
+        if ((isImage || isVideo) && !thumbnailFileId) {
+          try {
+            let thumbnailBlob: Blob;
+            
+            if (isImage) {
+              // Generate thumbnail from image
+              thumbnailBlob = await createThumbnailFromBlob(file, 800, 800);
+            } else {
+              // Generate thumbnail from video (extract first frame)
+              thumbnailBlob = await createVideoThumbnail(file, 800, 800);
+            }
+            
+            // Upload thumbnail
+            thumbnailFileId = await uploadThumbnail(
+              thumbnailBlob,
+              file.name,
+              encryptionManager,
+              session,
+              publicKey,
+              freshAccessToken,
+              accountId
+            );
+          } catch (thumbError: any) {
+            console.warn('⚠️ [Upload] Thumbnail generation failed:', thumbError);
+            // Don't fail upload if thumbnail fails
+          }
         }
 
       // Encrypt file using the same standard as dashboard
@@ -2276,6 +2518,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
             uploadDate: new Date().toISOString(),
             isNSFW: false, // Default to public content
             pdfPagesFolderId: pdfPagesFolderId, // Store PDF pages folder ID for slideshow (same as fileId for folders)
+            thumbnailFileId: thumbnailFileId, // Store thumbnail file ID for fast feed loading
             // Include accountId in query params if needed
           }),
         });
