@@ -214,6 +214,7 @@ export function FullScreenFeed({
   });
 
   // Load PDF page thumbnail on-demand
+  // SECURITY FIX: Allow loading public thumbnails even when locked (no auth required for public files)
   const loadPdfPageThumbnail = async (
     fileId: string,
     thumbnailId: string,
@@ -224,12 +225,12 @@ export function FullScreenFeed({
       const { PNOAuthService } = await import('../services/pnOAuthService');
       const apiEndpoint = process.env.REACT_APP_API_ENDPOINT || 'https://api.parnoir.com';
       const accessToken = await PNOAuthService.getValidAccessToken();
+      const file = indexedFile.metadata;
+      const isPublic = file?.isPublic !== false || !!file?.publicToken; // Public if explicitly public or has publicToken
       
-      if (!accessToken) return;
-      
-      // Get accountId
+      // Get accountId (only needed if authenticated and file is not public)
       let accountId = indexedFile.accountId || indexedFile.backendFileId;
-      if (!accountId || !accountId.includes('::')) {
+      if (accessToken && (!isPublic || !accountId || !accountId.includes('::'))) {
         try {
           const session = PNOAuthService.loadSession();
           if (session?.did || session?.pnIdentifier) {
@@ -250,22 +251,39 @@ export function FullScreenFeed({
         }
       }
       
-      // Load thumbnail
+      // Load thumbnail (try with auth if available, fallback to public access)
       let thumbnailUrl = `${apiEndpoint}/api/drive/files/${thumbnailId}?thumbnail=true`;
       if (accountId && accountId.includes('::')) {
         thumbnailUrl += `&accountId=${encodeURIComponent(accountId)}`;
       }
       
-      let response = await fetch(thumbnailUrl, {
-        headers: { 'Authorization': `Bearer ${accessToken}` }
-      });
-      
-      if (response.status === 401) {
-        const refreshedToken = await PNOAuthService.getValidAccessToken(true);
-        if (refreshedToken) {
-          response = await fetch(thumbnailUrl, {
-            headers: { 'Authorization': `Bearer ${refreshedToken}` }
-          });
+      let response: Response;
+      if (accessToken) {
+        response = await fetch(thumbnailUrl, {
+          headers: { 'Authorization': `Bearer ${accessToken}` }
+        });
+        
+        if (response.status === 401) {
+          const refreshedToken = await PNOAuthService.getValidAccessToken(true);
+          if (refreshedToken) {
+            response = await fetch(thumbnailUrl, {
+              headers: { 'Authorization': `Bearer ${refreshedToken}` }
+            });
+          } else {
+            // If refresh failed and file is public, try without auth
+            if (isPublic) {
+              response = await fetch(thumbnailUrl);
+            } else {
+              return; // Can't access private file without auth
+            }
+          }
+        }
+      } else {
+        // No auth token - try public access
+        if (isPublic) {
+          response = await fetch(thumbnailUrl);
+        } else {
+          return; // Can't access private file without auth
         }
       }
       
@@ -273,38 +291,48 @@ export function FullScreenFeed({
         const contentType = response.headers.get('content-type') || '';
         const blob = await response.blob();
         
-        // Decrypt if encrypted
+        // Decrypt if encrypted (only if authenticated)
         let thumbnailBlob: Blob;
         if (contentType.includes('application/json') || contentType.includes('application/octet-stream')) {
-          const { EncryptionManager } = await import('../utils/encryptionManager');
-          const session = PNOAuthService.loadSession();
-          if (session?.did) {
-            const pnId = session.did;
-            let publicKey = session?.publicKey;
-            if (!publicKey && session.did.startsWith('did:key:')) {
-              publicKey = session.did.substring(8);
-            }
-            if (publicKey) {
-              const encryptedText = await blob.text();
-              const encryptedPackage = JSON.parse(encryptedText);
-              const encryptionManager = new EncryptionManager();
-              const decryptedData = await encryptionManager.decrypt(
-                encryptedPackage.encrypted,
-                encryptedPackage.iv,
-                encryptedPackage.salt,
-                pnId,
-                publicKey
-              );
-              thumbnailBlob = new Blob([decryptedData], {
-                type: encryptedPackage.metadata?.originalMimeType || 'image/jpeg'
-              });
+          if (accessToken) {
+            // Only decrypt if we have auth (encrypted files require auth)
+            const { EncryptionManager } = await import('../utils/encryptionManager');
+            const session = PNOAuthService.loadSession();
+            if (session?.did) {
+              const pnId = session.did;
+              let publicKey = session?.publicKey;
+              if (!publicKey && session.did.startsWith('did:key:')) {
+                publicKey = session.did.substring(8);
+              }
+              if (publicKey) {
+                const encryptedText = await blob.text();
+                const encryptedPackage = JSON.parse(encryptedText);
+                const encryptionManager = new EncryptionManager();
+                const decryptedData = await encryptionManager.decrypt(
+                  encryptedPackage.encrypted,
+                  encryptedPackage.iv,
+                  encryptedPackage.salt,
+                  pnId,
+                  publicKey
+                );
+                thumbnailBlob = new Blob([decryptedData], {
+                  type: encryptedPackage.metadata?.originalMimeType || 'image/jpeg'
+                });
+              } else {
+                console.warn(`[FullScreenFeed] Cannot decrypt PDF page thumbnail - no public key`);
+                return; // Skip if can't decrypt
+              }
             } else {
-              return;
+              console.warn(`[FullScreenFeed] Cannot decrypt PDF page thumbnail - no session`);
+              return; // Skip if no session
             }
           } else {
+            // Encrypted file but no auth - skip (can't decrypt)
+            console.warn(`[FullScreenFeed] PDF page thumbnail is encrypted but user is locked - skipping`);
             return;
           }
         } else {
+          // Not encrypted - use blob directly
           thumbnailBlob = blob;
         }
         
@@ -891,6 +919,7 @@ export function FullScreenFeed({
         }
 
         // Load PDF document FIRST thumbnail (EXACT same pattern as images - loads immediately)
+        // SECURITY FIX: Allow loading public thumbnails even when locked (no auth required for public files)
         if (isPdfDocument && pdfPageThumbnailIds && pdfPageThumbnailIds.length > 0 && !thumbnails.has(fileId)) {
           const firstThumbnailId = pdfPageThumbnailIds[0];
           console.log(`[FullScreenFeed] Loading FIRST PDF thumbnail for ${fileId} from page thumbnail: ${firstThumbnailId}`);
@@ -899,38 +928,41 @@ export function FullScreenFeed({
             const { PNOAuthService } = await import('../services/pnOAuthService');
             const apiEndpoint = process.env.REACT_APP_API_ENDPOINT || 'https://api.parnoir.com';
             const accessToken = await PNOAuthService.getValidAccessToken();
+            const isPublic = file.isPublic !== false || !!file.publicToken; // Public if explicitly public or has publicToken
             
-            if (accessToken) {
-              // Get accountId (same pattern as images)
-              let accountId = indexedFile.accountId || indexedFile.backendFileId;
-              if (!accountId || !accountId.includes('::')) {
-                try {
-                  const session = PNOAuthService.loadSession();
-                  if (session?.did || session?.pnIdentifier) {
-                    const userId = session.pnIdentifier || session.did;
-                    const accountsResponse = await fetch(`${apiEndpoint}/api/storage/accounts/${userId}`, {
-                      headers: { 'Authorization': `Bearer ${accessToken}` }
-                    });
-                    if (accountsResponse.ok) {
-                      const accountsData = await accountsResponse.json();
-                      const accounts = accountsData.accounts || [];
-                      if (accounts.length > 0) {
-                        accountId = accounts[0].accountId;
-                      }
+            // Get accountId (only needed if authenticated and file is not public)
+            let accountId = indexedFile.accountId || indexedFile.backendFileId;
+            if (accessToken && (!isPublic || !accountId || !accountId.includes('::'))) {
+              try {
+                const session = PNOAuthService.loadSession();
+                if (session?.did || session?.pnIdentifier) {
+                  const userId = session.pnIdentifier || session.did;
+                  const accountsResponse = await fetch(`${apiEndpoint}/api/storage/accounts/${userId}`, {
+                    headers: { 'Authorization': `Bearer ${accessToken}` }
+                  });
+                  if (accountsResponse.ok) {
+                    const accountsData = await accountsResponse.json();
+                    const accounts = accountsData.accounts || [];
+                    if (accounts.length > 0) {
+                      accountId = accounts[0].accountId;
                     }
                   }
-                } catch (err) {
-                  console.warn(`[FullScreenFeed] Failed to fetch accountId for PDF thumbnail:`, err);
                 }
+              } catch (err) {
+                console.warn(`[FullScreenFeed] Failed to fetch accountId for PDF thumbnail:`, err);
               }
-              
-              // Load FIRST thumbnail (EXACT same pattern as images)
-              let thumbnailUrl = `${apiEndpoint}/api/drive/files/${firstThumbnailId}?thumbnail=true`;
-              if (accountId && accountId.includes('::')) {
-                thumbnailUrl += `&accountId=${encodeURIComponent(accountId)}`;
-              }
-              
-              let response = await fetch(thumbnailUrl, {
+            }
+            
+            // Load FIRST thumbnail (try with auth if available, fallback to public access)
+            let thumbnailUrl = `${apiEndpoint}/api/drive/files/${firstThumbnailId}?thumbnail=true`;
+            if (accountId && accountId.includes('::')) {
+              thumbnailUrl += `&accountId=${encodeURIComponent(accountId)}`;
+            }
+            
+            // Try with auth token if available, otherwise try without (for public files)
+            let response: Response;
+            if (accessToken) {
+              response = await fetch(thumbnailUrl, {
                 headers: { 'Authorization': `Bearer ${accessToken}` }
               });
               
@@ -940,16 +972,27 @@ export function FullScreenFeed({
                   response = await fetch(thumbnailUrl, {
                     headers: { 'Authorization': `Bearer ${refreshedToken}` }
                   });
+                } else {
+                  // If refresh failed and file is public, try without auth
+                  if (isPublic) {
+                    response = await fetch(thumbnailUrl);
+                  }
                 }
               }
+            } else {
+              // No auth token - try public access
+              response = await fetch(thumbnailUrl);
+            }
               
-              if (response.ok) {
-                const contentType = response.headers.get('content-type') || '';
-                const blob = await response.blob();
-                
-                // Decrypt thumbnail if encrypted (EXACT same pattern as images)
-                let thumbnailBlob: Blob;
-                if (contentType.includes('application/json') || contentType.includes('application/octet-stream')) {
+            if (response.ok) {
+              const contentType = response.headers.get('content-type') || '';
+              const blob = await response.blob();
+              
+              // Decrypt thumbnail if encrypted (only if authenticated)
+              let thumbnailBlob: Blob;
+              if (contentType.includes('application/json') || contentType.includes('application/octet-stream')) {
+                if (accessToken) {
+                  // Only decrypt if we have auth (encrypted files require auth)
                   const { EncryptionManager } = await import('../utils/encryptionManager');
                   const session = PNOAuthService.loadSession();
                   if (session?.did) {
@@ -973,44 +1016,51 @@ export function FullScreenFeed({
                         type: encryptedPackage.metadata?.originalMimeType || 'image/jpeg'
                       });
                     } else {
-                      continue; // Skip if can't decrypt
+                      console.warn(`[FullScreenFeed] Cannot decrypt PDF thumbnail - no public key`);
+                      return; // Skip if can't decrypt
                     }
                   } else {
-                    continue; // Skip if no session
+                    console.warn(`[FullScreenFeed] Cannot decrypt PDF thumbnail - no session`);
+                    return; // Skip if no session
                   }
                 } else {
-                  thumbnailBlob = blob;
+                  // Encrypted file but no auth - skip (can't decrypt)
+                  console.warn(`[FullScreenFeed] PDF thumbnail is encrypted but user is locked - skipping`);
+                  return;
                 }
-                
-                // Store FIRST thumbnail in thumbnails Map (so it displays immediately like any image)
-                const thumbnailUrlObj = URL.createObjectURL(thumbnailBlob);
-                console.log(`✅ [FullScreenFeed] Loaded FIRST PDF thumbnail for ${fileId} (page 1 of ${pdfPageThumbnailIds.length})`);
-                setThumbnails(prev => {
-                  const newMap = new Map(prev);
-                  newMap.set(fileId, thumbnailUrlObj);
-                  return newMap;
-                });
-                
-                // Initialize PDF page state
-                setPdfCurrentPage(prev => {
-                  const newMap = new Map(prev);
-                  if (!newMap.has(fileId)) {
-                    newMap.set(fileId, 0); // Start at page 0 (first page)
-                  }
-                  return newMap;
-                });
-                
-                // Store first thumbnail in PDF pages map too
-                setPdfPageThumbnails(prev => {
-                  const newMap = new Map(prev);
-                  if (!newMap.has(fileId)) {
-                    newMap.set(fileId, new Map());
-                  }
-                  const pageMap = newMap.get(fileId)!;
-                  pageMap.set(0, thumbnailUrlObj);
-                  return newMap;
-                });
+              } else {
+                // Not encrypted - use blob directly
+                thumbnailBlob = blob;
               }
+              
+              // Store FIRST thumbnail in thumbnails Map (so it displays immediately like any image)
+              const thumbnailUrlObj = URL.createObjectURL(thumbnailBlob);
+              console.log(`✅ [FullScreenFeed] Loaded FIRST PDF thumbnail for ${fileId} (page 1 of ${pdfPageThumbnailIds.length})`);
+              setThumbnails(prev => {
+                const newMap = new Map(prev);
+                newMap.set(fileId, thumbnailUrlObj);
+                return newMap;
+              });
+              
+              // Initialize PDF page state
+              setPdfCurrentPage(prev => {
+                const newMap = new Map(prev);
+                if (!newMap.has(fileId)) {
+                  newMap.set(fileId, 0); // Start at page 0 (first page)
+                }
+                return newMap;
+              });
+              
+              // Store first thumbnail in PDF pages map too
+              setPdfPageThumbnails(prev => {
+                const newMap = new Map(prev);
+                if (!newMap.has(fileId)) {
+                  newMap.set(fileId, new Map());
+                }
+                const pageMap = newMap.get(fileId)!;
+                pageMap.set(0, thumbnailUrlObj);
+                return newMap;
+              });
             }
           } catch (err) {
             console.error(`[FullScreenFeed] Failed to load PDF thumbnail for ${fileId}:`, err);
