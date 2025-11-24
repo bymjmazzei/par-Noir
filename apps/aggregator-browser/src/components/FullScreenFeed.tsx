@@ -1424,11 +1424,6 @@ export function FullScreenFeed({
           (file.name || file.title || '').match(/\.(jpg|jpeg|png|gif|webp|svg|bmp|ico)$/i)
         );
         
-        // CRITICAL: If it's a thought, force all other types to false to prevent flickering
-        // This ensures only ONE content type renders at a time
-        const isVideoFinal = isTextPost ? false : isVideo;
-        const isImageFinal = isTextPost ? false : isImage;
-        const isPdfDocFinal = isTextPost ? false : isPdfDoc;
         // Check if this is an image slideshow folder (folder ending with "-pages")
         // PDF slideshow detection: check for pdfPageThumbnailIds array (thumbnails loaded directly, no folder listing)
         // Check metadata immediately - don't wait for async operations
@@ -1443,6 +1438,13 @@ export function FullScreenFeed({
         
         // Check if this is a PDF document (reuse pdfPageThumbnailIds from above)
         const isPdfDoc = !isTextPost && file.fileType === 'document' && pdfPageThumbnailIds && pdfPageThumbnailIds.length > 0;
+        
+        // CRITICAL: If it's a thought, force all other types to false to prevent flickering
+        // This ensures only ONE content type renders at a time
+        // Must be declared AFTER isVideo, isImage, and isPdfDoc are declared
+        const isVideoFinal = isTextPost ? false : isVideo;
+        const isImageFinal = isTextPost ? false : isImage;
+        const isPdfDocFinal = isTextPost ? false : isPdfDoc;
         
         // No PDF support - only image slideshows from folders
         
