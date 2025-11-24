@@ -129,19 +129,31 @@ export function FullScreenFeed({
     onSwipeLeft: () => {
       console.log('[FullScreenFeed] PDF swipe LEFT detected');
       const currentFile = files[currentIndex];
-      if (!currentFile) return;
+      if (!currentFile) {
+        console.log('[FullScreenFeed] No current file');
+        return;
+      }
       const fileId = currentFile.metadata.fileId;
       const pdfPageThumbnailIds = currentFile.metadata?.pdfPageThumbnailIds;
       const isPdfDoc = currentFile.metadata.fileType === 'document' && pdfPageThumbnailIds && pdfPageThumbnailIds.length > 0;
       
+      console.log('[FullScreenFeed] Swipe check:', { 
+        isPdfDoc, 
+        visibleFileId, 
+        fileId, 
+        matches: visibleFileId === fileId,
+        pdfPageThumbnailIds: pdfPageThumbnailIds?.length 
+      });
+      
       // Only handle swipe if this is a PDF and it's visible
       if (!isPdfDoc || visibleFileId !== fileId) {
-        console.log('[FullScreenFeed] Swipe ignored - not PDF or not visible', { isPdfDoc, visibleFileId, fileId });
+        console.log('[FullScreenFeed] Swipe ignored - not PDF or not visible');
         return;
       }
       
       const currentPage = pdfCurrentPage.get(fileId) || 0;
-      console.log(`[FullScreenFeed] Navigating to next page: ${currentPage + 1} -> ${currentPage + 2}`);
+      const totalPages = pdfPageThumbnailIds.length;
+      console.log(`[FullScreenFeed] Navigating to next page: ${currentPage + 1} -> ${currentPage + 2} of ${totalPages}`);
       
       if (pdfPageThumbnailIds && currentPage < pdfPageThumbnailIds.length - 1) {
         const nextPageIndex = currentPage + 1;
@@ -181,19 +193,31 @@ export function FullScreenFeed({
     onSwipeRight: () => {
       console.log('[FullScreenFeed] PDF swipe RIGHT detected');
       const currentFile = files[currentIndex];
-      if (!currentFile) return;
+      if (!currentFile) {
+        console.log('[FullScreenFeed] No current file');
+        return;
+      }
       const fileId = currentFile.metadata.fileId;
       const pdfPageThumbnailIds = currentFile.metadata?.pdfPageThumbnailIds;
       const isPdfDoc = currentFile.metadata.fileType === 'document' && pdfPageThumbnailIds && pdfPageThumbnailIds.length > 0;
       
+      console.log('[FullScreenFeed] Swipe check:', { 
+        isPdfDoc, 
+        visibleFileId, 
+        fileId, 
+        matches: visibleFileId === fileId,
+        pdfPageThumbnailIds: pdfPageThumbnailIds?.length 
+      });
+      
       // Only handle swipe if this is a PDF and it's visible
       if (!isPdfDoc || visibleFileId !== fileId) {
-        console.log('[FullScreenFeed] Swipe ignored - not PDF or not visible', { isPdfDoc, visibleFileId, fileId });
+        console.log('[FullScreenFeed] Swipe ignored - not PDF or not visible');
         return;
       }
       
       const currentPage = pdfCurrentPage.get(fileId) || 0;
-      console.log(`[FullScreenFeed] Navigating to previous page: ${currentPage + 1} -> ${currentPage}`);
+      const totalPages = pdfPageThumbnailIds.length;
+      console.log(`[FullScreenFeed] Navigating to previous page: ${currentPage + 1} -> ${currentPage} of ${totalPages}`);
       
       if (pdfPageThumbnailIds && currentPage > 0) {
         const prevPageIndex = currentPage - 1;
@@ -1577,10 +1601,14 @@ export function FullScreenFeed({
                 )
               };
               
+              // Only attach swipe ref if this PDF is currently visible
+              const isVisiblePdf = visibleFileId === fileId;
+              
               return (
                 <div
-                  ref={pdfHorizontalSwipeRef}
+                  ref={isVisiblePdf ? pdfHorizontalSwipeRef : undefined}
                   className="w-full h-full relative"
+                  style={{ touchAction: 'pan-y' }} // Allow vertical scrolling but enable horizontal swipe
                 >
                   {/* Blurred background PDF page */}
                   <img
@@ -1597,29 +1625,42 @@ export function FullScreenFeed({
                   
                   {/* Page indicator dots - only show if more than 1 page */}
                   {totalPages > 1 && (
-                    <div className="absolute bottom-6 left-1/2 transform -translate-x-1/2 z-20 flex items-center gap-2">
+                    <div 
+                      className="absolute bottom-6 left-1/2 transform -translate-x-1/2 z-50 flex items-center gap-2"
+                      style={{ pointerEvents: 'auto' }}
+                      onClick={(e) => e.stopPropagation()}
+                    >
                       {Array.from({ length: totalPages }, (_, index) => (
                         <button
                           key={index}
+                          type="button"
                           onClick={(e) => {
                             e.stopPropagation();
                             e.preventDefault();
-                            console.log(`[FullScreenFeed] Dot clicked: page ${index + 1} of ${totalPages}`);
+                            console.log(`[FullScreenFeed] Dot clicked: page ${index + 1} of ${totalPages} for file ${fileId}`);
+                            console.log(`[FullScreenFeed] Current page before: ${currentPage}, target: ${index}`);
+                            
+                            // Update page state
                             setPdfCurrentPage(prev => {
                               const newMap = new Map(prev);
                               newMap.set(fileId, index);
+                              console.log(`[FullScreenFeed] Updated pdfCurrentPage state for ${fileId} to ${index}`);
                               return newMap;
                             });
+                            
                             // Update thumbnail immediately if already loaded
                             const pageThumbnails = pdfPageThumbnails.get(fileId);
                             if (pageThumbnails?.has(index)) {
+                              const thumbnailUrl = pageThumbnails.get(index)!;
+                              console.log(`[FullScreenFeed] Updating thumbnail immediately from cache`);
                               setThumbnails(prev => {
                                 const newMap = new Map(prev);
-                                newMap.set(fileId, pageThumbnails.get(index)!);
+                                newMap.set(fileId, thumbnailUrl);
                                 return newMap;
                               });
                             } else {
                               // Load page thumbnail if not loaded
+                              console.log(`[FullScreenFeed] Loading thumbnail for page ${index + 1}`);
                               const thumbnailId = pdfPageThumbnailIds[index];
                               loadPdfPageThumbnail(fileId, thumbnailId, index, indexedFile).then(() => {
                                 const updatedPageThumbnails = pdfPageThumbnails.get(fileId);
@@ -1630,14 +1671,17 @@ export function FullScreenFeed({
                                     return newMap;
                                   });
                                 }
-                              }).catch(() => {});
+                              }).catch((err) => {
+                                console.error(`[FullScreenFeed] Failed to load thumbnail for page ${index + 1}:`, err);
+                              });
                             }
                           }}
-                          className={`transition-all duration-200 rounded-full ${
+                          className={`transition-all duration-200 rounded-full cursor-pointer ${
                             currentPage === index
                               ? 'w-2.5 h-2.5 bg-white'
                               : 'w-2 h-2 bg-white/40 hover:bg-white/60'
                           }`}
+                          style={{ pointerEvents: 'auto', zIndex: 100 }}
                           aria-label={`Go to page ${index + 1}`}
                         />
                       ))}
