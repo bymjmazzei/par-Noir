@@ -1352,7 +1352,7 @@ export function FullScreenFeed({
                                indexedFile.metadata?.fileType === 'thought';
         
         // Check for thought filename pattern BEFORE determining isTextPost
-        // This ensures thoughts are detected consistently
+        // This ensures thoughts are detected consistently and prevents flickering
         const isThoughtFile = (file.name && (/^thought-\d+\.thought/i.test(file.name) || /^thought-\d+\.png/i.test(file.name))) ||
                               (file.title && (/^thought-\d+\.thought/i.test(file.title) || /^thought-\d+\.png/i.test(file.title)));
         
