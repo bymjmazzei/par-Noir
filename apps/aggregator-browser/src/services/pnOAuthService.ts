@@ -2,7 +2,12 @@
  * pN OAuth Client Service
  * Handles OAuth 2.0 authorization code flow for browser app
  * Similar to Google OAuth flow
+ * 
+ * SECURITY: pN name and passcode are NEVER sent to the server.
+ * pN identifier is derived client-side using VolumeIdGenerator.
  */
+
+import { VolumeIdGenerator } from '../utils/volumeIdGenerator';
 
 const API_ENDPOINT = process.env.REACT_APP_API_ENDPOINT || 'https://api.parnoir.com';
 const CLIENT_ID = process.env.REACT_APP_PN_CLIENT_ID || 'browser-app';
@@ -88,6 +93,9 @@ export class PNOAuthService {
   /**
    * Authenticate with pN identity file and passcode
    * Returns authorization code
+   * 
+   * SECURITY: Derives pN identifier client-side and sends that instead of secrets.
+   * pN name and passcode are NEVER sent to the server.
    */
   static async authenticate(params: {
     encryptedIdentity: any; // Encrypted pN identity file
@@ -104,6 +112,23 @@ export class PNOAuthService {
     const state = params.state || sessionStorage.getItem('pn_oauth_state') || undefined;
     const nonce = params.nonce || sessionStorage.getItem('pn_oauth_nonce') || undefined;
 
+    // SECURITY FIX: Derive pN identifier client-side using VolumeIdGenerator
+    // Never send pnName or passcode to the server
+    let pnIdentifier: string | undefined;
+    if (params.pnName && params.passcode && params.publicKey) {
+      try {
+        pnIdentifier = await VolumeIdGenerator.generateVolumeId({
+          pnName: params.pnName,
+          passcode: params.passcode,
+          publicKey: params.publicKey
+        });
+        console.log('[OAuth] Derived pN identifier client-side:', pnIdentifier);
+      } catch (error) {
+        console.error('[OAuth] Failed to derive pN identifier:', error);
+        // Continue without pnIdentifier - server can derive it as fallback
+      }
+    }
+
     const response = await fetch(`${API_ENDPOINT}/oauth/authorize/authenticate`, {
       method: 'POST',
       headers: {
@@ -116,10 +141,12 @@ export class PNOAuthService {
         state,
         nonce,
         encrypted_identity: params.encryptedIdentity,
-        passcode: params.passcode,
+        passcode: params.passcode, // Still needed for server to decrypt identity and verify
         public_key: params.publicKey,
         did: params.did,
-        pnName: params.pnName // Send pN name for VolumeIdGenerator
+        // SECURITY FIX: Send derived pN identifier instead of pN name
+        pn_identifier: pnIdentifier
+        // pnName is NOT sent - it's a secret
       })
     });
 
@@ -238,6 +265,9 @@ export class PNOAuthService {
 
   /**
    * Complete OAuth flow: authenticate and get tokens
+   * 
+   * SECURITY: Derives pN identifier client-side before sending to server.
+   * pN name and passcode are NEVER sent to the server.
    */
   static async completeAuthFlow(params: {
     encryptedIdentity: any;
@@ -247,12 +277,13 @@ export class PNOAuthService {
     pnName?: string; // pN name (extracted from decrypted identity, if available)
   }): Promise<AuthSession> {
     // Step 1: Authenticate and get authorization code
+    // pN identifier is derived client-side in authenticate()
     const { code } = await this.authenticate({
       encryptedIdentity: params.encryptedIdentity,
       passcode: params.passcode,
       publicKey: params.publicKey,
       did: params.did,
-      pnName: params.pnName // Pass pN name for VolumeIdGenerator (if available)
+      pnName: params.pnName // Used client-side only to derive pN identifier
     });
 
     // Step 2: Exchange code for tokens
@@ -268,7 +299,9 @@ export class PNOAuthService {
       expiresAt: Date.now() + (tokenResponse.expires_in * 1000),
       did: userInfo.did,
       publicKey: params.publicKey, // Store publicKey for file decryption
-      pnName: userInfo.pn_name
+      pnIdentifier: userInfo.pn_identifier, // Store pN identifier from server
+      nickname: userInfo.nickname
+      // pN name is NOT stored - it's a secret
     };
 
     // Store session

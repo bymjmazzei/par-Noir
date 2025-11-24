@@ -5664,21 +5664,34 @@ class ProductionServer {
         console.log('  Full PublicKey:', public_key);
         console.log('  PublicKey length:', public_key.length);
 
-        // Extract pnName from request (client should send it after decrypting identity)
-        const pnName = req.body.pnName || req.body.pn_name;
-
-        // Derive pN identifier to check for existing permissions
-        let existingPermissions = null;
-        if (pnName && passcode && public_key && client_id === 'browser-app') {
+        // SECURITY FIX: Client now sends pn_identifier directly (derived client-side)
+        // Fallback to derivation for backward compatibility if not provided
+        let pnIdentifier: string | undefined = req.body.pn_identifier;
+        const pnName = req.body.pnName || req.body.pn_name; // Only used for fallback derivation
+        
+        // Fallback: Derive pN identifier server-side if client didn't provide it (backward compatibility)
+        if (!pnIdentifier && pnName && passcode && public_key) {
           try {
             // STANDARDIZED: Derive pN identifier using VolumeIdGenerator formula
             // Formula: SHA256(pnName:passcode:publicKey) → first 12 hex chars → pn-{hash}
-            const combined = `${pnName}:${passcode}:${public_key}`;
             const crypto = await import('crypto');
+            const combined = `${pnName}:${passcode}:${public_key}`;
             const utf8Bytes = Buffer.from(combined, 'utf8');
             const hash = crypto.createHash('sha256').update(utf8Bytes).digest('hex');
             const shortHash = hash.substring(0, 12);
-            const pnIdentifier = `pn-${shortHash}`;
+            pnIdentifier = `pn-${shortHash}`;
+            console.log('[OAuth Auth] Derived pN identifier server-side (fallback):', pnIdentifier);
+          } catch (error) {
+            console.error('[OAuth Auth] Failed to derive pN identifier:', error);
+          }
+        } else if (pnIdentifier) {
+          console.log('[OAuth Auth] Using pN identifier from client:', pnIdentifier);
+        }
+
+        // Derive pN identifier to check for existing permissions
+        let existingPermissions = null;
+        if (pnIdentifier && client_id === 'browser-app') {
+          try {
 
             // Check for existing permissions
             const { googleDriveProxyService } = await import('./server/modules/googleDriveProxy');
@@ -5754,15 +5767,9 @@ class ProductionServer {
         let hasAgeZKP = false;
         let availableOptionalDataPoints: string[] = [];
         
-        if (client_id === 'browser-app' && pnName && passcode && public_key) {
+        if (client_id === 'browser-app' && pnIdentifier) {
           try {
-            // Derive pN identifier to check for age ZKP
-            const combined = `${pnName}:${passcode}:${public_key}`;
-            const crypto = await import('crypto');
-            const utf8Bytes = Buffer.from(combined, 'utf8');
-            const hash = crypto.createHash('sha256').update(utf8Bytes).digest('hex');
-            const shortHash = hash.substring(0, 12);
-            const pnIdentifier = `pn-${shortHash}`;
+            // Use pN identifier provided by client (or derived above)
             const normalizedPnIdentifier = pnIdentifier.startsWith('pn-') ? pnIdentifier : `pn-${pnIdentifier}`;
 
             // Get user's credentials to check for age ZKP
@@ -5835,7 +5842,7 @@ class ProductionServer {
         }
 
         // Generate authorization code
-        // Store public_key, pnName, and passcode so we can derive pN identifier using VolumeIdGenerator
+        // SECURITY FIX: Store pnIdentifier directly instead of secrets
         const scopes = scope ? scope.split(' ') : ['openid', 'profile'];
         const code = PNOAuthService.generateAuthorizationCode({
           clientId: client_id,
@@ -5844,9 +5851,9 @@ class ProductionServer {
           state,
           nonce,
           did,
-          publicKey: public_key, // Store publicKey for pN identifier derivation
-          pnName: pnName, // Store pN name for VolumeIdGenerator (if available)
-          passcode: passcode // Store passcode for VolumeIdGenerator (temporarily, not persisted)
+          publicKey: public_key, // Still needed for file decryption
+          pnIdentifier: pnIdentifier // Store pN identifier directly (derived client-side)
+          // pnName and passcode are NOT stored - they're secrets
         });
 
         // Return authorization code, existing permissions, and available optional data points

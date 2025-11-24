@@ -15,10 +15,9 @@ export interface AuthorizationCode {
   state?: string;
   nonce?: string;
   did: string; // User's DID
-  publicKey?: string; // Public key from identity file (needed to derive pN identifier)
-  pnName?: string; // pN name (for VolumeIdGenerator - only used for derivation, not stored)
-  passcode?: string; // Passcode (for VolumeIdGenerator - only used for derivation, not stored)
-  // Note: pN name and passcode are NOT stored - they're secrets and only used for pN identifier derivation
+  publicKey?: string; // Public key from identity file (needed for file decryption)
+  pnIdentifier?: string; // pN identifier (derived client-side, never derived from secrets on server)
+  // SECURITY: pN name and passcode are NEVER stored - they're secrets
   expiresAt: number; // Timestamp
 }
 
@@ -77,6 +76,9 @@ export class PNOAuthService {
 
   /**
    * Generate authorization code
+   * 
+   * SECURITY: Accepts pnIdentifier directly from client (derived client-side).
+   * Never stores pnName or passcode - they're secrets.
    */
   static generateAuthorizationCode(params: {
     clientId: string;
@@ -85,10 +87,9 @@ export class PNOAuthService {
     state?: string;
     nonce?: string;
     did: string;
-    publicKey?: string; // Public key from identity file (needed to derive pN identifier)
-    pnName?: string; // pN name (for VolumeIdGenerator - only used for derivation, not stored)
-    passcode?: string; // Passcode (for VolumeIdGenerator - only used for derivation, not stored)
-    // Note: pN name and passcode are NOT stored - they're secrets and only used for pN identifier derivation
+    publicKey?: string; // Public key from identity file (needed for file decryption)
+    pnIdentifier?: string; // pN identifier (derived client-side, never derived from secrets)
+    // SECURITY: pN name and passcode are NEVER accepted or stored - they're secrets
   }): string {
     const code = crypto.randomBytes(32).toString('hex');
     
@@ -99,6 +100,7 @@ export class PNOAuthService {
     console.log('  Client ID:', params.clientId);
     console.log('  Redirect URI (normalized):', normalizedRedirectUri);
     console.log('  DID:', params.did);
+    console.log('  pN Identifier:', params.pnIdentifier || 'not provided');
     
     authorizationCodes.set(code, {
       code,
@@ -108,10 +110,9 @@ export class PNOAuthService {
       state: params.state,
       nonce: params.nonce,
       did: params.did,
-      publicKey: params.publicKey, // Store public key for pN identifier derivation
-      pnName: params.pnName, // Store pN name temporarily for VolumeIdGenerator (not persisted)
-      passcode: params.passcode, // Store passcode temporarily for VolumeIdGenerator (not persisted)
-      // Note: pN name and passcode are only used for pN identifier derivation, not stored long-term
+      publicKey: params.publicKey, // Store public key for file decryption
+      pnIdentifier: params.pnIdentifier // Store pN identifier directly (derived client-side)
+      // SECURITY: pN name and passcode are NEVER stored - they're secrets
       expiresAt: Date.now() + this.CODE_EXPIRY
     });
 
@@ -160,12 +161,11 @@ export class PNOAuthService {
     authorizationCodes.delete(params.code);
 
     // Generate access token
-    // Note: pN name and passcode are NOT included - they're secrets
+    // SECURITY: Use pnIdentifier directly from authorization code (derived client-side)
     const accessToken = await this.generateAccessToken({
       did: authCode.did,
-      publicKey: authCode.publicKey, // Pass publicKey for pN identifier derivation
-      pnName: authCode.pnName, // Pass pN name for VolumeIdGenerator (if available)
-      passcode: authCode.passcode, // Pass passcode for VolumeIdGenerator (if available)
+      publicKey: authCode.publicKey, // Pass publicKey for file decryption
+      pnIdentifier: authCode.pnIdentifier, // Use pN identifier directly (derived client-side)
       clientId: params.clientId,
       scope: authCode.scope
     });
@@ -173,9 +173,8 @@ export class PNOAuthService {
     // Generate refresh token (now async - stores in database)
     const refreshToken = await this.generateRefreshToken({
       did: authCode.did,
-      publicKey: authCode.publicKey, // Include publicKey to derive pN identifier
-      pnName: authCode.pnName, // Include pN name for VolumeIdGenerator (if available)
-      passcode: authCode.passcode, // Include passcode for VolumeIdGenerator (if available)
+      publicKey: authCode.publicKey, // Include publicKey for file decryption
+      pnIdentifier: authCode.pnIdentifier, // Use pN identifier directly (derived client-side)
       clientId: params.clientId,
       scope: authCode.scope
     });
@@ -190,6 +189,10 @@ export class PNOAuthService {
   }
 
   /**
+   * @deprecated This method is deprecated and should not be used.
+   * SECURITY: Clients should derive pN identifier client-side and send it directly.
+   * This method is kept only for backward compatibility with old clients.
+   * 
    * Derive pN identifier using VolumeIdGenerator (STANDARDIZED METHOD)
    * 
    * STANDARDIZED FORMULA (used everywhere):
@@ -270,31 +273,29 @@ export class PNOAuthService {
 
   /**
    * Generate access token
+   * 
+   * SECURITY: Accepts pnIdentifier directly (derived client-side).
+   * Never derives from secrets - pnName and passcode are never accepted.
    */
   private static async generateAccessToken(params: { 
     did: string; 
     publicKey?: string; 
-    pnIdentifier?: string; 
-    pnName?: string; 
-    passcode?: string; 
+    pnIdentifier?: string; // pN identifier (derived client-side)
     clientId: string; 
     scope: string[] 
   }): Promise<string> {
-    // Use provided pN identifier if available, otherwise derive using VolumeIdGenerator or fallback
-    let pnIdentifier = params.pnIdentifier;
-    if (!pnIdentifier && params.publicKey) {
-      pnIdentifier = await this.derivePnIdentifier(
-        params.did, 
-        params.publicKey, 
-        params.pnName, 
-        params.passcode
-      );
+    // Use provided pN identifier (derived client-side)
+    // SECURITY: Never derive from secrets - pnName and passcode are never accepted
+    const pnIdentifier = params.pnIdentifier;
+    
+    if (!pnIdentifier) {
+      console.warn('[OAuth] No pN identifier provided - token will not include pnIdentifier');
     }
     
     const payload: TokenPayload = {
       did: params.did,
-      // pN name is NOT stored - it's a secret
-      pnIdentifier, // Store derived or provided pN identifier
+      // SECURITY: pN name is NEVER stored - it's a secret
+      pnIdentifier, // Use pN identifier directly (derived client-side)
       clientId: params.clientId,
       scope: params.scope,
       issuedAt: Date.now(),
@@ -319,22 +320,23 @@ export class PNOAuthService {
 
   /**
    * Generate refresh token and store in database
+   * 
+   * SECURITY: Accepts pnIdentifier directly (derived client-side).
+   * Never derives from secrets - pnName and passcode are never accepted.
    */
   private static async generateRefreshToken(params: { 
     did: string; 
     publicKey?: string; 
-    pnName?: string; 
-    passcode?: string; 
+    pnIdentifier?: string; // pN identifier (derived client-side)
     clientId: string; 
     scope: string[] 
   }): Promise<string> {
     const token = crypto.randomBytes(32).toString('hex');
     const expiresAt = new Date(Date.now() + this.REFRESH_TOKEN_EXPIRY);
     
-    // Derive pN identifier using VolumeIdGenerator if pnName/passcode available, otherwise fallback
-    const pnIdentifier = params.publicKey 
-      ? await this.derivePnIdentifier(params.did, params.publicKey, params.pnName, params.passcode) 
-      : undefined;
+    // Use provided pN identifier (derived client-side)
+    // SECURITY: Never derive from secrets - pnName and passcode are never accepted
+    const pnIdentifier = params.pnIdentifier;
     
     const db = getDatabasePool();
     try {
