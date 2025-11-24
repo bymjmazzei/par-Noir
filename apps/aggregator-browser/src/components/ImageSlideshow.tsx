@@ -269,7 +269,15 @@ export function ImageSlideshow({ thumbnailIds, fileName, accountId, pdfFileId }:
         return;
       }
       
-      // Only read blob if response is OK
+      // Double-check response is OK before reading blob (safety check)
+      if (!response.ok || response.status !== 200) {
+        console.warn(`[ImageSlideshow] Thumbnail ${thumbnailId} failed: ${response.status}`);
+        failedPagesRef.current.add(pageNum);
+        loadingPagesRef.current.delete(pageNum);
+        return;
+      }
+      
+      // Only read blob if response is OK (status 200)
       const contentType = response.headers.get('content-type') || '';
       let blob: Blob;
       try {
@@ -289,8 +297,12 @@ export function ImageSlideshow({ thumbnailIds, fileName, accountId, pdfFileId }:
           const text = await blob.text();
           const parsed = JSON.parse(text);
           
-          // Check if it's an encrypted package (has encrypted, iv, salt fields)
-          if (parsed.encrypted && parsed.iv && parsed.salt) {
+          // Validate it's actually an encrypted package before attempting decryption
+          // Must have all required fields and they must be strings
+          if (parsed.encrypted && parsed.iv && parsed.salt && 
+              typeof parsed.encrypted === 'string' && 
+              typeof parsed.iv === 'string' && 
+              typeof parsed.salt === 'string') {
             // Encrypted file - need session to decrypt
             const { EncryptionManager } = await import('../utils/encryptionManager');
             const session = PNOAuthService.loadSession();
@@ -534,6 +546,10 @@ export function ImageSlideshow({ thumbnailIds, fileName, accountId, pdfFileId }:
       </div>
     );
   }
+
+  // RENDER IMMEDIATELY - don't wait for anything
+  // Pages are initialized synchronously, so slideshow structure shows instantly
+  console.log(`[ImageSlideshow] Rendering slideshow with ${pages.length} pages, ${pageUrls.size} loaded, ${failedPagesRef.current.size} failed`);
 
   return (
     <div 
