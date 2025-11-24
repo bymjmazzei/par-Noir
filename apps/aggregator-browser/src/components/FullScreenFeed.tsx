@@ -1559,7 +1559,7 @@ export function FullScreenFeed({
               
               return (
                 <div
-                  ref={visibleFileId === fileId && isPdfDoc ? pdfHorizontalSwipeRef : undefined}
+                  ref={pdfHorizontalSwipeRef}
                   className="w-full h-full relative"
                 >
                   {/* Blurred background PDF page */}
