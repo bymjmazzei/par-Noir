@@ -347,6 +347,16 @@ export function FullScreenFeed({
                        (file.name || file.title || '').match(/\.(mp4|mov|avi|webm|mkv|flv|wmv)$/i);
         const isImage = file.fileType === 'image' || 
                        (file.name || file.title || '').match(/\.(jpg|jpeg|png|gif|webp|svg|bmp|ico)$/i);
+        
+        console.log(`[FullScreenFeed] loadMedia for file ${fileId}:`, {
+          fileName: file.name || file.title,
+          fileType: file.fileType,
+          isImage,
+          isVideo,
+          hasPublicToken: !!file.publicToken,
+          thumbnailExists: thumbnails.has(fileId),
+          videoBlobExists: videoBlobs.has(fileId)
+        });
 
         // Only load video if not provided externally or if external map doesn't have this file
         if (isVideo && file.publicToken && !videoBlobs.has(fileId)) {
@@ -375,6 +385,7 @@ export function FullScreenFeed({
 
         // Only load image if not provided externally or if external map doesn't have this file
         if (isImage && !thumbnails.has(fileId)) {
+          console.log(`[FullScreenFeed] Attempting to load image ${fileId}...`);
           // Check if external thumbnails has this file
           const hasExternalThumbnail = externalThumbnails && externalThumbnails.has(fileId);
           if (!hasExternalThumbnail) {
