@@ -1261,12 +1261,15 @@ export function FullScreenFeed({
                 pdfPagesFolderId: indexedFile.metadata?.pdfPagesFolderId
               });
               
+              // Get accountId from indexedFile or fetch it once
+              const slideshowAccountId = indexedFile.accountId || indexedFile.backendFileId;
+              
               return (
                 <div className="w-full h-full relative z-10">
                   <ImageSlideshow
                     fileId={folderId}
                     fileName={fileName}
-                    accountId={indexedFile.accountId || indexedFile.backendFileId}
+                    accountId={slideshowAccountId} // Pass accountId to avoid extra API calls
                     pdfFileId={pdfFileId} // Pass PDF file ID for on-demand rendering
                   />
                 </div>

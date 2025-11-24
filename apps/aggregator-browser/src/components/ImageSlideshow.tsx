@@ -55,30 +55,38 @@ export function ImageSlideshow({ fileId, fileName, accountId, pdfFileId }: Image
           throw new Error('No access token');
         }
 
-        // Try to get accountId from storage accounts if not provided
+        // Use provided accountId, or fetch once and cache it
         let finalAccountId = accountId;
         if (!finalAccountId || !finalAccountId.includes('::')) {
-          try {
-            const session = PNOAuthService.loadSession();
-            if (session?.did || session?.pnIdentifier) {
-              const userId = session.pnIdentifier || session.did;
-              const accountsResponse = await fetch(`${apiEndpoint}/api/storage/accounts/${userId}`, {
-                headers: {
-                  'Authorization': `Bearer ${accessToken}`
-                }
-              });
-              
-              if (accountsResponse.ok) {
-                const accountsData = await accountsResponse.json();
-                const accounts = accountsData.accounts || [];
-                if (accounts.length > 0) {
-                  finalAccountId = accounts[0].accountId;
-                  console.log(`[ImageSlideshow] Fetched accountId from storage accounts: ${finalAccountId}`);
+          // Cache accountId in session storage to avoid repeated API calls
+          const cachedAccountId = sessionStorage.getItem('slideshow_accountId');
+          if (cachedAccountId && cachedAccountId.includes('::')) {
+            finalAccountId = cachedAccountId;
+            console.log(`[ImageSlideshow] Using cached accountId: ${finalAccountId}`);
+          } else {
+            try {
+              const session = PNOAuthService.loadSession();
+              if (session?.did || session?.pnIdentifier) {
+                const userId = session.pnIdentifier || session.did;
+                const accountsResponse = await fetch(`${apiEndpoint}/api/storage/accounts/${userId}`, {
+                  headers: {
+                    'Authorization': `Bearer ${accessToken}`
+                  }
+                });
+                
+                if (accountsResponse.ok) {
+                  const accountsData = await accountsResponse.json();
+                  const accounts = accountsData.accounts || [];
+                  if (accounts.length > 0) {
+                    finalAccountId = accounts[0].accountId;
+                    sessionStorage.setItem('slideshow_accountId', finalAccountId); // Cache it
+                    console.log(`[ImageSlideshow] Fetched and cached accountId: ${finalAccountId}`);
+                  }
                 }
               }
+            } catch (err) {
+              console.warn(`[ImageSlideshow] Failed to fetch accountId, continuing without it:`, err);
             }
-          } catch (err) {
-            console.warn(`[ImageSlideshow] Failed to fetch accountId, continuing without it:`, err);
           }
         }
 
