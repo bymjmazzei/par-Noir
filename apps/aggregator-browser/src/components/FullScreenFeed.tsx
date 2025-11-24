@@ -343,14 +343,24 @@ export function FullScreenFeed({
         const file = indexedFile.metadata;
         const fileId = file.fileId;
 
-        const isVideo = file.fileType === 'video' || 
-                       (file.name || file.title || '').match(/\.(mp4|mov|avi|webm|mkv|flv|wmv)$/i);
-        const isImage = file.fileType === 'image' || 
-                       (file.name || file.title || '').match(/\.(jpg|jpeg|png|gif|webp|svg|bmp|ico)$/i);
+        // Check if it's a text post/thought first (same logic as render section)
+        const isTextPost = !!(file.textPost || file.thought);
+        
+        const isVideo = !isTextPost && (
+          file.fileType === 'video' || 
+          (file.name || file.title || '').match(/\.(mp4|mov|avi|webm|mkv|flv|wmv)$/i)
+        );
+        const isImage = !isTextPost && (
+          file.fileType === 'image' || 
+          (file.name || file.title || '').match(/\.(jpg|jpeg|png|gif|webp|svg|bmp|ico)$/i) ||
+          (file as any).mimeType?.startsWith('image/') // Check mimeType if available
+        );
         
         console.log(`[FullScreenFeed] loadMedia for file ${fileId}:`, {
           fileName: file.name || file.title,
           fileType: file.fileType,
+          mimeType: (file as any).mimeType,
+          isTextPost,
           isImage,
           isVideo,
           hasPublicToken: !!file.publicToken,
