@@ -1023,6 +1023,22 @@ export function FullScreenFeed({
                 pageMap.set(0, thumbnailUrlObj);
                 return newMap;
               });
+              
+              // Preload adjacent pages (page 1 and 2) in background for instant navigation
+              if (pdfPageThumbnailIds.length > 1) {
+                // Preload page 1 (index 1) if exists
+                const nextThumbnailId = pdfPageThumbnailIds[1];
+                if (nextThumbnailId) {
+                  loadPdfPageThumbnail(fileId, nextThumbnailId, 1, indexedFile).catch(() => {});
+                }
+                // Preload page 2 (index 2) if exists
+                if (pdfPageThumbnailIds.length > 2) {
+                  const nextNextThumbnailId = pdfPageThumbnailIds[2];
+                  if (nextNextThumbnailId) {
+                    loadPdfPageThumbnail(fileId, nextNextThumbnailId, 2, indexedFile).catch(() => {});
+                  }
+                }
+              }
             }
           } catch (err) {
             console.error(`[FullScreenFeed] Failed to load PDF thumbnail for ${fileId}:`, err);
@@ -1053,28 +1069,7 @@ export function FullScreenFeed({
     }
   }, [visibleFileId, files, videoBlobs]);
 
-  // Enable PDF horizontal swipe when viewing PDF
-  useEffect(() => {
-    const currentFile = files[currentIndex];
-    if (!currentFile) {
-      if (pdfHorizontalSwipeRef.current) {
-        (pdfHorizontalSwipeRef as any).current.enabled = false;
-      }
-      return;
-    }
-    
-    const fileId = currentFile.metadata.fileId;
-    const file = currentFile.metadata;
-    const pdfPageThumbnailIds = currentFile.metadata?.pdfPageThumbnailIds;
-    const isPdfDoc = file.fileType === 'document' && pdfPageThumbnailIds && pdfPageThumbnailIds.length > 0;
-    
-    if (visibleFileId === fileId && isPdfDoc && pdfHorizontalSwipeRef.current) {
-      (pdfHorizontalSwipeRef as any).current.enabled = true;
-      (pdfHorizontalSwipeRef as any).current.element = scrollContainerRef.current;
-    } else if (pdfHorizontalSwipeRef.current) {
-      (pdfHorizontalSwipeRef as any).current.enabled = false;
-    }
-  }, [visibleFileId, currentIndex, files]);
+  // Enable PDF horizontal swipe when viewing PDF (handled by ref in render)
 
   // Intersection Observer for auto-playing videos
   useEffect(() => {
@@ -1331,6 +1326,15 @@ export function FullScreenFeed({
           <div
             key={fileId}
             data-file-id={fileId}
+            ref={(el) => {
+              // Attach PDF swipe handler to PDF container element
+              if (el && isPdfDoc && visibleFileId === fileId) {
+                if (pdfHorizontalSwipeRef.current) {
+                  (pdfHorizontalSwipeRef as any).current.element = el;
+                  (pdfHorizontalSwipeRef as any).current.enabled = true;
+                }
+              }
+            }}
             className="w-full snap-start flex items-center justify-center bg-black relative"
             style={{ 
               // Height excludes bottom nav bar (64px) and safe area
@@ -1564,18 +1568,27 @@ export function FullScreenFeed({
                           newMap.set(fileId, prevPageIndex);
                           return newMap;
                         });
-                        // Load previous page thumbnail if not loaded
+                        // Update thumbnail immediately if already loaded
                         const pageThumbnails = pdfPageThumbnails.get(fileId);
-                        if (!pageThumbnails?.has(prevPageIndex)) {
-                          const prevThumbnailId = pdfPageThumbnailIds[prevPageIndex];
-                          loadPdfPageThumbnail(fileId, prevThumbnailId, prevPageIndex, indexedFile).catch(() => {});
-                        } else {
-                          // Update thumbnail immediately if already loaded
+                        if (pageThumbnails?.has(prevPageIndex)) {
                           setThumbnails(prev => {
                             const newMap = new Map(prev);
                             newMap.set(fileId, pageThumbnails.get(prevPageIndex)!);
                             return newMap;
                           });
+                        } else {
+                          // Load previous page thumbnail if not loaded (should be preloaded, but fallback)
+                          const prevThumbnailId = pdfPageThumbnailIds[prevPageIndex];
+                          loadPdfPageThumbnail(fileId, prevThumbnailId, prevPageIndex, indexedFile).then(() => {
+                            const updatedPageThumbnails = pdfPageThumbnails.get(fileId);
+                            if (updatedPageThumbnails?.has(prevPageIndex)) {
+                              setThumbnails(prev => {
+                                const newMap = new Map(prev);
+                                newMap.set(fileId, updatedPageThumbnails.get(prevPageIndex)!);
+                                return newMap;
+                              });
+                            }
+                          }).catch(() => {});
                         }
                       }}
                       className="absolute left-4 top-1/2 transform -translate-y-1/2 z-20 bg-black/60 hover:bg-black/80 text-white p-3 rounded-full transition-colors"
@@ -1598,18 +1611,27 @@ export function FullScreenFeed({
                           newMap.set(fileId, nextPageIndex);
                           return newMap;
                         });
-                        // Load next page thumbnail if not loaded
+                        // Update thumbnail immediately if already loaded
                         const pageThumbnails = pdfPageThumbnails.get(fileId);
-                        if (!pageThumbnails?.has(nextPageIndex)) {
-                          const nextThumbnailId = pdfPageThumbnailIds[nextPageIndex];
-                          loadPdfPageThumbnail(fileId, nextThumbnailId, nextPageIndex, indexedFile).catch(() => {});
-                        } else {
-                          // Update thumbnail immediately if already loaded
+                        if (pageThumbnails?.has(nextPageIndex)) {
                           setThumbnails(prev => {
                             const newMap = new Map(prev);
                             newMap.set(fileId, pageThumbnails.get(nextPageIndex)!);
                             return newMap;
                           });
+                        } else {
+                          // Load next page thumbnail if not loaded (should be preloaded, but fallback)
+                          const nextThumbnailId = pdfPageThumbnailIds[nextPageIndex];
+                          loadPdfPageThumbnail(fileId, nextThumbnailId, nextPageIndex, indexedFile).then(() => {
+                            const updatedPageThumbnails = pdfPageThumbnails.get(fileId);
+                            if (updatedPageThumbnails?.has(nextPageIndex)) {
+                              setThumbnails(prev => {
+                                const newMap = new Map(prev);
+                                newMap.set(fileId, updatedPageThumbnails.get(nextPageIndex)!);
+                                return newMap;
+                              });
+                            }
+                          }).catch(() => {});
                         }
                       }}
                       className="absolute right-4 top-1/2 transform -translate-y-1/2 z-20 bg-black/60 hover:bg-black/80 text-white p-3 rounded-full transition-colors"
