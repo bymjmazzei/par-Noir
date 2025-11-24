@@ -212,12 +212,8 @@ export function ImageSlideshow({ thumbnailIds, fileName, accountId, pdfFileId }:
       const apiEndpoint = process.env.REACT_APP_API_ENDPOINT || 'https://api.parnoir.com';
       const { PNOAuthService } = await import('../services/pnOAuthService');
       
-      // Get access token (non-blocking - start fetch immediately)
+      // Get access token (non-blocking - try with auth if available, but don't block)
       const accessToken = await PNOAuthService.getValidAccessToken();
-      if (!accessToken) {
-        console.warn(`[ImageSlideshow] No access token for thumbnail ${thumbnailId}`);
-        return; // Skip this thumbnail
-      }
       
       // Try without accountId first (faster, works for public content)
       // If that fails, try with accountId
@@ -225,54 +221,60 @@ export function ImageSlideshow({ thumbnailIds, fileName, accountId, pdfFileId }:
       
       let response: Response;
       try {
-        // Start fetch immediately without accountId (like vertical feed)
-        response = await fetch(fetchUrl, {
-          headers: { 'Authorization': `Bearer ${accessToken}` }
-        });
+        // Try with auth if available, otherwise try without (for public content)
+        const headers: HeadersInit = {};
+        if (accessToken) {
+          headers['Authorization'] = `Bearer ${accessToken}`;
+        }
+        
+        // Start fetch immediately (with or without auth)
+        response = await fetch(fetchUrl, { headers });
       } catch (fetchError: any) {
         console.error(`[ImageSlideshow] Fetch error for thumbnail ${thumbnailId}:`, fetchError);
+        loadingPagesRef.current.delete(pageNum);
         return; // Skip this thumbnail
       }
       
-      // If 401, try with accountId if available, then refresh token
+      // If 401, try to get/refresh token and retry
       if (response.status === 401) {
-        // Try with accountId if we have it
-        if (accountIdToUse && accountIdToUse.includes('::')) {
-          const urlWithAccountId = `${fetchUrl}&accountId=${encodeURIComponent(accountIdToUse)}`;
-          response = await fetch(urlWithAccountId, {
-            headers: { 'Authorization': `Bearer ${accessToken}` }
-          });
-        }
+        // Try to get access token if we don't have one, or refresh if we do
+        const tokenToUse = accessToken 
+          ? await PNOAuthService.getValidAccessToken(true) // Refresh existing token
+          : await PNOAuthService.getValidAccessToken(); // Try to get new token
         
-        // If still 401, refresh token and retry
-        if (response.status === 401) {
-          console.log(`[ImageSlideshow] Got 401 for thumbnail ${thumbnailId}, refreshing token...`);
-          const refreshedToken = await PNOAuthService.getValidAccessToken(true);
-          if (refreshedToken) {
-            try {
-              // Retry with refreshed token (with accountId if available)
-              const retryUrl = accountIdToUse && accountIdToUse.includes('::')
-                ? `${fetchUrl}&accountId=${encodeURIComponent(accountIdToUse)}`
-                : fetchUrl;
-              response = await fetch(retryUrl, {
-                headers: { 'Authorization': `Bearer ${refreshedToken}` }
-              });
-              
-              if (!response.ok) {
-                console.warn(`[ImageSlideshow] Thumbnail ${thumbnailId} still failed after refresh: ${response.status}`);
-                return; // Skip this thumbnail
-              }
-            } catch (retryError: any) {
-              console.error(`[ImageSlideshow] Retry fetch error for thumbnail ${thumbnailId}:`, retryError);
+        if (tokenToUse) {
+          try {
+            // Try with accountId if available
+            let retryUrl = fetchUrl;
+            if (accountIdToUse && accountIdToUse.includes('::')) {
+              retryUrl = `${fetchUrl}&accountId=${encodeURIComponent(accountIdToUse)}`;
+            }
+            
+            response = await fetch(retryUrl, {
+              headers: { 'Authorization': `Bearer ${tokenToUse}` }
+            });
+            
+            if (!response.ok && response.status !== 401) {
+              console.warn(`[ImageSlideshow] Thumbnail ${thumbnailId} failed after auth: ${response.status}`);
+              loadingPagesRef.current.delete(pageNum);
               return; // Skip this thumbnail
             }
-          } else {
-            console.warn(`[ImageSlideshow] Failed to refresh token for thumbnail ${thumbnailId}`);
+          } catch (retryError: any) {
+            console.error(`[ImageSlideshow] Retry fetch error for thumbnail ${thumbnailId}:`, retryError);
+            loadingPagesRef.current.delete(pageNum);
             return; // Skip this thumbnail
           }
         }
+        
+        // If still 401 after trying auth, this thumbnail requires auth and user isn't logged in
+        if (response.status === 401) {
+          console.warn(`[ImageSlideshow] Thumbnail ${thumbnailId} requires authentication (user not logged in)`);
+          loadingPagesRef.current.delete(pageNum);
+          return; // Skip this thumbnail - user needs to log in
+        }
       } else if (!response.ok) {
         console.warn(`[ImageSlideshow] Thumbnail ${thumbnailId} failed: ${response.status}`);
+        loadingPagesRef.current.delete(pageNum);
         return; // Skip this thumbnail
       }
       
@@ -281,33 +283,49 @@ export function ImageSlideshow({ thumbnailIds, fileName, accountId, pdfFileId }:
       
       let imageUrl: string;
       if (contentType.includes('application/json') || contentType.includes('application/octet-stream')) {
+        // Encrypted file - need session to decrypt
         const { EncryptionManager } = await import('../utils/encryptionManager');
         const session = PNOAuthService.loadSession();
-        if (!session?.did) throw new Error('No session');
+        if (!session?.did) {
+          console.warn(`[ImageSlideshow] Cannot decrypt thumbnail ${thumbnailId} - no session (user not logged in)`);
+          loadingPagesRef.current.delete(pageNum);
+          return; // Skip encrypted thumbnail if user not logged in
+        }
         
         const pnId = session.did;
         let publicKey = session?.publicKey;
         if (!publicKey && session.did.startsWith('did:key:')) {
           publicKey = session.did.substring(8);
         }
-        if (!publicKey) throw new Error('No public key');
+        if (!publicKey) {
+          console.warn(`[ImageSlideshow] Cannot decrypt thumbnail ${thumbnailId} - no public key`);
+          loadingPagesRef.current.delete(pageNum);
+          return; // Skip if no public key
+        }
         
-        const encryptedText = await blob.text();
-        const encryptedPackage = JSON.parse(encryptedText);
-        const encryptionManager = new EncryptionManager();
-        const decryptedData = await encryptionManager.decrypt(
-          encryptedPackage.encrypted,
-          encryptedPackage.iv,
-          encryptedPackage.salt,
-          pnId,
-          publicKey
-        );
-        
-        const decryptedBlob = new Blob([decryptedData], {
-          type: encryptedPackage.metadata.originalMimeType || 'image/jpeg'
-        });
-        imageUrl = URL.createObjectURL(decryptedBlob);
+        try {
+          const encryptedText = await blob.text();
+          const encryptedPackage = JSON.parse(encryptedText);
+          const encryptionManager = new EncryptionManager();
+          const decryptedData = await encryptionManager.decrypt(
+            encryptedPackage.encrypted,
+            encryptedPackage.iv,
+            encryptedPackage.salt,
+            pnId,
+            publicKey
+          );
+          
+          const decryptedBlob = new Blob([decryptedData], {
+            type: encryptedPackage.metadata.originalMimeType || 'image/jpeg'
+          });
+          imageUrl = URL.createObjectURL(decryptedBlob);
+        } catch (decryptError) {
+          console.error(`[ImageSlideshow] Failed to decrypt thumbnail ${thumbnailId}:`, decryptError);
+          loadingPagesRef.current.delete(pageNum);
+          return; // Skip if decryption fails
+        }
       } else {
+        // Non-encrypted file - use directly
         imageUrl = URL.createObjectURL(blob);
       }
       
@@ -419,13 +437,25 @@ export function ImageSlideshow({ thumbnailIds, fileName, accountId, pdfFileId }:
     };
   }, [pageUrls]);
 
-  // Show error if no thumbnails provided, but don't block on loading
-  if (error || (pages.length === 0 && thumbnailIds.length === 0)) {
+  // Show error only if we have an error AND no pages to show
+  // Don't block if pages exist (even if thumbnails are still loading)
+  if (error && pages.length === 0) {
     return (
       <div className="w-full h-full flex items-center justify-center bg-black text-white">
         <div className="text-center">
           <p className="text-red-400">Error loading slideshow</p>
           <p className="text-sm text-gray-400 mt-2">{error}</p>
+        </div>
+      </div>
+    );
+  }
+  
+  // If no pages and no thumbnail IDs, show a message (but this shouldn't happen with sync init)
+  if (pages.length === 0 && thumbnailIds.length === 0) {
+    return (
+      <div className="w-full h-full flex items-center justify-center bg-black text-white">
+        <div className="text-center">
+          <p className="text-white/70">No slideshow content available</p>
         </div>
       </div>
     );
