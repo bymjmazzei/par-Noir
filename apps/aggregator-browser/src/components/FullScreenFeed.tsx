@@ -77,6 +77,7 @@ export function FullScreenFeed({
   const [pdfPageThumbnails, setPdfPageThumbnails] = useState<Map<string, Map<number, string>>>(new Map()); // fileId -> pageIndex -> thumbnailUrl
   const [pdfCurrentPage, setPdfCurrentPage] = useState<Map<string, number>>(new Map()); // fileId -> current page index (0-based)
   const accountIdCacheRef = useRef<string | null>(null); // Cache accountId to avoid repeated API calls
+  const thoughtDetectionLogged = useRef<Set<string>>(new Set()); // Track which thoughts we've logged to reduce console spam
   
   // Sync external thumbnails/videoBlobs when they change
   useEffect(() => {
@@ -1357,14 +1358,26 @@ export function FullScreenFeed({
         
         // Check for thought filename pattern BEFORE determining isTextPost
         // This ensures thoughts are detected consistently and prevents flickering
-        const thoughtFileName = file.name || file.title || '';
+        // Check filename in multiple locations (file.name might be content, not filename)
+        const thoughtFileName = file.name || 
+                               file.title || 
+                               (file as any).originalName ||
+                               indexedFile.metadata?.originalName ||
+                               indexedFile.metadata?.name ||
+                               '';
         const isThoughtFile = /^thought-\d+\.(thought|png)/i.test(thoughtFileName);
         
-        // Debug logging for thoughts to help diagnose flickering
-        if (isThoughtFile || hasTextPostData || hasTextFileType) {
+        // Debug logging for thoughts to help diagnose flickering (only log once per file)
+        if ((isThoughtFile || hasTextPostData || hasTextFileType) && !thoughtDetectionLogged.current.has(fileId)) {
+          thoughtDetectionLogged.current.add(fileId);
           console.log('[FullScreenFeed] Thought detection:', {
             fileId,
             fileName: thoughtFileName,
+            fileDotName: file.name,
+            fileDotTitle: file.title,
+            originalName: (file as any).originalName,
+            metadataOriginalName: indexedFile.metadata?.originalName,
+            metadataName: indexedFile.metadata?.name,
             isThoughtFile,
             hasTextPostData,
             hasTextFileType,
