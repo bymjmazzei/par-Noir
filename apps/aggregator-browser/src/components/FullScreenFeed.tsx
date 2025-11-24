@@ -13,9 +13,8 @@ import { ContentRatingBadge } from './ContentRatingBadge';
 import { File } from 'lucide-react';
 import { useVerticalSwipe } from '../hooks/useVerticalSwipe';
 import { useHorizontalSwipe } from '../hooks/useHorizontalSwipe';
-import { decryptWithToken, ShareToken } from '../utils/tokenDecryption';
 import { formatTimestamp } from '../utils/formatTimestamp';
-import { PDFSlideshow } from './PDFSlideshow';
+import { ImageSlideshow } from './ImageSlideshow';
 
 interface FullScreenFeedProps {
   files: IndexedFile[];
@@ -652,12 +651,7 @@ export function FullScreenFeed({
           !!pdfPagesFolderId
         );
         
-        const isPDF = !isTextPost && !isImageSlideshowFolder && (
-          file.fileType === 'document' ||
-          file.fileType === 'pdf' ||
-          (file.name || file.title || '').match(/\.pdf$/i) ||
-          file.mimeType === 'application/pdf'
-        );
+        // No PDF support - only image slideshows from folders
         
         // Debug logging for ALL files to see what's happening
         // Debug logging removed for cleaner console - uncomment if needed for debugging
@@ -958,10 +952,9 @@ export function FullScreenFeed({
               );
             })()}
 
-            {/* Image Slideshow (from PDF conversion folder) */}
+            {/* Image Slideshow (from folder) */}
             {isImageSlideshowFolder && !isTextPost && (() => {
               // For image slideshow folders, the fileId IS the folder ID
-              // pdfPagesFolderId should match fileId for folders
               const folderId = indexedFile.metadata?.pdfPagesFolderId || fileId;
               
               console.log('[FullScreenFeed] Image slideshow folder metadata:', {
@@ -974,62 +967,25 @@ export function FullScreenFeed({
               
               return (
                 <div className="w-full h-full relative z-10">
-                  <PDFSlideshow
+                  <ImageSlideshow
                     fileId={folderId}
-                    publicToken={undefined} // No token needed for folder-based images (they're loaded via API)
                     fileName={fileName}
-                    pdfPagesFolderId={folderId} // Folder ID containing PNG pages (same as fileId for folders)
-                    accountId={file.accountId || file.backendFileId} // Get accountId from file
-                  />
-                </div>
-              );
-            })()}
-            
-            {/* PDF Slideshow (actual PDF files) */}
-            {isPDF && !isTextPost && file.publicToken && (() => {
-              // Parse token if it's a string
-              let token: ShareToken | object = file.publicToken;
-              if (typeof token === 'string') {
-                try {
-                  token = JSON.parse(token);
-                } catch (e) {
-                  console.warn('Failed to parse PDF token:', e);
-                  return null;
-                }
-              }
-              
-              // Debug: Log PDF metadata
-              console.log('[FullScreenFeed] PDF file metadata:', {
-                fileId,
-                fileName,
-                hasPdfPagesFolderId: !!indexedFile.metadata?.pdfPagesFolderId,
-                pdfPagesFolderId: indexedFile.metadata?.pdfPagesFolderId,
-                fullMetadata: indexedFile.metadata
-              });
-              
-              return (
-                <div className="w-full h-full relative z-10">
-                  <PDFSlideshow
-                    fileId={fileId}
-                    publicToken={token}
-                    fileName={fileName}
-                    pdfPagesFolderId={indexedFile.metadata?.pdfPagesFolderId} // Optional: pre-rendered pages folder
-                    accountId={file.accountId || file.backendFileId} // Get accountId from file
+                    accountId={file.accountId || file.backendFileId}
                   />
                 </div>
               );
             })()}
 
             {/* Loading state - Only show if NOT a text post */}
-            {!isTextPost && !textPostData && ((isImage || isVideo) && !thumbnails.get(fileId) && !videoBlobs.get(fileId)) && !isPDF && (
+            {!isTextPost && !textPostData && ((isImage || isVideo) && !thumbnails.get(fileId) && !videoBlobs.get(fileId)) && !isImageSlideshowFolder && (
               <div className="flex flex-col items-center justify-center text-neutral-500">
                 <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-400 mb-2"></div>
                 <span className="text-xs">Loading...</span>
               </div>
             )}
 
-            {/* Non-image/video/text/PDF file */}
-            {!isImage && !isVideo && !isPDF && !isTextPost && !textPostData && (
+            {/* Non-image/video/text/slideshow file */}
+            {!isImage && !isVideo && !isImageSlideshowFolder && !isTextPost && !textPostData && (
               <div className="flex flex-col items-center justify-center text-neutral-500">
                 <File className="h-24 w-24 mb-4" />
                 <h3 className="text-white text-xl font-medium mb-2">{fileName}</h3>

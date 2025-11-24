@@ -175,8 +175,8 @@ class ProductionServer {
           // In development, allow no-origin but log it
           if (NODE_ENV === 'development') {
             console.warn(`[CORS] Allowing no-origin request (development mode)`);
-            return callback(null, true);
-          }
+          return callback(null, true);
+        }
           
           // In production, this should have been handled by the middleware above
           // But as a fallback, block it here too
