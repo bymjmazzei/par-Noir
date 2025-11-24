@@ -95,11 +95,11 @@ export function ImageSlideshow({ thumbnailIds, fileName, accountId, pdfFileId }:
     return null;
   }, [accountId]);
 
-  // Load individual thumbnail by ID (completely non-blocking)
+  // Load individual thumbnail by ID - EXACT COPY of FullScreenFeed pattern
   const loadThumbnail = useCallback(async (
     thumbnailId: string,
     pageNum: number,
-    accountIdToUse: string | null,
+    accountIdHint: string | null, // Hint, but we'll fetch it properly like FullScreenFeed
     loadFullSize: boolean = false
   ) => {
     // Skip if already loaded or loading
@@ -124,6 +124,29 @@ export function ImageSlideshow({ thumbnailIds, fileName, accountId, pdfFileId }:
         
         if (!accessToken) {
           throw new Error('No access token for PDF rendering');
+        }
+
+        // Get accountId like FullScreenFeed does
+        let accountIdToUse = accountIdHint || accountId;
+        if (!accountIdToUse || !accountIdToUse.includes('::')) {
+          try {
+            const session = PNOAuthService.loadSession();
+            if (session?.did || session?.pnIdentifier) {
+              const userId = session.pnIdentifier || session.did;
+              const accountsResponse = await fetch(`${apiEndpoint}/api/storage/accounts/${userId}`, {
+                headers: { 'Authorization': `Bearer ${accessToken}` }
+              });
+              if (accountsResponse.ok) {
+                const accountsData = await accountsResponse.json();
+                const accounts = accountsData.accounts || [];
+                if (accounts.length > 0) {
+                  accountIdToUse = accounts[0].accountId;
+                }
+              }
+            }
+          } catch (err) {
+            // Continue without accountId
+          }
         }
 
         let pdfUrl = `${apiEndpoint}/api/drive/files/${pdfFileId}`;
@@ -212,52 +235,61 @@ export function ImageSlideshow({ thumbnailIds, fileName, accountId, pdfFileId }:
         return;
       }
       
-      // Load thumbnail directly by ID - Get access token FIRST (like FullScreenFeed does)
+      // Load thumbnail - EXACT COPY of FullScreenFeed pattern
       const apiEndpoint = process.env.REACT_APP_API_ENDPOINT || 'https://api.parnoir.com';
       const { PNOAuthService } = await import('../services/pnOAuthService');
+      const accessToken = await PNOAuthService.getValidAccessToken();
       
-      // Get access token FIRST before making request (these thumbnails require auth)
-      let accessToken = await PNOAuthService.getValidAccessToken();
-      
-      // Build fetch URL
-      let fetchUrl = `${apiEndpoint}/api/drive/files/${thumbnailId}?thumbnail=true`;
-      if (accountIdToUse && accountIdToUse.includes('::')) {
-        fetchUrl += `&accountId=${encodeURIComponent(accountIdToUse)}`;
+      if (!accessToken) {
+        console.warn(`[ImageSlideshow] No access token for thumbnail ${thumbnailId}`);
+        failedPagesRef.current.add(pageNum);
+        loadingPagesRef.current.delete(pageNum);
+        return;
       }
       
-      // Make request with auth (like FullScreenFeed - these thumbnails require auth)
-      let response: Response;
-      try {
-        if (accessToken) {
-          // Include auth token in first request
-          response = await fetch(fetchUrl, {
-            headers: { 'Authorization': `Bearer ${accessToken}` }
-          });
-          
-          // If 401, try refreshing token
-          if (response.status === 401) {
-            const refreshedToken = await PNOAuthService.getValidAccessToken(true);
-            if (refreshedToken) {
-              response = await fetch(fetchUrl, {
-                headers: { 'Authorization': `Bearer ${refreshedToken}` }
-              });
+      // Get accountId like FullScreenFeed does (inside the function, after getting token)
+      let accountIdToUse = accountIdHint || accountId;
+      if (!accountIdToUse || !accountIdToUse.includes('::')) {
+        try {
+          const session = PNOAuthService.loadSession();
+          if (session?.did || session?.pnIdentifier) {
+            const userId = session.pnIdentifier || session.did;
+            const accountsResponse = await fetch(`${apiEndpoint}/api/storage/accounts/${userId}`, {
+              headers: { 'Authorization': `Bearer ${accessToken}` }
+            });
+            if (accountsResponse.ok) {
+              const accountsData = await accountsResponse.json();
+              const accounts = accountsData.accounts || [];
+              if (accounts.length > 0) {
+                accountIdToUse = accounts[0].accountId;
+              }
             }
           }
-        } else {
-          // No access token available - try without auth (for public content)
-          response = await fetch(fetchUrl);
+        } catch (err) {
+          console.warn(`[ImageSlideshow] Failed to fetch accountId for thumbnail:`, err);
         }
+      }
+      
+      // Build URL with accountId
+      let thumbnailUrl = `${apiEndpoint}/api/drive/files/${thumbnailId}?thumbnail=true`;
+      if (accountIdToUse && accountIdToUse.includes('::')) {
+        thumbnailUrl += `&accountId=${encodeURIComponent(accountIdToUse)}`;
+      }
+      
+      // Fetch with auth token (EXACT pattern from FullScreenFeed)
+      let response: Response;
+      try {
+        response = await fetch(thumbnailUrl, {
+          headers: { 'Authorization': `Bearer ${accessToken}` }
+        });
         
-        // Check response status BEFORE reading blob
-        if (!response.ok) {
-          if (response.status === 401) {
-            console.warn(`[ImageSlideshow] Thumbnail ${thumbnailId} requires authentication`);
-          } else {
-            console.warn(`[ImageSlideshow] Thumbnail ${thumbnailId} failed: ${response.status}`);
+        if (response.status === 401) {
+          const refreshedToken = await PNOAuthService.getValidAccessToken(true);
+          if (refreshedToken) {
+            response = await fetch(thumbnailUrl, {
+              headers: { 'Authorization': `Bearer ${refreshedToken}` }
+            });
           }
-          failedPagesRef.current.add(pageNum);
-          loadingPagesRef.current.delete(pageNum);
-          return;
         }
       } catch (fetchError: any) {
         console.error(`[ImageSlideshow] Fetch error for thumbnail ${thumbnailId}:`, fetchError);
@@ -266,9 +298,13 @@ export function ImageSlideshow({ thumbnailIds, fileName, accountId, pdfFileId }:
         return;
       }
       
-      // Double-check response is OK before reading blob (safety check)
-      if (!response.ok || response.status !== 200) {
-        console.warn(`[ImageSlideshow] Thumbnail ${thumbnailId} failed: ${response.status}`);
+      // Check response status BEFORE reading blob
+      if (!response.ok) {
+        if (response.status === 401) {
+          console.warn(`[ImageSlideshow] Thumbnail ${thumbnailId} requires authentication`);
+        } else {
+          console.warn(`[ImageSlideshow] Thumbnail ${thumbnailId} failed: ${response.status}`);
+        }
         failedPagesRef.current.add(pageNum);
         loadingPagesRef.current.delete(pageNum);
         return;
