@@ -1394,7 +1394,10 @@ export function FullScreenFeed({
         
         // If we have textPost/thought data, it's definitely a thought, regardless of fileType
         // This handles cases where fileType might be 'other' due to API defaults
-        const isTextPost = hasTextPostData || hasTextFileType;
+        // Also check if file has thought-like content even if metadata is missing
+        const isTextPost = hasTextPostData || hasTextFileType || 
+                          (file.description && file.description.trim().length > 0 && 
+                           !file.fileType && !file.name?.match(/\.(jpg|jpeg|png|gif|webp|svg|bmp|ico|mp4|mov|avi|webm|mkv|flv|wmv|pdf)$/i));
         
         // If it's a thought but fileType is wrong, log it for debugging
         if (hasTextPostData && !hasTextFileType) {
@@ -1998,12 +2001,10 @@ export function FullScreenFeed({
                     src={thumbnails.get(fileId)!}
                     alt={fileName}
                     style={{ 
-                        // Display at natural size, scaled to fit container while maintaining aspect ratio
-                        maxHeight: 'calc(100vh - 64px - env(safe-area-inset-bottom, 0px))',
-                        maxWidth: '100%',
-                      height: 'auto',
-                        width: 'auto',
-                        objectFit: 'contain',
+                        // Fill container while maintaining aspect ratio - use max of width/height
+                        height: '100%',
+                        width: '100%',
+                        objectFit: 'contain', // Maintain aspect ratio, fill container
                         imageRendering: 'smooth',
                         WebkitImageRendering: 'smooth',
                         // Prevent pixelation and ensure high quality
