@@ -22,11 +22,19 @@ export function ImageSlideshow({ fileId, fileName, accountId }: ImageSlideshowPr
   const pageRefs = useRef<Map<number, HTMLDivElement>>(new Map());
 
   // State for folder-based image pages
-  const [folderPageFiles, setFolderPageFiles] = useState<Array<{ id: string; name: string; pageNum: number }>>([]);
+  const [folderPageFiles, setFolderPageFiles] = useState<Array<{ 
+    id: string; 
+    name: string; 
+    pageNum: number;
+    thumbnailId?: string; // Thumbnail file ID (if available)
+    fullSizeId: string; // Full-size file ID
+  }>>([]);
   const [pageUrls, setPageUrls] = useState<Map<number, string>>(new Map());
+  const [pageIsThumbnail, setPageIsThumbnail] = useState<Map<number, boolean>>(new Map()); // Track if current URL is thumbnail
   const [loadingPages, setLoadingPages] = useState<Set<number>>(new Set());
   const loadedPagesRef = useRef<Set<number>>(new Set());
   const loadingPagesRef = useRef<Set<number>>(new Set());
+  const fullSizeLoadedRef = useRef<Set<number>>(new Set()); // Track which pages have full-size loaded
 
   // Load image pages from folder
   useEffect(() => {
@@ -110,23 +118,51 @@ export function ImageSlideshow({ fileId, fileName, accountId }: ImageSlideshowPr
         const data = await response.json();
         const files = data.files || [];
         
-        // Extract page numbers from filenames (format: "{name}-page-{num}.png.encrypted")
-        const pageFiles = files
-          .map((file: any) => {
-            const match = file.name.match(/-page-(\d+)\.png\.encrypted$/i);
-            if (match) {
-              return {
-                id: file.id,
-                name: file.name,
-                pageNum: parseInt(match[1], 10)
-              };
-            }
-            return null;
-          })
-          .filter((f: any) => f !== null)
-          .sort((a: any, b: any) => a.pageNum - b.pageNum); // Sort by page number
+        // Separate thumbnails and full-size pages, then match them together
+        const thumbnails = new Map<number, { id: string; name: string }>();
+        const fullSizePages = new Map<number, { id: string; name: string }>();
         
-        console.log(`✅ [ImageSlideshow] Found ${pageFiles.length} image pages in folder`);
+        files.forEach((file: any) => {
+          // Check for thumbnail: "thumb_{name}-page-{num}.png.encrypted"
+          const thumbMatch = file.name.match(/^thumb_(.+)-page-(\d+)\.png\.encrypted$/i);
+          if (thumbMatch) {
+            const pageNum = parseInt(thumbMatch[2], 10);
+            thumbnails.set(pageNum, { id: file.id, name: file.name });
+            return;
+          }
+          
+          // Check for full-size: "{name}-page-{num}.png.encrypted" (not starting with thumb_)
+          const fullMatch = file.name.match(/^(.+)-page-(\d+)\.png\.encrypted$/i);
+          if (fullMatch && !file.name.toLowerCase().startsWith('thumb_')) {
+            const pageNum = parseInt(fullMatch[2], 10);
+            fullSizePages.set(pageNum, { id: file.id, name: file.name });
+          }
+        });
+        
+        // Combine thumbnails and full-size pages, matching by page number
+        const pageFiles: Array<{ 
+          id: string; 
+          name: string; 
+          pageNum: number;
+          thumbnailId?: string;
+          fullSizeId: string;
+        }> = [];
+        
+        // Use full-size pages as the base (they always exist)
+        fullSizePages.forEach((fullSize, pageNum) => {
+          pageFiles.push({
+            id: fullSize.id, // Default to full-size ID for backward compatibility
+            name: fullSize.name,
+            pageNum,
+            thumbnailId: thumbnails.get(pageNum)?.id,
+            fullSizeId: fullSize.id
+          });
+        });
+        
+        // Sort by page number
+        pageFiles.sort((a, b) => a.pageNum - b.pageNum);
+        
+        console.log(`✅ [ImageSlideshow] Found ${pageFiles.length} image pages (${thumbnails.size} with thumbnails)`);
         
         if (pageFiles.length > 0) {
           setFolderPageFiles(pageFiles);
@@ -183,16 +219,31 @@ export function ImageSlideshow({ fileId, fileName, accountId }: ImageSlideshowPr
   };
 
   // Load individual image page (shared function)
-  const loadImagePage = useCallback(async (pageFile: { id: string; name: string; pageNum: number }, finalAccountId: string | null) => {
+  // If loadFullSize is false, loads thumbnail first; if true or thumbnail unavailable, loads full-size
+  const loadImagePage = useCallback(async (
+    pageFile: { id: string; name: string; pageNum: number; thumbnailId?: string; fullSizeId: string }, 
+    finalAccountId: string | null,
+    loadFullSize: boolean = false
+  ) => {
       const pageNum = pageFile.pageNum;
       
-      // Skip if already loaded or currently loading
-      if (loadedPagesRef.current.has(pageNum) || loadingPagesRef.current.has(pageNum)) {
-        console.log(`[ImageSlideshow] Skipping page ${pageNum} (already loaded/loading)`);
+      // Skip if full-size already loaded, or if currently loading
+      if (loadFullSize && fullSizeLoadedRef.current.has(pageNum)) {
+        console.log(`[ImageSlideshow] Skipping page ${pageNum} (full-size already loaded)`);
+        return;
+      }
+      if (loadingPagesRef.current.has(pageNum)) {
+        console.log(`[ImageSlideshow] Skipping page ${pageNum} (already loading)`);
         return;
       }
       
-      console.log(`[ImageSlideshow] Loading image page ${pageNum}...`);
+      // Determine which file to load: thumbnail first (if available and not forcing full-size), otherwise full-size
+      const hasThumbnail = !!pageFile.thumbnailId;
+      const shouldLoadThumbnail = hasThumbnail && !loadFullSize && !fullSizeLoadedRef.current.has(pageNum);
+      const fileIdToLoad = shouldLoadThumbnail ? pageFile.thumbnailId! : pageFile.fullSizeId;
+      const isThumbnailLoad = shouldLoadThumbnail;
+      
+      console.log(`[ImageSlideshow] Loading ${isThumbnailLoad ? 'thumbnail' : 'full-size'} for page ${pageNum}...`);
       loadingPagesRef.current.add(pageNum);
       setLoadingPages(prev => new Set(prev).add(pageNum));
 
@@ -207,16 +258,16 @@ export function ImageSlideshow({ fileId, fileName, accountId }: ImageSlideshowPr
 
         // Use thumbnail endpoint - for encrypted files, API will return the full encrypted file
         // which we'll decrypt client-side
-        let thumbnailUrl = `${apiEndpoint}/api/drive/files/${pageFile.id}?thumbnail=true`;
+        let imageUrl = `${apiEndpoint}/api/drive/files/${fileIdToLoad}?thumbnail=true`;
         // Add accountId if we have a valid one
         if (finalAccountId && finalAccountId.includes('::')) {
-          thumbnailUrl += `&accountId=${encodeURIComponent(finalAccountId)}`;
+          imageUrl += `&accountId=${encodeURIComponent(finalAccountId)}`;
         }
         
-        console.log(`[ImageSlideshow] Fetching thumbnail for page ${pageNum} from:`, thumbnailUrl);
+        console.log(`[ImageSlideshow] Fetching ${isThumbnailLoad ? 'thumbnail' : 'full-size'} for page ${pageNum} from:`, imageUrl);
         const startTime = Date.now();
         
-        let response = await fetch(thumbnailUrl, {
+        let response = await fetch(imageUrl, {
           headers: {
             'Authorization': `Bearer ${accessToken}`
           }
@@ -227,7 +278,7 @@ export function ImageSlideshow({ fileId, fileName, accountId }: ImageSlideshowPr
           console.log(`[ImageSlideshow] Got 401 for page ${pageNum}, refreshing token and retrying...`);
           const refreshedToken = await PNOAuthService.getValidAccessToken(true); // Force refresh
           if (refreshedToken) {
-            response = await fetch(thumbnailUrl, {
+            response = await fetch(imageUrl, {
               headers: {
                 'Authorization': `Bearer ${refreshedToken}`
               }
@@ -236,7 +287,13 @@ export function ImageSlideshow({ fileId, fileName, accountId }: ImageSlideshowPr
         }
         
         if (!response.ok) {
-          throw new Error(`Failed to load page ${pageNum} thumbnail: ${response.status}`);
+          // If thumbnail load failed but we have a full-size option, try that
+          if (isThumbnailLoad && pageFile.fullSizeId) {
+            console.log(`[ImageSlideshow] Thumbnail failed for page ${pageNum}, falling back to full-size...`);
+            loadingPagesRef.current.delete(pageNum);
+            return loadImagePage(pageFile, finalAccountId, true); // Retry with full-size
+          }
+          throw new Error(`Failed to load page ${pageNum} ${isThumbnailLoad ? 'thumbnail' : 'full-size'}: ${response.status}`);
         }
         
         const contentType = response.headers.get('content-type') || '';
@@ -299,21 +356,40 @@ export function ImageSlideshow({ fileId, fileName, accountId }: ImageSlideshowPr
           });
           
           imageUrl = URL.createObjectURL(decryptedBlob);
-          console.log(`✅ [ImageSlideshow] Decrypted PNG page ${pageNum}`);
+          console.log(`✅ [ImageSlideshow] Decrypted ${isThumbnailLoad ? 'thumbnail' : 'full-size'} page ${pageNum}`);
         } else {
           // Direct image (non-encrypted or already decrypted by API)
           imageUrl = URL.createObjectURL(blob);
         }
         
         const loadTime = Date.now() - startTime;
-        console.log(`✅ [ImageSlideshow] Loaded image page ${pageNum} in ${loadTime}ms`);
+        console.log(`✅ [ImageSlideshow] Loaded ${isThumbnailLoad ? 'thumbnail' : 'full-size'} page ${pageNum} in ${loadTime}ms`);
         
+        // Update state
         loadedPagesRef.current.add(pageNum);
+        if (!isThumbnailLoad) {
+          fullSizeLoadedRef.current.add(pageNum);
+        }
+        
         setPageUrls(prev => {
           const next = new Map(prev);
           next.set(pageNum, imageUrl);
           return next;
         });
+        setPageIsThumbnail(prev => {
+          const next = new Map(prev);
+          next.set(pageNum, isThumbnailLoad);
+          return next;
+        });
+        
+        // If we loaded a thumbnail and full-size is available, preload full-size in background
+        if (isThumbnailLoad && pageFile.fullSizeId && !fullSizeLoadedRef.current.has(pageNum)) {
+          console.log(`[ImageSlideshow] Preloading full-size for page ${pageNum} in background...`);
+          // Don't await - let it load in background
+          loadImagePage(pageFile, finalAccountId, true).catch(err => {
+            console.warn(`[ImageSlideshow] Background full-size load failed for page ${pageNum}:`, err);
+          });
+        }
       } catch (err) {
         console.error(`❌ [ImageSlideshow] Failed to load image page ${pageNum}:`, err);
       } finally {

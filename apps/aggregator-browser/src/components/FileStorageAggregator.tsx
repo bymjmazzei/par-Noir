@@ -2341,7 +2341,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
                 viewport: viewport
               }).promise;
               
-              // Convert canvas to PNG blob
+              // Convert canvas to PNG blob (full-size)
               const pngBlob = await new Promise<Blob>((resolve, reject) => {
                 canvas.toBlob((blob) => {
                   if (blob) resolve(blob);
@@ -2349,7 +2349,10 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
                 }, 'image/png', 1.0);
               });
               
-              // Encrypt PNG
+              // Generate thumbnail from full-size PNG (800px max)
+              const thumbnailBlob = await createThumbnailFromBlobLocal(pngBlob, 800, 800);
+              
+              // Encrypt full-size PNG
               const pngArrayBuffer = await pngBlob.arrayBuffer();
               const pngData = new Uint8Array(pngArrayBuffer);
               const pngEncrypted = await encryptionManager.encrypt(
@@ -2358,7 +2361,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
                 publicKey
               );
               
-              // Create encrypted package for PNG
+              // Create encrypted package for full-size PNG
               const pngPackage: EncryptedFilePackage = {
                 encrypted: pngEncrypted.encrypted,
                 iv: pngEncrypted.iv,
@@ -2370,8 +2373,30 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
                 },
               };
               
-              // Generate share token for PNG page (optional, don't fail if it doesn't work)
+              // Encrypt thumbnail
+              const thumbnailArrayBuffer = await thumbnailBlob.arrayBuffer();
+              const thumbnailData = new Uint8Array(thumbnailArrayBuffer);
+              const thumbnailEncrypted = await encryptionManager.encrypt(
+                thumbnailData,
+                session.did,
+                publicKey
+              );
+              
+              // Create encrypted package for thumbnail
+              const thumbnailPackage: EncryptedFilePackage = {
+                encrypted: thumbnailEncrypted.encrypted,
+                iv: thumbnailEncrypted.iv,
+                salt: thumbnailEncrypted.salt,
+                metadata: {
+                  originalName: `thumb_${baseFileName}-page-${pageNum}.png`,
+                  originalSize: thumbnailBlob.size,
+                  originalMimeType: 'image/jpeg', // Thumbnails are JPEG
+                },
+              };
+              
+              // Generate share tokens (optional, don't fail if it doesn't work)
               let pngShareToken: any = undefined;
+              let thumbnailShareToken: any = undefined;
               try {
                 const encryptionService = getEncryptionService();
                 pngShareToken = await encryptionService.generateShareToken(
@@ -2381,11 +2406,18 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
                     publicKey: publicKey
                   }
                 );
+                thumbnailShareToken = await encryptionService.generateShareToken(
+                  thumbnailPackage,
+                  {
+                    id: session.did,
+                    publicKey: publicKey
+                  }
+                );
               } catch (tokenError) {
                 console.warn(`⚠️ [Upload] Share token generation failed for page ${pageNum} (non-critical)`);
               }
               
-              // Convert to JSON string
+              // Convert full-size PNG to JSON string
               const pngEncryptedBlob = new Blob([JSON.stringify(pngPackage)], {
                 type: 'application/json',
               });
@@ -2401,7 +2433,23 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
                 reader.readAsDataURL(pngEncryptedBlob);
               });
               
-              // Upload PNG page to folder with fresh token
+              // Convert thumbnail to JSON string
+              const thumbnailEncryptedBlob = new Blob([JSON.stringify(thumbnailPackage)], {
+                type: 'application/json',
+              });
+              
+              const thumbnailBase64 = await new Promise<string>((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = () => {
+                  const result = reader.result as string;
+                  const base64 = result.includes(',') ? result.split(',')[1] : result;
+                  resolve(base64);
+                };
+                reader.onerror = () => reject(new Error('Failed to read thumbnail encrypted file'));
+                reader.readAsDataURL(thumbnailEncryptedBlob);
+              });
+              
+              // Upload full-size PNG page to folder
               const pngEncryptedFileName = `${baseFileName}-page-${pageNum}.png.encrypted`;
               const pngResponse = await fetch(`${apiEndpoint}/api/drive/files`, {
                 method: 'POST',
@@ -2413,21 +2461,40 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
                   fileData: pngBase64,
                   fileName: pngEncryptedFileName,
                   mimeType: 'application/json',
-                  parents: pdfPagesFolderId ? [pdfPagesFolderId] : undefined, // Upload to folder if available
+                  parents: pdfPagesFolderId ? [pdfPagesFolderId] : undefined,
                   accountId: accountId
                 })
               });
               
-              if (pngResponse.ok) {
+              // Upload thumbnail to folder
+              const thumbnailEncryptedFileName = `thumb_${baseFileName}-page-${pageNum}.png.encrypted`;
+              const thumbnailResponse = await fetch(`${apiEndpoint}/api/drive/files`, {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                  'Authorization': `Bearer ${freshAccessToken}`
+                },
+                body: JSON.stringify({
+                  fileData: thumbnailBase64,
+                  fileName: thumbnailEncryptedFileName,
+                  mimeType: 'application/json',
+                  parents: pdfPagesFolderId ? [pdfPagesFolderId] : undefined,
+                  accountId: accountId
+                })
+              });
+              
+              if (pngResponse.ok && thumbnailResponse.ok) {
                 const pngUploadResult = await pngResponse.json();
-                if (pngUploadResult.file?.id) {
-                  console.log(`✅ [Upload] Page ${pageNum}/${numPages} uploaded as PNG${pdfPagesFolderId ? ' to folder' : ''}`);
+                const thumbnailUploadResult = await thumbnailResponse.json();
+                if (pngUploadResult.file?.id && thumbnailUploadResult.file?.id) {
+                  console.log(`✅ [Upload] Page ${pageNum}/${numPages} uploaded as PNG + thumbnail${pdfPagesFolderId ? ' to folder' : ''}`);
                 } else {
-                  console.warn(`⚠️ [Upload] Page ${pageNum} upload succeeded but no file ID returned`);
+                  console.warn(`⚠️ [Upload] Page ${pageNum} upload succeeded but some file IDs missing`);
                 }
               } else {
-                const errorText = await pngResponse.text().catch(() => 'Unknown error');
-                console.warn(`⚠️ [Upload] Failed to upload page ${pageNum} PNG: ${pngResponse.status} - ${errorText}`);
+                const pngErrorText = pngResponse.ok ? '' : await pngResponse.text().catch(() => 'Unknown error');
+                const thumbErrorText = thumbnailResponse.ok ? '' : await thumbnailResponse.text().catch(() => 'Unknown error');
+                console.warn(`⚠️ [Upload] Failed to upload page ${pageNum}: PNG=${pngResponse.status}, Thumb=${thumbnailResponse.status}`);
                 // Continue with other pages even if one fails
               }
             } catch (pageError: any) {
