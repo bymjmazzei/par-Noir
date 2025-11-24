@@ -1631,20 +1631,7 @@ export function FullScreenFeed({
                       pageThumbnailUrl = thumbnails.get(fileId) || null;
                     }
                     
-                    // Trigger loading if thumbnail not available and page is near current page
-                    if (!pageThumbnailUrl) {
-                      const currentPage = pdfCurrentPage.get(fileId) || 0;
-                      // Load if it's the current page or within 2 pages
-                      if (Math.abs(pageIndex - currentPage) <= 2) {
-                        console.log(`[FullScreenFeed] Triggering on-demand load for page ${pageIndex + 1} (current: ${currentPage + 1})`);
-                        const thumbnailId = pdfPageThumbnailIds[pageIndex];
-                        loadPdfPageThumbnail(fileId, thumbnailId, pageIndex, indexedFile).then(() => {
-                          console.log(`[FullScreenFeed] Successfully loaded page ${pageIndex + 1} thumbnail`);
-                        }).catch((err) => {
-                          console.error(`[FullScreenFeed] Failed to load page ${pageIndex + 1} thumbnail:`, err);
-                        });
-                      }
-                    }
+                    // Note: On-demand loading is handled by scroll handler and IntersectionObserver
                     
                     // Calculate aspect ratio for background blur (same as images)
                     const containerHeight = window.innerHeight - 64; // Account for bottom nav
@@ -1682,8 +1669,41 @@ export function FullScreenFeed({
                       )
                     };
                     
+                    // Use IntersectionObserver to detect when page comes into view for loading
+                    const pageRef = React.useRef<HTMLDivElement>(null);
+                    
+                    React.useEffect(() => {
+                      if (pageThumbnailUrl || !pageRef.current) return;
+                      
+                      const observer = new IntersectionObserver(
+                        (entries) => {
+                          entries.forEach((entry) => {
+                            if (entry.isIntersecting) {
+                              const currentPage = pdfCurrentPage.get(fileId) || 0;
+                              // Load if it's the current page or within 2 pages
+                              if (Math.abs(pageIndex - currentPage) <= 2) {
+                                console.log(`[FullScreenFeed] Page ${pageIndex + 1} is visible, loading thumbnail`);
+                                const thumbnailId = pdfPageThumbnailIds[pageIndex];
+                                loadPdfPageThumbnail(fileId, thumbnailId, pageIndex, indexedFile).then(() => {
+                                  console.log(`[FullScreenFeed] Successfully loaded page ${pageIndex + 1} thumbnail`);
+                                }).catch((err) => {
+                                  console.error(`[FullScreenFeed] Failed to load page ${pageIndex + 1} thumbnail:`, err);
+                                });
+                                observer.disconnect();
+                              }
+                            }
+                          });
+                        },
+                        { threshold: 0.1 }
+                      );
+                      
+                      observer.observe(pageRef.current);
+                      return () => observer.disconnect();
+                    }, [pageIndex, fileId, pageThumbnailUrl, pdfCurrentPage, pdfPageThumbnailIds, indexedFile]);
+                    
                     return (
                       <div
+                        ref={pageRef}
                         key={pageIndex}
                         className="w-full h-full snap-start flex-shrink-0 relative"
                         style={{
