@@ -1604,28 +1604,142 @@ export function FullScreenFeed({
               // Only attach swipe ref if this PDF is currently visible
               const isVisiblePdf = visibleFileId === fileId;
               
-              console.log(`[FullScreenFeed] Rendering PDF ${fileId}, isVisiblePdf: ${isVisiblePdf}, visibleFileId: ${visibleFileId}`);
+              // Handle touch events directly on the PDF container
+              const handlePdfTouchStart = (e: React.TouchEvent) => {
+                // Don't interfere with button clicks
+                const target = e.target as HTMLElement;
+                if (target.tagName === 'BUTTON' || target.closest('button')) {
+                  return;
+                }
+                
+                const touch = e.touches[0];
+                (e.currentTarget as any).__pdfTouchStart = {
+                  x: touch.clientX,
+                  y: touch.clientY,
+                  time: Date.now()
+                };
+                console.log('[FullScreenFeed] PDF touch start:', { x: touch.clientX, y: touch.clientY });
+              };
+              
+              const handlePdfTouchMove = (e: React.TouchEvent) => {
+                const touchStart = (e.currentTarget as any).__pdfTouchStart;
+                if (!touchStart) return;
+                
+                const touch = e.touches[0];
+                const deltaX = touch.clientX - touchStart.x;
+                const deltaY = touch.clientY - touchStart.y;
+                const absDeltaX = Math.abs(deltaX);
+                const absDeltaY = Math.abs(deltaY);
+                
+                // If horizontal movement is dominant, prevent vertical scroll
+                if (absDeltaX > absDeltaY * 1.5 && absDeltaX > 40) {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  console.log('[FullScreenFeed] PDF touch move (horizontal):', { deltaX, deltaY });
+                }
+              };
+              
+              const handlePdfTouchEnd = (e: React.TouchEvent) => {
+                const touchStart = (e.currentTarget as any).__pdfTouchStart;
+                if (!touchStart) return;
+                
+                const touch = e.changedTouches[0];
+                const deltaX = touch.clientX - touchStart.x;
+                const deltaY = touch.clientY - touchStart.y;
+                const deltaTime = Date.now() - touchStart.time;
+                const absDeltaX = Math.abs(deltaX);
+                const absDeltaY = Math.abs(deltaY);
+                
+                // Clear touch start
+                (e.currentTarget as any).__pdfTouchStart = null;
+                
+                console.log('[FullScreenFeed] PDF touch end:', { deltaX, deltaY, deltaTime, absDeltaX, absDeltaY });
+                
+                // Check if it's a horizontal swipe
+                if (deltaTime > 300) return; // Too slow
+                if (absDeltaX <= absDeltaY * 1.5) return; // Vertical dominant
+                if (absDeltaX < 50) return; // Too short
+                
+                const viewportWidth = window.innerWidth;
+                const percentageMoved = absDeltaX / viewportWidth;
+                if (percentageMoved < 0.2) return; // Not enough movement
+                
+                // Trigger swipe
+                if (deltaX < 0) {
+                  // Swipe left - next page
+                  console.log('[FullScreenFeed] PDF swipe LEFT detected');
+                  const nextPage = Math.min(currentPage + 1, totalPages - 1);
+                  if (nextPage !== currentPage) {
+                    setPdfCurrentPage(prev => {
+                      const newMap = new Map(prev);
+                      newMap.set(fileId, nextPage);
+                      return newMap;
+                    });
+                    const pageThumbnails = pdfPageThumbnails.get(fileId);
+                    if (pageThumbnails?.has(nextPage)) {
+                      setThumbnails(prev => {
+                        const newMap = new Map(prev);
+                        newMap.set(fileId, pageThumbnails.get(nextPage)!);
+                        return newMap;
+                      });
+                    } else {
+                      const thumbnailId = pdfPageThumbnailIds[nextPage];
+                      loadPdfPageThumbnail(fileId, thumbnailId, nextPage, indexedFile).then(() => {
+                        const updatedPageThumbnails = pdfPageThumbnails.get(fileId);
+                        if (updatedPageThumbnails?.has(nextPage)) {
+                          setThumbnails(prev => {
+                            const newMap = new Map(prev);
+                            newMap.set(fileId, updatedPageThumbnails.get(nextPage)!);
+                            return newMap;
+                          });
+                        }
+                      }).catch(() => {});
+                    }
+                  }
+                } else {
+                  // Swipe right - previous page
+                  console.log('[FullScreenFeed] PDF swipe RIGHT detected');
+                  const prevPage = Math.max(currentPage - 1, 0);
+                  if (prevPage !== currentPage) {
+                    setPdfCurrentPage(prev => {
+                      const newMap = new Map(prev);
+                      newMap.set(fileId, prevPage);
+                      return newMap;
+                    });
+                    const pageThumbnails = pdfPageThumbnails.get(fileId);
+                    if (pageThumbnails?.has(prevPage)) {
+                      setThumbnails(prev => {
+                        const newMap = new Map(prev);
+                        newMap.set(fileId, pageThumbnails.get(prevPage)!);
+                        return newMap;
+                      });
+                    } else {
+                      const thumbnailId = pdfPageThumbnailIds[prevPage];
+                      loadPdfPageThumbnail(fileId, thumbnailId, prevPage, indexedFile).then(() => {
+                        const updatedPageThumbnails = pdfPageThumbnails.get(fileId);
+                        if (updatedPageThumbnails?.has(prevPage)) {
+                          setThumbnails(prev => {
+                            const newMap = new Map(prev);
+                            newMap.set(fileId, updatedPageThumbnails.get(prevPage)!);
+                            return newMap;
+                          });
+                        }
+                      }).catch(() => {});
+                    }
+                  }
+                }
+              };
               
               return (
                 <div
-                  ref={(el) => {
-                    // Always update ref, but hook will check visibility
-                    if (el) {
-                      (pdfHorizontalSwipeRef as any).current = el;
-                      console.log(`[FullScreenFeed] PDF ref attached for ${fileId}, isVisiblePdf: ${isVisiblePdf}`);
-                    } else {
-                      (pdfHorizontalSwipeRef as any).current = null;
-                    }
-                  }}
                   className="w-full h-full relative"
                   style={{ 
                     touchAction: 'pan-y pan-x', // Allow both vertical and horizontal panning
                     pointerEvents: 'auto' // Ensure touch events can reach this element
                   }}
-                  onTouchStart={(e) => {
-                    // Let the hook handle it, but ensure event reaches the element
-                    console.log('[FullScreenFeed] PDF container touch start');
-                  }}
+                  onTouchStart={handlePdfTouchStart}
+                  onTouchMove={handlePdfTouchMove}
+                  onTouchEnd={handlePdfTouchEnd}
                 >
                   {/* Blurred background PDF page */}
                   <img
