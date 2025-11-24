@@ -45,15 +45,40 @@ export function ImageSlideshow({ fileId, fileName, accountId }: ImageSlideshowPr
           throw new Error('No access token');
         }
 
+        // Try to get accountId from storage accounts if not provided
+        let finalAccountId = accountId;
+        if (!finalAccountId || !finalAccountId.includes('::')) {
+          try {
+            const session = PNOAuthService.loadSession();
+            if (session?.did || session?.pnIdentifier) {
+              const userId = session.pnIdentifier || session.did;
+              const accountsResponse = await fetch(`${apiEndpoint}/api/storage/accounts/${userId}`, {
+                headers: {
+                  'Authorization': `Bearer ${accessToken}`
+                }
+              });
+              
+              if (accountsResponse.ok) {
+                const accountsData = await accountsResponse.json();
+                const accounts = accountsData.accounts || [];
+                if (accounts.length > 0) {
+                  finalAccountId = accounts[0].accountId;
+                  console.log(`[ImageSlideshow] Fetched accountId from storage accounts: ${finalAccountId}`);
+                }
+              }
+            }
+          } catch (err) {
+            console.warn(`[ImageSlideshow] Failed to fetch accountId, continuing without it:`, err);
+          }
+        }
+
         // Query files in folder using Google Drive API query
-        // accountId is optional - API will use default account if not provided
         const folderQuery = `'${fileId}' in parents and trashed=false`;
         let filesUrl = `${apiEndpoint}/api/drive/files?q=${encodeURIComponent(folderQuery)}&pageSize=1000`;
         
-        // Only add accountId if it's a valid account ID format (contains "::" separator)
-        // Don't add if it looks like a folder ID (just alphanumeric/underscore/hyphen)
-        if (accountId && accountId.includes('::')) {
-          filesUrl += `&accountId=${encodeURIComponent(accountId)}`;
+        // Add accountId if we have a valid one
+        if (finalAccountId && finalAccountId.includes('::')) {
+          filesUrl += `&accountId=${encodeURIComponent(finalAccountId)}`;
         }
         
         console.log(`[ImageSlideshow] Fetching files from folder:`, filesUrl);
@@ -136,12 +161,37 @@ export function ImageSlideshow({ fileId, fileName, accountId }: ImageSlideshowPr
           throw new Error('No access token');
         }
 
+        // Try to get accountId from storage accounts if not provided
+        let finalAccountId = accountId;
+        if (!finalAccountId || !finalAccountId.includes('::')) {
+          try {
+            const session = PNOAuthService.loadSession();
+            if (session?.did || session?.pnIdentifier) {
+              const userId = session.pnIdentifier || session.did;
+              const accountsResponse = await fetch(`${apiEndpoint}/api/storage/accounts/${userId}`, {
+                headers: {
+                  'Authorization': `Bearer ${accessToken}`
+                }
+              });
+              
+              if (accountsResponse.ok) {
+                const accountsData = await accountsResponse.json();
+                const accounts = accountsData.accounts || [];
+                if (accounts.length > 0) {
+                  finalAccountId = accounts[0].accountId;
+                }
+              }
+            }
+          } catch (err) {
+            // Silently fail - will try without accountId
+          }
+        }
+
         // Use thumbnail endpoint which returns decrypted image
-        // accountId is optional - API will use default account if not provided
         let thumbnailUrl = `${apiEndpoint}/api/drive/files/${pageFile.id}?thumbnail=true`;
-        // Only add accountId if it's a valid account ID format (contains "::" separator)
-        if (accountId && accountId.includes('::')) {
-          thumbnailUrl += `&accountId=${encodeURIComponent(accountId)}`;
+        // Add accountId if we have a valid one
+        if (finalAccountId && finalAccountId.includes('::')) {
+          thumbnailUrl += `&accountId=${encodeURIComponent(finalAccountId)}`;
         }
         
         console.log(`[ImageSlideshow] Fetching thumbnail for page ${pageNum} from:`, thumbnailUrl);
