@@ -1567,7 +1567,20 @@ export function FullScreenFeed({
               };
               
               return (
-                <>
+                <div
+                  ref={(el) => {
+                    // Attach PDF swipe handler to PDF content area
+                    if (el && visibleFileId === fileId) {
+                      if (pdfHorizontalSwipeRef.current) {
+                        (pdfHorizontalSwipeRef as any).current.element = el;
+                        (pdfHorizontalSwipeRef as any).current.enabled = true;
+                      }
+                    } else if (pdfHorizontalSwipeRef.current) {
+                      (pdfHorizontalSwipeRef as any).current.enabled = false;
+                    }
+                  }}
+                  className="w-full h-full relative"
+                >
                   {/* Blurred background PDF page */}
                   <img
                     src={pageThumbnailUrl}
