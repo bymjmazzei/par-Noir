@@ -359,6 +359,22 @@ export function ImageSlideshow({ thumbnailIds, fileName, accountId, pdfFileId }:
             }
             
             try {
+              // Validate encrypted fields are valid base64 strings before attempting decryption
+              const isValidBase64 = (str: string) => {
+                try {
+                  return btoa(atob(str)) === str;
+                } catch {
+                  return false;
+                }
+              };
+              
+              if (!isValidBase64(parsed.encrypted) || !isValidBase64(parsed.iv) || !isValidBase64(parsed.salt)) {
+                console.warn(`[ImageSlideshow] Invalid base64 encoding in encrypted package for thumbnail ${thumbnailId}`);
+                failedPagesRef.current.add(pageNum);
+                loadingPagesRef.current.delete(pageNum);
+                return;
+              }
+              
               const encryptionManager = new EncryptionManager();
               const decryptedData = await encryptionManager.decrypt(
                 parsed.encrypted,
@@ -372,11 +388,17 @@ export function ImageSlideshow({ thumbnailIds, fileName, accountId, pdfFileId }:
                 type: parsed.metadata?.originalMimeType || 'image/jpeg'
               });
               imageUrl = URL.createObjectURL(decryptedBlob);
-            } catch (decryptError) {
-              console.error(`[ImageSlideshow] Failed to decrypt thumbnail ${thumbnailId}:`, decryptError);
-              failedPagesRef.current.add(pageNum);
-              loadingPagesRef.current.delete(pageNum);
-              return;
+            } catch (decryptError: any) {
+              console.error(`[ImageSlideshow] Failed to decrypt thumbnail ${thumbnailId}:`, decryptError?.message || decryptError);
+              // Don't fail the page - maybe it's not actually encrypted, try using blob directly
+              // But first check if it's a real image
+              if (blob.type && blob.type.startsWith('image/')) {
+                imageUrl = URL.createObjectURL(blob);
+              } else {
+                failedPagesRef.current.add(pageNum);
+                loadingPagesRef.current.delete(pageNum);
+                return;
+              }
             }
           } else {
             // Not an encrypted package - might be error JSON, skip it
@@ -408,18 +430,51 @@ export function ImageSlideshow({ thumbnailIds, fileName, accountId, pdfFileId }:
                 publicKey = session.did.substring(8);
               }
               if (publicKey) {
-                const encryptionManager = new EncryptionManager();
-                const decryptedData = await encryptionManager.decrypt(
-                  parsed.encrypted,
-                  parsed.iv,
-                  parsed.salt,
-                  pnId,
-                  publicKey
-                );
-                const decryptedBlob = new Blob([decryptedData], {
-                  type: parsed.metadata?.originalMimeType || 'image/jpeg'
-                });
-                imageUrl = URL.createObjectURL(decryptedBlob);
+                try {
+                  // Validate base64 before attempting decryption
+                  const isValidBase64 = (str: string) => {
+                    try {
+                      return btoa(atob(str)) === str;
+                    } catch {
+                      return false;
+                    }
+                  };
+                  
+                  if (!isValidBase64(parsed.encrypted) || !isValidBase64(parsed.iv) || !isValidBase64(parsed.salt)) {
+                    console.warn(`[ImageSlideshow] Invalid base64 in octet-stream for thumbnail ${thumbnailId}`);
+                    // Try using blob directly if it looks like an image
+                    if (blob.type && blob.type.startsWith('image/')) {
+                      imageUrl = URL.createObjectURL(blob);
+                    } else {
+                      failedPagesRef.current.add(pageNum);
+                      loadingPagesRef.current.delete(pageNum);
+                      return;
+                    }
+                  } else {
+                    const encryptionManager = new EncryptionManager();
+                    const decryptedData = await encryptionManager.decrypt(
+                      parsed.encrypted,
+                      parsed.iv,
+                      parsed.salt,
+                      pnId,
+                      publicKey
+                    );
+                    const decryptedBlob = new Blob([decryptedData], {
+                      type: parsed.metadata?.originalMimeType || 'image/jpeg'
+                    });
+                    imageUrl = URL.createObjectURL(decryptedBlob);
+                  }
+                } catch (decryptError: any) {
+                  console.error(`[ImageSlideshow] Failed to decrypt octet-stream thumbnail ${thumbnailId}:`, decryptError?.message || decryptError);
+                  // Try using blob directly if it's an image
+                  if (blob.type && blob.type.startsWith('image/')) {
+                    imageUrl = URL.createObjectURL(blob);
+                  } else {
+                    failedPagesRef.current.add(pageNum);
+                    loadingPagesRef.current.delete(pageNum);
+                    return;
+                  }
+                }
               } else {
                 failedPagesRef.current.add(pageNum);
                 loadingPagesRef.current.delete(pageNum);
@@ -451,10 +506,8 @@ export function ImageSlideshow({ thumbnailIds, fileName, accountId, pdfFileId }:
       setPageUrls(prev => new Map(prev).set(pageNum, imageUrl));
       setPageIsThumbnail(prev => new Map(prev).set(pageNum, true));
       
-      // Preload full-size PDF rendering in background if available
-      if (pdfFileId && !fullSizeLoadedRef.current.has(pageNum)) {
-        loadThumbnail(thumbnailId, pageNum, accountIdToUse, true).catch(() => {});
-      }
+      // Don't preload full-size PDF rendering - only load on-demand when user navigates to page
+      // This matches the vertical feed pattern: show thumbnails immediately, load full-size only when needed
     } catch (err) {
       console.error(`❌ [ImageSlideshow] Failed to load page ${pageNum}:`, err);
       failedPagesRef.current.add(pageNum);
