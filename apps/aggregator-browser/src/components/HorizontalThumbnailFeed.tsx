@@ -1,10 +1,11 @@
 /**
  * Horizontal Thumbnail Feed Component
- * Displays thumbnails in a horizontal scrollable list (like vertical feed but horizontal)
- * Shows multiple thumbnails side-by-side, loads progressively
+ * Displays thumbnails one at a time, full-screen (like vertical feed but horizontal)
+ * Swipe left/right to navigate, loads sequentially prioritizing current thumbnail
  */
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { useHorizontalSwipe } from '../hooks/useHorizontalSwipe';
 
 interface HorizontalThumbnailFeedProps {
   thumbnailIds: string[]; // Array of thumbnail file IDs
@@ -21,11 +22,13 @@ export function HorizontalThumbnailFeed({
   pdfFileId,
   onThumbnailClick 
 }: HorizontalThumbnailFeedProps) {
+  const [currentIndex, setCurrentIndex] = useState(0);
   const [thumbnailUrls, setThumbnailUrls] = useState<Map<number, string>>(new Map());
   const loadedThumbnailsRef = useRef<Set<number>>(new Set());
   const loadingThumbnailsRef = useRef<Set<number>>(new Set());
   const failedThumbnailsRef = useRef<Set<number>>(new Set());
   const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const thumbnailRefs = useRef<Map<number, HTMLDivElement>>(new Map());
 
   // Fetch accountId helper (non-blocking)
   const fetchAccountIdOnce = useCallback(async (): Promise<string | null> => {
@@ -237,26 +240,84 @@ export function HorizontalThumbnailFeed({
     }
   }, [accountId]);
 
-  // Load all thumbnails in parallel immediately
+  // Horizontal swipe navigation (like vertical feed but horizontal)
+  const swipeRef = useHorizontalSwipe({
+    onSwipeLeft: () => {
+      if (currentIndex < thumbnailIds.length - 1) {
+        setCurrentIndex(prev => Math.min(prev + 1, thumbnailIds.length - 1));
+      }
+    },
+    onSwipeRight: () => {
+      if (currentIndex > 0) {
+        setCurrentIndex(prev => Math.max(prev - 1, 0));
+      }
+    },
+    threshold: 50,
+    snapThreshold: 0.2
+  });
+
+  // Load thumbnails sequentially - prioritize current, then adjacent
   useEffect(() => {
     if (thumbnailIds.length === 0) return;
 
     let cancelled = false;
 
-    const loadPromises = thumbnailIds.map(async (thumbnailId, index) => {
-      if (cancelled) return;
+    const loadSequentially = async () => {
       const accountIdHint = await fetchAccountIdOnce();
-      await loadThumbnail(thumbnailId, index, accountIdHint);
-    });
+      
+      // Priority 1: Current thumbnail
+      if (!cancelled && thumbnailIds[currentIndex]) {
+        await loadThumbnail(thumbnailIds[currentIndex], currentIndex, accountIdHint);
+      }
+      
+      // Priority 2: Next thumbnail
+      if (!cancelled && currentIndex + 1 < thumbnailIds.length) {
+        await loadThumbnail(thumbnailIds[currentIndex + 1], currentIndex + 1, accountIdHint);
+      }
+      
+      // Priority 3: Previous thumbnail
+      if (!cancelled && currentIndex > 0) {
+        await loadThumbnail(thumbnailIds[currentIndex - 1], currentIndex - 1, accountIdHint);
+      }
+      
+      // Priority 4: Load remaining thumbnails in background (but don't block)
+      const remainingIndices = thumbnailIds
+        .map((_, index) => index)
+        .filter(index => 
+          index !== currentIndex && 
+          index !== currentIndex + 1 && 
+          index !== currentIndex - 1 &&
+          !loadedThumbnailsRef.current.has(index) &&
+          !loadingThumbnailsRef.current.has(index)
+        );
+      
+      // Load remaining in parallel (non-blocking)
+      remainingIndices.forEach(index => {
+        if (!cancelled) {
+          loadThumbnail(thumbnailIds[index], index, accountIdHint).catch(() => {});
+        }
+      });
+    };
 
-    Promise.all(loadPromises).catch(() => {
-      // Errors handled in loadThumbnail
-    });
+    loadSequentially();
 
     return () => {
       cancelled = true;
     };
-  }, [thumbnailIds, fetchAccountIdOnce, loadThumbnail]);
+  }, [thumbnailIds, currentIndex, fetchAccountIdOnce, loadThumbnail]);
+
+  // Scroll to current thumbnail
+  useEffect(() => {
+    if (!scrollContainerRef.current) return;
+    const thumbnailElement = thumbnailRefs.current.get(currentIndex);
+    if (thumbnailElement) {
+      thumbnailElement.scrollIntoView({
+        behavior: 'smooth',
+        block: 'nearest',
+        inline: 'center'
+      });
+    }
+  }, [currentIndex]);
 
   // Cleanup blob URLs
   useEffect(() => {
@@ -276,58 +337,72 @@ export function HorizontalThumbnailFeed({
   }
 
   return (
-    <div className="w-full h-full flex flex-col bg-black">
-      {/* Horizontal scrollable container */}
+    <div className="w-full h-full flex flex-col bg-black relative">
+      {/* Page indicator */}
+      <div className="absolute top-4 left-1/2 transform -translate-x-1/2 z-20 bg-black/60 px-4 py-2 rounded-full">
+        <span className="text-white text-sm">
+          {currentIndex + 1} / {thumbnailIds.length}
+        </span>
+      </div>
+
+      {/* Horizontal scrollable container - full-screen snap scrolling */}
       <div
-        ref={scrollContainerRef}
-        className="flex-1 overflow-x-auto overflow-y-hidden"
+        ref={(el) => {
+          scrollContainerRef.current = el;
+          // Attach swipeRef to the scroll container for touch event handling
+          (swipeRef as any).current = el;
+        }}
+        className="flex-1 overflow-x-auto snap-x snap-mandatory scrollbar-hide"
         style={{
-          scrollbarWidth: 'thin',
-          scrollbarColor: 'rgba(255, 255, 255, 0.2) transparent',
-          WebkitOverflowScrolling: 'touch'
+          scrollbarWidth: 'none',
+          msOverflowStyle: 'none',
+          WebkitOverflowScrolling: 'touch',
+          scrollBehavior: 'smooth'
         }}
       >
-        <div className="flex h-full gap-2 p-2">
+        <div className="flex h-full">
           {thumbnailIds.map((thumbnailId, index) => {
             const thumbnailUrl = thumbnailUrls.get(index);
             const isLoading = loadingThumbnailsRef.current.has(index);
             const hasFailed = failedThumbnailsRef.current.has(index);
+            const isCurrent = index === currentIndex;
 
             return (
               <div
                 key={`${thumbnailId}-${index}`}
-                className="flex-shrink-0 h-full relative group cursor-pointer"
-                style={{
-                  minWidth: '200px',
-                  maxWidth: '300px',
-                  width: '30vw'
+                ref={(el) => {
+                  if (el) thumbnailRefs.current.set(index, el);
                 }}
-                onClick={() => onThumbnailClick?.(index, thumbnailId)}
+                className="snap-start flex-shrink-0 w-full h-full flex items-center justify-center"
+                style={{
+                  minWidth: '100%',
+                  maxWidth: '100%'
+                }}
               >
                 {thumbnailUrl ? (
                   <img
                     src={thumbnailUrl}
                     alt={`Page ${index + 1}${fileName ? ` of ${fileName}` : ''}`}
-                    className="w-full h-full object-cover rounded-lg"
+                    className="max-w-full max-h-full object-contain"
+                    style={{
+                      maxHeight: 'calc(100vh - 64px - env(safe-area-inset-bottom, 0px))'
+                    }}
                   />
                 ) : hasFailed ? (
-                  <div className="w-full h-full bg-neutral-800 rounded-lg flex items-center justify-center text-white/50 text-sm">
-                    <p>Page {index + 1}</p>
+                  <div className="text-white/50 text-center">
+                    <p className="text-sm">Page {index + 1}</p>
+                    <p className="text-xs mt-1 opacity-70">Authentication required</p>
                   </div>
                 ) : isLoading ? (
-                  <div className="w-full h-full bg-neutral-800 rounded-lg flex items-center justify-center">
-                    <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-white/50"></div>
+                  <div className="text-white/70 text-center">
+                    <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-white/50 mx-auto mb-2"></div>
+                    <p className="text-xs">Loading...</p>
                   </div>
                 ) : (
-                  <div className="w-full h-full bg-neutral-800 rounded-lg flex items-center justify-center text-white/40 text-sm">
-                    <p>Page {index + 1}</p>
+                  <div className="text-white/50 text-center">
+                    <p className="text-xs">Page {index + 1}</p>
                   </div>
                 )}
-                
-                {/* Page number overlay */}
-                <div className="absolute bottom-2 left-2 bg-black/60 px-2 py-1 rounded text-white text-xs opacity-0 group-hover:opacity-100 transition-opacity">
-                  {index + 1} / {thumbnailIds.length}
-                </div>
               </div>
             );
           })}
