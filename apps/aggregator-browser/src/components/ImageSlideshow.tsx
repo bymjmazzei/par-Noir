@@ -546,21 +546,20 @@ export function ImageSlideshow({ thumbnailIds, fileName, accountId, pdfFileId, i
     
     let cancelled = false;
     
-    // Fetch accountId in background (non-blocking)
-    const accountIdPromise = fetchAccountIdOnce();
-    
-    // Load first page immediately for instant display
-    (async () => {
-      const accountIdToUse = await accountIdPromise;
-      if (!cancelled && thumbnailIds[0]) {
-        await loadThumbnail(thumbnailIds[0], 1, accountIdToUse, false);
-      }
-    })();
+    // Load first page immediately WITHOUT waiting for accountId
+    // loadThumbnail will fetch accountId internally if needed, but won't block initial load
+    // This matches FullScreenFeed pattern for instant display
+    if (thumbnailIds[0] && !pageUrls.has(1) && !loadingPagesRef.current.has(1)) {
+      // Start loading immediately - accountId will be fetched inside loadThumbnail if needed
+      loadThumbnail(thumbnailIds[0], 1, accountId || null, false).catch(() => {
+        // Errors already handled in loadThumbnail
+      });
+    }
     
     return () => {
       cancelled = true;
     };
-  }, [thumbnailIds, fetchAccountIdOnce, loadThumbnail]);
+  }, [thumbnailIds, accountId, loadThumbnail, pageUrls]);
 
   // Load adjacent pages (current +/- 1) for smooth scrolling
   useEffect(() => {
