@@ -677,8 +677,8 @@ export function FullScreenFeed({
                                file.fileType === 'thought' ||
                                indexedFile.metadata?.fileType === 'text' || 
                                indexedFile.metadata?.fileType === 'thought';
-        const isThoughtFile = (file.name && /^thought-\d+\.png/i.test(file.name)) ||
-                              (file.title && /^thought-\d+\.png/i.test(file.title));
+        const isThoughtFile = (file.name && (/^thought-\d+\.thought/i.test(file.name) || /^thought-\d+\.png/i.test(file.name))) ||
+                              (file.title && (/^thought-\d+\.thought/i.test(file.title) || /^thought-\d+\.png/i.test(file.title)));
         const isTextPost = !!textPostData || hasTextFileType || isThoughtFile;
         
         const isVideo = !isTextPost && (
@@ -1274,7 +1274,7 @@ export function FullScreenFeed({
         }
         
         // FALLBACK: If fileType is 'text' or 'thought' but textPost/thought data is missing,
-        // OR if filename suggests it's a thought (thought-*.png), try to reconstruct it from other metadata fields
+        // OR if filename suggests it's a thought (thought-*.thought or thought-*.png), try to reconstruct it from other metadata fields
         // This handles cases where the metadata was created before textPost/thought fields were added
         const isLikelyThought = !textPostData && (
           file.fileType === 'text' || 
@@ -1376,10 +1376,10 @@ export function FullScreenFeed({
           file.fileType === 'video' || 
           (file.name || file.title || '').match(/\.(mp4|mov|avi|webm|mkv|flv|wmv)$/i)
         );
-        // Check for thoughts FIRST - they're stored as PNG files but should be treated as thoughts
-        // Thoughts have filenames like "thought-*.png" OR fileType 'text'/'thought' OR have textPost/thought data
-        const isThoughtFile = (file.name && /^thought-\d+\.png/i.test(file.name)) ||
-                              (file.title && /^thought-\d+\.png/i.test(file.title));
+        // Check for thoughts FIRST - they're stored as .thought files (JSON) but should be treated as thoughts
+        // Thoughts have filenames like "thought-*.thought" (or legacy "thought-*.png") OR fileType 'text'/'thought' OR have textPost/thought data
+        const isThoughtFile = (file.name && (/^thought-\d+\.thought/i.test(file.name) || /^thought-\d+\.png/i.test(file.name))) ||
+                              (file.title && (/^thought-\d+\.thought/i.test(file.title) || /^thought-\d+\.png/i.test(file.title)));
         
         const isImage = !isTextPost && !isThoughtFile && (
           file.fileType === 'image' || 

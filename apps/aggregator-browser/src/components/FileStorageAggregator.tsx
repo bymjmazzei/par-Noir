@@ -1025,7 +1025,8 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
           }
           
           // Include thoughts (they don't have thumbnails, show the thought file itself)
-          if (name.startsWith('thought-') && name.endsWith('.png.encrypted')) {
+          // Support both new .thought format and legacy .png format
+          if (name.startsWith('thought-') && (name.endsWith('.thought.encrypted') || name.endsWith('.png.encrypted'))) {
             return true;
           }
           
@@ -1110,7 +1111,8 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
           }
           
           // Include thoughts (they don't have thumbnails, show the thought file itself)
-          if (name.startsWith('thought-') && name.endsWith('.png.encrypted')) {
+          // Support both new .thought format and legacy .png format
+          if (name.startsWith('thought-') && (name.endsWith('.thought.encrypted') || name.endsWith('.png.encrypted'))) {
             return true;
           }
           
