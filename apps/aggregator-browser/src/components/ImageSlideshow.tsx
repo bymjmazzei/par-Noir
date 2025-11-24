@@ -208,28 +208,48 @@ export function ImageSlideshow({ thumbnailIds, fileName, accountId, pdfFileId }:
       
       // Get access token and retry with refresh if needed
       let accessToken = await PNOAuthService.getValidAccessToken();
-      if (!accessToken) throw new Error('No access token');
+      if (!accessToken) {
+        console.warn(`[ImageSlideshow] No access token for thumbnail ${thumbnailId}`);
+        throw new Error('No access token');
+      }
       
-      let response = await fetch(fetchUrl, {
-        headers: { 'Authorization': `Bearer ${accessToken}` }
-      });
+      let response: Response;
+      try {
+        response = await fetch(fetchUrl, {
+          headers: { 'Authorization': `Bearer ${accessToken}` }
+        });
+      } catch (fetchError: any) {
+        console.error(`[ImageSlideshow] Fetch error for thumbnail ${thumbnailId}:`, fetchError);
+        throw new Error(`Network error loading thumbnail: ${fetchError.message}`);
+      }
       
       // If 401, refresh token and retry once
       if (response.status === 401) {
         console.log(`[ImageSlideshow] Got 401 for thumbnail ${thumbnailId}, refreshing token...`);
         const refreshedToken = await PNOAuthService.getValidAccessToken(true); // Force refresh
         if (refreshedToken) {
-          response = await fetch(fetchUrl, {
-            headers: { 'Authorization': `Bearer ${refreshedToken}` }
-          });
-          if (!response.ok) {
-            throw new Error(`Failed to load thumbnail after refresh: ${response.status}`);
+          try {
+            response = await fetch(fetchUrl, {
+              headers: { 'Authorization': `Bearer ${refreshedToken}` }
+            });
+            if (!response.ok) {
+              console.warn(`[ImageSlideshow] Thumbnail ${thumbnailId} still failed after refresh: ${response.status}`);
+              // Don't throw - just skip this thumbnail (might not exist)
+              return;
+            }
+          } catch (retryError: any) {
+            console.error(`[ImageSlideshow] Retry fetch error for thumbnail ${thumbnailId}:`, retryError);
+            // Don't throw - just skip this thumbnail
+            return;
           }
         } else {
-          throw new Error('Failed to refresh access token');
+          console.warn(`[ImageSlideshow] Failed to refresh token for thumbnail ${thumbnailId}`);
+          return; // Don't throw - just skip this thumbnail
         }
       } else if (!response.ok) {
-        throw new Error(`Failed to load thumbnail: ${response.status}`);
+        console.warn(`[ImageSlideshow] Thumbnail ${thumbnailId} failed: ${response.status}`);
+        // Don't throw for non-401 errors either - might be 404 (file doesn't exist)
+        return;
       }
       
       const contentType = response.headers.get('content-type') || '';
