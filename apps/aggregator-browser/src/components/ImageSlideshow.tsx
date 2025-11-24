@@ -32,31 +32,10 @@ export function ImageSlideshow({ thumbnailIds, fileName, accountId, pdfFileId, i
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const pageRefs = useRef<Map<number, HTMLDivElement>>(new Map());
 
-  // Initialize pageUrls with already-loaded first thumbnail IMMEDIATELY (not in useEffect!)
-  // This ensures instant display without waiting for useEffect to run
-  const initialPageUrls = useMemo(() => {
-    const map = new Map<number, string>();
-    if (initialThumbnailUrl && thumbnailIds.length > 0) {
-      map.set(1, initialThumbnailUrl);
-      console.log(`[ImageSlideshow] Initializing with pre-loaded first thumbnail - instant display!`);
-    }
-    return map;
-  }, [initialThumbnailUrl, thumbnailIds.length]);
-
-  const [pageUrls, setPageUrls] = useState<Map<number, string>>(initialPageUrls);
-  const [pageIsThumbnail, setPageIsThumbnail] = useState<Map<number, boolean>>(() => {
-    const map = new Map<number, boolean>();
-    if (initialThumbnailUrl && thumbnailIds.length > 0) {
-      map.set(1, true);
-    }
-    return map;
-  });
+  // Initialize pageUrls - will be updated when initialThumbnailUrl becomes available
+  const [pageUrls, setPageUrls] = useState<Map<number, string>>(new Map());
+  const [pageIsThumbnail, setPageIsThumbnail] = useState<Map<number, boolean>>(new Map());
   const loadedPagesRef = useRef<Set<number>>(new Set<number>());
-  
-  // Initialize loadedPagesRef with first page if initial thumbnail provided
-  if (initialThumbnailUrl && thumbnailIds.length > 0) {
-    loadedPagesRef.current.add(1);
-  }
   const loadingPagesRef = useRef<Set<number>>(new Set());
   const fullSizeLoadedRef = useRef<Set<number>>(new Set());
   const failedPagesRef = useRef<Set<number>>(new Set()); // Track failed pages
@@ -576,19 +555,30 @@ export function ImageSlideshow({ thumbnailIds, fileName, accountId, pdfFileId, i
     }
   }, [pdfFileId]);
 
+  // CRITICAL: Update pageUrls immediately when initialThumbnailUrl becomes available
+  // This handles the case where FullScreenFeed finishes loading after ImageSlideshow mounts
+  useEffect(() => {
+    if (initialThumbnailUrl && thumbnailIds.length > 0 && !pageUrls.has(1) && !loadingPagesRef.current.has(1)) {
+      console.log(`[ImageSlideshow] Adding pre-loaded first thumbnail from FullScreenFeed - INSTANT UPDATE!`);
+      setPageUrls(prev => {
+        const newMap = new Map(prev);
+        newMap.set(1, initialThumbnailUrl);
+        return newMap;
+      });
+      setPageIsThumbnail(prev => new Map(prev).set(1, true));
+      loadedPagesRef.current.add(1);
+    }
+  }, [initialThumbnailUrl, thumbnailIds.length, pageUrls]);
+
   // LAZY LOAD: Only load thumbnails as needed (first page + adjacent pages + visible pages)
   useEffect(() => {
     if (thumbnailIds.length === 0) return;
     
     let cancelled = false;
     
-    // If initialThumbnailUrl was provided, first page is already loaded - skip it
-    // Otherwise, load first page immediately WITHOUT waiting for accountId
-    if (initialThumbnailUrl && pageUrls.has(1)) {
-      // First page already loaded from FullScreenFeed - no need to reload
-      console.log(`[ImageSlideshow] Using pre-loaded first thumbnail from FullScreenFeed`);
-    } else if (thumbnailIds[0] && !pageUrls.has(1) && !loadingPagesRef.current.has(1)) {
-      // Start loading immediately - accountId will be fetched inside loadThumbnail if needed
+    // If no initial thumbnail provided and first page not loaded, start loading immediately
+    if (!initialThumbnailUrl && thumbnailIds[0] && !pageUrls.has(1) && !loadingPagesRef.current.has(1)) {
+      console.log(`[ImageSlideshow] Loading first thumbnail (no initial provided)`);
       loadThumbnail(thumbnailIds[0], 1, accountId || null, false).catch(() => {
         // Errors already handled in loadThumbnail
       });
