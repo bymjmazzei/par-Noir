@@ -2305,19 +2305,31 @@ function App() {
   // Helper function to identify text posts (thoughts) - MUST be defined before any useMemo/useEffect that uses it
   // Use same detection logic as FullScreenFeed for consistency
   const isThought = (file: IndexedFile): boolean => {
-    const fileType = file.metadata.fileType;
-    const fileName = file.metadata.name || file.metadata.title || '';
+    // Check multiple locations for thought data (same as FullScreenFeed)
+    const textPostData = (file.metadata as any)?.textPost ||
+                        (file.metadata as any)?.thought ||
+                        (file as any)?.textPost ||
+                        (file as any)?.thought;
     
-    // Check for textPost/thought data
-    const hasTextPostData = !!(file.metadata as any).textPost || !!(file.metadata as any).thought;
+    // Check fileType in ALL possible locations
+    const fileTypeFromMetadata = file.metadata?.fileType;
+    const fileTypeFromFile = (file as any)?.fileType;
+    const actualFileType = fileTypeFromMetadata || fileTypeFromFile;
     
-    // Check for fileType
-    const hasTextFileType = fileType === 'text' || fileType === 'thought';
+    const hasTextFileType = actualFileType === 'text' || actualFileType === 'thought';
     
     // Check for thought filename pattern (new .thought format or legacy .png format)
-    const isThoughtFile = /^thought-\d+\.(thought|png)/i.test(fileName);
+    // Check filename in multiple locations (file.name might be content, not filename)
+    const thoughtFileName = file.metadata.name || 
+                           file.metadata.title || 
+                           (file.metadata as any).originalName ||
+                           (file as any).name ||
+                           '';
+    const isThoughtFile = /^thought-\d+\.(thought|png)/i.test(thoughtFileName);
     
-    return hasTextPostData || hasTextFileType || isThoughtFile;
+    // IMPORTANT: Prioritize hasTextPostData and hasTextFileType FIRST (same as FullScreenFeed)
+    // This ensures thoughts are detected consistently
+    return !!textPostData || hasTextFileType || isThoughtFile;
   };
 
   // Helper function to check if a file is a PDF slideshow (has page thumbnails)
