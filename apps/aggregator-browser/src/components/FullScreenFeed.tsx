@@ -1705,14 +1705,22 @@ export function FullScreenFeed({
                       pdfScrollRefs.current.delete(fileId);
                     }
                   }}
-                  className="w-full h-full overflow-x-scroll snap-x snap-mandatory"
+                  className="w-full overflow-x-scroll snap-x snap-mandatory"
                   style={{ 
                     scrollbarWidth: 'none',
                     msOverflowStyle: 'none',
                     WebkitOverflowScrolling: 'touch',
                     display: 'flex',
                     flexDirection: 'row',
-                    touchAction: 'pan-x pan-y' // Allow horizontal and vertical scrolling
+                    touchAction: 'pan-x pan-y', // Allow horizontal and vertical scrolling
+                    // Height excludes bottom nav bar (64px) and safe area - same as other media tiles
+                    height: 'calc(100vh - 64px - env(safe-area-inset-bottom, 0px))',
+                    minHeight: 'calc(100vh - 64px - env(safe-area-inset-bottom, 0px))',
+                    maxHeight: 'calc(100vh - 64px - env(safe-area-inset-bottom, 0px))',
+                    // Start at top of window
+                    marginTop: '0',
+                    paddingTop: '0',
+                    overflowY: 'hidden' // Prevent vertical scrolling
                   }}
                 >
                   {/* Render all PDF pages in horizontal scrollable container */}
