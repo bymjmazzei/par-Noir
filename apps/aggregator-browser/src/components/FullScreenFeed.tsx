@@ -666,7 +666,20 @@ export function FullScreenFeed({
         const fileId = file.fileId;
 
         // Check if it's a text post/thought first (same logic as render section)
-        const isTextPost = !!(file.textPost || file.thought);
+        // Check multiple locations for thought data (same as render logic)
+        const textPostData = (indexedFile.metadata as any)?.textPost ||
+                            (indexedFile.metadata as any)?.thought ||
+                            (file as any)?.textPost ||
+                            (file as any)?.thought ||
+                            (indexedFile as any)?.textPost ||
+                            (indexedFile as any)?.thought;
+        const hasTextFileType = file.fileType === 'text' || 
+                               file.fileType === 'thought' ||
+                               indexedFile.metadata?.fileType === 'text' || 
+                               indexedFile.metadata?.fileType === 'thought';
+        const isThoughtFile = (file.name && /^thought-\d+\.png/i.test(file.name)) ||
+                              (file.title && /^thought-\d+\.png/i.test(file.title));
+        const isTextPost = !!textPostData || hasTextFileType || isThoughtFile;
         
         const isVideo = !isTextPost && (
           file.fileType === 'video' || 
