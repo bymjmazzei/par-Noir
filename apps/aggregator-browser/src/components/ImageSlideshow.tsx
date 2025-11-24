@@ -330,11 +330,12 @@ export function ImageSlideshow({ thumbnailIds, fileName, accountId, pdfFileId }:
     
     // Load all thumbnails sequentially with delays to prevent token refresh conflicts
     (async () => {
-      // Fetch accountId in background (non-blocking)
-      const accountIdPromise = fetchAccountIdOnce();
+      // Fetch accountId ONCE before starting (like vertical feed does)
+      // This prevents 401 retries and speeds up first thumbnail load
+      const accountIdToUse = await fetchAccountIdOnce();
       
       // Load ALL thumbnails sequentially (including first) with delays
-      // Start first page immediately (no delay) - accountId is optional
+      // Start first page immediately (no delay) - use accountId immediately
       for (let i = 0; i < thumbnailIds.length; i++) {
         if (cancelled) break;
         
@@ -343,8 +344,7 @@ export function ImageSlideshow({ thumbnailIds, fileName, accountId, pdfFileId }:
           await new Promise(resolve => setTimeout(resolve, 200)); // Delay between loads
         }
         
-        // Use accountId if available (will be null for first page, fetched for others)
-        const accountIdToUse = i === 0 ? null : await accountIdPromise;
+        // Use accountId for all pages (including first) - prevents 401 retries
         loadThumbnail(thumbnailIds[i], i + 1, accountIdToUse, false).catch(() => {});
       }
     })();
