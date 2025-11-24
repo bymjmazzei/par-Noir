@@ -644,7 +644,7 @@ export function FullScreenFeed({
               try {
                 token = typeof file.publicToken === 'string' ? JSON.parse(file.publicToken) : file.publicToken;
               } catch (e) {
-                continue;
+                return; // Skip this file if token parsing fails
               }
               const decryptedBlob = await decryptWithToken(token);
               const videoUrl = URL.createObjectURL(decryptedBlob);
@@ -728,10 +728,10 @@ export function FullScreenFeed({
                             type: encryptedPackage.metadata.originalMimeType || 'image/jpeg'
                           });
                         } else {
-                          continue; // Skip if can't decrypt
+                          return; // Skip if can't decrypt
                         }
                       } else {
-                        continue; // Skip if no session
+                        return; // Skip if no session
                       }
                     } else {
                       thumbnailBlob = blob;
@@ -747,7 +747,7 @@ export function FullScreenFeed({
                     
                     // Load full image in background (optional - user can tap to load full quality)
                     // This is handled by the existing logic below if needed
-                    continue; // Skip to next file, thumbnail is loaded
+                    return; // Skip to next file, thumbnail is loaded
                   }
                 }
               }
@@ -759,7 +759,7 @@ export function FullScreenFeed({
                   token = typeof file.publicToken === 'string' ? JSON.parse(file.publicToken) : file.publicToken;
                 } catch (e) {
                   console.warn(`[FullScreenFeed] Failed to parse token for ${fileId}:`, e);
-                  continue;
+                  return; // Skip this file if token parsing fails
                 }
                 
                 // Try to decrypt with retry on failure
@@ -791,7 +791,7 @@ export function FullScreenFeed({
                 
                 if (!accessToken) {
                   console.warn(`[FullScreenFeed] No access token for image ${fileId}`);
-                  continue;
+                  return; // Skip this file if no access token
                 }
 
                 // Get accountId with caching
@@ -823,7 +823,7 @@ export function FullScreenFeed({
 
                 if (!response.ok) {
                   console.warn(`[FullScreenFeed] Failed to load image ${fileId} from API: ${response.status}`);
-                  continue;
+                  return; // Skip this file if API request failed
                 }
 
                 const contentType = response.headers.get('content-type') || '';
@@ -1527,7 +1527,17 @@ export function FullScreenFeed({
             })()}
             
             {/* PDF Document - Display like image but with horizontal swipe for pages */}
-            {isPdfDoc && !isTextPost && !textPostData && thumbnails.get(fileId) && (() => {
+            {/* Render PDF immediately, even if thumbnail not loaded yet (shows placeholder) */}
+            {isPdfDoc && !isTextPost && !textPostData && (() => {
+              // If thumbnail not loaded yet, show placeholder
+              if (!thumbnails.get(fileId)) {
+                return (
+                  <div className="flex flex-col items-center justify-center text-neutral-500">
+                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-400 mb-2"></div>
+                    <span className="text-xs">Loading PDF...</span>
+                  </div>
+                );
+              }
               const currentPage = pdfCurrentPage.get(fileId) || 0;
               const totalPages = pdfPageThumbnailIds.length;
               const pageThumbnailUrl = pdfPageThumbnails.get(fileId)?.get(currentPage) || thumbnails.get(fileId)!;
