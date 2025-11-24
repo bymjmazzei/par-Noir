@@ -1890,7 +1890,8 @@ export function FullScreenFeed({
             })()}
             
             {/* Full-screen image (single image, not PDF) - Only render if NOT a text post and NOT PDF */}
-            {isImage && !isPdfDoc && !isTextPost && !textPostData && thumbnails.get(fileId) && (() => {
+            {/* Show image if thumbnail is loaded, or show loading state if it's an image */}
+            {isImage && !isPdfDoc && !isTextPost && !textPostData && (thumbnails.get(fileId) ? (() => {
               const containerHeight = window.innerHeight - 64; // Account for bottom nav
               const containerWidth = window.innerWidth;
               const containerAspect = containerWidth / containerHeight;
@@ -1985,17 +1986,7 @@ export function FullScreenFeed({
                   </div>
                 </>
               );
-            })()}
-
-            {/* Loading state - Only show if NOT a text post AND NOT PDF document AND NOT single image */}
-            {/* PDF documents are rendered above with integrated page navigation */}
-            {/* Single images show loading until thumbnail is loaded */}
-            {!isTextPost && !textPostData && !isPdfDoc && ((isImage || isVideo) && !thumbnails.get(fileId) && !videoBlobs.get(fileId)) && (
-              <div className="flex flex-col items-center justify-center text-neutral-500">
-                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-400 mb-2"></div>
-                <span className="text-xs">Loading...</span>
-              </div>
-            )}
+            })() : null))}
 
             {/* Non-image/video/text/slideshow file */}
             {!isImage && !isVideo && !isPdfDoc && !isTextPost && !textPostData && (
