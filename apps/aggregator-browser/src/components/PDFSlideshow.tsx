@@ -433,7 +433,7 @@ export function PDFSlideshow({ fileId, publicToken, fileName, pdfPagesFolderId, 
       <div className="w-full h-full flex items-center justify-center bg-black text-white">
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-white mx-auto mb-4"></div>
-          <p>Loading PDF...</p>
+          <p>{usePreRenderedPages ? 'Loading images...' : 'Loading PDF...'}</p>
         </div>
       </div>
     );
@@ -443,8 +443,20 @@ export function PDFSlideshow({ fileId, publicToken, fileName, pdfPagesFolderId, 
     return (
       <div className="w-full h-full flex items-center justify-center bg-black text-white">
         <div className="text-center">
-          <p className="text-red-400">Error loading PDF</p>
+          <p className="text-red-400">Error loading {usePreRenderedPages ? 'images' : 'PDF'}</p>
           <p className="text-sm text-gray-400 mt-2">{error}</p>
+        </div>
+      </div>
+    );
+  }
+  
+  // If no pages loaded yet, show loading state
+  if (pages.length === 0) {
+    return (
+      <div className="w-full h-full flex items-center justify-center bg-black text-white">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-white mx-auto mb-4"></div>
+          <p>Loading slideshow...</p>
         </div>
       </div>
     );
