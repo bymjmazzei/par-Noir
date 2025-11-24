@@ -540,29 +540,54 @@ export function ImageSlideshow({ thumbnailIds, fileName, accountId, pdfFileId, i
     }
   }, [pdfFileId]);
 
-  // Load ALL thumbnails in PARALLEL immediately (no delays, no blocking)
+  // LAZY LOAD: Only load thumbnails as needed (first page + adjacent pages + visible pages)
   useEffect(() => {
     if (thumbnailIds.length === 0) return;
     
     let cancelled = false;
     
-    // Start loading ALL thumbnails in parallel immediately
-    // Don't wait for accountId - start fetching right away
+    // Fetch accountId in background (non-blocking)
+    const accountIdPromise = fetchAccountIdOnce();
+    
+    // Load first page immediately for instant display
     (async () => {
-      // Fetch accountId in background (non-blocking)
-      const accountIdPromise = fetchAccountIdOnce();
+      const accountIdToUse = await accountIdPromise;
+      if (!cancelled && thumbnailIds[0]) {
+        await loadThumbnail(thumbnailIds[0], 1, accountIdToUse, false);
+      }
+    })();
+    
+    return () => {
+      cancelled = true;
+    };
+  }, [thumbnailIds, fetchAccountIdOnce, loadThumbnail]);
+
+  // Load adjacent pages (current +/- 1) for smooth scrolling
+  useEffect(() => {
+    if (thumbnailIds.length === 0) return;
+    
+    let cancelled = false;
+    
+    (async () => {
+      const accountIdToUse = await fetchAccountIdOnce();
+      if (cancelled) return;
       
-      // Start loading all thumbnails immediately in parallel
-      const loadPromises = thumbnailIds.map(async (thumbnailId, index) => {
+      // Load current page and adjacent pages
+      const pagesToLoad = [
+        currentPage,           // Current page
+        currentPage - 1,        // Previous page
+        currentPage + 1          // Next page
+      ].filter(pageNum => pageNum >= 1 && pageNum <= thumbnailIds.length);
+      
+      // Load pages in parallel
+      const loadPromises = pagesToLoad.map(async (pageNum) => {
         if (cancelled) return;
-        
-        const pageNum = index + 1;
-        // Don't wait for accountId - start fetch immediately, accountId will be used if available
-        const accountIdToUse = await accountIdPromise;
-        await loadThumbnail(thumbnailId, pageNum, accountIdToUse, false);
+        const thumbnailId = thumbnailIds[pageNum - 1];
+        if (thumbnailId && !pageUrls.has(pageNum) && !loadingPagesRef.current.has(pageNum)) {
+          await loadThumbnail(thumbnailId, pageNum, accountIdToUse, false);
+        }
       });
       
-      // Don't await - let them load in parallel
       Promise.all(loadPromises).catch(() => {
         // Errors already handled in loadThumbnail
       });
@@ -571,7 +596,53 @@ export function ImageSlideshow({ thumbnailIds, fileName, accountId, pdfFileId, i
     return () => {
       cancelled = true;
     };
-  }, [thumbnailIds, fetchAccountIdOnce, loadThumbnail]);
+  }, [currentPage, thumbnailIds, fetchAccountIdOnce, loadThumbnail, pageUrls]);
+
+  // Intersection Observer for lazy loading pages as they come into view
+  useEffect(() => {
+    if (thumbnailIds.length === 0 || !scrollContainerRef.current) return;
+    
+    const observer = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          if (entry.isIntersecting) {
+            const pageElement = entry.target as HTMLElement;
+            const pageNum = parseInt(pageElement.dataset.pageNum || '0', 10);
+            
+            if (pageNum > 0 && pageNum <= thumbnailIds.length) {
+              const thumbnailId = thumbnailIds[pageNum - 1];
+              // Only load if not already loaded or loading
+              if (thumbnailId && !pageUrls.has(pageNum) && !loadingPagesRef.current.has(pageNum)) {
+                fetchAccountIdOnce().then(accountIdToUse => {
+                  loadThumbnail(thumbnailId, pageNum, accountIdToUse, false);
+                });
+              }
+            }
+          }
+        });
+      },
+      {
+        root: scrollContainerRef.current,
+        rootMargin: '200px', // Start loading 200px before page comes into view for smoother scrolling
+        threshold: 0.01
+      }
+    );
+    
+    // Use setTimeout to ensure DOM is ready
+    const timeoutId = setTimeout(() => {
+      // Observe all page elements
+      pageRefs.current.forEach((pageElement) => {
+        if (pageElement) {
+          observer.observe(pageElement);
+        }
+      });
+    }, 0);
+    
+    return () => {
+      clearTimeout(timeoutId);
+      observer.disconnect();
+    };
+  }, [thumbnailIds, pageUrls, fetchAccountIdOnce, loadThumbnail]);
 
   // Don't automatically load full-size PDF rendering
   // Just show thumbnails like the vertical feed - full-size rendering can be added later if needed
@@ -692,6 +763,7 @@ export function ImageSlideshow({ thumbnailIds, fileName, accountId, pdfFileId, i
             return (
               <div
                 key={pageNum}
+                data-page-num={pageNum}
                 ref={(el) => {
                   if (el) pageRefs.current.set(pageNum, el);
                 }}
