@@ -1395,9 +1395,16 @@ export function FullScreenFeed({
         // This must be checked FIRST before any other type detection to prevent flickering
         // IMPORTANT: hasTextPostData or hasTextFileType should ALWAYS make it a thought, regardless of filename
         // This ensures thoughts are detected consistently and don't flicker
+        // Use strict check: if hasTextPostData OR hasTextFileType, it's ALWAYS a thought, no exceptions
         const isTextPost = hasTextPostData || hasTextFileType || isThoughtFile || 
                           (file.description && file.description.trim().length > 0 && 
                            !actualFileType && !thoughtFileName.match(/\.(jpg|jpeg|png|gif|webp|svg|bmp|ico|mp4|mov|avi|webm|mkv|flv|wmv|pdf)$/i));
+        
+        // CRITICAL: If it's a thought, force all other types to false to prevent flickering
+        // This ensures only ONE content type renders at a time
+        const isVideoFinal = isTextPost ? false : isVideo;
+        const isImageFinal = isTextPost ? false : isImage;
+        const isPdfDocFinal = isTextPost ? false : isPdfDoc;
         
         // If it's a thought but fileType is wrong, log it for debugging
         if (hasTextPostData && !hasTextFileType) {
@@ -1423,6 +1430,12 @@ export function FullScreenFeed({
           file.fileType === 'image' || 
           (file.name || file.title || '').match(/\.(jpg|jpeg|png|gif|webp|svg|bmp|ico)$/i)
         );
+        
+        // CRITICAL: If it's a thought, force all other types to false to prevent flickering
+        // This ensures only ONE content type renders at a time
+        const isVideoFinal = isTextPost ? false : isVideo;
+        const isImageFinal = isTextPost ? false : isImage;
+        const isPdfDocFinal = isTextPost ? false : isPdfDoc;
         // Check if this is an image slideshow folder (folder ending with "-pages")
         // PDF slideshow detection: check for pdfPageThumbnailIds array (thumbnails loaded directly, no folder listing)
         // Check metadata immediately - don't wait for async operations
@@ -1540,7 +1553,7 @@ export function FullScreenFeed({
             )}
 
             {/* Full-screen video */}
-            {isVideo && videoBlobs.get(fileId) && (() => {
+            {isVideoFinal && videoBlobs.get(fileId) && (() => {
               const containerHeight = window.innerHeight - 64; // Account for bottom nav
               const containerWidth = window.innerWidth;
               const containerAspect = containerWidth / containerHeight;
@@ -1653,7 +1666,7 @@ export function FullScreenFeed({
             
             {/* PDF Document - Display like image but with horizontal swipe for pages */}
             {/* Render PDF immediately, even if thumbnail not loaded yet (shows placeholder) */}
-            {isPdfDoc && !isTextPost && !textPostData && (() => {
+            {isPdfDocFinal && !isTextPost && !textPostData && (() => {
               // If thumbnail not loaded yet, show placeholder
               if (!thumbnails.get(fileId)) {
                 return (
@@ -1929,7 +1942,7 @@ export function FullScreenFeed({
             
             {/* Full-screen image (single image, not PDF) - Only render if NOT a text post and NOT PDF */}
             {/* Show image if thumbnail is loaded */}
-            {isImage && !isPdfDoc && !isTextPost && !textPostData && thumbnails.get(fileId) && (() => {
+            {isImageFinal && !isPdfDocFinal && !isTextPost && !textPostData && thumbnails.get(fileId) && (() => {
               const containerHeight = window.innerHeight - 64; // Account for bottom nav
               const containerWidth = window.innerWidth;
               const containerAspect = containerWidth / containerHeight;
@@ -2027,7 +2040,7 @@ export function FullScreenFeed({
             })()}
 
             {/* Non-image/video/text/slideshow file */}
-            {!isImage && !isVideo && !isPdfDoc && !isTextPost && !textPostData && (
+            {!isImageFinal && !isVideoFinal && !isPdfDocFinal && !isTextPost && !textPostData && (
               <div className="flex flex-col items-center justify-center text-neutral-500">
                 <File className="h-24 w-24 mb-4" />
                 <h3 className="text-white text-xl font-medium mb-2">{fileName}</h3>
