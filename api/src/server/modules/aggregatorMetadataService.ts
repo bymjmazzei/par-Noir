@@ -95,6 +95,7 @@ export interface PublicMetadata {
 
   // PDF Slideshow Support
   pdfPageThumbnailIds?: string[]; // Array of thumbnail file IDs for PDF slideshow pages (loaded directly, no folder listing)
+  pdfPageThumbnailTokens?: string[]; // Array of publicToken for each thumbnail (same order as pdfPageThumbnailIds) - NO API CALLS!
   pdfFileId?: string; // ID of the original PDF file (for on-demand rendering)
   
   // Thumbnail for fast feed loading (images, videos, slideshows)

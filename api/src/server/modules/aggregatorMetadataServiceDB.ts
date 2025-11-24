@@ -1564,6 +1564,7 @@ export class AggregatorMetadataServiceDB {
       subjects?: string[];
       feedCategories?: string[];
       pdfPageThumbnailIds?: string[];
+      pdfPageThumbnailTokens?: string[]; // Array of publicToken for each thumbnail (same order as pdfPageThumbnailIds)
       pdfFileId?: string;
       thumbnailFileId?: string;
     }
@@ -1622,6 +1623,7 @@ export class AggregatorMetadataServiceDB {
         ...(updates.feedCategories !== undefined && { feedCategories: updates.feedCategories }),
         // Update PDF page thumbnail IDs array
         ...(updates.pdfPageThumbnailIds !== undefined && { pdfPageThumbnailIds: updates.pdfPageThumbnailIds }),
+        ...(updates.pdfPageThumbnailTokens !== undefined && { pdfPageThumbnailTokens: updates.pdfPageThumbnailTokens }),
         ...(updates.pdfFileId !== undefined && { pdfFileId: updates.pdfFileId }),
         // Update thumbnail file ID
         ...(updates.thumbnailFileId !== undefined && { thumbnailFileId: updates.thumbnailFileId })

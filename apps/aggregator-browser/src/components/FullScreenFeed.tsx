@@ -258,8 +258,7 @@ export function FullScreenFeed({
     return accountId || null;
   };
 
-  // Load PDF page thumbnail on-demand
-  // USE PDF'S PUBLICTOKEN - thumbnails inherit PDF's public access, no API calls needed!
+  // Load PDF page thumbnail on-demand - USE THUMBNAIL'S OWN PUBLICTOKEN (NO API CALLS!)
   const loadPdfPageThumbnail = async (
     fileId: string,
     thumbnailId: string,
@@ -268,20 +267,21 @@ export function FullScreenFeed({
   ) => {
     try {
       const file = indexedFile.metadata;
+      const pdfPageThumbnailTokens = (file as any)?.pdfPageThumbnailTokens as string[] | undefined;
       
-      // If PDF has publicToken, use it to decrypt thumbnails (same as images - NO API CALLS!)
-      if (file?.publicToken) {
+      // Use thumbnail's own publicToken (stored in pdfPageThumbnailTokens array)
+      if (pdfPageThumbnailTokens && pdfPageThumbnailTokens[pageIndex]) {
         try {
+          const thumbnailToken = pdfPageThumbnailTokens[pageIndex];
           let token: ShareToken;
           try {
-            token = typeof file.publicToken === 'string' ? JSON.parse(file.publicToken) : file.publicToken;
+            token = typeof thumbnailToken === 'string' ? JSON.parse(thumbnailToken) : thumbnailToken;
           } catch (e) {
-            console.warn(`[FullScreenFeed] Failed to parse PDF publicToken for thumbnail:`, e);
-            return; // Can't proceed without valid token
+            console.warn(`[FullScreenFeed] Failed to parse thumbnail token for page ${pageIndex + 1}:`, e);
+            return;
           }
           
           if (token) {
-            // Use PDF's publicToken to decrypt thumbnail (thumbnails inherit PDF's public access)
             try {
               const decryptedBlob = await decryptWithToken(token);
               const thumbnailUrl = URL.createObjectURL(decryptedBlob);
@@ -311,19 +311,18 @@ export function FullScreenFeed({
               return; // Success - NO API CALLS!
             } catch (decryptErr) {
               console.warn(`[FullScreenFeed] Failed to decrypt PDF thumbnail with token:`, decryptErr);
-              return; // Don't fall back to API - user doesn't want API calls
+              return; // Don't fall back to API
             }
           }
         } catch (err) {
-          console.warn(`[FullScreenFeed] Error using publicToken for PDF thumbnail:`, err);
+          console.warn(`[FullScreenFeed] Error using thumbnail token:`, err);
           return; // Don't fall back to API
         }
       }
       
-      // No publicToken - can't load without API (but user doesn't want API calls)
-      console.warn(`[FullScreenFeed] PDF thumbnail has no publicToken - cannot load without API`);
+      // No token available - can't load without API (but user doesn't want API calls)
+      console.warn(`[FullScreenFeed] PDF thumbnail page ${pageIndex + 1} has no publicToken - cannot load without API`);
       return;
-      const { PNOAuthService } = await import('../services/pnOAuthService');
       const apiEndpoint = process.env.REACT_APP_API_ENDPOINT || 'https://api.parnoir.com';
       const accessToken = await PNOAuthService.getValidAccessToken();
       const isPublic = file?.isPublic !== false || !!file?.publicToken;
@@ -953,19 +952,22 @@ export function FullScreenFeed({
           }
         }
 
-        // Load PDF document FIRST thumbnail - USE PUBLICTOKEN (NO API CALLS!)
+        // Load PDF document FIRST thumbnail - USE THUMBNAIL'S OWN PUBLICTOKEN (NO API CALLS!)
         if (isPdfDocument && pdfPageThumbnailIds && pdfPageThumbnailIds.length > 0 && !thumbnails.has(fileId)) {
           const firstThumbnailId = pdfPageThumbnailIds[0];
-          console.log(`[FullScreenFeed] Loading FIRST PDF thumbnail for ${fileId} using publicToken (NO API CALLS!)`);
+          const pdfPageThumbnailTokens = (file as any)?.pdfPageThumbnailTokens as string[] | undefined;
           
-          // Use PDF's publicToken to decrypt first thumbnail (same as images - instant, no API!)
-          if (file.publicToken) {
+          console.log(`[FullScreenFeed] Loading FIRST PDF thumbnail for ${fileId} using thumbnail's publicToken (NO API CALLS!)`);
+          
+          // Use thumbnail's own publicToken from pdfPageThumbnailTokens array (NO API CALLS!)
+          if (pdfPageThumbnailTokens && pdfPageThumbnailTokens[0]) {
             try {
+              const firstThumbnailToken = pdfPageThumbnailTokens[0];
               let token: ShareToken;
               try {
-                token = typeof file.publicToken === 'string' ? JSON.parse(file.publicToken) : file.publicToken;
+                token = typeof firstThumbnailToken === 'string' ? JSON.parse(firstThumbnailToken) : firstThumbnailToken;
               } catch (e) {
-                console.warn(`[FullScreenFeed] Failed to parse PDF publicToken:`, e);
+                console.warn(`[FullScreenFeed] Failed to parse thumbnail token:`, e);
                 return; // Can't proceed
               }
               
@@ -974,7 +976,7 @@ export function FullScreenFeed({
                   const decryptedBlob = await decryptWithToken(token);
                   const thumbnailUrlObj = URL.createObjectURL(decryptedBlob);
                   
-                  console.log(`✅ [FullScreenFeed] Loaded FIRST PDF thumbnail via publicToken (NO API CALLS!)`);
+                  console.log(`✅ [FullScreenFeed] Loaded FIRST PDF thumbnail via thumbnail's publicToken (NO API CALLS!)`);
                   setThumbnails(prev => {
                     const newMap = new Map(prev);
                     newMap.set(fileId, thumbnailUrlObj);
@@ -1001,7 +1003,7 @@ export function FullScreenFeed({
                     return newMap;
                   });
                   
-                  // Preload adjacent pages in background (they'll also use publicToken - NO API!)
+                  // Preload adjacent pages in background (they'll also use their own publicToken - NO API!)
                   if (pdfPageThumbnailIds.length > 1) {
                     loadPdfPageThumbnail(fileId, pdfPageThumbnailIds[1], 1, indexedFile).catch(() => {});
                     if (pdfPageThumbnailIds.length > 2) {
@@ -1016,11 +1018,11 @@ export function FullScreenFeed({
                 }
               }
             } catch (err) {
-              console.warn(`[FullScreenFeed] Error using publicToken for PDF thumbnail:`, err);
+              console.warn(`[FullScreenFeed] Error using thumbnail token:`, err);
               return; // Don't fall back to API
             }
           } else {
-            console.warn(`[FullScreenFeed] PDF has no publicToken - cannot load without API`);
+            console.warn(`[FullScreenFeed] PDF thumbnail has no publicToken - cannot load without API`);
             return;
           }
         }
