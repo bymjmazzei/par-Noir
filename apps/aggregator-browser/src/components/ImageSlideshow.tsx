@@ -258,16 +258,16 @@ export function ImageSlideshow({ fileId, fileName, accountId }: ImageSlideshowPr
 
         // Use thumbnail endpoint - for encrypted files, API will return the full encrypted file
         // which we'll decrypt client-side
-        let imageUrl = `${apiEndpoint}/api/drive/files/${fileIdToLoad}?thumbnail=true`;
+        let fetchUrl = `${apiEndpoint}/api/drive/files/${fileIdToLoad}?thumbnail=true`;
         // Add accountId if we have a valid one
         if (finalAccountId && finalAccountId.includes('::')) {
-          imageUrl += `&accountId=${encodeURIComponent(finalAccountId)}`;
+          fetchUrl += `&accountId=${encodeURIComponent(finalAccountId)}`;
         }
         
-        console.log(`[ImageSlideshow] Fetching ${isThumbnailLoad ? 'thumbnail' : 'full-size'} for page ${pageNum} from:`, imageUrl);
+        console.log(`[ImageSlideshow] Fetching ${isThumbnailLoad ? 'thumbnail' : 'full-size'} for page ${pageNum} from:`, fetchUrl);
         const startTime = Date.now();
         
-        let response = await fetch(imageUrl, {
+        let response = await fetch(fetchUrl, {
           headers: {
             'Authorization': `Bearer ${accessToken}`
           }
@@ -278,7 +278,7 @@ export function ImageSlideshow({ fileId, fileName, accountId }: ImageSlideshowPr
           console.log(`[ImageSlideshow] Got 401 for page ${pageNum}, refreshing token and retrying...`);
           const refreshedToken = await PNOAuthService.getValidAccessToken(true); // Force refresh
           if (refreshedToken) {
-            response = await fetch(imageUrl, {
+            response = await fetch(fetchUrl, {
               headers: {
                 'Authorization': `Bearer ${refreshedToken}`
               }
@@ -409,16 +409,16 @@ export function ImageSlideshow({ fileId, fileName, accountId }: ImageSlideshowPr
     (async () => {
       const finalAccountId = await fetchAccountIdOnce();
       
-      // Load first page immediately for instant display
+      // Load first page immediately for instant display (thumbnail first)
       if (folderPageFiles.length > 0) {
-        await loadImagePage(folderPageFiles[0], finalAccountId);
+        await loadImagePage(folderPageFiles[0], finalAccountId, false);
       }
       
-      // Load next 2 pages in parallel (preload for smooth navigation)
+      // Load next 2 pages in parallel (preload thumbnails for smooth navigation)
       // Remaining pages will load on-demand when user navigates (via useEffect watching currentPage)
       const pagesToPreload = folderPageFiles.slice(1, 3); // Pages 2 and 3
       pagesToPreload.forEach(pageFile => {
-        loadImagePage(pageFile, finalAccountId); // Don't await - load in parallel
+        loadImagePage(pageFile, finalAccountId, false); // Load thumbnails first
       });
     })();
   }, [folderPageFiles, accountId, loadImagePage]);
@@ -456,7 +456,11 @@ export function ImageSlideshow({ fileId, fileName, accountId }: ImageSlideshowPr
       pagesToLoad.forEach(pageNum => {
         const pageFile = folderPageFiles.find(f => f.pageNum === pageNum);
         if (pageFile && !loadedPagesRef.current.has(pageNum) && !loadingPagesRef.current.has(pageNum)) {
-          loadImagePage(pageFile, finalAccountId);
+          // Current page: upgrade to full-size if thumbnail is shown; adjacent pages: load thumbnails
+          const isCurrentPage = pageNum === currentPage;
+          const currentlyThumbnail = pageIsThumbnail.get(pageNum);
+          const shouldLoadFullSize = isCurrentPage && currentlyThumbnail;
+          loadImagePage(pageFile, finalAccountId, shouldLoadFullSize);
         }
       });
     })();
