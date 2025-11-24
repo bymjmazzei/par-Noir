@@ -1618,7 +1618,14 @@ export function FullScreenFeed({
                     }
                   }}
                   className="w-full h-full relative"
-                  style={{ touchAction: 'pan-y pan-x' }} // Allow both vertical and horizontal panning
+                  style={{ 
+                    touchAction: 'pan-y pan-x', // Allow both vertical and horizontal panning
+                    pointerEvents: 'auto' // Ensure touch events can reach this element
+                  }}
+                  onTouchStart={(e) => {
+                    // Let the hook handle it, but ensure event reaches the element
+                    console.log('[FullScreenFeed] PDF container touch start');
+                  }}
                 >
                   {/* Blurred background PDF page */}
                   <img

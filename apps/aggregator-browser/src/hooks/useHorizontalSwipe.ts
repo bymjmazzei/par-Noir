@@ -48,28 +48,44 @@ export function useHorizontalSwipe({
     }
 
     const handleTouchStart = (e: TouchEvent) => {
+      // Only handle if touching the actual element (not a child that might have its own handlers)
+      const target = e.target as HTMLElement;
+      const element = elementRef.current;
+      
+      // Check if touch started on the element or its children (but not on buttons/interactive elements)
+      if (element && !element.contains(target)) {
+        return; // Touch started outside our element
+      }
+      
+      // Don't interfere with button clicks
+      if (target.tagName === 'BUTTON' || target.closest('button')) {
+        return;
+      }
+      
       const touch = e.touches[0];
       touchStartRef.current = {
         x: touch.clientX,
         y: touch.clientY,
         time: Date.now()
       };
-      console.log('[useHorizontalSwipe] Touch start:', { x: touch.clientX, y: touch.clientY });
+      console.log('[useHorizontalSwipe] Touch start:', { x: touch.clientX, y: touch.clientY, target: target.tagName });
     };
 
     const handleTouchMove = (e: TouchEvent) => {
-      // Prevent default scrolling during horizontal swipe
-      if (touchStartRef.current && !isSwipingRef.current) {
-        const touch = e.touches[0];
-        const deltaX = touch.clientX - touchStartRef.current.x;
-        const deltaY = touch.clientY - touchStartRef.current.y;
-        const absDeltaX = Math.abs(deltaX);
-        const absDeltaY = Math.abs(deltaY);
-        
-        // Only prevent default if horizontal movement is clearly dominant (1.5x vertical)
-        if (absDeltaX > absDeltaY * 1.5 && absDeltaX > threshold * 0.5) {
-          e.preventDefault();
-        }
+      if (!touchStartRef.current || isSwipingRef.current) return;
+      
+      const touch = e.touches[0];
+      const deltaX = touch.clientX - touchStartRef.current.x;
+      const deltaY = touch.clientY - touchStartRef.current.y;
+      const absDeltaX = Math.abs(deltaX);
+      const absDeltaY = Math.abs(deltaY);
+      
+      // Only prevent default if horizontal movement is clearly dominant (1.5x vertical)
+      // This prevents vertical scrolling when user is swiping horizontally
+      if (absDeltaX > absDeltaY * 1.5 && absDeltaX > threshold * 0.5) {
+        e.preventDefault();
+        e.stopPropagation(); // Stop event from reaching parent scroll container
+        console.log('[useHorizontalSwipe] Touch move - preventing default (horizontal swipe detected)');
       }
     };
 
