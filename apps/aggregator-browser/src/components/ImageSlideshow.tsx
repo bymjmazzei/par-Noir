@@ -3,7 +3,7 @@
  * Displays image files from a folder as a horizontal scrolling slideshow with snap-to-page navigation
  */
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { useHorizontalSwipe } from '../hooks/useHorizontalSwipe';
 
@@ -26,6 +26,7 @@ export function ImageSlideshow({ fileId, fileName, accountId }: ImageSlideshowPr
   const [pageUrls, setPageUrls] = useState<Map<number, string>>(new Map());
   const [loadingPages, setLoadingPages] = useState<Set<number>>(new Set());
   const loadedPagesRef = useRef<Set<number>>(new Set());
+  const loadingPagesRef = useRef<Set<number>>(new Set());
 
   // Load image pages from folder
   useEffect(() => {
@@ -145,59 +146,53 @@ export function ImageSlideshow({ fileId, fileName, accountId }: ImageSlideshowPr
     loadFolderPages();
   }, [fileId, accountId]);
 
-  // Load individual image pages
-  useEffect(() => {
-    if (folderPageFiles.length === 0) {
-      return;
+  // Fetch accountId helper (shared between useEffects)
+  const fetchAccountIdOnce = async (): Promise<string | null> => {
+    if (accountId && accountId.includes('::')) {
+      return accountId;
     }
-
-    console.log(`[ImageSlideshow] Starting to load ${folderPageFiles.length} images from folder...`);
-
-    // Fetch accountId once at the start (not per page)
-    const fetchAccountIdOnce = async (): Promise<string | null> => {
-      if (accountId && accountId.includes('::')) {
-        return accountId;
-      }
+    
+    try {
+      const apiEndpoint = process.env.REACT_APP_API_ENDPOINT || 'https://api.parnoir.com';
+      const { PNOAuthService } = await import('../services/pnOAuthService');
+      const accessToken = await PNOAuthService.getValidAccessToken();
+      if (!accessToken) return null;
       
-      try {
-        const apiEndpoint = process.env.REACT_APP_API_ENDPOINT || 'https://api.parnoir.com';
-        const { PNOAuthService } = await import('../services/pnOAuthService');
-        const accessToken = await PNOAuthService.getValidAccessToken();
-        if (!accessToken) return null;
+      const session = PNOAuthService.loadSession();
+      if (session?.did || session?.pnIdentifier) {
+        const userId = session.pnIdentifier || session.did;
+        const accountsResponse = await fetch(`${apiEndpoint}/api/storage/accounts/${userId}`, {
+          headers: {
+            'Authorization': `Bearer ${accessToken}`
+          }
+        });
         
-        const session = PNOAuthService.loadSession();
-        if (session?.did || session?.pnIdentifier) {
-          const userId = session.pnIdentifier || session.did;
-          const accountsResponse = await fetch(`${apiEndpoint}/api/storage/accounts/${userId}`, {
-            headers: {
-              'Authorization': `Bearer ${accessToken}`
-            }
-          });
-          
-          if (accountsResponse.ok) {
-            const accountsData = await accountsResponse.json();
-            const accounts = accountsData.accounts || [];
-            if (accounts.length > 0) {
-              return accounts[0].accountId;
-            }
+        if (accountsResponse.ok) {
+          const accountsData = await accountsResponse.json();
+          const accounts = accountsData.accounts || [];
+          if (accounts.length > 0) {
+            return accounts[0].accountId;
           }
         }
-      } catch (err) {
-        // Silently fail
       }
-      return null;
-    };
+    } catch (err) {
+      // Silently fail
+    }
+    return null;
+  };
 
-    const loadImagePage = async (pageFile: { id: string; name: string; pageNum: number }, finalAccountId: string | null) => {
+  // Load individual image page (shared function)
+  const loadImagePage = useCallback(async (pageFile: { id: string; name: string; pageNum: number }, finalAccountId: string | null) => {
       const pageNum = pageFile.pageNum;
       
       // Skip if already loaded or currently loading
-      if (loadedPagesRef.current.has(pageNum) || loadingPages.has(pageNum)) {
+      if (loadedPagesRef.current.has(pageNum) || loadingPagesRef.current.has(pageNum)) {
         console.log(`[ImageSlideshow] Skipping page ${pageNum} (already loaded/loading)`);
         return;
       }
       
-      console.log(`[ImageSlideshow] Loading image page ${pageNum}/${folderPageFiles.length}...`);
+      console.log(`[ImageSlideshow] Loading image page ${pageNum}...`);
+      loadingPagesRef.current.add(pageNum);
       setLoadingPages(prev => new Set(prev).add(pageNum));
 
       try {
@@ -321,15 +316,19 @@ export function ImageSlideshow({ fileId, fileName, accountId }: ImageSlideshowPr
       } catch (err) {
         console.error(`❌ [ImageSlideshow] Failed to load image page ${pageNum}:`, err);
       } finally {
+        loadingPagesRef.current.delete(pageNum);
         setLoadingPages(prev => {
           const next = new Set(prev);
           next.delete(pageNum);
           return next;
         });
       }
-    };
+    }, []);
 
-    // Load pages progressively: first page immediately, others sequentially
+  // Load pages progressively: first page immediately, others sequentially
+  useEffect(() => {
+    if (folderPageFiles.length === 0) return;
+    
     (async () => {
       const finalAccountId = await fetchAccountIdOnce();
       
@@ -345,7 +344,7 @@ export function ImageSlideshow({ fileId, fileName, accountId }: ImageSlideshowPr
         loadImagePage(folderPageFiles[1], finalAccountId);
       }
     })();
-  }, [folderPageFiles, accountId]);
+  }, [folderPageFiles, accountId, loadImagePage]);
 
   // Horizontal swipe navigation
   const swipeRef = useHorizontalSwipe({
@@ -365,6 +364,8 @@ export function ImageSlideshow({ fileId, fileName, accountId }: ImageSlideshowPr
 
   // Load pages on-demand when navigating
   useEffect(() => {
+    if (folderPageFiles.length === 0) return;
+    
     // Load current page and adjacent pages if not already loaded
     const pagesToLoad = [
       currentPage,
@@ -372,42 +373,17 @@ export function ImageSlideshow({ fileId, fileName, accountId }: ImageSlideshowPr
       currentPage - 1  // Previous page
     ].filter(p => p >= 1 && p <= pages.length);
     
-    pagesToLoad.forEach(pageNum => {
-      const pageFile = folderPageFiles.find(f => f.pageNum === pageNum);
-      if (pageFile && !loadedPagesRef.current.has(pageNum) && !loadingPages.has(pageNum)) {
-        // Fetch accountId if needed
-        (async () => {
-          let finalAccountId = accountId;
-          if (!finalAccountId || !finalAccountId.includes('::')) {
-            try {
-              const apiEndpoint = process.env.REACT_APP_API_ENDPOINT || 'https://api.parnoir.com';
-              const { PNOAuthService } = await import('../services/pnOAuthService');
-              const accessToken = await PNOAuthService.getValidAccessToken();
-              if (accessToken) {
-                const session = PNOAuthService.loadSession();
-                if (session?.did || session?.pnIdentifier) {
-                  const userId = session.pnIdentifier || session.did;
-                  const accountsResponse = await fetch(`${apiEndpoint}/api/storage/accounts/${userId}`, {
-                    headers: { 'Authorization': `Bearer ${accessToken}` }
-                  });
-                  if (accountsResponse.ok) {
-                    const accountsData = await accountsResponse.json();
-                    const accounts = accountsData.accounts || [];
-                    if (accounts.length > 0) {
-                      finalAccountId = accounts[0].accountId;
-                    }
-                  }
-                }
-              }
-            } catch (err) {
-              // Silently fail
-            }
-          }
+    (async () => {
+      const finalAccountId = await fetchAccountIdOnce();
+      
+      pagesToLoad.forEach(pageNum => {
+        const pageFile = folderPageFiles.find(f => f.pageNum === pageNum);
+        if (pageFile && !loadedPagesRef.current.has(pageNum) && !loadingPagesRef.current.has(pageNum)) {
           loadImagePage(pageFile, finalAccountId);
-        })();
-      }
-    });
-  }, [currentPage, folderPageFiles, accountId]);
+        }
+      });
+    })();
+  }, [currentPage, folderPageFiles, accountId, pages.length, loadImagePage]);
 
   // Scroll to current page
   useEffect(() => {
