@@ -2500,8 +2500,10 @@ function App() {
               .map(f => [f.metadata.fileId, f])).values()
           );
           // Separate media and thoughts (exclude raw PDFs)
-          const mediaFilesOther = allFilesOther.filter(f => isMedia(f));
+          // IMPORTANT: Filter out thoughts first, then check for media
+          // This ensures thoughts aren't misclassified as media
           const thoughtFilesOther = allFilesOther.filter(f => isThought(f));
+          const mediaFilesOther = allFilesOther.filter(f => !isThought(f) && isMedia(f));
           // Show media first, then thoughts
           filtered = [...mediaFilesOther, ...thoughtFilesOther];
           break;
