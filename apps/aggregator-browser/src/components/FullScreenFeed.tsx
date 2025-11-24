@@ -925,10 +925,11 @@ export function FullScreenFeed({
         // Check metadata immediately - don't wait for async operations
         const pdfFileId = indexedFile.metadata?.pdfFileId;
         const pdfPageThumbnailIds = indexedFile.metadata?.pdfPageThumbnailIds;
-        // Also check if fileType is 'document' - likely a PDF slideshow even if metadata not fully loaded
+        // Detect slideshow EARLY - if fileType is 'document', assume it's a PDF slideshow
+        // This prevents loading screen delay - ImageSlideshow will handle empty thumbnailIds gracefully
         const isImageSlideshowFolder = !isTextPost && (
           (pdfPageThumbnailIds && pdfPageThumbnailIds.length > 0) ||
-          (file.fileType === 'document' && pdfFileId) // PDF document - likely slideshow
+          file.fileType === 'document' // PDF document - always treat as slideshow (even if thumbnails not loaded yet)
         );
         
         // No PDF support - only image slideshows from folders
@@ -1248,12 +1249,15 @@ export function FullScreenFeed({
             {/* Image Slideshow (from folder) */}
             {isImageSlideshowFolder && !isTextPost && (() => {
               // For PDF slideshows: use pdfPageThumbnailIds array (loaded directly, no folder listing)
+              // Even if empty, render slideshow immediately - it will show placeholders while loading
               const thumbnailIds = indexedFile.metadata?.pdfPageThumbnailIds || [];
               const pdfFileId = indexedFile.metadata?.pdfFileId;
               
               // Get accountId from indexedFile or fetch it once
               const slideshowAccountId = indexedFile.accountId || indexedFile.backendFileId;
               
+              // Render slideshow IMMEDIATELY - don't wait for thumbnailIds to be populated
+              // This matches vertical feed: show structure immediately, load content progressively
               return (
                 <div className="w-full h-full relative z-10">
                   <ImageSlideshow
