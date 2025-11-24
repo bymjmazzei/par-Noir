@@ -686,11 +686,11 @@ export function FullScreenFeed({
         
         const isVideo = !isTextPost && (
           file.fileType === 'video' || 
-          (file.name || file.title || '').match(/\.(mp4|mov|avi|webm|mkv|flv|wmv)$/i)
+          !!(file.name || file.title || '').match(/\.(mp4|mov|avi|webm|mkv|flv|wmv)$/i)
         );
         const isImage = !isTextPost && (
           file.fileType === 'image' || 
-          (file.name || file.title || '').match(/\.(jpg|jpeg|png|gif|webp|svg|bmp|ico)$/i) ||
+          !!(file.name || file.title || '').match(/\.(jpg|jpeg|png|gif|webp|svg|bmp|ico)$/i) ||
           (file as any).mimeType?.startsWith('image/') // Check mimeType if available
         );
         
@@ -1053,7 +1053,7 @@ export function FullScreenFeed({
 
     const file = indexedFile.metadata;
     const isVideo = file.fileType === 'video' || 
-                   (file.name || file.title || '').match(/\.(mp4|mov|avi|webm|mkv|flv|wmv)$/i);
+                   !!(file.name || file.title || '').match(/\.(mp4|mov|avi|webm|mkv|flv|wmv)$/i);
 
     if (isVideo && videoElement && videoBlobs.has(visibleFileId)) {
       videoElement.play().catch(err => {
@@ -1170,7 +1170,7 @@ export function FullScreenFeed({
 
           const file = indexedFile.metadata;
           const isVideo = file.fileType === 'video' || 
-                         (file.name || file.title || '').match(/\.(mp4|mov|avi|webm|mkv|flv|wmv)$/i);
+                         !!(file.name || file.title || '').match(/\.(mp4|mov|avi|webm|mkv|flv|wmv)$/i);
 
           if (entry.isIntersecting && entry.intersectionRatio > 0.5) {
             setVisibleFileId(fileId);

@@ -635,7 +635,7 @@ function App() {
       
       // Debug logging for public feed
       console.log(`[Public Feed] Filtered ${filtered.length} files from ${indexedFiles.length} indexed files:`, {
-        images: filtered.filter(f => f.metadata.fileType === 'image' || (f.metadata.name || '').match(/\.(jpg|jpeg|png|gif|webp|svg|bmp|ico)$/i)).length,
+        images: filtered.filter(f => f.metadata.fileType === 'image' || !!(f.metadata.name || '').match(/\.(jpg|jpeg|png|gif|webp|svg|bmp|ico)$/i)).length,
         thoughts: filtered.filter(f => {
           const fileType = f.metadata.fileType;
           const hasTextPostData = !!(f.metadata as any).textPost || !!(f.metadata as any).thought;
@@ -880,7 +880,7 @@ function App() {
 
           const file = indexedFile.metadata;
           const isVideo = file.fileType === 'video' || 
-                         (file.name || file.title || '').match(/\.(mp4|mov|avi|webm|mkv|flv|wmv)$/i);
+                         !!(file.name || file.title || '').match(/\.(mp4|mov|avi|webm|mkv|flv|wmv)$/i);
 
           if (entry.isIntersecting && entry.intersectionRatio > 0.5) {
             // Item is in view - play video if it's a video
@@ -1108,7 +1108,7 @@ function App() {
         for (const indexedFile of discoveredFiles) {
           const file = indexedFile.metadata;
           const isVideo = file.fileType === 'video' || 
-                         (file.name || file.title || '').match(/\.(mp4|mov|avi|webm|mkv|flv|wmv)$/i);
+                         !!(file.name || file.title || '').match(/\.(mp4|mov|avi|webm|mkv|flv|wmv)$/i);
           if (isVideo && file.publicToken && !videoBlobsRef.current.has(file.fileId)) {
             (async () => {
               try {
@@ -1176,9 +1176,9 @@ function App() {
     for (const indexedFile of files) {
       const file = indexedFile.metadata;
       const isImage = file.fileType === 'image' || 
-                     (file.name || file.title || '').match(/\.(jpg|jpeg|png|gif|webp|svg|bmp|ico)$/i);
+                     !!(file.name || file.title || '').match(/\.(jpg|jpeg|png|gif|webp|svg|bmp|ico)$/i);
       const isVideo = file.fileType === 'video' || 
-                     (file.name || file.title || '').match(/\.(mp4|mov|avi|webm|mkv|flv|wmv)$/i);
+                     !!(file.name || file.title || '').match(/\.(mp4|mov|avi|webm|mkv|flv|wmv)$/i);
       
       // Skip if not an image/video, no publicToken, or already has thumbnail/generating
       // Validate publicToken exists and is not empty
@@ -2391,7 +2391,7 @@ function App() {
     const result = isImage || isVideo || isSlideshow;
     
     // Debug logging for files that should be media but aren't detected
-    if (!result && (fileType === 'image' || fileName.match(/\.(jpg|jpeg|png|gif|webp|svg|bmp|ico)$/i))) {
+    if (!result && (fileType === 'image' || !!fileName.match(/\.(jpg|jpeg|png|gif|webp|svg|bmp|ico)$/i))) {
       console.warn(`[App] File not detected as media:`, {
         fileId: file.metadata.fileId,
         fileType,
@@ -3601,9 +3601,9 @@ function App() {
               const file = indexedFile.metadata;
               // Detect if file is an image or video from fileType or filename
               const isImage = file.fileType === 'image' || 
-                             (file.name || file.title || '').match(/\.(jpg|jpeg|png|gif|webp|svg|bmp|ico)$/i);
+                             !!(file.name || file.title || '').match(/\.(jpg|jpeg|png|gif|webp|svg|bmp|ico)$/i);
               const isVideo = file.fileType === 'video' || 
-                             (file.name || file.title || '').match(/\.(mp4|mov|avi|webm|mkv|flv|wmv)$/i);
+                             !!(file.name || file.title || '').match(/\.(mp4|mov|avi|webm|mkv|flv|wmv)$/i);
               const fileName = file.name || file.title || 'Untitled';
               
               return (
