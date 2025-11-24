@@ -1346,15 +1346,35 @@ export function FullScreenFeed({
         }
         
         const hasTextPostData = !!textPostData;
-        const hasTextFileType = file.fileType === 'text' || 
-                               file.fileType === 'thought' ||
-                               indexedFile.metadata?.fileType === 'text' || 
-                               indexedFile.metadata?.fileType === 'thought';
+        
+        // Check fileType in ALL possible locations (file.fileType, indexedFile.metadata.fileType, etc.)
+        const fileTypeFromFile = file.fileType;
+        const fileTypeFromMetadata = indexedFile.metadata?.fileType;
+        const fileTypeFromIndexedFile = (indexedFile as any)?.fileType;
+        const actualFileType = fileTypeFromFile || fileTypeFromMetadata || fileTypeFromIndexedFile;
+        
+        const hasTextFileType = actualFileType === 'text' || actualFileType === 'thought';
         
         // Check for thought filename pattern BEFORE determining isTextPost
         // This ensures thoughts are detected consistently and prevents flickering
-        const isThoughtFile = (file.name && (/^thought-\d+\.thought/i.test(file.name) || /^thought-\d+\.png/i.test(file.name))) ||
-                              (file.title && (/^thought-\d+\.thought/i.test(file.title) || /^thought-\d+\.png/i.test(file.title)));
+        const fileName = file.name || file.title || '';
+        const isThoughtFile = /^thought-\d+\.(thought|png)/i.test(fileName);
+        
+        // Debug logging for thoughts to help diagnose flickering
+        if (isThoughtFile || hasTextPostData || hasTextFileType) {
+          console.log('[FullScreenFeed] Thought detection:', {
+            fileId,
+            fileName,
+            isThoughtFile,
+            hasTextPostData,
+            hasTextFileType,
+            fileTypeFromFile,
+            fileTypeFromMetadata,
+            fileTypeFromIndexedFile,
+            actualFileType,
+            textPostData: !!textPostData
+          });
+        }
         
         // If we have textPost/thought data, it's definitely a thought, regardless of fileType
         // This handles cases where fileType might be 'other' due to API defaults
@@ -1362,7 +1382,7 @@ export function FullScreenFeed({
         // IMPORTANT: Check isThoughtFile FIRST to prevent flickering
         const isTextPost = isThoughtFile || hasTextPostData || hasTextFileType || 
                           (file.description && file.description.trim().length > 0 && 
-                           !file.fileType && !file.name?.match(/\.(jpg|jpeg|png|gif|webp|svg|bmp|ico|mp4|mov|avi|webm|mkv|flv|wmv|pdf)$/i));
+                           !actualFileType && !fileName.match(/\.(jpg|jpeg|png|gif|webp|svg|bmp|ico|mp4|mov|avi|webm|mkv|flv|wmv|pdf)$/i));
         
         // If it's a thought but fileType is wrong, log it for debugging
         if (hasTextPostData && !hasTextFileType) {
