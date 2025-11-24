@@ -1021,70 +1021,19 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
           const mimeType = file.mimeType || '';
           
           // Allow PDF slideshow folders (folders ending with "-pages") to show as files
-          // These represent PDF slideshows and should appear as single file items
           if (mimeType === 'application/vnd.google-apps.folder') {
-            // Check if this is a PDF slideshow folder (ends with "-pages")
             const nameWithoutEncrypted = file.name.replace(/\.encrypted$/i, '');
             const isPDFSlideshowFolder = nameWithoutEncrypted.toLowerCase().endsWith('-pages');
-            console.log(`[FileFilter] Checking folder: ${file.name}, mimeType: ${mimeType}, isPDFSlideshowFolder: ${isPDFSlideshowFolder}`);
             if (isPDFSlideshowFolder) {
-              console.log(`✅ [FileFilter] Including PDF slideshow folder: ${file.name}`);
               return true; // Include PDF slideshow folders
             }
-            console.log(`❌ [FileFilter] Excluding folder: ${file.name}`);
             return false; // Exclude other folders
           }
           
-          // Exclude PDF page PNGs (these are stored in folders and shouldn't show in main file list)
-          if (name.match(/-page-\d+\.png\.encrypted$/i)) {
-            return false;
-          }
-          
-          // Exclude metadata files
-          if (name.endsWith('.metadata.json') || name === '_metadata') {
-            return false;
-          }
-          
-          // Exclude index files
-          if (name.includes('file-index.json') || name.includes('index.json')) {
-            return false;
-          }
-          
-          // Exclude system files/folders (but allow actual media files that might start with _)
-          if ((name.startsWith('_') || name === 'metadata') && !mimeType.startsWith('image/') && !mimeType.startsWith('video/') && mimeType !== 'application/pdf' && !mimeType.includes('pdf')) {
-            // Check if it's a media file by extension even if MIME type doesn't match
-            const nameWithoutEncrypted = file.name.replace(/\.encrypted$/i, '');
-            const hasImageExt = /\.(jpg|jpeg|png|gif|webp|bmp|svg|heic|heif)$/i.test(nameWithoutEncrypted);
-            const hasVideoExt = /\.(mp4|mov|avi|mkv|webm|flv|wmv|m4v|3gp)$/i.test(nameWithoutEncrypted);
-            const hasPDFExt = /\.pdf$/i.test(nameWithoutEncrypted);
-            if (!hasImageExt && !hasVideoExt && !hasPDFExt) {
-              return false;
-            }
-          }
-          
-          // Check MIME types
-          const isImageMime = mimeType.startsWith('image/');
-          const isVideoMime = mimeType.startsWith('video/');
-          const isPDFMime = mimeType === 'application/pdf' || mimeType.includes('pdf');
-          
-          // Check file extensions (including encrypted files which have .encrypted suffix)
-          // Remove .encrypted suffix first to check original extension
-          const nameWithoutEncrypted = file.name.replace(/\.encrypted$/i, '');
-          const hasImageExt = /\.(jpg|jpeg|png|gif|webp|bmp|svg|heic|heif)$/i.test(nameWithoutEncrypted);
-          const hasVideoExt = /\.(mp4|mov|avi|mkv|webm|flv|wmv|m4v|3gp)$/i.test(nameWithoutEncrypted);
-          const hasPDFExt = /\.pdf$/i.test(nameWithoutEncrypted);
-          
-          // Check if file name suggests it's an image (e.g., "img123", "image123", "photo123")
-          // This handles files without extensions that are likely images
-          const nameLower = nameWithoutEncrypted.toLowerCase();
-          const looksLikeImage = /^(img|image|photo|pic|picture|snap|shot)\d+/i.test(nameLower) || 
-                                 nameLower.startsWith('img') || 
-                                 nameLower.startsWith('image');
-          
-          // Include if it's an image/video/PDF by MIME type OR by file extension OR looks like an image
-          // This allows encrypted files to show if they have image/video/PDF extensions or look like images
-          return isImageMime || isVideoMime || isPDFMime || hasImageExt || hasVideoExt || hasPDFExt || looksLikeImage;
-        });
+          // Exclude everything else (main files, thumbnails already handled above)
+          return false;
+        })
+        );
         
         setFilesByAccount(prev => {
           const next = new Map(prev);
