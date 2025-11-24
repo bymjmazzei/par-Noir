@@ -603,6 +603,50 @@ function App() {
   }, [indexedFiles]);
 
   // Memoize filtered files by active feed
+  // Helper function to identify text posts (thoughts) - MUST be defined before filteredFilesByFeed
+  // Use same detection logic as FullScreenFeed for consistency
+  const isThought = (file: IndexedFile): boolean => {
+    const fileType = file.metadata.fileType;
+    const fileName = file.metadata.name || file.metadata.title || '';
+    
+    // Check for textPost/thought data in multiple locations (same as FullScreenFeed)
+    const hasTextPostData = !!(file.metadata as any).textPost || 
+                           !!(file.metadata as any).thought ||
+                           !!(file as any).textPost ||
+                           !!(file as any).thought;
+    
+    // Check for fileType in multiple locations
+    const hasTextFileType = fileType === 'text' || 
+                           fileType === 'thought' ||
+                           (file.metadata as any).fileType === 'text' ||
+                           (file.metadata as any).fileType === 'thought';
+    
+    // Check for thought filename pattern (new .thought format or legacy .png format)
+    // Also check originalName if available (file.name might be content, not filename)
+    const thoughtFileName = fileName || 
+                           (file.metadata as any).originalName ||
+                           (file.metadata as any).name ||
+                           '';
+    const isThoughtFile = /^thought-\d+\.(thought|png)/i.test(thoughtFileName);
+    
+    // Prioritize hasTextPostData and hasTextFileType first (same as FullScreenFeed)
+    return hasTextPostData || hasTextFileType || isThoughtFile;
+  };
+
+  // Helper function to check if a feed is media-only (should exclude thoughts)
+  const isMediaOnlyFeed = (feedId: string): boolean => {
+    // Check if feed name contains "media" (case-insensitive)
+    const feed = feeds.find(f => f.feedId === feedId);
+    if (feed && feed.feedName.toLowerCase().includes('media')) {
+      return true;
+    }
+    // Check if feed has a mediaOnly property (for future use)
+    if ((feed as any)?.mediaOnly === true) {
+      return true;
+    }
+    return false;
+  };
+
   const filteredFilesByFeed = useMemo(() => {
     const showNSFW = userState.preferences.showNSFW;
     const hasAgeZKP = userState.preferences.hasAgeZKP;
@@ -773,7 +817,16 @@ function App() {
       });
       
       // ALWAYS filter by NSFW preference (for both unlocked and locked users)
-        filtered = filtered.filter(shouldShowFile);
+      filtered = filtered.filter(shouldShowFile);
+      
+      // Check if any feed in this category is media-only
+      // If so, exclude thoughts from this niche feed
+      const categoryFeeds = feeds.filter(f => f.feedCategory === categoryId);
+      const hasMediaOnlyFeed = categoryFeeds.some(feed => isMediaOnlyFeed(feed.feedId));
+      if (hasMediaOnlyFeed) {
+        filtered = filtered.filter(file => !isThought(file));
+      }
+      
       return filtered;
     }
     
@@ -781,7 +834,15 @@ function App() {
     let filtered = indexedFiles.filter(file => 
       file.metadata.feedIds?.includes(activeFeedId)
     );
-      filtered = filtered.filter(shouldShowFile);
+    filtered = filtered.filter(shouldShowFile);
+    
+    // If this is a media-only feed, exclude thoughts
+    // PN feeds (regular feeds) should include thoughts, images, videos, and slideshows
+    // Media feeds should only show images, videos, and slideshows (exclude thoughts)
+    if (isMediaOnlyFeed(activeFeedId)) {
+      filtered = filtered.filter(file => !isThought(file));
+    }
+    
     return filtered;
   }, [indexedFiles, activeFeedId, userState.preferences.subscribedFeedIds, userState.preferences.blockedCategories, userState.preferences.subscribedSubjects, userState.preferences.blockedSubjects, userState.preferences.showNSFW, userState.preferences.hasAgeZKP, userState.preferences.isOver18, userState.isUnlocked, feeds]);
 
@@ -2324,36 +2385,6 @@ function App() {
     // Note: currentFeedIndex is intentionally NOT in dependencies to prevent infinite loops
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visibleFileId, viewingCreatorId, mePageTab, creatorFilesState, userState.pnIdentifier, userState.isUnlocked, userLikedFiles, userCommentedFiles, viewedUserLikedFiles, viewedUserCommentedFiles, savedFiles]);
-
-  // Helper function to identify text posts (thoughts) - MUST be defined before any useMemo/useEffect that uses it
-  // Use same detection logic as FullScreenFeed for consistency
-  const isThought = (file: IndexedFile): boolean => {
-    const fileType = file.metadata.fileType;
-    const fileName = file.metadata.name || file.metadata.title || '';
-    
-    // Check for textPost/thought data in multiple locations (same as FullScreenFeed)
-    const hasTextPostData = !!(file.metadata as any).textPost || 
-                           !!(file.metadata as any).thought ||
-                           !!(file as any).textPost ||
-                           !!(file as any).thought;
-    
-    // Check for fileType in multiple locations
-    const hasTextFileType = fileType === 'text' || 
-                           fileType === 'thought' ||
-                           (file.metadata as any).fileType === 'text' ||
-                           (file.metadata as any).fileType === 'thought';
-    
-    // Check for thought filename pattern (new .thought format or legacy .png format)
-    // Also check originalName if available (file.name might be content, not filename)
-    const thoughtFileName = fileName || 
-                           (file.metadata as any).originalName ||
-                           (file.metadata as any).name ||
-                           '';
-    const isThoughtFile = /^thought-\d+\.(thought|png)/i.test(thoughtFileName);
-    
-    // Prioritize hasTextPostData and hasTextFileType first (same as FullScreenFeed)
-    return hasTextPostData || hasTextFileType || isThoughtFile;
-  };
 
   // Helper function to check if a file is a PDF slideshow (has page thumbnails)
   const isPdfSlideshow = (file: IndexedFile): boolean => {

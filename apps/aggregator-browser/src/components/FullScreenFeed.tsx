@@ -51,7 +51,7 @@ export function FullScreenFeed({
   onIndexChange,
   onLike,
   onComment,
-  onShare,
+  onShare: _onShare,
   onAddToFeed,
   onSave,
   onEdit,
@@ -69,7 +69,7 @@ export function FullScreenFeed({
   thumbnails: externalThumbnails,
   videoBlobs: externalVideoBlobs
 }: FullScreenFeedProps) {
-  const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const scrollContainerRef = useRef<HTMLDivElement | null>(null);
   const videoRefs = useRef<Map<string, HTMLVideoElement>>(new Map());
   const imageRefs = useRef<Map<string, HTMLImageElement>>(new Map());
   const [videoBlobs, setVideoBlobs] = useState<Map<string, string>>(externalVideoBlobs || new Map());
@@ -129,7 +129,7 @@ export function FullScreenFeed({
   });
 
   // Handle horizontal swipe for PDF pages (only active when viewing PDF)
-  const pdfHorizontalSwipeRef = useHorizontalSwipe({
+  useHorizontalSwipe({
     onSwipeLeft: () => {
       const currentFile = files[currentIndex];
       if (!currentFile) return;
@@ -141,7 +141,6 @@ export function FullScreenFeed({
       if (!isPdfDoc || visibleFileId !== fileId) return;
       
       const currentPage = pdfCurrentPage.get(fileId) || 0;
-      const totalPages = pdfPageThumbnailIds.length;
       
       if (pdfPageThumbnailIds && currentPage < pdfPageThumbnailIds.length - 1) {
         const nextPageIndex = currentPage + 1;
@@ -189,7 +188,6 @@ export function FullScreenFeed({
       if (!isPdfDoc || visibleFileId !== fileId) return;
       
       const currentPage = pdfCurrentPage.get(fileId) || 0;
-      const totalPages = pdfPageThumbnailIds.length;
       
       if (pdfPageThumbnailIds && currentPage > 0) {
         const prevPageIndex = currentPage - 1;
@@ -238,8 +236,9 @@ export function FullScreenFeed({
       return accountIdCacheRef.current;
     }
     
-    // Try to get from indexedFile first
-    let accountId = indexedFile.accountId || indexedFile.backendFileId;
+    // Try to get from indexedFile metadata first (if available)
+    const fileMetadata = indexedFile.metadata as any;
+    let accountId = fileMetadata?.accountId || fileMetadata?.backendFileId;
     if (accountId && accountId.includes('::')) {
       accountIdCacheRef.current = accountId;
       return accountId;
@@ -277,7 +276,7 @@ export function FullScreenFeed({
   // Load PDF page thumbnail on-demand - USE THUMBNAIL'S OWN PUBLICTOKEN (NO API CALLS!)
   const loadPdfPageThumbnail = async (
     fileId: string,
-    thumbnailId: string,
+    _thumbnailId: string,
     pageIndex: number,
     indexedFile: IndexedFile
   ) => {
@@ -338,106 +337,6 @@ export function FullScreenFeed({
       // No token available - can't load without API (but user doesn't want API calls)
       console.warn(`[FullScreenFeed] PDF thumbnail page ${pageIndex + 1} has no publicToken - cannot load without API`);
       return;
-      const accessToken = await PNOAuthService.getValidAccessToken();
-      const isPublic = file?.isPublic !== false || !!file?.publicToken;
-      
-      // Get accountId with caching
-      const accountId = await getAccountId(indexedFile, accessToken);
-      
-      // Load thumbnail via API
-      let thumbnailUrl = `${apiEndpoint}/api/drive/files/${thumbnailId}?thumbnail=true`;
-      if (accountId && accountId.includes('::')) {
-        thumbnailUrl += `&accountId=${encodeURIComponent(accountId)}`;
-      }
-      
-      let response: Response;
-      if (accessToken) {
-        response = await fetch(thumbnailUrl, {
-          headers: { 'Authorization': `Bearer ${accessToken}` }
-        });
-        
-        if (response.status === 401) {
-          const refreshedToken = await PNOAuthService.getValidAccessToken(true);
-          if (refreshedToken) {
-            response = await fetch(thumbnailUrl, {
-              headers: { 'Authorization': `Bearer ${refreshedToken}` }
-            });
-          } else {
-            if (isPublic) {
-              response = await fetch(thumbnailUrl);
-            } else {
-              return;
-            }
-          }
-        }
-      } else {
-        if (isPublic) {
-          response = await fetch(thumbnailUrl);
-        } else {
-          return;
-        }
-      }
-      
-      if (response.ok) {
-        const contentType = response.headers.get('content-type') || '';
-        const blob = await response.blob();
-        
-        // Decrypt if encrypted (only if authenticated)
-        let thumbnailBlob: Blob;
-        if (contentType.includes('application/json') || contentType.includes('application/octet-stream')) {
-          if (accessToken) {
-            // Only decrypt if we have auth (encrypted files require auth)
-            const { EncryptionManager } = await import('../utils/encryptionManager');
-            const session = PNOAuthService.loadSession();
-            if (session?.did) {
-              const pnId = session.did;
-              let publicKey = session?.publicKey;
-              if (!publicKey && session.did.startsWith('did:key:')) {
-                publicKey = session.did.substring(8);
-              }
-              if (publicKey) {
-                const encryptedText = await blob.text();
-                const encryptedPackage = JSON.parse(encryptedText);
-                const encryptionManager = new EncryptionManager();
-                const decryptedData = await encryptionManager.decrypt(
-                  encryptedPackage.encrypted,
-                  encryptedPackage.iv,
-                  encryptedPackage.salt,
-                  pnId,
-                  publicKey
-                );
-                thumbnailBlob = new Blob([decryptedData], {
-                  type: encryptedPackage.metadata?.originalMimeType || 'image/jpeg'
-                });
-              } else {
-                console.warn(`[FullScreenFeed] Cannot decrypt PDF page thumbnail - no public key`);
-                return; // Skip if can't decrypt
-              }
-            } else {
-              console.warn(`[FullScreenFeed] Cannot decrypt PDF page thumbnail - no session`);
-              return; // Skip if no session
-            }
-          } else {
-            // Encrypted file but no auth - skip (can't decrypt)
-            console.warn(`[FullScreenFeed] PDF page thumbnail is encrypted but user is locked - skipping`);
-            return;
-          }
-        } else {
-          // Not encrypted - use blob directly
-          thumbnailBlob = blob;
-        }
-        
-        const thumbnailUrlObj = URL.createObjectURL(thumbnailBlob);
-        setPdfPageThumbnails(prev => {
-          const newMap = new Map(prev);
-          if (!newMap.has(fileId)) {
-            newMap.set(fileId, new Map());
-          }
-          const pageMap = newMap.get(fileId)!;
-          pageMap.set(pageIndex, thumbnailUrlObj);
-          return newMap;
-        });
-      }
     } catch (err) {
       console.error(`[FullScreenFeed] Failed to load PDF page thumbnail:`, err);
     }
@@ -788,7 +687,9 @@ export function FullScreenFeed({
                             pnId,
                             publicKey
                           );
-                          thumbnailBlob = new Blob([decryptedData], {
+                          // Convert Uint8Array to ArrayBuffer for Blob creation
+                          const arrayBuffer = decryptedData.buffer.slice(decryptedData.byteOffset, decryptedData.byteOffset + decryptedData.byteLength) as ArrayBuffer;
+                          thumbnailBlob = new Blob([arrayBuffer], {
                             type: encryptedPackage.metadata.originalMimeType || 'image/jpeg'
                           });
                         } else {
@@ -940,8 +841,9 @@ export function FullScreenFeed({
                     publicKey
                   );
                   
-                  // Create image blob from decrypted data
-                  imageBlob = new Blob([decryptedData], {
+                  // Create image blob from decrypted data - convert Uint8Array to ArrayBuffer
+                  const arrayBuffer = decryptedData.buffer.slice(decryptedData.byteOffset, decryptedData.byteOffset + decryptedData.byteLength) as ArrayBuffer;
+                  imageBlob = new Blob([arrayBuffer], {
                     type: encryptedPackage.metadata.originalMimeType || 'image/png'
                   });
                 } else {
@@ -964,7 +866,6 @@ export function FullScreenFeed({
 
         // Load PDF document FIRST thumbnail - USE THUMBNAIL'S OWN PUBLICTOKEN (NO API CALLS!)
         if (isPdfDocument && pdfPageThumbnailIds && pdfPageThumbnailIds.length > 0 && !thumbnails.has(fileId)) {
-          const firstThumbnailId = pdfPageThumbnailIds[0];
           const pdfPageThumbnailTokens = (file as any)?.pdfPageThumbnailTokens as string[] | undefined;
           
           
@@ -1252,8 +1153,7 @@ export function FullScreenFeed({
           Math.max(0, currentIndex - 1),
           Math.min(files.length, currentIndex + 2)
         )
-        .map((indexedFile, relativeIdx) => {
-        const idx = Math.max(0, currentIndex - 1) + relativeIdx;
+        .map((indexedFile) => {
         const file = indexedFile.metadata;
         const fileId = file.fileId;
         
@@ -1428,14 +1328,7 @@ export function FullScreenFeed({
         // Check if this is an image slideshow folder (folder ending with "-pages")
         // PDF slideshow detection: check for pdfPageThumbnailIds array (thumbnails loaded directly, no folder listing)
         // Check metadata immediately - don't wait for async operations
-        const pdfFileId = indexedFile.metadata?.pdfFileId;
         const pdfPageThumbnailIds = indexedFile.metadata?.pdfPageThumbnailIds;
-        // Detect slideshow EARLY - if fileType is 'document', assume it's a PDF slideshow
-        // This prevents loading screen delay - ImageSlideshow will handle empty thumbnailIds gracefully
-        const isImageSlideshowFolder = !isTextPost && (
-          (pdfPageThumbnailIds && pdfPageThumbnailIds.length > 0) ||
-          file.fileType === 'document' // PDF document - always treat as slideshow (even if thumbnails not loaded yet)
-        );
         
         // Check if this is a PDF document (reuse pdfPageThumbnailIds from above)
         const isPdfDoc = !isTextPost && file.fileType === 'document' && pdfPageThumbnailIds && pdfPageThumbnailIds.length > 0;
@@ -1698,45 +1591,7 @@ export function FullScreenFeed({
                   </div>
                 );
               }
-              const currentPage = pdfCurrentPage.get(fileId) || 0;
-              const totalPages = pdfPageThumbnailIds.length;
-              const pageThumbnailUrl = pdfPageThumbnails.get(fileId)?.get(currentPage) || thumbnails.get(fileId)!;
-              
-              // Calculate aspect ratio for background blur (same as images)
-              const containerHeight = window.innerHeight - 64; // Account for bottom nav
-              const containerWidth = window.innerWidth;
-              const containerAspect = containerWidth / containerHeight;
-              const dims = mediaDimensions.get(fileId);
-              const imageAspect = dims ? dims.width / dims.height : 16/9; // Default to 16:9
-              
-              // If image is wider than container (widescreen), scale background to fill height
-              // If image is taller than container (portrait), scale background to fill width
-              const isWidescreen = imageAspect > containerAspect;
-              const backgroundStyle: React.CSSProperties = {
-                filter: 'blur(40px)',
-                opacity: 0.6,
-                zIndex: 0,
-                position: 'absolute',
-                top: 0,
-                left: 0,
-                right: 0,
-                bottom: 0,
-                objectFit: 'cover', // Ensure it covers the entire area
-                ...(isWidescreen 
-                  ? { 
-                      width: 'auto', 
-                      height: '100%',
-                      left: '50%',
-                      transform: 'translateX(-50%) scale(1.1)'
-                    }
-                  : { 
-                      height: 'auto', 
-                      width: '100%',
-                      top: '50%',
-                      transform: 'translateY(-50%) scale(1.1)'
-                    }
-                )
-              };
+              const totalPages = pdfPageThumbnailIds?.length || 0;
               
               return (
                 <div
@@ -1770,7 +1625,7 @@ export function FullScreenFeed({
                     // Get thumbnail URL - check pdfPageThumbnails first, then fallback to main thumbnails for page 0
                     let pageThumbnailUrl = pdfPageThumbnails.get(fileId)?.get(pageIndex);
                     if (!pageThumbnailUrl && pageIndex === 0) {
-                      pageThumbnailUrl = thumbnails.get(fileId) || null;
+                      pageThumbnailUrl = thumbnails.get(fileId) || undefined;
                     }
                     
                     // Calculate aspect ratio for background blur (same as images)
@@ -1789,7 +1644,6 @@ export function FullScreenFeed({
                       zIndex: 0,
                       position: 'absolute',
                       top: 0,
-                      left: 0,
                       right: 0,
                       bottom: 0,
                       objectFit: 'cover',
@@ -1829,7 +1683,7 @@ export function FullScreenFeed({
                               });
                               
                               // Always load if page is visible (no range restriction)
-                              if (!pageThumbnailUrl) {
+                              if (!pageThumbnailUrl && pdfPageThumbnailIds) {
                                 const thumbnailId = pdfPageThumbnailIds[pageIndex];
                                 loadPdfPageThumbnail(fileId, thumbnailId, pageIndex, indexedFile).catch((err) => {
                                   console.error(`[FullScreenFeed] Failed to load page ${pageIndex + 1} thumbnail:`, err);
@@ -1895,8 +1749,7 @@ export function FullScreenFeed({
                                 height: '100%',
                                 width: '100%',
                                 objectFit: 'contain',
-                                imageRendering: 'smooth',
-                                WebkitImageRendering: 'smooth',
+                                imageRendering: 'auto' as const,
                                 backfaceVisibility: 'hidden',
                                 WebkitBackfaceVisibility: 'hidden',
                                 transform: 'translateZ(0)'
@@ -1993,7 +1846,6 @@ export function FullScreenFeed({
                 zIndex: 0,
                 position: 'absolute',
                 top: 0,
-                left: 0,
                 right: 0,
                 bottom: 0,
                 objectFit: 'cover', // Ensure it covers the entire area
@@ -2055,8 +1907,7 @@ export function FullScreenFeed({
                         height: '100%',
                         width: '100%',
                         objectFit: 'contain', // Maintain aspect ratio, fill container
-                        imageRendering: 'smooth',
-                        WebkitImageRendering: 'smooth',
+                        imageRendering: 'auto' as const,
                         // Prevent pixelation and ensure high quality
                         backfaceVisibility: 'hidden',
                         WebkitBackfaceVisibility: 'hidden',
@@ -2091,9 +1942,11 @@ export function FullScreenFeed({
                   ...indexedFile.metadata,
                   engagement: {
                     ...indexedFile.metadata.engagement,
+                    views: indexedFile.metadata.engagement?.views || 0,
                     likes: getLikeCount(fileId, indexedFile.metadata.engagement?.likes || 0),
                     comments: getComments(fileId).length + (indexedFile.metadata.engagement?.comments || 0),
-                    shares: getShareCount(fileId, indexedFile.metadata.engagement?.shares || 0)
+                    shares: getShareCount(fileId, indexedFile.metadata.engagement?.shares || 0),
+                    lastUpdated: indexedFile.metadata.engagement?.lastUpdated || new Date().toISOString()
                   }
                 }
               }}
@@ -2117,6 +1970,7 @@ export function FullScreenFeed({
                 }
               }}
               onShare={async () => {
+                _onShare(fileId);
                 // Directly copy link to clipboard
                 const shareUrl = `${window.location.origin}${window.location.pathname}?file=${fileId}&view=feed`;
                 try {
@@ -2128,9 +1982,9 @@ export function FullScreenFeed({
               }}
               onAddToFeed={onAddToFeed ? () => onAddToFeed(indexedFile) : undefined}
               onEdit={onEdit ? () => onEdit(indexedFile) : undefined}
-              isOwner={userState.isUnlocked && userState.pnIdentifier && (
+              isOwner={!!(userState.isUnlocked && userState.pnIdentifier && (
                 creatorId === userState.pnIdentifier
-              )}
+              ))}
               onCreatorClick={onCreatorClick}
               onMessage={onMessage}
               indexedFiles={files}
@@ -2150,6 +2004,7 @@ export function FullScreenFeed({
                   onComment(indexedFile);
                 }}
                 onShare={async () => {
+                _onShare(fileId);
                   // Copy link to clipboard
                   const shareUrl = `${window.location.origin}${window.location.pathname}?file=${fileId}&view=feed`;
                   try {
@@ -2275,7 +2130,7 @@ export function FullScreenFeed({
                       const userComment = allComments?.find((comment: any) => 
                         comment.authorId === userState.pnIdentifier || 
                         comment.authorId === `pn-${userState.pnIdentifier}` ||
-                        comment.authorId === userState.pnIdentifier.replace(/^pn-/, '')
+                        (userState.pnIdentifier && comment.authorId === userState.pnIdentifier.replace(/^pn-/, ''))
                       );
                       
                       if (userComment) {
