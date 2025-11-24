@@ -383,9 +383,23 @@ export function FullScreenFeed({
               try {
                 token = typeof file.publicToken === 'string' ? JSON.parse(file.publicToken) : file.publicToken;
               } catch (e) {
+                console.warn(`[FullScreenFeed] Failed to parse token for ${fileId}:`, e);
                 continue;
               }
-              const decryptedBlob = await decryptWithToken(token);
+              
+              // Try to decrypt with retry on failure
+              let decryptedBlob: Blob;
+              try {
+                decryptedBlob = await decryptWithToken(token);
+              } catch (decryptErr: any) {
+                // If decryption fails, try refreshing token and retrying once
+                console.warn(`[FullScreenFeed] Decryption failed for ${fileId}, refreshing token and retrying...`, decryptErr);
+                const { PNOAuthService } = await import('../services/pnOAuthService');
+                await PNOAuthService.getValidAccessToken(true); // Force refresh
+                // Retry decryption
+                decryptedBlob = await decryptWithToken(token);
+              }
+              
               const thumbnailUrl = URL.createObjectURL(decryptedBlob);
               setThumbnails(prev => {
                 const newMap = new Map(prev);
@@ -393,7 +407,9 @@ export function FullScreenFeed({
                 return newMap;
               });
             } catch (err) {
-              console.warn('Failed to load thumbnail:', err);
+              console.error(`[FullScreenFeed] Failed to load thumbnail for ${fileId}:`, err);
+              // Set a placeholder or error state so it doesn't stay loading forever
+              // For now, just log - the loading spinner will show
             }
           }
         }
