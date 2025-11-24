@@ -83,11 +83,24 @@ export function ImageSlideshow({ fileId, fileName, accountId }: ImageSlideshowPr
         
         console.log(`[ImageSlideshow] Fetching files from folder:`, filesUrl);
         
-        const response = await fetch(filesUrl, {
+        let response = await fetch(filesUrl, {
           headers: {
             'Authorization': `Bearer ${accessToken}`
           }
         });
+        
+        // If we get 401, refresh token and retry once
+        if (response.status === 401) {
+          console.log(`[ImageSlideshow] Got 401, refreshing token and retrying...`);
+          const refreshedToken = await PNOAuthService.getValidAccessToken(true); // Force refresh
+          if (refreshedToken) {
+            response = await fetch(filesUrl, {
+              headers: {
+                'Authorization': `Bearer ${refreshedToken}`
+              }
+            });
+          }
+        }
         
         if (!response.ok) {
           throw new Error(`Failed to list folder files: ${response.status}`);
@@ -207,11 +220,24 @@ export function ImageSlideshow({ fileId, fileName, accountId }: ImageSlideshowPr
         console.log(`[ImageSlideshow] Fetching thumbnail for page ${pageNum} from:`, thumbnailUrl);
         const startTime = Date.now();
         
-        const response = await fetch(thumbnailUrl, {
+        let response = await fetch(thumbnailUrl, {
           headers: {
             'Authorization': `Bearer ${accessToken}`
           }
         });
+        
+        // If we get 401, refresh token and retry once
+        if (response.status === 401) {
+          console.log(`[ImageSlideshow] Got 401 for page ${pageNum}, refreshing token and retrying...`);
+          const refreshedToken = await PNOAuthService.getValidAccessToken(true); // Force refresh
+          if (refreshedToken) {
+            response = await fetch(thumbnailUrl, {
+              headers: {
+                'Authorization': `Bearer ${refreshedToken}`
+              }
+            });
+          }
+        }
         
         if (!response.ok) {
           throw new Error(`Failed to load page ${pageNum} thumbnail: ${response.status}`);
