@@ -1291,12 +1291,17 @@ export function FullScreenFeed({
           });
         }
         
+        // Check if file has media extension (image/video) - if so, prioritize media detection over thought
+        const fileNameForMediaCheck = file.name || file.title || '';
+        const hasImageExt = !!(fileNameForMediaCheck.match(/\.(jpg|jpeg|png|gif|webp|svg|bmp|ico)$/i));
+        const hasVideoExt = !!(fileNameForMediaCheck.match(/\.(mp4|mov|avi|webm|mkv|flv|wmv)$/i));
+        const hasMediaExt = hasImageExt || hasVideoExt;
+        
         // If we have textPost/thought data OR fileType is 'text'/'thought', it's DEFINITELY a thought
-        // This must be checked FIRST before any other type detection to prevent flickering
-        // IMPORTANT: hasTextPostData or hasTextFileType should ALWAYS make it a thought, regardless of filename
-        // This ensures thoughts are detected consistently and don't flicker
-        const isTextPost = hasTextPostData || hasTextFileType || isThoughtFile || 
-                          (file.description && file.description.trim().length > 0 && 
+        // BUT: If file has media extension and is NOT a thought file pattern, prioritize media over thought
+        // This prevents images/videos from being incorrectly detected as thoughts
+        const isTextPost = (hasTextPostData || hasTextFileType || isThoughtFile) && (!hasMediaExt || isThoughtFile) ||
+                          (!hasMediaExt && file.description && file.description.trim().length > 0 && 
                            !actualFileType && !thoughtFileName.match(/\.(jpg|jpeg|png|gif|webp|svg|bmp|ico|mp4|mov|avi|webm|mkv|flv|wmv|pdf)$/i));
         
         // CRITICAL FIX: If isTextPost is true but textPostData is missing, create it from available data
@@ -1355,9 +1360,13 @@ export function FullScreenFeed({
         // This prevents flickering where thoughts are detected as both thoughts and images
         // isThoughtFile is already defined above (line 1356)
         // Use !! to convert match result (array or null) to boolean
-        const isImage = !isTextPost && !isThoughtFile && !hasTextPostData && (
+        // CRITICAL FIX: Check for image fileType OR image extension, but only exclude if it's DEFINITELY a thought
+        const fileNameForImageCheck = file.name || file.title || '';
+        const hasImageExtension = !!(fileNameForImageCheck.match(/\.(jpg|jpeg|png|gif|webp|svg|bmp|ico)$/i));
+        const isImage = !isTextPost && (
           file.fileType === 'image' || 
-          !!(file.name || file.title || '').match(/\.(jpg|jpeg|png|gif|webp|svg|bmp|ico)$/i)
+          file.fileType === 'other' && hasImageExtension ||
+          hasImageExtension
         );
         
         // Check if this is an image slideshow folder (folder ending with "-pages")
