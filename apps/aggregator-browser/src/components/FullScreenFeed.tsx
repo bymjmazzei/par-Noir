@@ -1890,8 +1890,8 @@ export function FullScreenFeed({
             })()}
             
             {/* Full-screen image (single image, not PDF) - Only render if NOT a text post and NOT PDF */}
-            {/* Show image if thumbnail is loaded, or show loading state if it's an image */}
-            {isImage && !isPdfDoc && !isTextPost && !textPostData && (thumbnails.get(fileId) ? (() => {
+            {/* Show image if thumbnail is loaded */}
+            {isImage && !isPdfDoc && !isTextPost && !textPostData && thumbnails.get(fileId) && (() => {
               const containerHeight = window.innerHeight - 64; // Account for bottom nav
               const containerWidth = window.innerWidth;
               const containerAspect = containerWidth / containerHeight;
@@ -1986,7 +1986,7 @@ export function FullScreenFeed({
                   </div>
                 </>
               );
-            })() : null))}
+            })()}
 
             {/* Non-image/video/text/slideshow file */}
             {!isImage && !isVideo && !isPdfDoc && !isTextPost && !textPostData && (
