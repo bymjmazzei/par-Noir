@@ -100,13 +100,11 @@ export function ImageSlideshow({ thumbnailIds, fileName, accountId, pdfFileId }:
       return;
     }
     
-    // Fetch accountId on-demand if not provided (like vertical feed does)
-    let accountIdToUse = finalAccountId;
-    if (!accountIdToUse) {
-      accountIdToUse = await fetchAccountIdOnce();
-    }
-    
     loadingPagesRef.current.add(pageNum);
+    
+    // accountId is optional - start fetch immediately, try without it first if not provided
+    // This matches the vertical feed pattern (fast start, handle auth errors as they occur)
+    const accountIdToUse = finalAccountId;
 
     try {
       // If requesting full-size and PDF is available, render from PDF
@@ -206,71 +204,72 @@ export function ImageSlideshow({ thumbnailIds, fileName, accountId, pdfFileId }:
         return;
       }
       
-      // Load thumbnail directly by ID
+      // Load thumbnail directly by ID - start fetch immediately (like vertical feed)
       const apiEndpoint = process.env.REACT_APP_API_ENDPOINT || 'https://api.parnoir.com';
       const { PNOAuthService } = await import('../services/pnOAuthService');
       
-      // Try with accountId first, then without if it fails (for public content)
-      let fetchUrl = `${apiEndpoint}/api/drive/files/${thumbnailId}?thumbnail=true`;
-      if (accountIdToUse && accountIdToUse.includes('::')) {
-        fetchUrl += `&accountId=${encodeURIComponent(accountIdToUse)}`;
-      }
-      
-      // Get access token and retry with refresh if needed
-      let accessToken = await PNOAuthService.getValidAccessToken();
+      // Get access token (non-blocking - start fetch immediately)
+      const accessToken = await PNOAuthService.getValidAccessToken();
       if (!accessToken) {
         console.warn(`[ImageSlideshow] No access token for thumbnail ${thumbnailId}`);
-        throw new Error('No access token');
+        return; // Skip this thumbnail
       }
+      
+      // Try without accountId first (faster, works for public content)
+      // If that fails, try with accountId
+      let fetchUrl = `${apiEndpoint}/api/drive/files/${thumbnailId}?thumbnail=true`;
       
       let response: Response;
       try {
+        // Start fetch immediately without accountId (like vertical feed)
         response = await fetch(fetchUrl, {
           headers: { 'Authorization': `Bearer ${accessToken}` }
         });
       } catch (fetchError: any) {
         console.error(`[ImageSlideshow] Fetch error for thumbnail ${thumbnailId}:`, fetchError);
-        throw new Error(`Network error loading thumbnail: ${fetchError.message}`);
+        return; // Skip this thumbnail
       }
       
-      // If 401, refresh token and retry once
+      // If 401, try with accountId if available, then refresh token
       if (response.status === 401) {
-        console.log(`[ImageSlideshow] Got 401 for thumbnail ${thumbnailId}, refreshing token...`);
-        const refreshedToken = await PNOAuthService.getValidAccessToken(true); // Force refresh
-        if (refreshedToken) {
-          try {
-            // Retry with refreshed token
-            response = await fetch(fetchUrl, {
-              headers: { 'Authorization': `Bearer ${refreshedToken}` }
-            });
-            
-            // If still 401 and we had accountId, try without accountId (might be public content)
-            if (response.status === 401 && accountIdToUse && accountIdToUse.includes('::')) {
-              console.log(`[ImageSlideshow] Still 401 with accountId, trying without accountId for thumbnail ${thumbnailId}...`);
-              const urlWithoutAccountId = `${apiEndpoint}/api/drive/files/${thumbnailId}?thumbnail=true`;
-              response = await fetch(urlWithoutAccountId, {
+        // Try with accountId if we have it
+        if (accountIdToUse && accountIdToUse.includes('::')) {
+          const urlWithAccountId = `${fetchUrl}&accountId=${encodeURIComponent(accountIdToUse)}`;
+          response = await fetch(urlWithAccountId, {
+            headers: { 'Authorization': `Bearer ${accessToken}` }
+          });
+        }
+        
+        // If still 401, refresh token and retry
+        if (response.status === 401) {
+          console.log(`[ImageSlideshow] Got 401 for thumbnail ${thumbnailId}, refreshing token...`);
+          const refreshedToken = await PNOAuthService.getValidAccessToken(true);
+          if (refreshedToken) {
+            try {
+              // Retry with refreshed token (with accountId if available)
+              const retryUrl = accountIdToUse && accountIdToUse.includes('::')
+                ? `${fetchUrl}&accountId=${encodeURIComponent(accountIdToUse)}`
+                : fetchUrl;
+              response = await fetch(retryUrl, {
                 headers: { 'Authorization': `Bearer ${refreshedToken}` }
               });
+              
+              if (!response.ok) {
+                console.warn(`[ImageSlideshow] Thumbnail ${thumbnailId} still failed after refresh: ${response.status}`);
+                return; // Skip this thumbnail
+              }
+            } catch (retryError: any) {
+              console.error(`[ImageSlideshow] Retry fetch error for thumbnail ${thumbnailId}:`, retryError);
+              return; // Skip this thumbnail
             }
-            
-            if (!response.ok) {
-              console.warn(`[ImageSlideshow] Thumbnail ${thumbnailId} still failed after refresh: ${response.status}`);
-              // Don't throw - just skip this thumbnail (might not exist)
-              return;
-            }
-          } catch (retryError: any) {
-            console.error(`[ImageSlideshow] Retry fetch error for thumbnail ${thumbnailId}:`, retryError);
-            // Don't throw - just skip this thumbnail
-            return;
+          } else {
+            console.warn(`[ImageSlideshow] Failed to refresh token for thumbnail ${thumbnailId}`);
+            return; // Skip this thumbnail
           }
-        } else {
-          console.warn(`[ImageSlideshow] Failed to refresh token for thumbnail ${thumbnailId}`);
-          return; // Don't throw - just skip this thumbnail
         }
       } else if (!response.ok) {
         console.warn(`[ImageSlideshow] Thumbnail ${thumbnailId} failed: ${response.status}`);
-        // Don't throw for non-401 errors either - might be 404 (file doesn't exist)
-        return;
+        return; // Skip this thumbnail
       }
       
       const contentType = response.headers.get('content-type') || '';
@@ -331,22 +330,20 @@ export function ImageSlideshow({ thumbnailIds, fileName, accountId, pdfFileId }:
     
     // Load all thumbnails sequentially with delays to prevent token refresh conflicts
     (async () => {
-      // Fetch accountId once (non-blocking - start loading first page immediately)
+      // Fetch accountId in background (non-blocking)
       const accountIdPromise = fetchAccountIdOnce();
       
       // Load ALL thumbnails sequentially (including first) with delays
-      // Small delay for first page (50ms) so UI appears immediately, then longer delays
+      // Start first page immediately (no delay) - accountId is optional
       for (let i = 0; i < thumbnailIds.length; i++) {
         if (cancelled) break;
         
-        // Small delay for first page, longer for subsequent pages
+        // No delay for first page (start immediately), delay for subsequent pages
         if (i > 0) {
           await new Promise(resolve => setTimeout(resolve, 200)); // Delay between loads
-        } else {
-          await new Promise(resolve => setTimeout(resolve, 50)); // Small delay for first page
         }
         
-        // Use accountId if available, otherwise fetch on-demand
+        // Use accountId if available (will be null for first page, fetched for others)
         const accountIdToUse = i === 0 ? null : await accountIdPromise;
         loadThumbnail(thumbnailIds[i], i + 1, accountIdToUse, false).catch(() => {});
       }
