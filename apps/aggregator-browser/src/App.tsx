@@ -2303,11 +2303,21 @@ function App() {
   }, [visibleFileId, viewingCreatorId, mePageTab, creatorFilesState, userState.pnIdentifier, userState.isUnlocked, userLikedFiles, userCommentedFiles, viewedUserLikedFiles, viewedUserCommentedFiles, savedFiles]);
 
   // Helper function to identify text posts (thoughts) - MUST be defined before any useMemo/useEffect that uses it
+  // Use same detection logic as FullScreenFeed for consistency
   const isThought = (file: IndexedFile): boolean => {
-    return file.metadata.fileType === 'text' || 
-           file.metadata.fileType === 'thought' ||
-           !!(file.metadata as any).textPost ||
-           !!(file.metadata as any).thought;
+    const fileType = file.metadata.fileType;
+    const fileName = file.metadata.name || file.metadata.title || '';
+    
+    // Check for textPost/thought data
+    const hasTextPostData = !!(file.metadata as any).textPost || !!(file.metadata as any).thought;
+    
+    // Check for fileType
+    const hasTextFileType = fileType === 'text' || fileType === 'thought';
+    
+    // Check for thought filename pattern (new .thought format or legacy .png format)
+    const isThoughtFile = /^thought-\d+\.(thought|png)/i.test(fileName);
+    
+    return hasTextPostData || hasTextFileType || isThoughtFile;
   };
 
   // Helper function to check if a file is a PDF slideshow (has page thumbnails)
