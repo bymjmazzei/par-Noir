@@ -921,17 +921,10 @@ export function FullScreenFeed({
           (file.name || file.title || '').match(/\.(jpg|jpeg|png|gif|webp|svg|bmp|ico)$/i)
         );
         // Check if this is an image slideshow folder (folder ending with "-pages")
-        // PDF slideshow detection: check for pdfFileId (original PDF) + pdfPagesFolderId (thumbnails folder)
+        // PDF slideshow detection: check for pdfPageThumbnailIds array (thumbnails loaded directly, no folder listing)
         const pdfFileId = indexedFile.metadata?.pdfFileId;
-        const pdfPagesFolderId = indexedFile.metadata?.pdfPagesFolderId;
-        const hasPdfSlideshow = !isTextPost && pdfFileId && pdfPagesFolderId;
-        
-        // Also check legacy format: folder ID matches fileId or name ends with -pages
-        const isFolderByFileId = pdfPagesFolderId && (pdfPagesFolderId === fileId || pdfPagesFolderId === indexedFile.metadata.fileId);
-        const nameEndsWithPages = file.name && file.name.toLowerCase().endsWith('-pages');
-        const isLegacySlideshowFolder = !isTextPost && (isFolderByFileId || nameEndsWithPages);
-        
-        const isImageSlideshowFolder = hasPdfSlideshow || isLegacySlideshowFolder;
+        const pdfPageThumbnailIds = indexedFile.metadata?.pdfPageThumbnailIds;
+        const isImageSlideshowFolder = !isTextPost && pdfPageThumbnailIds && pdfPageThumbnailIds.length > 0;
         
         // No PDF support - only image slideshows from folders
         
@@ -1249,17 +1242,9 @@ export function FullScreenFeed({
 
             {/* Image Slideshow (from folder) */}
             {isImageSlideshowFolder && !isTextPost && (() => {
-              // For PDF slideshows: use pdfPagesFolderId for thumbnails, pdfFileId for on-demand rendering
-              const folderId = indexedFile.metadata?.pdfPagesFolderId || fileId;
+              // For PDF slideshows: use pdfPageThumbnailIds array (loaded directly, no folder listing)
+              const thumbnailIds = indexedFile.metadata?.pdfPageThumbnailIds || [];
               const pdfFileId = indexedFile.metadata?.pdfFileId;
-              
-              console.log('[FullScreenFeed] PDF slideshow metadata:', {
-                fileId,
-                folderId,
-                pdfFileId,
-                fileName,
-                pdfPagesFolderId: indexedFile.metadata?.pdfPagesFolderId
-              });
               
               // Get accountId from indexedFile or fetch it once
               const slideshowAccountId = indexedFile.accountId || indexedFile.backendFileId;
@@ -1267,10 +1252,10 @@ export function FullScreenFeed({
               return (
                 <div className="w-full h-full relative z-10">
                   <ImageSlideshow
-                    fileId={folderId}
+                    thumbnailIds={thumbnailIds}
                     fileName={fileName}
-                    accountId={slideshowAccountId} // Pass accountId to avoid extra API calls
-                    pdfFileId={pdfFileId} // Pass PDF file ID for on-demand rendering
+                    accountId={slideshowAccountId}
+                    pdfFileId={pdfFileId}
                   />
                 </div>
               );

@@ -344,7 +344,7 @@ export interface PublicMetadata {
   thought?: TextPostData; // Alias for textPost
   
   // PDF Slideshow Support
-  pdfPagesFolderId?: string; // Folder ID containing thumbnails for PDF slideshows
+  pdfPageThumbnailIds?: string[]; // Array of thumbnail file IDs for PDF slideshow pages (loaded directly, no folder listing)
   pdfFileId?: string; // ID of the original PDF file (for on-demand rendering)
   
   // Thumbnail for fast feed loading (images, videos, slideshows)

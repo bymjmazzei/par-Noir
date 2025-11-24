@@ -1847,7 +1847,7 @@ class ProductionServer {
           isNSFW,
           subjects,
           feedCategories,
-          pdfPagesFolderId,
+          pdfPageThumbnailIds,
           pdfFileId,
           thumbnailFileId
         } = req.body;
@@ -2017,7 +2017,7 @@ class ProductionServer {
           isPublic,
           subjects,
           feedCategories,
-          pdfPagesFolderId,
+          pdfPageThumbnailIds,
           pdfFileId,
           thumbnailFileId
         });

@@ -2189,7 +2189,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
 
       // Check if this is a PDF - if so, convert to PNG pages first
       const isPDF = file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
-      let pdfPagesFolderId: string | undefined = undefined;
+      let pdfPageThumbnailIds: string[] = []; // Array of thumbnail file IDs (loaded directly, no folder listing)
       
       if (isPDF) {
         console.log('📄 [Upload] PDF detected, converting to PNG pages...');
@@ -2221,81 +2221,6 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
           
           console.log('✅ [Upload] Using pnIdentifier from session:', pnIdentifier);
           const baseFileName = file.name.replace(/\.pdf$/i, '');
-          const pdfPagesFolderName = `${baseFileName}-pages`;
-          
-          // Refresh access token before folder operations (ensures it's valid)
-          let apiAccessToken = await PNOAuthService.getValidAccessToken(true); // Force refresh
-          if (!apiAccessToken) {
-            throw new Error('No access token for folder creation');
-          }
-          
-          // Use the same pattern as regular file uploads: don't specify a parent, let the API automatically find the pN folder
-          // The API will search for the pN folder using pnIdentifier from the token and create the folder inside it
-          console.log(`📁 [Upload] Creating PDF pages folder via API: ${pdfPagesFolderName} (API will automatically find pN folder)`);
-          const createPagesFolderResponse = await fetch(`${apiEndpoint}/api/drive/folders`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${apiAccessToken}`
-            },
-            body: JSON.stringify({
-              folderName: pdfPagesFolderName,
-              // Don't specify parentFolderName - let API auto-find pN folder (same as file uploads)
-              accountId: accountId
-            })
-          });
-          
-          if (!createPagesFolderResponse.ok) {
-            // If folder creation fails, refresh token and try once more
-            console.warn(`⚠️ [Upload] Folder creation failed (${createPagesFolderResponse.status}), refreshing token and retrying...`);
-            apiAccessToken = await PNOAuthService.getValidAccessToken(true); // Force refresh
-            
-            const retryResponse = await fetch(`${apiEndpoint}/api/drive/folders`, {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${apiAccessToken}`
-              },
-              body: JSON.stringify({
-                folderName: pdfPagesFolderName,
-                // Don't specify parentFolderName - let API auto-find pN folder (same as file uploads)
-                accountId: accountId
-              })
-            });
-            
-            if (!retryResponse.ok) {
-              const errorText = await retryResponse.text().catch(() => 'Unknown error');
-              console.error(`❌ [Upload] Failed to create PDF pages folder after retry: ${retryResponse.status} - ${errorText}`);
-              throw new Error(`Failed to create PDF pages folder: ${errorText}`);
-            }
-            
-            const pagesFolderData = await retryResponse.json();
-            pdfPagesFolderId = pagesFolderData.folder?.id;
-          } else {
-            const pagesFolderData = await createPagesFolderResponse.json();
-            pdfPagesFolderId = pagesFolderData.folder?.id;
-          }
-          
-          if (!pdfPagesFolderId) {
-            throw new Error('Failed to get PDF pages folder ID from API response');
-          }
-          
-          console.log(`✅ [Upload] Created PDF pages folder: ${pdfPagesFolderName} (ID: ${pdfPagesFolderId})`);
-          
-          // Verify folder was created in the correct location by querying it directly
-          try {
-            const verifyResponse = await fetch(`${apiEndpoint}/api/drive/files/${pdfPagesFolderId}?accountId=${encodeURIComponent(accountId)}`, {
-              headers: {
-                'Authorization': `Bearer ${apiAccessToken}`
-              }
-            });
-            if (verifyResponse.ok) {
-              const verifyData = await verifyResponse.json();
-              console.log(`✅ [Upload] Verified folder exists:`, verifyData.file);
-            }
-          } catch (verifyError) {
-            console.warn(`⚠️ [Upload] Could not verify folder:`, verifyError);
-          }
           
           // Now convert PDF to PNG pages
           const pdfjsLib = await import('pdfjs-dist');
@@ -2405,7 +2330,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
                 reader.readAsDataURL(thumbnailEncryptedBlob);
               });
               
-              // Upload thumbnail to folder
+              // Upload thumbnail directly (no folder - just collect IDs)
               const thumbnailEncryptedFileName = `thumb_${baseFileName}-page-${pageNum}.png.encrypted`;
               const thumbnailResponse = await fetch(`${apiEndpoint}/api/drive/files`, {
                 method: 'POST',
@@ -2417,7 +2342,6 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
                   fileData: thumbnailBase64,
                   fileName: thumbnailEncryptedFileName,
                   mimeType: 'application/json',
-                  parents: pdfPagesFolderId ? [pdfPagesFolderId] : undefined,
                   accountId: accountId
                 })
               });
@@ -2425,7 +2349,8 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
               if (thumbnailResponse.ok) {
                 const thumbnailUploadResult = await thumbnailResponse.json();
                 if (thumbnailUploadResult.file?.id) {
-                  console.log(`✅ [Upload] Page ${pageNum}/${numPages} thumbnail uploaded${pdfPagesFolderId ? ' to folder' : ''}`);
+                  pdfPageThumbnailIds.push(thumbnailUploadResult.file.id); // Collect thumbnail ID
+                  console.log(`✅ [Upload] Page ${pageNum}/${numPages} thumbnail uploaded (ID: ${thumbnailUploadResult.file.id})`);
                 } else {
                   console.warn(`⚠️ [Upload] Page ${pageNum} thumbnail upload succeeded but no file ID returned`);
                 }
@@ -2440,22 +2365,26 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
             }
           }
           
-          if (pdfPagesFolderId) {
-            console.log(`✅ [Upload] Generated PDF thumbnails in folder: ${pdfPagesFolderName}`);
+          if (pdfPageThumbnailIds.length > 0) {
+            console.log(`✅ [Upload] Generated ${pdfPageThumbnailIds.length} PDF page thumbnails`);
           } else {
-            console.log(`✅ [Upload] Generated PDF thumbnails (folder creation failed, thumbnails uploaded to root)`);
+            console.log(`⚠️ [Upload] No PDF thumbnails were generated`);
           }
         } catch (pdfError: any) {
           console.error('❌ [Upload] PDF conversion failed:', pdfError?.message || pdfError);
           console.log('📄 [Upload] Continuing with regular PDF upload (PNG conversion is optional)');
           // Continue with regular PDF upload as fallback - don't fail the entire upload
-          pdfPagesFolderId = undefined; // Clear folder ID
+          pdfPageThumbnailIds = []; // Clear thumbnail IDs
         }
       }
 
-      // Generate thumbnail for slideshow (from first PDF page) - use first thumbnail from folder if available
+      // Generate thumbnail for slideshow (from first PDF page) - use first thumbnail ID if available
       let thumbnailFileId: string | undefined = undefined;
-      if (isPDF && pdfPagesFolderId) {
+      if (isPDF && pdfPageThumbnailIds.length > 0) {
+        // Use the first thumbnail ID as the main thumbnail for the feed
+        thumbnailFileId = pdfPageThumbnailIds[0];
+        console.log(`✅ [Upload] Using first PDF page thumbnail as main thumbnail: ${thumbnailFileId}`);
+      } else if (isPDF) {
         // The first thumbnail was already uploaded to the folder, we can use it
         // For now, we'll generate a separate thumbnail for the feed (can optimize later)
         try {
@@ -2519,7 +2448,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
       let shareToken: any = undefined;
       let freshAccessToken: string | undefined = undefined;
       
-      if (isPDF && pdfPagesFolderId) {
+      if (isPDF && pdfPageThumbnailIds.length > 0) {
         // PDF thumbnails were created - upload the original PDF file
         console.log('📄 [Upload] PDF thumbnails created, uploading original PDF file...');
         
@@ -2748,8 +2677,8 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
         console.log('📝 [Upload] Creating initial metadata entry...');
         
         // Determine file type from MIME type
-        // For PDF slideshow folders, set fileType to 'document' so they're treated as media files
-        const fileType = (isPDF && pdfPagesFolderId) ? 'document' // PDF slideshow folder
+        // For PDF slideshows, set fileType to 'document' so they're treated as media files
+        const fileType = (isPDF && pdfPageThumbnailIds.length > 0) ? 'document' // PDF slideshow
           : file.type.startsWith('image/') ? 'image' 
           : file.type.startsWith('video/') ? 'video'
           : file.type.startsWith('audio/') ? 'audio'
@@ -2759,7 +2688,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
         // Users can mark content as NSFW during upload or edit
         
         // Create metadata entry via API (this also updates owner index automatically)
-        console.log(`📝 [Upload] Saving metadata${pdfPagesFolderId ? ` with PDF pages folder ID: ${pdfPagesFolderId}` : ''}`);
+        console.log(`📝 [Upload] Saving metadata${pdfPageThumbnailIds.length > 0 ? ` with ${pdfPageThumbnailIds.length} PDF page thumbnails` : ''}`);
         const metadataResponse = await fetch(`${apiEndpoint}/api/aggregator/metadata-index/${fileId}`, {
           method: 'PUT',
           headers: {
@@ -2767,7 +2696,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
             'Authorization': `Bearer ${freshAccessToken}` // Use fresh token
           },
           body: JSON.stringify({
-            name: isPDF && pdfPagesFolderId ? file.name.replace(/\.pdf$/i, '') : file.name, // Remove .pdf extension for folder name
+            name: file.name,
             description: '',
             keywords: [],
             tags: [],
@@ -2776,7 +2705,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
             publicToken: shareToken ? JSON.stringify(shareToken) : undefined, // Store share token for future use
             uploadDate: new Date().toISOString(),
             isNSFW: false, // Default to public content
-            pdfPagesFolderId: pdfPagesFolderId, // Store PDF thumbnails folder ID for slideshow
+            pdfPageThumbnailIds: pdfPageThumbnailIds.length > 0 ? pdfPageThumbnailIds : undefined, // Store PDF page thumbnail IDs for slideshow
             pdfFileId: pdfFileId, // Store original PDF file ID for on-demand rendering
             thumbnailFileId: thumbnailFileId, // Store thumbnail file ID for fast feed loading
             // Include accountId in query params if needed
