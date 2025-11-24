@@ -68,11 +68,24 @@ export function useHorizontalSwipe({
         y: touch.clientY,
         time: Date.now()
       };
-      console.log('[useHorizontalSwipe] Touch start:', { x: touch.clientX, y: touch.clientY, target: target.tagName });
+      console.log('[useHorizontalSwipe] Touch start:', { x: touch.clientX, y: touch.clientY, target: target.tagName, element: element ? 'found' : 'null' });
     };
 
     const handleTouchMove = (e: TouchEvent) => {
       if (!touchStartRef.current || isSwipingRef.current) return;
+      
+      const target = e.target as HTMLElement;
+      const element = elementRef.current;
+      
+      // Only handle if touching the actual element
+      if (element && !element.contains(target)) {
+        return;
+      }
+      
+      // Don't interfere with button interactions
+      if (target.tagName === 'BUTTON' || target.closest('button')) {
+        return;
+      }
       
       const touch = e.touches[0];
       const deltaX = touch.clientX - touchStartRef.current.x;
@@ -85,7 +98,8 @@ export function useHorizontalSwipe({
       if (absDeltaX > absDeltaY * 1.5 && absDeltaX > threshold * 0.5) {
         e.preventDefault();
         e.stopPropagation(); // Stop event from reaching parent scroll container
-        console.log('[useHorizontalSwipe] Touch move - preventing default (horizontal swipe detected)');
+        e.stopImmediatePropagation(); // Stop ALL other handlers
+        console.log('[useHorizontalSwipe] Touch move - preventing default (horizontal swipe detected)', { deltaX, deltaY, absDeltaX, absDeltaY });
       }
     };
 
@@ -158,15 +172,19 @@ export function useHorizontalSwipe({
     const element = getElement();
     console.log('[useHorizontalSwipe] Attaching listeners to:', element === document ? 'document' : 'element', elementRef.current ? 'has ref' : 'no ref');
     
-    element.addEventListener('touchstart', handleTouchStart, { passive: true });
-    element.addEventListener('touchmove', handleTouchMove, { passive: false });
-    element.addEventListener('touchend', handleTouchEnd, { passive: true });
+    // Use CAPTURE phase to intercept touches BEFORE parent scroll container gets them
+    // This is critical for PDF horizontal swipe - parent has overflow-y-scroll which captures all touches
+    const useCapture = true;
+    
+    element.addEventListener('touchstart', handleTouchStart, { passive: true, capture: useCapture });
+    element.addEventListener('touchmove', handleTouchMove, { passive: false, capture: useCapture });
+    element.addEventListener('touchend', handleTouchEnd, { passive: true, capture: useCapture });
 
     return () => {
       console.log('[useHorizontalSwipe] Removing listeners');
-      element.removeEventListener('touchstart', handleTouchStart);
-      element.removeEventListener('touchmove', handleTouchMove);
-      element.removeEventListener('touchend', handleTouchEnd);
+      element.removeEventListener('touchstart', handleTouchStart, { capture: useCapture } as any);
+      element.removeEventListener('touchmove', handleTouchMove, { capture: useCapture } as any);
+      element.removeEventListener('touchend', handleTouchEnd, { capture: useCapture } as any);
     };
   }, [enabled, threshold, snapThreshold, onSwipeLeft, onSwipeRight, handleSwipe]);
 
