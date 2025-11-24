@@ -131,6 +131,11 @@ export function FullScreenFeed({
       if (!currentFile) return;
       const fileId = currentFile.metadata.fileId;
       const pdfPageThumbnailIds = currentFile.metadata?.pdfPageThumbnailIds;
+      const isPdfDoc = currentFile.metadata.fileType === 'document' && pdfPageThumbnailIds && pdfPageThumbnailIds.length > 0;
+      
+      // Only handle swipe if this is a PDF and it's visible
+      if (!isPdfDoc || visibleFileId !== fileId) return;
+      
       const currentPage = pdfCurrentPage.get(fileId) || 0;
       
       if (pdfPageThumbnailIds && currentPage < pdfPageThumbnailIds.length - 1) {
@@ -173,6 +178,11 @@ export function FullScreenFeed({
       if (!currentFile) return;
       const fileId = currentFile.metadata.fileId;
       const pdfPageThumbnailIds = currentFile.metadata?.pdfPageThumbnailIds;
+      const isPdfDoc = currentFile.metadata.fileType === 'document' && pdfPageThumbnailIds && pdfPageThumbnailIds.length > 0;
+      
+      // Only handle swipe if this is a PDF and it's visible
+      if (!isPdfDoc || visibleFileId !== fileId) return;
+      
       const currentPage = pdfCurrentPage.get(fileId) || 0;
       
       if (pdfPageThumbnailIds && currentPage > 0) {
