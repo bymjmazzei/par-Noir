@@ -58,8 +58,8 @@ export function ImageSlideshow({ thumbnailIds, fileName, accountId, pdfFileId, i
     } else {
       // Keep the initial thumbnail when thumbnailIds change
       const preserved = new Map<number, string>();
-      if (initialPageUrls.has(1)) {
-        preserved.set(1, initialPageUrls.get(1)!);
+      if (pageUrls.has(1)) {
+        preserved.set(1, pageUrls.get(1)!);
       }
       setPageUrls(preserved);
       loadedPagesRef.current.clear();
@@ -69,7 +69,7 @@ export function ImageSlideshow({ thumbnailIds, fileName, accountId, pdfFileId, i
     }
     loadingPagesRef.current.clear();
     failedPagesRef.current.clear();
-  }, [thumbnailIds, initialThumbnailUrl, initialPageUrls]);
+  }, [thumbnailIds, initialThumbnailUrl, pageUrls]);
 
   // Fetch accountId helper (non-blocking, returns null if unavailable)
   const fetchAccountIdOnce = useCallback(async (): Promise<string | null> => {
