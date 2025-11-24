@@ -14,7 +14,7 @@ import { File } from 'lucide-react';
 import { useVerticalSwipe } from '../hooks/useVerticalSwipe';
 import { useHorizontalSwipe } from '../hooks/useHorizontalSwipe';
 import { formatTimestamp } from '../utils/formatTimestamp';
-import { ImageSlideshow } from './ImageSlideshow';
+import { HorizontalThumbnailFeed } from './HorizontalThumbnailFeed';
 import { decryptWithToken, ShareToken } from '../utils/tokenDecryption';
 
 interface FullScreenFeedProps {
@@ -1246,24 +1246,23 @@ export function FullScreenFeed({
               );
             })()}
 
-            {/* Image Slideshow (from folder) */}
+            {/* Horizontal Thumbnail Feed (like vertical feed but horizontal) */}
             {isImageSlideshowFolder && !isTextPost && (() => {
-              // For PDF slideshows: use pdfPageThumbnailIds array (loaded directly, no folder listing)
-              // Even if empty, render slideshow immediately - it will show placeholders while loading
+              // For PDF documents: use pdfPageThumbnailIds array (loaded directly, no folder listing)
+              // Render feed immediately - shows multiple thumbnails side-by-side, loads progressively
               const thumbnailIds = indexedFile.metadata?.pdfPageThumbnailIds || [];
               const pdfFileId = indexedFile.metadata?.pdfFileId;
               
               // Get accountId from indexedFile or fetch it once
-              const slideshowAccountId = indexedFile.accountId || indexedFile.backendFileId;
+              const feedAccountId = indexedFile.accountId || indexedFile.backendFileId;
               
-              // Render slideshow IMMEDIATELY - don't wait for thumbnailIds to be populated
-              // This matches vertical feed: show structure immediately, load content progressively
+              // Render horizontal feed IMMEDIATELY - matches vertical feed pattern
               return (
                 <div className="w-full h-full relative z-10">
-                  <ImageSlideshow
+                  <HorizontalThumbnailFeed
                     thumbnailIds={thumbnailIds}
                     fileName={fileName}
-                    accountId={slideshowAccountId}
+                    accountId={feedAccountId}
                     pdfFileId={pdfFileId}
                   />
                 </div>
