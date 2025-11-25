@@ -1726,6 +1726,12 @@ class ProductionServer {
       }
     });
 
+    // API Routes (v1) - OAuth, Data Points, Content Portability
+    const { setupOAuthRoutes, setupDataPointRoutes, setupContentPortabilityRoutes } = await import('./server/modules/apiRoutes');
+    setupOAuthRoutes(this.app);
+    setupDataPointRoutes(this.app);
+    setupContentPortabilityRoutes(this.app);
+
     // GET /api/aggregator/metadata-index/:fileId - Get metadata for a specific file (creates entry if doesn't exist)
     this.app.get('/api/aggregator/metadata-index/:fileId', async (req, res) => {
       try {
