@@ -256,6 +256,7 @@ export function TextPostEditor({ onSave, onCancel }: TextPostEditorProps) {
   const textColorInputRef = useRef<HTMLInputElement>(null);
   const fontSelectorRef = useRef<HTMLDivElement>(null);
   const activeFontButtonRef = useRef<HTMLButtonElement | null>(null);
+  const measurementRef = useRef<HTMLDivElement>(null);
   
   // Popup menu states
   const [openMenu, setOpenMenu] = useState<string | null>(null);
@@ -302,6 +303,125 @@ export function TextPostEditor({ onSave, onCancel }: TextPostEditorProps) {
       });
     }
   }, [fontFamily]);
+
+  // Calculate optimal font size to fit container
+  const calculateOptimalFontSize = useCallback(() => {
+    if (!content.trim() || !measurementRef.current) {
+      return 48; // Default
+    }
+
+    // Get container dimensions from preview container
+    const previewContainer = document.querySelector('[data-preview-container]') as HTMLElement;
+    if (!previewContainer) return 48;
+
+    const containerRect = previewContainer.getBoundingClientRect();
+    const viewportWidth = window.innerWidth;
+    const baseViewportWidth = 375;
+    const paddingScale = viewportWidth / baseViewportWidth;
+    const scaledPadding = padding * paddingScale;
+    
+    const availableWidth = containerRect.width - (scaledPadding * 2);
+    const availableHeight = containerRect.height - (scaledPadding * 2);
+
+    // Set up measurement element
+    const measureEl = measurementRef.current;
+    measureEl.style.fontFamily = fontFamily;
+    measureEl.style.fontSize = '1000px'; // Start large for measurement
+    measureEl.style.fontWeight = textStyle === 'bold' ? 'bold' : 'normal';
+    measureEl.style.fontStyle = textStyle === 'italic' ? 'italic' : 'normal';
+    measureEl.style.lineHeight = '1.2';
+    measureEl.style.whiteSpace = 'pre-wrap';
+    measureEl.style.wordWrap = 'break-word';
+    measureEl.style.overflowWrap = 'break-word';
+    measureEl.style.width = `${availableWidth}px`;
+    measureEl.style.padding = '0';
+    measureEl.style.margin = '0';
+    measureEl.style.visibility = 'hidden';
+    measureEl.style.position = 'absolute';
+    measureEl.style.top = '-9999px';
+    measureEl.textContent = content;
+
+    // Binary search for optimal font size
+    let minSize = 12;
+    let maxSize = Math.min(availableHeight, availableWidth * 2); // Reasonable max
+    let optimalSize = 48;
+
+    // Check if a single word fits at a given font size
+    const wordFits = (testSize: number, word: string): boolean => {
+      measureEl.style.fontSize = `${testSize}px`;
+      measureEl.textContent = word;
+      const metrics = measureEl.getBoundingClientRect();
+      return metrics.width <= availableWidth;
+    };
+
+    // Check if all text fits at a given font size
+    const textFits = (testSize: number): boolean => {
+      measureEl.style.fontSize = `${testSize}px`;
+      measureEl.textContent = content;
+      const metrics = measureEl.getBoundingClientRect();
+      
+      // Check width fits
+      if (metrics.width > availableWidth) return false;
+      
+      // Check height fits
+      if (metrics.height > availableHeight) return false;
+      
+      // Check each word fits on a line (prevent word breaks)
+      const words = content.split(' ');
+      for (const word of words) {
+        if (!wordFits(testSize, word)) {
+          return false;
+        }
+      }
+      
+      return true;
+    };
+
+    // Binary search
+    while (maxSize - minSize > 1) {
+      const testSize = Math.floor((minSize + maxSize) / 2);
+      if (textFits(testSize)) {
+        minSize = testSize;
+        optimalSize = testSize;
+      } else {
+        maxSize = testSize;
+      }
+    }
+
+    // Final check with optimal size
+    if (textFits(optimalSize)) {
+      return optimalSize;
+    }
+
+    return Math.max(12, optimalSize - 1);
+  }, [content, fontFamily, textStyle, padding]);
+
+  // Auto-calculate font size when content or styles change
+  useEffect(() => {
+    if (content.trim()) {
+      const optimalSize = calculateOptimalFontSize();
+      setFontSize(optimalSize);
+    } else {
+      setFontSize(48); // Reset to default when empty
+    }
+  }, [content, fontFamily, textStyle, padding, calculateOptimalFontSize]);
+
+  // Also recalculate on window resize
+  useEffect(() => {
+    const handleResize = () => {
+      if (content.trim()) {
+        const optimalSize = calculateOptimalFontSize();
+        setFontSize(optimalSize);
+      }
+    };
+
+    window.addEventListener('resize', handleResize);
+    window.addEventListener('orientationchange', handleResize);
+    return () => {
+      window.removeEventListener('resize', handleResize);
+      window.removeEventListener('orientationchange', handleResize);
+    };
+  }, [content, calculateOptimalFontSize]);
 
   // Preview rendering
   useEffect(() => {
@@ -667,13 +787,19 @@ export function TextPostEditor({ onSave, onCancel }: TextPostEditorProps) {
                 <label className="text-white text-xs whitespace-nowrap">Size</label>
                 <input
                   type="range"
-                  min="24"
-                  max="72"
+                  min="12"
+                  max="200"
                   value={fontSize}
                   onChange={(e) => setFontSize(Number(e.target.value))}
                   className="flex-1"
+                  disabled={!!content.trim()} // Disable manual control when text exists
+                  title={content.trim() ? "Font size auto-adjusts to fit text" : "Adjust font size"}
                 />
+                <span className="text-white text-xs w-12 text-right">{Math.round(fontSize)}px</span>
               </div>
+              {content.trim() && (
+                <p className="text-xs text-neutral-400 mt-1">Auto-sizing enabled</p>
+              )}
             </div>
           );
         case 'shadow':
@@ -917,6 +1043,7 @@ export function TextPostEditor({ onSave, onCancel }: TextPostEditorProps) {
         }}
       >
         <div 
+          data-preview-container
           className="w-full h-full flex items-center justify-center relative"
           style={{
             backgroundImage: backgroundImage ? `url(${backgroundImage})` : 'none',
@@ -926,37 +1053,51 @@ export function TextPostEditor({ onSave, onCancel }: TextPostEditorProps) {
           }}
         >
           {content.trim() ? (
-            <div
-              className="w-full text-center"
-              style={{
-                fontFamily: fontFamily,
-                fontSize: `${fontSize}px`,
-                color: textColor,
-                fontWeight: textStyle === 'bold' ? 'bold' : 'normal',
-                fontStyle: textStyle === 'italic' ? 'italic' : 'normal',
-                textDecoration: textStyle === 'strikethrough' ? 'line-through' : 'none',
-                textAlign: textAlign as 'left' | 'center' | 'right' | 'justify',
-                textShadow: `
-                  ${dropShadowOffsetX}px 
-                  ${dropShadowOffsetY}px 
-                  ${dropShadowBlur}px 
-                  ${dropShadowColor}
-                `,
-                // Use responsive padding that maintains layout as screen size changes
-                padding: (() => {
-                  const viewportWidth = window.innerWidth;
-                  const baseViewportWidth = 375; // iPhone base width
-                  const paddingScale = viewportWidth / baseViewportWidth;
-                  return `${padding * paddingScale}px`;
-                })(),
-                lineHeight: 1.2,
-                wordWrap: 'break-word',
-                overflowWrap: 'break-word',
-                whiteSpace: 'pre-wrap',
-              }}
-            >
-              {content}
-            </div>
+            <>
+              {/* Hidden measurement element */}
+              <div
+                ref={measurementRef}
+                style={{
+                  visibility: 'hidden',
+                  position: 'absolute',
+                  top: '-9999px',
+                  whiteSpace: 'pre-wrap',
+                  wordWrap: 'break-word',
+                  overflowWrap: 'break-word',
+                }}
+              />
+              <div
+                className="w-full text-center"
+                style={{
+                  fontFamily: fontFamily,
+                  fontSize: `${fontSize}px`,
+                  color: textColor,
+                  fontWeight: textStyle === 'bold' ? 'bold' : 'normal',
+                  fontStyle: textStyle === 'italic' ? 'italic' : 'normal',
+                  textDecoration: textStyle === 'strikethrough' ? 'line-through' : 'none',
+                  textAlign: textAlign as 'left' | 'center' | 'right' | 'justify',
+                  textShadow: `
+                    ${dropShadowOffsetX}px 
+                    ${dropShadowOffsetY}px 
+                    ${dropShadowBlur}px 
+                    ${dropShadowColor}
+                  `,
+                  // Use responsive padding that maintains layout as screen size changes
+                  padding: (() => {
+                    const viewportWidth = window.innerWidth;
+                    const baseViewportWidth = 375; // iPhone base width
+                    const paddingScale = viewportWidth / baseViewportWidth;
+                    return `${padding * paddingScale}px`;
+                  })(),
+                  lineHeight: 1.2,
+                  wordWrap: 'break-word',
+                  overflowWrap: 'break-word',
+                  whiteSpace: 'pre-wrap',
+                }}
+              >
+                {content}
+              </div>
+            </>
           ) : (
             <div className="text-neutral-500">
               <p>Preview will appear here</p>
