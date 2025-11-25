@@ -118,7 +118,18 @@ export interface PublicMetadata {
   reportCount?: number;
   autoFlagged?: boolean; // Gemini auto-detection
   lastModerationCheck?: string;
+  lastReportedAt?: string;
   moderationHistory?: ModerationEvent[];
+  reports?: Array<{
+    id: string;
+    fileId: string;
+    reporterPnId: string;
+    reportType: 'nsfw' | 'spam' | 'copyright' | 'other';
+    reason?: string;
+    timestamp: string;
+    validatedByGemini?: boolean;
+    geminiResult?: 'confirmed' | 'rejected' | 'pending';
+  }>;
   [key: string]: any;
 }
 
