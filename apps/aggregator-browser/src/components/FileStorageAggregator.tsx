@@ -107,76 +107,110 @@ const ThumbnailImage: React.FC<{ fileId: string; accountId: string; fileName: st
           }
         }
 
-        // Check if this is a thought file - if so, render directly from HTML/CSS content
+        // Check if this is a thought file or thought thumbnail - if so, render directly from HTML/CSS content
         const fileNameWithoutEncrypted = fileName.replace(/\.encrypted$/i, '');
-        const isThought = fileNameWithoutEncrypted.toLowerCase().startsWith('thought-') && 
-                         (fileNameWithoutEncrypted.toLowerCase().endsWith('.thought') || fileNameWithoutEncrypted.toLowerCase().endsWith('.png'));
+        const isThoughtFile = fileNameWithoutEncrypted.toLowerCase().startsWith('thought-') && 
+                              (fileNameWithoutEncrypted.toLowerCase().endsWith('.thought') || fileNameWithoutEncrypted.toLowerCase().endsWith('.png'));
+        const isThoughtThumbnail = fileNameWithoutEncrypted.toLowerCase().startsWith('thumb_thought-') && 
+                                   (fileNameWithoutEncrypted.toLowerCase().endsWith('.thought') || fileNameWithoutEncrypted.toLowerCase().endsWith('.png'));
+        const isThought = isThoughtFile || isThoughtThumbnail;
         
-        // If this is a thought thumbnail entry, render from the main thought file
-        if (isThought && isThumbnail && mainFileId) {
+        // If this is a thought thumbnail entry, try to render from the main thought file
+        // Check if fileName is a thought thumbnail (starts with thumb_thought-)
+        // IMPORTANT: This must come BEFORE the regular encrypted file handling to prevent fallthrough
+        if (isThoughtFile || isThoughtThumbnail) {
+          // For thought thumbnails, use mainFileId to get the actual thought file
+          // For thought files, use fileId directly
+          const thoughtFileId = isThoughtThumbnail ? mainFileId : fileId;
+          
+          if (!thoughtFileId) {
+            console.warn('[ThumbnailImage] Thought missing fileId/mainFileId, cannot render', { isThoughtThumbnail, mainFileId, fileId, fileName });
+            setError(true);
+            return;
+          }
+          
           try {
+            console.log('[ThumbnailImage] Rendering thought from fileId:', thoughtFileId, 'isThumbnail:', isThoughtThumbnail, 'fileName:', fileName);
             // Load and decrypt the actual thought file (not the thumbnail file)
             const session = PNOAuthService.loadSession();
             if (!session?.did) {
+              console.warn('[ThumbnailImage] No session available for thought thumbnail');
               setError(true);
               return;
             }
-
+            
             const pnId = session.did;
             let publicKey = session?.publicKey;
             if (!publicKey && session.did.startsWith('did:key:')) {
               publicKey = session.did.substring(8);
             }
             if (!publicKey) {
+              console.warn('[ThumbnailImage] No publicKey available for thought thumbnail');
               setError(true);
               return;
             }
-
+            
             // Download the thought file
-            const thoughtFileUrl = `${apiEndpoint}/api/drive/files/${mainFileId}?accountId=${accountId}&download=true`;
+            const thoughtFileUrl = `${apiEndpoint}/api/drive/files/${thoughtFileId}?accountId=${accountId}&download=true`;
+            console.log('[ThumbnailImage] Downloading thought file from:', thoughtFileUrl);
             const thoughtResponse = await fetch(thoughtFileUrl, {
               headers: {
                 'Authorization': `Bearer ${accessToken}`
               }
             });
 
-            if (thoughtResponse.ok) {
-              const { EncryptionManager } = await import('../utils/encryptionManager');
-              const encryptedText = await thoughtResponse.text();
-              const encryptedPackage = JSON.parse(encryptedText);
-              const encryptionManager = new EncryptionManager();
-              const decryptedData = await encryptionManager.decrypt(
-                encryptedPackage.encrypted,
-                encryptedPackage.iv,
-                encryptedPackage.salt,
-                pnId,
-                publicKey
-              );
-
-              // Parse the thought data
-              const decryptedText = new TextDecoder().decode(decryptedData);
-              const thoughtData = JSON.parse(decryptedText);
-              const textPost = thoughtData.textPost;
-
-              // Render thought at thumbnail size (scale factor ~0.3 for ~300px thumbnails)
-              const { renderTextPostToBlob } = await import('../services/textPostService');
-              const THUMBNAIL_SIZE = 300;
-              const scaleFactor = THUMBNAIL_SIZE / 1080; // Scale relative to original 1080px width
-              const thumbnailBlob = await renderTextPostToBlob(textPost, scaleFactor);
-              const url = URL.createObjectURL(thumbnailBlob);
-              setThumbnailUrl(url);
-              setError(false);
+            if (!thoughtResponse.ok) {
+              console.warn('[ThumbnailImage] Failed to download thought file:', thoughtResponse.status, thoughtResponse.statusText);
+              setError(true);
               return;
             }
-          } catch (thoughtError) {
-            console.error('[ThumbnailImage] Failed to render thought thumbnail:', thoughtError);
-            // Fall through to regular handling
+
+            const { EncryptionManager } = await import('../utils/encryptionManager');
+            const encryptedText = await thoughtResponse.text();
+            const encryptedPackage = JSON.parse(encryptedText);
+            const encryptionManager = new EncryptionManager();
+            const decryptedData = await encryptionManager.decrypt(
+              encryptedPackage.encrypted,
+              encryptedPackage.iv,
+              encryptedPackage.salt,
+              pnId,
+              publicKey
+            );
+
+            // Parse the thought data
+            const decryptedText = new TextDecoder().decode(decryptedData);
+            const thoughtData = JSON.parse(decryptedText);
+            const textPost = thoughtData.textPost;
+
+            if (!textPost) {
+              console.warn('[ThumbnailImage] Thought file missing textPost data:', thoughtData);
+              setError(true);
+              return;
+            }
+
+            console.log('[ThumbnailImage] Rendering thought at thumbnail size...');
+            // Render thought at thumbnail size (scale factor ~0.3 for ~300px thumbnails)
+            const { renderTextPostToBlob } = await import('../services/textPostService');
+            const THUMBNAIL_SIZE = 300;
+            const scaleFactor = THUMBNAIL_SIZE / 1080; // Scale relative to original 1080px width
+            const thumbnailBlob = await renderTextPostToBlob(textPost, scaleFactor);
+            const url = URL.createObjectURL(thumbnailBlob);
+            console.log('[ThumbnailImage] Thought thumbnail rendered successfully');
+            setThumbnailUrl(url);
+            setError(false);
+            return;
+          } catch (thoughtError: any) {
+            // For thoughts, if rendering fails, show error (don't try to load as image)
+            console.error('[ThumbnailImage] Thought rendering error:', thoughtError?.message || thoughtError, thoughtError);
+            setError(true);
+            return;
           }
         }
         
         // Check if this is a PDF file - if so, try to use thumbnailFileId from metadata first
+        // Note: Skip this for thought thumbnails (isThoughtThumbnail) as they should render from thought content
         const isPDF = /\.pdf$/i.test(fileNameWithoutEncrypted);
-        if ((isPDF || isThought) && isEncrypted && !isThumbnail) {
+        if ((isPDF || (isThought && !isThoughtThumbnail)) && isEncrypted && !isThumbnail) {
           try {
             // Try to get thumbnailFileId from metadata
             const metadataResponse = await fetch(`${apiEndpoint}/api/aggregator/metadata-index/${fileId}`, {
@@ -246,7 +280,8 @@ const ThumbnailImage: React.FC<{ fileId: string; accountId: string; fileName: st
           }
         }
 
-        if (isEncrypted) {
+        // Skip regular encrypted file handling for thought files and thought thumbnails - they should render from thought content
+        if (isEncrypted && !isThoughtFile && !isThoughtThumbnail) {
           // For encrypted files: download, decrypt, and generate thumbnail
           const session = PNOAuthService.loadSession();
           if (!session?.did) {
@@ -336,10 +371,38 @@ const ThumbnailImage: React.FC<{ fileId: string; accountId: string; fileName: st
             setThumbnailUrl(blobUrl);
             setError(false);
           } else {
-          const thumbnailBlob = await createThumbnailFromBlob(decryptedBlob, 300, 300);
-          blobUrl = URL.createObjectURL(thumbnailBlob);
-          setThumbnailUrl(blobUrl);
-          setError(false);
+            // Double-check: Don't try to create thumbnail from blob if this is a thought file
+            // Thought files contain JSON text, not image data
+            // Only check originalName - don't check mimeType because encrypted files are always JSON packages
+            const originalName = encryptedPackage.metadata.originalName?.toLowerCase() || '';
+            const isThoughtFileCheck = originalName.startsWith('thought-') && 
+                                     (originalName.endsWith('.thought') || originalName.endsWith('.png')) ||
+                                     fileNameWithoutEncrypted.toLowerCase().startsWith('thought-') ||
+                                     fileNameWithoutEncrypted.toLowerCase().startsWith('thumb_thought-');
+            
+            if (isThoughtFileCheck) {
+              console.warn('[ThumbnailImage] Skipping thumbnail creation for thought file - should use renderTextPostToBlob');
+              setError(true);
+              return;
+            }
+            
+            try {
+              const thumbnailBlob = await createThumbnailFromBlob(decryptedBlob, 300, 300);
+              blobUrl = URL.createObjectURL(thumbnailBlob);
+              setThumbnailUrl(blobUrl);
+              setError(false);
+            } catch (thumbnailError: any) {
+              console.error('[ThumbnailImage] Failed to create thumbnail from blob:', thumbnailError?.message || thumbnailError);
+              // Try to use the decrypted blob directly as a fallback
+              try {
+                blobUrl = URL.createObjectURL(decryptedBlob);
+                setThumbnailUrl(blobUrl);
+                setError(false);
+              } catch (fallbackError: any) {
+                console.error('[ThumbnailImage] Fallback also failed:', fallbackError?.message || fallbackError);
+                setError(true);
+              }
+            }
           }
         } else {
           // Non-encrypted files: try to load thumbnail from Google Drive, fallback to downloading full file
@@ -383,10 +446,23 @@ const ThumbnailImage: React.FC<{ fileId: string; accountId: string; fileName: st
                 setError(false);
               } else if (isImage || isVideo) {
                 // Generate thumbnail from the full file
-                const thumbnailBlob = await createThumbnailFromBlob(fileBlob, 300, 300);
-                blobUrl = URL.createObjectURL(thumbnailBlob);
-                setThumbnailUrl(blobUrl);
-                setError(false);
+                try {
+                  const thumbnailBlob = await createThumbnailFromBlob(fileBlob, 300, 300);
+                  blobUrl = URL.createObjectURL(thumbnailBlob);
+                  setThumbnailUrl(blobUrl);
+                  setError(false);
+                } catch (thumbnailError: any) {
+                  console.error('[ThumbnailImage] Failed to create thumbnail from file blob:', thumbnailError?.message || thumbnailError);
+                  // Try to use the file blob directly as a fallback
+                  try {
+                    blobUrl = URL.createObjectURL(fileBlob);
+                    setThumbnailUrl(blobUrl);
+                    setError(false);
+                  } catch (fallbackError: any) {
+                    console.error('[ThumbnailImage] Fallback also failed:', fallbackError?.message || fallbackError);
+                    setError(true);
+                  }
+                }
               } else {
                 setError(true);
               }
@@ -3271,12 +3347,16 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
                 const isPDF = file.mimeType === 'application/pdf' || /\.pdf$/i.test(file.name) || isPDFSlideshowFolder;
                 const isThought = nameWithoutEncrypted.toLowerCase().startsWith('thought-') && 
                                  (nameWithoutEncrypted.toLowerCase().endsWith('.thought') || nameWithoutEncrypted.toLowerCase().endsWith('.png'));
-                let isMediaFile = isImage || isVideo || isPDF || isThought;
+                const isThoughtThumbnail = nameWithoutEncrypted.toLowerCase().startsWith('thumb_thought-') && 
+                                          (nameWithoutEncrypted.toLowerCase().endsWith('.thought') || nameWithoutEncrypted.toLowerCase().endsWith('.png'));
+                let isMediaFile = isImage || isVideo || isPDF || isThought || isThoughtThumbnail;
                 if (isEncrypted) {
                   const hasImageExt = /\.(jpg|jpeg|png|gif|webp|bmp|svg|heic|heif)$/i.test(nameWithoutEncrypted);
                   const hasVideoExt = /\.(mp4|mov|avi|mkv|webm|flv|wmv|m4v|3gp)$/i.test(nameWithoutEncrypted);
                   const hasPDFExt = /\.pdf$/i.test(nameWithoutEncrypted);
-                  const hasThoughtExt = /\.thought$/i.test(nameWithoutEncrypted) || (nameWithoutEncrypted.toLowerCase().startsWith('thought-') && nameWithoutEncrypted.toLowerCase().endsWith('.png'));
+                  const hasThoughtExt = /\.thought$/i.test(nameWithoutEncrypted) || 
+                                       (nameWithoutEncrypted.toLowerCase().startsWith('thought-') && nameWithoutEncrypted.toLowerCase().endsWith('.png')) ||
+                                       nameWithoutEncrypted.toLowerCase().startsWith('thumb_thought-');
                   isMediaFile = hasImageExt || hasVideoExt || hasPDFExt || hasThoughtExt;
                 }
                 
@@ -3422,12 +3502,16 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
                 const nameWithoutEncrypted = file.name.replace(/\.encrypted$/i, '');
                 const isThought = nameWithoutEncrypted.toLowerCase().startsWith('thought-') && 
                                  (nameWithoutEncrypted.toLowerCase().endsWith('.thought') || nameWithoutEncrypted.toLowerCase().endsWith('.png'));
-                let isMediaFile = isImage || isVideo || isPDF || isThought;
+                const isThoughtThumbnail = nameWithoutEncrypted.toLowerCase().startsWith('thumb_thought-') && 
+                                          (nameWithoutEncrypted.toLowerCase().endsWith('.thought') || nameWithoutEncrypted.toLowerCase().endsWith('.png'));
+                let isMediaFile = isImage || isVideo || isPDF || isThought || isThoughtThumbnail;
                 if (isEncrypted) {
                   const hasImageExt = /\.(jpg|jpeg|png|gif|webp|bmp|svg|heic|heif)$/i.test(nameWithoutEncrypted);
                   const hasVideoExt = /\.(mp4|mov|avi|mkv|webm|flv|wmv|m4v|3gp)$/i.test(nameWithoutEncrypted);
                   const hasPDFExt = /\.pdf$/i.test(nameWithoutEncrypted);
-                  const hasThoughtExt = /\.thought$/i.test(nameWithoutEncrypted) || (nameWithoutEncrypted.toLowerCase().startsWith('thought-') && nameWithoutEncrypted.toLowerCase().endsWith('.png'));
+                  const hasThoughtExt = /\.thought$/i.test(nameWithoutEncrypted) || 
+                                       (nameWithoutEncrypted.toLowerCase().startsWith('thought-') && nameWithoutEncrypted.toLowerCase().endsWith('.png')) ||
+                                       nameWithoutEncrypted.toLowerCase().startsWith('thumb_thought-');
                   isMediaFile = hasImageExt || hasVideoExt || hasPDFExt || hasThoughtExt;
                 }
 
