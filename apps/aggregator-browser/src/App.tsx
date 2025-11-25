@@ -3599,6 +3599,7 @@ function App() {
             {filteredFilesByFeed.length > 0 ? (
               <FullScreenFeed
                 files={filteredFilesByFeed}
+                key={`feed-${activeFeedId}-${filteredFilesByFeed.length}`}
                 currentIndex={currentFeedIndex}
                 thumbnails={undefined}
                 videoBlobs={videoBlobs}

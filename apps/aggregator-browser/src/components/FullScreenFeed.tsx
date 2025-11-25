@@ -1148,11 +1148,26 @@ export function FullScreenFeed({
       }}
     >
       {/* Only render visible files (currentIndex ± 1) for better performance */}
-      {files
-        .slice(
-          Math.max(0, currentIndex - 1),
-          Math.min(files.length, currentIndex + 2)
-        )
+      {(() => {
+        // Debug: Log all files in the array
+        console.log(`[FullScreenFeed] Total files: ${files.length}, currentIndex: ${currentIndex}`, {
+          allFileIds: files.map(f => f.metadata.fileId),
+          allFileTypes: files.map(f => f.metadata.fileType),
+          allFileNames: files.map(f => f.metadata.name || f.metadata.title),
+          sliceStart: Math.max(0, currentIndex - 1),
+          sliceEnd: Math.min(files.length, currentIndex + 2),
+          filesInSlice: files.slice(Math.max(0, currentIndex - 1), Math.min(files.length, currentIndex + 2)).map(f => ({
+            fileId: f.metadata.fileId,
+            fileType: f.metadata.fileType,
+            fileName: f.metadata.name || f.metadata.title
+          }))
+        });
+        return files
+          .slice(
+            Math.max(0, currentIndex - 1),
+            Math.min(files.length, currentIndex + 2)
+          );
+      })()
         .map((indexedFile) => {
         const file = indexedFile.metadata;
         const fileId = file.fileId;
