@@ -152,11 +152,11 @@ export function FeedEngagementSidebar({
 
   return (
     <div 
-      className="absolute right-2 md:right-4 bottom-0 flex flex-col items-center z-20 pointer-events-auto" 
+      className="absolute right-2 md:right-4 flex flex-col items-center z-20 pointer-events-auto" 
       style={{ 
-        gap: '16px', 
-        // MOBILE FIX: Add margin-bottom to account for bottom nav + safe area (window.innerHeight already excludes browser UI)
-        marginBottom: 'calc(64px + env(safe-area-inset-bottom, 0px))' // Bottom nav (64px) + safe area only
+        gap: '16px',
+        // MOBILE FIX: Position right above bottom nav (64px = h-16)
+        bottom: '64px'
       }}
     >
       {/* Creator Profile Icon - Above Like Button */}
