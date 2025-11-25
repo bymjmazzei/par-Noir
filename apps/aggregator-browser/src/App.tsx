@@ -3601,9 +3601,10 @@ function App() {
                 files={filteredFilesByFeed}
                 key={`feed-${activeFeedId}-${filteredFilesByFeed.length}`}
                 currentIndex={currentFeedIndex}
-                thumbnails={(() => {
+                thumbnails={useMemo(() => {
                   // Build thumbnails map from metadata for public feed files
                   const publicThumbnails = new Map<string, string>();
+                  const apiEndpoint = import.meta.env.VITE_API_ENDPOINT || 'https://api.parnoir.com';
                   filteredFilesByFeed.forEach(file => {
                     // Try multiple possible thumbnail URL fields
                     const thumbnailUrl = (file.metadata as any).thumbnail || 
@@ -3620,7 +3621,7 @@ function App() {
                     }
                   });
                   return publicThumbnails;
-                })()}
+                }, [filteredFilesByFeed])}
                 videoBlobs={videoBlobs}
                 onIndexChange={setCurrentFeedIndex}
                 onSwipeLeft={handleNextFeed}
