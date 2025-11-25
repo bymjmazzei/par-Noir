@@ -12,28 +12,31 @@ import { AggregatorMetadataService } from './aggregatorMetadataService';
 /**
  * Middleware to authenticate API requests using API key
  */
-export async function authenticateApiKey(req: Request, res: Response, next: Function) {
+export async function authenticateApiKey(req: Request, res: Response, next: Function): Promise<void> {
   const apiKey = req.headers['x-api-key'] as string || req.query.api_key as string;
 
   if (!apiKey) {
-    return res.status(401).json({
+    res.status(401).json({
       error: 'Unauthorized',
       message: 'API key required. Provide via X-API-Key header or api_key query parameter.'
     });
+    return;
   }
 
   const validation = await ApiKeyService.validateApiKey(apiKey);
 
   if (!validation.valid) {
-    return res.status(401).json({
+    res.status(401).json({
       error: 'Unauthorized',
       message: validation.error || 'Invalid API key'
     });
+    return;
   }
 
   // Attach API key data to request
   (req as any).apiKey = validation.apiKeyData;
   next();
+  return;
 }
 
 /**

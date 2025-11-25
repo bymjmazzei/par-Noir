@@ -127,7 +127,6 @@ class ProductionServer {
     });
     
     this.setupMiddleware();
-    this.setupRoutes();
     this.setupWebSockets();
   }
 
@@ -989,7 +988,7 @@ class ProductionServer {
     }
   }
 
-  private setupRoutes(): void {
+  private async setupRoutes(): Promise<void> {
     // Health check endpoint
     this.app.get('/health', (req, res) => {
       res.json({
@@ -1746,8 +1745,8 @@ class ProductionServer {
 
     // Coinbase Commerce Webhook Handler
     const { CoinbaseWebhookHandler } = await import('./server/modules/coinbaseWebhookHandler');
-    this.app.post('/api/webhooks/coinbase', express.raw({ type: 'application/json' }), (req: Request, res: Response) => {
-      CoinbaseWebhookHandler.handleWebhook(req, res);
+    this.app.post('/api/webhooks/coinbase', express.raw({ type: 'application/json' }), async (req, res) => {
+      await CoinbaseWebhookHandler.handleWebhook(req as any, res as any);
     });
 
     // GET /api/aggregator/metadata-index/:fileId - Get metadata for a specific file (creates entry if doesn't exist)
@@ -9329,6 +9328,9 @@ class ProductionServer {
   }
 
   public async start(): Promise<void> {
+    // Setup routes (async imports)
+    await this.setupRoutes();
+    
     // Initialize database connection and schema
     try {
       const { initializeDatabase } = await import('./server/utils/database');

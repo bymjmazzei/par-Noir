@@ -36,7 +36,8 @@ export class CoinbaseWebhookHandler {
       // Verify signature
       if (!this.verifySignature(payload, signature)) {
         console.error('❌ [CoinbaseWebhook] Invalid signature');
-        return res.status(401).json({ error: 'Invalid signature' });
+        res.status(401).json({ error: 'Invalid signature' });
+        return;
       }
 
       const event = req.body;
@@ -63,10 +64,12 @@ export class CoinbaseWebhookHandler {
         await this.handlePaymentExpired(charge);
       }
 
-      return res.status(200).json({ received: true });
+      res.status(200).json({ received: true });
+      return;
     } catch (error) {
       console.error('❌ [CoinbaseWebhook] Error handling webhook:', error);
-      return res.status(500).json({ error: 'Webhook processing failed' });
+      res.status(500).json({ error: 'Webhook processing failed' });
+      return;
     }
   }
 
