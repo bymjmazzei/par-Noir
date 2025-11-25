@@ -512,14 +512,14 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
   React.useEffect(() => {
     // SECURITY: Check if credentials exist in SecureCredentialManager
     // resolvedAuth no longer contains passcode (it's a secret)
-    const sessionId = authenticatedUser?.id || (authenticatedUser as any)?.publicKey || null;
-    const credentials = sessionId ? SecureCredentialManager.getCredentials(sessionId) : null;
-    
-    if (!resolvedAuth || credentials) {
-      // Credentials already exist, no need to hydrate
-      return;
-    }
-    
+    try {
+      const sessionId = authenticatedUser?.id || (authenticatedUser as any)?.publicKey || null;
+      const credentials = sessionId ? SecureCredentialManager.getCredentials(sessionId) : null;
+      
+      if (!resolvedAuth || credentials) {
+        // Credentials already exist, no need to hydrate
+        return;
+      }
     } catch (e) {
       console.warn('⚠️ [FileStorageAggregator] Unable to get credentials from SecureCredentialManager:', e);
     }
@@ -4688,7 +4688,6 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
           const effectivePnName = credentials?.pnName || null;
           
           // SECURITY: Get passcode from SecureCredentialManager instead of sessionStorage
-          const sessionId = authenticatedUser?.id || (authenticatedUser as any)?.publicKey || null;
           const passcode = getPasscodeFromSecureStorage(sessionId);
           
           if (effectivePnName && passcode) {
@@ -6660,7 +6659,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
                 </div>
 
                 {quota && (
-                  <div className="flex items-center justify-between text-xs text-text-secondary bg-neutral-800/60 rounded-lg px-3 py-2 mb-4">
+                  <div className="flex items-center justify-between text-xs text-text-secondary bg-neutral-900 rounded-lg px-3 py-2 mb-4">
                     <span>Used {(quota.usedBytes / (1024 * 1024)).toFixed(1)} MB of {(quota.totalBytes / (1024 * 1024)).toFixed(1)} MB</span>
                     <span>{percentUsed ?? 0}% full</span>
                   </div>
@@ -6805,7 +6804,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
                                         // Use requestAnimationFrame to ensure node is rendered before calculating position
                                         requestAnimationFrame(() => {
                                           // Find the tile container (the parent div with the grid item)
-                                          const tileContainer = node.closest('.bg-neutral-800\\/50') as HTMLElement;
+                                          const tileContainer = node.closest('[class*="bg-neutral-800"]') as HTMLElement;
                                           if (tileContainer && node) {
                                             const tileRect = tileContainer.getBoundingClientRect();
                                             const menuWidth = 176; // w-44 = 11rem = 176px
@@ -6895,7 +6894,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
                                         actionMenuRef.current = null;
                                         handleDelete(file);
                                       }}
-                                      className="flex w-full items-center space-x-2 px-3 py-2 text-sm text-red-400 hover:text-red-300 hover:bg-red-900/20 transition-colors"
+                                      className="flex w-full items-center space-x-2 px-3 py-2 text-sm text-red-400 hover:text-red-300 hover:bg-red-950 transition-colors"
                                       disabled={isLoading}
                                     >
                                       <Trash2 className="h-4 w-4" />
@@ -6903,8 +6902,9 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
                                     </button>
                                   </div>
                                 )}
+                                </div>
                               </div>
-                            </div>
+                            )}
                           </div>
                         </div>
                       );
@@ -7073,7 +7073,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
                                       actionMenuRef.current = null;
                                       handleDelete(file);
                                     }}
-                                    className="flex w-full items-center space-x-2 px-3 py-2 text-sm text-red-400 hover:text-red-300 hover:bg-red-900/20 transition-colors"
+                                    className="flex w-full items-center space-x-2 px-3 py-2 text-sm text-red-400 hover:text-red-300 hover:bg-red-950 transition-colors"
                                     disabled={isLoading}
                                   >
                                     <Trash2 className="h-4 w-4" />
@@ -7081,9 +7081,13 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
                                   </button>
                             </div>
                           )}
+                              </div>
+                            </div>
+                          )}
+                              </div>
+                            </div>
+                          )}
                         </div>
-                      </div>
-                    </div>
                   );
                 })}
               </div>
