@@ -28,7 +28,7 @@ interface EncryptedFilePackage {
 }
 
 // Thumbnail component that handles authenticated loading
-const ThumbnailImage: React.FC<{ fileId: string; accountId: string; fileName: string; alt: string; className?: string; mimeType?: string }> = ({ fileId, accountId, fileName, alt, className = 'w-full h-full object-cover', mimeType }) => {
+const ThumbnailImage: React.FC<{ fileId: string; accountId: string; fileName: string; alt: string; className?: string; mimeType?: string; mainFileId?: string; isThumbnail?: boolean }> = ({ fileId, accountId, fileName, alt, className = 'w-full h-full object-cover', mimeType, mainFileId, isThumbnail }) => {
   const [thumbnailUrl, setThumbnailUrl] = useState<string | null>(null);
   const [error, setError] = useState(false);
 
@@ -107,9 +107,76 @@ const ThumbnailImage: React.FC<{ fileId: string; accountId: string; fileName: st
           }
         }
 
+        // Check if this is a thought file - if so, render directly from HTML/CSS content
+        const fileNameWithoutEncrypted = fileName.replace(/\.encrypted$/i, '');
+        const isThought = fileNameWithoutEncrypted.toLowerCase().startsWith('thought-') && 
+                         (fileNameWithoutEncrypted.toLowerCase().endsWith('.thought') || fileNameWithoutEncrypted.toLowerCase().endsWith('.png'));
+        
+        // If this is a thought thumbnail entry, render from the main thought file
+        if (isThought && isThumbnail && mainFileId) {
+          try {
+            // Load and decrypt the actual thought file (not the thumbnail file)
+            const session = PNOAuthService.loadSession();
+            if (!session?.did) {
+              setError(true);
+              return;
+            }
+
+            const pnId = session.did;
+            let publicKey = session?.publicKey;
+            if (!publicKey && session.did.startsWith('did:key:')) {
+              publicKey = session.did.substring(8);
+            }
+            if (!publicKey) {
+              setError(true);
+              return;
+            }
+
+            // Download the thought file
+            const thoughtFileUrl = `${apiEndpoint}/api/drive/files/${mainFileId}?accountId=${accountId}&download=true`;
+            const thoughtResponse = await fetch(thoughtFileUrl, {
+              headers: {
+                'Authorization': `Bearer ${accessToken}`
+              }
+            });
+
+            if (thoughtResponse.ok) {
+              const { EncryptionManager } = await import('../utils/encryptionManager');
+              const encryptedText = await thoughtResponse.text();
+              const encryptedPackage = JSON.parse(encryptedText);
+              const encryptionManager = new EncryptionManager();
+              const decryptedData = await encryptionManager.decrypt(
+                encryptedPackage.encrypted,
+                encryptedPackage.iv,
+                encryptedPackage.salt,
+                pnId,
+                publicKey
+              );
+
+              // Parse the thought data
+              const decryptedText = new TextDecoder().decode(decryptedData);
+              const thoughtData = JSON.parse(decryptedText);
+              const textPost = thoughtData.textPost;
+
+              // Render thought at thumbnail size (scale factor ~0.3 for ~300px thumbnails)
+              const { renderTextPostToBlob } = await import('../services/textPostService');
+              const THUMBNAIL_SIZE = 300;
+              const scaleFactor = THUMBNAIL_SIZE / 1080; // Scale relative to original 1080px width
+              const thumbnailBlob = await renderTextPostToBlob(textPost, scaleFactor);
+              const url = URL.createObjectURL(thumbnailBlob);
+              setThumbnailUrl(url);
+              setError(false);
+              return;
+            }
+          } catch (thoughtError) {
+            console.error('[ThumbnailImage] Failed to render thought thumbnail:', thoughtError);
+            // Fall through to regular handling
+          }
+        }
+        
         // Check if this is a PDF file - if so, try to use thumbnailFileId from metadata first
-        const isPDF = /\.pdf$/i.test(fileName.replace(/\.encrypted$/i, ''));
-        if (isPDF && isEncrypted) {
+        const isPDF = /\.pdf$/i.test(fileNameWithoutEncrypted);
+        if ((isPDF || isThought) && isEncrypted && !isThumbnail) {
           try {
             // Try to get thumbnailFileId from metadata
             const metadataResponse = await fetch(`${apiEndpoint}/api/aggregator/metadata-index/${fileId}`, {
@@ -349,7 +416,7 @@ const ThumbnailImage: React.FC<{ fileId: string; accountId: string; fileName: st
         return null;
       });
     };
-  }, [fileId, accountId, isEncrypted, fileName]);
+  }, [fileId, accountId, isEncrypted, fileName, mainFileId, isThumbnail]);
 
 // Helper function to create PDF thumbnail (first page)
 async function createPDFThumbnail(blob: Blob, maxWidth: number, maxHeight: number): Promise<Blob> {
@@ -998,8 +1065,19 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
           return !/^thumb_.+-page-\d+\.png\.encrypted$/i.test(name);
         });
         
-        // Map regular thumbnails to their main files and create display entries
-        const thumbnailEntries = regularThumbnails.map((thumb: DriveFile) => {
+        // Separate thought thumbnails from regular thumbnails
+        const thoughtThumbnails = regularThumbnails.filter((thumb: DriveFile) => {
+          const name = thumb.name.toLowerCase();
+          return name.startsWith('thumb_thought-') && (name.endsWith('.thought.encrypted') || name.endsWith('.png.encrypted'));
+        });
+        
+        const nonThoughtThumbnails = regularThumbnails.filter((thumb: DriveFile) => {
+          const name = thumb.name.toLowerCase();
+          return !name.startsWith('thumb_thought-');
+        });
+        
+        // Map regular (non-thought) thumbnails to their main files and create display entries
+        const thumbnailEntries = nonThoughtThumbnails.map((thumb: DriveFile) => {
           // Remove "thumb_" prefix and ".encrypted" suffix to find main file
           const thumbNameWithoutPrefix = thumb.name.replace(/^thumb_/i, '').replace(/\.encrypted$/i, '');
           
@@ -1022,8 +1100,37 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
           };
         });
         
-        // Filter to show thumbnails (representing main files), PDF files (for slideshows), and thoughts
-        const mediaFiles = thumbnailEntries.concat(
+        // Map thought thumbnails to thought files
+        const thoughtFiles = mainFiles.filter((file: DriveFile) => {
+          const name = file.name.toLowerCase();
+          return name.startsWith('thought-') && (name.endsWith('.thought.encrypted') || name.endsWith('.png.encrypted'));
+        });
+        
+        const thoughtThumbnailEntries = thoughtThumbnails.map((thumb: DriveFile) => {
+          // Remove "thumb_" prefix and ".encrypted" suffix to find thought file
+          const thumbNameWithoutPrefix = thumb.name.replace(/^thumb_/i, '').replace(/\.encrypted$/i, '');
+          
+          // Find the corresponding thought file
+          const thoughtFile = thoughtFiles.find((tf: DriveFile) => {
+            const thoughtFileName = tf.name.replace(/\.encrypted$/i, '');
+            return thoughtFileName === thumbNameWithoutPrefix;
+          });
+          
+          // Clean display name: remove thumb_ prefix and file extension
+          let displayName = thumb.name.replace(/^thumb_/i, '').replace(/\.encrypted$/i, '');
+          // Remove file extension
+          displayName = displayName.replace(/\.[^.]+$/, '');
+          
+          return {
+            ...thumb,
+            isThumbnail: true,
+            mainFileId: thoughtFile?.id || thumb.id, // Use thought file ID if found, fallback to thumb ID
+            displayName: displayName
+          };
+        });
+        
+        // Filter to show thumbnails (representing main files), PDF files (for slideshows), and thought thumbnails
+        const mediaFiles = thumbnailEntries.concat(thoughtThumbnailEntries).concat(
           allFiles.filter((file: DriveFile) => {
           const name = file.name.toLowerCase();
           const mimeType = file.mimeType || '';
@@ -1033,10 +1140,16 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
             return true; // Include PDF files (they'll show as slideshows in the feed)
           }
           
-          // Include thoughts (they don't have thumbnails, show the thought file itself)
-          // Support both new .thought format and legacy .png format
+          // Include thoughts that don't have thumbnails (legacy thoughts)
           if (name.startsWith('thought-') && (name.endsWith('.thought.encrypted') || name.endsWith('.png.encrypted'))) {
-            return true;
+            // Check if this thought has a thumbnail
+            const thoughtNameWithoutExt = name.replace(/\.encrypted$/i, '');
+            const hasThumbnail = thoughtThumbnails.some((thumb: DriveFile) => {
+              const thumbNameWithoutExt = thumb.name.replace(/^thumb_/i, '').replace(/\.encrypted$/i, '');
+              return thumbNameWithoutExt === thoughtNameWithoutExt;
+            });
+            // Only include thoughts without thumbnails (legacy thoughts)
+            return !hasThumbnail;
           }
           
           // Exclude everything else (main files already have thumbnails, PDF page thumbnails are hidden)
@@ -3156,12 +3269,15 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
                 // For encrypted files, check if they're media files by extension
                 // Also treat PDF slideshow folders as PDF files
                 const isPDF = file.mimeType === 'application/pdf' || /\.pdf$/i.test(file.name) || isPDFSlideshowFolder;
-                let isMediaFile = isImage || isVideo || isPDF;
+                const isThought = nameWithoutEncrypted.toLowerCase().startsWith('thought-') && 
+                                 (nameWithoutEncrypted.toLowerCase().endsWith('.thought') || nameWithoutEncrypted.toLowerCase().endsWith('.png'));
+                let isMediaFile = isImage || isVideo || isPDF || isThought;
                 if (isEncrypted) {
                   const hasImageExt = /\.(jpg|jpeg|png|gif|webp|bmp|svg|heic|heif)$/i.test(nameWithoutEncrypted);
                   const hasVideoExt = /\.(mp4|mov|avi|mkv|webm|flv|wmv|m4v|3gp)$/i.test(nameWithoutEncrypted);
                   const hasPDFExt = /\.pdf$/i.test(nameWithoutEncrypted);
-                  isMediaFile = hasImageExt || hasVideoExt || hasPDFExt;
+                  const hasThoughtExt = /\.thought$/i.test(nameWithoutEncrypted) || (nameWithoutEncrypted.toLowerCase().startsWith('thought-') && nameWithoutEncrypted.toLowerCase().endsWith('.png'));
+                  isMediaFile = hasImageExt || hasVideoExt || hasPDFExt || hasThoughtExt;
                 }
                 
                 // PDF slideshow folders are always media files
@@ -3214,6 +3330,8 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
                           fileName={file.name}
                           alt={file.name}
                           mimeType={file.mimeType}
+                          mainFileId={(file as any).mainFileId}
+                          isThumbnail={(file as any).isThumbnail}
                         />
                       ) : (
                         <div className="w-full h-full flex items-center justify-center">
@@ -3301,13 +3419,16 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
                 
                 // For encrypted files, check if they're media files by extension
                 const isPDF = file.mimeType === 'application/pdf' || /\.pdf$/i.test(file.name);
-                let isMediaFile = isImage || isVideo || isPDF;
+                const nameWithoutEncrypted = file.name.replace(/\.encrypted$/i, '');
+                const isThought = nameWithoutEncrypted.toLowerCase().startsWith('thought-') && 
+                                 (nameWithoutEncrypted.toLowerCase().endsWith('.thought') || nameWithoutEncrypted.toLowerCase().endsWith('.png'));
+                let isMediaFile = isImage || isVideo || isPDF || isThought;
                 if (isEncrypted) {
-                  const nameWithoutEncrypted = file.name.replace(/\.encrypted$/i, '');
                   const hasImageExt = /\.(jpg|jpeg|png|gif|webp|bmp|svg|heic|heif)$/i.test(nameWithoutEncrypted);
                   const hasVideoExt = /\.(mp4|mov|avi|mkv|webm|flv|wmv|m4v|3gp)$/i.test(nameWithoutEncrypted);
                   const hasPDFExt = /\.pdf$/i.test(nameWithoutEncrypted);
-                  isMediaFile = hasImageExt || hasVideoExt || hasPDFExt;
+                  const hasThoughtExt = /\.thought$/i.test(nameWithoutEncrypted) || (nameWithoutEncrypted.toLowerCase().startsWith('thought-') && nameWithoutEncrypted.toLowerCase().endsWith('.png'));
+                  isMediaFile = hasImageExt || hasVideoExt || hasPDFExt || hasThoughtExt;
                 }
 
                 return (
@@ -3350,6 +3471,8 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
                             fileName={file.name}
                             alt={file.name}
                             className="w-full h-full object-cover"
+                            mainFileId={(file as any).mainFileId}
+                            isThumbnail={(file as any).isThumbnail}
                           />
                         </div>
                       ) : (
