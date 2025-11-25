@@ -998,6 +998,38 @@ export class GoogleDriveBackend extends AbstractStorageBackend {
         // (same approach as browse.parnoir.com)
         const mimeType = uploadedFile.mimeType || file.type || 'application/octet-stream';
 
+        // NEW: Generate AI metadata using Gemini (tags, description, category)
+        let aiGeneratedMetadata: {
+          tags?: string[];
+          description?: string;
+          category?: string;
+          contentRating?: 'safe' | 'nsfw' | 'x-rated';
+        } = {};
+        
+        try {
+          const { geminiModerationService } = await import('../../services/ai/GeminiModerationService');
+          const metadataResult = await geminiModerationService.generateMetadata(file);
+          
+          // Only use AI-generated metadata if user hasn't provided their own
+          if (metadataResult.tags.length > 0 && (!metadata.tags || metadata.tags.length === 0)) {
+            aiGeneratedMetadata.tags = metadataResult.tags;
+          }
+          if (metadataResult.description && !metadata.description) {
+            aiGeneratedMetadata.description = metadataResult.description;
+          }
+          if (metadataResult.category && !metadata.category) {
+            aiGeneratedMetadata.category = metadataResult.category;
+          }
+          if (metadataResult.suggestedRating) {
+            aiGeneratedMetadata.contentRating = metadataResult.suggestedRating;
+          }
+          
+          console.log('✅ [uploadFile] AI-generated metadata:', aiGeneratedMetadata);
+        } catch (error) {
+          console.warn('⚠️ [uploadFile] Failed to generate AI metadata (non-critical):', error);
+          // Continue without AI metadata - user can add manually
+        }
+
         // Extract technical metadata from media files (static/auto-extracted fields)
         let extractedMetadata: any = {};
         try {
@@ -1058,8 +1090,16 @@ export class GoogleDriveBackend extends AbstractStorageBackend {
                  did: ownerDid || undefined,
                  identifier: metadata.pnIdentifier
                },
-               tags: metadata.tags || [],
-               description: metadata.description || undefined,
+               // Merge user-provided tags with AI-generated tags (user takes precedence)
+               tags: metadata.tags && metadata.tags.length > 0 
+                 ? metadata.tags 
+                 : (aiGeneratedMetadata.tags || []),
+               // Merge user description with AI-generated description (user takes precedence)
+               description: metadata.description || aiGeneratedMetadata.description || undefined,
+               // Content rating from AI (if generated)
+               contentRating: aiGeneratedMetadata.contentRating || metadata.contentRating || 'safe',
+               lastModerationCheck: aiGeneratedMetadata.contentRating ? new Date().toISOString() : undefined,
+               autoFlagged: aiGeneratedMetadata.contentRating && aiGeneratedMetadata.contentRating !== 'safe',
                metadata: metadata.metadata || {},
                publicToken: metadata.publicToken || undefined, // Share token generated on upload - available for owner viewing and public sharing
                // No thumbnail - we display the actual file at smaller sizes
@@ -1068,8 +1108,9 @@ export class GoogleDriveBackend extends AbstractStorageBackend {
                schema: {
                  ...extractedMetadata.schema,
                  // User-editable schema fields (can be overridden)
+                 // Use AI-generated category if user hasn't provided one
                  ...(metadata.genre && { genre: Array.isArray(metadata.genre) ? metadata.genre : [metadata.genre] }),
-                 ...(metadata.category && { category: metadata.category }),
+                 ...(metadata.category || aiGeneratedMetadata.category ? { category: metadata.category || aiGeneratedMetadata.category } : {}),
                  ...(metadata.locationCreated && { locationCreated: metadata.locationCreated }),
                  ...(metadata.license && { license: metadata.license }),
                  ...(metadata.inLanguage && { inLanguage: metadata.inLanguage }),
