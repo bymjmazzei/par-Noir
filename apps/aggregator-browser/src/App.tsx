@@ -761,57 +761,19 @@ function App() {
         return false;
       };
       
-      // Debug logging for public feed (don't call isMedia/isThought here to avoid initialization issues)
+      // Debug logging for public feed (only in development)
       const imageFiles = filtered.filter(isImageFile);
       
-      // CRITICAL DEBUG: Log ALL file metadata to see what we're actually getting
-      console.log(`[Public Feed] 🔍 DETAILED FILE ANALYSIS:`, {
-        totalFiles: filtered.length,
-        images: imageFiles.length,
-        thoughts: filtered.filter(f => {
+      if (process.env.NODE_ENV === 'development') {
+        console.log(`[Public Feed] ${filtered.length} files: ${imageFiles.length} images, ${filtered.filter(f => f.metadata.fileType === 'video').length} videos, ${filtered.filter(f => f.metadata.fileType === 'document').length} PDFs, ${filtered.filter(f => {
           const fileType = f.metadata.fileType;
           const hasTextPostData = !!(f.metadata as any).textPost || !!(f.metadata as any).thought;
           const hasTextFileType = fileType === 'text' || fileType === 'thought';
           const fileName = f.metadata.name || f.metadata.title || '';
           const isThoughtFile = /^thought-\d+\.(thought|png)/i.test(fileName);
           return hasTextPostData || hasTextFileType || isThoughtFile;
-        }).length,
-        videos: filtered.filter(f => f.metadata.fileType === 'video').length,
-        pdfs: filtered.filter(f => f.metadata.fileType === 'document').length,
-        fileDetails: filtered.map(f => {
-          const fileName = f.metadata.name || f.metadata.title || '';
-          const mimeType = (f.metadata as any).mimeType || f.metadata.encodingFormat || '';
-          const atType = f.metadata['@type'];
-          const allMetadataKeys = Object.keys(f.metadata);
-          const isImageFileResult = isImageFile(f);
-          // Detailed detection breakdown
-          const detectionBreakdown = {
-            fileTypeIsImage: f.metadata.fileType === 'image',
-            atTypeIsImageObject: Array.isArray(atType) 
-              ? atType.some(t => String(t).toLowerCase().includes('image'))
-              : String(atType || '').toLowerCase().includes('image'),
-            mimeTypeStartsWithImage: mimeType.startsWith('image/'),
-            hasImageExtension: !!(fileName.match(/\.(jpg|jpeg|png|gif|webp|svg|bmp|ico|heic|heif)$/i)),
-            fileTypeIsOtherWithExt: f.metadata.fileType === 'other' && !!(fileName.match(/\.(jpg|jpeg|png|gif|webp|svg|bmp|ico|heic|heif)$/i))
-          };
-          return {
-            fileId: f.metadata.fileId,
-            fileType: f.metadata.fileType,
-            fileName: fileName,
-            mimeType: mimeType,
-            encodingFormat: f.metadata.encodingFormat,
-            atType: atType,
-            hasTextPost: !!(f.metadata as any).textPost || !!(f.metadata as any).thought,
-            detectedAsImage: isImageFileResult,
-            detectionBreakdown: detectionBreakdown,
-            hasImageExt: !!(fileName.match(/\.(jpg|jpeg|png|gif|webp|svg|bmp|ico|heic|heif)$/i)),
-            // Show ALL metadata keys to debug what fields exist
-            metadataKeys: allMetadataKeys,
-            // Show full metadata object for ALL files to debug
-            fullMetadata: f.metadata
-          };
-        })
-      });
+        }).length} thoughts`);
+      }
       
       return filtered;
     }
@@ -823,14 +785,10 @@ function App() {
       const subscribedSubjects = userState.preferences.subscribedSubjects || [];
       const blockedSubjects = userState.preferences.blockedSubjects || [];
       
-      console.log('🔍 [Curated Feed Filter] Starting filter:', {
-        totalFiles: indexedFiles.length,
-        blockedCategories,
-        blockedCategoriesCount: blockedCategories.length,
-        subscribedFeedIds,
-        subscribedSubjects,
-        blockedSubjects
-      });
+      // Only log in development mode
+      if (process.env.NODE_ENV === 'development') {
+        console.log(`[Curated Feed] Filtering ${indexedFiles.length} files`);
+      }
       
       return indexedFiles.filter(file => {
         // Check if file matches blocked categories
@@ -852,16 +810,9 @@ function App() {
         const normalizedFileCategories = allFileCategories.map(cat => String(cat).toLowerCase().trim());
         const normalizedBlocked = blockedCategories.map(cat => String(cat).toLowerCase().trim());
         
-        // Debug logging for every file
-        if (normalizedBlocked.length > 0) {
-          console.log('🔍 [Curated Feed Filter] Checking file:', {
-            fileId: file.metadata.fileId,
-            fileCategories: normalizedFileCategories,
-            blockedCategories: normalizedBlocked,
-            feedCategories: file.metadata.feedCategories,
-            category: file.metadata.category,
-            willBeFiltered: normalizedFileCategories.some(cat => normalizedBlocked.includes(cat))
-          });
+        // Debug logging only in development
+        if (process.env.NODE_ENV === 'development' && normalizedBlocked.length > 0 && normalizedFileCategories.some(cat => normalizedBlocked.includes(cat))) {
+          console.log(`[Curated Feed] Filtered out file ${file.metadata.fileId} due to blocked category`);
         }
         
         const hasBlockedCategory = normalizedBlocked.length > 0 && 
@@ -869,13 +820,6 @@ function App() {
         
         // Exclude if matches blocked category
         if (hasBlockedCategory) {
-          console.log('🚫 Filtered out file due to blocked category:', {
-            fileId: file.metadata.fileId,
-            fileCategories: normalizedFileCategories,
-            blockedCategories: normalizedBlocked,
-            feedCategories: file.metadata.feedCategories,
-            category: file.metadata.category
-          });
           return false;
         }
         
@@ -1251,22 +1195,10 @@ function App() {
         ? { total: publicFiles.length, hasMore: false }
         : { total: publicFilesResult.total, hasMore: publicFilesResult.hasMore };
       
-      // DEBUG: Log raw file structure to understand metadata format
-      console.log(`[Discover Files] 🔍 ALL RAW FILES FROM API:`, {
-        totalFiles: publicFiles.length,
-        files: publicFiles.map((f: any, idx: number) => ({
-          index: idx,
-          fileId: f?.metadata?.fileId || f?.fileId,
-          fileType: f?.metadata?.fileType || f?.fileType,
-          '@type': f?.metadata?.['@type'] || f?.['@type'],
-          encodingFormat: f?.metadata?.encodingFormat || f?.encodingFormat,
-          mimeType: f?.metadata?.mimeType || f?.mimeType,
-          name: f?.metadata?.name || f?.name,
-          title: f?.metadata?.title || f?.title,
-          fullMetadata: f?.metadata || f,
-          fullRawFile: f
-        }))
-      });
+      // DEBUG: Only log in development mode
+      if (process.env.NODE_ENV === 'development' && publicFiles.length > 0) {
+        console.log(`[Discover Files] Found ${publicFiles.length} files from API`);
+      }
       
       // If user has age ZKP, is over 18, AND has NSFW enabled, also load NSFW index
       let nsfwFiles: IndexedFile[] = [];

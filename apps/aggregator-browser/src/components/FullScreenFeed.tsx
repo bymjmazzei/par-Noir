@@ -635,18 +635,9 @@ export function FullScreenFeed({
           hasImageMimeType
         );
         
-        // Debug logging for image detection in loading section
-        if (hasImageExtension || file.fileType === 'image' || hasImageMimeType) {
-          console.log(`[FullScreenFeed] 🔍 Loading section - Image check for ${fileId}:`, {
-            fileType: file.fileType,
-            fileName: fileNameForImageCheck,
-            hasImageExtension,
-            hasImageMimeType,
-            mimeType: (file as any).mimeType,
-            isTextPost,
-            isImage,
-            willLoad: isImage && !thumbnails.has(fileId)
-          });
+        // Debug logging only in development mode
+        if (process.env.NODE_ENV === 'development' && hasImageExtension && !isImage) {
+          console.warn(`[FullScreenFeed] Image extension detected but not loading: ${fileId}`);
         }
         
         // Check for PDF document with page thumbnails
@@ -681,16 +672,13 @@ export function FullScreenFeed({
 
                 // Only load image if not provided externally or if external map doesn't have this file
                 if (isImage && !thumbnails.has(fileId)) {
-          console.log(`[FullScreenFeed] 🖼️ Attempting to load image for ${fileId}, isImage=${isImage}, hasThumbnail=${thumbnails.has(fileId)}`);
           // Check if external thumbnails has this file
           const hasExternalThumbnail = externalThumbnails && externalThumbnails.has(fileId);
           if (!hasExternalThumbnail) {
-            console.log(`[FullScreenFeed] 🖼️ No external thumbnail, loading image for ${fileId}`);
             try {
               // PRIORITY 1: Check for thumbnailFileId in metadata (fast thumbnail ~200ms)
               const thumbnailFileId = file.thumbnailFileId;
               if (thumbnailFileId) {
-                console.log(`[FullScreenFeed] Loading thumbnail for ${fileId} from thumbnailFileId: ${thumbnailFileId}`);
                 const { PNOAuthService } = await import('../services/pnOAuthService');
                 const apiEndpoint = process.env.REACT_APP_API_ENDPOINT || 'https://api.parnoir.com';
                 const accessToken = await PNOAuthService.getValidAccessToken();
@@ -760,7 +748,6 @@ export function FullScreenFeed({
                     }
                     
                     const thumbnailUrlObj = URL.createObjectURL(thumbnailBlob);
-                    console.log(`✅ [FullScreenFeed] Loaded thumbnail for ${fileId} (fast)`);
                     setThumbnails(prev => {
                       const newMap = new Map(prev);
                       newMap.set(fileId, thumbnailUrlObj);
@@ -1213,19 +1200,10 @@ export function FullScreenFeed({
           fileType: f.metadata.fileType,
           fileName: f.metadata.name || f.metadata.title
         }));
-        const actualSliceStart = Math.max(0, currentIndex - 1);
-        const actualSliceEnd = Math.min(files.length, currentIndex + 3);
-        console.log(`[FullScreenFeed] Total files: ${files.length}, currentIndex: ${currentIndex}`, {
-          allFiles: allFilesWithIndices,
-          sliceStart: actualSliceStart,
-          sliceEnd: actualSliceEnd,
-          filesInSlice: files.slice(actualSliceStart, actualSliceEnd).map((f, idx) => ({
-            actualIndex: actualSliceStart + idx,
-            fileId: f.metadata.fileId,
-            fileType: f.metadata.fileType,
-            fileName: f.metadata.name || f.metadata.title
-          }))
-        });
+        // Only log in development mode
+        if (process.env.NODE_ENV === 'development') {
+          console.log(`[FullScreenFeed] ${files.length} files, currentIndex: ${currentIndex}`);
+        }
         // Show currentIndex and next 2 files (or previous if at start)
         // This ensures we always show at least 3 files when available
         const startIdx = Math.max(0, currentIndex - 1);
@@ -1348,26 +1326,10 @@ export function FullScreenFeed({
                                '';
         const isThoughtFile = /^thought-\d+\.(thought|png)/i.test(thoughtFileName);
         
-        // Debug logging for thoughts to help diagnose flickering (only log once per file)
-        if ((isThoughtFile || hasTextPostData || hasTextFileType) && !thoughtDetectionLogged.current.has(fileId)) {
+        // Debug logging for thoughts (only in development, only log once per file)
+        if (process.env.NODE_ENV === 'development' && (isThoughtFile || hasTextPostData || hasTextFileType) && !thoughtDetectionLogged.current.has(fileId)) {
           thoughtDetectionLogged.current.add(fileId);
-          console.log('[FullScreenFeed] Thought detection:', {
-            fileId,
-            fileName: thoughtFileName,
-            fileDotName: file.name,
-            fileDotTitle: file.title,
-            originalName: (file as any).originalName,
-            metadataOriginalName: indexedFile.metadata?.originalName,
-            metadataName: indexedFile.metadata?.name,
-            isThoughtFile,
-            hasTextPostData,
-            hasTextFileType,
-            fileTypeFromFile,
-            fileTypeFromMetadata,
-            fileTypeFromIndexedFile,
-            actualFileType,
-            textPostData: !!textPostData
-          });
+          console.log(`[FullScreenFeed] Thought detected: ${fileId}`);
         }
         
         // Check if file has media extension (image/video) - if so, prioritize media detection over thought
@@ -1406,26 +1368,18 @@ export function FullScreenFeed({
                   dropShadowOffsetY: 2
                 }
               };
-              console.log('[FullScreenFeed] Created textPostData for thought:', {
-                fileId,
-                content: content.substring(0, 50),
-                isTextPost,
-                hasTextPostData: false,
-                hasTextFileType,
-                isThoughtFile
-              });
+              if (process.env.NODE_ENV === 'development') {
+                console.log(`[FullScreenFeed] Created textPostData for thought: ${fileId}`);
+              }
             }
           }
         }
         
         // If it's a thought but fileType is wrong, log it for debugging
         if (hasTextPostData && !hasTextFileType) {
-          console.warn('[FullScreenFeed] Thought detected by data but fileType is incorrect:', {
-            fileId,
-            fileType: file.fileType,
-            metadataFileType: indexedFile.metadata?.fileType,
-            hasTextPostData: true
-          });
+          if (process.env.NODE_ENV === 'development') {
+            console.warn(`[FullScreenFeed] Thought detected but fileType incorrect: ${fileId}`);
+          }
         }
         
         // Only check for image/video if it's NOT a text post
@@ -1473,73 +1427,21 @@ export function FullScreenFeed({
         const isImageFinal = isTextPost ? false : isImage;
         const isPdfDocFinal = isTextPost ? false : isPdfDoc;
         
-        // Debug logging for image detection (after isImageFinal is defined)
-        if ((file.fileType === 'image' || (file.name || file.title || '').match(/\.(jpg|jpeg|png|gif|webp|svg|bmp|ico)$/i)) && !isImageFinal) {
-          console.warn(`[FullScreenFeed] Image not detected as image:`, {
-            fileId,
-            fileType: file.fileType,
-            fileName: file.name || file.title,
-            isTextPost,
-            isThoughtFile,
-            hasTextPostData,
-            isImage,
-            isImageFinal
-          });
+        // Debug logging for image detection (only in development)
+        if (process.env.NODE_ENV === 'development' && (file.fileType === 'image' || (file.name || file.title || '').match(/\.(jpg|jpeg|png|gif|webp|svg|bmp|ico)$/i)) && !isImageFinal) {
+          console.warn(`[FullScreenFeed] Image not detected: ${fileId}`);
         }
         
-        // Debug logging for ALL files to see what's happening - ESPECIALLY FOR IMAGES
-        const isLikelyImage = file.fileType === 'image' || 
-                             !!(file.name || file.title || '').match(/\.(jpg|jpeg|png|gif|webp|svg|bmp|ico|heic|heif)$/i) ||
-                             hasImageMimeType;
-        
-        if (isLikelyImage) {
-          console.log(`[FullScreenFeed] 🔍 IMAGE FILE DETECTED:`, {
-            fileId,
-            fileType: file.fileType,
-            metadataFileType: indexedFile.metadata?.fileType,
-            fileName: fileNameForMediaCheck,
-            mimeType: mimeType,
-            hasImageExtension,
-            hasImageMimeType,
-            isImage,
-            isImageFinal,
-            isTextPost,
-            hasTextPostData,
-            isThoughtFile,
-            hasTextFileType,
-            thumbnailUrl: thumbnails.get(fileId) ? 'exists' : 'missing',
-            publicToken: file.publicToken ? 'exists' : 'missing',
-            thumbnailFileId: file.thumbnailFileId || 'missing',
-            willRenderImage: isImageFinal && !isPdfDocFinal && !isTextPost && !textPostData,
-            willRenderThought: isTextPost || textPostData
-          });
+        // Debug logging only in development mode
+        if (process.env.NODE_ENV === 'development') {
+          const isLikelyImage = file.fileType === 'image' || 
+                               !!(file.name || file.title || '').match(/\.(jpg|jpeg|png|gif|webp|svg|bmp|ico|heic|heif)$/i) ||
+                               hasImageMimeType;
+          
+          if (isLikelyImage && !isImageFinal) {
+            console.warn(`[FullScreenFeed] Image not rendering: ${fileId} (isTextPost: ${isTextPost})`);
+          }
         }
-        
-        console.log(`[FullScreenFeed] Processing file:`, {
-          fileId,
-          fileType: file.fileType,
-          metadataFileType: indexedFile.metadata?.fileType,
-          fileName: fileNameForMediaCheck,
-          hasImageExt,
-          hasImageExtension,
-          hasVideoExt,
-          hasMediaExt,
-          isImage,
-          isImageFinal,
-          isVideo,
-          isVideoFinal,
-          isPdfDoc,
-          isPdfDocFinal,
-          isTextPost,
-          hasTextPostData,
-          isThoughtFile,
-          hasTextFileType,
-          thumbnailUrl: thumbnails.get(fileId) ? 'exists' : 'missing',
-          willRenderImage: isImageFinal && !isPdfDocFinal && !isTextPost && !textPostData,
-          willRenderVideo: isVideoFinal && !isPdfDocFinal && !isTextPost && !textPostData,
-          willRenderPdf: isPdfDocFinal && !isTextPost && !textPostData,
-          willRenderThought: isTextPost || textPostData
-        });
         
         const fileName = file.name || file.title || 'Untitled';
         // Get creatorId - this is now the pN identifier (set from entry.pnIdentifier during conversion)
