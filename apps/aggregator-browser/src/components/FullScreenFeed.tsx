@@ -617,11 +617,29 @@ export function FullScreenFeed({
           file.fileType === 'video' || 
           !!(file.name || file.title || '').match(/\.(mp4|mov|avi|webm|mkv|flv|wmv)$/i)
         );
+        const fileNameForImageCheck = file.name || file.title || '';
+        const hasImageExtension = !!(fileNameForImageCheck.match(/\.(jpg|jpeg|png|gif|webp|svg|bmp|ico)$/i));
+        const hasImageMimeType = (file as any).mimeType?.startsWith('image/');
         const isImage = !isTextPost && (
           file.fileType === 'image' || 
-          !!(file.name || file.title || '').match(/\.(jpg|jpeg|png|gif|webp|svg|bmp|ico)$/i) ||
-          (file as any).mimeType?.startsWith('image/') // Check mimeType if available
+          (file.fileType === 'other' && hasImageExtension) ||
+          hasImageExtension ||
+          hasImageMimeType
         );
+        
+        // Debug logging for image detection in loading section
+        if (hasImageExtension || file.fileType === 'image' || hasImageMimeType) {
+          console.log(`[FullScreenFeed] 🔍 Loading section - Image check for ${fileId}:`, {
+            fileType: file.fileType,
+            fileName: fileNameForImageCheck,
+            hasImageExtension,
+            hasImageMimeType,
+            mimeType: (file as any).mimeType,
+            isTextPost,
+            isImage,
+            willLoad: isImage && !thumbnails.has(fileId)
+          });
+        }
         
         // Check for PDF document with page thumbnails
         const pdfPageThumbnailIds = indexedFile.metadata?.pdfPageThumbnailIds;
@@ -655,9 +673,11 @@ export function FullScreenFeed({
 
                 // Only load image if not provided externally or if external map doesn't have this file
                 if (isImage && !thumbnails.has(fileId)) {
+          console.log(`[FullScreenFeed] 🖼️ Attempting to load image for ${fileId}, isImage=${isImage}, hasThumbnail=${thumbnails.has(fileId)}`);
           // Check if external thumbnails has this file
           const hasExternalThumbnail = externalThumbnails && externalThumbnails.has(fileId);
           if (!hasExternalThumbnail) {
+            console.log(`[FullScreenFeed] 🖼️ No external thumbnail, loading image for ${fileId}`);
             try {
               // PRIORITY 1: Check for thumbnailFileId in metadata (fast thumbnail ~200ms)
               const thumbnailFileId = file.thumbnailFileId;
@@ -1449,7 +1469,34 @@ export function FullScreenFeed({
           });
         }
         
-        // Debug logging for ALL files to see what's happening
+        // Debug logging for ALL files to see what's happening - ESPECIALLY FOR IMAGES
+        const isLikelyImage = file.fileType === 'image' || 
+                             !!(file.name || file.title || '').match(/\.(jpg|jpeg|png|gif|webp|svg|bmp|ico)$/i) ||
+                             (file as any).mimeType?.startsWith('image/');
+        
+        if (isLikelyImage) {
+          console.log(`[FullScreenFeed] 🔍 IMAGE FILE DETECTED:`, {
+            fileId,
+            fileType: file.fileType,
+            metadataFileType: indexedFile.metadata?.fileType,
+            fileName: fileNameForMediaCheck,
+            mimeType: (file as any).mimeType,
+            hasImageExt,
+            hasImageExtension,
+            isImage,
+            isImageFinal,
+            isTextPost,
+            hasTextPostData,
+            isThoughtFile,
+            hasTextFileType,
+            thumbnailUrl: thumbnails.get(fileId) ? 'exists' : 'missing',
+            publicToken: file.publicToken ? 'exists' : 'missing',
+            thumbnailFileId: file.thumbnailFileId || 'missing',
+            willRenderImage: isImageFinal && !isPdfDocFinal && !isTextPost && !textPostData,
+            willRenderThought: isTextPost || textPostData
+          });
+        }
+        
         console.log(`[FullScreenFeed] Processing file:`, {
           fileId,
           fileType: file.fileType,
