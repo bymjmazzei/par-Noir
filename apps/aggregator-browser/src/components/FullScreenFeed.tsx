@@ -13,6 +13,7 @@ import { ContentRatingBadge } from './ContentRatingBadge';
 import { File } from 'lucide-react';
 import { useVerticalSwipe } from '../hooks/useVerticalSwipe';
 import { useHorizontalSwipe } from '../hooks/useHorizontalSwipe';
+import { useViewportHeightCSS } from '../hooks/useViewportHeight';
 import { formatTimestamp } from '../utils/formatTimestamp';
 import { decryptWithToken, ShareToken } from '../utils/tokenDecryption';
 // ImageSlideshow removed - PDF handling integrated directly into FullScreenFeed
@@ -108,6 +109,9 @@ export function FullScreenFeed({
   // Refs for PDF horizontal scrolling (one per PDF file)
   const pdfScrollRefs = useRef<Map<string, HTMLDivElement>>(new Map());
   const [commentOpacity, setCommentOpacity] = useState<Map<string, number>>(new Map());
+
+  // MOBILE FIX: Use actual viewport height instead of 100vh to account for mobile browser UI
+  const viewportHeightCSS = useViewportHeightCSS(true); // true = exclude bottom nav
 
   // Handle vertical swipe for next/previous media
   const verticalSwipeRef = useVerticalSwipe({
@@ -1145,9 +1149,9 @@ export function FullScreenFeed({
         WebkitOverflowScrolling: 'touch',
         scrollBehavior: 'smooth', // Enable smooth CSS scroll snapping
         scrollSnapType: 'y mandatory', // Ensure snap behavior
-        // Height excludes bottom nav bar (64px) and safe area
-        height: 'calc(100vh - 64px - env(safe-area-inset-bottom, 0px))',
-        maxHeight: 'calc(100vh - 64px - env(safe-area-inset-bottom, 0px))',
+        // MOBILE FIX: Use actual viewport height (excludes mobile browser UI)
+        height: viewportHeightCSS,
+        maxHeight: viewportHeightCSS,
         // Start at top of window
         marginTop: '0',
         paddingTop: '0',
@@ -1467,10 +1471,10 @@ export function FullScreenFeed({
             data-file-id={fileId}
             className="w-full snap-start flex items-center justify-center bg-black relative"
             style={{ 
-              // Height excludes bottom nav bar (64px) and safe area
-              height: 'calc(100vh - 64px - env(safe-area-inset-bottom, 0px))',
-              minHeight: 'calc(100vh - 64px - env(safe-area-inset-bottom, 0px))',
-              maxHeight: 'calc(100vh - 64px - env(safe-area-inset-bottom, 0px))',
+              // MOBILE FIX: Use actual viewport height (excludes mobile browser UI)
+              height: viewportHeightCSS,
+              minHeight: viewportHeightCSS,
+              maxHeight: viewportHeightCSS,
               // Start at top of window
               marginTop: '0',
               paddingTop: '0',
@@ -1631,8 +1635,8 @@ export function FullScreenFeed({
                     src={videoBlobs.get(fileId)!}
                     className="w-full object-contain relative z-10"
                     style={{ 
-                      // Height excludes bottom nav bar (64px) and safe area
-                      maxHeight: 'calc(100vh - 64px - env(safe-area-inset-bottom, 0px))',
+                      // MOBILE FIX: Use actual viewport height (excludes mobile browser UI)
+                      maxHeight: viewportHeightCSS,
                       height: 'auto',
                       width: '100%'
                     }}
@@ -1697,10 +1701,10 @@ export function FullScreenFeed({
                     display: 'flex',
                     flexDirection: 'row',
                     touchAction: 'pan-x pan-y', // Allow horizontal and vertical scrolling
-                    // Height excludes bottom nav bar (64px) and safe area - same as other media tiles
-                    height: 'calc(100vh - 64px - env(safe-area-inset-bottom, 0px))',
-                    minHeight: 'calc(100vh - 64px - env(safe-area-inset-bottom, 0px))',
-                    maxHeight: 'calc(100vh - 64px - env(safe-area-inset-bottom, 0px))',
+                    // MOBILE FIX: Use actual viewport height (excludes mobile browser UI)
+                    height: viewportHeightCSS,
+                    minHeight: viewportHeightCSS,
+                    maxHeight: viewportHeightCSS,
                     // Start at top of window
                     marginTop: '0',
                     paddingTop: '0',

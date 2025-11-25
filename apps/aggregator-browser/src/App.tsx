@@ -35,6 +35,7 @@ import { useKeyboardNavigation } from './hooks/useKeyboardNavigation';
 import { useSwipeGesture } from './hooks/useSwipeGesture';
 import { useVerticalSwipe } from './hooks/useVerticalSwipe';
 import { useHorizontalSwipe } from './hooks/useHorizontalSwipe';
+import { useViewportHeightCSS } from './hooks/useViewportHeight';
 import { useFeedNavigation } from './hooks/useFeedNavigation';
 import { useEngagement } from './hooks/useEngagement';
 import { useToast } from './hooks/useToast';
@@ -226,6 +227,9 @@ function App() {
       showErrorToast('Unlock your pN to view your profile');
     }
   };
+
+  // MOBILE FIX: Use actual viewport height instead of 100vh to account for mobile browser UI
+  const viewportHeightCSS = useViewportHeightCSS(true); // true = exclude bottom nav
 
   // Feed navigation hook
   const { feedHierarchy, getNextFeed, getPreviousFeed, getFeedIndex } = useFeedNavigation(
@@ -3359,7 +3363,7 @@ function App() {
           
           {/* Unified feed view for all profiles */}
           {filteredMeFiles.length > 0 ? (
-            <div className="flex-1" style={{ height: 'calc(100vh - 64px - env(safe-area-inset-bottom, 0px))', maxHeight: 'calc(100vh - 64px - env(safe-area-inset-bottom, 0px))' }}>
+            <div className="flex-1" style={{ height: viewportHeightCSS, maxHeight: viewportHeightCSS }}>
               <FullScreenFeed
                 files={filteredMeFiles}
                 currentIndex={currentFeedIndex}
@@ -3708,7 +3712,7 @@ function App() {
               }
             }}
             className="flex-1"
-            style={{ height: 'calc(100vh - 64px - env(safe-area-inset-bottom, 0px))', maxHeight: 'calc(100vh - 64px - env(safe-area-inset-bottom, 0px))' }}
+            style={{ height: viewportHeightCSS, maxHeight: viewportHeightCSS }}
           >
             {filteredFilesByFeed.length > 0 ? (
               <>
