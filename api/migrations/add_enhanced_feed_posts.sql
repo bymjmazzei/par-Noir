@@ -37,10 +37,78 @@ CREATE TABLE IF NOT EXISTS feed_posts (
   FOREIGN KEY (feed_id) REFERENCES feeds(feed_id) ON DELETE CASCADE
 );
 
--- Create index for faster queries
+-- Add missing columns to feed_posts if table exists but columns don't
+DO $$
+BEGIN
+  -- Add content column if it doesn't exist
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns 
+                 WHERE table_name='feed_posts' AND column_name='content') THEN
+    ALTER TABLE feed_posts ADD COLUMN content TEXT;
+  END IF;
+
+  -- Add media column if it doesn't exist
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns 
+                 WHERE table_name='feed_posts' AND column_name='media') THEN
+    ALTER TABLE feed_posts ADD COLUMN media JSONB;
+  END IF;
+
+  -- Add buttons column if it doesn't exist
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns 
+                 WHERE table_name='feed_posts' AND column_name='buttons') THEN
+    ALTER TABLE feed_posts ADD COLUMN buttons JSONB;
+  END IF;
+
+  -- Add polls column if it doesn't exist
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns 
+                 WHERE table_name='feed_posts' AND column_name='polls') THEN
+    ALTER TABLE feed_posts ADD COLUMN polls JSONB;
+  END IF;
+
+  -- Add forms column if it doesn't exist
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns 
+                 WHERE table_name='feed_posts' AND column_name='forms') THEN
+    ALTER TABLE feed_posts ADD COLUMN forms JSONB;
+  END IF;
+
+  -- Add is_top_post column if it doesn't exist
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns 
+                 WHERE table_name='feed_posts' AND column_name='is_top_post') THEN
+    ALTER TABLE feed_posts ADD COLUMN is_top_post BOOLEAN DEFAULT FALSE;
+  END IF;
+
+  -- Add created_at column if it doesn't exist
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns 
+                 WHERE table_name='feed_posts' AND column_name='created_at') THEN
+    ALTER TABLE feed_posts ADD COLUMN created_at TIMESTAMP DEFAULT NOW();
+  END IF;
+
+  -- Add updated_at column if it doesn't exist
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns 
+                 WHERE table_name='feed_posts' AND column_name='updated_at') THEN
+    ALTER TABLE feed_posts ADD COLUMN updated_at TIMESTAMP DEFAULT NOW();
+  END IF;
+END $$;
+
+-- Create index for faster queries (only if column exists)
 CREATE INDEX IF NOT EXISTS idx_feed_posts_feed_id ON feed_posts(feed_id);
-CREATE INDEX IF NOT EXISTS idx_feed_posts_is_top_post ON feed_posts(is_top_post);
-CREATE INDEX IF NOT EXISTS idx_feed_posts_created_at ON feed_posts(created_at DESC);
+
+-- Create index on is_top_post only if column exists
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM information_schema.columns 
+             WHERE table_name='feed_posts' AND column_name='is_top_post') THEN
+    CREATE INDEX IF NOT EXISTS idx_feed_posts_is_top_post ON feed_posts(is_top_post);
+  END IF;
+END $$;
+
+-- Create index on created_at only if column exists
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM information_schema.columns 
+             WHERE table_name='feed_posts' AND column_name='created_at') THEN
+    CREATE INDEX IF NOT EXISTS idx_feed_posts_created_at ON feed_posts(created_at DESC);
+  END IF;
+END $$;
 
 -- Create feed_subscriptions table if it doesn't exist
 CREATE TABLE IF NOT EXISTS feed_subscriptions (
