@@ -622,8 +622,14 @@ export function FullScreenFeed({
         // Check mimeType in multiple locations and also check encodingFormat
         const mimeType = (file as any).mimeType || indexedFile.metadata?.mimeType || file.encodingFormat || indexedFile.metadata?.encodingFormat || '';
         const hasImageMimeType = mimeType.startsWith('image/');
+        // Check @type field (JSON-LD semantic web field) for ImageObject
+        const atType = file['@type'] || indexedFile.metadata?.['@type'];
+        const isImageObject = Array.isArray(atType) 
+          ? atType.some(t => String(t).toLowerCase().includes('image'))
+          : String(atType || '').toLowerCase().includes('image');
         const isImage = !isTextPost && (
           file.fileType === 'image' || 
+          isImageObject ||
           (file.fileType === 'other' && hasImageExtension) ||
           hasImageExtension ||
           hasImageMimeType
@@ -1439,8 +1445,14 @@ export function FullScreenFeed({
         // Check mimeType in multiple locations and also check encodingFormat (which is the standard field in PublicMetadata)
         const mimeType = (file as any).mimeType || indexedFile.metadata?.mimeType || file.encodingFormat || indexedFile.metadata?.encodingFormat || '';
         const hasImageMimeType = mimeType.startsWith('image/');
+        // Check @type field (JSON-LD semantic web field) for ImageObject
+        const atType = file['@type'] || indexedFile.metadata?.['@type'];
+        const isImageObject = Array.isArray(atType) 
+          ? atType.some(t => String(t).toLowerCase().includes('image'))
+          : String(atType || '').toLowerCase().includes('image');
         const isImage = !isTextPost && (
           file.fileType === 'image' || 
+          isImageObject ||
           hasImageMimeType ||
           (file.fileType === 'other' && hasImageExtension) ||
           hasImageExtension

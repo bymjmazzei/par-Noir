@@ -730,15 +730,23 @@ function App() {
       // This ensures NSFW content never appears in public feed unless explicitly enabled
       const filtered = indexedFiles.filter(shouldShowFile);
       
-      // Helper function to detect images - check fileType, name, title, mimeType, and encodingFormat
+      // Helper function to detect images - check fileType, name, title, mimeType, encodingFormat, and @type
       const isImageFile = (f: IndexedFile): boolean => {
         const fileType = f.metadata.fileType;
         const fileName = f.metadata.name || f.metadata.title || '';
         // Check both mimeType and encodingFormat (encodingFormat is the standard field in PublicMetadata)
         const mimeType = (f.metadata as any).mimeType || f.metadata.encodingFormat || '';
+        // Check @type field (JSON-LD semantic web field)
+        const atType = f.metadata['@type'];
+        const isImageObject = Array.isArray(atType) 
+          ? atType.some(t => String(t).toLowerCase().includes('image'))
+          : String(atType || '').toLowerCase().includes('image');
         
         // Check if fileType is explicitly 'image'
         if (fileType === 'image') return true;
+        
+        // Check if @type indicates ImageObject
+        if (isImageObject) return true;
         
         // Check if mimeType/encodingFormat indicates image
         if (mimeType.startsWith('image/')) return true;
@@ -773,20 +781,23 @@ function App() {
         fileDetails: filtered.map(f => {
           const fileName = f.metadata.name || f.metadata.title || '';
           const mimeType = (f.metadata as any).mimeType || f.metadata.encodingFormat || '';
+          const atType = f.metadata['@type'];
           const allMetadataKeys = Object.keys(f.metadata);
+          const isImageFileResult = isImageFile(f);
           return {
             fileId: f.metadata.fileId,
             fileType: f.metadata.fileType,
             fileName: fileName,
             mimeType: mimeType,
             encodingFormat: f.metadata.encodingFormat,
+            atType: atType,
             hasTextPost: !!(f.metadata as any).textPost || !!(f.metadata as any).thought,
-            detectedAsImage: isImageFile(f),
+            detectedAsImage: isImageFileResult,
             hasImageExt: !!(fileName.match(/\.(jpg|jpeg|png|gif|webp|svg|bmp|ico|heic|heif)$/i)),
             // Show ALL metadata keys to debug what fields exist
             metadataKeys: allMetadataKeys,
-            // Show full metadata object for first file to see structure
-            fullMetadata: filtered.indexOf(f) === 0 ? f.metadata : undefined
+            // Show full metadata object for ALL files to debug
+            fullMetadata: f.metadata
           };
         })
       });
@@ -1228,6 +1239,20 @@ function App() {
       const paginationInfo = Array.isArray(publicFilesResult)
         ? { total: publicFiles.length, hasMore: false }
         : { total: publicFilesResult.total, hasMore: publicFilesResult.hasMore };
+      
+      // DEBUG: Log raw file structure to understand metadata format
+      if (publicFiles.length > 0) {
+        console.log(`[Discover Files] 🔍 Raw files from API (first file):`, {
+          rawFile: publicFiles[0],
+          metadata: publicFiles[0]?.metadata,
+          fileType: publicFiles[0]?.metadata?.fileType,
+          '@type': publicFiles[0]?.metadata?.['@type'],
+          encodingFormat: publicFiles[0]?.metadata?.encodingFormat,
+          mimeType: publicFiles[0]?.metadata?.mimeType,
+          name: publicFiles[0]?.metadata?.name,
+          title: publicFiles[0]?.metadata?.title
+        });
+      }
       
       // If user has age ZKP, is over 18, AND has NSFW enabled, also load NSFW index
       let nsfwFiles: IndexedFile[] = [];
