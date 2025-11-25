@@ -1688,6 +1688,7 @@ export function FullScreenFeed({
                       pdfScrollRefs.current.delete(fileId);
                     }
                   }}
+                  data-pdf-scroll-container="true"
                   className="w-full overflow-x-scroll snap-x snap-mandatory"
                   style={{ 
                     scrollbarWidth: 'none',
@@ -1704,6 +1705,18 @@ export function FullScreenFeed({
                     marginTop: '0',
                     paddingTop: '0',
                     overflowY: 'hidden' // Prevent vertical scrolling
+                  }}
+                  onTouchStart={(e) => {
+                    // Stop PDF horizontal scroll from triggering feed navigation
+                    e.stopPropagation();
+                  }}
+                  onTouchMove={(e) => {
+                    // Stop PDF horizontal scroll from triggering feed navigation
+                    e.stopPropagation();
+                  }}
+                  onTouchEnd={(e) => {
+                    // Stop PDF horizontal scroll from triggering feed navigation
+                    e.stopPropagation();
                   }}
                 >
                   {/* Render all PDF pages in horizontal scrollable container */}
@@ -2125,7 +2138,9 @@ export function FullScreenFeed({
                 maxHeight: expandedCaptions.has(fileId) ? '70%' : 'auto',
                 overflowY: expandedCaptions.has(fileId) ? 'auto' : 'hidden',
                 overflowX: 'hidden',
-                bottom: '0', // Content info is within the media container, which already excludes bottom nav
+                // MOBILE FIX: Add padding-bottom to account for mobile browser UI + bottom nav
+                bottom: '0',
+                paddingBottom: 'calc(64px + env(safe-area-inset-bottom, 0px) + 20px)', // Bottom nav (64px) + safe area + extra padding
                 zIndex: 30 // Ensure it's above media (z-10) and background (z-0)
               }}
             >

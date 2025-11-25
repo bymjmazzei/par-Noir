@@ -151,7 +151,14 @@ export function FeedEngagementSidebar({
   };
 
   return (
-    <div className="absolute right-2 md:right-4 bottom-0 flex flex-col items-center z-20 pointer-events-auto" style={{ gap: '16px', marginBottom: '16px' }}>
+    <div 
+      className="absolute right-2 md:right-4 bottom-0 flex flex-col items-center z-20 pointer-events-auto" 
+      style={{ 
+        gap: '16px', 
+        // MOBILE FIX: Add padding-bottom to account for mobile browser UI + bottom nav
+        marginBottom: 'calc(64px + env(safe-area-inset-bottom, 0px) + 16px)' // Bottom nav (64px) + safe area + original margin
+      }}
+    >
       {/* Creator Profile Icon - Above Like Button */}
       {creatorId && (
         <ProfileActionMenu

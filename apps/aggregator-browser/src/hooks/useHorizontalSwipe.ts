@@ -57,6 +57,14 @@ export function useHorizontalSwipe({
         return; // Touch started outside our element
       }
       
+      // MOBILE FIX: Don't interfere with PDF horizontal scrolling
+      // Check if touch is inside a PDF scroll container
+      const pdfContainer = target.closest('[data-pdf-scroll-container="true"]');
+      if (pdfContainer) {
+        console.log('[useHorizontalSwipe] Touch inside PDF container, ignoring feed navigation');
+        return; // Let PDF handle horizontal scrolling
+      }
+      
       // Don't interfere with button clicks
       if (target.tagName === 'BUTTON' || target.closest('button')) {
         return;
@@ -80,6 +88,12 @@ export function useHorizontalSwipe({
       // Only handle if touching the actual element
       if (element && !element.contains(target)) {
         return;
+      }
+      
+      // MOBILE FIX: Don't interfere with PDF horizontal scrolling
+      const pdfContainer = target.closest('[data-pdf-scroll-container="true"]');
+      if (pdfContainer) {
+        return; // Let PDF handle horizontal scrolling
       }
       
       // Don't interfere with button interactions
@@ -107,6 +121,16 @@ export function useHorizontalSwipe({
       if (!touchStartRef.current || isSwipingRef.current) {
         touchStartRef.current = null;
         return;
+      }
+
+      const target = e.target as HTMLElement;
+      
+      // MOBILE FIX: Don't interfere with PDF horizontal scrolling
+      const pdfContainer = target.closest('[data-pdf-scroll-container="true"]');
+      if (pdfContainer) {
+        console.log('[useHorizontalSwipe] Touch end inside PDF container, ignoring feed navigation');
+        touchStartRef.current = null;
+        return; // Let PDF handle horizontal scrolling
       }
 
       const touch = e.changedTouches[0];
