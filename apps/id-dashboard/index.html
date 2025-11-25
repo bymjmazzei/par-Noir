@@ -44,19 +44,19 @@
     <!-- Content Security Policy - Enhanced Security -->
     <!-- Note: unsafe-inline and unsafe-eval are required for Google OAuth library -->
     <!-- However, we restrict them to only Google domains for better security -->
+    <!-- Note: require-trusted-types-for is removed as it conflicts with unsafe-inline/unsafe-eval needed for Google OAuth -->
     <meta http-equiv="Content-Security-Policy" content="
       default-src 'self';
       script-src 'self' 'unsafe-inline' 'unsafe-eval' https://apis.google.com https://accounts.google.com;
       style-src 'self' 'unsafe-inline' https://fonts.googleapis.com;
       font-src 'self' https://fonts.gstatic.com data:;
       img-src 'self' data: https: blob:;
-      connect-src 'self' https://apis.google.com https://accounts.google.com https://www.googleapis.com https://oauth2.googleapis.com wss: ws:;
+      connect-src 'self' https://api.parnoir.com https://apis.google.com https://accounts.google.com https://www.googleapis.com https://oauth2.googleapis.com wss: ws:;
       frame-src 'self' https://accounts.google.com;
       object-src 'none';
       base-uri 'self';
       form-action 'self' https://accounts.google.com;
       upgrade-insecure-requests;
-      require-trusted-types-for 'script';
     ">
   </head>
   <body>
