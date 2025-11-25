@@ -3601,7 +3601,26 @@ function App() {
                 files={filteredFilesByFeed}
                 key={`feed-${activeFeedId}-${filteredFilesByFeed.length}`}
                 currentIndex={currentFeedIndex}
-                thumbnails={undefined}
+                thumbnails={(() => {
+                  // Build thumbnails map from metadata for public feed files
+                  const publicThumbnails = new Map<string, string>();
+                  filteredFilesByFeed.forEach(file => {
+                    // Try multiple possible thumbnail URL fields
+                    const thumbnailUrl = (file.metadata as any).thumbnail || 
+                                       (file.metadata as any).thumbnailUrl ||
+                                       (file.metadata as any).url ||
+                                       file.metadata.url;
+                    // If no thumbnail URL, construct it from API endpoint
+                    if (!thumbnailUrl && file.metadata.fileId) {
+                      // Construct file URL from API - images can be served directly
+                      const fileUrl = `${apiEndpoint}/api/aggregator/files/${file.metadata.fileId}`;
+                      publicThumbnails.set(file.metadata.fileId, fileUrl);
+                    } else if (thumbnailUrl) {
+                      publicThumbnails.set(file.metadata.fileId, thumbnailUrl);
+                    }
+                  });
+                  return publicThumbnails;
+                })()}
                 videoBlobs={videoBlobs}
                 onIndexChange={setCurrentFeedIndex}
                 onSwipeLeft={handleNextFeed}
