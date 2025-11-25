@@ -1398,25 +1398,32 @@ export function FullScreenFeed({
           });
         }
         
-        // Debug logging for files that should be images (reuse hasImageExt from above)
-        if (file.fileType === 'image' || file.fileType === 'other' || hasImageExt) {
-          console.log(`[FullScreenFeed] Image file detected:`, {
-            fileId,
-            fileType: file.fileType,
-            metadataFileType: indexedFile.metadata?.fileType,
-            fileName: fileNameForMediaCheck,
-            hasImageExt,
-            hasImageExtension,
-            isImage,
-            isImageFinal,
-            isTextPost,
-            hasTextPostData,
-            isThoughtFile,
-            hasMediaExt,
-            thumbnailUrl: thumbnails.get(fileId) ? 'exists' : 'missing',
-            willRender: isImageFinal && !isPdfDocFinal && !isTextPost && !textPostData
-          });
-        }
+        // Debug logging for ALL files to see what's happening
+        console.log(`[FullScreenFeed] Processing file:`, {
+          fileId,
+          fileType: file.fileType,
+          metadataFileType: indexedFile.metadata?.fileType,
+          fileName: fileNameForMediaCheck,
+          hasImageExt,
+          hasImageExtension,
+          hasVideoExt,
+          hasMediaExt,
+          isImage,
+          isImageFinal,
+          isVideo,
+          isVideoFinal,
+          isPdfDoc,
+          isPdfDocFinal,
+          isTextPost,
+          hasTextPostData,
+          isThoughtFile,
+          hasTextFileType,
+          thumbnailUrl: thumbnails.get(fileId) ? 'exists' : 'missing',
+          willRenderImage: isImageFinal && !isPdfDocFinal && !isTextPost && !textPostData,
+          willRenderVideo: isVideoFinal && !isPdfDocFinal && !isTextPost && !textPostData,
+          willRenderPdf: isPdfDocFinal && !isTextPost && !textPostData,
+          willRenderThought: isTextPost || textPostData
+        });
         
         const fileName = file.name || file.title || 'Untitled';
         // Get creatorId - this is now the pN identifier (set from entry.pnIdentifier during conversion)
