@@ -64,6 +64,11 @@ function App() {
   const [indexedFiles, setIndexedFiles] = useState<IndexedFile[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // SCALABILITY: Pagination state for infinite scroll
+  const [currentPage, setCurrentPage] = useState(0);
+  const [hasMore, setHasMore] = useState(true);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const PAGE_SIZE = 50;
   const [searchQuery, setSearchQuery] = useState('');
   const [filters, setFilters] = useState<MetadataFilters>({});
   const [viewingFile, setViewingFile] = useState<{ file: IndexedFile; blob: Blob; url: string } | null>(null);
@@ -107,7 +112,7 @@ function App() {
   ); // Track when feeds were last viewed
   const feedScrollRef = React.useRef<HTMLDivElement>(null); // Ref for feed scroll container
   const videoRefs = React.useRef<Map<string, HTMLVideoElement>>(new Map()); // Store video element refs
-  const discoverFilesRef = useRef<((filters?: MetadataFilters, forceRefresh?: boolean) => Promise<void>) | null>(null); // Ref for discoverFiles function
+  const discoverFilesRef = useRef<((filters?: MetadataFilters, forceRefresh?: boolean, page?: number, append?: boolean) => Promise<void>) | null>(null); // Ref for discoverFiles function
   const generateThumbnailsForImagesRef = useRef<((files: IndexedFile[]) => Promise<void>) | null>(null); // Ref for generateThumbnailsForImages function
   const isDiscoveringRef = useRef<boolean>(false); // Track if discoverFiles is currently running
   const discoverFilesTimeoutRef = useRef<NodeJS.Timeout | null>(null); // Track debounce timeout
@@ -517,9 +522,13 @@ function App() {
     }
     
     // Debounce with longer delay to prevent rate limiting
+    // SCALABILITY: Reset pagination when feed changes
+    setCurrentPage(0);
+    setHasMore(true);
+    
     discoverFilesTimeoutRef.current = setTimeout(() => {
       if (discoverFilesRef.current && !isDiscoveringRef.current) {
-        discoverFilesRef.current();
+        discoverFilesRef.current(undefined, false, 0, false); // Reset to page 0
       }
     }, 500); // Increased delay to 500ms to reduce API calls
     
@@ -530,11 +539,14 @@ function App() {
     };
   }, [activeFeedId, userState.preferences.showNSFW]);
 
-  // Reset feed index when feed changes (unless navigating to a specific file)
+  // Reset feed index and pagination when feed changes (unless navigating to a specific file)
   useEffect(() => {
     // Don't reset if we're navigating to a specific file or if we just navigated to a file
     if (visibleFileId || isNavigatingToFileRef.current || lastNavigatedFileIdRef.current) return;
     setCurrentFeedIndex(0);
+    // SCALABILITY: Reset pagination when feed changes
+    setCurrentPage(0);
+    setHasMore(true);
   }, [activeFeedId, visibleFileId]);
 
   // Track previous viewingCreatorId to detect when profile is first opened
@@ -1028,6 +1040,49 @@ function App() {
     };
   }, [viewMode, indexedFiles, videoBlobs, visibleFileId]);
 
+  // SCALABILITY: Infinite scroll - load more files when user scrolls near bottom
+  useEffect(() => {
+    if (viewMode !== 'feed' || !hasMore || isLoadingMore || isDiscoveringRef.current) return;
+    
+    const observer = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          if (entry.isIntersecting && hasMore && !isLoadingMore && !isDiscoveringRef.current) {
+            console.log('📜 [Infinite Scroll] Loading next page...');
+            setIsLoadingMore(true);
+            discoverFiles(undefined, false, currentPage + 1, true).finally(() => {
+              setIsLoadingMore(false);
+            });
+          }
+        });
+      },
+      {
+        rootMargin: '200px', // Start loading 200px before reaching bottom
+        threshold: 0.1
+      }
+    );
+    
+    // Create or find sentinel element at bottom of feed
+    let sentinel = document.getElementById('feed-infinite-scroll-sentinel');
+    if (!sentinel) {
+      sentinel = document.createElement('div');
+      sentinel.id = 'feed-infinite-scroll-sentinel';
+      sentinel.style.height = '1px';
+      sentinel.style.width = '100%';
+      // Try to append to feed container
+      const feedContainer = document.querySelector('[data-feed-container]') || document.body;
+      feedContainer.appendChild(sentinel);
+    }
+    
+    if (sentinel) {
+      observer.observe(sentinel);
+    }
+    
+    return () => {
+      observer.disconnect();
+    };
+  }, [viewMode, hasMore, isLoadingMore, currentPage, discoverFiles]);
+
   // Auto-refresh metadata when Google Drive token becomes available
   useEffect(() => {
     const checkToken = () => {
@@ -1035,7 +1090,7 @@ function App() {
       if (token) {
         console.log('✅ Google Drive token found - will scan pN folders');
         if (discoverFilesRef.current) {
-          discoverFilesRef.current();
+          discoverFilesRef.current(undefined, false, 0, false); // Reset to page 0
         }
       }
     };
@@ -1048,7 +1103,7 @@ function App() {
       if (e.key === 'google_drive_token' && e.newValue) {
         console.log('✅ Google Drive token updated - refreshing metadata');
         if (discoverFilesRef.current) {
-          discoverFilesRef.current();
+          discoverFilesRef.current(undefined, false, 0, false); // Reset to page 0
         }
       }
     });
@@ -1058,16 +1113,25 @@ function App() {
     };
   }, []);
 
-  const discoverFiles = useCallback(async (searchFilters?: MetadataFilters, forceRefresh: boolean = false) => {
-    // Prevent duplicate simultaneous calls
-    if (isDiscoveringRef.current && !forceRefresh) {
+  const discoverFiles = useCallback(async (
+    searchFilters?: MetadataFilters, 
+    forceRefresh: boolean = false,
+    page: number = 0,
+    append: boolean = false
+  ) => {
+    // Prevent duplicate simultaneous calls (unless appending for pagination)
+    if (isDiscoveringRef.current && !forceRefresh && !append) {
       console.log('⏸️ Discover files already in progress, skipping duplicate call');
       return;
     }
     
     try {
       isDiscoveringRef.current = true;
-      setIsLoading(true);
+      if (!append) {
+        setIsLoading(true);
+      } else {
+        setIsLoadingMore(true);
+      }
       setError(null);
       
       // No Google Drive connection needed - just query central aggregator API
@@ -1081,10 +1145,13 @@ function App() {
                             activeFeedId === 'discovery';
       const isNicheCategoryFeed = activeFeedId.startsWith('niche-');
       
-      const finalFilters: MetadataFilters = {
+      const finalFilters: MetadataFilters & { limit?: number; offset?: number } = {
         ...filters,
         ...searchFilters,
         ...(searchQuery ? { tags: searchQuery.split(',').map(t => t.trim()).filter(Boolean) } : {}),
+        // SCALABILITY: Add pagination parameters
+        limit: PAGE_SIZE,
+        offset: page * PAGE_SIZE,
         // DON'T apply rating filter to public feed - public feed shows all public files
         // Only apply rating filter to non-public feeds (but not virtual feeds)
         // NSFW filtering is handled in filteredFilesByFeed based on showNSFW preference
@@ -1098,19 +1165,32 @@ function App() {
           : { feedId: activeFeedId })
       };
       
-      // Discover public files from all users (with optional force refresh)
-      const publicFiles = await metadataIndexService.discoverFiles(finalFilters, forceRefresh);
+      // Discover public files from all users (with pagination support)
+      const publicFilesResult = await metadataIndexService.discoverFiles(finalFilters, forceRefresh);
+      
+      // Handle paginated response (could be array for backward compat or object with pagination info)
+      const publicFiles = Array.isArray(publicFilesResult) 
+        ? publicFilesResult 
+        : publicFilesResult.files;
+      const paginationInfo = Array.isArray(publicFilesResult)
+        ? { total: publicFiles.length, hasMore: false }
+        : { total: publicFilesResult.total, hasMore: publicFilesResult.hasMore };
       
       // If user has age ZKP, is over 18, AND has NSFW enabled, also load NSFW index
       let nsfwFiles: IndexedFile[] = [];
       if (userState.preferences.hasAgeZKP && userState.preferences.isOver18 && userState.preferences.showNSFW) {
         try {
           const { CentralMetadataAggregator } = await import('./services/storage/CentralMetadataAggregator');
-          const nsfwEntries = await CentralMetadataAggregator.fetchNSFWIndex({
+          const nsfwResult = await CentralMetadataAggregator.fetchNSFWIndex({
             tags: finalFilters?.tags,
             fileType: finalFilters?.fileType,
-            authorDid: finalFilters?.authorDid
+            authorDid: finalFilters?.authorDid,
+            limit: PAGE_SIZE,      // SCALABILITY: Pagination support
+            offset: page * PAGE_SIZE // SCALABILITY: Pagination support
           }, forceRefresh);
+          
+          // Handle paginated response
+          const nsfwEntries = nsfwResult.files || [];
           
           // Transform NSFW entries to IndexedFile format (same as public files)
           nsfwFiles = nsfwEntries
@@ -1168,52 +1248,40 @@ function App() {
         return bDate - aDate;
       });
       
-      // Only update state if content actually changed (compare fileIds to avoid unnecessary re-renders)
+      // SCALABILITY: Handle pagination - append or replace based on page number
       setIndexedFiles(prev => {
-        const prevFileIds = new Set(prev.map(f => f.metadata.fileId));
-        const newFileIds = new Set(discoveredFiles.map(f => f.metadata.fileId));
-        
-        // Find files that were removed
-        const removedFileIds = [...prevFileIds].filter(id => !newFileIds.has(id));
-        if (removedFileIds.length > 0) {
-          // Cleanup thumbnails for deleted files
-          cleanupThumbnailsForFiles(removedFileIds);
+        if (page === 0 || !append) {
+          // First page or force refresh - replace all files
+          return discoveredFiles;
+        } else {
+          // Subsequent pages - append new files (avoid duplicates)
+          const existingIds = new Set(prev.map(f => f.metadata.fileId));
+          const newFiles = discoveredFiles.filter(f => !existingIds.has(f.metadata.fileId));
+          return [...prev, ...newFiles];
         }
-        
-        // Check if sets are equal (same fileIds)
-        if (prevFileIds.size === newFileIds.size && 
-            [...prevFileIds].every(id => newFileIds.has(id)) &&
-            [...newFileIds].every(id => prevFileIds.has(id))) {
-          // Same fileIds - check if any file content changed
-          const filesChanged = discoveredFiles.some(newFile => {
-            const prevFile = prev.find(f => f.metadata.fileId === newFile.metadata.fileId);
-            if (!prevFile) return true; // New file
-            // Compare key properties that might change
-            return JSON.stringify(prevFile.metadata.engagement) !== JSON.stringify(newFile.metadata.engagement) ||
-                   prevFile.metadata.isTopPost !== newFile.metadata.isTopPost;
-          });
-          
-          if (!filesChanged) {
-            // No changes - return previous array to prevent re-render
-            return prev;
-          }
-        }
-        
-        // Content changed - update state
-        return discoveredFiles;
       });
       
-      console.log(`✅ Discovered ${discoveredFiles.length} public files`);
+      // Update pagination state
+      setHasMore(paginationInfo.hasMore);
+      setCurrentPage(page);
       
-      // Generate thumbnails for image files (called separately to avoid TDZ)
+      console.log(`✅ Discovered ${discoveredFiles.length} public files (page ${page}, hasMore: ${paginationInfo.hasMore})`);
+      
+      // Generate thumbnails for image files (only for newly loaded files)
       if (generateThumbnailsForImagesRef.current) {
-        generateThumbnailsForImagesRef.current(discoveredFiles);
+        const filesToThumbnail = page === 0 || !append 
+          ? discoveredFiles 
+          : discoveredFiles.filter(f => !indexedFiles.some(existing => existing.metadata.fileId === f.metadata.fileId));
+        generateThumbnailsForImagesRef.current(filesToThumbnail);
       }
       
-      // Pre-load video blobs for feed mode (if in feed mode)
+      // Pre-load video blobs for feed mode (if in feed mode) - only for newly loaded files
       const currentViewMode = viewMode || 'grid';
       if (currentViewMode === 'feed') {
-        for (const indexedFile of discoveredFiles) {
+        const filesToPreload = page === 0 || !append 
+          ? discoveredFiles 
+          : discoveredFiles.filter(f => !indexedFiles.some(existing => existing.metadata.fileId === f.metadata.fileId));
+        for (const indexedFile of filesToPreload) {
           const file = indexedFile.metadata;
           const isVideo = file.fileType === 'video' || 
                          !!(file.name || file.title || '').match(/\.(mp4|mov|avi|webm|mkv|flv|wmv)$/i);
@@ -1246,9 +1314,10 @@ function App() {
       console.error('Failed to discover files:', err);
     } finally {
       setIsLoading(false);
+      setIsLoadingMore(false);
       isDiscoveringRef.current = false;
     }
-  }, [filters, searchQuery, userState.preferences.showNSFW, activeFeedId, viewMode]);
+  }, [filters, searchQuery, userState.preferences.showNSFW, activeFeedId, viewMode, indexedFiles]);
   
   // Store discoverFiles in ref so it can be called from OAuth callback
   useEffect(() => {
@@ -1261,13 +1330,15 @@ function App() {
   useEffect(() => {
     if (!hasInitializedRef.current && discoverFilesRef.current) {
       hasInitializedRef.current = true;
-      discoverFilesRef.current();
+      discoverFilesRef.current(undefined, false, 0, false); // Initial load - page 0
     }
   }, []);
 
 
   const handleSearch = () => {
-    discoverFiles();
+    setCurrentPage(0); // SCALABILITY: Reset pagination on search
+    setHasMore(true);
+    discoverFiles(undefined, false, 0, false);
   };
 
   const handleFilterChange = (key: keyof MetadataFilters, value: any) => {
@@ -1276,7 +1347,9 @@ function App() {
       [key]: value || undefined
     };
     setFilters(newFilters);
-    discoverFiles(newFilters);
+    setCurrentPage(0); // SCALABILITY: Reset pagination on filter change
+    setHasMore(true);
+    discoverFiles(newFilters, false, 0, false);
   };
 
   // Generate thumbnails for image and video files by decrypting and resizing/extracting frames
@@ -3395,8 +3468,10 @@ function App() {
               setActiveBottomTab('home');
             }}
             onUploadComplete={() => {
-              // Refresh files after upload
-              discoverFiles(undefined, true);
+              // Refresh files after upload - reset to page 0
+              setCurrentPage(0);
+              setHasMore(true);
+              discoverFiles(undefined, true, 0, false);
             }}
           />
         </div>
@@ -3465,7 +3540,9 @@ function App() {
                 onClick={() => {
                   setSearchQuery('');
                   setFilters({});
-                  discoverFiles({});
+                  setCurrentPage(0); // SCALABILITY: Reset pagination
+                  setHasMore(true);
+                  discoverFiles({}, false, 0, false);
                 }}
                 className="px-4 py-2 bg-neutral-700 text-white text-sm font-medium rounded-lg hover:bg-neutral-600 transition-colors"
               >
@@ -3512,7 +3589,11 @@ function App() {
               </div>
               <div className="flex items-center space-x-4">
                   <button
-                    onClick={() => discoverFiles(undefined, true)}
+                    onClick={() => {
+                      setCurrentPage(0); // SCALABILITY: Reset pagination
+                      setHasMore(true);
+                      discoverFiles(undefined, true, 0, false);
+                    }}
                     disabled={isLoading}
                     className="px-4 py-2 bg-neutral-700 text-white text-sm font-medium rounded-lg hover:bg-neutral-600 transition-colors disabled:opacity-50 flex items-center space-x-2"
                   >
@@ -3686,6 +3767,19 @@ function App() {
                 }}
                 indexedFiles={stableIndexedFiles}
               />
+              {/* SCALABILITY: Infinite scroll sentinel - Intersection Observer watches this */}
+              {viewMode === 'feed' && hasMore && (
+                <div 
+                  id="feed-infinite-scroll-sentinel" 
+                  data-feed-container="true"
+                  style={{ height: '1px', width: '100%' }}
+                />
+              )}
+              {viewMode === 'feed' && isLoadingMore && (
+                <div className="flex items-center justify-center py-4">
+                  <p className="text-text-secondary text-sm">Loading more...</p>
+                </div>
+              )}
             ) : (
               <div className="h-full flex items-center justify-center text-white">
                 <EmptyState
@@ -3951,8 +4045,10 @@ function App() {
             feeds={feeds}
             onClose={() => setAddingToFeedFile(null)}
             onAdded={(feedId) => {
-              // Refresh files to show updated feed membership
-              discoverFiles(undefined, true);
+              // Refresh files to show updated feed membership - reset to page 0
+              setCurrentPage(0);
+              setHasMore(true);
+              discoverFiles(undefined, true, 0, false);
               setAddingToFeedFile(null);
             }}
           />
@@ -4006,8 +4102,10 @@ function App() {
             feeds={feeds}
             onClose={() => setShowUploadModal(false)}
             onUploadComplete={() => {
-              // Refresh files after upload
-              discoverFiles(undefined, true);
+              // Refresh files after upload - reset to page 0
+              setCurrentPage(0);
+              setHasMore(true);
+              discoverFiles(undefined, true, 0, false);
             }}
           />
         )}

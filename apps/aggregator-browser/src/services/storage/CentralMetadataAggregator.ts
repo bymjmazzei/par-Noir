@@ -66,13 +66,19 @@ export class CentralMetadataAggregator {
    * Includes request deduplication to prevent duplicate simultaneous calls
    */
   static async fetchAggregatedIndex(
-    filters?: { tags?: string[]; fileType?: string; authorDid?: string },
+    filters?: { 
+      tags?: string[]; 
+      fileType?: string; 
+      authorDid?: string;
+      limit?: number;      // SCALABILITY: Pagination support
+      offset?: number;     // SCALABILITY: Pagination support
+    },
     forceRefresh: boolean = false
-  ): Promise<CentralIndexEntry[]> {
-    // Create a unique key for this request to deduplicate
-    const requestKey = JSON.stringify(filters || {});
+  ): Promise<{ files: CentralIndexEntry[]; total: number; hasMore: boolean }> {
+    // Create a unique key for this request to deduplicate (include pagination params)
+    const requestKey = JSON.stringify({ ...filters, limit: filters?.limit, offset: filters?.offset });
     
-    // If there's already a pending request with the same filters, return it
+    // If there's already a pending request with the same filters and pagination, return it
     if (!forceRefresh && this.pendingRequests.has(requestKey)) {
       console.log('⏸️ [CentralMetadataAggregator] Request already in progress, reusing promise');
       return this.pendingRequests.get(requestKey)!;
@@ -96,9 +102,15 @@ export class CentralMetadataAggregator {
    * Internal method to fetch with exponential backoff retry for 429 errors
    */
   private static async _fetchWithRetry(
-    filters?: { tags?: string[]; fileType?: string; authorDid?: string },
+    filters?: { 
+      tags?: string[]; 
+      fileType?: string; 
+      authorDid?: string;
+      limit?: number;
+      offset?: number;
+    },
     retryCount: number = 0
-  ): Promise<CentralIndexEntry[]> {
+  ): Promise<{ files: CentralIndexEntry[]; total: number; hasMore: boolean }> {
     const maxRetries = 3;
     const baseDelay = 1000; // 1 second
     
@@ -108,8 +120,10 @@ export class CentralMetadataAggregator {
       if (filters?.tags) params.append('tags', filters.tags.join(','));
       if (filters?.fileType) params.append('fileType', filters.fileType);
       if (filters?.authorDid) params.append('authorDid', filters.authorDid);
+      if (filters?.limit !== undefined) params.append('limit', filters.limit.toString());      // SCALABILITY: Pagination
+      if (filters?.offset !== undefined) params.append('offset', filters.offset.toString());    // SCALABILITY: Pagination
 
-      console.log(`🔍 [CentralMetadataAggregator] Fetching from API: ${this.API_ENDPOINT}${this.CENTRAL_INDEX_PATH}`);
+      console.log(`🔍 [CentralMetadataAggregator] Fetching from API: ${this.API_ENDPOINT}${this.CENTRAL_INDEX_PATH}?${params.toString()}`);
 
       const response = await fetch(
         `${this.API_ENDPOINT}${this.CENTRAL_INDEX_PATH}?${params.toString()}`,
@@ -122,8 +136,8 @@ export class CentralMetadataAggregator {
       );
 
       if (response.ok) {
-        const data: CentralIndexResponse = await response.json();
-        console.log(`✅ [CentralMetadataAggregator] Received ${data.files?.length || 0} files from API`);
+        const data: CentralIndexResponse & { total?: number; hasMore?: boolean } = await response.json();
+        console.log(`✅ [CentralMetadataAggregator] Received ${data.files?.length || 0} files from API (total: ${data.totalFiles || data.total || 'unknown'}, hasMore: ${data.hasMore || false})`);
         
         // Warn if NSFW files are found in public index (should never happen)
         if (data.files && data.files.length > 0) {
@@ -136,7 +150,11 @@ export class CentralMetadataAggregator {
           });
         }
         
-        return data.files || [];
+        return {
+          files: data.files || [],
+          total: data.totalFiles || data.total || 0,
+          hasMore: data.hasMore || false
+        };
       } else if (response.status === 429 && retryCount < maxRetries) {
         // Rate limited - retry with exponential backoff
         const delay = baseDelay * Math.pow(2, retryCount);
@@ -151,8 +169,8 @@ export class CentralMetadataAggregator {
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
       console.error('❌ [CentralMetadataAggregator] Failed to fetch from API:', errorMessage);
-      // Return empty array - no fallback cache
-      return [];
+      // Return empty result - no fallback cache
+      return { files: [], total: 0, hasMore: false };
     }
   }
 
@@ -210,13 +228,19 @@ export class CentralMetadataAggregator {
    * Same structure as public index but filters for NSFW content
    */
   static async fetchNSFWIndex(
-    filters?: { tags?: string[]; fileType?: string; authorDid?: string },
+    filters?: { 
+      tags?: string[]; 
+      fileType?: string; 
+      authorDid?: string;
+      limit?: number;      // SCALABILITY: Pagination support
+      offset?: number;     // SCALABILITY: Pagination support
+    },
     forceRefresh: boolean = false
-  ): Promise<CentralIndexEntry[]> {
-    // Create a unique key for this request to deduplicate
-    const requestKey = `nsfw-${JSON.stringify(filters || {})}`;
+  ): Promise<{ files: CentralIndexEntry[]; total: number; hasMore: boolean }> {
+    // Create a unique key for this request to deduplicate (include pagination params)
+    const requestKey = `nsfw-${JSON.stringify({ ...filters, limit: filters?.limit, offset: filters?.offset })}`;
     
-    // If there's already a pending request with the same filters, return it
+    // If there's already a pending request with the same filters and pagination, return it
     if (!forceRefresh && this.pendingRequests.has(requestKey)) {
       console.log('⏸️ [CentralMetadataAggregator] NSFW request already in progress, reusing promise');
       return this.pendingRequests.get(requestKey)!;
@@ -240,9 +264,15 @@ export class CentralMetadataAggregator {
    * Internal method to fetch NSFW index with exponential backoff retry for 429 errors
    */
   private static async _fetchNSFWWithRetry(
-    filters?: { tags?: string[]; fileType?: string; authorDid?: string },
+    filters?: { 
+      tags?: string[]; 
+      fileType?: string; 
+      authorDid?: string;
+      limit?: number;
+      offset?: number;
+    },
     retryCount: number = 0
-  ): Promise<CentralIndexEntry[]> {
+  ): Promise<{ files: CentralIndexEntry[]; total: number; hasMore: boolean }> {
     const maxRetries = 3;
     const baseDelay = 1000; // 1 second
     
@@ -252,9 +282,11 @@ export class CentralMetadataAggregator {
       if (filters?.tags) params.append('tags', filters.tags.join(','));
       if (filters?.fileType) params.append('fileType', filters.fileType);
       if (filters?.authorDid) params.append('authorDid', filters.authorDid);
+      if (filters?.limit !== undefined) params.append('limit', filters.limit.toString());      // SCALABILITY: Pagination
+      if (filters?.offset !== undefined) params.append('offset', filters.offset.toString());    // SCALABILITY: Pagination
 
       const nsfwIndexPath = '/api/aggregator/nsfw-index';
-      console.log(`🔍 [CentralMetadataAggregator] Fetching NSFW index from API: ${this.API_ENDPOINT}${nsfwIndexPath}`);
+      console.log(`🔍 [CentralMetadataAggregator] Fetching NSFW index from API: ${this.API_ENDPOINT}${nsfwIndexPath}?${params.toString()}`);
 
       const response = await fetch(
         `${this.API_ENDPOINT}${nsfwIndexPath}?${params.toString()}`,
@@ -267,9 +299,13 @@ export class CentralMetadataAggregator {
       );
 
       if (response.ok) {
-        const data: CentralIndexResponse = await response.json();
-        console.log(`✅ [CentralMetadataAggregator] Received ${data.files?.length || 0} NSFW files from API`);
-        return data.files || [];
+        const data: CentralIndexResponse & { total?: number; hasMore?: boolean } = await response.json();
+        console.log(`✅ [CentralMetadataAggregator] Received ${data.files?.length || 0} NSFW files from API (total: ${data.totalFiles || data.total || 'unknown'}, hasMore: ${data.hasMore || false})`);
+        return {
+          files: data.files || [],
+          total: data.totalFiles || data.total || 0,
+          hasMore: data.hasMore || false
+        };
       } else if (response.status === 429 && retryCount < maxRetries) {
         // Rate limited - retry with exponential backoff
         const delay = baseDelay * Math.pow(2, retryCount);
@@ -279,14 +315,14 @@ export class CentralMetadataAggregator {
       } else {
         const errorText = await response.text().catch(() => 'Unknown error');
         console.error(`❌ [CentralMetadataAggregator] NSFW index API returned ${response.status}:`, errorText);
-        // Return empty array if 403/401 (not eligible) or other errors
-        return [];
+        // Return empty result if 403/401 (not eligible) or other errors
+        return { files: [], total: 0, hasMore: false };
       }
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
       console.error('❌ [CentralMetadataAggregator] Failed to fetch NSFW index from API:', errorMessage);
-      // Return empty array - no fallback cache
-      return [];
+      // Return empty result - no fallback cache
+      return { files: [], total: 0, hasMore: false };
     }
   }
 }

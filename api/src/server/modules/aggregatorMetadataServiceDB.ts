@@ -88,6 +88,16 @@ export class AggregatorMetadataServiceDB {
       });
 
       await this.syncFileVisibilityOverrides(validatedMetadata.fileId, validatedMetadata.indexingPermissions);
+      
+      // SCALABILITY: Invalidate cache when metadata is added/updated
+      try {
+        const { invalidateIndexCache } = await import('../utils/cache');
+        await invalidateIndexCache();
+        console.log(`🗑️ [submitMetadata] Invalidated index cache after metadata update`);
+      } catch (error) {
+        console.warn('⚠️ [submitMetadata] Cache invalidation failed (non-critical):', error);
+        // Continue even if cache invalidation fails
+      }
     } catch (error) {
       console.error(`❌ Failed to submit metadata for file ${validatedMetadata.fileId}:`, error);
       throw error;
@@ -123,6 +133,16 @@ export class AggregatorMetadataServiceDB {
 
       if (removed) {
         console.log(`🗑️ Removed metadata for file: ${fileIdOrBackendFileId}`);
+        
+        // SCALABILITY: Invalidate cache when metadata is removed
+        try {
+          const { invalidateIndexCache } = await import('../utils/cache');
+          await invalidateIndexCache();
+          console.log(`🗑️ [removeMetadata] Invalidated index cache after metadata removal`);
+        } catch (error) {
+          console.warn('⚠️ [removeMetadata] Cache invalidation failed (non-critical):', error);
+          // Continue even if cache invalidation fails
+        }
       } else {
         console.log(`ℹ️ File ${fileIdOrBackendFileId} was not found in database metadata index`);
       }
@@ -147,7 +167,9 @@ export class AggregatorMetadataServiceDB {
     fileType?: string;
     authorDid?: string;
     indexerId?: string;
-  }): Promise<CentralIndexEntry[]> {
+    limit?: number;
+    offset?: number;
+  }): Promise<{ files: CentralIndexEntry[]; total: number; hasMore: boolean }> {
     const db = getDatabasePool();
 
     try {
@@ -211,10 +233,63 @@ export class AggregatorMetadataServiceDB {
 
       query += ` ORDER BY am.updated_at DESC`;
 
+      // SCALABILITY: Add pagination support
+      const limit = filters?.limit || 50;
+      const offset = filters?.offset || 0;
+      
+      // Get total count before pagination (for pagination info)
+      // Note: This count doesn't include JS filters (tags, authorDid) for performance
+      const countQuery = `
+        SELECT COUNT(*) as count
+        FROM aggregator_metadata am
+        WHERE am.metadata->>'isPublic' = 'true'
+        AND (
+          am.metadata->>'isNSFW' IS NULL 
+          OR am.metadata->>'isNSFW' = 'false'
+          OR am.metadata->>'isNSFW' = 'False'
+          OR am.metadata->>'isNSFW' = 'FALSE'
+          OR (am.metadata->>'isNSFW')::text = 'false'
+        )
+        AND NOT (
+          am.metadata->>'isNSFW' = 'true'
+          OR am.metadata->>'isNSFW' = 'True'
+          OR am.metadata->>'isNSFW' = 'TRUE'
+          OR (am.metadata->'isNSFW')::boolean = true
+        )
+        ${filters?.fileType ? `AND am.metadata->>'fileType' = $1` : ''}
+        ${filters?.indexerId ? `AND (
+          am.metadata->'indexingPermissions' IS NULL
+          OR am.metadata->'indexingPermissions'->>'mode' IS NULL
+          OR (
+            am.metadata->'indexingPermissions'->>'mode' = 'all'
+            AND NOT (COALESCE(am.metadata->'indexingPermissions'->'blocked', '[]'::jsonb) ? $${filters?.fileType ? '2' : '1'})
+          )
+          OR (
+            am.metadata->'indexingPermissions'->>'mode' = 'custom'
+            AND (COALESCE(am.metadata->'indexingPermissions'->'allowed', '[]'::jsonb) ? $${filters?.fileType ? '2' : '1'})
+            AND NOT (COALESCE(am.metadata->'indexingPermissions'->'blocked', '[]'::jsonb) ? $${filters?.fileType ? '2' : '1'})
+          )
+        )` : ''}
+      `;
+      const countParams: any[] = [];
+      if (filters?.fileType) countParams.push(filters.fileType);
+      if (filters?.indexerId) countParams.push(filters.indexerId);
+      
+      const countResult = await db.query(countQuery, countParams);
+      const total = parseInt(countResult.rows[0].count, 10);
+
+      // Add pagination to main query (fetch limit+1 to check hasMore)
+      query += ` LIMIT $${paramIndex} OFFSET $${paramIndex + 1}`;
+      params.push(limit + 1); // Fetch one extra to check hasMore
+      params.push(offset);
+      paramIndex += 2;
+
       const result = await db.query(query, params);
+      const hasMore = result.rows.length > limit;
+      const rowsToProcess = result.rows.slice(0, limit); // Only process the requested amount
       
       // Check if any NSFW files slipped through the query (should never happen)
-      result.rows.forEach((row: any) => {
+      rowsToProcess.forEach((row: any) => {
         const metadata = row.metadata || {};
         const isNSFW = metadata.isNSFW;
         const isNSFWString = String(isNSFW || '').toLowerCase();
@@ -225,7 +300,7 @@ export class AggregatorMetadataServiceDB {
         }
       });
       
-      let entries: CentralIndexEntry[] = result.rows.map(row => {
+      let entries: CentralIndexEntry[] = rowsToProcess.map(row => {
         const metadata = row.metadata as PublicMetadata & { feedIds?: string[] };
         // Add feedIds to metadata if they exist
         if (row.feed_ids && row.feed_ids.length > 0) {
@@ -283,9 +358,9 @@ export class AggregatorMetadataServiceDB {
       // 2. User deletes file (DELETE endpoint removes from database)
       // 3. User disconnects cloud (handled by disconnect logic)
       // No need for complex validation - database is source of truth
-      console.log(`📤 [getPublicMetadata] Returning ${entries.length} files from database (isPublic = true)`);
+      console.log(`📤 [getPublicMetadata] Returning ${entries.length} files from database (isPublic = true, limit=${limit}, offset=${offset}, hasMore=${hasMore})`);
       
-      return entries;
+      return { files: entries, total, hasMore };
     } catch (error) {
       console.error('❌ Failed to get public metadata:', error);
       throw error;
@@ -303,7 +378,9 @@ export class AggregatorMetadataServiceDB {
     fileType?: string;
     authorDid?: string;
     indexerId?: string;
-  }): Promise<CentralIndexEntry[]> {
+    limit?: number;
+    offset?: number;
+  }): Promise<{ files: CentralIndexEntry[]; total: number; hasMore: boolean }> {
     const db = getDatabasePool();
 
     try {
@@ -387,9 +464,9 @@ export class AggregatorMetadataServiceDB {
         });
       }
 
-      console.log(`📤 [getNSFWMetadata] Returning ${entries.length} NSFW files from database (isPublic = true AND isNSFW = true)`);
+      console.log(`📤 [getNSFWMetadata] Returning ${entries.length} NSFW files from database (isPublic = true AND isNSFW = true, limit=${limit}, offset=${offset}, hasMore=${hasMore})`);
       
-      return entries;
+      return { files: entries, total, hasMore };
     } catch (error) {
       console.error('❌ Failed to get NSFW metadata:', error);
       throw error;
@@ -732,7 +809,22 @@ export class AggregatorMetadataServiceDB {
     fileType?: string;
     authorDid?: string;
     indexerId?: string;
-  }): Promise<CentralIndexResponse> {
+    limit?: number;
+    offset?: number;
+  }): Promise<CentralIndexResponse & { total: number; hasMore: boolean }> {
+    // SCALABILITY: Check cache first
+    try {
+      const { getCachedIndex } = await import('../utils/cache');
+      const cached = await getCachedIndex(filters);
+      if (cached) {
+        console.log(`✅ [getIndexResponse] Cache hit for filters:`, filters);
+        return cached;
+      }
+    } catch (error) {
+      console.warn('⚠️ [getIndexResponse] Cache check failed (non-critical):', error);
+      // Continue to database query if cache fails
+    }
+    
     // AUTOMATIC CLEANUP: Use public index files as source of truth
     // Remove any files from database that aren't in the public index files
     console.log(`🔍 [getIndexResponse] Starting cleanup before returning files...`);
@@ -743,16 +835,30 @@ export class AggregatorMetadataServiceDB {
       // Continue even if cleanup fails - still return results
     }
     
-    let files = await this.getPublicMetadata(filters);
-    console.log(`📤 [getIndexResponse] Returning ${files.length} file(s) after cleanup`);
+    const result = await this.getPublicMetadata(filters);
+    console.log(`📤 [getIndexResponse] Returning ${result.files.length} file(s) after cleanup`);
     
     const stats = await this.getStats();
 
-    return {
-      files,
+    const response = {
+      files: result.files,
       updatedAt: stats.lastUpdated,
-      totalFiles: files.length
+      totalFiles: result.total,  // Total matching files
+      total: result.total,        // Alias for consistency
+      hasMore: result.hasMore     // Whether more pages exist
     };
+    
+    // SCALABILITY: Cache the response (5 minutes TTL)
+    try {
+      const { setCachedIndex } = await import('../utils/cache');
+      await setCachedIndex(filters, response, 300); // 5 minutes
+      console.log(`💾 [getIndexResponse] Cached response for filters:`, filters);
+    } catch (error) {
+      console.warn('⚠️ [getIndexResponse] Cache set failed (non-critical):', error);
+      // Continue even if cache fails
+    }
+
+    return response;
   }
 
   /**
@@ -764,18 +870,22 @@ export class AggregatorMetadataServiceDB {
     fileType?: string;
     authorDid?: string;
     indexerId?: string;
-  }): Promise<CentralIndexResponse> {
+    limit?: number;
+    offset?: number;
+  }): Promise<CentralIndexResponse & { total: number; hasMore: boolean }> {
     console.log(`🔍 [getNSFWIndexResponse] Fetching NSFW files...`);
     
-    let files = await this.getNSFWMetadata(filters);
-    console.log(`📤 [getNSFWIndexResponse] Returning ${files.length} NSFW file(s)`);
+    const result = await this.getNSFWMetadata(filters);
+    console.log(`📤 [getNSFWIndexResponse] Returning ${result.files.length} NSFW file(s)`);
     
     const stats = await this.getStats();
 
     return {
-      files,
+      files: result.files,
       updatedAt: stats.lastUpdated,
-      totalFiles: files.length
+      totalFiles: result.total,  // Total matching files
+      total: result.total,        // Alias for consistency
+      hasMore: result.hasMore     // Whether more pages exist
     };
   }
 
