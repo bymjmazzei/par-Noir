@@ -2142,8 +2142,10 @@ export function FullScreenFeed({
                 maxHeight: expandedCaptions.has(fileId) ? '70%' : 'auto',
                 overflowY: expandedCaptions.has(fileId) ? 'auto' : 'hidden',
                 overflowX: 'hidden',
-                // MOBILE FIX: Position right above bottom nav (64px = h-16)
-                bottom: '64px',
+                // MOBILE FIX: Position at bottom of container (container already accounts for bottom nav)
+                // Add safe area padding only
+                bottom: '0',
+                paddingBottom: 'env(safe-area-inset-bottom, 0px)',
                 zIndex: 30 // Ensure it's above media (z-10) and background (z-0)
               }}
             >
