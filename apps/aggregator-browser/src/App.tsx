@@ -1043,14 +1043,15 @@ function App() {
   // SCALABILITY: Infinite scroll - load more files when user scrolls near bottom
   useEffect(() => {
     if (viewMode !== 'feed' || !hasMore || isLoadingMore || isDiscoveringRef.current) return;
+    if (!discoverFilesRef.current) return; // Wait for discoverFiles to be initialized
     
     const observer = new IntersectionObserver(
       (entries) => {
         entries.forEach((entry) => {
-          if (entry.isIntersecting && hasMore && !isLoadingMore && !isDiscoveringRef.current) {
+          if (entry.isIntersecting && hasMore && !isLoadingMore && !isDiscoveringRef.current && discoverFilesRef.current) {
             console.log('📜 [Infinite Scroll] Loading next page...');
             setIsLoadingMore(true);
-            discoverFiles(undefined, false, currentPage + 1, true).finally(() => {
+            discoverFilesRef.current(undefined, false, currentPage + 1, true).finally(() => {
               setIsLoadingMore(false);
             });
           }
@@ -1081,7 +1082,7 @@ function App() {
     return () => {
       observer.disconnect();
     };
-  }, [viewMode, hasMore, isLoadingMore, currentPage, discoverFiles]);
+  }, [viewMode, hasMore, isLoadingMore, currentPage]);
 
   // Auto-refresh metadata when Google Drive token becomes available
   useEffect(() => {
