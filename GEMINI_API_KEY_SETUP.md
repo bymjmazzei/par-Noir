@@ -10,8 +10,10 @@
 Your Gemini API key has been added to your `.env` file:
 
 ```
-VITE_GEMINI_API_KEY=AIzaSyBbUwbfoUnkttrXJiZJIqQtJcZzZK94Hy4
+VITE_GEMINI_API_KEY=your_gemini_api_key_here
 ```
+
+**Note:** Replace `your_gemini_api_key_here` with your actual API key from https://aistudio.google.com/
 
 ---
 

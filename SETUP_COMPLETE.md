@@ -3,7 +3,7 @@
 ## Automatically Configured:
 
 1. ✅ **Gemini API Key** - Already set in `apps/id-dashboard/.env`
-   - `VITE_GEMINI_API_KEY=AIzaSyBbUwbfoUnkttrXJiZJIqQtJcZzZK94Hy4`
+   - `VITE_GEMINI_API_KEY=your_gemini_api_key_here` (configured locally)
 
 2. ✅ **Frontend API Endpoint** - Added to `apps/id-dashboard/.env`
    - `VITE_API_ENDPOINT=https://api.parnoir.com`
