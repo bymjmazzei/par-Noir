@@ -2142,9 +2142,9 @@ export function FullScreenFeed({
                 maxHeight: expandedCaptions.has(fileId) ? '70%' : 'auto',
                 overflowY: expandedCaptions.has(fileId) ? 'auto' : 'hidden',
                 overflowX: 'hidden',
-                // MOBILE FIX: Add padding-bottom to account for mobile browser UI + bottom nav
+                // MOBILE FIX: Add padding-bottom to account for bottom nav + safe area (window.innerHeight already excludes browser UI)
                 bottom: '0',
-                paddingBottom: 'calc(64px + env(safe-area-inset-bottom, 0px) + 20px)', // Bottom nav (64px) + safe area + extra padding
+                paddingBottom: 'calc(64px + env(safe-area-inset-bottom, 0px))', // Bottom nav (64px) + safe area only
                 zIndex: 30 // Ensure it's above media (z-10) and background (z-0)
               }}
             >

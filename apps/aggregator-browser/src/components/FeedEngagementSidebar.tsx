@@ -155,8 +155,8 @@ export function FeedEngagementSidebar({
       className="absolute right-2 md:right-4 bottom-0 flex flex-col items-center z-20 pointer-events-auto" 
       style={{ 
         gap: '16px', 
-        // MOBILE FIX: Add padding-bottom to account for mobile browser UI + bottom nav
-        marginBottom: 'calc(64px + env(safe-area-inset-bottom, 0px) + 16px)' // Bottom nav (64px) + safe area + original margin
+        // MOBILE FIX: Add margin-bottom to account for bottom nav + safe area (window.innerHeight already excludes browser UI)
+        marginBottom: 'calc(64px + env(safe-area-inset-bottom, 0px))' // Bottom nav (64px) + safe area only
       }}
     >
       {/* Creator Profile Icon - Above Like Button */}
