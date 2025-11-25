@@ -881,6 +881,28 @@ export class GoogleDriveBackend extends AbstractStorageBackend {
       throw new Error('Not connected to Google Drive');
     }
 
+    // NEW: Pre-upload content moderation check (Gemini AI)
+    try {
+      const { geminiModerationService } = await import('../../services/ai/GeminiModerationService');
+      const moderationCheck = await geminiModerationService.checkGoogleDriveCompliance(file);
+      
+      if (!moderationCheck.safe) {
+        const reason = moderationCheck.reason || 'Content violates Google Drive policies';
+        const violations = moderationCheck.violations?.join(', ') || 'Unknown violations';
+        throw new Error(`Content policy violation: ${reason}. Violations: ${violations}`);
+      }
+      
+      console.log('✅ [GoogleDriveBackend] Content moderation check passed');
+    } catch (error) {
+      // If moderation service fails, check if it's a policy violation or service error
+      if (error instanceof Error && error.message.includes('Content policy violation')) {
+        // Policy violation - block upload
+        throw error;
+      }
+      // Service error - log warning but allow upload (fail open)
+      console.warn('⚠️ [GoogleDriveBackend] Moderation check unavailable, allowing upload:', error);
+    }
+
     // Extract pN identifier from metadata if provided
     const pnIdentifier = metadata?.pnIdentifier;
 
