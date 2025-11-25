@@ -1736,6 +1736,10 @@ class ProductionServer {
     const { setupFeedRoutes } = await import('./server/modules/feedRoutes');
     setupFeedRoutes(this.app);
 
+    // Widget Routes - Feed Widgets and Public Index
+    const { setupWidgetRoutes } = await import('./server/modules/widgetRoutes');
+    setupWidgetRoutes(this.app);
+
     // Coinbase Commerce Webhook Handler
     const { CoinbaseWebhookHandler } = await import('./server/modules/coinbaseWebhookHandler');
     this.app.post('/api/webhooks/coinbase', express.raw({ type: 'application/json' }), (req: Request, res: Response) => {
