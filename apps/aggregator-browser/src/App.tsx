@@ -3710,6 +3710,7 @@ function App() {
             style={{ height: 'calc(100vh - 64px - env(safe-area-inset-bottom, 0px))', maxHeight: 'calc(100vh - 64px - env(safe-area-inset-bottom, 0px))' }}
           >
             {filteredFilesByFeed.length > 0 ? (
+              <>
               <FullScreenFeed
                 files={filteredFilesByFeed}
                 key={`feed-${activeFeedId}-${filteredFilesByFeed.length}`}
@@ -3780,6 +3781,7 @@ function App() {
                   <p className="text-text-secondary text-sm">Loading more...</p>
                 </div>
               )}
+            </>
             ) : (
               <div className="h-full flex items-center justify-center text-white">
                 <EmptyState
