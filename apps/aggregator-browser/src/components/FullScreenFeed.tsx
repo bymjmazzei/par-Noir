@@ -80,9 +80,16 @@ export function FullScreenFeed({
   const thoughtDetectionLogged = useRef<Set<string>>(new Set()); // Track which thoughts we've logged to reduce console spam
   
   // Sync external thumbnails/videoBlobs when they change
+  // Merge instead of replace to preserve PDF thumbnails loaded internally
   useEffect(() => {
     if (externalThumbnails) {
-      setThumbnails(externalThumbnails);
+      setThumbnails(prev => {
+        const merged = new Map(prev);
+        externalThumbnails.forEach((url, fileId) => {
+          merged.set(fileId, url);
+        });
+        return merged;
+      });
     }
   }, [externalThumbnails]);
   
