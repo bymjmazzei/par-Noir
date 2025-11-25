@@ -584,15 +584,34 @@ export function FullScreenFeed({
                             (file as any)?.thought ||
                             (indexedFile as any)?.textPost ||
                             (indexedFile as any)?.thought;
-        const hasTextFileType = file.fileType === 'text' || 
-                               file.fileType === 'thought' ||
-                               indexedFile.metadata?.fileType === 'text' || 
-                               indexedFile.metadata?.fileType === 'thought';
-        const isThoughtFile = (file.name && (/^thought-\d+\.thought/i.test(file.name) || /^thought-\d+\.png/i.test(file.name))) ||
-                              (file.title && (/^thought-\d+\.thought/i.test(file.title) || /^thought-\d+\.png/i.test(file.title)));
-        // IMPORTANT: Prioritize hasTextPostData and hasTextFileType FIRST (same as render logic)
-        // This ensures thoughts are detected consistently and don't flicker
-        const isTextPost = !!textPostData || hasTextFileType || isThoughtFile;
+        
+        // Check fileType in ALL possible locations (file.fileType, indexedFile.metadata.fileType, etc.)
+        const fileTypeFromFile = file.fileType;
+        const fileTypeFromMetadata = indexedFile.metadata?.fileType;
+        const fileTypeFromIndexedFile = (indexedFile as any)?.fileType;
+        const actualFileType = fileTypeFromFile || fileTypeFromMetadata || fileTypeFromIndexedFile;
+        
+        const hasTextFileType = actualFileType === 'text' || actualFileType === 'thought';
+        
+        // Check for thought filename pattern - check filename in multiple locations
+        const thoughtFileName = file.name || 
+                               file.title || 
+                               (file as any).originalName ||
+                               indexedFile.metadata?.originalName ||
+                               indexedFile.metadata?.name ||
+                               '';
+        const isThoughtFile = /^thought-\d+\.(thought|png)/i.test(thoughtFileName);
+        
+        // Check if file has media extension (image/video) - if so, prioritize media detection over thought
+        const fileNameForMediaCheck = file.name || file.title || '';
+        const hasImageExt = !!(fileNameForMediaCheck.match(/\.(jpg|jpeg|png|gif|webp|svg|bmp|ico)$/i));
+        const hasVideoExt = !!(fileNameForMediaCheck.match(/\.(mp4|mov|avi|webm|mkv|flv|wmv)$/i));
+        const hasMediaExt = hasImageExt || hasVideoExt;
+        
+        // If we have textPost/thought data OR fileType is 'text'/'thought', it's DEFINITELY a thought
+        // BUT: If file has media extension and is NOT a thought file pattern, prioritize media over thought
+        // This prevents images/videos from being incorrectly detected as thoughts
+        const isTextPost = (!!textPostData || hasTextFileType || isThoughtFile) && (!hasMediaExt || isThoughtFile);
         
         const isVideo = !isTextPost && (
           file.fileType === 'video' || 
