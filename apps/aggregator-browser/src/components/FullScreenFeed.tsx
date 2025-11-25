@@ -2000,11 +2000,24 @@ export function FullScreenFeed({
                 )
               };
 
+              const thumbnailUrl = thumbnails.get(fileId);
+              if (!thumbnailUrl) {
+                // This shouldn't happen due to check above, but handle gracefully
+                return (
+                  <div className="w-full h-full flex items-center justify-center">
+                    <div className="flex flex-col items-center justify-center text-neutral-500">
+                      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-400 mb-2"></div>
+                      <span className="text-xs">Loading image...</span>
+                    </div>
+                  </div>
+                );
+              }
+
               return (
                 <>
                   {/* Blurred background image */}
                   <img
-                    src={thumbnails.get(fileId)!}
+                    src={thumbnailUrl}
                     alt=""
                     className="absolute"
                     style={backgroundStyle}
@@ -2012,6 +2025,7 @@ export function FullScreenFeed({
                     decoding="async"
                     onError={(e) => {
                       console.error(`[FullScreenFeed] Background image failed to load for ${fileId}:`, e);
+                      console.error(`[FullScreenFeed] Thumbnail URL:`, thumbnailUrl);
                     }}
                   />
                   {/* Main image container - centers image */}
@@ -2031,11 +2045,11 @@ export function FullScreenFeed({
                         el.addEventListener('error', (err) => {
                           console.error(`[FullScreenFeed] Image failed to load for ${fileId}:`, err);
                           console.error(`[FullScreenFeed] Image src:`, el.src);
-                          console.error(`[FullScreenFeed] Thumbnail URL:`, thumbnails.get(fileId));
+                          console.error(`[FullScreenFeed] Thumbnail URL:`, thumbnailUrl);
                         });
                       }
                     }}
-                    src={thumbnails.get(fileId)!}
+                    src={thumbnailUrl}
                     alt={fileName}
                     style={{ 
                         // Fill container while maintaining aspect ratio - use max of width/height
