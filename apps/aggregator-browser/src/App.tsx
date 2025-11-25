@@ -883,33 +883,8 @@ function App() {
     return filtered;
   }, [indexedFiles, activeFeedId, userState.preferences.subscribedFeedIds, userState.preferences.blockedCategories, userState.preferences.subscribedSubjects, userState.preferences.blockedSubjects, userState.preferences.showNSFW, userState.preferences.hasAgeZKP, userState.preferences.isOver18, userState.isUnlocked, feeds]);
 
-  // Build thumbnails map for public feed files (images only, not PDFs)
-  // PDFs don't need thumbnails - they load directly from the API
-  const publicFeedThumbnails = useMemo(() => {
-    const publicThumbnails = new Map<string, string>();
-    const apiEndpoint = import.meta.env.VITE_API_ENDPOINT || 'https://api.parnoir.com';
-    filteredFilesByFeed.forEach(file => {
-      // Only add thumbnails for images, not PDFs
-      const isPdf = file.metadata.fileType === 'document' || 
-                    (file.metadata.name || file.metadata.title || '').match(/\.pdf$/i);
-      if (isPdf) return; // Skip PDFs - they load differently
-      
-      // Try multiple possible thumbnail URL fields
-      const thumbnailUrl = (file.metadata as any).thumbnail || 
-                         (file.metadata as any).thumbnailUrl ||
-                         (file.metadata as any).url ||
-                         file.metadata.url;
-      // If no thumbnail URL, construct it from API endpoint
-      if (!thumbnailUrl && file.metadata.fileId) {
-        // Construct file URL from API - images can be served directly
-        const fileUrl = `${apiEndpoint}/api/aggregator/files/${file.metadata.fileId}`;
-        publicThumbnails.set(file.metadata.fileId, fileUrl);
-      } else if (thumbnailUrl) {
-        publicThumbnails.set(file.metadata.fileId, thumbnailUrl);
-      }
-    });
-    return publicThumbnails;
-  }, [filteredFilesByFeed]);
+  // Public feed now uses the same thumbnails state as Me page
+  // generateThumbnailsForImages already populates thumbnails for all discovered files
 
   // Navigation handlers (memoized)
 
@@ -3629,7 +3604,7 @@ function App() {
                 files={filteredFilesByFeed}
                 key={`feed-${activeFeedId}-${filteredFilesByFeed.length}`}
                 currentIndex={currentFeedIndex}
-                thumbnails={publicFeedThumbnails}
+                thumbnails={thumbnails}
                 videoBlobs={videoBlobs}
                 onIndexChange={setCurrentFeedIndex}
                 onSwipeLeft={handleNextFeed}

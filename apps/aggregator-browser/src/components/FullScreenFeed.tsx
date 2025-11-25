@@ -1156,12 +1156,14 @@ export function FullScreenFeed({
           fileType: f.metadata.fileType,
           fileName: f.metadata.name || f.metadata.title
         }));
+        const actualSliceStart = Math.max(0, currentIndex - 1);
+        const actualSliceEnd = Math.min(files.length, currentIndex + 3);
         console.log(`[FullScreenFeed] Total files: ${files.length}, currentIndex: ${currentIndex}`, {
           allFiles: allFilesWithIndices,
-          sliceStart: Math.max(0, currentIndex - 1),
-          sliceEnd: Math.min(files.length, currentIndex + 2),
-          filesInSlice: files.slice(Math.max(0, currentIndex - 1), Math.min(files.length, currentIndex + 2)).map((f, idx) => ({
-            actualIndex: Math.max(0, currentIndex - 1) + idx,
+          sliceStart: actualSliceStart,
+          sliceEnd: actualSliceEnd,
+          filesInSlice: files.slice(actualSliceStart, actualSliceEnd).map((f, idx) => ({
+            actualIndex: actualSliceStart + idx,
             fileId: f.metadata.fileId,
             fileType: f.metadata.fileType,
             fileName: f.metadata.name || f.metadata.title
