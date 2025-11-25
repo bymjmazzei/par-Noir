@@ -1740,6 +1740,10 @@ class ProductionServer {
     const { setupWidgetRoutes } = await import('./server/modules/widgetRoutes');
     setupWidgetRoutes(this.app);
 
+    // Subdomain Routes
+    const { setupSubdomainRoutes } = await import('./server/modules/subdomainRoutes');
+    setupSubdomainRoutes(this.app);
+
     // Coinbase Commerce Webhook Handler
     const { CoinbaseWebhookHandler } = await import('./server/modules/coinbaseWebhookHandler');
     this.app.post('/api/webhooks/coinbase', express.raw({ type: 'application/json' }), (req: Request, res: Response) => {

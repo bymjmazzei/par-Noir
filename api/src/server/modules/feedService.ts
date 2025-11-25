@@ -763,7 +763,7 @@ export class FeedService {
   /**
    * Convert database row to Feed object
    */
-  private static rowToFeed(row: FeedRow): Feed {
+  static rowToFeed(row: FeedRow): Feed {
     // Only return feeds for paid tiers (feed or self-hosted)
     // Free tier creators don't have feeds in the Feed interface
     const creatorTier = row.creator_tier === 'free' ? 'feed' : row.creator_tier as 'free' | 'feed' | 'self-hosted';
