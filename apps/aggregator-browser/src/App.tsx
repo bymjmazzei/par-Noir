@@ -784,6 +784,16 @@ function App() {
           const atType = f.metadata['@type'];
           const allMetadataKeys = Object.keys(f.metadata);
           const isImageFileResult = isImageFile(f);
+          // Detailed detection breakdown
+          const detectionBreakdown = {
+            fileTypeIsImage: f.metadata.fileType === 'image',
+            atTypeIsImageObject: Array.isArray(atType) 
+              ? atType.some(t => String(t).toLowerCase().includes('image'))
+              : String(atType || '').toLowerCase().includes('image'),
+            mimeTypeStartsWithImage: mimeType.startsWith('image/'),
+            hasImageExtension: !!(fileName.match(/\.(jpg|jpeg|png|gif|webp|svg|bmp|ico|heic|heif)$/i)),
+            fileTypeIsOtherWithExt: f.metadata.fileType === 'other' && !!(fileName.match(/\.(jpg|jpeg|png|gif|webp|svg|bmp|ico|heic|heif)$/i))
+          };
           return {
             fileId: f.metadata.fileId,
             fileType: f.metadata.fileType,
@@ -793,6 +803,7 @@ function App() {
             atType: atType,
             hasTextPost: !!(f.metadata as any).textPost || !!(f.metadata as any).thought,
             detectedAsImage: isImageFileResult,
+            detectionBreakdown: detectionBreakdown,
             hasImageExt: !!(fileName.match(/\.(jpg|jpeg|png|gif|webp|svg|bmp|ico|heic|heif)$/i)),
             // Show ALL metadata keys to debug what fields exist
             metadataKeys: allMetadataKeys,
@@ -1241,18 +1252,21 @@ function App() {
         : { total: publicFilesResult.total, hasMore: publicFilesResult.hasMore };
       
       // DEBUG: Log raw file structure to understand metadata format
-      if (publicFiles.length > 0) {
-        console.log(`[Discover Files] 🔍 Raw files from API (first file):`, {
-          rawFile: publicFiles[0],
-          metadata: publicFiles[0]?.metadata,
-          fileType: publicFiles[0]?.metadata?.fileType,
-          '@type': publicFiles[0]?.metadata?.['@type'],
-          encodingFormat: publicFiles[0]?.metadata?.encodingFormat,
-          mimeType: publicFiles[0]?.metadata?.mimeType,
-          name: publicFiles[0]?.metadata?.name,
-          title: publicFiles[0]?.metadata?.title
-        });
-      }
+      console.log(`[Discover Files] 🔍 ALL RAW FILES FROM API:`, {
+        totalFiles: publicFiles.length,
+        files: publicFiles.map((f: any, idx: number) => ({
+          index: idx,
+          fileId: f?.metadata?.fileId || f?.fileId,
+          fileType: f?.metadata?.fileType || f?.fileType,
+          '@type': f?.metadata?.['@type'] || f?.['@type'],
+          encodingFormat: f?.metadata?.encodingFormat || f?.encodingFormat,
+          mimeType: f?.metadata?.mimeType || f?.mimeType,
+          name: f?.metadata?.name || f?.name,
+          title: f?.metadata?.title || f?.title,
+          fullMetadata: f?.metadata || f,
+          fullRawFile: f
+        }))
+      });
       
       // If user has age ZKP, is over 18, AND has NSFW enabled, also load NSFW index
       let nsfwFiles: IndexedFile[] = [];
