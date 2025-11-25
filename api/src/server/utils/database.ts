@@ -79,6 +79,32 @@ export async function initializeDatabase(): Promise<void> {
       ON aggregator_metadata(updated_at DESC)
     `);
 
+    // SCALABILITY: Composite index for common query patterns (public files with fileType and date sorting)
+    await db.query(`
+      CREATE INDEX IF NOT EXISTS idx_metadata_public_type_date 
+      ON aggregator_metadata((metadata->>'isPublic'), (metadata->>'fileType'), updated_at DESC)
+      WHERE metadata->>'isPublic' = 'true'
+    `);
+
+    // SCALABILITY: Partial index for public files only (most common query - faster than full table scan)
+    await db.query(`
+      CREATE INDEX IF NOT EXISTS idx_metadata_public_only 
+      ON aggregator_metadata(updated_at DESC)
+      WHERE metadata->>'isPublic' = 'true'
+    `);
+
+    // SCALABILITY: GIN index for JSONB array searches (keywords/tags filtering)
+    await db.query(`
+      CREATE INDEX IF NOT EXISTS idx_metadata_keywords_gin 
+      ON aggregator_metadata USING GIN((metadata->'keywords'))
+    `);
+
+    // SCALABILITY: GIN index for feedCategories array searches
+    await db.query(`
+      CREATE INDEX IF NOT EXISTS idx_metadata_feed_category
+      ON aggregator_metadata USING GIN((metadata->'feedCategories'))
+    `);
+
     // Third-party indexers catalog
     await db.query(`
       CREATE TABLE IF NOT EXISTS third_party_indexers (

@@ -13,9 +13,11 @@ This document tracks the implementation of scalability improvements to handle mi
 
 - **Database Optimization**: Indexes for faster queries
 - **Backend Pagination**: Limit/offset pagination for API endpoints
-- **Frontend Pagination**: Load more functionality
+- **Frontend Pagination**: Infinite scroll (designed for this, may not be fully implemented yet)
 - **Caching Layer**: Redis caching for API responses
 - **Performance Optimizations**: Virtual scrolling, lazy loading
+
+**Note:** The UI is designed for infinite scroll - we're implementing pagination to support this properly at scale.
 
 ---
 
@@ -333,6 +335,8 @@ private static async _fetchWithRetry(
 
 **File:** `apps/aggregator-browser/src/App.tsx`
 
+**Note:** The UI is designed for infinite scroll. We'll implement pagination to support this properly.
+
 **Add State:**
 
 ```typescript
@@ -363,7 +367,7 @@ const discoverFiles = async (page: number = 0, append: boolean = false) => {
       if (page === 0 || !append) {
         return publicFiles.files;  // Replace on first page
       } else {
-        // Append on subsequent pages
+        // Append on subsequent pages (for infinite scroll)
         const existingIds = new Set(prev.map(f => f.metadata.fileId));
         const newFiles = publicFiles.files.filter(f => !existingIds.has(f.metadata.fileId));
         return [...prev, ...newFiles];
@@ -378,19 +382,31 @@ const discoverFiles = async (page: number = 0, append: boolean = false) => {
 };
 ```
 
-**Add Load More Handler:**
+**Add Infinite Scroll Handler:**
 
 ```typescript
-const loadMore = async () => {
-  if (!hasMore || isLoadingMore || isDiscoveringRef.current) return;
+// Use Intersection Observer to detect when user scrolls near bottom
+useEffect(() => {
+  if (viewMode !== 'feed' || !hasMore || isLoadingMore) return;
   
-  setIsLoadingMore(true);
-  try {
-    await discoverFiles(currentPage + 1, true);
-  } finally {
-    setIsLoadingMore(false);
-  }
-};
+  const observer = new IntersectionObserver(
+    (entries) => {
+      if (entries[0].isIntersecting && hasMore && !isLoadingMore) {
+        setIsLoadingMore(true);
+        discoverFiles(currentPage + 1, true).finally(() => {
+          setIsLoadingMore(false);
+        });
+      }
+    },
+    { rootMargin: '200px' } // Start loading 200px before reaching bottom
+  );
+  
+  // Observe a sentinel element at the bottom of the feed
+  const sentinel = document.getElementById('feed-sentinel');
+  if (sentinel) observer.observe(sentinel);
+  
+  return () => observer.disconnect();
+}, [hasMore, isLoadingMore, currentPage, viewMode]);
 ```
 
 **Status:** ⏳ Pending
