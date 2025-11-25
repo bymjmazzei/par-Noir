@@ -1879,7 +1879,12 @@ export function FullScreenFeed({
                     const currentPage = pdfCurrentPage.get(fileId) || 0;
                     return (
                       <div 
-                        className="absolute bottom-6 left-1/2 transform -translate-x-1/2 z-50 flex items-center gap-2 pointer-events-none"
+                        className="absolute left-1/2 transform -translate-x-1/2 z-50 flex items-center gap-2 pointer-events-none"
+                        style={{
+                          // MOBILE FIX: Position close to bottom nav with safe area padding
+                          bottom: '0',
+                          paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 8px)'
+                        }}
                       >
                         {Array.from({ length: totalPages }, (_, index) => {
                           const isActive = currentPage === index;
@@ -2132,23 +2137,29 @@ export function FullScreenFeed({
             )}
 
             {/* Content Info Overlay - Split into two halves */}
-            <div 
-              className={`absolute left-0 right-20 p-4 md:p-6 transition-all duration-300 z-30 ${
-                expandedCaptions.has(fileId) 
-                  ? 'bottom-0' 
-                  : 'bottom-0'
-              }`}
-              style={{ 
-                maxHeight: expandedCaptions.has(fileId) ? '70%' : 'auto',
-                overflowY: expandedCaptions.has(fileId) ? 'auto' : 'hidden',
-                overflowX: 'hidden',
-                // MOBILE FIX: Position at bottom of container (container already accounts for bottom nav)
-                // Add safe area padding only
-                bottom: '0',
-                paddingBottom: 'env(safe-area-inset-bottom, 0px)',
-                zIndex: 30 // Ensure it's above media (z-10) and background (z-0)
-              }}
-            >
+            {(() => {
+              // Check if this is a PDF with multiple pages (pagination circles will be shown)
+              const pdfPageThumbnailIds = indexedFile.metadata?.pdfPageThumbnailIds;
+              const totalPages = pdfPageThumbnailIds?.length || 0;
+              const hasPaginationCircles = isPdfDocFinal && totalPages > 1;
+              
+              return (
+                <div 
+                  className={`absolute left-0 right-20 p-4 md:p-6 transition-all duration-300 z-30 ${
+                    expandedCaptions.has(fileId) 
+                      ? 'bottom-0' 
+                      : 'bottom-0'
+                  }`}
+                  style={{ 
+                    maxHeight: expandedCaptions.has(fileId) ? '70%' : 'auto',
+                    overflowY: expandedCaptions.has(fileId) ? 'auto' : 'hidden',
+                    overflowX: 'hidden',
+                    // MOBILE FIX: Position above pagination circles if they exist (48px), otherwise at bottom (0)
+                    bottom: hasPaginationCircles ? '48px' : '0',
+                    paddingBottom: 'env(safe-area-inset-bottom, 0px)',
+                    zIndex: 30 // Ensure it's above media (z-10) and background (z-0)
+                  }}
+                >
               <div className="flex gap-4">
                 {/* Left Half - Title & Caption */}
                 <div className="flex-1">
@@ -2329,6 +2340,8 @@ export function FullScreenFeed({
                 </div>
               </div>
             </div>
+              );
+            })()}
           </div>
         );
       })}
