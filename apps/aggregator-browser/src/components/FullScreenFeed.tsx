@@ -1887,9 +1887,17 @@ export function FullScreenFeed({
                               }}
                               className={`transition-all duration-200 rounded-full cursor-pointer pointer-events-auto ${
                                 isActive
-                                  ? 'w-2.5 h-2.5 bg-white'
-                                  : 'w-2 h-2 bg-white/40 hover:bg-white/60'
+                                  ? 'bg-white'
+                                  : 'bg-white/40 hover:bg-white/60'
                               }`}
+                              style={{
+                                width: isActive ? '10px' : '8px',
+                                height: isActive ? '10px' : '8px',
+                                minWidth: isActive ? '10px' : '8px',
+                                minHeight: isActive ? '10px' : '8px',
+                                maxWidth: isActive ? '10px' : '8px',
+                                maxHeight: isActive ? '10px' : '8px'
+                              }}
                               aria-label={`Go to page ${index + 1}`}
                             />
                           );
