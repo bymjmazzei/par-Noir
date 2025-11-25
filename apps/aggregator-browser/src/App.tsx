@@ -1173,6 +1173,13 @@ function App() {
         const prevFileIds = new Set(prev.map(f => f.metadata.fileId));
         const newFileIds = new Set(discoveredFiles.map(f => f.metadata.fileId));
         
+        // Find files that were removed
+        const removedFileIds = [...prevFileIds].filter(id => !newFileIds.has(id));
+        if (removedFileIds.length > 0) {
+          // Cleanup thumbnails for deleted files
+          cleanupThumbnailsForFiles(removedFileIds);
+        }
+        
         // Check if sets are equal (same fileIds)
         if (prevFileIds.size === newFileIds.size && 
             [...prevFileIds].every(id => newFileIds.has(id)) &&
@@ -1347,6 +1354,28 @@ function App() {
     }
   };
   
+  // Cleanup thumbnails for deleted files
+  const cleanupThumbnailsForFiles = useCallback((fileIds: string[]) => {
+    setThumbnails(prev => {
+      const newMap = new Map(prev);
+      fileIds.forEach(fileId => {
+        const thumbnailUrl = newMap.get(fileId);
+        if (thumbnailUrl) {
+          // Only revoke blob URLs (start with "blob:"), not data URLs
+          if (thumbnailUrl.startsWith('blob:')) {
+            try {
+              URL.revokeObjectURL(thumbnailUrl);
+            } catch (err) {
+              console.warn(`Failed to revoke thumbnail URL for ${fileId}:`, err);
+            }
+          }
+          newMap.delete(fileId);
+        }
+      });
+      return newMap;
+    });
+  }, []);
+
   // Store generateThumbnailsForImages in ref so it can be called from discoverFiles
   useEffect(() => {
     generateThumbnailsForImagesRef.current = generateThumbnailsForImages;

@@ -341,6 +341,13 @@ const ThumbnailImage: React.FC<{ fileId: string; accountId: string; fileName: st
       if (blobUrl) {
         URL.revokeObjectURL(blobUrl);
       }
+      // Also cleanup thumbnailUrl from state if it's a blob URL
+      setThumbnailUrl(prev => {
+        if (prev && prev.startsWith('blob:')) {
+          URL.revokeObjectURL(prev);
+        }
+        return null;
+      });
     };
   }, [fileId, accountId, isEncrypted, fileName]);
 
@@ -1877,6 +1884,10 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
       });
 
       if (response.ok) {
+        // Cleanup: The file will be removed from indexedFiles which will trigger thumbnail cleanup
+        // But we also need to clean up any local blob URLs created by ThumbnailImage components
+        // This happens automatically when components unmount, but we can force cleanup here
+        
         await loadFilesForAccount(accountId); // Reload files for this account
         setOpenMenuFor(null);
       } else {

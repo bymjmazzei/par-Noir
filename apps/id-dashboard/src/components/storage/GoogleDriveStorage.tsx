@@ -94,9 +94,13 @@ const ThumbnailLoader: React.FC<{ fileId: string; fileName: string; mimeType: st
     loadThumbnail();
 
     return () => {
-      if (thumbnailUrl) {
-        URL.revokeObjectURL(thumbnailUrl);
-      }
+      // Cleanup: revoke blob URL from state when component unmounts or dependencies change
+      setThumbnailUrl(prev => {
+        if (prev && prev.startsWith('blob:')) {
+          URL.revokeObjectURL(prev);
+        }
+        return null;
+      });
     };
   }, [fileId, fileName, mimeType, isPDF, isThought]);
 
