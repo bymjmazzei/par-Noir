@@ -66,7 +66,7 @@ export class GeminiModerationService {
     }
 
     try {
-      const model = this.genAI.getGenerativeModel({ model: 'gemini-pro-vision' });
+      const model = this.genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
       
       // Convert file to base64
       const base64 = await this.fileToBase64(file);
@@ -105,7 +105,7 @@ export class GeminiModerationService {
     }
 
     try {
-      const model = this.genAI.getGenerativeModel({ model: 'gemini-pro-vision' });
+      const model = this.genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
       const base64 = await this.blobToBase64(content);
 
       const prompt = `Rate this content for adult content on a scale:
@@ -149,7 +149,7 @@ export class GeminiModerationService {
     }
 
     try {
-      const model = this.genAI.getGenerativeModel({ model: 'gemini-pro-vision' });
+      const model = this.genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
       const base64 = await this.fileToBase64(file);
 
       const prompt = `Generate metadata for this content:
