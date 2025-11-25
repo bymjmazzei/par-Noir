@@ -433,12 +433,16 @@ const sdk = createIdentitySDK({
         </section>
       </div>
 
-      {/* License Modal */}
+      {/* License Modal (API Key Activation) */}
       {showLicenseModal && (
         <LicenseModal
           isOpen={showLicenseModal}
           onClose={() => setShowLicenseModal(false)}
-          onLicensePurchased={handleLicensePurchased}
+          authenticatedUser={null} // TODO: Pass authenticated user from context
+          onApiKeyActivated={(apiKey) => {
+            console.log('API key activated:', apiKey);
+            setShowLicenseModal(false);
+          }}
         />
       )}
 
