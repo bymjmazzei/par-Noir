@@ -1662,7 +1662,9 @@ function App() {
             if (data.files && Array.isArray(data.files)) {
               // The /api/aggregator/my-files endpoint already returns all files (public + private) for the authenticated user
               // No need to filter - the server already filtered by pnIdentifier
-              console.log(`📊 Loaded ${data.files.length} files (public + private) from authenticated endpoint for user ${viewingCreatorId}`);
+              if (process.env.NODE_ENV === 'development') {
+                console.log(`[Me Page] Loaded ${data.files.length} files for user ${viewingCreatorId}`);
+              }
               
               // Convert entries to IndexedFile format
               apiFiles = data.files.map((entry: any) => {
@@ -1709,7 +1711,9 @@ function App() {
               .map(f => [f.metadata.fileId, f])).values()
           );
           
-          console.log(`📊 Combined: ${apiFiles.length} from API, ${publicIndexFiles.length} from public index, ${combinedFiles.length} total (deduplicated)`);
+          if (process.env.NODE_ENV === 'development') {
+            console.log(`[Me Page] Combined ${combinedFiles.length} files (${apiFiles.length} API + ${publicIndexFiles.length} index)`);
+          }
           setCreatorFilesState(combinedFiles);
         } catch (error) {
           console.error('Failed to load user files from API, falling back to public index:', error);
@@ -1816,7 +1820,9 @@ function App() {
               .map(f => [f.metadata.fileId, f])).values()
           );
 
-          console.log(`📊 Loaded ${combinedFiles.length} public files for creator ${viewingCreatorId} (${apiFiles.length} from API, ${publicIndexFiles.length} from index)`);
+          if (process.env.NODE_ENV === 'development') {
+            console.log(`[Me Page] Loaded ${combinedFiles.length} files for creator ${viewingCreatorId}`);
+          }
           setCreatorFilesState(combinedFiles);
         } catch (error) {
           console.error('Failed to load creator files:', error);
@@ -1993,9 +1999,8 @@ function App() {
           // Get file IDs that user has commented on
           const commentedFileIds = Array.from(engagementData.comments.keys());
           
-          console.log(`[User Engagement] Loaded ${likedFileIds.length} liked files and ${commentedFileIds.length} commented files for user ${userState.pnIdentifier}`);
-          if (commentedFileIds.length > 0) {
-            console.log(`[User Engagement] Commented file IDs:`, commentedFileIds);
+          if (process.env.NODE_ENV === 'development') {
+            console.log(`[Me Page] Engagement: ${likedFileIds.length} liked, ${commentedFileIds.length} commented`);
           }
           
           setUserLikedFileIds(likedFileIds);
@@ -2189,7 +2194,9 @@ function App() {
               }
               return combinedCommented;
             });
-            console.log(`📊 Loaded ${combinedLiked.length} liked files and ${combinedCommented.length} commented files for creator ${viewingCreatorId}`);
+            if (process.env.NODE_ENV === 'development') {
+              console.log(`[Me Page] Creator engagement: ${combinedLiked.length} liked, ${combinedCommented.length} commented`);
+            }
           } else {
             setViewedUserLikedFiles(prev => prev.length === 0 ? prev : []);
             setViewedUserCommentedFiles(prev => prev.length === 0 ? prev : []);
@@ -2296,7 +2303,9 @@ function App() {
           );
           
           setConnectionsFiles(combinedTopPosts);
-          console.log(`📊 Connections feed: ${combinedTopPosts.length} top posts from ${connections.length} connections`);
+          if (process.env.NODE_ENV === 'development') {
+            console.log(`[Me Page] Connections: ${combinedTopPosts.length} posts from ${connections.length} connections`);
+          }
         } catch (error) {
           console.error('Failed to load connections files:', error);
           setConnectionsFiles([]);
@@ -2404,12 +2413,8 @@ function App() {
               
               // Exclude own posts - only show posts from other creators that user commented on
               const isNotOwnPost = normalizedOwnerId !== normalizedViewingId;
-              if (!isNotOwnPost) {
-                console.log(`[Comments Tab] Filtering out own post: ${f.metadata.fileId} (owner: ${fileOwnerId}, viewing: ${viewingCreatorId})`);
-              }
               return isNotOwnPost;
             });
-            console.log(`[Comments Tab] Filtered ${currentFilteredMeFiles.length} posts from ${userCommentedFiles.length} commented files for user ${viewingCreatorId}`);
             break;
           case 'saved':
             currentFilteredMeFiles = savedFiles;
@@ -2666,16 +2671,10 @@ function App() {
             return isMediaFile || isThoughtFile;
           });
           
-          // Debug logging for me page "all" tab
-          console.log(`[Me Page All Tab] Filtering ${allFiles.length} files:`, {
-            totalFiles: allFiles.length,
-            filteredFiles: filtered.length,
-            fileDetails: filtered.map(f => ({
-              fileId: f.metadata.fileId,
-              fileType: f.metadata.fileType,
-              fileName: f.metadata.name || f.metadata.title
-            }))
-          });
+          // Debug logging for me page "all" tab (only in development)
+          if (process.env.NODE_ENV === 'development') {
+            console.log(`[Me Page] Filtered ${filtered.length} of ${allFiles.length} files`);
+          }
           break;
         case 'media':
           // Only show images, videos, and PDF slideshows (exclude thoughts and raw PDFs)
@@ -2735,30 +2734,10 @@ function App() {
             const normalizedOwnerId = normalizeId(fileOwnerId);
             const normalizedViewingId = normalizeId(viewingCreatorId!);
             
-            // Debug logging
-            console.log(`[Comments Tab] Checking file ${f.metadata.fileId}:`, {
-              fileOwnerId,
-              normalizedOwnerId,
-              viewingCreatorId,
-              normalizedViewingId,
-              isOwnPost: normalizedOwnerId === normalizedViewingId,
-              hasFullFile: !!indexedFilesMap.get(f.metadata.fileId),
-              metadata: {
-                creator: f.metadata.creator,
-                author: f.metadata.author,
-                creatorId: f.metadata.creatorId,
-                pnIdentifier: (fullFile as any).pnIdentifier || (f as any).pnIdentifier
-              }
-            });
-            
             // Exclude own posts - only show posts from other creators that user commented on
             const isNotOwnPost = normalizedOwnerId !== normalizedViewingId;
-            if (!isNotOwnPost) {
-              console.log(`[Comments Tab] Filtering out own post: ${f.metadata.fileId} (owner: ${fileOwnerId}, viewing: ${viewingCreatorId})`);
-            }
             return isNotOwnPost;
           });
-          console.log(`[Comments Tab] Filtered ${filtered.length} posts from ${userCommentedFiles.length} commented files for user ${viewingCreatorId}`);
           break;
         case 'saved':
           filtered = savedFiles;
@@ -2858,8 +2837,8 @@ function App() {
       prevMePageTabRef.current = mePageTab;
       
       // Only log if count actually changed (not just other dependencies)
-      if (countChanged || creatorChanged) {
-        console.log(`📊 Creator index: Found ${currentCount} files for creator ${viewingCreatorId}${isOwnIndex ? ` (tab: ${mePageTab}, ${creatorFilesLengthRef.current} owned, ${userLikedFilesLengthRef.current} liked, ${userCommentedFilesLengthRef.current} commented, ${savedFilesLengthRef.current} saved)` : ''}`);
+      if (process.env.NODE_ENV === 'development' && (countChanged || creatorChanged)) {
+        console.log(`[Me Page] ${currentCount} files${isOwnIndex ? ` (tab: ${mePageTab})` : ''}`);
       }
     }
   }, [viewingCreatorId, isOwnIndex, mePageTab]);
