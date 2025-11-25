@@ -766,7 +766,7 @@ export class FeedService {
   private static rowToFeed(row: FeedRow): Feed {
     // Only return feeds for paid tiers (feed or self-hosted)
     // Free tier creators don't have feeds in the Feed interface
-    const creatorTier = row.creator_tier === 'free' ? 'feed' : row.creator_tier as 'feed' | 'self-hosted';
+    const creatorTier = row.creator_tier === 'free' ? 'feed' : row.creator_tier as 'free' | 'feed' | 'self-hosted';
     
     return {
       feedId: row.feed_id,
@@ -780,7 +780,11 @@ export class FeedService {
       createdAt: row.created_at,
       updatedAt: row.updated_at,
       subscriberCount: row.subscriber_count,
-      postCount: row.post_count
+      postCount: row.post_count,
+      isPaid: row.is_paid || false,
+      monthlyPrice: row.monthly_price ? parseFloat(row.monthly_price.toString()) : undefined,
+      annualPrice: row.annual_price ? parseFloat(row.annual_price.toString()) : undefined,
+      subdomain: row.subdomain || undefined
     };
   }
 }
