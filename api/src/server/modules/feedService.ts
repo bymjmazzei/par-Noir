@@ -25,16 +25,24 @@ export interface Feed {
   feedCategory: FeedCategory;
   feedDescription?: string;
   creatorId: string;
-  creatorTier: 'feed' | 'self-hosted';
+  creatorTier: 'free' | 'feed' | 'self-hosted';
   branding?: {
     bannerImage?: string;
     avatar?: string;
     bio?: string;
+    links?: Array<{
+      label: string;
+      url: string;
+    }>;
   };
   createdAt: string;
   updatedAt: string;
   subscriberCount?: number;
   postCount?: number;
+  isPaid?: boolean;
+  monthlyPrice?: number;
+  annualPrice?: number;
+  subdomain?: string;
 }
 
 export interface FeedRow {
@@ -49,11 +57,19 @@ export interface FeedRow {
     bannerImage?: string;
     avatar?: string;
     bio?: string;
+    links?: Array<{
+      label: string;
+      url: string;
+    }>;
   };
   subscriber_count: number;
   post_count: number;
   created_at: string;
   updated_at: string;
+  is_paid?: boolean;
+  monthly_price?: number;
+  annual_price?: number;
+  subdomain?: string | null;
 }
 
 export class FeedService {
