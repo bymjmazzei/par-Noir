@@ -730,16 +730,17 @@ function App() {
       // This ensures NSFW content never appears in public feed unless explicitly enabled
       const filtered = indexedFiles.filter(shouldShowFile);
       
-      // Helper function to detect images - check fileType, name, title, and mimeType
+      // Helper function to detect images - check fileType, name, title, mimeType, and encodingFormat
       const isImageFile = (f: IndexedFile): boolean => {
         const fileType = f.metadata.fileType;
         const fileName = f.metadata.name || f.metadata.title || '';
-        const mimeType = (f.metadata as any).mimeType || '';
+        // Check both mimeType and encodingFormat (encodingFormat is the standard field in PublicMetadata)
+        const mimeType = (f.metadata as any).mimeType || f.metadata.encodingFormat || '';
         
         // Check if fileType is explicitly 'image'
         if (fileType === 'image') return true;
         
-        // Check if mimeType indicates image
+        // Check if mimeType/encodingFormat indicates image
         if (mimeType.startsWith('image/')) return true;
         
         // Check if filename has image extension (check both name and title)
@@ -754,7 +755,10 @@ function App() {
       
       // Debug logging for public feed (don't call isMedia/isThought here to avoid initialization issues)
       const imageFiles = filtered.filter(isImageFile);
-      console.log(`[Public Feed] Filtered ${filtered.length} files from ${indexedFiles.length} indexed files:`, {
+      
+      // CRITICAL DEBUG: Log ALL file metadata to see what we're actually getting
+      console.log(`[Public Feed] 🔍 DETAILED FILE ANALYSIS:`, {
+        totalFiles: filtered.length,
         images: imageFiles.length,
         thoughts: filtered.filter(f => {
           const fileType = f.metadata.fileType;
@@ -768,15 +772,21 @@ function App() {
         pdfs: filtered.filter(f => f.metadata.fileType === 'document').length,
         fileDetails: filtered.map(f => {
           const fileName = f.metadata.name || f.metadata.title || '';
-          const mimeType = (f.metadata as any).mimeType || '';
+          const mimeType = (f.metadata as any).mimeType || f.metadata.encodingFormat || '';
+          const allMetadataKeys = Object.keys(f.metadata);
           return {
             fileId: f.metadata.fileId,
             fileType: f.metadata.fileType,
             fileName: fileName,
             mimeType: mimeType,
+            encodingFormat: f.metadata.encodingFormat,
             hasTextPost: !!(f.metadata as any).textPost || !!(f.metadata as any).thought,
             detectedAsImage: isImageFile(f),
-            hasImageExt: !!(fileName.match(/\.(jpg|jpeg|png|gif|webp|svg|bmp|ico|heic|heif)$/i))
+            hasImageExt: !!(fileName.match(/\.(jpg|jpeg|png|gif|webp|svg|bmp|ico|heic|heif)$/i)),
+            // Show ALL metadata keys to debug what fields exist
+            metadataKeys: allMetadataKeys,
+            // Show full metadata object for first file to see structure
+            fullMetadata: filtered.indexOf(f) === 0 ? f.metadata : undefined
           };
         })
       });
@@ -807,8 +817,12 @@ function App() {
         const fileCategorySingle = file.metadata.category;
         
         // Combine all possible category sources
+        // Handle nested arrays by flattening (in case feedCategories contains arrays of arrays)
+        const flattenedCategories = Array.isArray(fileCategoriesArray) 
+          ? fileCategoriesArray.flat(Infinity) // Flatten nested arrays
+          : [fileCategoriesArray];
         const allFileCategories = [
-          ...(Array.isArray(fileCategoriesArray) ? fileCategoriesArray : [fileCategoriesArray]),
+          ...flattenedCategories,
           ...(fileCategorySingle ? [fileCategorySingle] : [])
         ].filter(Boolean); // Remove any null/undefined values
         
@@ -889,8 +903,12 @@ function App() {
       const categoryId = activeFeedId.replace('niche-', '');
       let filtered = indexedFiles.filter(file => {
         // Check if file has this category in its feedCategories
+        // Handle nested arrays by flattening (in case feedCategories contains arrays of arrays)
         const fileCategories = file.metadata.feedCategories || [];
-        if (fileCategories.includes(categoryId as any)) {
+        const flattenedFileCategories = Array.isArray(fileCategories) 
+          ? fileCategories.flat(Infinity) // Flatten nested arrays
+          : [fileCategories];
+        if (flattenedFileCategories.includes(categoryId as any)) {
           return true;
         }
         // Also check if file is in a feed with this category

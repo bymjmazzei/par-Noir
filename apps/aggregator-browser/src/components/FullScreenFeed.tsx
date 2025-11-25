@@ -619,7 +619,9 @@ export function FullScreenFeed({
         );
         const fileNameForImageCheck = file.name || file.title || '';
         const hasImageExtension = !!(fileNameForImageCheck.match(/\.(jpg|jpeg|png|gif|webp|svg|bmp|ico)$/i));
-        const hasImageMimeType = (file as any).mimeType?.startsWith('image/');
+        // Check mimeType in multiple locations and also check encodingFormat
+        const mimeType = (file as any).mimeType || indexedFile.metadata?.mimeType || file.encodingFormat || indexedFile.metadata?.encodingFormat || '';
+        const hasImageMimeType = mimeType.startsWith('image/');
         const isImage = !isTextPost && (
           file.fileType === 'image' || 
           (file.fileType === 'other' && hasImageExtension) ||
@@ -1434,7 +1436,8 @@ export function FullScreenFeed({
         // CRITICAL FIX: Check for image fileType OR image extension OR mimeType, but only exclude if it's DEFINITELY a thought
         const fileNameForImageCheck = file.name || file.title || '';
         const hasImageExtension = !!(fileNameForImageCheck.match(/\.(jpg|jpeg|png|gif|webp|svg|bmp|ico|heic|heif)$/i));
-        const mimeType = (file as any).mimeType || indexedFile.metadata?.mimeType || '';
+        // Check mimeType in multiple locations and also check encodingFormat (which is the standard field in PublicMetadata)
+        const mimeType = (file as any).mimeType || indexedFile.metadata?.mimeType || file.encodingFormat || indexedFile.metadata?.encodingFormat || '';
         const hasImageMimeType = mimeType.startsWith('image/');
         const isImage = !isTextPost && (
           file.fileType === 'image' || 
