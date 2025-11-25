@@ -47,27 +47,33 @@ export class MetadataIndexService {
    * ARCHITECTURE:
    * - Queries central aggregator API (api.parnoir.com)
    * - NO CACHE - always fetches fresh data from API
+   * - SCALABILITY: Supports pagination via limit/offset parameters
    */
-  async discoverFiles(filters?: MetadataFilters, forceRefresh: boolean = false): Promise<IndexedFile[]> {
+  async discoverFiles(
+    filters?: MetadataFilters & { limit?: number; offset?: number }, 
+    forceRefresh: boolean = false
+  ): Promise<IndexedFile[] | { files: IndexedFile[]; total: number; hasMore: boolean }> {
     try {
       await this.ensureInitialized();
 
       // Query central aggregator API
       const { CentralMetadataAggregator } = await import('../storage/CentralMetadataAggregator');
       
-      const aggregatedEntries = await CentralMetadataAggregator.fetchAggregatedIndex({
+      const result = await CentralMetadataAggregator.fetchAggregatedIndex({
         tags: filters?.tags,
         fileType: filters?.fileType,
-        authorDid: filters?.authorDid
+        authorDid: filters?.authorDid,
+        limit: filters?.limit,      // SCALABILITY: Pagination support
+        offset: filters?.offset      // SCALABILITY: Pagination support
       }, forceRefresh);
 
       // Transform to IndexedFile format
-      // aggregatedEntries are CentralIndexEntry objects from the API
+      // result.files are CentralIndexEntry objects from the API
       // Backend already filters for public files, so we trust what the API returns
       // But we also check: isPublic !== false OR has publicToken (means it's meant to be public)
       // Processing entries from API (logging removed - was too verbose)
       
-      let files: IndexedFile[] = aggregatedEntries
+      let files: IndexedFile[] = result.files
         .filter((entry: any) => {
           const metadata = entry.metadata || {};
           const isPublic = metadata.isPublic;
@@ -181,6 +187,16 @@ export class MetadataIndexService {
         console.log(`⚠️ [MetadataIndexService] Filtered out ${beforeFilters - files.length} files due to filters:`, filters);
       }
 
+      // SCALABILITY: Return pagination info if pagination params were provided
+      if (filters?.limit !== undefined || filters?.offset !== undefined) {
+        return {
+          files,
+          total: result.total,
+          hasMore: result.hasMore
+        };
+      }
+
+      // Backward compatibility: return array if no pagination params
       return files;
     } catch (error) {
       console.error('Failed to discover files:', error);

@@ -43,17 +43,19 @@ After implementation, target metrics:
 - [ ] Test query performance (run EXPLAIN ANALYZE)
 
 ### Phase 2: Backend Pagination
-- [ ] Update `getPublicMetadata()` method
-- [ ] Update `getNSFWMetadata()` method
-- [ ] Update `getIndexResponse()` method
-- [ ] Update API endpoint to accept limit/offset
-- [ ] Test pagination endpoints
+- [x] Update `getPublicMetadata()` method
+- [x] Update `getNSFWMetadata()` method
+- [x] Update `getIndexResponse()` method
+- [x] Update `getNSFWIndexResponse()` method
+- [x] Update API endpoint to accept limit/offset
+- [x] Update NSFW API endpoint to accept limit/offset
+- [ ] Test pagination endpoints (manual testing needed)
 
 ### Phase 3: Frontend Pagination
 - [ ] Update `CentralMetadataAggregator.fetchAggregatedIndex()`
 - [ ] Update `App.tsx` state management
 - [ ] Update `MetadataIndexService`
-- [ ] Add "Load More" functionality
+- [ ] Add infinite scroll functionality (Intersection Observer)
 - [ ] Test pagination flow
 
 ### Phase 4: Caching Layer
