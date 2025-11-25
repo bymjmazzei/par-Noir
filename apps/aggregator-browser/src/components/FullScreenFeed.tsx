@@ -1431,12 +1431,15 @@ export function FullScreenFeed({
         // This prevents flickering where thoughts are detected as both thoughts and images
         // isThoughtFile is already defined above (line 1356)
         // Use !! to convert match result (array or null) to boolean
-        // CRITICAL FIX: Check for image fileType OR image extension, but only exclude if it's DEFINITELY a thought
+        // CRITICAL FIX: Check for image fileType OR image extension OR mimeType, but only exclude if it's DEFINITELY a thought
         const fileNameForImageCheck = file.name || file.title || '';
-        const hasImageExtension = !!(fileNameForImageCheck.match(/\.(jpg|jpeg|png|gif|webp|svg|bmp|ico)$/i));
+        const hasImageExtension = !!(fileNameForImageCheck.match(/\.(jpg|jpeg|png|gif|webp|svg|bmp|ico|heic|heif)$/i));
+        const mimeType = (file as any).mimeType || indexedFile.metadata?.mimeType || '';
+        const hasImageMimeType = mimeType.startsWith('image/');
         const isImage = !isTextPost && (
           file.fileType === 'image' || 
-          file.fileType === 'other' && hasImageExtension ||
+          hasImageMimeType ||
+          (file.fileType === 'other' && hasImageExtension) ||
           hasImageExtension
         );
         
@@ -1471,8 +1474,8 @@ export function FullScreenFeed({
         
         // Debug logging for ALL files to see what's happening - ESPECIALLY FOR IMAGES
         const isLikelyImage = file.fileType === 'image' || 
-                             !!(file.name || file.title || '').match(/\.(jpg|jpeg|png|gif|webp|svg|bmp|ico)$/i) ||
-                             (file as any).mimeType?.startsWith('image/');
+                             !!(file.name || file.title || '').match(/\.(jpg|jpeg|png|gif|webp|svg|bmp|ico|heic|heif)$/i) ||
+                             hasImageMimeType;
         
         if (isLikelyImage) {
           console.log(`[FullScreenFeed] 🔍 IMAGE FILE DETECTED:`, {
@@ -1480,9 +1483,9 @@ export function FullScreenFeed({
             fileType: file.fileType,
             metadataFileType: indexedFile.metadata?.fileType,
             fileName: fileNameForMediaCheck,
-            mimeType: (file as any).mimeType,
-            hasImageExt,
+            mimeType: mimeType,
             hasImageExtension,
+            hasImageMimeType,
             isImage,
             isImageFinal,
             isTextPost,

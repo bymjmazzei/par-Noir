@@ -730,9 +730,32 @@ function App() {
       // This ensures NSFW content never appears in public feed unless explicitly enabled
       const filtered = indexedFiles.filter(shouldShowFile);
       
+      // Helper function to detect images - check fileType, name, title, and mimeType
+      const isImageFile = (f: IndexedFile): boolean => {
+        const fileType = f.metadata.fileType;
+        const fileName = f.metadata.name || f.metadata.title || '';
+        const mimeType = (f.metadata as any).mimeType || '';
+        
+        // Check if fileType is explicitly 'image'
+        if (fileType === 'image') return true;
+        
+        // Check if mimeType indicates image
+        if (mimeType.startsWith('image/')) return true;
+        
+        // Check if filename has image extension (check both name and title)
+        const hasImageExt = !!(fileName.match(/\.(jpg|jpeg|png|gif|webp|svg|bmp|ico|heic|heif)$/i));
+        if (hasImageExt) return true;
+        
+        // If fileType is 'other' but has image extension, it's likely an image
+        if (fileType === 'other' && hasImageExt) return true;
+        
+        return false;
+      };
+      
       // Debug logging for public feed (don't call isMedia/isThought here to avoid initialization issues)
+      const imageFiles = filtered.filter(isImageFile);
       console.log(`[Public Feed] Filtered ${filtered.length} files from ${indexedFiles.length} indexed files:`, {
-        images: filtered.filter(f => f.metadata.fileType === 'image' || !!(f.metadata.name || '').match(/\.(jpg|jpeg|png|gif|webp|svg|bmp|ico)$/i)).length,
+        images: imageFiles.length,
         thoughts: filtered.filter(f => {
           const fileType = f.metadata.fileType;
           const hasTextPostData = !!(f.metadata as any).textPost || !!(f.metadata as any).thought;
@@ -743,12 +766,19 @@ function App() {
         }).length,
         videos: filtered.filter(f => f.metadata.fileType === 'video').length,
         pdfs: filtered.filter(f => f.metadata.fileType === 'document').length,
-        fileDetails: filtered.map(f => ({
-          fileId: f.metadata.fileId,
-          fileType: f.metadata.fileType,
-          fileName: f.metadata.name || f.metadata.title,
-          hasTextPost: !!(f.metadata as any).textPost || !!(f.metadata as any).thought
-        }))
+        fileDetails: filtered.map(f => {
+          const fileName = f.metadata.name || f.metadata.title || '';
+          const mimeType = (f.metadata as any).mimeType || '';
+          return {
+            fileId: f.metadata.fileId,
+            fileType: f.metadata.fileType,
+            fileName: fileName,
+            mimeType: mimeType,
+            hasTextPost: !!(f.metadata as any).textPost || !!(f.metadata as any).thought,
+            detectedAsImage: isImageFile(f),
+            hasImageExt: !!(fileName.match(/\.(jpg|jpeg|png|gif|webp|svg|bmp|ico|heic|heif)$/i))
+          };
+        })
       });
       
       return filtered;
