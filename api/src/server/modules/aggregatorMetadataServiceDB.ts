@@ -88,6 +88,16 @@ export class AggregatorMetadataServiceDB {
       });
 
       await this.syncFileVisibilityOverrides(validatedMetadata.fileId, validatedMetadata.indexingPermissions);
+      
+      // SCALABILITY: Invalidate cache when metadata is added/updated
+      try {
+        const { invalidateIndexCache } = await import('../utils/cache');
+        await invalidateIndexCache();
+        console.log(`🗑️ [submitMetadata] Invalidated index cache after metadata update`);
+      } catch (error) {
+        console.warn('⚠️ [submitMetadata] Cache invalidation failed (non-critical):', error);
+        // Continue even if cache invalidation fails
+      }
     } catch (error) {
       console.error(`❌ Failed to submit metadata for file ${validatedMetadata.fileId}:`, error);
       throw error;
@@ -123,6 +133,16 @@ export class AggregatorMetadataServiceDB {
 
       if (removed) {
         console.log(`🗑️ Removed metadata for file: ${fileIdOrBackendFileId}`);
+        
+        // SCALABILITY: Invalidate cache when metadata is removed
+        try {
+          const { invalidateIndexCache } = await import('../utils/cache');
+          await invalidateIndexCache();
+          console.log(`🗑️ [removeMetadata] Invalidated index cache after metadata removal`);
+        } catch (error) {
+          console.warn('⚠️ [removeMetadata] Cache invalidation failed (non-critical):', error);
+          // Continue even if cache invalidation fails
+        }
       } else {
         console.log(`ℹ️ File ${fileIdOrBackendFileId} was not found in database metadata index`);
       }
@@ -792,6 +812,19 @@ export class AggregatorMetadataServiceDB {
     limit?: number;
     offset?: number;
   }): Promise<CentralIndexResponse & { total: number; hasMore: boolean }> {
+    // SCALABILITY: Check cache first
+    try {
+      const { getCachedIndex } = await import('../utils/cache');
+      const cached = await getCachedIndex(filters);
+      if (cached) {
+        console.log(`✅ [getIndexResponse] Cache hit for filters:`, filters);
+        return cached;
+      }
+    } catch (error) {
+      console.warn('⚠️ [getIndexResponse] Cache check failed (non-critical):', error);
+      // Continue to database query if cache fails
+    }
+    
     // AUTOMATIC CLEANUP: Use public index files as source of truth
     // Remove any files from database that aren't in the public index files
     console.log(`🔍 [getIndexResponse] Starting cleanup before returning files...`);
@@ -807,13 +840,25 @@ export class AggregatorMetadataServiceDB {
     
     const stats = await this.getStats();
 
-    return {
+    const response = {
       files: result.files,
       updatedAt: stats.lastUpdated,
       totalFiles: result.total,  // Total matching files
       total: result.total,        // Alias for consistency
       hasMore: result.hasMore     // Whether more pages exist
     };
+    
+    // SCALABILITY: Cache the response (5 minutes TTL)
+    try {
+      const { setCachedIndex } = await import('../utils/cache');
+      await setCachedIndex(filters, response, 300); // 5 minutes
+      console.log(`💾 [getIndexResponse] Cached response for filters:`, filters);
+    } catch (error) {
+      console.warn('⚠️ [getIndexResponse] Cache set failed (non-critical):', error);
+      // Continue even if cache fails
+    }
+
+    return response;
   }
 
   /**

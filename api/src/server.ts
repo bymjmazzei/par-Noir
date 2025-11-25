@@ -9244,6 +9244,10 @@ class ProductionServer {
     try {
       const { initializeDatabase } = await import('./server/utils/database');
       await initializeDatabase();
+      
+      // SCALABILITY: Initialize Redis cache
+      const { initializeCache } = await import('./server/utils/cache');
+      await initializeCache();
     } catch (error) {
       console.error('⚠️ Failed to initialize database:', error);
       // Continue anyway - database might not be configured yet
