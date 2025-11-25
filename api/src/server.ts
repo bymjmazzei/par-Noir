@@ -1732,6 +1732,16 @@ class ProductionServer {
     setupDataPointRoutes(this.app);
     setupContentPortabilityRoutes(this.app);
 
+    // Feed Routes - Posts, Subscriptions, Payment Webhooks
+    const { setupFeedRoutes } = await import('./server/modules/feedRoutes');
+    setupFeedRoutes(this.app);
+
+    // Coinbase Commerce Webhook Handler
+    const { CoinbaseWebhookHandler } = await import('./server/modules/coinbaseWebhookHandler');
+    this.app.post('/api/webhooks/coinbase', express.raw({ type: 'application/json' }), (req: Request, res: Response) => {
+      CoinbaseWebhookHandler.handleWebhook(req, res);
+    });
+
     // GET /api/aggregator/metadata-index/:fileId - Get metadata for a specific file (creates entry if doesn't exist)
     this.app.get('/api/aggregator/metadata-index/:fileId', async (req, res) => {
       try {
