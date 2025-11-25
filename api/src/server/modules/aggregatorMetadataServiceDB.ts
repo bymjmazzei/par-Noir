@@ -428,8 +428,49 @@ export class AggregatorMetadataServiceDB {
 
       query += ` ORDER BY am.updated_at DESC`;
 
+      // SCALABILITY: Add pagination support
+      const limit = filters?.limit || 50;
+      const offset = filters?.offset || 0;
+      
+      // Get total count before pagination
+      const countQuery = `
+        SELECT COUNT(*) as count
+        FROM aggregator_metadata am
+        WHERE am.metadata->>'isPublic' = 'true'
+        AND am.metadata->>'isNSFW' = 'true'
+        ${filters?.fileType ? `AND am.metadata->>'fileType' = $1` : ''}
+        ${filters?.indexerId ? `AND (
+          am.metadata->'indexingPermissions' IS NULL
+          OR am.metadata->'indexingPermissions'->>'mode' IS NULL
+          OR (
+            am.metadata->'indexingPermissions'->>'mode' = 'all'
+            AND NOT (COALESCE(am.metadata->'indexingPermissions'->'blocked', '[]'::jsonb) ? $${filters?.fileType ? '2' : '1'})
+          )
+          OR (
+            am.metadata->'indexingPermissions'->>'mode' = 'custom'
+            AND (COALESCE(am.metadata->'indexingPermissions'->'allowed', '[]'::jsonb) ? $${filters?.fileType ? '2' : '1'})
+            AND NOT (COALESCE(am.metadata->'indexingPermissions'->'blocked', '[]'::jsonb) ? $${filters?.fileType ? '2' : '1'})
+          )
+        )` : ''}
+      `;
+      const countParams: any[] = [];
+      if (filters?.fileType) countParams.push(filters.fileType);
+      if (filters?.indexerId) countParams.push(filters.indexerId);
+      
+      const countResult = await db.query(countQuery, countParams);
+      const total = parseInt(countResult.rows[0].count, 10);
+
+      // Add pagination to main query (fetch limit+1 to check hasMore)
+      query += ` LIMIT $${paramIndex} OFFSET $${paramIndex + 1}`;
+      params.push(limit + 1); // Fetch one extra to check hasMore
+      params.push(offset);
+      paramIndex += 2;
+
       const result = await db.query(query, params);
-      let entries: CentralIndexEntry[] = result.rows.map(row => {
+      const hasMore = result.rows.length > limit;
+      const rowsToProcess = result.rows.slice(0, limit); // Only process the requested amount
+      
+      let entries: CentralIndexEntry[] = rowsToProcess.map(row => {
         const metadata = row.metadata as PublicMetadata & { feedIds?: string[] };
         // Add feedIds to metadata if they exist
         if (row.feed_ids && row.feed_ids.length > 0) {
