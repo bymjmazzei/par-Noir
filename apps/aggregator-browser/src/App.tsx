@@ -1060,45 +1060,75 @@ function App() {
 
   // SCALABILITY: Infinite scroll - load more files when user scrolls near bottom
   useEffect(() => {
-    if (viewMode !== 'feed' || !hasMore || isLoadingMore || isDiscoveringRef.current) return;
+    // Don't set up observer if conditions aren't met
+    if (viewMode !== 'feed' || !hasMore || isLoadingMore || isDiscoveringRef.current) {
+      return;
+    }
     if (!discoverFilesRef.current) return; // Wait for discoverFiles to be initialized
     
-    const observer = new IntersectionObserver(
-      (entries) => {
-        entries.forEach((entry) => {
-          if (entry.isIntersecting && hasMore && !isLoadingMore && !isDiscoveringRef.current && discoverFilesRef.current) {
-            console.log('📜 [Infinite Scroll] Loading next page...');
-            setIsLoadingMore(true);
-            discoverFilesRef.current(undefined, false, currentPage + 1, true).finally(() => {
-              setIsLoadingMore(false);
-            });
-          }
-        });
-      },
-      {
-        rootMargin: '200px', // Start loading 200px before reaching bottom
-        threshold: 0.1
+    let observer: IntersectionObserver | null = null;
+    let sentinel: HTMLElement | null = null;
+    
+    const setupObserver = () => {
+      // Double-check conditions before creating observer
+      if (!hasMore || isLoadingMore || isDiscoveringRef.current || !discoverFilesRef.current) {
+        return;
       }
-    );
+      
+      observer = new IntersectionObserver(
+        (entries) => {
+          entries.forEach((entry) => {
+            // Triple-check conditions in callback to prevent race conditions
+            if (entry.isIntersecting && hasMore && !isLoadingMore && !isDiscoveringRef.current && discoverFilesRef.current) {
+              // Disconnect observer immediately to prevent multiple triggers
+              if (observer) {
+                observer.disconnect();
+                observer = null;
+              }
+              console.log('📜 [Infinite Scroll] Loading next page...');
+              setIsLoadingMore(true);
+              discoverFilesRef.current(undefined, false, currentPage + 1, true).finally(() => {
+                setIsLoadingMore(false);
+                // Reconnect observer after loading completes (if still hasMore)
+                setTimeout(() => {
+                  if (hasMore && sentinel && !observer) {
+                    setupObserver();
+                  }
+                }, 100);
+              });
+            }
+          });
+        },
+        {
+          rootMargin: '200px', // Start loading 200px before reaching bottom
+          threshold: 0.1
+        }
+      );
+      
+      // Create or find sentinel element at bottom of feed
+      sentinel = document.getElementById('feed-infinite-scroll-sentinel');
+      if (!sentinel) {
+        sentinel = document.createElement('div');
+        sentinel.id = 'feed-infinite-scroll-sentinel';
+        sentinel.style.height = '1px';
+        sentinel.style.width = '100%';
+        // Try to append to feed container
+        const feedContainer = document.querySelector('[data-feed-container]') || document.body;
+        feedContainer.appendChild(sentinel);
+      }
+      
+      if (sentinel && observer) {
+        observer.observe(sentinel);
+      }
+    };
     
-    // Create or find sentinel element at bottom of feed
-    let sentinel = document.getElementById('feed-infinite-scroll-sentinel');
-    if (!sentinel) {
-      sentinel = document.createElement('div');
-      sentinel.id = 'feed-infinite-scroll-sentinel';
-      sentinel.style.height = '1px';
-      sentinel.style.width = '100%';
-      // Try to append to feed container
-      const feedContainer = document.querySelector('[data-feed-container]') || document.body;
-      feedContainer.appendChild(sentinel);
-    }
-    
-    if (sentinel) {
-      observer.observe(sentinel);
-    }
+    setupObserver();
     
     return () => {
-      observer.disconnect();
+      if (observer) {
+        observer.disconnect();
+        observer = null;
+      }
     };
   }, [viewMode, hasMore, isLoadingMore, currentPage]);
 
@@ -1845,11 +1875,11 @@ function App() {
         }
       }
       
-      // Prevent refetching if we just fetched for this user recently (within 5 seconds)
+      // Prevent refetching if we just fetched for this user recently (within 30 seconds)
       if (lastSavedFeedFetchRef.current?.userDid === userState.pnIdentifier) {
         const timeSinceLastFetch = Date.now() - lastSavedFeedFetchRef.current.timestamp;
-        if (timeSinceLastFetch < 5000) {
-          return; // Too soon to refetch
+        if (timeSinceLastFetch < 30000) {
+          return; // Too soon to refetch (increased from 5 to 30 seconds)
         }
       }
       

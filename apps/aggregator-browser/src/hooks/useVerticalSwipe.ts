@@ -53,14 +53,18 @@ export function useVerticalSwipe({
     };
 
     const handleTouchMove = (e: TouchEvent) => {
-      // Prevent default scrolling during swipe
+      // Only prevent default if we're actually doing a swipe gesture
+      // Don't interfere with normal scrolling
       if (touchStartRef.current && !isScrollingRef.current) {
         const touch = e.touches[0];
         const deltaY = touch.clientY - touchStartRef.current.y;
         const absDeltaY = Math.abs(deltaY);
+        const viewportHeight = window.innerHeight;
+        const percentageMoved = absDeltaY / viewportHeight;
         
-        // If swipe is significant, prevent default scroll
-        if (absDeltaY > threshold * 0.5) {
+        // Only prevent default if swipe is significant AND exceeds snap threshold
+        // This prevents interference with normal scrolling
+        if (absDeltaY > threshold && percentageMoved >= snapThreshold) {
           e.preventDefault();
         }
       }
