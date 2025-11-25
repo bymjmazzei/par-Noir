@@ -1149,24 +1149,29 @@ export function FullScreenFeed({
     >
       {/* Only render visible files (currentIndex ± 1) for better performance */}
       {(() => {
-        // Debug: Log all files in the array
+        // Debug: Log all files in the array with their indices
+        const allFilesWithIndices = files.map((f, idx) => ({
+          index: idx,
+          fileId: f.metadata.fileId,
+          fileType: f.metadata.fileType,
+          fileName: f.metadata.name || f.metadata.title
+        }));
         console.log(`[FullScreenFeed] Total files: ${files.length}, currentIndex: ${currentIndex}`, {
-          allFileIds: files.map(f => f.metadata.fileId),
-          allFileTypes: files.map(f => f.metadata.fileType),
-          allFileNames: files.map(f => f.metadata.name || f.metadata.title),
+          allFiles: allFilesWithIndices,
           sliceStart: Math.max(0, currentIndex - 1),
           sliceEnd: Math.min(files.length, currentIndex + 2),
-          filesInSlice: files.slice(Math.max(0, currentIndex - 1), Math.min(files.length, currentIndex + 2)).map(f => ({
+          filesInSlice: files.slice(Math.max(0, currentIndex - 1), Math.min(files.length, currentIndex + 2)).map((f, idx) => ({
+            actualIndex: Math.max(0, currentIndex - 1) + idx,
             fileId: f.metadata.fileId,
             fileType: f.metadata.fileType,
             fileName: f.metadata.name || f.metadata.title
           }))
         });
-        return files
-          .slice(
-            Math.max(0, currentIndex - 1),
-            Math.min(files.length, currentIndex + 2)
-          );
+        // Show currentIndex and next 2 files (or previous if at start)
+        // This ensures we always show at least 3 files when available
+        const startIdx = Math.max(0, currentIndex - 1);
+        const endIdx = Math.min(files.length, currentIndex + 3); // Show current + next 2
+        return files.slice(startIdx, endIdx);
       })()
         .map((indexedFile) => {
         const file = indexedFile.metadata;
