@@ -5,6 +5,21 @@
 -- Note: If feed_posts table doesn't exist, create it first
 -- If it exists with old schema, add these columns
 
+-- Create feeds table if it doesn't exist (required for foreign key)
+CREATE TABLE IF NOT EXISTS feeds (
+  feed_id VARCHAR(255) PRIMARY KEY,
+  feed_name VARCHAR(255) NOT NULL,
+  feed_category VARCHAR(50),
+  feed_description TEXT,
+  creator_did VARCHAR(255) NOT NULL,
+  creator_tier VARCHAR(50) DEFAULT 'free',
+  branding JSONB,
+  created_at TIMESTAMP DEFAULT NOW(),
+  updated_at TIMESTAMP DEFAULT NOW(),
+  subscriber_count INTEGER DEFAULT 0,
+  post_count INTEGER DEFAULT 0
+);
+
 -- Check if feed_posts table exists, if not create it
 CREATE TABLE IF NOT EXISTS feed_posts (
   post_id VARCHAR(255) PRIMARY KEY,
