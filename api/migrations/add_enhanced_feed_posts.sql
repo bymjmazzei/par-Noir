@@ -42,6 +42,16 @@ CREATE INDEX IF NOT EXISTS idx_feed_posts_feed_id ON feed_posts(feed_id);
 CREATE INDEX IF NOT EXISTS idx_feed_posts_is_top_post ON feed_posts(is_top_post);
 CREATE INDEX IF NOT EXISTS idx_feed_posts_created_at ON feed_posts(created_at DESC);
 
+-- Create feed_subscriptions table if it doesn't exist
+CREATE TABLE IF NOT EXISTS feed_subscriptions (
+  subscription_id VARCHAR(255) PRIMARY KEY,
+  feed_id VARCHAR(255) NOT NULL,
+  user_did VARCHAR(255) NOT NULL,
+  subscribed_at TIMESTAMP DEFAULT NOW(),
+  FOREIGN KEY (feed_id) REFERENCES feeds(feed_id) ON DELETE CASCADE,
+  UNIQUE(feed_id, user_did)
+);
+
 -- Update feed_subscriptions table to support paid subscriptions
 -- Add columns if they don't exist
 DO $$ 
