@@ -1694,14 +1694,19 @@ function App() {
           }
 
           // Also get files from already-loaded public index (in case API missed some)
+          const normalizeIdentifier = (id: string | undefined | null): string => {
+            if (!id) return '';
+            const cleaned = id.startsWith('pn-') ? id.substring(3) : id;
+            return cleaned.trim().toLowerCase();
+          };
+          const normalizedViewingId = normalizeIdentifier(viewingCreatorId);
           const publicIndexFiles = indexedFiles.filter(f => {
             const fileOwnerId = f.metadata.creator?.identifier?.value || 
                                 f.metadata.creator?.["@id"] || 
                                 f.metadata.author?.did ||
                                 f.metadata.creatorId ||
                                 (f as any).pnIdentifier;
-            const normalizedOwnerId = fileOwnerId?.trim().toLowerCase() || '';
-            const normalizedViewingId = viewingCreatorId.trim().toLowerCase();
+            const normalizedOwnerId = normalizeIdentifier(fileOwnerId);
             return normalizedOwnerId === normalizedViewingId;
           });
           
@@ -1718,16 +1723,24 @@ function App() {
         } catch (error) {
           console.error('Failed to load user files from API, falling back to public index:', error);
           // Fallback to public index
+          const normalizeIdentifier = (id: string | undefined | null): string => {
+            if (!id) return '';
+            const cleaned = id.startsWith('pn-') ? id.substring(3) : id;
+            return cleaned.trim().toLowerCase();
+          };
+          const normalizedViewingId = normalizeIdentifier(viewingCreatorId);
           const filtered = indexedFiles.filter(f => {
             const fileOwnerId = f.metadata.creator?.identifier?.value || 
                                 f.metadata.creator?.["@id"] || 
                                 f.metadata.author?.did ||
                                 f.metadata.creatorId ||
                                 (f as any).pnIdentifier;
-            const normalizedOwnerId = fileOwnerId?.trim().toLowerCase() || '';
-            const normalizedViewingId = viewingCreatorId.trim().toLowerCase();
+            const normalizedOwnerId = normalizeIdentifier(fileOwnerId);
             return normalizedOwnerId === normalizedViewingId;
           });
+          if (process.env.NODE_ENV === 'development') {
+            console.log(`[Me Page] Fallback: Found ${filtered.length} files from public index for ${viewingCreatorId}`);
+          }
           setCreatorFilesState(filtered);
         }
       };
@@ -2376,7 +2389,8 @@ function App() {
             );
             break;
           case 'media':
-            currentFilteredMeFiles = currentCreatorFiles.filter(f => !isThought(f));
+            // Only show images, videos, and PDF slideshows (exclude thoughts and raw PDFs)
+            currentFilteredMeFiles = currentCreatorFiles.filter(f => isMedia(f));
             break;
           case 'thoughts':
             currentFilteredMeFiles = currentCreatorFiles.filter(f => isThought(f));
@@ -2432,7 +2446,8 @@ function App() {
             );
             break;
           case 'media':
-            currentFilteredMeFiles = currentCreatorFiles.filter(f => !isThought(f));
+            // Only show images, videos, and PDF slideshows (exclude thoughts and raw PDFs)
+            currentFilteredMeFiles = currentCreatorFiles.filter(f => isMedia(f));
             break;
           case 'thoughts':
             currentFilteredMeFiles = currentCreatorFiles.filter(f => isThought(f));

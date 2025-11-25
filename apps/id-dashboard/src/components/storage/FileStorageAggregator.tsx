@@ -6881,19 +6881,19 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
                                             {(metadata?.contentRating !== 'nsfw' && metadata?.contentRating !== 'x-rated') && (
                                               <div className="border-t border-neutral-700 my-1" />
                                             )}
-                                            <button
-                                              onClick={(e) => {
-                                                e.stopPropagation();
-                                                setOpenMenuFor(null);
-                                                actionMenuRef.current = null;
-                                                handleEditMetadata(file);
-                                              }}
-                                              className="flex w-full items-center space-x-2 px-3 py-2 text-sm text-text-secondary hover:text-text-primary hover:bg-neutral-800 transition-colors"
-                                              disabled={isLoading}
-                                            >
-                                              <Edit className="h-4 w-4" />
-                                              <span>Edit metadata</span>
-                                            </button>
+                                    <button
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setOpenMenuFor(null);
+                                        actionMenuRef.current = null;
+                                  handleEditMetadata(file);
+                                }}
+                                      className="flex w-full items-center space-x-2 px-3 py-2 text-sm text-text-secondary hover:text-text-primary hover:bg-neutral-800 transition-colors"
+                                disabled={isLoading}
+                              >
+                                      <Edit className="h-4 w-4" />
+                                      <span>Edit metadata</span>
+                              </button>
                               <button
                                 onClick={(e) => {
                                   e.stopPropagation();
@@ -6916,33 +6916,33 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
                                       hidden
                                     >
                               </button>
-                                            <button
-                                              onClick={(e) => {
-                                                e.stopPropagation();
-                                                setOpenMenuFor(null);
-                                                actionMenuRef.current = null;
-                                                openShareSettings(file);
-                                              }}
-                                              className="flex w-full items-center space-x-2 px-3 py-2 text-sm text-text-secondary hover:text-text-primary hover:bg-neutral-800 transition-colors"
-                                              disabled={isLoading}
-                                            >
-                                              <Share2 className="h-4 w-4" />
-                                              <span>Share settings</span>
-                                            </button>
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                        setOpenMenuFor(null);
+                                        actionMenuRef.current = null;
+                                        openShareSettings(file);
+                                }}
+                                      className="flex w-full items-center space-x-2 px-3 py-2 text-sm text-text-secondary hover:text-text-primary hover:bg-neutral-800 transition-colors"
+                                disabled={isLoading}
+                              >
+                                      <Share2 className="h-4 w-4" />
+                                      <span>Share settings</span>
+                              </button>
                                             <div className="border-t border-neutral-700 my-1" />
-                                            <button
-                                              onClick={(e) => {
-                                                e.stopPropagation();
-                                                setOpenMenuFor(null);
-                                                actionMenuRef.current = null;
-                                                handleDelete(file);
-                                              }}
-                                              className="flex w-full items-center space-x-2 px-3 py-2 text-sm text-red-400 hover:text-red-300 hover:bg-red-950 transition-colors"
-                                              disabled={isLoading}
-                                            >
-                                              <Trash2 className="h-4 w-4" />
-                                              <span>Delete</span>
-                                            </button>
+                                    <button
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setOpenMenuFor(null);
+                                        actionMenuRef.current = null;
+                                        handleDelete(file);
+                                      }}
+                                      className="flex w-full items-center space-x-2 px-3 py-2 text-sm text-red-400 hover:text-red-300 hover:bg-red-950 transition-colors"
+                                      disabled={isLoading}
+                                    >
+                                      <Trash2 className="h-4 w-4" />
+                                      <span>Delete</span>
+                                    </button>
                                           </>
                                         );
                                       }

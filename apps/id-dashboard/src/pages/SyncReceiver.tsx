@@ -70,8 +70,8 @@ export const SyncReceiver: React.FC<SyncReceiverProps> = ({ syncCode }) => {
         console.warn('[SyncReceiver] Please regenerate sync data with hashed pnName instead of plaintext.');
         
         // Still verify for backward compatibility, but warn user
-        if (pnName !== syncData.pnName || passcode !== syncData.passcode) {
-          setError('Invalid pN Name or passcode');
+    if (pnName !== syncData.pnName || passcode !== syncData.passcode) {
+      setError('Invalid pN Name or passcode');
           return;
         }
         

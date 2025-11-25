@@ -3521,8 +3521,8 @@ This invitation expires in 24 hours.`;
                   const decryptedUserDataJson = await IdentityCrypto.decrypt(
                     existingDataPoint.encryptedUserData,
                     credentials.pnName,
-                    credentials.passcode
-                  );
+          credentials.passcode
+        );
                   existingData = JSON.parse(decryptedUserDataJson);
                   console.log('[App] Decrypted existing userData for editing:', existingData);
                 } catch (error) {
@@ -3596,8 +3596,8 @@ This invitation expires in 24 hours.`;
           encryptedUserData = await IdentityCrypto.encrypt(
             userDataJson,
             credentials.pnName,
-            credentials.passcode
-          );
+              credentials.passcode
+            );
         } catch (error) {
           console.warn('Failed to encrypt userData, continuing without it:', error);
         }
@@ -6536,8 +6536,8 @@ This invitation expires in 24 hours.`;
             onSubmit={handleBiometricPasscodeSubmit}
             identityName={pendingBiometricIdentity.nickname || pendingBiometricIdentity.pnName}
             error={biometricPasscodeError}
-          />
-        )}
+                />
+              )}
 
         {/* Delegation Modal */}
         <DelegationModal

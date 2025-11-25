@@ -104,7 +104,7 @@ export class SecureCredentialManager {
         pnName: creds.pnName,
         passcode: creds.passcode
       });
-      this.credentials.delete(sessionId);
+    this.credentials.delete(sessionId);
     }
   }
   

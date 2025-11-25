@@ -132,7 +132,7 @@ export const AuthenticationManager: React.FC<AuthenticationManagerProps> = ({
       // Authenticate with biometric
       const result = await BiometricAuth.authenticate(targetIdentityId);
       
-      if (result.success) {
+        if (result.success) {
         // Get the encrypted identity from SimpleStorage
         const { SimpleStorage } = await import('../../utils/simpleStorage');
         const { IdentityCrypto } = await import('../../utils/crypto');

@@ -100,7 +100,7 @@ export const LicenseModal: React.FC<LicenseModalProps> = ({
 
   return (
     <>
-      <div className="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-50">
+    <div className="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-50">
         <div className="bg-neutral-900 border border-neutral-700 rounded-lg p-6 max-w-2xl w-full mx-4 max-h-[90vh] overflow-y-auto">
           {/* Header */}
           <div className="flex justify-between items-center mb-6">
@@ -108,28 +108,28 @@ export const LicenseModal: React.FC<LicenseModalProps> = ({
               <Key className="h-6 w-6 text-blue-400" />
               <h2 className="text-xl font-semibold text-white">API Access</h2>
             </div>
-            <button
-              onClick={onClose}
+          <button
+            onClick={onClose}
               className="text-neutral-400 hover:text-white transition-colors"
-            >
+          >
               <X className="h-5 w-5" />
-            </button>
-          </div>
+          </button>
+        </div>
 
           {/* Error Message */}
-          {error && (
+        {error && (
             <div className="mb-4 p-3 bg-red-900/20 border border-red-700 rounded-lg flex items-start space-x-2">
               <AlertCircle className="h-5 w-5 text-red-400 flex-shrink-0 mt-0.5" />
               <p className="text-sm text-red-300">{error}</p>
-            </div>
-          )}
+          </div>
+        )}
 
           {/* Loading State */}
           {isLoading && !apiKey && (
             <div className="text-center py-12">
               <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-400 mx-auto mb-4"></div>
               <p className="text-neutral-400">Loading API key...</p>
-            </div>
+          </div>
           )}
 
           {/* API Key Content */}
@@ -179,7 +179,7 @@ export const LicenseModal: React.FC<LicenseModalProps> = ({
                 {copied && (
                   <p className="text-xs text-green-400 mt-2">Copied to clipboard!</p>
                 )}
-              </div>
+        </div>
 
               {/* Activation Status */}
               {!apiKey.isActive ? (
@@ -194,16 +194,16 @@ export const LicenseModal: React.FC<LicenseModalProps> = ({
                         To activate your API key and access par Noir APIs, you need to complete identity verification.
                         This ensures compliance with AML/KYC requirements for API access.
                       </p>
-                      <button
+          <button
                         onClick={handleActivate}
                         disabled={isLoading}
                         className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                      >
+          >
                         {isLoading ? 'Processing...' : 'Start Verification'}
-                      </button>
-                    </div>
-                  </div>
-                </div>
+          </button>
+        </div>
+      </div>
+            </div>
               ) : (
                 <div className="bg-green-900/20 border border-green-700 rounded-lg p-4">
                   <div className="flex items-start space-x-3">
@@ -211,7 +211,7 @@ export const LicenseModal: React.FC<LicenseModalProps> = ({
                     <div className="flex-1">
                       <h3 className="text-sm font-medium text-green-300 mb-2">
                         API Key Active
-                      </h3>
+                </h3>
                       <p className="text-sm text-green-200 mb-4">
                         Your API key is active and ready to use. You can now access par Noir APIs for OAuth authentication,
                         data point requests, and content portability.
@@ -278,7 +278,7 @@ export const LicenseModal: React.FC<LicenseModalProps> = ({
             </div>
           )}
         </div>
-      </div>
+    </div>
 
       {/* Identity Verification Modal */}
       {showVerification && (
