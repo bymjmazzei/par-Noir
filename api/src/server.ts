@@ -1243,13 +1243,17 @@ class ProductionServer {
         const fileType = req.query.fileType as string | undefined;
         const authorDid = req.query.authorDid as string | undefined;
         const indexerId = req.query.indexerId as string | undefined;
+        const limit = req.query.limit ? parseInt(req.query.limit as string, 10) : undefined;
+        const offset = req.query.offset ? parseInt(req.query.offset as string, 10) : undefined;
         const debug = req.query.debug === 'true';
 
         const response = await service.getIndexResponse({
           tags,
           fileType,
           authorDid,
-          indexerId
+          indexerId,
+          limit,    // SCALABILITY: Pagination support
+          offset    // SCALABILITY: Pagination support
         });
 
         if (debug) {
@@ -1299,13 +1303,17 @@ class ProductionServer {
         const fileType = req.query.fileType as string | undefined;
         const authorDid = req.query.authorDid as string | undefined;
         const indexerId = req.query.indexerId as string | undefined;
+        const limit = req.query.limit ? parseInt(req.query.limit as string, 10) : undefined;
+        const offset = req.query.offset ? parseInt(req.query.offset as string, 10) : undefined;
         const debug = req.query.debug === 'true';
 
         const response = await service.getNSFWIndexResponse({
           tags,
           fileType,
           authorDid,
-          indexerId
+          indexerId,
+          limit,    // SCALABILITY: Pagination support
+          offset    // SCALABILITY: Pagination support
         });
 
         if (debug) {

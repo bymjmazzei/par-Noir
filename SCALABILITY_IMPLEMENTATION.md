@@ -36,10 +36,11 @@ After implementation, target metrics:
 ## 📊 Current Status
 
 ### Phase 1: Database Optimization
-- [ ] Add composite indexes
-- [ ] Add GIN index for keywords
-- [ ] Add partial indexes for public files
-- [ ] Test query performance
+- [x] Add composite indexes
+- [x] Add GIN index for keywords
+- [x] Add partial indexes for public files
+- [x] Add GIN index for feedCategories
+- [ ] Test query performance (run EXPLAIN ANALYZE)
 
 ### Phase 2: Backend Pagination
 - [ ] Update `getPublicMetadata()` method
