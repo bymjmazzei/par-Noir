@@ -62,7 +62,12 @@ After implementation, target metrics:
 - [ ] Test pagination flow (manual testing needed)
 
 ### Phase 4: Caching Layer
-- [ ] Set up Redis instance
+- [x] Set up Redis connection (uses REDIS_URL env var)
+- [x] Add Redis connection to API (initializeCache on startup)
+- [x] Create CacheService utility
+- [x] Add caching to `getIndexResponse` method
+- [x] Implement cache invalidation in `submitMetadata()` and `removeMetadata()`
+- [ ] Test cache hit/miss rates (monitoring needed)
 - [ ] Create `CacheService` utility
 - [ ] Add caching to `getIndexResponse()`
 - [ ] Implement cache invalidation
