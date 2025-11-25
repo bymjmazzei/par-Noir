@@ -64,6 +64,10 @@ import { CustodianInvitationModal } from './components/modals/CustodianInvitatio
 import { CustodianAcceptanceModal } from './components/modals/CustodianAcceptanceModal';
 import { CustodianApprovalModal } from './components/modals/CustodianApprovalModal';
 import { CustodianInvitationAcceptanceModal } from './components/modals/CustodianInvitationAcceptanceModal';
+import { ScreenProtection } from './utils/security/screenProtection';
+import { ExtensionDetector } from './utils/security/extensionDetector';
+import { ExtensionWarningBanner } from './components/security/ExtensionWarningBanner';
+import { BiometricPasscodeModal } from './components/security/BiometricPasscodeModal';
 
 // Custom hooks for state management
 import { useAppState } from './hooks/useAppState';
@@ -228,6 +232,18 @@ const generateSecureToken = async (identity: any): Promise<string> => {
 };
 
 function App() {
+  // SECURITY: Migrate SimpleStorage from localStorage to IndexedDB on app start
+  React.useEffect(() => {
+    const migrateStorage = async () => {
+      try {
+        const simpleStorage = SimpleStorage.getInstance();
+        await simpleStorage.migrateFromLocalStorage();
+      } catch (error) {
+        console.warn('[App] Storage migration failed:', error);
+      }
+    };
+    migrateStorage();
+  }, []);
   // Production-safe logging utility
   const logDebug = (_message: string, ..._args: unknown[]) => {
     // Silent in production - no logging
@@ -1059,6 +1075,33 @@ function App() {
         // Track page view
         analytics.trackPageView('dashboard');
 
+        // SECURITY: Enable screen protection (blur on tab switch)
+        try {
+          ScreenProtection.enable();
+          logDebug('[Security] Screen protection enabled');
+        } catch (screenProtectionError) {
+          logError('Failed to enable screen protection:', screenProtectionError);
+        }
+
+        // SECURITY: Start extension detection and warnings
+        try {
+          ExtensionDetector.startMonitoring();
+          // Check for warnings and show user notification if needed
+          setTimeout(() => {
+            if (ExtensionDetector.hasWarnings()) {
+              const warningMessage = ExtensionDetector.getWarningMessage();
+              if (warningMessage) {
+                // Show warning to user (non-blocking)
+                logDebug('[Security] Extension warning:', warningMessage);
+                // Note: Full UI integration for extension warnings will be in Phase 3
+              }
+            }
+          }, 2000); // Wait 2 seconds for page to fully load
+          logDebug('[Security] Extension detection started');
+        } catch (extensionError) {
+          logError('Failed to start extension detection:', extensionError);
+        }
+
         // SECURITY: Run session data migration to remove pnName/passcode from IndexedDB
         try {
           const migrationResult = await SessionDataMigration.runMigration();
@@ -1091,6 +1134,12 @@ function App() {
     };
 
     initializeSystems();
+
+    // Cleanup on unmount
+    return () => {
+      ScreenProtection.disable();
+      ExtensionDetector.stopMonitoring();
+    };
   }, [migrationChecked]);
 
   const handleOfflineModeChange = () => {
@@ -1247,10 +1296,15 @@ function App() {
         logDebug('Storing encrypted identity with public key:', encryptedIdentity.publicKey);
         
         const simpleStorage = SimpleStorage.getInstance();
+        // SECURITY: Do NOT store pnName in plaintext - it's a SECRET
+        // Store only a hash for lookup purposes
+        const { PNNameHash } = await import('./utils/security/pnNameHash');
+        const pnNameHash = await PNNameHash.getLookupKey(createForm.pnName);
+        
         const simpleIdentity: SimpleIdentity = {
           id: encryptedIdentity.publicKey,
           nickname: randomNickname, // Use generated random nickname
-          pnName: createForm.pnName,
+          pnNameHash: pnNameHash, // Store hash instead of plaintext pnName
           publicKey: encryptedIdentity.publicKey,
           encryptedData: encryptedIdentity,
           createdAt: new Date().toISOString(),
@@ -1478,10 +1532,17 @@ function App() {
 
       // SECURITY: Do NOT expose credentials in custom events
         try {
+          // SECURITY: Get credentials from SecureCredentialManager (secrets), not from session
+          const credentials = SecureCredentialManager.getCredentials(session.id);
+          if (!credentials) {
+            console.warn('[App] Cannot dispatch pn-auth-session event - credentials not available');
+            return;
+          }
+          
           const authEventDetail = {
           // pnName and passcode removed - use SecureCredentialManager if needed
             publicKey: session.publicKey || session.id,
-            authToken: await deriveAuthToken(session.pnName, session.publicKey || session.id, session.passcode),
+            authToken: await deriveAuthToken(credentials.pnName, session.publicKey || session.id, credentials.passcode),
           };
           window.dispatchEvent(new CustomEvent('pn-auth-session', { detail: authEventDetail }));
         } catch (eventError) {
@@ -2108,38 +2169,78 @@ function App() {
     }
   };
 
-  // Biometric authentication handler (currently unused but available for future use)
-  const handleBiometricAuth = async (identity: DIDInfo) => {
+  // State for biometric passcode modal
+  const [showBiometricPasscodeModal, setShowBiometricPasscodeModal] = React.useState(false);
+  const [pendingBiometricIdentity, setPendingBiometricIdentity] = React.useState<DIDInfo | null>(null);
+  const [biometricPasscodeError, setBiometricPasscodeError] = React.useState<string | null>(null);
+
+  // Biometric authentication handler - Complete implementation
+  const handleBiometricAuth = async (identity: DIDInfo, passcode?: string) => {
     try {
       setLoading(true);
+      setBiometricPasscodeError(null);
       
       // Attempt biometric authentication
       const result = await BiometricAuth.authenticate(identity.id);
       
       if (result.success) {
-        // Get the stored identity
-        const storedIdentity = await storage.getIdentity(identity.id);
-        if (!storedIdentity) {
-          throw new Error('Identity not found');
+        // Get the encrypted identity from SimpleStorage
+        const simpleStorage = SimpleStorage.getInstance();
+        const simpleIdentity = await simpleStorage.getIdentity(identity.id);
+        
+        if (!simpleIdentity) {
+          throw new Error('Identity not found in storage');
         }
 
-        // Create authenticated session without requiring passcode
-        const authSession = {
-          id: identity.id,
-          pnName: identity.pnName,
-          nickname: identity.nickname || identity.pnName,
-          accessToken: `biometric_${Date.now()}_${crypto.getRandomValues(new Uint8Array(4)).toString()}`,
-          expiresIn: 3600,
-          authenticatedAt: new Date().toISOString(),
-          publicKey: 'biometric-auth-key'
-        };
+        // Get the encrypted identity data
+        const encryptedIdentity: EncryptedIdentity = simpleIdentity.encryptedData;
+        
+        // SECURITY: Always require BOTH pnName and passcode - both are secrets
+        // Biometric auth proves identity ownership, but we still need BOTH secrets to decrypt
+        // pnName is NOT stored in plaintext, so user must provide it
+        if (!passcode) {
+          setPendingBiometricIdentity(identity);
+          setShowBiometricPasscodeModal(true);
+          setLoading(false);
+          return;
+        }
 
-        // Store the session
+        // If pnName not provided, show modal to prompt for it
+        // Note: We can't use identity.pnName because it's not stored (security)
+        // User must provide both secrets
+        if (!identity.pnName) {
+          setPendingBiometricIdentity(identity);
+          setShowBiometricPasscodeModal(true);
+          setLoading(false);
+          return;
+        }
+
+        // Decrypt and authenticate the identity using BOTH pnName and passcode
+        // This will automatically store credentials in SecureCredentialManager
+        const authSession = await IdentityCrypto.authenticateIdentity(
+          encryptedIdentity,
+          passcode,
+          identity.pnName
+        );
+
+        // Store the session (credentials are already in SecureCredentialManager)
         await storage.storeSession(authSession);
         
         // Set authenticated user
         setAuthenticatedUser(authSession);
+        
+        // Update selected DID
         setSelectedDID(identity);
+        
+        // Update last accessed time
+        await simpleStorage.updateIdentity({
+          ...simpleIdentity,
+          lastAccessed: new Date().toISOString()
+        });
+        
+        // Close modal if open
+        setShowBiometricPasscodeModal(false);
+        setPendingBiometricIdentity(null);
         
         setSuccessWithTimeout('Successfully unlocked with biometrics!');
         setTimeout(() => setSuccessWithTimeout(null), 3000);
@@ -2154,10 +2255,31 @@ function App() {
       }
     } catch (error: any) {
       logError('Biometric authentication error:', error);
+      setBiometricPasscodeError(error.message || 'Biometric authentication failed');
       setError(error.message || 'Biometric authentication failed');
       setTimeout(() => setError(null), 9000);
     } finally {
       setLoading(false);
+    }
+  };
+
+  // Handle passcode submission from biometric modal
+  // SECURITY: Require BOTH pnName and passcode - both are secrets
+  const handleBiometricPasscodeSubmit = async (pnName: string, passcode: string) => {
+    if (!pendingBiometricIdentity) {
+      return;
+    }
+    
+    try {
+      // Create identity object with provided pnName (not from storage - security)
+      const identityWithPnName = {
+        ...pendingBiometricIdentity,
+        pnName: pnName
+      };
+      await handleBiometricAuth(identityWithPnName, passcode);
+    } catch (error: any) {
+      setBiometricPasscodeError(error.message || 'Failed to decrypt identity');
+      throw error; // Re-throw so modal can handle it
     }
   };
 
@@ -3395,11 +3517,12 @@ This invitation expires in 24 hours.`;
               // Decrypt userData if available for editing
               if (existingDataPoint.encryptedUserData) {
                 try {
+                  // SECURITY: Decryption requires BOTH pnName and passcode
                   const decryptedUserDataJson = await IdentityCrypto.decrypt(
                     existingDataPoint.encryptedUserData,
-                    authenticatedUser.publicKey || '',
-          credentials.passcode
-        );
+                    credentials.pnName,
+                    credentials.passcode
+                  );
                   existingData = JSON.parse(decryptedUserDataJson);
                   console.log('[App] Decrypted existing userData for editing:', existingData);
                 } catch (error) {
@@ -3469,11 +3592,12 @@ This invitation expires in 24 hours.`;
       if (userData && Object.keys(userData).length > 0) {
         try {
           const userDataJson = JSON.stringify(userData);
+          // SECURITY: Encryption requires BOTH pnName and passcode
           encryptedUserData = await IdentityCrypto.encrypt(
             userDataJson,
-            authenticatedUser.publicKey || '',
-              credentials.passcode
-            );
+            credentials.pnName,
+            credentials.passcode
+          );
         } catch (error) {
           console.warn('Failed to encrypt userData, continuing without it:', error);
         }
@@ -4628,6 +4752,9 @@ This invitation expires in 24 hours.`;
 
   return (
     <div className="min-h-screen bg-bg-primary text-text-primary flex flex-col">
+      {/* Extension Warning Banner */}
+      <ExtensionWarningBanner />
+      
       <Header
         authenticatedUser={authenticatedUser}
         onLogout={handleLogout}
@@ -6396,6 +6523,21 @@ This invitation expires in 24 hours.`;
                   identityId={authenticatedUser?.id}
                 />
               )}
+
+        {/* Biometric Passcode Modal */}
+        {showBiometricPasscodeModal && pendingBiometricIdentity && (
+          <BiometricPasscodeModal
+            isOpen={showBiometricPasscodeModal}
+            onClose={() => {
+              setShowBiometricPasscodeModal(false);
+              setPendingBiometricIdentity(null);
+              setBiometricPasscodeError(null);
+            }}
+            onSubmit={handleBiometricPasscodeSubmit}
+            identityName={pendingBiometricIdentity.nickname || pendingBiometricIdentity.pnName}
+            error={biometricPasscodeError}
+          />
+        )}
 
         {/* Delegation Modal */}
         <DelegationModal

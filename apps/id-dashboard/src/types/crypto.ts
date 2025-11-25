@@ -17,15 +17,15 @@ export interface DIDKeyPair {
 }
 
 export interface AuthSession {
-    id: string;
-    pnName: string;
-    nickname: string;
+    id: string; // DID - public identifier, safe to store
+    nickname: string; // Display name - safe to store
     accessToken: string;
     expiresIn: number;
     authenticatedAt: string;
-    publicKey: string;
-    passcode?: string;
+    publicKey: string; // Public key - safe to store
     authToken?: string;
+    // SECURITY: pnName and passcode are SECRETS and must NEVER be stored here
+    // Use SecureCredentialManager.getCredentials(id) to retrieve them when needed
 }
 
 export interface IdentityData {

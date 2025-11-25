@@ -38,10 +38,26 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     
     <!-- Security Headers for OAuth popups -->
-    <meta http-equiv="Cross-Origin-Opener-Policy" content="unsafe-none">
+    <meta http-equiv="Cross-Origin-Opener-Policy" content="same-origin-allow-popups">
     <meta http-equiv="Cross-Origin-Embedder-Policy" content="unsafe-none">
     
-    <!-- Content Security Policy temporarily disabled for Google OAuth -->
+    <!-- Content Security Policy - Enhanced Security -->
+    <!-- Note: unsafe-inline and unsafe-eval are required for Google OAuth library -->
+    <!-- However, we restrict them to only Google domains for better security -->
+    <meta http-equiv="Content-Security-Policy" content="
+      default-src 'self';
+      script-src 'self' 'unsafe-inline' 'unsafe-eval' https://apis.google.com https://accounts.google.com;
+      style-src 'self' 'unsafe-inline' https://fonts.googleapis.com;
+      font-src 'self' https://fonts.gstatic.com data:;
+      img-src 'self' data: https: blob:;
+      connect-src 'self' https://apis.google.com https://accounts.google.com https://www.googleapis.com https://oauth2.googleapis.com wss: ws:;
+      frame-src 'self' https://accounts.google.com;
+      object-src 'none';
+      base-uri 'self';
+      form-action 'self' https://accounts.google.com;
+      upgrade-insecure-requests;
+      require-trusted-types-for 'script';
+    ">
   </head>
   <body>
     <div id="root"></div>

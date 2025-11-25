@@ -5,7 +5,10 @@
  * NEVER persists to IndexedDB, localStorage, or any storage.
  * 
  * CRITICAL: pn name + passcode = 2FA credentials. Must remain secret.
+ * Both are SECRETS and must be treated identically.
  */
+
+import { MemorySecurity } from './security/memorySecurity';
 
 interface Credentials {
   pnName: string;
@@ -18,8 +21,8 @@ export class SecureCredentialManager {
   // Store credentials in memory only - never persisted
   private static credentials: Map<string, Credentials> = new Map();
   
-  // Default expiration: 1 hour (3600000 ms)
-  private static readonly DEFAULT_EXPIRY = 60 * 60 * 1000;
+  // Default expiration: 15 minutes (reduced from 1 hour for better security)
+  private static readonly DEFAULT_EXPIRY = 15 * 60 * 1000;
   
   /**
    * Store credentials temporarily in memory only
@@ -91,28 +94,53 @@ export class SecureCredentialManager {
   
   /**
    * Clear credentials for a specific session
+   * SECURITY: Zeroizes secrets from memory before deletion
    */
   static clearCredentials(sessionId: string): void {
-    this.credentials.delete(sessionId);
+    const creds = this.credentials.get(sessionId);
+    if (creds) {
+      // Zeroize secrets before deletion
+      MemorySecurity.zeroizeCredentials({
+        pnName: creds.pnName,
+        passcode: creds.passcode
+      });
+      this.credentials.delete(sessionId);
+    }
   }
   
   /**
    * Clear all credentials (call on logout)
+   * SECURITY: Zeroizes all secrets from memory
    */
   static clearAll(): void {
+    // Zeroize all credentials before clearing
+    for (const creds of this.credentials.values()) {
+      MemorySecurity.zeroizeCredentials({
+        pnName: creds.pnName,
+        passcode: creds.passcode
+      });
+    }
     this.credentials.clear();
   }
   
   /**
    * Remove expired credentials
+   * SECURITY: Zeroizes expired secrets from memory
    */
   private static cleanupExpired(): void {
     const now = Date.now();
+    const expired: string[] = [];
+    
     for (const [sessionId, creds] of this.credentials.entries()) {
       if (now > creds.expiresAt) {
-        this.credentials.delete(sessionId);
+        expired.push(sessionId);
       }
     }
+    
+    // Zeroize and remove expired credentials
+    expired.forEach(sessionId => {
+      this.clearCredentials(sessionId);
+    });
   }
   
   /**

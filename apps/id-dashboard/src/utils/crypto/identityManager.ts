@@ -44,7 +44,9 @@ export class IdentityManager {
             };
             
             // Encrypt ALL sensitive identity data including DID and recovery keys
-            const encryptedData = await EncryptionManager.encrypt(JSON.stringify(identityData), passcode);
+            // SECURITY: Encryption requires BOTH pnName (username) and passcode
+            // Both are secrets and must be combined for key derivation
+            const encryptedData = await EncryptionManager.encrypt(JSON.stringify(identityData), username, passcode);
             
             return {
                 publicKey: didKeyPair.publicKey, // Only public key is in plain text
@@ -68,11 +70,13 @@ export class IdentityManager {
         try {
             // Use only the current decryption method - NO LEGACY FALLBACK
             // Legacy fallback was a security vulnerability that allowed wrong credentials to work
+            // SECURITY: Decryption requires BOTH pnName (expectedUsername) and passcode
+            // Both are secrets and must be combined for key derivation
             const decryptedData = await EncryptionManager.decrypt({
                 encrypted: encryptedIdentity.encryptedData,
                 iv: encryptedIdentity.iv,
                 salt: encryptedIdentity.salt
-            }, passcode);
+            }, expectedUsername, passcode);
             
             const identity = JSON.parse(decryptedData);
             

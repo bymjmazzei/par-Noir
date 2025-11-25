@@ -20,6 +20,8 @@ export interface BiometricAuthResult {
 
 export class BiometricAuth {
   private static readonly CREDENTIAL_STORAGE_KEY = 'biometric-credentials';
+  // Note: Credentials are stored in localStorage for now, but should be migrated to IndexedDB
+  // The actual WebAuthn credentials are stored securely by the browser
   
   /**
    * Check if biometric authentication is available on this device

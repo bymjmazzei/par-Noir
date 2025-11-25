@@ -134,7 +134,8 @@ export class SecureMetadataCrypto {
       const metadataString = JSON.stringify(metadata);
       
       // Use the same encryption as ID file
-      const encryptedData = await IdentityCrypto.encryptData(metadataString, passcode);
+      // SECURITY: Requires both pnName (username) and passcode
+      const encryptedData = await IdentityCrypto.encryptData(metadataString, _username, passcode);
       
       return {
         encryptedData: encryptedData.encrypted,
@@ -167,7 +168,8 @@ export class SecureMetadataCrypto {
         salt: secureMetadata.salt
       };
       
-      const decryptedString = await IdentityCrypto.decryptData(encryptedData, passcode);
+      // SECURITY: Requires both pnName (username) and passcode
+      const decryptedString = await IdentityCrypto.decryptData(encryptedData, _username, passcode);
       return JSON.parse(decryptedString);
     } catch (error) {
       if (process.env.NODE_ENV === 'development') {

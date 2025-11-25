@@ -164,7 +164,9 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
   const [activeBackendId, setActiveBackendId] = useState<string | null>(null);
   const [storageQuotas, setStorageQuotas] = useState<Map<string, any>>(new Map());
   const [fileMetadataMap, setFileMetadataMap] = useState<Map<string, PublicMetadata>>(new Map());
-  const [resolvedAuth, setResolvedAuth] = useState<{ pnName: string; publicKey: string; passcode?: string; authToken?: string } | null>(null);
+  // SECURITY: resolvedAuth should NOT contain secrets (pnName, passcode)
+  // Use SecureCredentialManager.getCredentials(sessionId) to retrieve secrets when needed
+  const [resolvedAuth, setResolvedAuth] = useState<{ publicKey: string; authToken?: string } | null>(null);
   const lastDesktopPayloadRef = React.useRef<DesktopUnlockPayload | null>(null);
   const lastDesktopAuthStateRef = React.useRef<'locked' | 'unlocked'>('locked');
   
@@ -286,15 +288,17 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
       try {
         const { VolumeIdGenerator } = await import('../../utils/crypto/volumeIdGenerator');
         const sessionId = currentAuthenticatedUser?.id;
+        // SECURITY: Get pnName and passcode from SecureCredentialManager (secrets)
         const credentials = sessionId ? SecureCredentialManager.getCredentials(sessionId) : null;
         
-        const pnName = currentResolvedAuth?.pnName || currentAuthenticatedUser?.pnName || (currentAuthenticatedUser as any)?.username;
-      const publicKey = currentResolvedAuth?.publicKey || currentAuthenticatedUser?.publicKey;
+        // SECURITY: Get publicKey from resolvedAuth or authenticatedUser (public data)
+        const publicKey = currentResolvedAuth?.publicKey || currentAuthenticatedUser?.publicKey;
       
-        if (pnName && credentials?.passcode && publicKey) {
+        // SECURITY: Use credentials.pnName (from SecureCredentialManager), not from state
+        if (credentials?.pnName && credentials?.passcode && publicKey) {
           // STANDARDIZED FORMULA: pnName:passcode:publicKey → SHA256 → pn-{12-char-hex}
           const identifier = await VolumeIdGenerator.generateVolumeId({
-            pnName,
+            pnName: credentials.pnName,
             passcode: credentials.passcode,
             publicKey
           });
@@ -327,16 +331,18 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
     const currentResolvedAuth = resolvedAuthRef.current;
     const currentAuthenticatedUser = authenticatedUserRef.current;
     const sessionId = currentAuthenticatedUser?.id;
+    // SECURITY: Get pnName and passcode from SecureCredentialManager (secrets)
     const credentials = sessionId ? SecureCredentialManager.getCredentials(sessionId) : null;
     
-    const pnName = currentResolvedAuth?.pnName || currentAuthenticatedUser?.pnName || (currentAuthenticatedUser as any)?.username;
+    // SECURITY: Get publicKey from resolvedAuth or authenticatedUser (public data)
     const publicKey = currentResolvedAuth?.publicKey || currentAuthenticatedUser?.publicKey;
     
-    if (pnName && credentials?.passcode && publicKey) {
+    // SECURITY: Use credentials.pnName (from SecureCredentialManager), not from state
+    if (credentials?.pnName && credentials?.passcode && publicKey) {
       try {
         const { VolumeIdGenerator } = await import('../../utils/crypto/volumeIdGenerator');
         const identifier = await VolumeIdGenerator.generateVolumeId({
-          pnName,
+          pnName: credentials.pnName,
           passcode: credentials.passcode,
           publicKey
         });
@@ -474,32 +480,23 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
   }, [scheduleTokenRetry]);
   
   const getResolvedAuthCredentials = React.useCallback(() => {
-    let pnName =
-      resolvedAuth?.pnName ||
-      authenticatedUser?.pnName ||
-      (authenticatedUser as any)?.username ||
-      (authenticatedUser as any)?.name ||
-      null;
+    // SECURITY: Get pnName and passcode from SecureCredentialManager ONLY (secrets)
+    // Never get pnName from resolvedAuth or authenticatedUser state - it's a SECRET
+    const sessionId = authenticatedUser?.id || (authenticatedUser as any)?.publicKey || null;
+    const credentials = sessionId ? SecureCredentialManager.getCredentials(sessionId) : null;
+    
+    // SECURITY: pnName is a SECRET - only get from SecureCredentialManager
+    const pnName = credentials?.pnName || null;
 
+    // Get publicKey from resolvedAuth or authenticatedUser (public data)
     let publicKey =
       resolvedAuth?.publicKey ||
       authenticatedUser?.publicKey ||
       (typeof authenticatedUser?.id === 'string' ? authenticatedUser.id : null) ||
       null;
 
-    if (!pnName && authenticatedUser?.id && typeof authenticatedUser.id === 'string') {
-      const idParts = authenticatedUser.id.split('-');
-      if (idParts.length > 0 && idParts[0] !== 'did:key') {
-        pnName = idParts[0];
-      }
-    }
-
-    let passcode = resolvedAuth?.passcode || null;
-    if (!passcode) {
-      // SECURITY: Get passcode from SecureCredentialManager instead of sessionStorage
-      const sessionId = authenticatedUser?.id || (authenticatedUser as any)?.publicKey || null;
-      passcode = getPasscodeFromSecureStorage(sessionId);
-    }
+    // SECURITY: Get passcode from SecureCredentialManager (secrets)
+    const passcode = credentials?.passcode || null;
 
     if (!pnName || !publicKey) {
       return null;
@@ -513,20 +510,20 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
   }, [authenticatedUser, resolvedAuth]);
   
   React.useEffect(() => {
-    if (!resolvedAuth || resolvedAuth.passcode) {
+    // SECURITY: Check if credentials exist in SecureCredentialManager
+    // resolvedAuth no longer contains passcode (it's a secret)
+    const sessionId = authenticatedUser?.id || (authenticatedUser as any)?.publicKey || null;
+    const credentials = sessionId ? SecureCredentialManager.getCredentials(sessionId) : null;
+    
+    if (!resolvedAuth || credentials) {
+      // Credentials already exist, no need to hydrate
       return;
     }
-    try {
-      // SECURITY: Get passcode from SecureCredentialManager instead of sessionStorage
-      const sessionId = authenticatedUser?.id || (authenticatedUser as any)?.publicKey || null;
-      const storedPasscode = getPasscodeFromSecureStorage(sessionId);
-      if (storedPasscode) {
-        setResolvedAuth((prev) => (prev ? { ...prev, passcode: storedPasscode } : prev));
-      }
+    
     } catch (e) {
-      console.warn('⚠️ [FileStorageAggregator] Unable to hydrate passcode from session storage:', e);
+      console.warn('⚠️ [FileStorageAggregator] Unable to get credentials from SecureCredentialManager:', e);
     }
-  }, [resolvedAuth]);
+  }, [resolvedAuth, authenticatedUser]);
   
   const encryptionService = React.useMemo(() => {
     try {
@@ -850,14 +847,9 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
       }
 
       const resolved = getResolvedAuthCredentials();
-      let metadataPnName =
-        resolved?.pnName ||
-        authenticatedUser?.pnName ||
-        (authenticatedUser as any)?.username ||
-        (authenticatedUser as any)?.name ||
-        null;
-
-      let metadataPasscode = resolved?.passcode || null;
+      // SECURITY: pnName is a SECRET - only get from getResolvedAuthCredentials (which uses SecureCredentialManager)
+      const metadataPnName = resolved?.pnName || null;
+      const metadataPasscode = resolved?.passcode || null;
       if (!metadataPasscode) {
         // SECURITY: Get passcode from SecureCredentialManager instead of sessionStorage
         const sessionId = authenticatedUser?.id || (authenticatedUser as any)?.publicKey || null;
@@ -904,7 +896,8 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
         console.warn('⚠️ [StorageCredentials] Unable to update secure metadata during refresh:', error);
       }
     },
-    [authenticatedUser?.id, authenticatedUser?.pnName, getResolvedAuthCredentials]
+    [authenticatedUser?.id, getResolvedAuthCredentials]
+    // SECURITY: Removed authenticatedUser?.pnName - it's a secret
   );
 
   // Guard to prevent multiple simultaneous persistence calls
@@ -1432,7 +1425,8 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
         setIsLoadingIndexers(false);
       }
     },
-    [apiEndpoint, applyIndexersState, resolvedAuth?.publicKey, resolvedAuth?.pnName, authenticatedUser?.id, authenticatedUser?.pnName, authenticatedUser?.publicKey]
+    [apiEndpoint, applyIndexersState, resolvedAuth?.publicKey, authenticatedUser?.id, authenticatedUser?.publicKey]
+    // SECURITY: Removed resolvedAuth?.pnName, authenticatedUser?.pnName - these are secrets
   );
 
   const refreshMetadataInBackground = React.useCallback(
@@ -2191,7 +2185,8 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
         // Accounts are loaded from cache, no need to persist
       }
     }
-  }, [apiEndpoint, resolvedAuth?.publicKey, resolvedAuth?.pnName, authenticatedUser?.id, authenticatedUser?.pnName, authenticatedUser?.publicKey, upsertDriveAccount, persistStorageCredentialsToAPI]);
+  }, [apiEndpoint, resolvedAuth?.publicKey, authenticatedUser?.id, authenticatedUser?.publicKey, upsertDriveAccount, persistStorageCredentialsToAPI]);
+  // SECURITY: Removed resolvedAuth?.pnName, authenticatedUser?.pnName - these are secrets
 
   const fetchDriveUserInfo = React.useCallback(async (accessToken: string) => {
     try {
@@ -2273,12 +2268,10 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
         return;
       }
 
-      const effectivePnName =
-        authenticatedUser?.pnName ||
-        resolvedAuth?.pnName ||
-        (authenticatedUser as any)?.username ||
-        (authenticatedUser as any)?.name ||
-        null;
+      // SECURITY: Get pnName from SecureCredentialManager (secrets), not from state
+      const sessionId = authenticatedUser?.id || (authenticatedUser as any)?.publicKey || null;
+      const credentials = sessionId ? SecureCredentialManager.getCredentials(sessionId) : null;
+      const effectivePnName = credentials?.pnName || null;
 
       if (!effectivePnName) {
         if (!missingPnNameLogRef.current) {
@@ -2418,13 +2411,12 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
     loadTokenFromMetadata();
   }, [
     authenticatedUser?.id,
-    authenticatedUser?.pnName,
+    // SECURITY: Removed authenticatedUser?.pnName, resolvedAuth?.pnName, resolvedAuth?.passcode - these are secrets
     aggregatorService,
     hydrateStorageCredentialsFromAPI,
     persistStorageCredentialsToAPI,
     resolvedAuth?.publicKey,
-    resolvedAuth?.pnName,
-    resolvedAuth?.passcode,
+    // Use authenticatedUser?.id to trigger refresh when user changes
   ]);
 
   // Resolve auth credentials
@@ -2447,7 +2439,8 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
           delete (sanitizedUser as any).passcode;
           console.log('🔍 [FileStorageAggregator] authenticatedUser structure:', {
             id: authenticatedUser.id,
-            hasPnName: !!authenticatedUser.pnName,
+            // SECURITY: pnName is secret - not logged
+            // hasPnName: !!authenticatedUser.pnName, // REMOVED - pnName is secret
             publicKey: authenticatedUser.publicKey,
             nickname: authenticatedUser.nickname,
             username: (authenticatedUser as any).username,
@@ -2458,21 +2451,11 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
           console.warn('🔍 [FileStorageAggregator] Could not inspect authenticatedUser:', e);
         }
         
-        // Try multiple ways to extract pnName
-        let pnName = authenticatedUser.pnName;
-        if (!pnName) {
-          pnName = (authenticatedUser as any).username;
-        }
-        if (!pnName) {
-          pnName = (authenticatedUser as any).name;
-        }
-        if (!pnName && authenticatedUser.id && typeof authenticatedUser.id === 'string') {
-          // Last resort: try to extract from id if it's a username pattern
-          const idParts = authenticatedUser.id.split('-');
-          if (idParts.length > 0 && idParts[0] !== 'did:key') {
-            pnName = idParts[0];
-          }
-        }
+        // SECURITY: Get pnName from SecureCredentialManager ONLY (secrets)
+        // Never extract pnName from authenticatedUser - it's a SECRET and shouldn't be there
+        const sessionId = authenticatedUser?.id || (authenticatedUser as any)?.publicKey || null;
+        const credentials = sessionId ? SecureCredentialManager.getCredentials(sessionId) : null;
+        const pnName = credentials?.pnName || null;
         
         // Try multiple ways to extract publicKey
         let publicKey = authenticatedUser.publicKey;
@@ -2509,14 +2492,19 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
         
         const authToken = authenticatedUser?.authToken;
         
-        if (pnName && publicKey) {
+        if (pnName && publicKey && passcode) {
+          // SECURITY: Store secrets in SecureCredentialManager, not in resolvedAuth state
+          const sessionId = authenticatedUser?.id || (authenticatedUser as any)?.publicKey || null;
+          if (sessionId) {
+            SecureCredentialManager.setCredentials(sessionId, pnName, passcode);
+          }
+          
           console.log('✅ [FileStorageAggregator] Auth resolved from prop:', { hasPnName: !!pnName, publicKey: publicKey.substring(0, 20) + '...' });
-          setResolvedAuth((prev) => ({
-            pnName,
+          // SECURITY: Only store public data in resolvedAuth (no secrets)
+          setResolvedAuth({
             publicKey,
-            passcode: passcode || prev?.passcode,
-            authToken: authToken || prev?.authToken,
-          }));
+            authToken: authToken || undefined,
+          });
           setError(null);
           return;
         } else {
@@ -2559,14 +2547,19 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
             // SecureCredentialManager might not be available
           }
           
-          if (pnName && publicKey) {
+          if (pnName && publicKey && passcode) {
+            // SECURITY: Store secrets in SecureCredentialManager, not in resolvedAuth state
+            const sessionId = authenticatedUser?.id || (authenticatedUser as any)?.publicKey || session?.id || null;
+            if (sessionId) {
+              SecureCredentialManager.setCredentials(sessionId, pnName, passcode);
+            }
+            
             console.log('✅ [FileStorageAggregator] Auth resolved from storage');
-            setResolvedAuth((prev) => ({
-              pnName,
+            // SECURITY: Only store public data in resolvedAuth (no secrets)
+            setResolvedAuth({
               publicKey,
-              passcode: passcode || prev?.passcode,
-              authToken: sessionAuthToken || prev?.authToken,
-            }));
+              authToken: sessionAuthToken || undefined,
+            });
             setError(null);
           } else {
             console.warn('⚠️ [FileStorageAggregator] Missing credentials from storage:', { hasPnName: !!pnName, hasPublicKey: !!publicKey });
@@ -2594,7 +2587,10 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
     try {
       console.log('📋 [Metadata] Loading file metadata...', { fileCount: filesToLoad.length });
       const { backend, backendId, keyPrefix } = resolveActiveBackendEntry();
-      if (backend && backend.isConnected() && resolvedAuth?.pnName) {
+      // SECURITY: Check credentials instead of resolvedAuth.pnName (secret)
+      const sessionId = authenticatedUser?.id || (authenticatedUser as any)?.publicKey || null;
+      const credentials = sessionId ? SecureCredentialManager.getCredentials(sessionId) : null;
+      if (backend && backend.isConnected() && credentials?.pnName) {
         try {
           const { GoogleDriveMetadataService } = await import('../../services/storage/GoogleDriveMetadataService');
           let ensuredToken: string | null = null;
@@ -2626,9 +2622,10 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
               const sessionId = authenticatedUser?.id;
               const credentials = sessionId ? SecureCredentialManager.getCredentials(sessionId) : null;
               
-              if (resolvedAuth?.pnName && credentials?.passcode && resolvedAuth?.publicKey) {
+              // SECURITY: Get pnName from credentials (secrets), publicKey from resolvedAuth (public)
+              if (credentials?.pnName && credentials?.passcode && resolvedAuth?.publicKey) {
                 pnIdentifier = await VolumeIdGenerator.generateVolumeId({
-                  pnName: resolvedAuth.pnName,
+                  pnName: credentials.pnName,
                   passcode: credentials.passcode,
                   publicKey: resolvedAuth.publicKey
                 });
@@ -2932,16 +2929,22 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
         // Get credentials (prioritize resolvedAuth, fallback to authenticatedUser + sessionStorage)
         let pnName: string | null = null;
         let publicKey: string | null = null;
-        let passcode: string | null = null;
+        // SECURITY: Get credentials from SecureCredentialManager (secrets)
+        const sessionId = authenticatedUser?.id || (authenticatedUser as any)?.publicKey || null;
+        const credentials = sessionId ? SecureCredentialManager.getCredentials(sessionId) : null;
         
-        if (resolvedAuth?.pnName && resolvedAuth?.publicKey && resolvedAuth?.passcode) {
-          pnName = resolvedAuth.pnName;
+        let passcode: string | null = credentials?.passcode || null;
+        
+        // SECURITY: Get pnName from credentials (secrets), publicKey from resolvedAuth or authenticatedUser (public)
+        if (credentials?.pnName && resolvedAuth?.publicKey) {
+          pnName = credentials.pnName;
           publicKey = resolvedAuth.publicKey;
-          passcode = resolvedAuth.passcode;
-        } else if (authenticatedUser) {
-          pnName = authenticatedUser.pnName || authenticatedUser.username || (authenticatedUser as any).name || null;
+          passcode = credentials.passcode;
+        } else if (authenticatedUser && credentials) {
+          pnName = credentials.pnName;
           publicKey = authenticatedUser.publicKey || 
             (authenticatedUser.id && authenticatedUser.id.startsWith('did:key:') ? authenticatedUser.id : authenticatedUser.id) || null;
+          passcode = credentials.passcode;
           try {
             // SECURITY: Get passcode from SecureCredentialManager instead of sessionStorage
             const sessionId = authenticatedUser?.id || (authenticatedUser as any)?.publicKey || null;
@@ -3465,7 +3468,10 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
         });
       } else {
         // Make public - create metadata and index
-        if (!resolvedAuth?.pnName || !resolvedAuth?.publicKey) {
+        // SECURITY: Check credentials instead of resolvedAuth.pnName (secret)
+        const sessionId = authenticatedUser?.id || (authenticatedUser as any)?.publicKey || null;
+        const credentials = sessionId ? SecureCredentialManager.getCredentials(sessionId) : null;
+        if (!credentials?.pnName || !resolvedAuth?.publicKey) {
           setError('Please unlock your pN to make files public');
           return;
         }
@@ -3655,10 +3661,11 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
           const sessionId = authenticatedUser?.id;
           const credentials = sessionId ? SecureCredentialManager.getCredentials(sessionId) : null;
           
-          if (resolvedAuth?.pnName && credentials?.passcode && resolvedAuth?.publicKey) {
+          // SECURITY: Get pnName from credentials (secrets), publicKey from resolvedAuth (public)
+          if (credentials?.pnName && credentials?.passcode && resolvedAuth?.publicKey) {
             // Use VolumeIdGenerator for consistent identifier (same as folder naming)
             metadataPnIdentifier = await VolumeIdGenerator.generateVolumeId({
-              pnName: resolvedAuth.pnName,
+              pnName: credentials.pnName,
               passcode: credentials.passcode,
               publicKey: resolvedAuth.publicKey
             });
@@ -4549,13 +4556,9 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
 
       // Resolve metadata auth inputs (pnName + passcode) so we can encrypt credentials
       const resolvedCredentials = getResolvedAuthCredentials();
-      let metadataPnName =
-        resolvedCredentials?.pnName ||
-        authenticatedUser?.pnName ||
-        (authenticatedUser as any)?.username ||
-        (authenticatedUser as any)?.name ||
-        null;
-      let metadataPasscode = resolvedCredentials?.passcode || null;
+      // SECURITY: pnName is a SECRET - only get from getResolvedAuthCredentials (which uses SecureCredentialManager)
+      const metadataPnName = resolvedCredentials?.pnName || null;
+      const metadataPasscode = resolvedCredentials?.passcode || null;
       if (!metadataPasscode) {
         try {
           // SECURITY: Get passcode from SecureCredentialManager instead of sessionStorage
@@ -4679,12 +4682,10 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
           const { SecureMetadataStorage } = await import('../../utils/secureMetadataStorage');
           const { SecureMetadataCrypto } = await import('../../utils/secureMetadata');
           
-          const effectivePnName =
-            authenticatedUser?.pnName ||
-            resolvedAuth?.pnName ||
-            (authenticatedUser as any)?.username ||
-            (authenticatedUser as any)?.name ||
-            null;
+          // SECURITY: Get pnName from SecureCredentialManager (secrets), not from state
+          const sessionId = authenticatedUser?.id || (authenticatedUser as any)?.publicKey || null;
+          const credentials = sessionId ? SecureCredentialManager.getCredentials(sessionId) : null;
+          const effectivePnName = credentials?.pnName || null;
           
           // SECURITY: Get passcode from SecureCredentialManager instead of sessionStorage
           const sessionId = authenticatedUser?.id || (authenticatedUser as any)?.publicKey || null;
@@ -4858,21 +4859,26 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
     let publicKey: string | null = null;
     let passcodeToUse: string | null = null;
 
-    // Try 1: Use resolvedAuth state
-    if (resolvedAuth?.pnName && resolvedAuth?.publicKey) {
-      pnName = resolvedAuth.pnName;
+    // SECURITY: Get credentials from SecureCredentialManager (secrets)
+    const sessionId = authenticatedUser?.id || (authenticatedUser as any)?.publicKey || null;
+    const credentials = sessionId ? SecureCredentialManager.getCredentials(sessionId) : null;
+    
+    // Try 1: Use credentials and resolvedAuth (public data)
+    if (credentials?.pnName && resolvedAuth?.publicKey) {
+      pnName = credentials.pnName;
       publicKey = resolvedAuth.publicKey;
-      passcodeToUse = resolvedAuth.passcode || null;
-      console.log('✅ [Upload] Using resolvedAuth state');
+      passcodeToUse = credentials.passcode || null;
+      console.log('✅ [Upload] Using credentials and resolvedAuth');
     }
     
-    // Try 2: Extract from authenticatedUser prop
+    // Try 2: Extract from authenticatedUser prop and credentials
     if (!pnName || !publicKey) {
-      if (authenticatedUser) {
-        pnName = authenticatedUser.pnName || authenticatedUser.username || (authenticatedUser as any).name || null;
+      if (authenticatedUser && credentials) {
+        pnName = credentials.pnName;
         publicKey = authenticatedUser.publicKey || 
           (authenticatedUser.id && authenticatedUser.id.startsWith('did:key:') ? authenticatedUser.id : authenticatedUser.id) || null;
-        console.log('✅ [Upload] Using authenticatedUser prop:', { pnName: !!pnName, publicKey: !!publicKey });
+        passcodeToUse = credentials.passcode || null;
+        console.log('✅ [Upload] Using authenticatedUser prop and credentials:', { pnName: !!pnName, publicKey: !!publicKey });
       }
     }
 
@@ -4886,7 +4892,10 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
         const session = await storage.getCurrentSession();
         
         if (session) {
-          pnName = (session as any).pnName || (session as any).username || (session as any).name || null;
+          // SECURITY: Get pnName from SecureCredentialManager (secrets), not from session storage
+          const sessionId = session.id || (session as any)?.publicKey || null;
+          const sessionCredentials = sessionId ? SecureCredentialManager.getCredentials(sessionId) : null;
+          pnName = sessionCredentials?.pnName || null;
           publicKey = (session as any).publicKey || 
             (session.id && session.id.startsWith('did:key:') ? session.id : session.id) || null;
           console.log('✅ [Upload] Loaded from storage:', { pnName: !!pnName, publicKey: !!publicKey });
@@ -4911,8 +4920,8 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
       return;
     }
 
-    // Update resolvedAuth state for future use
-    if (!resolvedAuth || resolvedAuth.pnName !== pnName || resolvedAuth.publicKey !== publicKey) {
+    // Update resolvedAuth state for future use (only public data)
+    if (!resolvedAuth || resolvedAuth.publicKey !== publicKey) {
       let sessionPasscode: string | null = passcodeToUse;
       if (!sessionPasscode) {
         try {
@@ -4923,32 +4932,25 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
           sessionPasscode = null;
         }
       }
-      setResolvedAuth((prev) => ({
-        pnName: pnName!,
+      // SECURITY: Store secrets in SecureCredentialManager, not in resolvedAuth state
+      const sessionId = authenticatedUser?.id || (authenticatedUser as any)?.publicKey || null;
+      if (sessionId && pnName && sessionPasscode) {
+        SecureCredentialManager.setCredentials(sessionId, pnName, sessionPasscode);
+      }
+      
+      // SECURITY: Only store public data in resolvedAuth (no secrets)
+      setResolvedAuth({
         publicKey: publicKey!,
-        passcode: sessionPasscode || prev?.passcode,
-      }));
-    } else if (!resolvedAuth.passcode) {
-      // Ensure we hydrate passcode if it was missing
-      let sessionPasscode: string | null = passcodeToUse;
-      if (!sessionPasscode) {
-        try {
-          // SECURITY: Get passcode from SecureCredentialManager instead of sessionStorage
-          const sessionId = authenticatedUser?.id || (authenticatedUser as any)?.publicKey || null;
-          sessionPasscode = getPasscodeFromSecureStorage(sessionId);
-        } catch (e) {
-          sessionPasscode = null;
+      });
+    } else {
+      // Ensure credentials are stored if they exist
+      const sessionId = authenticatedUser?.id || (authenticatedUser as any)?.publicKey || null;
+      const credentials = sessionId ? SecureCredentialManager.getCredentials(sessionId) : null;
+      if (!credentials && passcodeToUse && pnName) {
+        // Store credentials if we have them but they're not in SecureCredentialManager
+        if (sessionId) {
+          SecureCredentialManager.setCredentials(sessionId, pnName, passcodeToUse);
         }
-      }
-      if (sessionPasscode) {
-        setResolvedAuth((prev) =>
-          prev
-            ? {
-                ...prev,
-                passcode: sessionPasscode || prev.passcode,
-              }
-            : prev
-        );
       }
     }
 
@@ -5046,8 +5048,8 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
         const sessionId = authenticatedUser?.id;
         const credentials = sessionId ? SecureCredentialManager.getCredentials(sessionId) : null;
         
-        // Get pnName from resolvedAuth or authenticatedUser
-        const pnName = resolvedAuth?.pnName || authenticatedUser?.pnName || (authenticatedUser as any)?.username;
+        // SECURITY: Get pnName from credentials (secrets), not from resolvedAuth or authenticatedUser
+        const pnName = credentials?.pnName || null;
         
         if (pnName && credentials?.passcode && publicKey) {
           // Use VolumeIdGenerator for consistent identifier (same as desktop app)
@@ -5244,7 +5246,10 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
 
       // Also update Google Drive metadata file if we have access
       const backend = aggregatorService?.getBackend(editingFile.backend);
-      if (backend && backend.isConnected() && resolvedAuth?.pnName) {
+      // SECURITY: Check credentials instead of resolvedAuth.pnName (secret)
+      const sessionId = authenticatedUser?.id || (authenticatedUser as any)?.publicKey || null;
+      const credentials = sessionId ? SecureCredentialManager.getCredentials(sessionId) : null;
+      if (backend && backend.isConnected() && credentials?.pnName) {
         try {
           const { GoogleDriveMetadataService } = await import('../../services/storage/GoogleDriveMetadataService');
           const token = (backend as any).token || localStorage.getItem('google_drive_token');
@@ -5257,9 +5262,10 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
               const sessionId = authenticatedUser?.id;
               const credentials = sessionId ? SecureCredentialManager.getCredentials(sessionId) : null;
               
-              if (resolvedAuth?.pnName && credentials?.passcode && resolvedAuth?.publicKey) {
+              // SECURITY: Get pnName from credentials (secrets), publicKey from resolvedAuth (public)
+              if (credentials?.pnName && credentials?.passcode && resolvedAuth?.publicKey) {
                 pnIdentifier = await VolumeIdGenerator.generateVolumeId({
-                  pnName: resolvedAuth.pnName,
+                  pnName: credentials.pnName,
                   passcode: credentials.passcode,
                   publicKey: resolvedAuth.publicKey
                 });
@@ -5742,21 +5748,26 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
     let publicKey: string | null = null;
     let passcodeToUse: string | null = null;
 
-    // Try 1: Use resolvedAuth state
-    if (resolvedAuth?.pnName && resolvedAuth?.publicKey) {
-      pnName = resolvedAuth.pnName;
+    // SECURITY: Get credentials from SecureCredentialManager (secrets)
+    const sessionId = authenticatedUser?.id || (authenticatedUser as any)?.publicKey || null;
+    const credentials = sessionId ? SecureCredentialManager.getCredentials(sessionId) : null;
+    
+    // Try 1: Use credentials and resolvedAuth (public data)
+    if (credentials?.pnName && resolvedAuth?.publicKey) {
+      pnName = credentials.pnName;
       publicKey = resolvedAuth.publicKey;
-      passcodeToUse = resolvedAuth.passcode || null;
-      console.log('✅ [Download] Using resolvedAuth state');
+      passcodeToUse = credentials.passcode || null;
+      console.log('✅ [Download] Using credentials and resolvedAuth');
     }
     
-    // Try 2: Extract from authenticatedUser prop
+    // Try 2: Extract from authenticatedUser prop and credentials
     if (!pnName || !publicKey) {
-      if (authenticatedUser) {
-        pnName = authenticatedUser.pnName || authenticatedUser.username || (authenticatedUser as any).name || null;
+      if (authenticatedUser && credentials) {
+        pnName = credentials.pnName;
         publicKey = authenticatedUser.publicKey || 
           (authenticatedUser.id && authenticatedUser.id.startsWith('did:key:') ? authenticatedUser.id : authenticatedUser.id) || null;
-        console.log('✅ [Download] Using authenticatedUser prop:', { pnName: !!pnName, publicKey: !!publicKey });
+        passcodeToUse = credentials.passcode || null;
+        console.log('✅ [Download] Using authenticatedUser prop and credentials:', { pnName: !!pnName, publicKey: !!publicKey });
       }
     }
 
@@ -5770,7 +5781,10 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
         const session = await storage.getCurrentSession();
         
         if (session) {
-          pnName = (session as any).pnName || (session as any).username || (session as any).name || null;
+          // SECURITY: Get pnName from SecureCredentialManager (secrets), not from session storage
+          const sessionId = session.id || (session as any)?.publicKey || null;
+          const sessionCredentials = sessionId ? SecureCredentialManager.getCredentials(sessionId) : null;
+          pnName = sessionCredentials?.pnName || null;
           publicKey = (session as any).publicKey || 
             (session.id && session.id.startsWith('did:key:') ? session.id : session.id) || null;
           console.log('✅ [Download] Loaded from storage:', { pnName: !!pnName, publicKey: !!publicKey });
@@ -6161,9 +6175,10 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
             const sessionId = authenticatedUser?.id;
             const credentials = sessionId ? SecureCredentialManager.getCredentials(sessionId) : null;
             
-            if (resolvedAuth?.pnName && credentials?.passcode && resolvedAuth?.publicKey) {
+            // SECURITY: Get pnName from credentials (secrets), publicKey from resolvedAuth (public)
+            if (credentials?.pnName && credentials?.passcode && resolvedAuth?.publicKey) {
               pnIdentifierForCleanup = await VolumeIdGenerator.generateVolumeId({
-                pnName: resolvedAuth.pnName,
+                pnName: credentials.pnName,
                 passcode: credentials.passcode,
                 publicKey: resolvedAuth.publicKey
               });
@@ -6227,7 +6242,10 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
       return;
     }
 
-    const hasAuth = Boolean(resolvedAuth?.pnName && resolvedAuth?.publicKey && resolvedAuth?.authToken);
+    // SECURITY: Check credentials instead of resolvedAuth.pnName (secret)
+    const sessionId = authenticatedUser?.id || (authenticatedUser as any)?.publicKey || null;
+    const credentials = sessionId ? SecureCredentialManager.getCredentials(sessionId) : null;
+    const hasAuth = Boolean(credentials?.pnName && resolvedAuth?.publicKey && resolvedAuth?.authToken);
 
     if (!hasAuth) {
       if (lastDesktopAuthStateRef.current === 'unlocked') {
@@ -6254,9 +6272,10 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
         const sessionId = authenticatedUser?.id;
         const credentials = sessionId ? SecureCredentialManager.getCredentials(sessionId) : null;
         
-        if (resolvedAuth?.pnName && credentials?.passcode && resolvedAuth?.publicKey) {
+        // SECURITY: Get pnName from credentials (secrets), publicKey from resolvedAuth (public)
+        if (credentials?.pnName && credentials?.passcode && resolvedAuth?.publicKey) {
           pnIdentifier = await VolumeIdGenerator.generateVolumeId({
-            pnName: resolvedAuth.pnName,
+            pnName: credentials.pnName,
             passcode: credentials.passcode,
             publicKey: resolvedAuth.publicKey
           });
@@ -6272,8 +6291,15 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
         return;
       }
 
+      // SECURITY: Get pnName from credentials (secrets) for desktop unlock payload
+      const pnNameForPayload = credentials?.pnName || null;
+      if (!pnNameForPayload || !resolvedAuth?.publicKey) {
+        console.error('[DesktopUnlock] Missing credentials or publicKey');
+        return;
+      }
+
       const payload: DesktopUnlockPayload = {
-        pnName: resolvedAuth.pnName,
+        pnName: pnNameForPayload,
         publicKey: resolvedAuth.publicKey,
         authToken: resolvedAuth.authToken,
         pnIdentifier,

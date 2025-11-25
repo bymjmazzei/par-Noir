@@ -87,16 +87,18 @@ export class IdentityCrypto {
 
     /**
      * Public encrypt method for external use
+     * SECURITY: Requires both pnName and passcode
      */
-    static async encryptData(data: string, passcode: string): Promise<EncryptedData> {
-        return EncryptionManager.encrypt(data, passcode);
+    static async encryptData(data: string, pnName: string, passcode: string): Promise<EncryptedData> {
+        return EncryptionManager.encrypt(data, pnName, passcode);
     }
 
     /**
      * Public decrypt method for external use
+     * SECURITY: Requires both pnName and passcode
      */
-    static async decryptData(encryptedData: EncryptedData, passcode: string): Promise<string> {
-        return EncryptionManager.decrypt(encryptedData, passcode);
+    static async decryptData(encryptedData: EncryptedData, pnName: string, passcode: string): Promise<string> {
+        return EncryptionManager.decrypt(encryptedData, pnName, passcode);
     }
 
     /**
@@ -107,10 +109,11 @@ export class IdentityCrypto {
     }
 
     /**
-     * Encrypt data with passcode
+     * Encrypt data with pnName and passcode
+     * SECURITY: Requires both pnName and passcode
      */
-    static async encrypt(data: string, passcode: string): Promise<EncryptedData> {
-        return EncryptionManager.encrypt(data, passcode);
+    static async encrypt(data: string, pnName: string, passcode: string): Promise<EncryptedData> {
+        return EncryptionManager.encrypt(data, pnName, passcode);
     }
 
     /**
@@ -121,10 +124,11 @@ export class IdentityCrypto {
     }
 
     /**
-     * Decrypt data with passcode
+     * Decrypt data with pnName and passcode
+     * SECURITY: Requires both pnName and passcode
      */
-    static async decrypt(encryptedData: EncryptedData, passcode: string): Promise<string> {
-        return EncryptionManager.decrypt(encryptedData, passcode);
+    static async decrypt(encryptedData: EncryptedData, pnName: string, passcode: string): Promise<string> {
+        return EncryptionManager.decrypt(encryptedData, pnName, passcode);
     }
 
     /**

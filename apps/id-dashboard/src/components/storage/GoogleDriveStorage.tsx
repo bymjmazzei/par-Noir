@@ -38,7 +38,8 @@ const ThumbnailLoader: React.FC<{ fileId: string; fileName: string; mimeType: st
             
             const sessionId = authenticatedUser.id || authenticatedUser.publicKey || null;
             const credentials = sessionId ? SecureCredentialManager.getCredentials(sessionId) : null;
-            const pnName = authenticatedUser.pnName || authenticatedUser.username;
+            // SECURITY: Get pnName from credentials (secrets), not from authenticatedUser
+            const pnName = credentials?.pnName || null;
             const publicKey = authenticatedUser.publicKey;
             
             if (pnName && credentials?.passcode && publicKey) {
@@ -178,7 +179,8 @@ export const GoogleDriveStorage: React.FC = () => {
             
             const sessionId = authenticatedUser.id || authenticatedUser.publicKey || null;
             const credentials = sessionId ? SecureCredentialManager.getCredentials(sessionId) : null;
-            const pnName = authenticatedUser.pnName || authenticatedUser.username;
+            // SECURITY: Get pnName from credentials (secrets), not from authenticatedUser
+            const pnName = credentials?.pnName || null;
             const publicKey = authenticatedUser.publicKey;
             
             if (pnName && credentials?.passcode && publicKey) {
@@ -550,7 +552,9 @@ export const GoogleDriveStorage: React.FC = () => {
         if (authenticatedUserStr) {
           try {
             const authenticatedUser = JSON.parse(authenticatedUserStr);
-            pnIdentifier = authenticatedUser.id || authenticatedUser.pnName || pnIdentifier;
+            // SECURITY: Do not use authenticatedUser.pnName - it's a SECRET
+            // Use authenticatedUser.id (DID) instead
+            pnIdentifier = authenticatedUser.id || pnIdentifier;
             ownerDid = authenticatedUser.id || authenticatedUser.did || null;
           } catch (e) {
             console.warn('Could not parse authenticated user, using fallback');

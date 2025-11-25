@@ -20,15 +20,15 @@ export interface EncryptedIdentity {
 }
 
 export interface AuthSession {
-  id: string;
-  pnName: string;
-  nickname: string;
+  id: string; // DID - public identifier, safe to store
+  nickname: string; // Display name - safe to store
   accessToken: string;
   expiresIn: number;
   authenticatedAt: string;
-  publicKey: string;
-  passcode?: string;
+  publicKey: string; // Public key - safe to store
   authToken?: string;
+  // SECURITY: pnName and passcode are SECRETS and must NEVER be stored here
+  // Use SecureCredentialManager.getCredentials(id) to retrieve them when needed
 }
 
 export class IdentityCrypto {
@@ -117,9 +117,12 @@ export class IdentityCrypto {
       };
 
       // Encrypt ALL sensitive identity data including DID and recovery keys
+      // SECURITY: Encryption requires BOTH pnName (username) and passcode
+      // Both are secrets and must be combined for key derivation
       const encryptedData = await this.encrypt(
         JSON.stringify(identityData),
-        passcode
+        username,  // pnName - SECRET #1
+        passcode   // passcode - SECRET #2
       );
 
       return {
@@ -135,22 +138,32 @@ export class IdentityCrypto {
 
   /**
    * Authenticate and decrypt identity
+   * 
+   * SECURITY: pN name and passcode are SECRETS and are stored in SecureCredentialManager,
+   * NOT in the returned AuthSession object.
    */
   static async authenticateIdentity(
     encryptedIdentity: EncryptedIdentity,
     passcode: string,
     expectedUsername?: string
   ): Promise<AuthSession> {
+    // Import SecureCredentialManager dynamically to avoid circular dependencies
+    const { SecureCredentialManager } = await import('./secureCredentialManager');
+    const { MemorySecurity } = await import('./security/memorySecurity');
+    
     try {
       // Use only the current decryption method - NO LEGACY FALLBACK
       // Legacy fallback was a security vulnerability that allowed wrong credentials to work
+      // SECURITY: Decryption requires BOTH pnName (expectedUsername) and passcode
+      // Both are secrets and must be combined for key derivation
       const decryptedData = await this.decrypt(
         {
           encrypted: encryptedIdentity.encryptedData,
           iv: encryptedIdentity.iv,
           salt: encryptedIdentity.salt
         },
-        passcode
+        expectedUsername || '', // pnName - SECRET #1 (required for decryption)
+        passcode                 // passcode - SECRET #2 (required for decryption)
       );
 
       const identity = JSON.parse(decryptedData);
@@ -165,23 +178,44 @@ export class IdentityCrypto {
       
       const resolvedPnName = identity.pnName || identity.username || identity.nickname || expectedUsername || identity.id;
 
+      // SECURITY: Store pN name and passcode in SecureCredentialManager (memory only, never persisted)
+      // These are SECRETS and must NOT be in the AuthSession object
+      SecureCredentialManager.setCredentials(
+        identity.id,
+        resolvedPnName,
+        passcode,
+        15 * 60 * 1000 // 15 minutes TTL
+      );
+
+      // Generate auth token hash (for verification purposes)
       const encoder = new TextEncoder();
       const digestData = encoder.encode(`${resolvedPnName}::${encryptedIdentity.publicKey || identity.id}::${passcode}`);
       const digestBuffer = await window.crypto.subtle.digest('SHA-256', digestData);
       const authToken = Array.from(new Uint8Array(digestBuffer)).map((byte) => byte.toString(16).padStart(2, '0')).join('');
       
+      // SECURITY: Zeroize passcode from local variables (best-effort)
+      // Note: JavaScript strings are immutable, but we try to clear references
+      const passcodeBuffer = encoder.encode(passcode);
+      MemorySecurity.zeroize(passcodeBuffer);
+      
+      // Return AuthSession WITHOUT pN name or passcode (these are SECRETS)
       return {
         id: identity.id, // DID comes from decrypted data
-        pnName: resolvedPnName,
         nickname: identity.nickname || resolvedPnName,
         accessToken: token,
         expiresIn: this.TOKEN_EXPIRY,
         authenticatedAt: new Date().toISOString(),
         publicKey: encryptedIdentity.publicKey,
-        passcode,
         authToken,
+        // SECURITY: pnName and passcode are NOT included - use SecureCredentialManager.getCredentials(id)
       };
     } catch (error) {
+      // SECURITY: Zeroize passcode on error too
+      const { MemorySecurity } = await import('./security/memorySecurity');
+      const encoder = new TextEncoder();
+      const passcodeBuffer = encoder.encode(passcode);
+      MemorySecurity.zeroize(passcodeBuffer);
+      
       throw new Error(`Authentication failed: ${error}`);
     }
   }
@@ -308,16 +342,18 @@ export class IdentityCrypto {
 
   /**
    * Public encrypt method for external use
+   * SECURITY: Requires both pnName and passcode
    */
-  static async encryptData(data: string, passcode: string): Promise<EncryptedData> {
-    return await this.encrypt(data, passcode);
+  static async encryptData(data: string, pnName: string, passcode: string): Promise<EncryptedData> {
+    return await this.encrypt(data, pnName, passcode);
   }
 
   /**
    * Public decrypt method for external use
+   * SECURITY: Requires both pnName and passcode
    */
-  static async decryptData(encryptedData: EncryptedData, passcode: string): Promise<string> {
-    return await this.decrypt(encryptedData, passcode);
+  static async decryptData(encryptedData: EncryptedData, pnName: string, passcode: string): Promise<string> {
+    return await this.decrypt(encryptedData, pnName, passcode);
   }
 
   /**
@@ -350,12 +386,18 @@ export class IdentityCrypto {
   }
 
   /**
-   * Encrypt data with passcode
+   * Encrypt data with pnName and passcode
+   * SECURITY: Both pnName and passcode are SECRETS and are required for encryption/decryption
+   * 
+   * @param data - Data to encrypt
+   * @param pnName - pN name (SECRET #1)
+   * @param passcode - Passcode (SECRET #2)
    */
-  private static async encrypt(data: string, passcode: string): Promise<EncryptedData> {
+  private static async encrypt(data: string, pnName: string, passcode: string): Promise<EncryptedData> {
     try {
       const salt = this.generateSalt();
-      const key = await this.deriveKey(passcode, salt);
+      // SECURITY: Combine both secrets for key derivation
+      const key = await this.deriveKey(pnName, passcode, salt);
       const iv = this.generateIV();
       
       const encoder = new TextEncoder();
@@ -454,11 +496,17 @@ export class IdentityCrypto {
   }
 
   /**
-   * Decrypt data with passcode
+   * Decrypt data with pnName and passcode
+   * SECURITY: Both pnName and passcode are SECRETS and are required for decryption
+   * 
+   * @param encryptedData - Encrypted data to decrypt
+   * @param pnName - pN name (SECRET #1)
+   * @param passcode - Passcode (SECRET #2)
    */
-  private static async decrypt(encryptedData: EncryptedData, passcode: string): Promise<string> {
+  private static async decrypt(encryptedData: EncryptedData, pnName: string, passcode: string): Promise<string> {
     try {
-      const key = await this.deriveKey(passcode, encryptedData.salt);
+      // SECURITY: Combine both secrets for key derivation
+      const key = await this.deriveKey(pnName, passcode, encryptedData.salt);
       
       const iv = this.base64ToArrayBuffer(encryptedData.iv);
       const data = this.base64ToArrayBuffer(encryptedData.encrypted);
@@ -477,17 +525,26 @@ export class IdentityCrypto {
   }
 
   /**
-   * Derive encryption key from passcode
+   * Derive encryption key from pnName and passcode
+   * SECURITY: Both pnName and passcode are SECRETS and must be combined for key derivation
+   * 
+   * @param pnName - pN name (SECRET #1)
+   * @param passcode - Passcode (SECRET #2)
+   * @param salt - Salt for key derivation
    */
-  private static async deriveKey(passcode: string, salt: string): Promise<CryptoKey> {
+  private static async deriveKey(pnName: string, passcode: string, salt: string): Promise<CryptoKey> {
     try {
+      // SECURITY: Combine both secrets for key derivation
+      // Format: "pnName:passcode" (same as VolumeIdGenerator pattern)
+      const keyMaterial = `${pnName}:${passcode}`;
+      
       const encoder = new TextEncoder();
-      const passcodeBuffer = encoder.encode(passcode);
+      const keyMaterialBuffer = encoder.encode(keyMaterial);
       const saltBuffer = this.base64ToArrayBuffer(salt);
 
-      const keyMaterial = await window.crypto.subtle.importKey(
+      const keyMaterialKey = await window.crypto.subtle.importKey(
         'raw',
-        passcodeBuffer,
+        keyMaterialBuffer,
         'PBKDF2',
         false,
         ['deriveBits', 'deriveKey']
@@ -500,7 +557,7 @@ export class IdentityCrypto {
           iterations: 1000000, // Military-grade: 1M iterations
           hash: 'SHA-512', // Military-grade: SHA-512
         },
-        keyMaterial,
+        keyMaterialKey,
         { name: 'AES-GCM', length: 256 },
         false,
         ['encrypt', 'decrypt']

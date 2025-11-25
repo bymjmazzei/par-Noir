@@ -122,12 +122,18 @@ export class EncryptionManager {
     }
 
     /**
-     * Encrypt data with passcode (legacy single-factor method)
+     * Encrypt data with pnName and passcode
+     * SECURITY: Both pnName and passcode are SECRETS and are required for encryption/decryption
+     * 
+     * @param data - Data to encrypt
+     * @param pnName - pN name (SECRET #1)
+     * @param passcode - Passcode (SECRET #2)
      */
-    static async encrypt(data: string, passcode: string): Promise<EncryptedData> {
+    static async encrypt(data: string, pnName: string, passcode: string): Promise<EncryptedData> {
         try {
             const salt = this.generateSalt();
-            const key = await this.deriveKey(passcode, salt);
+            // SECURITY: Combine both secrets for key derivation
+            const key = await this.deriveKey(pnName, passcode, salt);
             const iv = this.generateIV();
             const encoder = new TextEncoder();
             const dataBuffer = encoder.encode(data);
@@ -199,11 +205,17 @@ export class EncryptionManager {
     }
 
     /**
-     * Decrypt data with passcode
+     * Decrypt data with pnName and passcode
+     * SECURITY: Both pnName and passcode are SECRETS and are required for decryption
+     * 
+     * @param encryptedData - Encrypted data to decrypt
+     * @param pnName - pN name (SECRET #1)
+     * @param passcode - Passcode (SECRET #2)
      */
-    static async decrypt(encryptedData: EncryptedData, passcode: string): Promise<string> {
+    static async decrypt(encryptedData: EncryptedData, pnName: string, passcode: string): Promise<string> {
         try {
-            const key = await this.deriveKey(passcode, encryptedData.salt);
+            // SECURITY: Combine both secrets for key derivation
+            const key = await this.deriveKey(pnName, passcode, encryptedData.salt);
             const iv = this.base64ToArrayBuffer(encryptedData.iv);
             const data = this.base64ToArrayBuffer(encryptedData.encrypted);
             const decryptedBuffer = await cryptoWorkerManager.decrypt({ name: 'AES-GCM', iv }, key, data);
@@ -282,20 +294,29 @@ export class EncryptionManager {
     }
 
     /**
-     * Derive encryption key from passcode (static method for legacy)
+     * Derive encryption key from pnName and passcode (static method)
+     * SECURITY: Both pnName and passcode are SECRETS and must be combined for key derivation
+     * 
+     * @param pnName - pN name (SECRET #1)
+     * @param passcode - Passcode (SECRET #2)
+     * @param salt - Salt for key derivation
      */
-    private static async deriveKey(passcode: string, salt: string): Promise<CryptoKey> {
+    private static async deriveKey(pnName: string, passcode: string, salt: string): Promise<CryptoKey> {
         try {
+            // SECURITY: Combine both secrets for key derivation
+            // Format: "pnName:passcode" (same as VolumeIdGenerator pattern)
+            const keyMaterial = `${pnName}:${passcode}`;
+            
             const encoder = new TextEncoder();
-            const passcodeBuffer = encoder.encode(passcode);
+            const keyMaterialBuffer = encoder.encode(keyMaterial);
             const saltBuffer = this.base64ToArrayBuffer(salt);
-            const keyMaterial = await cryptoWorkerManager.importKey('raw', passcodeBuffer, 'PBKDF2', false, ['deriveBits', 'deriveKey']);
+            const keyMaterialKey = await cryptoWorkerManager.importKey('raw', keyMaterialBuffer, 'PBKDF2', false, ['deriveBits', 'deriveKey']);
             const derivedKey = await cryptoWorkerManager.deriveKey({
                 name: 'PBKDF2',
                 salt: saltBuffer,
                 iterations: 1000000, // Military-grade: 1M iterations
                 hash: 'SHA-512', // Military-grade: SHA-512
-            }, keyMaterial, { name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']);
+            }, keyMaterialKey, { name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']);
             return derivedKey;
         } catch (error) {
             throw new Error('Failed to derive encryption key');

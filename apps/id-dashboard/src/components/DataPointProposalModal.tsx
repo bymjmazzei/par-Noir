@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { SecureCredentialManager } from '../utils/secureCredentialManager';
 import { ZKPGenerator, DATA_POINT_CATEGORIES } from '../types/standardDataPoints';
 
 interface DataPointProposalModalProps {
@@ -106,18 +107,27 @@ export const DataPointProposalModal: React.FC<DataPointProposalModalProps> = ({
         requiredFields: formData.requiredFields.filter(f => f.trim()),
         examples: formData.examples.filter(e => e.trim()),
         useCase: formData.useCase.trim(),
-        proposedBy: session.pnName || 'Unknown'
+        // SECURITY: Get pnName from SecureCredentialManager (secrets), not from session
+        proposedBy: (() => {
+          const sessionId = session.id;
+          const credentials = sessionId ? SecureCredentialManager.getCredentials(sessionId) : null;
+          return credentials?.pnName || session.nickname || 'Unknown';
+        })()
       };
-      if (!session.id || !session.pnName || !session.passcode) {
+      
+      // SECURITY: Check credentials from SecureCredentialManager (secrets)
+      const sessionId = session.id;
+      const credentials = sessionId ? SecureCredentialManager.getCredentials(sessionId) : null;
+      if (!sessionId || !credentials?.pnName || !credentials?.passcode) {
         setErrors({ submit: 'No active session found. Please unlock your pN first.' });
         return;
       }
 
       const result = await ZKPGenerator.proposeDataPoint(
         proposal,
-        session.id,
-        session.pnName,
-        session.passcode
+        sessionId,
+        credentials.pnName,
+        credentials.passcode
       );
 
       if (result.success && result.proposalId) {

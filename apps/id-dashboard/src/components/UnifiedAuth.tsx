@@ -58,10 +58,10 @@ export const UnifiedAuth: React.FC<UnifiedAuthProps> = ({
               // Update last accessed time
               await storage.updateNickname(identity.id, identity.nickname);
               
-              // Include passcode in session so it's available for file decryption
-              const sessionWithPasscode = { ...session, passcode };
-              
-              onAuthSuccess?.(sessionWithPasscode);
+              // SECURITY: Do NOT include passcode in session - it's a SECRET
+              // Credentials are already stored in SecureCredentialManager by authenticateIdentity
+              // Pass the session WITHOUT secrets
+              onAuthSuccess?.(session);
               return;
             }
           }

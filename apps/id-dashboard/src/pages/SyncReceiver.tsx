@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Download, CheckCircle, XCircle, AlertCircle } from 'lucide-react';
+import { PNNameHash } from '../utils/security/pnNameHash';
 
 interface SyncReceiverProps {
   syncCode: string;
@@ -14,11 +15,21 @@ export const SyncReceiver: React.FC<SyncReceiverProps> = ({ syncCode }) => {
   const [isLoading, setIsLoading] = useState(false);
 
   useEffect(() => {
-    // Check if sync data exists for this code
+    // SECURITY: Check if sync data exists for this code
+    // Note: Sync data should NOT contain plaintext pnName/passcode
     const storedData = localStorage.getItem(`sync-${syncCode}`);
     if (storedData) {
       try {
         const data = JSON.parse(storedData);
+        // SECURITY: Verify sync data structure doesn't contain secrets
+        if (data.pnName || data.passcode) {
+          console.error('[SyncReceiver] SECURITY WARNING: Sync data contains plaintext secrets. This is a security vulnerability.');
+          setError('Invalid or insecure sync data. Please regenerate sync code.');
+          setStep('error');
+          // SECURITY: Remove insecure sync data
+          localStorage.removeItem(`sync-${syncCode}`);
+          return;
+        }
         setSyncData(data);
         setStep('verify');
       } catch (err) {
@@ -39,9 +50,42 @@ export const SyncReceiver: React.FC<SyncReceiverProps> = ({ syncCode }) => {
       return;
     }
 
-    // Verify credentials match the sync data
-    if (pnName !== syncData.pnName || passcode !== syncData.passcode) {
-      setError('Invalid pN Name or passcode');
+    // SECURITY: Verify credentials using hash comparison instead of plaintext
+    // Sync data should contain hashed pnName, not plaintext
+    try {
+      const pnNameHash = await PNNameHash.hash(pnName);
+      
+      // SECURITY: Compare hashes instead of plaintext
+      // If syncData has pnNameHash, use that. Otherwise, this is legacy/insecure data.
+      if (syncData.pnNameHash) {
+        // Use constant-time comparison to prevent timing attacks
+        const hashMatches = await PNNameHash.verify(pnName, syncData.pnNameHash);
+        if (!hashMatches) {
+          setError('Invalid pN Name or passcode');
+          return;
+        }
+      } else if (syncData.pnName && syncData.passcode) {
+        // Legacy fallback - SECURITY WARNING: This is insecure
+        console.warn('[SyncReceiver] SECURITY WARNING: Sync data contains plaintext secrets. This is a security vulnerability.');
+        console.warn('[SyncReceiver] Please regenerate sync data with hashed pnName instead of plaintext.');
+        
+        // Still verify for backward compatibility, but warn user
+        if (pnName !== syncData.pnName || passcode !== syncData.passcode) {
+          setError('Invalid pN Name or passcode');
+          return;
+        }
+        
+        // SECURITY: Remove insecure sync data after use
+        localStorage.removeItem(`sync-${syncCode}`);
+        setError('SECURITY WARNING: Sync data was insecure. Please regenerate sync code on the sending device.');
+        return;
+      } else {
+        setError('Invalid sync data format');
+        return;
+      }
+    } catch (err) {
+      console.error('[SyncReceiver] Error verifying credentials:', err);
+      setError('Verification failed. Please try again.');
       return;
     }
 
@@ -53,11 +97,16 @@ export const SyncReceiver: React.FC<SyncReceiverProps> = ({ syncCode }) => {
       // Simulate file transfer delay
       await new Promise(resolve => setTimeout(resolve, 2000));
 
-      // Create a real pN file for download
+      // SECURITY: Create pN file WITHOUT plaintext pnName
+      // Use pnNameHash or identifier instead
+      const pnNameHash = await PNNameHash.hash(pnName);
+      const fileIdentifier = pnNameHash.substring(0, 12); // Use first 12 chars of hash as identifier
+      
       const pnFileData = {
         version: '1.0',
         timestamp: new Date().toISOString(),
-        pnName: pnName,
+        // SECURITY: Do NOT include plaintext pnName - use hash/identifier instead
+        pnIdentifier: `pn-${fileIdentifier}`, // Use identifier instead of plaintext
         deviceType: syncData.deviceType || 'unknown',
         syncedFrom: 'device-sync',
         encryptedData: {
@@ -74,29 +123,32 @@ export const SyncReceiver: React.FC<SyncReceiverProps> = ({ syncCode }) => {
       const blob = new Blob([pnFileContent], { type: 'application/json' });
       const url = URL.createObjectURL(blob);
       
-      // Create download link
+      // SECURITY: Use identifier in filename instead of plaintext pnName
       const a = document.createElement('a');
       a.href = url;
-      a.download = `${pnName}-synced.pn`;
+      a.download = `pn-${fileIdentifier}-synced.pn`; // Use identifier instead of pnName
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
 
-      // Also store in PWA if available (optional)
+      // SECURITY: Do NOT store pnName in localStorage
+      // Store only encrypted data and identifier
       try {
         const existingPNs = JSON.parse(localStorage.getItem('pwa-identities') || '[]');
         const pnEntry = {
           id: `pn-${Date.now()}`,
-          name: pnName,
+          // SECURITY: Do NOT store plaintext pnName
+          pnIdentifier: `pn-${fileIdentifier}`, // Use identifier instead
           encryptedData: pnFileData.encryptedData,
           createdAt: new Date().toISOString(),
           syncedFrom: syncData.deviceType || 'unknown',
-          filePath: `${pnName}-synced.pn`
+          filePath: `pn-${fileIdentifier}-synced.pn` // Use identifier in filename
         };
         existingPNs.push(pnEntry);
         localStorage.setItem('pwa-identities', JSON.stringify(existingPNs));
       } catch (err) {
+        console.warn('[SyncReceiver] Failed to store in PWA identities:', err);
       }
 
       // Clean up sync data
@@ -152,7 +204,8 @@ export const SyncReceiver: React.FC<SyncReceiverProps> = ({ syncCode }) => {
           <CheckCircle className="w-16 h-16 text-green-500 mx-auto mb-4" />
           <h1 className="text-xl font-bold text-text-primary mb-2">Sync Complete!</h1>
           <p className="text-text-secondary mb-6">
-            Your pN "{pnName}" has been downloaded to your device as "{pnName}-synced.pn"
+            {/* SECURITY: Do NOT display plaintext pnName in UI */}
+            Your pN file has been downloaded to your device
           </p>
           <button
             onClick={handleBackToApp}
