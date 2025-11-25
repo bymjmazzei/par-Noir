@@ -1749,6 +1749,45 @@ class ProductionServer {
       await CoinbaseWebhookHandler.handleWebhook(req as any, res as any);
     });
 
+    // Admin endpoint to run database migration (temporary - remove after migration)
+    // Protected by MIGRATION_SECRET environment variable
+    this.app.post('/api/admin/run-migration', async (req, res) => {
+      const migrationSecret = process.env.MIGRATION_SECRET || 'temporary-secret-change-me';
+      const providedSecret = req.headers['x-migration-secret'] as string;
+
+      if (providedSecret !== migrationSecret) {
+        res.status(401).json({ error: 'Unauthorized' });
+        return;
+      }
+
+      try {
+        const fs = require('fs');
+        const path = require('path');
+        const { Pool } = require('pg');
+
+        const pool = new Pool({
+          connectionString: process.env.DATABASE_URL
+        });
+
+        console.log('📊 [Migration] Starting migration via admin endpoint...');
+        
+        const migrationPath = path.join(__dirname, '../migrations/add_enhanced_feed_posts.sql');
+        const sql = fs.readFileSync(migrationPath, 'utf8');
+        
+        await pool.query(sql);
+        await pool.end();
+        
+        console.log('✅ [Migration] Migration completed successfully via admin endpoint');
+        res.json({ success: true, message: 'Migration completed successfully' });
+      } catch (error: any) {
+        console.error('❌ [Migration] Migration error:', error);
+        res.status(500).json({ 
+          error: 'Migration failed', 
+          message: error.message 
+        });
+      }
+    });
+
     // GET /api/aggregator/metadata-index/:fileId - Get metadata for a specific file (creates entry if doesn't exist)
     this.app.get('/api/aggregator/metadata-index/:fileId', async (req, res) => {
       try {
