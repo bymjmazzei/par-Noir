@@ -68,10 +68,6 @@ After implementation, target metrics:
 - [x] Add caching to `getIndexResponse` method
 - [x] Implement cache invalidation in `submitMetadata()` and `removeMetadata()`
 - [ ] Test cache hit/miss rates (monitoring needed)
-- [ ] Create `CacheService` utility
-- [ ] Add caching to `getIndexResponse()`
-- [ ] Implement cache invalidation
-- [ ] Test cache hits/misses
 
 ### Phase 5: Frontend Optimizations
 - [ ] Implement virtual scrolling (optional)
@@ -79,9 +75,11 @@ After implementation, target metrics:
 - [ ] Verify request deduplication
 
 ### Phase 6: Testing & Validation
+- [x] Create pagination test script (`api/scripts/test-pagination.ts`)
 - [ ] Load testing (1K, 10K, 100K files)
 - [ ] Integration testing
 - [ ] Performance monitoring setup
+- [ ] Manual testing of infinite scroll
 
 ### Phase 7: Deployment
 - [ ] Database migration (indexes)
@@ -944,12 +942,105 @@ For new developers joining this work:
 
 ---
 
+## 🚀 Deployment Checklist
+
+### Pre-Deployment
+
+- [ ] **Database Migration**
+  ```sql
+  -- Run these indexes on production database
+  -- They are already in initializeDatabase() but verify they exist
+  SELECT indexname FROM pg_indexes 
+  WHERE tablename = 'aggregator_metadata' 
+  AND indexname LIKE 'idx_metadata%';
+  ```
+
+- [ ] **Redis Setup**
+  - [ ] Redis instance provisioned (Railway, AWS ElastiCache, etc.)
+  - [ ] `REDIS_URL` environment variable set in production
+  - [ ] Test Redis connection from production server
+
+- [ ] **Environment Variables**
+  - [ ] `DATABASE_URL` configured
+  - [ ] `REDIS_URL` configured
+  - [ ] `API_ENDPOINT` configured (for frontend)
+
+- [ ] **Code Review**
+  - [ ] All changes reviewed
+  - [ ] No breaking changes to API contracts
+  - [ ] Backward compatibility maintained
+
+### Deployment Steps
+
+1. **Deploy Database Indexes** (if not auto-created)
+   ```bash
+   # Connect to production database
+   psql $DATABASE_URL
+   
+   # Run index creation (safe - uses IF NOT EXISTS)
+   # Indexes are created automatically via initializeDatabase()
+   # But verify they exist:
+   \d aggregator_metadata
+   ```
+
+2. **Deploy Backend**
+   ```bash
+   cd api
+   npm run build
+   # Deploy to Railway/AWS/etc.
+   ```
+
+3. **Deploy Frontend**
+   ```bash
+   cd apps/aggregator-browser
+   npm run build
+   # Deploy to hosting service
+   ```
+
+4. **Verify Deployment**
+   ```bash
+   # Test pagination endpoint
+   curl "https://api.parnoir.com/api/aggregator/metadata-index?limit=10&offset=0"
+   
+   # Check response includes pagination fields
+   # Should have: files, totalFiles, total, hasMore
+   ```
+
+### Post-Deployment Monitoring
+
+- [ ] Monitor API response times
+- [ ] Check Redis cache hit rates
+- [ ] Monitor database query performance
+- [ ] Watch for errors in logs
+- [ ] Verify infinite scroll works in production
+- [ ] Test with production data volumes
+
+### Rollback Plan
+
+If issues occur:
+
+1. **Backend Rollback:**
+   - Revert to previous deployment
+   - Cache will auto-expire (5 min TTL)
+   - Database indexes can remain (they're safe)
+
+2. **Frontend Rollback:**
+   - Revert to previous build
+   - Old frontend will still work (backward compatible API)
+
+3. **Database Rollback:**
+   - Indexes are safe to keep (performance improvement)
+   - No data changes were made
+
+---
+
 ## 📚 Reference Links
 
 - [PostgreSQL Index Documentation](https://www.postgresql.org/docs/current/indexes.html)
 - [Redis Documentation](https://redis.io/docs/)
-- [ioredis Documentation](https://github.com/redis/ioredis)
+- [Redis Node.js Client](https://github.com/redis/node-redis)
 - [React Window (Virtual Scrolling)](https://github.com/bvaughn/react-window)
+- [Intersection Observer API](https://developer.mozilla.org/en-US/docs/Web/API/Intersection_Observer_API)
 
 ---
 
