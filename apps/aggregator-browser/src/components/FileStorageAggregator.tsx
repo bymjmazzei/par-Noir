@@ -3047,27 +3047,10 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
                           });
                         }}
                         disabled={isLoading}
-                        className="p-2 rounded bg-blue-600 text-white hover:bg-blue-500 transition-colors disabled:opacity-50 flex items-center justify-center"
+                        className="p-2 rounded text-text-secondary hover:text-text-primary transition-colors disabled:opacity-50 flex items-center justify-center"
                         title="Add Content"
                       >
                         <Plus className="h-4 w-4" />
-                      </button>
-                      <button
-                        onClick={() => {
-                          setIsBulkDeleteMode(!isBulkDeleteMode);
-                          if (isBulkDeleteMode) {
-                            setSelectedFiles(new Set());
-                          }
-                        }}
-                        disabled={isLoading}
-                        className={`p-2 rounded transition-colors disabled:opacity-50 flex items-center justify-center ${
-                          isBulkDeleteMode
-                            ? 'bg-red-600 text-white hover:bg-red-500'
-                            : 'bg-neutral-700 text-white hover:bg-neutral-600'
-                        }`}
-                        title={isBulkDeleteMode ? "Cancel Bulk Delete" : "Bulk Delete"}
-                      >
-                        <Minus className="h-4 w-4" />
                       </button>
                       {showAddMenuFor === account.accountId && addMenuPosition && (
                         <div
@@ -3114,6 +3097,19 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
                         </div>
                       )}
                     </div>
+                    <button
+                      onClick={() => {
+                        setIsBulkDeleteMode(!isBulkDeleteMode);
+                        if (isBulkDeleteMode) {
+                          setSelectedFiles(new Set());
+                        }
+                      }}
+                      disabled={isLoading}
+                      className="p-2 rounded text-text-secondary hover:text-text-primary transition-colors disabled:opacity-50 flex items-center justify-center"
+                      title={isBulkDeleteMode ? "Cancel Bulk Delete" : "Bulk Delete"}
+                    >
+                      <Minus className="h-4 w-4" />
+                    </button>
                     <button
                       onClick={() => setViewMode('list')}
                       className={`p-2 rounded transition-colors flex items-center justify-center ${
@@ -3278,7 +3274,15 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
 
                     <div className="p-3">
                       <p className="text-white text-xs truncate mb-1" title={fileMetadataMap.get(file.id)?.name || (file as any).displayName || file.name}>
-                        {fileMetadataMap.get(file.id)?.name || (file as any).displayName || file.name}
+                        {(() => {
+                          const displayName = fileMetadataMap.get(file.id)?.name || (file as any).displayName || file.name;
+                          // Strip file extension (but keep .thought extension for thoughts)
+                          if (displayName.toLowerCase().endsWith('.thought') || displayName.toLowerCase().endsWith('.thought.encrypted')) {
+                            return displayName.replace(/\.encrypted$/i, '').replace(/\.thought$/i, '');
+                          }
+                          // Remove common file extensions
+                          return displayName.replace(/\.(encrypted|pdf|jpg|jpeg|png|gif|webp|mp4|mov|avi|mkv|webm|doc|docx|xls|xlsx|ppt|pptx|txt|zip|rar)$/i, '');
+                        })()}
                       </p>
                       <p className="text-text-secondary text-xs">
                         {(parseInt(file.size || '0') / 1024).toFixed(1)} KB
@@ -3355,7 +3359,15 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center space-x-2">
                           <p className="text-white text-sm truncate">
-                            {fileMetadataMap.get(file.id)?.name || (file as any).displayName || file.name}
+                            {(() => {
+                              const displayName = fileMetadataMap.get(file.id)?.name || (file as any).displayName || file.name;
+                              // Strip file extension (but keep .thought extension for thoughts)
+                              if (displayName.toLowerCase().endsWith('.thought') || displayName.toLowerCase().endsWith('.thought.encrypted')) {
+                                return displayName.replace(/\.encrypted$/i, '').replace(/\.thought$/i, '');
+                              }
+                              // Remove common file extensions
+                              return displayName.replace(/\.(encrypted|pdf|jpg|jpeg|png|gif|webp|mp4|mov|avi|mkv|webm|doc|docx|xls|xlsx|ppt|pptx|txt|zip|rar)$/i, '');
+                            })()}
                           </p>
                           {file.isPublic && (
                             <Globe className="h-3 w-3 text-green-400 flex-shrink-0" aria-label="Public" />

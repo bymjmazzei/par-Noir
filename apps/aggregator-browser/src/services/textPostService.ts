@@ -23,11 +23,13 @@ interface EncryptedFilePackage {
 
 /**
  * Render text post to canvas and return as blob
+ * @param textPost - The text post data to render
+ * @param scale - Optional scale factor (default: 1.0). Use smaller values for thumbnails (e.g., 0.3 for ~300px thumbnails)
  */
-export async function renderTextPostToBlob(textPost: TextPostData): Promise<Blob> {
+export async function renderTextPostToBlob(textPost: TextPostData, scale: number = 1.0): Promise<Blob> {
   const canvas = document.createElement('canvas');
-  const width = 1080;
-  const height = 1920;
+  const width = Math.round(1080 * scale);
+  const height = Math.round(1920 * scale);
   canvas.width = width;
   canvas.height = height;
 
@@ -45,14 +47,14 @@ export async function renderTextPostToBlob(textPost: TextPostData): Promise<Blob
       img.crossOrigin = 'anonymous';
       img.onload = () => {
         ctx.drawImage(img, 0, 0, width, height);
-        drawText(ctx, width, height, textPost.content, style);
+        drawText(ctx, width, height, textPost.content, style, scale);
         resolve();
       };
       img.onerror = () => {
         // Fallback to solid color
         ctx.fillStyle = style.backgroundColor;
         ctx.fillRect(0, 0, width, height);
-        drawText(ctx, width, height, textPost.content, style);
+        drawText(ctx, width, height, textPost.content, style, scale);
         resolve();
       };
       img.src = style.backgroundImage;
@@ -60,7 +62,7 @@ export async function renderTextPostToBlob(textPost: TextPostData): Promise<Blob
   } else {
     ctx.fillStyle = style.backgroundColor;
     ctx.fillRect(0, 0, width, height);
-    drawText(ctx, width, height, textPost.content, style);
+    drawText(ctx, width, height, textPost.content, style, scale);
   }
 
   // Convert canvas to blob
@@ -80,12 +82,14 @@ function drawText(
   width: number,
   height: number,
   content: string,
-  style: TextPostStyle
+  style: TextPostStyle,
+  scale: number = 1.0
 ) {
   ctx.save();
 
-  // Set font
-  ctx.font = `${style.fontSize}px ${style.fontFamily}`;
+  // Set font (scaled)
+  const scaledFontSize = Math.round(style.fontSize * scale);
+  ctx.font = `${scaledFontSize}px ${style.fontFamily}`;
   ctx.fillStyle = style.textColor;
 
   // Set text alignment
@@ -101,16 +105,17 @@ function drawText(
 
   ctx.textBaseline = 'middle';
 
-  // Apply drop shadow
+  // Apply drop shadow (scaled)
   ctx.shadowColor = style.dropShadowColor;
-  ctx.shadowBlur = style.dropShadowBlur;
-  ctx.shadowOffsetX = style.dropShadowOffsetX;
-  ctx.shadowOffsetY = style.dropShadowOffsetY;
+  ctx.shadowBlur = style.dropShadowBlur * scale;
+  ctx.shadowOffsetX = style.dropShadowOffsetX * scale;
+  ctx.shadowOffsetY = style.dropShadowOffsetY * scale;
 
   // Word wrap text
-  const maxWidth = width - (style.padding * 2);
+  const scaledPadding = style.padding * scale;
+  const maxWidth = width - (scaledPadding * 2);
   const lines = wrapText(ctx, content, maxWidth);
-  const lineHeight = style.fontSize * 1.2;
+  const lineHeight = scaledFontSize * 1.2;
   const totalHeight = lines.length * lineHeight;
   const startY = (height - totalHeight) / 2;
 
@@ -119,9 +124,9 @@ function drawText(
     let x = width / 2; // Default center
 
     if (style.textAlign === 'left') {
-      x = style.padding;
+      x = scaledPadding;
     } else if (style.textAlign === 'right') {
-      x = width - style.padding;
+      x = width - scaledPadding;
     }
 
     ctx.fillText(line, x, y);
@@ -310,11 +315,95 @@ export async function createTextPost(
     const fileId = uploadedFile.id;
     console.log('✅ [TextPost] File uploaded successfully, fileId:', fileId);
 
+    // Generate thumbnail for thought (render at thumbnail scale ~300px width)
+    console.log('🖼️ [TextPost] Generating thumbnail...');
+    let thumbnailFileId: string | undefined;
+    try {
+      // Render at thumbnail scale (300px width / 1080px = ~0.278 scale)
+      const thumbnailScale = 300 / 1080;
+      const thumbnailBlob = await renderTextPostToBlob(textPost, thumbnailScale);
+      const thumbnailArrayBuffer = await thumbnailBlob.arrayBuffer();
+      const thumbnailData = new Uint8Array(thumbnailArrayBuffer);
+      
+      const encryptedThumbnail = await encryptionManager.encrypt(
+        thumbnailData,
+        session.did,
+        publicKey
+      );
+      
+      // Create encrypted thumbnail package
+      const thumbnailPackage: EncryptedFilePackage = {
+        encrypted: encryptedThumbnail.encrypted,
+        iv: encryptedThumbnail.iv,
+        salt: encryptedThumbnail.salt,
+        metadata: {
+          originalName: `thumb_${fileName}`,
+          originalSize: thumbnailBlob.size,
+          originalMimeType: 'image/png',
+        },
+      };
+      
+      // Convert to base64
+      const thumbnailBlobJson = new Blob([JSON.stringify(thumbnailPackage)], {
+        type: 'application/json',
+      });
+      
+      const thumbnailBase64 = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => {
+          const result = reader.result as string;
+          resolve(result.includes(',') ? result.split(',')[1] : result);
+        };
+        reader.onerror = () => reject(new Error('Failed to read thumbnail'));
+        reader.readAsDataURL(thumbnailBlobJson);
+      });
+      
+      // Upload encrypted thumbnail
+      const thumbnailFileName = `thumb_${fileName}.encrypted`;
+      const thumbnailResponse = await fetch(`${apiEndpoint}/api/drive/files`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${uploadToken}`
+        },
+        body: JSON.stringify({
+          fileData: thumbnailBase64,
+          fileName: thumbnailFileName,
+          mimeType: 'application/json',
+          accountId: accountId
+        })
+      });
+      
+      if (thumbnailResponse.ok) {
+        const thumbnailResult = await thumbnailResponse.json();
+        thumbnailFileId = thumbnailResult.file?.id;
+        if (thumbnailFileId) {
+          console.log('✅ [TextPost] Thumbnail uploaded successfully:', thumbnailFileId);
+        }
+      }
+    } catch (thumbnailError: any) {
+      console.warn('⚠️ [TextPost] Thumbnail generation/upload failed:', thumbnailError);
+      // Continue without thumbnail - not critical
+    }
+
     // Get fresh access token right before metadata update to ensure it's valid
     const metadataToken = await PNOAuthService.getValidAccessToken();
     if (!metadataToken) {
       throw new Error('No valid access token for metadata update');
     }
+
+    // Extract first line of text for title (like caption)
+    const getFirstLine = (text: string): string => {
+      // Remove HTML tags if present
+      const textWithoutHtml = text.replace(/<[^>]*>/g, '').replace(/&nbsp;/g, ' ');
+      // Get first line (split by newline or <br>)
+      const lines = textWithoutHtml.split(/\n|<br\s*\/?>/i);
+      const firstLine = lines[0] || textWithoutHtml;
+      // Trim and limit length
+      return firstLine.trim().substring(0, 100);
+    };
+
+    const titleFromContent = getFirstLine(textPost.content || '');
 
     // Extract subjects from text post content and metadata
     const { extractSubjects } = await import('../utils/subjectExtractor');
@@ -333,7 +422,7 @@ export async function createTextPost(
         'Authorization': `Bearer ${metadataToken}`
       },
       body: JSON.stringify({
-        name: metadata?.title || textPost.content || 'Thought',
+        name: metadata?.title || titleFromContent || 'Thought',
         description: metadata?.description || textPost.content,
         keywords: metadata?.keywords || [],
         tags: metadata?.tags || [],

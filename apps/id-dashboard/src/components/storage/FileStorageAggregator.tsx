@@ -6590,7 +6590,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
                         input?.click();
                       }}
                       disabled={isLoading}
-                      className="p-2 rounded bg-blue-600 text-white hover:bg-blue-500 transition-colors disabled:opacity-50"
+                      className="p-2 rounded text-text-secondary hover:text-text-primary transition-colors disabled:opacity-50"
                       title="Upload File"
                     >
                       <Plus className="h-4 w-4" />
@@ -6603,11 +6603,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
                         }
                       }}
                       disabled={isLoading}
-                      className={`p-2 rounded transition-colors disabled:opacity-50 ${
-                        isBulkDeleteMode
-                          ? 'bg-red-600 text-white hover:bg-red-500'
-                          : 'bg-neutral-700 text-white hover:bg-neutral-600'
-                      }`}
+                      className="p-2 rounded text-text-secondary hover:text-text-primary transition-colors disabled:opacity-50"
                       title={isBulkDeleteMode ? "Cancel Bulk Delete" : "Bulk Delete"}
                     >
                       <Minus className="h-4 w-4" />
