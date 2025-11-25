@@ -1,433 +1,294 @@
+/**
+ * License Modal (Reworked)
+ * Now handles API key activation instead of license purchase
+ * All pNs automatically get an inactive API key
+ * Activation requires Veriff verification (AML/KYC)
+ */
+
 import React, { useState, useEffect } from 'react';
-import { LicenseVerification, LicenseInfo } from '../utils/licenseVerification';
-import { CoinbaseProxy, CoinbaseCheckout, CheckoutRequest } from '../utils/coinbaseProxy';
+import { Key, Shield, CheckCircle, X, Copy, ExternalLink, AlertCircle } from 'lucide-react';
+import { apiKeyService, ApiKey } from '../services/api/ApiKeyService';
+import { IdentityVerificationModal } from './IdentityVerificationModal';
+import type { VerifiedIdentityData } from './IdentityVerificationModal';
 
 interface LicenseModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onLicensePurchased: (licenseKey: string) => void;
+  authenticatedUser: { id: string } | null;
+  onApiKeyActivated?: (apiKey: ApiKey) => void;
 }
-
-interface LicenseType {
-  name: string;
-  price: string;
-  licensingAgreement: string;
-  cryptoDiscount: number;
-}
-
-
 
 export const LicenseModal: React.FC<LicenseModalProps> = ({
   isOpen,
   onClose,
-  onLicensePurchased
+  authenticatedUser,
+  onApiKeyActivated
 }) => {
-  const [licenseType, setLicenseType] = useState<'perpetual' | 'annual'>('perpetual');
-  const [cryptoCurrency, setCryptoCurrency] = useState<'BTC' | 'ETH' | 'XRP' | 'USDT'>('BTC');
-  const [isProcessing, setIsProcessing] = useState(false);
-  const [identityFile, setIdentityFile] = useState<File | null>(null);
-  const [identityHash, setIdentityHash] = useState<string>('');
-  const [identityName, setIdentityName] = useState<string>('');
-  const [currentTheme, setCurrentTheme] = useState<'dark' | 'light'>('dark');
-  const [showCryptoPayment, setShowCryptoPayment] = useState(false);
-  const [paymentRequest, setPaymentRequest] = useState<CoinbaseCheckout | null>(null);
-  const [error, setError] = useState<string>('');
-
-  const licenseTypes: Record<string, LicenseType> = {
-    perpetual: {
-      name: 'Perpetual License',
-      price: '$3,999',
-      licensingAgreement: 'https://identityprotocol.com/licensing/perpetual-agreement',
-      cryptoDiscount: 0
-    },
-    annual: {
-      name: 'Annual License',
-      price: '$1,499/year',
-      licensingAgreement: 'https://identityprotocol.com/licensing/annual-agreement',
-      cryptoDiscount: 0
-    }
-  };
-
-  const getBasePrice = (): number => {
-    switch (licenseType) {
-      case 'perpetual': return 3999;
-      case 'annual': return 1499;
-      default: return 3999;
-    }
-  };
-
-  const getTotalPrice = (): number => {
-    return getBasePrice();
-  };
+  const [apiKey, setApiKey] = useState<ApiKey | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [showVerification, setShowVerification] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    // Function to update theme
-    const updateTheme = () => {
-      const isDarkTheme = document.documentElement.className.includes('theme-dark');
-      setCurrentTheme(isDarkTheme ? 'dark' : 'light');
-    };
-
-    // Initial theme check
-    updateTheme();
-
-    // Listen for theme changes
-    const observer = new MutationObserver(updateTheme);
-    observer.observe(document.documentElement, {
-      attributes: true,
-      attributeFilter: ['class']
-    });
-
-    return () => observer.disconnect();
-  }, []);
-
-  const createCoinbaseCheckout = async (): Promise<CoinbaseCheckout> => {
-    const totalPrice = getTotalPrice();
-    
-    const checkoutData: CheckoutRequest = {
-      name: licenseTypes[licenseType].name,
-      description: `Identity Protocol ${licenseType} license`,
-      pricing_type: 'fixed_price',
-      local_price: {
-        amount: totalPrice.toString(),
-        currency: 'USD'
-      },
-      requested_info: ['email'],
-      metadata: {
-        licenseType: licenseType,
-        identityHash: identityHash,
-        licensePrice: totalPrice.toString()
-      }
-    };
-
-    
-    // Validate checkout data
-    if (!CoinbaseProxy.validateCheckoutData(checkoutData)) {
-      throw new Error('Invalid checkout data');
+    if (isOpen && authenticatedUser?.id) {
+      loadApiKey();
     }
+  }, [isOpen, authenticatedUser?.id]);
 
-    // Use the smart proxy with fallbacks
-    return await CoinbaseProxy.createCheckout(checkoutData);
-  };
-
-  const handleCryptoPurchase = async () => {
-    setIsProcessing(true);
-    setError('');
+  const loadApiKey = async () => {
+    if (!authenticatedUser?.id) return;
+    
+    setIsLoading(true);
+    setError(null);
     
     try {
-      const checkout = await createCoinbaseCheckout();
-      setPaymentRequest(checkout);
-      setShowCryptoPayment(true);
-    } catch (error) {
-      setError(error instanceof Error ? error.message : 'Failed to create payment request');
+      const key = await apiKeyService.getOrCreateApiKey(authenticatedUser.id);
+      setApiKey(key);
+    } catch (err) {
+      console.error('Failed to load API key:', err);
+      setError(err instanceof Error ? err.message : 'Failed to load API key');
     } finally {
-      setIsProcessing(false);
+      setIsLoading(false);
     }
   };
 
-  const handleIdentityFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
+  const handleActivate = () => {
+    setShowVerification(true);
+  };
+
+  const handleVerificationComplete = async (verifiedData: VerifiedIdentityData) => {
+    if (!authenticatedUser?.id || !apiKey) return;
 
     try {
-      // Read and parse the identity file
-      const fileContent = await file.text();
-      const identityData = JSON.parse(fileContent);
+      setIsLoading(true);
       
-      // Generate hash of the identity file
-      const encoder = new TextEncoder();
-      const data = encoder.encode(fileContent);
-      const hashBuffer = await crypto.subtle.digest('SHA-256', data);
-      const hashArray = Array.from(new Uint8Array(hashBuffer));
-      const hash = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
-      
-      setIdentityFile(file);
-      setIdentityHash(hash);
-      setIdentityName(identityData.metadata?.displayName || identityData.metadata?.username || 'Unknown Identity');
-    } catch (error) {
-      alert('Invalid identity file. Please upload a valid .pn, .id, .json, or .identity file.');
+      // Activate API key with verification
+      const activated = await apiKeyService.activateApiKey(
+        authenticatedUser.id,
+        verifiedData.verificationId,
+        {
+          verified: true,
+          dataPoints: verifiedData.dataPoints
+        }
+      );
+
+      setApiKey(activated);
+      setShowVerification(false);
+      onApiKeyActivated?.(activated);
+    } catch (err) {
+      console.error('Failed to activate API key:', err);
+      setError(err instanceof Error ? err.message : 'Failed to activate API key');
+    } finally {
+      setIsLoading(false);
     }
   };
 
-  const generateLicenseInfo = async (): Promise<LicenseInfo> => {
-    // Use the new LicenseVerification system to generate commercial license
-    return await LicenseVerification.generateCommercialLicense(licenseType, identityHash, identityName);
-  };
+  const handleCopyKey = async () => {
+    if (!apiKey?.key) return;
 
-  const handlePurchase = async () => {
-    if (!identityFile) {
-      alert('Please upload your identity file');
-      return;
+    try {
+      await navigator.clipboard.writeText(apiKey.key);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch (err) {
+      console.error('Failed to copy API key:', err);
     }
-
-    await handleCryptoPurchase();
   };
 
   if (!isOpen) return null;
 
-  // Theme-aware colors
-  const isDark = currentTheme === 'dark';
-  // Use CSS variables instead of hardcoded colors
-  const bgColor = 'var(--modal-bg)';
-  const textColor = 'var(--text-primary)';
-  const borderColor = 'var(--border)';
-  const inputBgColor = 'var(--input-bg)';
-  const secondaryTextColor = 'var(--text-secondary)';
-  const accentColor = 'var(--primary)';
-
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-50">
-      <div
-        className="border rounded-lg p-6 max-w-md w-full mx-4 max-h-[90vh] overflow-y-auto"
-        style={{
-          backgroundColor: bgColor,
-          borderColor: borderColor
-        }}
-      >
-        <style>
-          {`
-            input[type="radio"]:checked {
-              accent-color: ${accentColor} !important;
-            }
-            input[type="radio"] {
-              accent-color: ${secondaryTextColor} !important;
-            }
-            input:focus, select:focus {
-              outline: none !important;
-              border-color: ${accentColor} !important;
-              box-shadow: 0 0 0 2px ${accentColor}40 !important;
-            }
-          `}
-        </style>
-
-        <div className="flex justify-between items-center mb-4">
-          <h2 className="text-xl font-bold" style={{ color: textColor }}>Purchase Commercial License</h2>
-          <button
-            onClick={onClose}
-            className="text-xl"
-            style={{ color: secondaryTextColor }}
-          >
-            ×
-          </button>
-        </div>
-
-        {error && (
-          <div className="mb-4 p-3 rounded border" style={{ 
-            backgroundColor: 'var(--modal-bg)',
-            borderColor: 'var(--border)',
-            color: 'var(--text-primary)'
-          }}>
-            {error}
-          </div>
-        )}
-
-        <div className="mb-4">
-          <label className="block text-sm font-medium mb-2" style={{ color: secondaryTextColor }}>License Type</label>
-          <div className="space-y-2">
-            <label className="flex items-center" style={{ color: secondaryTextColor }}>
-              <input
-                type="radio"
-                value="perpetual"
-                checked={licenseType === 'perpetual'}
-                onChange={(e) => setLicenseType(e.target.value as any)}
-                className="mr-2"
-              />
-              Perpetual License - $3,999 (One-time payment)
-            </label>
-            <label className="flex items-center" style={{ color: secondaryTextColor }}>
-              <input
-                type="radio"
-                value="annual"
-                checked={licenseType === 'annual'}
-                onChange={(e) => setLicenseType(e.target.value as any)}
-                className="mr-2"
-              />
-              Annual License - $1,499/year (Renewable)
-            </label>
-          </div>
-        </div>
-
-        <div className="mb-4">
-          <label className="block text-sm font-medium mb-2" style={{ color: secondaryTextColor }}>Identity File</label>
-          <div className="relative">
-            <input
-              type="file"
-              accept=".pn,.id,.json,.identity"
-              onChange={handleIdentityFileUpload}
-              className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-              id="license-file-upload"
-            />
-            <label
-              htmlFor="license-file-upload"
-              className="flex items-center justify-center w-full px-4 py-3 border-2 border-dashed rounded-lg cursor-pointer transition-colors"
-              style={{ 
-                borderColor: borderColor,
-                backgroundColor: inputBgColor
-              }}
+    <>
+      <div className="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-50">
+        <div className="bg-neutral-900 border border-neutral-700 rounded-lg p-6 max-w-2xl w-full mx-4 max-h-[90vh] overflow-y-auto">
+          {/* Header */}
+          <div className="flex justify-between items-center mb-6">
+            <div className="flex items-center space-x-3">
+              <Key className="h-6 w-6 text-blue-400" />
+              <h2 className="text-xl font-semibold text-white">API Access</h2>
+            </div>
+            <button
+              onClick={onClose}
+              className="text-neutral-400 hover:text-white transition-colors"
             >
-              <div className="text-center">
-                <div className="text-2xl mb-2">↑</div>
-                <div className="text-sm font-medium" style={{ color: textColor }}>
-                  {identityFile ? identityFile.name : 'Tap to upload identity file'}
+              <X className="h-5 w-5" />
+            </button>
+          </div>
+
+          {/* Error Message */}
+          {error && (
+            <div className="mb-4 p-3 bg-red-900/20 border border-red-700 rounded-lg flex items-start space-x-2">
+              <AlertCircle className="h-5 w-5 text-red-400 flex-shrink-0 mt-0.5" />
+              <p className="text-sm text-red-300">{error}</p>
+            </div>
+          )}
+
+          {/* Loading State */}
+          {isLoading && !apiKey && (
+            <div className="text-center py-12">
+              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-400 mx-auto mb-4"></div>
+              <p className="text-neutral-400">Loading API key...</p>
+            </div>
+          )}
+
+          {/* API Key Content */}
+          {apiKey && (
+            <div className="space-y-6">
+              {/* Status Badge */}
+              <div className="flex items-center justify-between">
+                <div className="flex items-center space-x-2">
+                  {apiKey.isActive ? (
+                    <>
+                      <CheckCircle className="h-5 w-5 text-green-400" />
+                      <span className="text-green-400 font-medium">Active</span>
+                    </>
+                  ) : (
+                    <>
+                      <Shield className="h-5 w-5 text-yellow-400" />
+                      <span className="text-yellow-400 font-medium">Inactive</span>
+                    </>
+                  )}
                 </div>
-                <div className="text-xs mt-1" style={{ color: secondaryTextColor }}>
-                  (.pn, .id, .json, .identity files)
+                {apiKey.activatedAt && (
+                  <span className="text-xs text-neutral-400">
+                    Activated {new Date(apiKey.activatedAt).toLocaleDateString()}
+                  </span>
+                )}
+              </div>
+
+              {/* API Key Display */}
+              <div className="bg-neutral-800 rounded-lg p-4">
+                <label className="block text-sm font-medium text-neutral-300 mb-2">
+                  Your API Key
+                </label>
+                <div className="flex items-center space-x-2">
+                  <code className="flex-1 bg-neutral-900 px-3 py-2 rounded text-sm text-white font-mono break-all">
+                    {apiKey.isActive ? apiKey.key : apiKeyService.getMaskedKey(apiKey)}
+                  </code>
+                  {apiKey.isActive && (
+                    <button
+                      onClick={handleCopyKey}
+                      className="p-2 bg-neutral-700 hover:bg-neutral-600 rounded transition-colors"
+                      title="Copy API key"
+                    >
+                      <Copy className={`h-4 w-4 ${copied ? 'text-green-400' : 'text-neutral-300'}`} />
+                    </button>
+                  )}
+                </div>
+                {copied && (
+                  <p className="text-xs text-green-400 mt-2">Copied to clipboard!</p>
+                )}
+              </div>
+
+              {/* Activation Status */}
+              {!apiKey.isActive ? (
+                <div className="bg-blue-900/20 border border-blue-700 rounded-lg p-4">
+                  <div className="flex items-start space-x-3">
+                    <Shield className="h-5 w-5 text-blue-400 flex-shrink-0 mt-0.5" />
+                    <div className="flex-1">
+                      <h3 className="text-sm font-medium text-blue-300 mb-2">
+                        Activate Your API Key
+                      </h3>
+                      <p className="text-sm text-blue-200 mb-4">
+                        To activate your API key and access par Noir APIs, you need to complete identity verification.
+                        This ensures compliance with AML/KYC requirements for API access.
+                      </p>
+                      <button
+                        onClick={handleActivate}
+                        disabled={isLoading}
+                        className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        {isLoading ? 'Processing...' : 'Start Verification'}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div className="bg-green-900/20 border border-green-700 rounded-lg p-4">
+                  <div className="flex items-start space-x-3">
+                    <CheckCircle className="h-5 w-5 text-green-400 flex-shrink-0 mt-0.5" />
+                    <div className="flex-1">
+                      <h3 className="text-sm font-medium text-green-300 mb-2">
+                        API Key Active
+                      </h3>
+                      <p className="text-sm text-green-200 mb-4">
+                        Your API key is active and ready to use. You can now access par Noir APIs for OAuth authentication,
+                        data point requests, and content portability.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* API Information */}
+              <div className="border-t border-neutral-700 pt-4">
+                <h3 className="text-sm font-medium text-white mb-3">Available APIs</h3>
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between p-3 bg-neutral-800 rounded">
+                    <div>
+                      <p className="text-sm font-medium text-white">OAuth Authentication</p>
+                      <p className="text-xs text-neutral-400">Third-party user authentication</p>
+                    </div>
+                    <ExternalLink className="h-4 w-4 text-neutral-400" />
+                  </div>
+                  <div className="flex items-center justify-between p-3 bg-neutral-800 rounded">
+                    <div>
+                      <p className="text-sm font-medium text-white">Data Point Requests</p>
+                      <p className="text-xs text-neutral-400">Request persistent and transactional data points</p>
+                    </div>
+                    <ExternalLink className="h-4 w-4 text-neutral-400" />
+                  </div>
+                  <div className="flex items-center justify-between p-3 bg-neutral-800 rounded">
+                    <div>
+                      <p className="text-sm font-medium text-white">Content Portability</p>
+                      <p className="text-xs text-neutral-400">Access user's public index</p>
+                    </div>
+                    <ExternalLink className="h-4 w-4 text-neutral-400" />
+                  </div>
                 </div>
               </div>
-            </label>
-          </div>
-          <p className="text-xs mt-2" style={{ color: secondaryTextColor }}>
-            Your license will be bound to this specific identity file for security.
-          </p>
-        </div>
 
-        <div className="mb-4">
-          <label className="block text-sm font-medium mb-2" style={{ color: secondaryTextColor }}>Cryptocurrency</label>
-          <div className="text-sm mb-2" style={{ color: secondaryTextColor }}>
-            Pay with cryptocurrency
-          </div>
-                      <select
-              value={cryptoCurrency}
-              onChange={(e) => setCryptoCurrency(e.target.value as any)}
-              className="w-full p-2 border rounded focus:outline-none"
-              style={{ 
-                backgroundColor: inputBgColor,
-                borderColor: borderColor,
-                color: textColor
-              }}
-            >
-              <option value="BTC">Bitcoin (BTC)</option>
-              <option value="ETH">Ethereum (ETH)</option>
-              <option value="XRP">Ripple (XRP)</option>
-              <option value="USDT">Tether (USDT)</option>
-            </select>
-        </div>
+              {/* Rate Limits */}
+              {apiKey.isActive && apiKey.rateLimit && (
+                <div className="border-t border-neutral-700 pt-4">
+                  <h3 className="text-sm font-medium text-white mb-3">Rate Limits</h3>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="bg-neutral-800 rounded p-3">
+                      <p className="text-xs text-neutral-400 mb-1">Per Minute</p>
+                      <p className="text-lg font-semibold text-white">{apiKey.rateLimit.requestsPerMinute}</p>
+                    </div>
+                    <div className="bg-neutral-800 rounded p-3">
+                      <p className="text-xs text-neutral-400 mb-1">Per Day</p>
+                      <p className="text-lg font-semibold text-white">{apiKey.rateLimit.requestsPerDay.toLocaleString()}</p>
+                    </div>
+                  </div>
+                </div>
+              )}
 
-        <div 
-          className="border p-4 rounded mb-6"
-          style={{ 
-            backgroundColor: inputBgColor,
-            borderColor: borderColor
-          }}
-        >
-          <h3 className="font-semibold mb-2" style={{ color: textColor }}>{licenseTypes[licenseType].name}</h3>
-          <p className="text-2xl font-bold mb-2" style={{ color: textColor }}>
-            ${getTotalPrice().toLocaleString()}
-          </p>
-
-          <div className="mt-3">
-            <a 
-              href={licenseTypes[licenseType].licensingAgreement}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center text-sm underline"
-              style={{ color: accentColor }}
-            >
-              <span>View Licensing Agreement</span>
-              <svg className="ml-1 w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/>
-              </svg>
-            </a>
-          </div>
-        </div>
-
-        <div className="flex space-x-3">
-          <button
-            onClick={handlePurchase}
-            disabled={isProcessing}
-            className="flex-1 px-4 py-2 rounded-lg font-medium transition-colors"
-            style={{
-              backgroundColor: isProcessing ? (isDark ? '#666666' : '#cccccc') : (isDark ? '#ffffff' : '#000000'),
-              color: isProcessing ? (isDark ? '#cccccc' : '#666666') : (isDark ? '#000000' : '#ffffff')
-            }}
-          >
-            {isProcessing ? 'Processing...' : 'Purchase License'}
-          </button>
-          <button
-            onClick={onClose}
-            disabled={isProcessing}
-            className="flex-1 px-4 py-2 rounded-lg font-medium transition-colors"
-            style={{
-              backgroundColor: isProcessing ? (isDark ? '#1a1a1a' : '#f5f5f5') : (isDark ? '#333333' : '#e0e0e0'),
-              color: isProcessing ? (isDark ? '#666666' : '#999999') : (isDark ? '#cccccc' : '#666666')
-            }}
-          >
-            Cancel
-          </button>
+              {/* Footer */}
+              <div className="flex justify-end space-x-3 pt-4 border-t border-neutral-700">
+                <button
+                  onClick={onClose}
+                  className="px-4 py-2 text-sm font-medium text-neutral-300 hover:text-white transition-colors"
+                >
+                  Close
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
-      {/* Crypto Payment Modal */}
-      {showCryptoPayment && paymentRequest && (
-        <div className="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-50">
-          <div 
-            className="border rounded-lg p-6 max-w-md w-full mx-4 max-h-[90vh] overflow-y-auto"
-            style={{ 
-              backgroundColor: bgColor,
-              borderColor: borderColor
-            }}
-          >
-            <div className="flex justify-between items-center mb-4">
-              <h2 className="text-xl font-bold" style={{ color: textColor }}>Crypto Payment</h2>
-              <button
-                onClick={() => setShowCryptoPayment(false)}
-                className="text-xl"
-                style={{ color: secondaryTextColor }}
-              >
-                ×
-              </button>
-            </div>
-
-            <div className="text-center mb-6">
-              <div className="mb-4">
-                <h3 className="font-semibold mb-2" style={{ color: textColor }}>
-                  {paymentRequest.name}
-                </h3>
-                <p className="text-2xl font-bold" style={{ color: textColor }}>
-                  ${paymentRequest.local_price.amount}
-                </p>
-              </div>
-
-              <div className="mb-6">
-                <p className="text-sm mb-4" style={{ color: secondaryTextColor }}>
-                  Click the button below to complete your payment with Coinbase Commerce
-                </p>
-                
-                <button
-                  onClick={() => {
-                    window.open(paymentRequest.hosted_url, '_blank', 'noopener,noreferrer');
-                  }}
-                  className="inline-flex items-center px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition-colors"
-                >
-                  <span>Pay with Crypto</span>
-                  <svg className="ml-2 w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/>
-                  </svg>
-                </button>
-              </div>
-
-              <div className="text-xs" style={{ color: secondaryTextColor }}>
-                <p>• Payment will open in a new window</p>
-                <p>• You can pay with Bitcoin, Ethereum, and other cryptocurrencies</p>
-                <p>• License will be issued after payment confirmation</p>
-                <p>• Debug URL: {paymentRequest.hosted_url}</p>
-              </div>
-            </div>
-
-            <div className="flex space-x-3">
-              <button
-                onClick={() => setShowCryptoPayment(false)}
-                className="flex-1 py-2 px-4 rounded"
-                style={{
-                  backgroundColor: isDark ? '#333333' : '#e0e0e0',
-                  color: isDark ? '#cccccc' : '#666666'
-                }}
-              >
-                Close
-              </button>
-            </div>
-          </div>
-        </div>
+      {/* Identity Verification Modal */}
+      {showVerification && (
+        <IdentityVerificationModal
+          isOpen={showVerification}
+          onClose={() => setShowVerification(false)}
+          onVerificationComplete={handleVerificationComplete}
+          identityId={authenticatedUser?.id}
+        />
       )}
-    </div>
+    </>
   );
 };
