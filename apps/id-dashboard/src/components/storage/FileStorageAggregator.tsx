@@ -3,7 +3,7 @@
  * Dashboard aggregator that collects files from all connected storage backends
  */
 import React, { useState, useEffect, useRef } from 'react';
-import { Download, File, RefreshCw, AlertCircle, Lock, Globe, Info, X, Edit, Eye, Grid, List, Plus, Cloud, MoreVertical, Share2, Trash2, Minus } from 'lucide-react';
+import { Download, File, RefreshCw, AlertCircle, Lock, Globe, Info, X, Edit, Eye, Grid, List, Plus, Cloud, MoreVertical, Share2, Trash2, Minus, Flag } from 'lucide-react';
 import { DesktopSecureFolderPanel } from './DesktopSecureFolderPanel';
 import { getFileAggregatorService } from '../../services/aggregator/FileAggregatorService';
 import { getEncryptionService } from '../../services/aggregator/EncryptionService';
@@ -18,7 +18,7 @@ import { SecureCredentialManager } from '../../utils/secureCredentialManager';
 import { IntegrationCredentialManager } from '../../utils/integrationCredentialManager';
 import { LICENSE_TYPES } from '../../constants/licenses';
 import { FEED_CATEGORIES, FEED_CATEGORY_LIST } from '../../constants/feedCategories';
-// ContentRating removed - using isNSFW boolean instead
+import { ReportContentModal } from './ReportContentModal';
 
 // Helper function to create PDF thumbnail (first page)
 async function createPDFThumbnail(blob: Blob, maxWidth: number, maxHeight: number): Promise<Blob> {
@@ -197,6 +197,8 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
   const [shareVisibility, setShareVisibility] = useState<'public' | 'private'>('private');
   const [shareNSFW, setShareNSFW] = useState<boolean>(false);
   const [isSavingShare, setIsSavingShare] = useState(false);
+  const [reportingFile, setReportingFile] = useState<AggregatedFile | null>(null);
+  const [showReportModal, setShowReportModal] = useState<boolean>(false);
   const [thirdPartyIndexers, setThirdPartyIndexers] = useState<ThirdPartyIndexer[]>([]);
   const [indexerToggles, setIndexerToggles] = useState<Record<string, boolean>>({});
   const [indexingPermissionsState, setIndexingPermissionsState] = useState<IndexingPermissions | null>(null);
@@ -292,7 +294,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
         const credentials = sessionId ? SecureCredentialManager.getCredentials(sessionId) : null;
         
         // SECURITY: Get publicKey from resolvedAuth or authenticatedUser (public data)
-        const publicKey = currentResolvedAuth?.publicKey || currentAuthenticatedUser?.publicKey;
+      const publicKey = currentResolvedAuth?.publicKey || currentAuthenticatedUser?.publicKey;
       
         // SECURITY: Use credentials.pnName (from SecureCredentialManager), not from state
         if (credentials?.pnName && credentials?.passcode && publicKey) {
@@ -4943,7 +4945,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
       });
     } else {
       // Ensure credentials are stored if they exist
-      const sessionId = authenticatedUser?.id || (authenticatedUser as any)?.publicKey || null;
+          const sessionId = authenticatedUser?.id || (authenticatedUser as any)?.publicKey || null;
       const credentials = sessionId ? SecureCredentialManager.getCredentials(sessionId) : null;
       if (!credentials && passcodeToUse && pnName) {
         // Store credentials if we have them but they're not in SecureCredentialManager
@@ -6838,19 +6840,60 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
                                     }}
                                     className="w-44 bg-neutral-900 border border-neutral-700 rounded-lg shadow-xl z-[100] py-1"
                                   >
-                                    <button
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        setOpenMenuFor(null);
-                                        actionMenuRef.current = null;
-                                  handleEditMetadata(file);
-                                }}
-                                      className="flex w-full items-center space-x-2 px-3 py-2 text-sm text-text-secondary hover:text-text-primary hover:bg-neutral-800 transition-colors"
-                                disabled={isLoading}
-                              >
-                                      <Edit className="h-4 w-4" />
-                                      <span>Edit metadata</span>
-                              </button>
+                                    {/* Report option (all users) - only if not already NSFW/X-rated */}
+                                    {(() => {
+                                      const currentRating = metadata?.contentRating;
+                                      const canReportNSFW = currentRating !== 'nsfw' && currentRating !== 'x-rated';
+                                      
+                                      if (canReportNSFW) {
+                                        return (
+                                          <button
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              setOpenMenuFor(null);
+                                              actionMenuRef.current = null;
+                                              setReportingFile(file);
+                                              setShowReportModal(true);
+                                            }}
+                                            className="flex w-full items-center space-x-2 px-3 py-2 text-sm text-text-secondary hover:text-text-primary hover:bg-neutral-800 transition-colors"
+                                            disabled={isLoading}
+                                          >
+                                            <Flag className="h-4 w-4" />
+                                            <span>Report as NSFW</span>
+                                          </button>
+                                        );
+                                      }
+                                      return null;
+                                    })()}
+                                    
+                                    {/* Owner-only options */}
+                                    {(() => {
+                                      // Check if user is owner
+                                      const isOwner = authenticatedUser?.id && (
+                                        metadata?.owner?.did === authenticatedUser.id ||
+                                        metadata?.owner?.identifier === authenticatedUser.id ||
+                                        file.backendFileId?.includes(authenticatedUser.id)
+                                      );
+
+                                      if (isOwner) {
+                                        return (
+                                          <>
+                                            {(metadata?.contentRating !== 'nsfw' && metadata?.contentRating !== 'x-rated') && (
+                                              <div className="border-t border-neutral-700 my-1" />
+                                            )}
+                                            <button
+                                              onClick={(e) => {
+                                                e.stopPropagation();
+                                                setOpenMenuFor(null);
+                                                actionMenuRef.current = null;
+                                                handleEditMetadata(file);
+                                              }}
+                                              className="flex w-full items-center space-x-2 px-3 py-2 text-sm text-text-secondary hover:text-text-primary hover:bg-neutral-800 transition-colors"
+                                              disabled={isLoading}
+                                            >
+                                              <Edit className="h-4 w-4" />
+                                              <span>Edit metadata</span>
+                                            </button>
                               <button
                                 onClick={(e) => {
                                   e.stopPropagation();
@@ -6873,37 +6916,42 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
                                       hidden
                                     >
                               </button>
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                        setOpenMenuFor(null);
-                                        actionMenuRef.current = null;
-                                        openShareSettings(file);
-                                }}
-                                      className="flex w-full items-center space-x-2 px-3 py-2 text-sm text-text-secondary hover:text-text-primary hover:bg-neutral-800 transition-colors"
-                                disabled={isLoading}
-                              >
-                                      <Share2 className="h-4 w-4" />
-                                      <span>Share settings</span>
-                              </button>
-                                    <div className="border-t border-neutral-700 my-1"></div>
-                                    <button
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        setOpenMenuFor(null);
-                                        actionMenuRef.current = null;
-                                        handleDelete(file);
-                                      }}
-                                      className="flex w-full items-center space-x-2 px-3 py-2 text-sm text-red-400 hover:text-red-300 hover:bg-red-950 transition-colors"
-                                      disabled={isLoading}
-                                    >
-                                      <Trash2 className="h-4 w-4" />
-                                      <span>Delete</span>
-                                    </button>
+                                            <button
+                                              onClick={(e) => {
+                                                e.stopPropagation();
+                                                setOpenMenuFor(null);
+                                                actionMenuRef.current = null;
+                                                openShareSettings(file);
+                                              }}
+                                              className="flex w-full items-center space-x-2 px-3 py-2 text-sm text-text-secondary hover:text-text-primary hover:bg-neutral-800 transition-colors"
+                                              disabled={isLoading}
+                                            >
+                                              <Share2 className="h-4 w-4" />
+                                              <span>Share settings</span>
+                                            </button>
+                                            <div className="border-t border-neutral-700 my-1" />
+                                            <button
+                                              onClick={(e) => {
+                                                e.stopPropagation();
+                                                setOpenMenuFor(null);
+                                                actionMenuRef.current = null;
+                                                handleDelete(file);
+                                              }}
+                                              className="flex w-full items-center space-x-2 px-3 py-2 text-sm text-red-400 hover:text-red-300 hover:bg-red-950 transition-colors"
+                                              disabled={isLoading}
+                                            >
+                                              <Trash2 className="h-4 w-4" />
+                                              <span>Delete</span>
+                                            </button>
+                                          </>
+                                        );
+                                      }
+                                      return null;
+                                    })()}
                                   </div>
                                 )}
-                                </div>
                               </div>
+                            </div>
                             )}
                           </div>
                         </div>
@@ -7081,10 +7129,10 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
                                   </button>
                             </div>
                           )}
-                              </div>
-                            </div>
-                          )}
                         </div>
+                      </div>
+                          )}
+                    </div>
                   );
                 })}
               </div>
@@ -7569,6 +7617,25 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
             />
           </div>
         </div>
+      )}
+
+      {/* Report Content Modal */}
+      {reportingFile && (
+        <ReportContentModal
+          isOpen={showReportModal}
+          onClose={() => {
+            setShowReportModal(false);
+            setReportingFile(null);
+          }}
+          file={reportingFile}
+          authenticatedUser={authenticatedUser}
+          onReportSubmitted={() => {
+            // Refresh metadata to show updated report count
+            if (reportingFile) {
+              refreshMetadataInBackground(reportingFile, { forceSync: true });
+            }
+          }}
+        />
       )}
 
     </div>
