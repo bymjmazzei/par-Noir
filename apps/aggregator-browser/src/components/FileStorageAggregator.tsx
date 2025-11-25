@@ -5,7 +5,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
-import { Download, File, RefreshCw, AlertCircle, Lock, Globe, X, Edit, Eye, Grid, List, Plus, Cloud, MoreVertical, Share2, Star, Type, Upload } from 'lucide-react';
+import { Download, File, RefreshCw, AlertCircle, Lock, Globe, X, Edit, Eye, Grid, List, Plus, Cloud, MoreVertical, Share2, Star, Type, Upload, Minus, Trash2 } from 'lucide-react';
 import { PNOAuthService } from '../services/pnOAuthService';
 import { EncryptionManager } from '../utils/encryptionManager';
 import { getEncryptionService } from '../services/encryptionService';
@@ -884,6 +884,8 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
   const [menuPosition, setMenuPosition] = useState<{ top: number; left: number } | null>(null);
   const [showAddMenuFor, setShowAddMenuFor] = useState<string | null>(null);
   const [addMenuPosition, setAddMenuPosition] = useState<{ top: number; left: number } | null>(null);
+  const [isBulkDeleteMode, setIsBulkDeleteMode] = useState(false);
+  const [selectedFiles, setSelectedFiles] = useState<Set<string>>(new Set());
   const fileInputRefs = useRef<Map<string, HTMLInputElement | null>>(new Map());
   const actionMenuRef = useRef<HTMLDivElement | null>(null);
   const menuButtonRefs = useRef<Map<string, HTMLButtonElement | null>>(new Map());
@@ -1899,6 +1901,100 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
     } finally {
       setIsLoading(false);
     }
+  };
+
+  // Bulk delete handler
+  const handleBulkDelete = async (accountId: string) => {
+    if (!authenticatedUser?.id || !accountId) return;
+    
+    // Get files to delete for this account only
+    const accountFiles = filesByAccount.get(accountId) || [];
+    const filesToDelete = accountFiles.filter(file => selectedFiles.has(file.id));
+    
+    if (filesToDelete.length === 0) return;
+    
+    const fileCount = filesToDelete.length;
+    if (!confirm(`Are you sure you want to delete ${fileCount} file${fileCount > 1 ? 's' : ''}?`)) return;
+
+    setIsLoading(true);
+    setError(null);
+
+    try {
+      const accessToken = await PNOAuthService.getValidAccessToken();
+      if (!accessToken) {
+        throw new Error('No valid access token');
+      }
+
+      // Delete files sequentially
+      let successCount = 0;
+      let failCount = 0;
+      
+      for (const file of filesToDelete) {
+        try {
+          const response = await fetch(`${apiEndpoint}/api/drive/files/${file.id}?accountId=${accountId}`, {
+            method: 'DELETE',
+            headers: {
+              'Authorization': `Bearer ${accessToken}`
+            }
+          });
+
+          if (response.ok) {
+            successCount++;
+          } else {
+            failCount++;
+            console.error(`[FileStorageAggregator] Failed to delete file ${file.id}:`, response.statusText);
+          }
+        } catch (err: any) {
+          failCount++;
+          console.error(`[FileStorageAggregator] Error deleting file ${file.id}:`, err);
+        }
+      }
+
+      // Reload files after bulk delete
+      await loadFilesForAccount(accountId);
+      
+      // Clear selection and exit bulk delete mode
+      setSelectedFiles(new Set());
+      setIsBulkDeleteMode(false);
+      
+      if (failCount > 0) {
+        setError(`Deleted ${successCount} file${successCount !== 1 ? 's' : ''}, ${failCount} failed`);
+      }
+    } catch (err: any) {
+      setError(err.message || 'Failed to delete files');
+      console.error('[FileStorageAggregator] Bulk delete error:', err);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Toggle file selection
+  const toggleFileSelection = (fileId: string) => {
+    setSelectedFiles(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(fileId)) {
+        newSet.delete(fileId);
+      } else {
+        newSet.add(fileId);
+      }
+      return newSet;
+    });
+  };
+
+  // Select all files in current account
+  const selectAllFiles = (accountId: string) => {
+    const accountFiles = filesByAccount.get(accountId) || [];
+    const accountFilesIds = accountFiles.map(f => f.id);
+    setSelectedFiles(prev => {
+      const newSet = new Set(prev);
+      accountFilesIds.forEach(id => newSet.add(id));
+      return newSet;
+    });
+  };
+
+  // Deselect all files
+  const deselectAllFiles = () => {
+    setSelectedFiles(new Set());
   };
 
   // Handle set/unset top post
@@ -2956,6 +3052,23 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
                       >
                         <Plus className="h-4 w-4" />
                       </button>
+                      <button
+                        onClick={() => {
+                          setIsBulkDeleteMode(!isBulkDeleteMode);
+                          if (isBulkDeleteMode) {
+                            setSelectedFiles(new Set());
+                          }
+                        }}
+                        disabled={isLoading}
+                        className={`p-2 rounded transition-colors disabled:opacity-50 flex items-center justify-center ${
+                          isBulkDeleteMode
+                            ? 'bg-red-600 text-white hover:bg-red-500'
+                            : 'bg-neutral-700 text-white hover:bg-neutral-600'
+                        }`}
+                        title={isBulkDeleteMode ? "Cancel Bulk Delete" : "Bulk Delete"}
+                      >
+                        <Minus className="h-4 w-4" />
+                      </button>
                       {showAddMenuFor === account.accountId && addMenuPosition && (
                         <div
                           data-add-menu={account.accountId}
@@ -3064,8 +3177,20 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
                 return (
                   <div
                     key={file.id}
-                    className="bg-neutral-800/50 rounded-lg overflow-hidden hover:bg-neutral-800 transition-colors group cursor-pointer"
+                    className={`bg-neutral-800/50 rounded-lg overflow-hidden hover:bg-neutral-800 transition-colors group ${
+                      isBulkDeleteMode ? 'cursor-default' : 'cursor-pointer'
+                    } ${selectedFiles.has(file.id) ? 'ring-2 ring-blue-500' : ''}`}
                     onClick={(e) => {
+                      // Handle checkbox click in bulk delete mode
+                      if (isBulkDeleteMode) {
+                        const target = e.target as HTMLElement;
+                        if (target.closest('input[type="checkbox"]') || target.closest('label')) {
+                          toggleFileSelection(file.id);
+                          return;
+                        }
+                        toggleFileSelection(file.id);
+                        return;
+                      }
                       // Don't open file viewer if clicking on menu button or menu
                       const target = e.target as HTMLElement;
                       if (target.closest('[data-menu-button]') || target.closest('.menu-container')) {
@@ -3074,6 +3199,17 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
                       setViewingFile({ ...file, accountId: file.accountId || account.accountId });
                     }}
                   >
+                    {/* Checkbox for bulk delete mode */}
+                    {isBulkDeleteMode && (
+                      <div className="absolute top-2 left-2 z-30" onClick={(e) => e.stopPropagation()}>
+                        <input
+                          type="checkbox"
+                          checked={selectedFiles.has(file.id)}
+                          onChange={() => toggleFileSelection(file.id)}
+                          className="w-5 h-5 rounded border-neutral-600 bg-neutral-800 text-blue-600 focus:ring-2 focus:ring-blue-500"
+                        />
+                      </div>
+                    )}
                     <div className="relative aspect-square bg-neutral-700/50 overflow-hidden">
                       {isMediaFile ? (
                         <ThumbnailImage 
@@ -3094,9 +3230,10 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
                           <Globe className="h-3 w-3 text-white" />
                         </div>
                       )}
-                      {/* Menu button - top right corner */}
-                      <div className="absolute top-2 right-2 z-20 menu-container" onClick={(e) => e.stopPropagation()}>
-                        <button
+                      {/* Menu button - top right corner (hidden in bulk delete mode) */}
+                      {!isBulkDeleteMode && (
+                        <div className="absolute top-2 right-2 z-20 menu-container" onClick={(e) => e.stopPropagation()}>
+                          <button
                           ref={(el) => {
                             if (el) menuButtonRefs.current.set(file.id, el);
                             else menuButtonRefs.current.delete(file.id);
@@ -3128,9 +3265,10 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
                           title="File actions"
                           disabled={isLoading}
                         >
-                          <MoreVertical className="h-4 w-4 text-white" />
-                        </button>
-                      </div>
+                            <MoreVertical className="h-4 w-4 text-white" />
+                          </button>
+                        </div>
+                      )}
                       {isMediaFile && (
                         <div className="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-colors flex items-center justify-center opacity-0 group-hover:opacity-100">
                           <Eye className="h-6 w-6 text-white" />
@@ -3171,9 +3309,34 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
                 return (
                   <div
                     key={file.id}
-                    className="flex items-center justify-between p-3 bg-neutral-800/50 rounded-lg hover:bg-neutral-800 transition-colors cursor-pointer"
-                    onClick={() => setViewingFile({ ...file, accountId: file.accountId || account.accountId })}
+                    className={`flex items-center justify-between p-3 bg-neutral-800/50 rounded-lg hover:bg-neutral-800 transition-colors ${
+                      isBulkDeleteMode ? 'cursor-default' : 'cursor-pointer'
+                    } ${selectedFiles.has(file.id) ? 'ring-2 ring-blue-500' : ''}`}
+                    onClick={(e) => {
+                      // Handle checkbox click in bulk delete mode
+                      if (isBulkDeleteMode) {
+                        const target = e.target as HTMLElement;
+                        if (target.closest('input[type="checkbox"]') || target.closest('label')) {
+                          toggleFileSelection(file.id);
+                          return;
+                        }
+                        toggleFileSelection(file.id);
+                        return;
+                      }
+                      setViewingFile({ ...file, accountId: file.accountId || account.accountId });
+                    }}
                   >
+                    {/* Checkbox for bulk delete mode */}
+                    {isBulkDeleteMode && (
+                      <div className="flex-shrink-0 mr-3" onClick={(e) => e.stopPropagation()}>
+                        <input
+                          type="checkbox"
+                          checked={selectedFiles.has(file.id)}
+                          onChange={() => toggleFileSelection(file.id)}
+                          className="w-5 h-5 rounded border-neutral-600 bg-neutral-800 text-blue-600 focus:ring-2 focus:ring-blue-500"
+                        />
+                      </div>
+                    )}
                     <div className="flex items-center space-x-3 flex-1 min-w-0">
                       {isMediaFile ? (
                         <div className="w-12 h-12 flex-shrink-0 rounded overflow-hidden bg-neutral-700">
@@ -3203,60 +3366,103 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
                         </p>
                       </div>
                     </div>
-                    <div className="flex items-center justify-center space-x-2" onClick={(e) => e.stopPropagation()}>
-                      <div className="relative">
-                        <button
-                          ref={(el) => {
-                            if (el) menuButtonRefs.current.set(file.id, el);
-                            else menuButtonRefs.current.delete(file.id);
-                          }}
-                          data-menu-button={file.id}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            e.preventDefault();
-                            const button = e.currentTarget;
-                            const rect = button.getBoundingClientRect();
-                            const newState = openMenuFor === file.id ? null : file.id;
-                            if (newState) {
-                              // Position menu to the left of the button, with top aligned to button top
-                              setMenuPosition({
-                                top: rect.top, // Align top of menu with top of button
-                                left: rect.left - 180 // 180px = w-44 (176px) + 4px spacing
-                              });
-                            } else {
-                              setMenuPosition(null);
-                            }
-                            setOpenMenuFor(newState);
-                          }}
-                          style={{
-                            width: '28px',
-                            height: '28px',
-                            padding: 0,
-                            margin: 0,
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            background: 'rgba(64, 64, 64, 0.5)',
-                            border: 'none',
-                            borderRadius: '8px',
-                            cursor: 'pointer',
-                            color: '#a3a3a3',
-                            lineHeight: 0
-                          }}
-                          className="transition-colors disabled:opacity-50 hover:bg-neutral-700"
-                          title="File actions"
-                          disabled={isLoading}
-                        >
-                          <MoreVertical className="h-4 w-4" style={{ margin: 0, padding: 0 }} />
-                        </button>
-                        {/* Menu will be rendered in portal */}
+                    {!isBulkDeleteMode && (
+                      <div className="flex items-center justify-center space-x-2" onClick={(e) => e.stopPropagation()}>
+                        <div className="relative">
+                          <button
+                            ref={(el) => {
+                              if (el) menuButtonRefs.current.set(file.id, el);
+                              else menuButtonRefs.current.delete(file.id);
+                            }}
+                            data-menu-button={file.id}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              e.preventDefault();
+                              const button = e.currentTarget;
+                              const rect = button.getBoundingClientRect();
+                              const newState = openMenuFor === file.id ? null : file.id;
+                              if (newState) {
+                                // Position menu to the left of the button, with top aligned to button top
+                                setMenuPosition({
+                                  top: rect.top, // Align top of menu with top of button
+                                  left: rect.left - 180 // 180px = w-44 (176px) + 4px spacing
+                                });
+                              } else {
+                                setMenuPosition(null);
+                              }
+                              setOpenMenuFor(newState);
+                            }}
+                            style={{
+                              width: '28px',
+                              height: '28px',
+                              padding: 0,
+                              margin: 0,
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              background: 'rgba(64, 64, 64, 0.5)',
+                              border: 'none',
+                              borderRadius: '8px',
+                              cursor: 'pointer',
+                              color: '#a3a3a3',
+                              lineHeight: 0
+                            }}
+                            className="transition-colors disabled:opacity-50 hover:bg-neutral-700"
+                            title="File actions"
+                            disabled={isLoading}
+                          >
+                            <MoreVertical className="h-4 w-4" style={{ margin: 0, padding: 0 }} />
+                          </button>
+                          {/* Menu will be rendered in portal */}
+                        </div>
                       </div>
-                    </div>
+                    )}
                   </div>
                     );
                   })}
                   </div>
                 )}
+                
+                {/* Bulk Delete Button */}
+                {isBulkDeleteMode && (() => {
+                  const accountSelectedFiles = accountFiles.filter(f => selectedFiles.has(f.id));
+                  const selectedCount = accountSelectedFiles.length;
+                  
+                  return (
+                    <div className="mt-4 pt-4 border-t border-neutral-700 flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => {
+                            if (selectedCount === accountFiles.length) {
+                              // Deselect all files from this account
+                              setSelectedFiles(prev => {
+                                const newSet = new Set(prev);
+                                accountFiles.forEach(f => newSet.delete(f.id));
+                                return newSet;
+                              });
+                            } else {
+                              selectAllFiles(account.accountId);
+                            }
+                          }}
+                          className="px-3 py-1.5 text-sm text-white hover:bg-neutral-700 rounded transition-colors"
+                        >
+                          {selectedCount === accountFiles.length ? 'Deselect All' : 'Select All'}
+                        </button>
+                        <span className="text-text-secondary text-sm">
+                          {selectedCount} file{selectedCount !== 1 ? 's' : ''} selected
+                        </span>
+                      </div>
+                      <button
+                        onClick={() => handleBulkDelete(account.accountId)}
+                        disabled={selectedCount === 0 || isLoading}
+                        className="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                        Delete Selected ({selectedCount})
+                      </button>
+                    </div>
+                  );
+                })()}
               </div>
             );
           })}

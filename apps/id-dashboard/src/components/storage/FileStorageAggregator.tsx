@@ -3,7 +3,7 @@
  * Dashboard aggregator that collects files from all connected storage backends
  */
 import React, { useState, useEffect, useRef } from 'react';
-import { Download, File, RefreshCw, AlertCircle, Lock, Globe, Info, X, Edit, Eye, Grid, List, Plus, Cloud, MoreVertical, Share2, Trash2 } from 'lucide-react';
+import { Download, File, RefreshCw, AlertCircle, Lock, Globe, Info, X, Edit, Eye, Grid, List, Plus, Cloud, MoreVertical, Share2, Trash2, Minus } from 'lucide-react';
 import { DesktopSecureFolderPanel } from './DesktopSecureFolderPanel';
 import { getFileAggregatorService } from '../../services/aggregator/FileAggregatorService';
 import { getEncryptionService } from '../../services/aggregator/EncryptionService';
@@ -239,6 +239,8 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
 
   const [viewMode, setViewMode] = useState<'list' | 'grid'>('list');
   const [viewingFile, setViewingFile] = useState<AggregatedFile | null>(null);
+  const [isBulkDeleteMode, setIsBulkDeleteMode] = useState(false);
+  const [selectedFiles, setSelectedFiles] = useState<Set<string>>(new Set());
   const [filePreviewUrls, setFilePreviewUrls] = useState<Map<string, string>>(new Map()); // fileId -> decrypted blob URL
   const [loadingPreviews, setLoadingPreviews] = useState<Set<string>>(new Set());
   const isLoadingFilesRef = React.useRef(false);
@@ -5959,16 +5961,90 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
     }
   };
 
-  const handleDelete = async (file: AggregatedFile) => {
+  // Bulk delete handler
+  const handleBulkDelete = async (backendId: string) => {
+    const accountFiles = filesByBackend.get(backendId) || [];
+    const filesToDelete = accountFiles.filter(file => selectedFiles.has(file.id));
+    
+    if (filesToDelete.length === 0) return;
+    
+    const fileCount = filesToDelete.length;
+    if (!window.confirm(`Are you sure you want to delete ${fileCount} file${fileCount > 1 ? 's' : ''}? This action cannot be undone.`)) return;
+
+    setIsLoading(true);
+    setError(null);
+
+    try {
+      let successCount = 0;
+      let failCount = 0;
+      
+      // Delete files sequentially
+      for (const file of filesToDelete) {
+        try {
+          await handleDelete(file, true); // Skip confirmation for bulk delete
+          successCount++;
+        } catch (err: any) {
+          failCount++;
+          console.error(`[FileStorageAggregator] Error deleting file ${file.id}:`, err);
+        }
+      }
+
+      // Clear selection and exit bulk delete mode
+      setSelectedFiles(new Set());
+      setIsBulkDeleteMode(false);
+      
+      if (failCount > 0) {
+        setError(`Deleted ${successCount} file${successCount !== 1 ? 's' : ''}, ${failCount} failed`);
+      }
+    } catch (err: any) {
+      setError(err.message || 'Failed to delete files');
+      console.error('[FileStorageAggregator] Bulk delete error:', err);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Toggle file selection
+  const toggleFileSelection = (fileId: string) => {
+    setSelectedFiles(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(fileId)) {
+        newSet.delete(fileId);
+      } else {
+        newSet.add(fileId);
+      }
+      return newSet;
+    });
+  };
+
+  // Select all files in current backend
+  const selectAllFiles = (backendId: string) => {
+    const accountFiles = filesByBackend.get(backendId) || [];
+    const accountFilesIds = accountFiles.map(f => f.id);
+    setSelectedFiles(prev => {
+      const newSet = new Set(prev);
+      accountFilesIds.forEach(id => newSet.add(id));
+      return newSet;
+    });
+  };
+
+  // Deselect all files
+  const deselectAllFiles = () => {
+    setSelectedFiles(new Set());
+  };
+
+  const handleDelete = async (file: AggregatedFile, skipConfirm: boolean = false) => {
     if (!file.backendFileId) {
       setError('Cannot delete file: missing file ID');
       return;
     }
 
-    // Confirm deletion
-    const confirmed = window.confirm(`Are you sure you want to delete "${file.originalName || file.name}"? This action cannot be undone.`);
-    if (!confirmed) {
-      return;
+    // Confirm deletion (skip confirmation if called from bulk delete)
+    if (!skipConfirm) {
+      const confirmed = window.confirm(`Are you sure you want to delete "${file.originalName || file.name}"? This action cannot be undone.`);
+      if (!confirmed) {
+        return;
+      }
     }
 
     try {
@@ -6520,6 +6596,23 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
                       <Plus className="h-4 w-4" />
                     </button>
                     <button
+                      onClick={() => {
+                        setIsBulkDeleteMode(!isBulkDeleteMode);
+                        if (isBulkDeleteMode) {
+                          setSelectedFiles(new Set());
+                        }
+                      }}
+                      disabled={isLoading}
+                      className={`p-2 rounded transition-colors disabled:opacity-50 ${
+                        isBulkDeleteMode
+                          ? 'bg-red-600 text-white hover:bg-red-500'
+                          : 'bg-neutral-700 text-white hover:bg-neutral-600'
+                      }`}
+                      title={isBulkDeleteMode ? "Cancel Bulk Delete" : "Bulk Delete"}
+                    >
+                      <Minus className="h-4 w-4" />
+                    </button>
+                    <button
                       onClick={() => setViewMode('list')}
                       className={`p-2 rounded transition-colors ${
                         viewMode === 'list'
@@ -6576,9 +6669,33 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
                       return (
                         <div
                           key={`${file.backend}-${file.backendFileId}`}
-                          className="bg-neutral-800/50 rounded-lg overflow-hidden hover:bg-neutral-800 transition-colors group cursor-pointer"
-                          onClick={() => handleViewFile(file)}
+                          className={`bg-neutral-800/50 rounded-lg overflow-hidden hover:bg-neutral-800 transition-colors group ${
+                            isBulkDeleteMode ? 'cursor-default' : 'cursor-pointer'
+                          } ${selectedFiles.has(file.id) ? 'ring-2 ring-blue-500' : ''}`}
+                          onClick={(e) => {
+                            if (isBulkDeleteMode) {
+                              const target = e.target as HTMLElement;
+                              if (target.closest('input[type="checkbox"]') || target.closest('label')) {
+                                toggleFileSelection(file.id);
+                                return;
+                              }
+                              toggleFileSelection(file.id);
+                              return;
+                            }
+                            handleViewFile(file);
+                          }}
                         >
+                          {/* Checkbox for bulk delete mode */}
+                          {isBulkDeleteMode && (
+                            <div className="absolute top-2 left-2 z-30" onClick={(e) => e.stopPropagation()}>
+                              <input
+                                type="checkbox"
+                                checked={selectedFiles.has(file.id)}
+                                onChange={() => toggleFileSelection(file.id)}
+                                className="w-5 h-5 rounded border-neutral-600 bg-neutral-800 text-blue-600 focus:ring-2 focus:ring-blue-500"
+                              />
+                            </div>
+                          )}
                           <div
                             className="relative aspect-square bg-neutral-700/50 overflow-hidden"
                             onMouseEnter={() => {
@@ -6635,27 +6752,28 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
                               {(parseInt(file.size?.toString() || '0') / 1024).toFixed(1)} KB
                             </p>
 
-                            <div className="flex items-center justify-end mt-2 pt-2 border-t border-neutral-700">
-                              <div className="relative">
-                              <button
-                                ref={(btn) => {
-                                  if (btn && openMenuFor === file.backendFileId) {
-                                    // Store button ref for menu positioning
-                                    (btn as any).__menuButton = true;
-                                  }
-                                }}
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                    setOpenMenuFor((prev) =>
-                                      prev === file.backendFileId ? null : file.backendFileId
-                                    );
+                            {!isBulkDeleteMode && (
+                              <div className="flex items-center justify-end mt-2 pt-2 border-t border-neutral-700">
+                                <div className="relative">
+                                <button
+                                  ref={(btn) => {
+                                    if (btn && openMenuFor === file.backendFileId) {
+                                      // Store button ref for menu positioning
+                                      (btn as any).__menuButton = true;
+                                    }
                                   }}
-                                  className="p-1.5 text-text-secondary hover:text-text-primary transition-colors rounded"
-                                  title="File actions"
-                                  disabled={isLoading}
-                                >
-                                  <MoreVertical className="h-4 w-4" />
-                                </button>
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                      setOpenMenuFor((prev) =>
+                                        prev === file.backendFileId ? null : file.backendFileId
+                                      );
+                                    }}
+                                    className="p-1.5 text-text-secondary hover:text-text-primary transition-colors rounded"
+                                    title="File actions"
+                                    disabled={isLoading}
+                                  >
+                                    <MoreVertical className="h-4 w-4" />
+                                  </button>
                                 {openMenuFor === file.backendFileId && (
                                   <div
                                     ref={(node) => {
@@ -6784,9 +6902,33 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
                       return (
                         <div
                           key={`${file.backend}-${file.backendFileId}`}
-                          className="flex items-center justify-between p-3 bg-neutral-800/50 rounded-lg hover:bg-neutral-800 transition-colors cursor-pointer"
-                          onClick={() => handleViewFile(file)}
+                          className={`flex items-center justify-between p-3 bg-neutral-800/50 rounded-lg hover:bg-neutral-800 transition-colors ${
+                            isBulkDeleteMode ? 'cursor-default' : 'cursor-pointer'
+                          } ${selectedFiles.has(file.id) ? 'ring-2 ring-blue-500' : ''}`}
+                          onClick={(e) => {
+                            if (isBulkDeleteMode) {
+                              const target = e.target as HTMLElement;
+                              if (target.closest('input[type="checkbox"]') || target.closest('label')) {
+                                toggleFileSelection(file.id);
+                                return;
+                              }
+                              toggleFileSelection(file.id);
+                              return;
+                            }
+                            handleViewFile(file);
+                          }}
                         >
+                          {/* Checkbox for bulk delete mode */}
+                          {isBulkDeleteMode && (
+                            <div className="flex-shrink-0 mr-3" onClick={(e) => e.stopPropagation()}>
+                              <input
+                                type="checkbox"
+                                checked={selectedFiles.has(file.id)}
+                                onChange={() => toggleFileSelection(file.id)}
+                                className="w-5 h-5 rounded border-neutral-600 bg-neutral-800 text-blue-600 focus:ring-2 focus:ring-blue-500"
+                              />
+                            </div>
+                          )}
                           <div className="flex items-center space-x-3 flex-1 min-w-0">
                             {previewUrl && isImage ? (
                               <div className="w-12 h-12 flex-shrink-0 rounded overflow-hidden bg-neutral-700">
@@ -6837,21 +6979,22 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
                               </p>
                             </div>
                           </div>
-                          <div className="flex items-center justify-end space-x-2">
-                            <div className="relative">
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                  setOpenMenuFor((prev) =>
-                                    prev === file.backendFileId ? null : file.backendFileId
-                                  );
-                              }}
-                              className="px-2 py-1.5 text-xs font-medium rounded-lg transition-colors disabled:opacity-50 bg-neutral-700/50 hover:bg-neutral-700 text-text-secondary hover:text-text-primary"
-                                title="File actions"
-                                disabled={isLoading}
-                            >
-                                <MoreVertical className="h-4 w-4" />
-                            </button>
+                          {!isBulkDeleteMode && (
+                            <div className="flex items-center justify-end space-x-2">
+                              <div className="relative">
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                    setOpenMenuFor((prev) =>
+                                      prev === file.backendFileId ? null : file.backendFileId
+                                    );
+                                }}
+                                className="px-2 py-1.5 text-xs font-medium rounded-lg transition-colors disabled:opacity-50 bg-neutral-700/50 hover:bg-neutral-700 text-text-secondary hover:text-text-primary"
+                                  title="File actions"
+                                  disabled={isLoading}
+                              >
+                                  <MoreVertical className="h-4 w-4" />
+                              </button>
                               {openMenuFor === file.backendFileId && (
                                 <div
                                   ref={(node) => {
@@ -6923,6 +7066,47 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
                 })}
               </div>
             )}
+            
+            {/* Bulk Delete Button */}
+            {isBulkDeleteMode && (() => {
+              const accountSelectedFiles = accountFiles.filter(f => selectedFiles.has(f.id));
+              const selectedCount = accountSelectedFiles.length;
+              
+              return (
+                <div className="mt-4 pt-4 border-t border-neutral-700 flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => {
+                        if (selectedCount === accountFiles.length) {
+                          // Deselect all files from this backend
+                          setSelectedFiles(prev => {
+                            const newSet = new Set(prev);
+                            accountFiles.forEach(f => newSet.delete(f.id));
+                            return newSet;
+                          });
+                        } else {
+                          selectAllFiles(backendId);
+                        }
+                      }}
+                      className="px-3 py-1.5 text-sm text-white hover:bg-neutral-700 rounded transition-colors"
+                    >
+                      {selectedCount === accountFiles.length ? 'Deselect All' : 'Select All'}
+                    </button>
+                    <span className="text-text-secondary text-sm">
+                      {selectedCount} file{selectedCount !== 1 ? 's' : ''} selected
+                    </span>
+                  </div>
+                  <button
+                    onClick={() => handleBulkDelete(backendId)}
+                    disabled={selectedCount === 0 || isLoading}
+                    className="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                    Delete Selected ({selectedCount})
+                  </button>
+                </div>
+              );
+            })()}
               </div>
             );
           })}
