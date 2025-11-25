@@ -6690,7 +6690,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
                       return (
                         <div
                           key={`${file.backend}-${file.backendFileId}`}
-                          className={`bg-neutral-800/50 rounded-lg overflow-hidden hover:bg-neutral-800 transition-colors group ${
+                          className={`bg-neutral-900 rounded-lg overflow-hidden hover:bg-neutral-800 transition-colors group ${
                             isBulkDeleteMode ? 'cursor-default' : 'cursor-pointer'
                           } ${selectedFiles.has(file.id) ? 'ring-2 ring-blue-500' : ''}`}
                           onClick={(e) => {
@@ -6924,7 +6924,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
                       return (
                         <div
                           key={`${file.backend}-${file.backendFileId}`}
-                          className={`flex items-center justify-between p-3 bg-neutral-800/50 rounded-lg hover:bg-neutral-800 transition-colors ${
+                          className={`flex items-center justify-between p-3 bg-neutral-900 rounded-lg hover:bg-neutral-800 transition-colors ${
                             isBulkDeleteMode ? 'cursor-default' : 'cursor-pointer'
                           } ${selectedFiles.has(file.id) ? 'ring-2 ring-blue-500' : ''}`}
                           onClick={(e) => {
@@ -7011,7 +7011,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
                                       prev === file.backendFileId ? null : file.backendFileId
                                     );
                                 }}
-                                className="px-2 py-1.5 text-xs font-medium rounded-lg transition-colors disabled:opacity-50 bg-neutral-700/50 hover:bg-neutral-700 text-text-secondary hover:text-text-primary"
+                                className="px-2 py-1.5 text-xs font-medium rounded-lg transition-colors disabled:opacity-50 bg-neutral-800 hover:bg-neutral-700 text-text-secondary hover:text-text-primary"
                                   title="File actions"
                                   disabled={isLoading}
                               >
@@ -7079,9 +7079,6 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
                                     <Trash2 className="h-4 w-4" />
                                     <span>Delete</span>
                                   </button>
-                            </div>
-                          )}
-                              </div>
                             </div>
                           )}
                               </div>
