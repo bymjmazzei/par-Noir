@@ -1,0 +1,266 @@
+/**
+ * Gemini Moderation Service
+ * Provides content moderation, metadata generation, and Google Drive compliance checking
+ * using Google's Gemini AI API
+ */
+
+import { GoogleGenerativeAI } from '@google/generative-ai';
+
+export interface ModerationResult {
+  safe: boolean;
+  reason?: string;
+  violations?: string[];
+  contentRating?: 'safe' | 'nsfw' | 'x-rated';
+  confidence: number;
+}
+
+export interface NSFWResult {
+  isNSFW: boolean;
+  rating: 'safe' | 'nsfw' | 'x-rated';
+  confidence: number;
+  details?: {
+    adult?: number;
+    violence?: number;
+    racy?: number;
+  };
+}
+
+export interface MetadataResult {
+  tags: string[];
+  description: string;
+  category?: 'entertainment' | 'education' | 'news' | 'opinion' | 'promotion' | 'art' | 'community' | 'ideology' | 'lifestyle';
+  suggestedRating?: 'safe' | 'nsfw' | 'x-rated';
+}
+
+export type FeedCategory = 'entertainment' | 'education' | 'news' | 'opinion' | 'promotion' | 'art' | 'community' | 'ideology' | 'lifestyle';
+
+export class GeminiModerationService {
+  private genAI: GoogleGenerativeAI | null = null;
+  private apiKey: string;
+  private isInitialized: boolean = false;
+
+  constructor() {
+    this.apiKey = import.meta.env.VITE_GEMINI_API_KEY || '';
+    
+    if (!this.apiKey) {
+      console.warn('⚠️ [GeminiModerationService] API key not found. Set VITE_GEMINI_API_KEY in .env');
+      return;
+    }
+
+    try {
+      this.genAI = new GoogleGenerativeAI(this.apiKey);
+      this.isInitialized = true;
+    } catch (error) {
+      console.error('❌ [GeminiModerationService] Failed to initialize:', error);
+    }
+  }
+
+  /**
+   * Check content for Google Drive Terms of Service compliance
+   */
+  async checkGoogleDriveCompliance(file: File): Promise<ModerationResult> {
+    if (!this.isInitialized || !this.genAI) {
+      // Fail open - allow upload if service unavailable
+      console.warn('⚠️ [GeminiModerationService] Service not initialized, allowing upload');
+      return { safe: true, confidence: 0 };
+    }
+
+    try {
+      const model = this.genAI.getGenerativeModel({ model: 'gemini-pro-vision' });
+      
+      // Convert file to base64
+      const base64 = await this.fileToBase64(file);
+      
+      const prompt = `Analyze this content for Google Drive Terms of Service compliance. 
+      Check for: illegal content, CSAM, violence, spam, malware, copyright violations.
+      Return JSON only: {"safe": boolean, "reason": string, "violations": string[]}`;
+
+      const result = await model.generateContent([
+        { inlineData: { data: base64, mimeType: file.type } },
+        { text: prompt }
+      ]);
+
+      const responseText = result.response.text();
+      const response = this.parseJSONResponse(responseText);
+
+      return {
+        safe: response.safe !== false,
+        reason: response.reason || 'Content appears safe',
+        violations: response.violations || [],
+        confidence: 0.9
+      };
+    } catch (error) {
+      console.error('❌ [GeminiModerationService] Compliance check error:', error);
+      // Fail open for now (allow upload if check fails)
+      return { safe: true, confidence: 0, reason: 'Moderation check unavailable' };
+    }
+  }
+
+  /**
+   * Detect NSFW content (two-tier: NSFW → X-rated)
+   */
+  async detectNSFW(content: Blob, mimeType: string): Promise<NSFWResult> {
+    if (!this.isInitialized || !this.genAI) {
+      return { isNSFW: false, rating: 'safe', confidence: 0 };
+    }
+
+    try {
+      const model = this.genAI.getGenerativeModel({ model: 'gemini-pro-vision' });
+      const base64 = await this.blobToBase64(content);
+
+      const prompt = `Rate this content for adult content on a scale:
+      - safe: No adult content, appropriate for all audiences
+      - nsfw: Not safe for work (sexual content, nudity, suggestive material)
+      - x-rated: Explicit sexual content
+      Return JSON only: {"rating": "safe"|"nsfw"|"x-rated", "confidence": 0.0-1.0, "adult": 0.0-1.0, "violence": 0.0-1.0, "racy": 0.0-1.0}`;
+
+      const result = await model.generateContent([
+        { inlineData: { data: base64, mimeType } },
+        { text: prompt }
+      ]);
+
+      const responseText = result.response.text();
+      const response = this.parseJSONResponse(responseText);
+      
+      const rating = response.rating || 'safe';
+      
+      return {
+        isNSFW: rating !== 'safe',
+        rating: rating as 'safe' | 'nsfw' | 'x-rated',
+        confidence: response.confidence || 0.8,
+        details: {
+          adult: response.adult,
+          violence: response.violence,
+          racy: response.racy
+        }
+      };
+    } catch (error) {
+      console.error('❌ [GeminiModerationService] NSFW detection error:', error);
+      return { isNSFW: false, rating: 'safe', confidence: 0 };
+    }
+  }
+
+  /**
+   * Generate metadata for content (tags, description, category)
+   */
+  async generateMetadata(file: File): Promise<MetadataResult> {
+    if (!this.isInitialized || !this.genAI) {
+      return { tags: [], description: '' };
+    }
+
+    try {
+      const model = this.genAI.getGenerativeModel({ model: 'gemini-pro-vision' });
+      const base64 = await this.fileToBase64(file);
+
+      const prompt = `Generate metadata for this content:
+      1. List 5-10 relevant tags (comma-separated)
+      2. Write a brief description (1-2 sentences)
+      3. Suggest a category: entertainment, education, news, opinion, promotion, art, community, ideology, lifestyle
+      4. Suggest content rating: safe, nsfw, or x-rated
+      Return JSON only: {"tags": string[], "description": string, "category": string, "suggestedRating": string}`;
+
+      const result = await model.generateContent([
+        { inlineData: { data: base64, mimeType: file.type } },
+        { text: prompt }
+      ]);
+
+      const responseText = result.response.text();
+      const response = this.parseJSONResponse(responseText);
+      
+      return {
+        tags: Array.isArray(response.tags) ? response.tags : (response.tags || '').split(',').map(t => t.trim()).filter(Boolean),
+        description: response.description || '',
+        category: response.category as FeedCategory | undefined,
+        suggestedRating: response.suggestedRating as 'safe' | 'nsfw' | 'x-rated' | undefined
+      };
+    } catch (error) {
+      console.error('❌ [GeminiModerationService] Metadata generation error:', error);
+      return { tags: [], description: '' };
+    }
+  }
+
+  /**
+   * Validate a report (re-check content when reported)
+   */
+  async validateReport(fileId: string, reportType: string, content: Blob, mimeType: string = 'image/jpeg'): Promise<ModerationResult> {
+    if (!this.isInitialized || !this.genAI) {
+      return { safe: true, confidence: 0 };
+    }
+
+    try {
+      // Re-check content with Gemini
+      const nsfwResult = await this.detectNSFW(content, mimeType);
+      
+      return {
+        safe: !nsfwResult.isNSFW,
+        reason: nsfwResult.isNSFW 
+          ? `Content confirmed as ${nsfwResult.rating}` 
+          : 'Content appears safe',
+        contentRating: nsfwResult.rating,
+        confidence: nsfwResult.confidence
+      };
+    } catch (error) {
+      console.error('❌ [GeminiModerationService] Report validation error:', error);
+      return { safe: true, confidence: 0 };
+    }
+  }
+
+  /**
+   * Parse JSON response from Gemini (handles markdown code blocks)
+   */
+  private parseJSONResponse(text: string): any {
+    try {
+      // Remove markdown code blocks if present
+      let cleaned = text.trim();
+      if (cleaned.startsWith('```json')) {
+        cleaned = cleaned.replace(/^```json\n?/, '').replace(/\n?```$/, '');
+      } else if (cleaned.startsWith('```')) {
+        cleaned = cleaned.replace(/^```\n?/, '').replace(/\n?```$/, '');
+      }
+      
+      return JSON.parse(cleaned);
+    } catch (error) {
+      console.error('❌ [GeminiModerationService] JSON parse error:', error, 'Text:', text);
+      // Return safe defaults
+      return { safe: true, rating: 'safe' };
+    }
+  }
+
+  /**
+   * Convert File to base64
+   */
+  private async fileToBase64(file: File): Promise<string> {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const result = reader.result as string;
+        // Remove data URL prefix
+        const base64 = result.includes(',') ? result.split(',')[1] : result;
+        resolve(base64);
+      };
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+  }
+
+  /**
+   * Convert Blob to base64
+   */
+  private async blobToBase64(blob: Blob): Promise<string> {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const result = reader.result as string;
+        // Remove data URL prefix
+        const base64 = result.includes(',') ? result.split(',')[1] : result;
+        resolve(base64);
+      };
+      reader.onerror = reject;
+      reader.readAsDataURL(blob);
+    });
+  }
+}
+
+// Export singleton instance
+export const geminiModerationService = new GeminiModerationService();
+

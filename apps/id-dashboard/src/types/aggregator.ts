@@ -74,7 +74,18 @@ export type FeedCategory =
   | 'ideology'
   | 'lifestyle';
 
-// ContentRating removed - using isNSFW boolean instead
+// Content Rating System (three-tier: safe → nsfw → x-rated)
+export type ContentRating = 'safe' | 'nsfw' | 'x-rated';
+
+export interface ModerationEvent {
+  id: string;
+  type: 'auto_detection' | 'user_report' | 'manual_review';
+  action: 'flagged' | 'escalated' | 'cleared';
+  rating: ContentRating;
+  timestamp: string;
+  source?: 'gemini' | 'user_report' | 'admin';
+  reason?: string;
+}
 
 export interface PublicMetadata {
   fileId: string;
@@ -102,6 +113,12 @@ export interface PublicMetadata {
     blocked?: string[];
     updatedAt?: string;
   };
+  // Content Rating & Moderation Fields
+  contentRating?: ContentRating;
+  reportCount?: number;
+  autoFlagged?: boolean; // Gemini auto-detection
+  lastModerationCheck?: string;
+  moderationHistory?: ModerationEvent[];
   [key: string]: any;
 }
 
