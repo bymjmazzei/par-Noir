@@ -3515,8 +3515,8 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
                     </div>
 
                     <div className="p-3">
-                      <p className="text-white text-xs truncate mb-1" title={fileMetadataMap.get(file.id)?.name || (file as any).displayName || file.name}>
-                        {cleanTitle(fileMetadataMap.get(file.id)?.name || (file as any).displayName || file.name)}
+                      <p className="text-white text-xs truncate mb-1" title={fileMetadataMap.get(file.id)?.title || fileMetadataMap.get(file.id)?.name || (file as any).displayName || file.name}>
+                        {cleanTitle(fileMetadataMap.get(file.id)?.title || fileMetadataMap.get(file.id)?.name || (file as any).displayName || file.name)}
                       </p>
                       <p className="text-text-secondary text-xs">
                         {(parseInt(file.size || '0') / 1024).toFixed(1)} KB
@@ -3602,7 +3602,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center space-x-2">
                           <p className="text-white text-sm truncate">
-                            {cleanTitle(fileMetadataMap.get(file.id)?.name || (file as any).displayName || file.name)}
+                            {cleanTitle(fileMetadataMap.get(file.id)?.title || fileMetadataMap.get(file.id)?.name || (file as any).displayName || file.name)}
                           </p>
                           {file.isPublic && (
                             <Globe className="h-3 w-3 text-green-400 flex-shrink-0" aria-label="Public" />
