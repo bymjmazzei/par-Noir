@@ -53,6 +53,7 @@ export const LockButtonWithContext: React.FC<LockButtonWithContextProps> = ({
 
   const ownedFeeds = availableContexts.filter(c => c.type === 'feed' && c.isOwned);
   const delegatedFeeds = availableContexts.filter(c => c.type === 'feed' && !c.isOwned);
+  const hasFeeds = ownedFeeds.length > 0 || delegatedFeeds.length > 0;
 
   return (
     <div ref={containerRef} className="fixed top-3 right-3 z-[110] flex flex-col items-end space-y-1">
@@ -69,8 +70,8 @@ export const LockButtonWithContext: React.FC<LockButtonWithContextProps> = ({
         )}
       </button>
 
-      {/* Context Switcher Arrow - Only show when unlocked and has contexts */}
-      {userState.isUnlocked && availableContexts.length > 0 && (
+      {/* Context Switcher Arrow - Only show when unlocked and has feeds (not just pN identity) */}
+      {userState.isUnlocked && hasFeeds && (
         <button
           onClick={() => setShowContextMenu(!showContextMenu)}
           className="p-1 flex items-center justify-center text-white/60 hover:text-white/85 transition-colors pointer-events-auto"
