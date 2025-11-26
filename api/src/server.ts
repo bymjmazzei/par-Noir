@@ -5457,56 +5457,82 @@ class ProductionServer {
         const { AggregatorMetadataServiceDB } = await import('./server/modules/aggregatorMetadataServiceDB');
         const metadataService = AggregatorMetadataServiceDB.getInstance();
         
-        // STEP 1: Get file metadata FIRST (before deleting) to find paired files
+        // STEP 1: Get file metadata FIRST (before deleting) to find paired files and PDF page thumbnails
         let fileMetadata: any = null;
         let fileName = '';
         let isThumbnail = false;
         let pairedFileId: string | null = null;
+        let pdfPageThumbnailIds: string[] = []; // PDF page thumbnails to delete
+        let pdfThumbnailFileId: string | null = null; // Main PDF thumbnail (first page)
         
         try {
-          fileMetadata = await googleDriveProxyService.getFileMetadata(userIdentifier, fileId, accountId);
-          fileName = fileMetadata.name?.toLowerCase() || '';
-          isThumbnail = fileName.startsWith('thumb_');
-          
-          // Find paired file (thumbnail if main, main if thumbnail)
-          const accessToken = await googleDriveProxyService.getAccessToken(userIdentifier, accountId);
-          
-          if (isThumbnail) {
-            // This is a thumbnail - find the main file
-            const mainFileName = fileName.replace(/^thumb_/, '').replace(/\.encrypted$/, '');
-            const searchQuery = `name contains '${mainFileName.replace(/'/g, "\\'")}' and not name contains 'thumb_' and trashed=false`;
-            const searchUrl = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(searchQuery)}&fields=files(id,name)&pageSize=10`;
+          // Get metadata from database first (more reliable than Drive API)
+          const dbMetadata = await metadataService.getFileMetadata(fileId);
+          if (dbMetadata?.metadata) {
+            fileMetadata = dbMetadata.metadata;
+            fileName = (fileMetadata.name || '').toLowerCase();
+            isThumbnail = fileName.startsWith('thumb_');
             
-            const searchResponse = await fetch(searchUrl, {
-              headers: { 'Authorization': `Bearer ${accessToken}` }
-            });
+            // Get PDF page thumbnail IDs from metadata
+            if (fileMetadata.pdfPageThumbnailIds && Array.isArray(fileMetadata.pdfPageThumbnailIds)) {
+              pdfPageThumbnailIds = fileMetadata.pdfPageThumbnailIds;
+              console.log(`📄 [DeleteFile] Found ${pdfPageThumbnailIds.length} PDF page thumbnails to delete`);
+            }
             
-            if (searchResponse.ok) {
-              const searchData = await searchResponse.json() as { files?: Array<{ id: string; name: string }> };
-              if (searchData.files && searchData.files.length > 0) {
-                const mainFile = searchData.files.find(f => {
-                  const fName = f.name.toLowerCase().replace(/\.encrypted$/, '');
-                  return fName === mainFileName;
-                });
-                if (mainFile) {
-                  pairedFileId = mainFile.id;
+            // Get main PDF thumbnail file ID (first page thumbnail used in feed)
+            if (fileMetadata.thumbnailFileId) {
+              pdfThumbnailFileId = fileMetadata.thumbnailFileId;
+            }
+          }
+          
+          // Also try to get metadata from Google Drive as fallback
+          if (!fileMetadata) {
+            fileMetadata = await googleDriveProxyService.getFileMetadata(userIdentifier, fileId, accountId);
+            fileName = fileMetadata.name?.toLowerCase() || '';
+            isThumbnail = fileName.startsWith('thumb_');
+          }
+          
+          // Find paired file (thumbnail if main, main if thumbnail) - only if not PDF
+          if (!pdfPageThumbnailIds.length) {
+            const accessToken = await googleDriveProxyService.getAccessToken(userIdentifier, accountId);
+            
+            if (isThumbnail) {
+              // This is a thumbnail - find the main file
+              const mainFileName = fileName.replace(/^thumb_/, '').replace(/\.encrypted$/, '');
+              const searchQuery = `name contains '${mainFileName.replace(/'/g, "\\'")}' and not name contains 'thumb_' and trashed=false`;
+              const searchUrl = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(searchQuery)}&fields=files(id,name)&pageSize=10`;
+              
+              const searchResponse = await fetch(searchUrl, {
+                headers: { 'Authorization': `Bearer ${accessToken}` }
+              });
+              
+              if (searchResponse.ok) {
+                const searchData = await searchResponse.json() as { files?: Array<{ id: string; name: string }> };
+                if (searchData.files && searchData.files.length > 0) {
+                  const mainFile = searchData.files.find(f => {
+                    const fName = f.name.toLowerCase().replace(/\.encrypted$/, '');
+                    return fName === mainFileName;
+                  });
+                  if (mainFile) {
+                    pairedFileId = mainFile.id;
+                  }
                 }
               }
-            }
-          } else {
-            // This is a main file - find the thumbnail
-            const thumbnailFileName = `thumb_${fileName.replace(/\.encrypted$/, '')}.encrypted`;
-            const searchQuery = `name='${thumbnailFileName.replace(/'/g, "\\'")}' and trashed=false`;
-            const searchUrl = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(searchQuery)}&fields=files(id,name)&pageSize=1`;
-            
-            const searchResponse = await fetch(searchUrl, {
-              headers: { 'Authorization': `Bearer ${accessToken}` }
-            });
-            
-            if (searchResponse.ok) {
-              const searchData = await searchResponse.json() as { files?: Array<{ id: string; name: string }> };
-              if (searchData.files && searchData.files.length > 0) {
-                pairedFileId = searchData.files[0].id;
+            } else {
+              // This is a main file - find the thumbnail
+              const thumbnailFileName = `thumb_${fileName.replace(/\.encrypted$/, '')}.encrypted`;
+              const searchQuery = `name='${thumbnailFileName.replace(/'/g, "\\'")}' and trashed=false`;
+              const searchUrl = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(searchQuery)}&fields=files(id,name)&pageSize=1`;
+              
+              const searchResponse = await fetch(searchUrl, {
+                headers: { 'Authorization': `Bearer ${accessToken}` }
+              });
+              
+              if (searchResponse.ok) {
+                const searchData = await searchResponse.json() as { files?: Array<{ id: string; name: string }> };
+                if (searchData.files && searchData.files.length > 0) {
+                  pairedFileId = searchData.files[0].id;
+                }
               }
             }
           }
@@ -5515,11 +5541,16 @@ class ProductionServer {
           console.warn(`⚠️ [DeleteFile] Could not get file metadata (may already be deleted):`, metadataError?.message || metadataError);
         }
         
-        // STEP 2: Remove from database metadata (both files)
+        // STEP 2: Remove from database metadata (main file, paired file, PDF thumbnails, and PDF page thumbnails)
         const filesToRemoveFromDb = [fileId];
         if (pairedFileId) {
           filesToRemoveFromDb.push(pairedFileId);
         }
+        if (pdfThumbnailFileId) {
+          filesToRemoveFromDb.push(pdfThumbnailFileId);
+        }
+        // Add all PDF page thumbnails
+        filesToRemoveFromDb.push(...pdfPageThumbnailIds);
         
         for (const dbFileId of filesToRemoveFromDb) {
           try {
@@ -5532,11 +5563,16 @@ class ProductionServer {
           }
         }
         
-        // STEP 3: Delete files from Google Drive (both files)
+        // STEP 3: Delete files from Google Drive (main file, paired file, PDF thumbnails, and PDF page thumbnails)
         const filesToDelete = [fileId];
         if (pairedFileId) {
           filesToDelete.push(pairedFileId);
         }
+        if (pdfThumbnailFileId) {
+          filesToDelete.push(pdfThumbnailFileId);
+        }
+        // Add all PDF page thumbnails
+        filesToDelete.push(...pdfPageThumbnailIds);
         
         for (const driveFileId of filesToDelete) {
           try {
