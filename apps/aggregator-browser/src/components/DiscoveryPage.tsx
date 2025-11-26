@@ -311,7 +311,7 @@ export function DiscoveryPage({
         id: file.metadata.fileId,
         item: file,
         thumbnail: getThumbnail(file),
-        title: cleanTitle(file.metadata.name || file.metadata.title),
+        title: cleanTitle(file.metadata.title || file.metadata.name),
         subtitle: displayName,
         metadata: '',
         engagement: {
