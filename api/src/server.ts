@@ -5450,6 +5450,8 @@ class ProductionServer {
         const userIdentifier = tokenPayload.pnIdentifier || tokenPayload.did;
         const pnIdentifier = tokenPayload.pnIdentifier;
         const { googleDriveProxyService } = await import('./server/modules/googleDriveProxy');
+        const { AggregatorMetadataServiceDB } = await import('./server/modules/aggregatorMetadataServiceDB');
+        const metadataService = AggregatorMetadataServiceDB.getInstance();
         
         // STEP 1: Get file metadata FIRST (before deleting) to find paired files
         let fileMetadata: any = null;
