@@ -5538,19 +5538,21 @@ class ProductionServer {
         }
         
         // STEP 3: Delete files from Google Drive (main file, paired file, PDF thumbnails, and PDF page thumbnails)
-        const filesToDelete = [fileId];
-        if (pairedFileId) {
-          filesToDelete.push(pairedFileId);
-        }
-        if (pdfThumbnailFileId) {
-          filesToDelete.push(pdfThumbnailFileId);
-        }
-        // Add all PDF page thumbnails
-        filesToDelete.push(...pdfPageThumbnailIds);
-        
-        for (const driveFileId of filesToDelete) {
-          try {
-            await googleDriveProxyService.deleteFile(userIdentifier, driveFileId, accountId);
+        if (userIdentifier) {
+          const { googleDriveProxyService } = await import('./server/modules/googleDriveProxy');
+          const filesToDelete = [fileId];
+          if (pairedFileId) {
+            filesToDelete.push(pairedFileId);
+          }
+          if (pdfThumbnailFileId) {
+            filesToDelete.push(pdfThumbnailFileId);
+          }
+          // Add all PDF page thumbnails
+          filesToDelete.push(...pdfPageThumbnailIds);
+          
+          for (const driveFileId of filesToDelete) {
+            try {
+              await googleDriveProxyService.deleteFile(userIdentifier, driveFileId, accountId);
             console.log(`✅ [DeleteFile] Deleted file ${driveFileId} from Google Drive`);
           } catch (driveError: any) {
             const errorMsg = driveError?.message || String(driveError);
