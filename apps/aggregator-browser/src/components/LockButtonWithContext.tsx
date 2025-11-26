@@ -55,19 +55,7 @@ export const LockButtonWithContext: React.FC<LockButtonWithContextProps> = ({
   const delegatedFeeds = availableContexts.filter(c => c.type === 'feed' && !c.isOwned);
   const hasFeeds = ownedFeeds.length > 0 || delegatedFeeds.length > 0;
 
-  // Debug logging
-  useEffect(() => {
-    if (userState.isUnlocked) {
-      console.log('🔍 [LockButtonWithContext] Debug:', {
-        isUnlocked: userState.isUnlocked,
-        availableContextsCount: availableContexts.length,
-        ownedFeedsCount: ownedFeeds.length,
-        delegatedFeedsCount: delegatedFeeds.length,
-        hasFeeds,
-        currentContext: currentContext?.name
-      });
-    }
-  }, [userState.isUnlocked, availableContexts.length, ownedFeeds.length, delegatedFeeds.length, hasFeeds, currentContext]);
+  // Removed debug logging - only log errors
 
   return (
     <div ref={containerRef} className="fixed top-3 right-3 z-[110] flex flex-col items-end space-y-1">

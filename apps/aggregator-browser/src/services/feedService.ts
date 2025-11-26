@@ -375,9 +375,9 @@ export class FeedService {
     });
 
     if (!response.ok) {
-      // Handle 403 gracefully - endpoint might require different auth or not be available
-      if (response.status === 403) {
-        console.log('ℹ️ [FeedService] Delegated feeds endpoint returned 403 - returning empty array');
+      // Handle 401/403 gracefully - endpoint might require different auth or not be available
+      if (response.status === 401 || response.status === 403) {
+        // Silently return empty array - user might not have delegated feeds or endpoint not available
         return [];
       }
       const error = await response.json().catch(() => ({ error: 'Failed to get delegated feeds' }));
