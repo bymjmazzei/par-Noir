@@ -5563,9 +5563,10 @@ class ProductionServer {
           }
         }
         
-        // STEP 4: Remove from Google Drive indexes (both files)
-        if (pnIdentifier) {
+        // STEP 4: Remove from Google Drive indexes
+        if (pnIdentifier && userIdentifier) {
           try {
+            const { googleDriveProxyService } = await import('./server/modules/googleDriveProxy');
             const accessToken = await googleDriveProxyService.getAccessToken(userIdentifier, accountId);
             
             // Get pN folder and metadata folder
