@@ -2385,7 +2385,7 @@ export function FullScreenFeed({
                 <div className="flex-1">
                   {/* Title */}
                   <h3 className="text-white text-base md:text-lg font-semibold mb-1 line-clamp-1">
-                    {cleanTitle(file.title || file.name)}
+                    {cleanTitle(file.title || file.name || 'Untitled')}
                   </h3>
                   
                   {/* Caption with expand/collapse */}
