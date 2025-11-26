@@ -5451,101 +5451,108 @@ class ProductionServer {
         const pnIdentifier = tokenPayload.pnIdentifier;
         const { googleDriveProxyService } = await import('./server/modules/googleDriveProxy');
         
-        // Delete file from Google Drive
-        try {
-          await googleDriveProxyService.deleteFile(userIdentifier, fileId, accountId);
-          console.log(`✅ [DeleteFile] Deleted file ${fileId} from Google Drive`);
-        } catch (driveError: any) {
-          // Log error but don't fail - database is already cleaned up
-          const errorMessage = driveError?.message || String(driveError);
-          console.error(`❌ [DeleteFile] Google Drive deletion failed for ${fileId}:`, errorMessage);
-          
-          // If it's a 404, file might already be deleted - that's okay
-          // But if it's another error (403, 401, etc.), we should report it
-          if (!errorMessage.includes('404') && !errorMessage.includes('not found')) {
-            console.error(`⚠️ [DeleteFile] File ${fileId} may still exist in Google Drive. Error:`, errorMessage);
-          }
-        }
+        // STEP 1: Get file metadata FIRST (before deleting) to find paired files
+        let fileMetadata: any = null;
+        let fileName = '';
+        let isThumbnail = false;
+        let pairedFileId: string | null = null;
         
-        // CRITICAL: If deleting a thumbnail, also delete the main file (and vice versa)
-        // Check if this is a thumbnail file (name starts with thumb_)
         try {
-          const fileMetadata = await googleDriveProxyService.getFileMetadata(userIdentifier, fileId, accountId).catch(() => null);
-          if (fileMetadata) {
-            const fileName = fileMetadata.name?.toLowerCase() || '';
-            const isThumbnail = fileName.startsWith('thumb_');
+          fileMetadata = await googleDriveProxyService.getFileMetadata(userIdentifier, fileId, accountId);
+          fileName = fileMetadata.name?.toLowerCase() || '';
+          isThumbnail = fileName.startsWith('thumb_');
+          
+          // Find paired file (thumbnail if main, main if thumbnail)
+          const accessToken = await googleDriveProxyService.getAccessToken(userIdentifier, accountId);
+          
+          if (isThumbnail) {
+            // This is a thumbnail - find the main file
+            const mainFileName = fileName.replace(/^thumb_/, '').replace(/\.encrypted$/, '');
+            const searchQuery = `name contains '${mainFileName.replace(/'/g, "\\'")}' and not name contains 'thumb_' and trashed=false`;
+            const searchUrl = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(searchQuery)}&fields=files(id,name)&pageSize=10`;
             
-            if (isThumbnail) {
-              // This is a thumbnail - find and delete the main file
-              const mainFileName = fileName.replace(/^thumb_/, '').replace(/\.encrypted$/, '');
-              // Search for main file with matching name
-              const accessToken = await googleDriveProxyService.getAccessToken(userIdentifier, accountId);
-              const searchQuery = `name contains '${mainFileName.replace(/'/g, "\\'")}' and not name contains 'thumb_' and trashed=false`;
-              const searchUrl = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(searchQuery)}&fields=files(id,name)&pageSize=10`;
-              
-              const searchResponse = await fetch(searchUrl, {
-                headers: { 'Authorization': `Bearer ${accessToken}` }
-              });
-              
-              if (searchResponse.ok) {
-                const searchData = await searchResponse.json() as { files?: Array<{ id: string; name: string }> };
-                if (searchData.files && searchData.files.length > 0) {
-                  // Find exact match (without thumb_ prefix)
-                  const mainFile = searchData.files.find(f => {
-                    const fName = f.name.toLowerCase().replace(/\.encrypted$/, '');
-                    return fName === mainFileName;
-                  });
-                  
-                  if (mainFile) {
-                    try {
-                      await googleDriveProxyService.deleteFile(userIdentifier, mainFile.id, accountId);
-                      await metadataService.removeMetadata(mainFile.id);
-                      console.log(`✅ [DeleteFile] Also deleted main file ${mainFile.id} (${mainFile.name})`);
-                    } catch (mainDeleteError) {
-                      console.warn(`⚠️ [DeleteFile] Failed to delete main file ${mainFile.id}:`, mainDeleteError);
-                    }
-                  }
-                }
-              }
-            } else {
-              // This is a main file - find and delete the thumbnail
-              const thumbnailFileName = `thumb_${fileName.replace(/\.encrypted$/, '')}.encrypted`;
-              const searchQuery = `name='${thumbnailFileName.replace(/'/g, "\\'")}' and trashed=false`;
-              const searchUrl = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(searchQuery)}&fields=files(id,name)&pageSize=1`;
-              
-              const accessToken = await googleDriveProxyService.getAccessToken(userIdentifier, accountId);
-              const searchResponse = await fetch(searchUrl, {
-                headers: { 'Authorization': `Bearer ${accessToken}` }
-              });
-              
-              if (searchResponse.ok) {
-                const searchData = await searchResponse.json() as { files?: Array<{ id: string; name: string }> };
-                if (searchData.files && searchData.files.length > 0) {
-                  const thumbnailFile = searchData.files[0];
-                  try {
-                    await googleDriveProxyService.deleteFile(userIdentifier, thumbnailFile.id, accountId);
-                    await metadataService.removeMetadata(thumbnailFile.id);
-                    console.log(`✅ [DeleteFile] Also deleted thumbnail file ${thumbnailFile.id} (${thumbnailFile.name})`);
-                  } catch (thumbDeleteError) {
-                    console.warn(`⚠️ [DeleteFile] Failed to delete thumbnail file ${thumbnailFile.id}:`, thumbDeleteError);
-                  }
+            const searchResponse = await fetch(searchUrl, {
+              headers: { 'Authorization': `Bearer ${accessToken}` }
+            });
+            
+            if (searchResponse.ok) {
+              const searchData = await searchResponse.json() as { files?: Array<{ id: string; name: string }> };
+              if (searchData.files && searchData.files.length > 0) {
+                const mainFile = searchData.files.find(f => {
+                  const fName = f.name.toLowerCase().replace(/\.encrypted$/, '');
+                  return fName === mainFileName;
+                });
+                if (mainFile) {
+                  pairedFileId = mainFile.id;
                 }
               }
             }
+          } else {
+            // This is a main file - find the thumbnail
+            const thumbnailFileName = `thumb_${fileName.replace(/\.encrypted$/, '')}.encrypted`;
+            const searchQuery = `name='${thumbnailFileName.replace(/'/g, "\\'")}' and trashed=false`;
+            const searchUrl = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(searchQuery)}&fields=files(id,name)&pageSize=1`;
+            
+            const searchResponse = await fetch(searchUrl, {
+              headers: { 'Authorization': `Bearer ${accessToken}` }
+            });
+            
+            if (searchResponse.ok) {
+              const searchData = await searchResponse.json() as { files?: Array<{ id: string; name: string }> };
+              if (searchData.files && searchData.files.length > 0) {
+                pairedFileId = searchData.files[0].id;
+              }
+            }
           }
-        } catch (pairDeleteError) {
-          // Non-critical - if we can't find/delete the pair, that's okay
-          console.warn(`⚠️ [DeleteFile] Could not delete paired file (non-critical):`, pairDeleteError);
+        } catch (metadataError: any) {
+          // File might already be deleted - continue with database cleanup
+          console.warn(`⚠️ [DeleteFile] Could not get file metadata (may already be deleted):`, metadataError?.message || metadataError);
         }
         
-        // Clean up indexes: remove from owner index and public index (non-critical)
-        // Note: Database metadata removal above is the critical part - this is just for Google Drive index files
+        // STEP 2: Remove from database metadata (both files)
+        const filesToRemoveFromDb = [fileId];
+        if (pairedFileId) {
+          filesToRemoveFromDb.push(pairedFileId);
+        }
+        
+        for (const dbFileId of filesToRemoveFromDb) {
+          try {
+            const removed = await metadataService.removeMetadata(dbFileId);
+            if (removed) {
+              console.log(`✅ [DeleteFile] Removed ${dbFileId} from database metadata`);
+            }
+          } catch (dbError: any) {
+            console.error(`❌ [DeleteFile] Failed to remove ${dbFileId} from database:`, dbError);
+          }
+        }
+        
+        // STEP 3: Delete files from Google Drive (both files)
+        const filesToDelete = [fileId];
+        if (pairedFileId) {
+          filesToDelete.push(pairedFileId);
+        }
+        
+        for (const driveFileId of filesToDelete) {
+          try {
+            await googleDriveProxyService.deleteFile(userIdentifier, driveFileId, accountId);
+            console.log(`✅ [DeleteFile] Deleted file ${driveFileId} from Google Drive`);
+          } catch (driveError: any) {
+            const errorMsg = driveError?.message || String(driveError);
+            // 404 is okay - file might already be deleted
+            if (!errorMsg.includes('404') && !errorMsg.includes('not found')) {
+              console.error(`❌ [DeleteFile] Failed to delete ${driveFileId} from Google Drive:`, errorMsg);
+            } else {
+              console.log(`ℹ️ [DeleteFile] File ${driveFileId} not found in Google Drive (may already be deleted)`);
+            }
+          }
+        }
+        
+        // STEP 4: Remove from Google Drive indexes (both files)
         if (pnIdentifier) {
           try {
             const accessToken = await googleDriveProxyService.getAccessToken(userIdentifier, accountId);
             
             // Get pN folder and metadata folder
-            // pnIdentifier already includes 'pn-' prefix, use it directly
             const pnFolderName = `par Noir - ${pnIdentifier}`;
             const folderSearchQuery = `name='${pnFolderName.replace(/'/g, "\\'")}' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
             const folderSearchUrl = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(folderSearchQuery)}&fields=files(id,name)&pageSize=1`;
@@ -5573,34 +5580,35 @@ class ProductionServer {
                   if (metadataFolderData.files && metadataFolderData.files.length > 0) {
                     const metadataFolderId = metadataFolderData.files[0].id;
                     
-                    // Remove from owner index
-                    try {
-                      await this.removeFromOwnerIndex(accessToken, pnIdentifier, metadataFolderId, fileId);
-                      console.log(`✅ [DeleteFile] Removed file ${fileId} from owner index`);
-                    } catch (ownerIndexError: any) {
-                      console.warn(`⚠️ [DeleteFile] Failed to remove from owner index (non-critical):`, ownerIndexError?.message || ownerIndexError);
-                    }
-                    
-                    // Remove from public index
-                    try {
-                      await this.removeFromPublicIndex(accessToken, pnIdentifier, metadataFolderId, fileId);
-                      console.log(`✅ [DeleteFile] Removed file ${fileId} from public index`);
-                    } catch (publicIndexError: any) {
-                      console.warn(`⚠️ [DeleteFile] Failed to remove from public index (non-critical):`, publicIndexError?.message || publicIndexError);
+                    // Remove both files from indexes
+                    for (const indexFileId of filesToDelete) {
+                      try {
+                        await this.removeFromOwnerIndex(accessToken, pnIdentifier, metadataFolderId, indexFileId);
+                        console.log(`✅ [DeleteFile] Removed ${indexFileId} from owner index`);
+                      } catch (ownerIndexError: any) {
+                        console.warn(`⚠️ [DeleteFile] Failed to remove ${indexFileId} from owner index:`, ownerIndexError);
+                      }
+                      
+                      try {
+                        await this.removeFromPublicIndex(accessToken, pnIdentifier, metadataFolderId, indexFileId);
+                        console.log(`✅ [DeleteFile] Removed ${indexFileId} from public index`);
+                      } catch (publicIndexError: any) {
+                        console.warn(`⚠️ [DeleteFile] Failed to remove ${indexFileId} from public index:`, publicIndexError);
+                      }
                     }
                   }
                 }
               }
             }
           } catch (indexCleanupError: any) {
-            // Don't fail the delete if index cleanup fails - file is already deleted from Drive and database
-            console.warn(`⚠️ [DeleteFile] Google Drive index cleanup failed (non-critical):`, indexCleanupError?.message || indexCleanupError);
+            console.error(`❌ [DeleteFile] Index cleanup failed:`, indexCleanupError);
           }
         }
         
         return res.json({ 
           success: true, 
           fileId,
+          pairedFileId: pairedFileId || undefined,
           removedFromDatabase: dbRemoved 
         });
       } catch (error: any) {
