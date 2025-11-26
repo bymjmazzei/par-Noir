@@ -113,30 +113,28 @@ export class AggregatorMetadataServiceDB {
 
     try {
       // CRITICAL FIX: Also delete from feed_posts table - files can't appear in feeds if removed
-      // First, try to find the file_id to use for feed_posts deletion
-      let actualFileId: string | null = null;
-      
-      // Try to find file_id by checking aggregator_metadata first
-      const findResult = await db.query(
-        `SELECT file_id FROM aggregator_metadata 
-         WHERE file_id = $1 
-            OR metadata->>'backendFileId' = $1 
-            OR metadata->>'fileId' = $1
-         LIMIT 1`,
-        [fileIdOrBackendFileId]
-      );
-      
-      if (findResult.rows.length > 0) {
-        actualFileId = findResult.rows[0].file_id;
-      } else {
-        // If not found, use the provided ID as-is
-        actualFileId = fileIdOrBackendFileId;
-      }
-      
-      // Delete from feed_posts FIRST (foreign key constraint)
+      // Delete from feed_posts using all possible file_id variations
       try {
-        await db.query('DELETE FROM feed_posts WHERE file_id = $1', [actualFileId]);
-        console.log(`🗑️ [removeMetadata] Removed file ${actualFileId} from feed_posts`);
+        // Try deleting by file_id directly
+        await db.query('DELETE FROM feed_posts WHERE file_id = $1', [fileIdOrBackendFileId]);
+        
+        // Also try deleting by backendFileId if it's different
+        const findResult = await db.query(
+          `SELECT file_id FROM aggregator_metadata 
+           WHERE metadata->>'backendFileId' = $1 
+              OR metadata->>'fileId' = $1
+           LIMIT 1`,
+          [fileIdOrBackendFileId]
+        );
+        
+        if (findResult.rows.length > 0) {
+          const actualFileId = findResult.rows[0].file_id;
+          if (actualFileId !== fileIdOrBackendFileId) {
+            await db.query('DELETE FROM feed_posts WHERE file_id = $1', [actualFileId]);
+          }
+        }
+        
+        console.log(`🗑️ [removeMetadata] Attempted to remove file ${fileIdOrBackendFileId} from feed_posts`);
       } catch (feedPostsError: any) {
         // Table might not exist or have different structure - that's okay
         console.warn(`⚠️ [removeMetadata] Could not delete from feed_posts (non-critical):`, feedPostsError?.message || feedPostsError);
@@ -916,7 +914,25 @@ export class AggregatorMetadataServiceDB {
     limit?: number;
     offset?: number;
   }): Promise<CentralIndexResponse & { total: number; hasMore: boolean }> {
-    // SCALABILITY: Check cache first
+    // CRITICAL: Always run cleanup FIRST to ensure database is in sync with Google Drive
+    // This ensures deleted files are removed before any cache check or query
+    console.log(`🔍 [getIndexResponse] Running cleanup to sync database with Google Drive...`);
+    try {
+      await this.cleanupOrphanedFilesFromIndex();
+      // Invalidate cache after cleanup since database may have changed
+      try {
+        const { invalidateIndexCache } = await import('../utils/cache');
+        await invalidateIndexCache();
+        console.log(`🗑️ [getIndexResponse] Invalidated cache after cleanup`);
+      } catch (cacheError) {
+        console.warn('⚠️ [getIndexResponse] Cache invalidation failed (non-critical):', cacheError);
+      }
+    } catch (error) {
+      console.error('❌ [getIndexResponse] Cleanup failed (non-critical, continuing):', error);
+      // Continue even if cleanup fails - still return results
+    }
+    
+    // SCALABILITY: Check cache after cleanup (cache was invalidated, so this will miss and query fresh)
     try {
       const { getCachedIndex } = await import('../utils/cache');
       const cached = await getCachedIndex(filters);
@@ -929,16 +945,7 @@ export class AggregatorMetadataServiceDB {
       // Continue to database query if cache fails
     }
     
-    // AUTOMATIC CLEANUP: Use public index files as source of truth
-    // Remove any files from database that aren't in the public index files
-    console.log(`🔍 [getIndexResponse] Starting cleanup before returning files...`);
-    try {
-      await this.cleanupOrphanedFilesFromIndex();
-    } catch (error) {
-      console.error('❌ [getIndexResponse] Cleanup failed (non-critical, continuing):', error);
-      // Continue even if cleanup fails - still return results
-    }
-    
+    // Query database for fresh data (after cleanup ensures it's accurate)
     const result = await this.getPublicMetadata(filters);
     console.log(`📤 [getIndexResponse] Returning ${result.files.length} file(s) after cleanup`);
     
