@@ -5430,7 +5430,8 @@ class ProductionServer {
       // STEP 1: READ METADATA FIRST (before deleting!) to find PDF thumbnails and paired files
       const { AggregatorMetadataServiceDB } = await import('./server/modules/aggregatorMetadataServiceDB');
       const metadataService = AggregatorMetadataServiceDB.getInstance();
-        let fileMetadata: any = null;
+      
+      let fileMetadata: any = null;
         let fileName = '';
         let isThumbnail = false;
         let pairedFileId: string | null = null;
