@@ -72,22 +72,26 @@ export const FeedCreator: React.FC<FeedCreatorProps> = ({
   };
 
   const handleAddLink = () => {
-    setFeedData(prev => ({
-      ...prev,
-      branding: {
-        ...prev.branding,
-        links: [
-          ...(prev.branding?.links || []),
-          { label: '', url: '' }
-        ]
-      }
-    }));
+    setFeedData(prev => {
+      const currentLinks = Array.isArray(prev.branding?.links) ? prev.branding.links : [];
+      return {
+        ...prev,
+        branding: {
+          ...prev.branding,
+          links: [
+            ...currentLinks,
+            { label: '', url: '' }
+          ]
+        }
+      };
+    });
   };
 
   const handleUpdateLink = (index: number, field: 'label' | 'url', value: string) => {
     setFeedData(prev => {
-      const links = [...(prev.branding?.links || [])];
-      links[index] = { ...links[index], [field]: value };
+      const currentLinks = Array.isArray(prev.branding?.links) ? prev.branding.links : [];
+      const links = [...currentLinks];
+      links[index] = { ...(links[index] || { label: '', url: '' }), [field]: value };
       return {
         ...prev,
         branding: {
@@ -100,7 +104,8 @@ export const FeedCreator: React.FC<FeedCreatorProps> = ({
 
   const handleRemoveLink = (index: number) => {
     setFeedData(prev => {
-      const links = [...(prev.branding?.links || [])];
+      const currentLinks = Array.isArray(prev.branding?.links) ? prev.branding.links : [];
+      const links = [...currentLinks];
       links.splice(index, 1);
       return {
         ...prev,
@@ -467,18 +472,18 @@ export const FeedCreator: React.FC<FeedCreatorProps> = ({
                     </button>
                   </div>
                   <div className="space-y-2">
-                    {feedData.branding?.links?.map((link, index) => (
+                    {Array.isArray(feedData.branding?.links) && feedData.branding.links.map((link, index) => (
                       <div key={index} className="flex items-center space-x-2">
                         <input
                           type="text"
-                          value={link.label}
+                          value={link?.label || ''}
                           onChange={(e) => handleUpdateLink(index, 'label', e.target.value)}
                           placeholder="Label"
                           className="flex-1 px-3 py-2 bg-neutral-800 border border-neutral-700 rounded text-white text-sm"
                         />
                         <input
                           type="url"
-                          value={link.url}
+                          value={link?.url || ''}
                           onChange={(e) => handleUpdateLink(index, 'url', e.target.value)}
                           placeholder="https://..."
                           className="flex-1 px-3 py-2 bg-neutral-800 border border-neutral-700 rounded text-white text-sm"
