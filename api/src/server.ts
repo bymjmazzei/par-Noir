@@ -5415,26 +5415,26 @@ class ProductionServer {
       
       try {
         // STEP 0: Validate token FIRST (but don't delete yet)
-      const authHeader = req.headers.authorization;
-      let tokenPayload = null;
-      let userIdentifier: string | null = null;
-      let pnIdentifier: string | null = null;
-      
-      if (authHeader && authHeader.startsWith('Bearer ')) {
-        const token = authHeader.substring(7);
-        const { PNOAuthService } = await import('./server/modules/pnOAuthService');
-        tokenPayload = PNOAuthService.validateAccessToken(token);
+        const authHeader = req.headers.authorization;
+        let tokenPayload = null;
+        let userIdentifier: string | null = null;
+        let pnIdentifier: string | null = null;
+        
+        if (authHeader && authHeader.startsWith('Bearer ')) {
+          const token = authHeader.substring(7);
+          const { PNOAuthService } = await import('./server/modules/pnOAuthService');
+          tokenPayload = PNOAuthService.validateAccessToken(token);
         if (tokenPayload) {
           userIdentifier = tokenPayload.pnIdentifier || tokenPayload.did;
-          pnIdentifier = tokenPayload.pnIdentifier;
+          pnIdentifier = tokenPayload.pnIdentifier || null;
         }
-      }
-      
-      // STEP 1: READ METADATA FIRST (before deleting!) to find PDF thumbnails and paired files
-      const { AggregatorMetadataServiceDB } = await import('./server/modules/aggregatorMetadataServiceDB');
-      const metadataService = AggregatorMetadataServiceDB.getInstance();
-      
-      let fileMetadata: any = null;
+        }
+        
+        // STEP 1: READ METADATA FIRST (before deleting!) to find PDF thumbnails and paired files
+        const { AggregatorMetadataServiceDB } = await import('./server/modules/aggregatorMetadataServiceDB');
+        const metadataService = AggregatorMetadataServiceDB.getInstance();
+        
+        let fileMetadata: any = null;
         let fileName = '';
         let isThumbnail = false;
         let pairedFileId: string | null = null;
@@ -5462,7 +5462,8 @@ class ProductionServer {
           }
           
           // Also try to get metadata from Google Drive as fallback
-          if (!fileMetadata) {
+          if (!fileMetadata && userIdentifier) {
+            const { googleDriveProxyService } = await import('./server/modules/googleDriveProxy');
             fileMetadata = await googleDriveProxyService.getFileMetadata(userIdentifier, fileId, accountId);
             fileName = fileMetadata.name?.toLowerCase() || '';
             isThumbnail = fileName.startsWith('thumb_');
@@ -5541,29 +5542,31 @@ class ProductionServer {
         }
         
         // STEP 3: Delete files from Google Drive (main file, paired file, PDF thumbnails, and PDF page thumbnails)
+        const filesToDelete = [fileId];
+        if (pairedFileId) {
+          filesToDelete.push(pairedFileId);
+        }
+        if (pdfThumbnailFileId) {
+          filesToDelete.push(pdfThumbnailFileId);
+        }
+        // Add all PDF page thumbnails
+        filesToDelete.push(...pdfPageThumbnailIds);
+        
         if (userIdentifier) {
           const { googleDriveProxyService } = await import('./server/modules/googleDriveProxy');
-          const filesToDelete = [fileId];
-          if (pairedFileId) {
-            filesToDelete.push(pairedFileId);
-          }
-          if (pdfThumbnailFileId) {
-            filesToDelete.push(pdfThumbnailFileId);
-          }
-          // Add all PDF page thumbnails
-          filesToDelete.push(...pdfPageThumbnailIds);
           
           for (const driveFileId of filesToDelete) {
             try {
               await googleDriveProxyService.deleteFile(userIdentifier, driveFileId, accountId);
-            console.log(`✅ [DeleteFile] Deleted file ${driveFileId} from Google Drive`);
-          } catch (driveError: any) {
-            const errorMsg = driveError?.message || String(driveError);
-            // 404 is okay - file might already be deleted
-            if (!errorMsg.includes('404') && !errorMsg.includes('not found')) {
-              console.error(`❌ [DeleteFile] Failed to delete ${driveFileId} from Google Drive:`, errorMsg);
-            } else {
-              console.log(`ℹ️ [DeleteFile] File ${driveFileId} not found in Google Drive (may already be deleted)`);
+              console.log(`✅ [DeleteFile] Deleted file ${driveFileId} from Google Drive`);
+            } catch (driveError: any) {
+              const errorMsg = driveError?.message || String(driveError);
+              // 404 is okay - file might already be deleted
+              if (!errorMsg.includes('404') && !errorMsg.includes('not found')) {
+                console.error(`❌ [DeleteFile] Failed to delete ${driveFileId} from Google Drive:`, errorMsg);
+              } else {
+                console.log(`ℹ️ [DeleteFile] File ${driveFileId} not found in Google Drive (may already be deleted)`);
+              }
             }
           }
         }
@@ -5602,7 +5605,7 @@ class ProductionServer {
                   if (metadataFolderData.files && metadataFolderData.files.length > 0) {
                     const metadataFolderId = metadataFolderData.files[0].id;
                     
-                    // Remove both files from indexes
+                    // Remove files from indexes
                     for (const indexFileId of filesToDelete) {
                       try {
                         await this.removeFromOwnerIndex(accessToken, pnIdentifier, metadataFolderId, indexFileId);
