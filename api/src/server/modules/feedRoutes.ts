@@ -801,6 +801,65 @@ export function setupFeedRoutes(app: any) {
   });
 
   /**
+   * GET /api/feeds/tokens
+   * Get feed tokens for authenticated user's pN
+   * Returns decrypted tokens for feeds owned by the user
+   */
+  app.get('/api/feeds/tokens', async (req: Request, res: Response) => {
+    try {
+      // Get authenticated user
+      const authHeader = req.headers.authorization;
+      if (!authHeader || !authHeader.startsWith('Bearer ')) {
+        return res.status(401).json({ error: 'Unauthorized' });
+      }
+
+      const token = authHeader.substring(7);
+      const { PNOAuthService } = await import('./pnOAuthService');
+      const tokenPayload = PNOAuthService.validateAccessToken(token);
+
+      if (!tokenPayload) {
+        return res.status(401).json({ error: 'Invalid token' });
+      }
+
+      // Get pN identifier from token
+      const pnIdentifier = tokenPayload.pnIdentifier;
+      if (!pnIdentifier) {
+        return res.status(400).json({ error: 'pN identifier not found in token' });
+      }
+
+      // Fetch feed tokens owned by this pN
+      const result = await db.query(`
+        SELECT 
+          ft.feed_id,
+          ft.encrypted_pn_name,
+          ft.encrypted_passcode,
+          ft.public_key,
+          f.feed_name,
+          f.sub_pn_identifier
+        FROM feed_tokens ft
+        JOIN feeds f ON ft.feed_id = f.feed_id
+        WHERE ft.owner_pn_identifier = $1
+        AND f.status = 'active'
+      `, [pnIdentifier]);
+
+      // Decrypt tokens (they're base64 encoded)
+      const feedTokens = result.rows.map(row => ({
+        feedId: row.feed_id,
+        feedName: row.feed_name,
+        subPnIdentifier: row.sub_pn_identifier,
+        pnName: Buffer.from(row.encrypted_pn_name, 'base64').toString('utf8'),
+        passcode: Buffer.from(row.encrypted_passcode, 'base64').toString('utf8'),
+        publicKey: row.public_key
+      }));
+
+      return res.json({ feedTokens });
+    } catch (error) {
+      console.error('Get feed tokens error:', error);
+      return res.status(500).json({ error: 'Failed to get feed tokens' });
+    }
+  });
+
+  /**
    * POST /api/feeds/activate-after-verification
    * Activate feed after verification: creates sub-pN, Google Drive folder, and activates feed
    */

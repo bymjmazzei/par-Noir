@@ -46,6 +46,29 @@ export function PNConnect({ onConnect, compact = false }: PNConnectProps) {
           // Get user info
           const userInfo = await PNOAuthService.getUserInfo(tokenResponse.access_token);
 
+          // Load feed tokens for owned feeds
+          let feedTokens: any[] = [];
+          try {
+            if (userInfo.pn_identifier) {
+              const feedTokensResponse = await fetch(`${process.env.REACT_APP_API_ENDPOINT || 'https://api.parnoir.com'}/api/feeds/tokens`, {
+                headers: {
+                  'Authorization': `Bearer ${tokenResponse.access_token}`
+                }
+              });
+              
+              if (feedTokensResponse.ok) {
+                const feedTokensData = await feedTokensResponse.json();
+                feedTokens = feedTokensData.feedTokens || [];
+                console.log(`✅ Loaded ${feedTokens.length} feed tokens`);
+              } else {
+                console.warn('⚠️ Failed to load feed tokens:', feedTokensResponse.status);
+              }
+            }
+          } catch (error) {
+            console.error('❌ Error loading feed tokens:', error);
+            // Don't fail auth if feed tokens can't be loaded
+          }
+
           // Create and save session
           // Note: pN name is NOT stored - it's a secret
           const session = {
@@ -54,7 +77,8 @@ export function PNConnect({ onConnect, compact = false }: PNConnectProps) {
             expiresAt: Date.now() + (tokenResponse.expires_in * 1000),
             did: userInfo.did,
             pnIdentifier: userInfo.pn_identifier, // Store pnIdentifier if available
-            nickname: userInfo.nickname // Optional nickname if available
+            nickname: userInfo.nickname, // Optional nickname if available
+            feedTokens: feedTokens // Store feed tokens for context switching
           };
 
           PNOAuthService.saveSession(session);

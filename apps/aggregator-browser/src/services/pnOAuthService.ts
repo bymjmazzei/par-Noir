@@ -292,7 +292,30 @@ export class PNOAuthService {
     // Step 3: Get user info
     const userInfo = await this.getUserInfo(tokenResponse.access_token);
 
-    // Step 4: Create session
+    // Step 4: Load feed tokens for owned feeds
+    let feedTokens: FeedToken[] = [];
+    try {
+      if (userInfo.pn_identifier) {
+        const feedTokensResponse = await fetch(`${API_ENDPOINT}/api/feeds/tokens`, {
+          headers: {
+            'Authorization': `Bearer ${tokenResponse.access_token}`
+          }
+        });
+        
+        if (feedTokensResponse.ok) {
+          const feedTokensData = await feedTokensResponse.json();
+          feedTokens = feedTokensData.feedTokens || [];
+          console.log(`✅ Loaded ${feedTokens.length} feed tokens`);
+        } else {
+          console.warn('⚠️ Failed to load feed tokens:', feedTokensResponse.status);
+        }
+      }
+    } catch (error) {
+      console.error('❌ Error loading feed tokens:', error);
+      // Don't fail auth if feed tokens can't be loaded
+    }
+
+    // Step 5: Create session
     const session: AuthSession = {
       accessToken: tokenResponse.access_token,
       refreshToken: tokenResponse.refresh_token,
@@ -300,7 +323,8 @@ export class PNOAuthService {
       did: userInfo.did,
       publicKey: params.publicKey, // Store publicKey for file decryption
       pnIdentifier: userInfo.pn_identifier, // Store pN identifier from server
-      nickname: userInfo.nickname
+      nickname: userInfo.nickname,
+      feedTokens: feedTokens // Store feed tokens for context switching
       // pN name is NOT stored - it's a secret
     };
 
@@ -314,6 +338,63 @@ export class PNOAuthService {
     }
 
     return session;
+  }
+
+  /**
+   * Refresh feed tokens for current session
+   */
+  static async refreshFeedTokens(): Promise<FeedToken[]> {
+    const session = this.loadSession();
+    if (!session || !session.pnIdentifier) {
+      return [];
+    }
+
+    try {
+      const accessToken = await this.getValidAccessToken();
+      if (!accessToken) {
+        console.warn('⚠️ No valid access token for refreshing feed tokens');
+        return [];
+      }
+
+      const feedTokensResponse = await fetch(`${API_ENDPOINT}/api/feeds/tokens`, {
+        headers: {
+          'Authorization': `Bearer ${accessToken}`
+        }
+      });
+      
+      if (feedTokensResponse.ok) {
+        const feedTokensData = await feedTokensResponse.json();
+        const feedTokens = feedTokensData.feedTokens || [];
+        
+        // Update session with new feed tokens
+        const updatedSession = {
+          ...session,
+          feedTokens: feedTokens
+        };
+        this.saveSession(updatedSession);
+        
+        console.log(`✅ Refreshed ${feedTokens.length} feed tokens`);
+        return feedTokens;
+      } else {
+        console.warn('⚠️ Failed to refresh feed tokens:', feedTokensResponse.status);
+        return session.feedTokens || [];
+      }
+    } catch (error) {
+      console.error('❌ Error refreshing feed tokens:', error);
+      return session.feedTokens || [];
+    }
+  }
+
+  /**
+   * Get feed token for a specific feed
+   */
+  static getFeedToken(feedId: string): FeedToken | null {
+    const session = this.loadSession();
+    if (!session || !session.feedTokens) {
+      return null;
+    }
+    
+    return session.feedTokens.find(ft => ft.feedId === feedId) || null;
   }
 
   /**

@@ -5,11 +5,11 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { FeedService } from '../services/feedService';
-import { PNOAuthService } from '../services/pnOAuthService';
+import { PNOAuthService, FeedToken } from '../services/pnOAuthService';
 
 export type AppContext = 
   | { type: 'pn', id: string, name: string, pnIdentifier: string }
-  | { type: 'feed', id: string, name: string, feedId: string, isOwned: boolean };
+  | { type: 'feed', id: string, name: string, feedId: string, isOwned: boolean, feedToken?: FeedToken };
 
 export function useAppContext(pnIdentifier?: string) {
   const [activeContext, setActiveContext] = useState<AppContext | null>(null);
@@ -35,17 +35,23 @@ export function useAppContext(pnIdentifier?: string) {
         pnIdentifier: pnIdentifier
       };
 
-      // Load owned feeds
+      // Load owned feeds and match with feed tokens from session
       const ownedFeedsResult = await FeedService.listFeeds({ 
         creatorId: pnIdentifier,
         limit: 100 
       });
+      
+      // Get feed tokens from session
+      const feedTokens = session?.feedTokens || [];
+      const feedTokensMap = new Map(feedTokens.map(ft => [ft.feedId, ft]));
+      
       const ownedFeedContexts: AppContext[] = ownedFeedsResult.feeds.map(f => ({
         type: 'feed' as const,
         id: f.feedId,
         name: f.feedName,
         feedId: f.feedId,
-        isOwned: true
+        isOwned: true,
+        feedToken: feedTokensMap.get(f.feedId) // Include feed token if available
       }));
 
       // Load delegated feeds

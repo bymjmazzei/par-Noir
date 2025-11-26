@@ -3056,6 +3056,29 @@ function App() {
                   hasPublicKey: !!userInfo.public_key
                 });
                 
+                // Load feed tokens for owned feeds
+                let feedTokens: any[] = [];
+                try {
+                  if (userInfo.pn_identifier) {
+                    const feedTokensResponse = await fetch(`${process.env.REACT_APP_API_ENDPOINT || 'https://api.parnoir.com'}/api/feeds/tokens`, {
+                      headers: {
+                        'Authorization': `Bearer ${tokenResponse.access_token}`
+                      }
+                    });
+                    
+                    if (feedTokensResponse.ok) {
+                      const feedTokensData = await feedTokensResponse.json();
+                      feedTokens = feedTokensData.feedTokens || [];
+                      console.log(`✅ Loaded ${feedTokens.length} feed tokens`);
+                    } else {
+                      console.warn('⚠️ Failed to load feed tokens:', feedTokensResponse.status);
+                    }
+                  }
+                } catch (error) {
+                  console.error('❌ Error loading feed tokens:', error);
+                  // Don't fail auth if feed tokens can't be loaded
+                }
+
                 const session = {
                   accessToken: tokenResponse.access_token,
                   refreshToken: tokenResponse.refresh_token,
@@ -3063,7 +3086,8 @@ function App() {
                   did: userInfo.did,
                   pnName: userInfo.pn_name,
                   pnIdentifier: userInfo.pn_identifier, // Store pN identifier from OAuth
-                  publicKey: userInfo.public_key // Store publicKey from OAuth for file decryption
+                  publicKey: userInfo.public_key, // Store publicKey from OAuth for file decryption
+                  feedTokens: feedTokens // Store feed tokens for context switching
                 };
                 
                 // Save session with pnIdentifier if available
