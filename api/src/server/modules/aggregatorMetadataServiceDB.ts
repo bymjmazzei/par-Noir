@@ -314,6 +314,13 @@ export class AggregatorMetadataServiceDB {
           OR am.metadata->>'isNSFW' = 'TRUE'
           OR (am.metadata->'isNSFW')::boolean = true
         )
+        -- CRITICAL: Public index should ONLY contain thumbnails, not main files
+        -- Only include files whose names start with "thumb_" - these are the thumbnail files
+        AND (
+          LOWER(COALESCE(am.metadata->>'name', '')) LIKE 'thumb_%'
+          OR LOWER(COALESCE(am.metadata->>'title', '')) LIKE 'thumb_%'
+          OR LOWER(COALESCE(am.metadata->>'originalName', '')) LIKE 'thumb_%'
+        )
         ${filters?.fileType ? `AND am.metadata->>'fileType' = $1` : ''}
         ${filters?.feedId ? `AND fp.feed_id = $${filters?.fileType ? '2' : '1'}` : ''}
         ${filters?.indexerId ? `AND (
