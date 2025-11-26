@@ -3522,8 +3522,58 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
           ? resolvedAuth.publicKey
           : `did:key:${resolvedAuth.publicKey}`;
 
-        // Preserve existing metadata fields (especially textPost/thought for thoughts)
-        const existingTextPost = existingMetadata?.textPost || existingMetadata?.thought || (file as any).textPost || (file as any).thought;
+        // CRITICAL: If this is a thought file and we don't have content, load it from Google Drive
+        const thoughtFileName = fileTitle.toLowerCase();
+        const isThoughtFile = /^thought-\d+\.(thought|png)/i.test(thoughtFileName);
+        const isTextFile = mimeCategory === 'text' || file.fileType === 'text' || file.fileType === 'thought';
+        
+        let existingTextPost = existingMetadata?.textPost || existingMetadata?.thought || (file as any).textPost || (file as any).thought;
+        
+        // If it's a thought file but we don't have content, load it from Google Drive
+        if ((isThoughtFile || isTextFile) && !existingTextPost?.content) {
+          try {
+            console.log(`[handleTogglePublic] Loading thought content from Google Drive for ${file.id}...`);
+            const backend = aggregatorService?.getBackend(file.backend);
+            if (backend && backend.isConnected()) {
+              const encryptedBlob = await backend.downloadFile(file.backendFileId);
+              const encryptedPackageJson = await encryptedBlob.text();
+              const encryptedPackage: EncryptedFilePackage = JSON.parse(encryptedPackageJson);
+              
+              // Decrypt the thought file
+              const sessionId = authenticatedUser?.id || (authenticatedUser as any)?.publicKey || null;
+              const credentials = sessionId ? SecureCredentialManager.getCredentials(sessionId) : null;
+              
+              if (credentials && encryptionService) {
+                // Create session object for decryption
+                const session: AuthSession = {
+                  id: authenticatedUser?.id || resolvedAuth.publicKey,
+                  publicKey: resolvedAuth.publicKey,
+                  accessToken: authenticatedUser?.accessToken,
+                  nickname: authenticatedUser?.nickname
+                };
+                
+                const decryptedData = await encryptionService.decryptFile(
+                  encryptedPackage,
+                  credentials.pnName,
+                  credentials.passcode,
+                  resolvedAuth.publicKey
+                );
+                
+                const decryptedText = new TextDecoder().decode(decryptedData);
+                const thoughtData = JSON.parse(decryptedText);
+                
+                if (thoughtData.textPost || thoughtData.thought) {
+                  existingTextPost = thoughtData.textPost || thoughtData.thought;
+                  console.log(`[handleTogglePublic] ✅ Loaded thought content from Google Drive`);
+                }
+              }
+            }
+          } catch (error) {
+            console.warn(`[handleTogglePublic] Failed to load thought content from Google Drive:`, error);
+            // Continue without content - user can manually fix later
+          }
+        }
+        
         const existingDescription = existingMetadata?.description || '';
         const existingKeywords = existingMetadata?.keywords || existingMetadata?.tags || [];
         const existingSubjects = existingMetadata?.subjects || [];
