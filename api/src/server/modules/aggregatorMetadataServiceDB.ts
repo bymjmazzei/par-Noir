@@ -234,13 +234,11 @@ export class AggregatorMetadataServiceDB {
           OR (am.metadata->>'isNSFW')::text = 'true'
           OR (am.metadata->'isNSFW')::boolean = true
         )
-        -- CRITICAL: Public index should ONLY contain thumbnail files (what's displayed in feed)
-        -- Thumbnail files have names starting with "thumb_" and are what appear in the public feed
-        -- Main files are private and only used for downloads
+        -- CRITICAL: Public index contains thumbnails and standalone files (text posts, PDFs)
+        -- Exclude main files that have a thumbnailFileId (those are private, only thumbnails are public)
         AND (
-          LOWER(COALESCE(am.metadata->>'name', '')) LIKE 'thumb_%'
-          OR LOWER(COALESCE(am.metadata->>'title', '')) LIKE 'thumb_%'
-          OR LOWER(COALESCE(am.metadata->>'originalName', '')) LIKE 'thumb_%'
+          am.metadata->>'thumbnailFileId' IS NULL 
+          OR am.metadata->>'thumbnailFileId' = ''
         )
       `;
       const params: any[] = [];
