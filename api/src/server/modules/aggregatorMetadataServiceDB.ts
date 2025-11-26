@@ -234,9 +234,9 @@ export class AggregatorMetadataServiceDB {
           OR (am.metadata->>'isNSFW')::text = 'true'
           OR (am.metadata->'isNSFW')::boolean = true
         )
-        -- CRITICAL: Exclude thumbnail files - thumbnails are referenced via thumbnailFileId, not as separate entries
-        -- Thumbnail files have names starting with "thumb_" and should never appear in the public feed
-        AND NOT (
+        -- CRITICAL: Public index should ONLY contain thumbnails, not main files
+        -- Only include files whose names start with "thumb_" - these are the thumbnail files
+        AND (
           LOWER(COALESCE(am.metadata->>'name', '')) LIKE 'thumb_%'
           OR LOWER(COALESCE(am.metadata->>'title', '')) LIKE 'thumb_%'
           OR LOWER(COALESCE(am.metadata->>'originalName', '')) LIKE 'thumb_%'
