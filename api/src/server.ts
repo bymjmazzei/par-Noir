@@ -8140,7 +8140,24 @@ class ProductionServer {
 
         const account = googleDriveAccounts[0];
         const accountId = (account as any).accountId || (account as any).id;
-        const userAccessToken = await googleDriveProxyService.getAccessToken(normalizedPnIdentifier, accountId);
+        
+        let userAccessToken: string;
+        try {
+          userAccessToken = await googleDriveProxyService.getAccessToken(normalizedPnIdentifier, accountId);
+        } catch (tokenError: any) {
+          console.error('[ZKPDataPoints] Failed to get access token:', tokenError);
+          return res.status(401).json({ 
+            error: 'Google Drive authentication failed',
+            details: tokenError.message || 'Access token could not be retrieved. Please reconnect Google Drive in the dashboard.'
+          });
+        }
+
+        if (!userAccessToken) {
+          return res.status(401).json({ 
+            error: 'Google Drive authentication failed',
+            details: 'Access token is missing. Please reconnect Google Drive in the dashboard.'
+          });
+        }
 
         // Find or create pN folder first
         const pnFolderName = `par Noir - ${normalizedPnIdentifier}`;
@@ -8150,6 +8167,19 @@ class ProductionServer {
         const pnFolderResponse = await fetch(pnFolderSearchUrl, {
           headers: { 'Authorization': `Bearer ${userAccessToken}` }
         });
+
+        // Check if token is invalid (401/403)
+        if (pnFolderResponse.status === 401 || pnFolderResponse.status === 403) {
+          const errorText = await pnFolderResponse.text();
+          console.error('[ZKPDataPoints] Google Drive API authentication error:', {
+            status: pnFolderResponse.status,
+            error: errorText
+          });
+          return res.status(401).json({ 
+            error: 'Google Drive authentication failed',
+            details: 'Access token is invalid or expired. Please reconnect Google Drive in the dashboard.'
+          });
+        }
 
         let pnFolderId: string | null = null;
         if (pnFolderResponse.ok) {
