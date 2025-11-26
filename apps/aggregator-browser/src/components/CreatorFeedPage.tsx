@@ -334,7 +334,10 @@ export function CreatorFeedPage({
                     )}
                   </div>
                   <h3 className="text-white text-sm line-clamp-2 group-hover:text-blue-400 transition-colors">
-                    {file.metadata.name || file.metadata.title || 'Untitled'}
+                    {(() => {
+                      const { cleanTitle } = require('../utils/cleanTitle');
+                      return cleanTitle(file.metadata.name || file.metadata.title);
+                    })()}
                   </h3>
                   <p className="text-neutral-400 text-xs mt-1">
                     {new Date(file.metadata.uploadDate).toLocaleDateString()}

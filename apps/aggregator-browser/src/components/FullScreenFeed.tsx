@@ -16,6 +16,7 @@ import { useHorizontalSwipe } from '../hooks/useHorizontalSwipe';
 import { useViewportHeightCSS } from '../hooks/useViewportHeight';
 import { formatTimestamp } from '../utils/formatTimestamp';
 import { decryptWithToken, ShareToken } from '../utils/tokenDecryption';
+import { cleanTitle } from '../utils/cleanTitle';
 // ImageSlideshow removed - PDF handling integrated directly into FullScreenFeed
 
 interface FullScreenFeedProps {
@@ -2384,7 +2385,7 @@ export function FullScreenFeed({
                 <div className="flex-1">
                   {/* Title */}
                   <h3 className="text-white text-base md:text-lg font-semibold mb-1 line-clamp-1">
-                    {file.title || file.name || 'Untitled'}
+                    {cleanTitle(file.title || file.name)}
                   </h3>
                   
                   {/* Caption with expand/collapse */}

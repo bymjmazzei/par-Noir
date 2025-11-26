@@ -310,7 +310,10 @@ export function DiscoveryPage({
         id: file.metadata.fileId,
         item: file,
         thumbnail: getThumbnail(file),
-        title: file.metadata.name || file.metadata.title || 'Untitled',
+        title: (() => {
+          const { cleanTitle } = require('../utils/cleanTitle');
+          return cleanTitle(file.metadata.name || file.metadata.title);
+        })(),
         subtitle: displayName,
         metadata: '',
         engagement: {
