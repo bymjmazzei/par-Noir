@@ -3522,6 +3522,17 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
           ? resolvedAuth.publicKey
           : `did:key:${resolvedAuth.publicKey}`;
 
+        // Preserve existing metadata fields (especially textPost/thought for thoughts)
+        const existingTextPost = existingMetadata?.textPost || existingMetadata?.thought || (file as any).textPost || (file as any).thought;
+        const existingDescription = existingMetadata?.description || '';
+        const existingKeywords = existingMetadata?.keywords || existingMetadata?.tags || [];
+        const existingSubjects = existingMetadata?.subjects || [];
+        const existingFeedCategories = existingMetadata?.feedCategories || [];
+        const existingPdfPageThumbnailIds = existingMetadata?.pdfPageThumbnailIds;
+        const existingPdfPageThumbnailTokens = existingMetadata?.pdfPageThumbnailTokens;
+        const existingPdfFileId = existingMetadata?.pdfFileId;
+        const existingThumbnailFileId = existingMetadata?.thumbnailFileId;
+        
         const publicMetadata: PublicMetadata = {
           "@context": [
             "https://schema.org/",
@@ -3537,10 +3548,23 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
           
           // Schema.org CreativeWork
           name: fileTitle,
-          description: '',
-          keywords: [], // Can be populated from tags
+          description: existingDescription,
+          keywords: existingKeywords,
           uploadDate: file.modifiedTime || new Date().toISOString(),
           fileType: mimeCategory,
+          
+          // Preserve thought/textPost content if it exists
+          ...(existingTextPost && { textPost: existingTextPost, thought: existingTextPost }),
+          
+          // Preserve PDF slideshow data if it exists
+          ...(existingPdfPageThumbnailIds && { pdfPageThumbnailIds: existingPdfPageThumbnailIds }),
+          ...(existingPdfPageThumbnailTokens && { pdfPageThumbnailTokens: existingPdfPageThumbnailTokens }),
+          ...(existingPdfFileId && { pdfFileId: existingPdfFileId }),
+          ...(existingThumbnailFileId && { thumbnailFileId: existingThumbnailFileId }),
+          
+          // Preserve subjects and feed categories
+          ...(existingSubjects.length > 0 && { subjects: existingSubjects }),
+          ...(existingFeedCategories.length > 0 && { feedCategories: existingFeedCategories }),
           
           // Author (schema.org:creator)
           creator: {
@@ -3738,6 +3762,15 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
                     fileType: publicMetadata.fileType || 'other',
                     uploadDate: publicMetadata.uploadDate || new Date().toISOString(),
                     subjects: publicMetadata.subjects || [],
+                    // CRITICAL: Include textPost/thought content so thoughts render properly
+                    textPost: publicMetadata.textPost,
+                    thought: publicMetadata.thought,
+                    // Include PDF slideshow data
+                    pdfPageThumbnailIds: publicMetadata.pdfPageThumbnailIds,
+                    pdfPageThumbnailTokens: publicMetadata.pdfPageThumbnailTokens,
+                    pdfFileId: publicMetadata.pdfFileId,
+                    thumbnailFileId: publicMetadata.thumbnailFileId,
+                    feedCategories: publicMetadata.feedCategories,
                   }),
                 }
               );
