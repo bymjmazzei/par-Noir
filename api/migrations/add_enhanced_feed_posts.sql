@@ -216,3 +216,37 @@ END $$;
 -- Create unique index on subdomain
 CREATE UNIQUE INDEX IF NOT EXISTS idx_feeds_subdomain ON feeds(subdomain) WHERE subdomain IS NOT NULL;
 
+-- Create feed_payments table for tracking feed creation payments
+CREATE TABLE IF NOT EXISTS feed_payments (
+  payment_id VARCHAR(255) PRIMARY KEY,
+  feed_id VARCHAR(255) NOT NULL,
+  checkout_id VARCHAR(255) UNIQUE NOT NULL,
+  status VARCHAR(50) DEFAULT 'pending_verification', -- 'pending_verification', 'verified', 'active', 'failed'
+  created_at TIMESTAMP DEFAULT NOW(),
+  updated_at TIMESTAMP DEFAULT NOW(),
+  FOREIGN KEY (feed_id) REFERENCES feeds(feed_id) ON DELETE CASCADE
+);
+
+-- Create index for faster lookups
+CREATE INDEX IF NOT EXISTS idx_feed_payments_checkout_id ON feed_payments(checkout_id);
+CREATE INDEX IF NOT EXISTS idx_feed_payments_feed_id ON feed_payments(feed_id);
+CREATE INDEX IF NOT EXISTS idx_feed_payments_status ON feed_payments(status);
+
+-- Create feed_delegations table for feed access delegation
+CREATE TABLE IF NOT EXISTS feed_delegations (
+  delegation_id VARCHAR(255) PRIMARY KEY,
+  feed_id VARCHAR(255) NOT NULL,
+  owner_did VARCHAR(255) NOT NULL,
+  delegate_did VARCHAR(255) NOT NULL,
+  permissions VARCHAR(50)[] DEFAULT ARRAY['read'],
+  created_at TIMESTAMP DEFAULT NOW(),
+  updated_at TIMESTAMP DEFAULT NOW(),
+  FOREIGN KEY (feed_id) REFERENCES feeds(feed_id) ON DELETE CASCADE,
+  UNIQUE(feed_id, delegate_did)
+);
+
+-- Create indexes for feed_delegations
+CREATE INDEX IF NOT EXISTS idx_feed_delegations_feed_id ON feed_delegations(feed_id);
+CREATE INDEX IF NOT EXISTS idx_feed_delegations_delegate_did ON feed_delegations(delegate_did);
+CREATE INDEX IF NOT EXISTS idx_feed_delegations_owner_did ON feed_delegations(owner_did);
+

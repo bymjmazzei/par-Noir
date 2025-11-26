@@ -78,7 +78,10 @@ export class CoinbaseWebhookHandler {
    */
   private static async handlePaymentConfirmed(charge: any): Promise<void> {
     try {
-      const checkoutId = charge.checkout?.id;
+      const checkoutId = charge.checkout?.id || charge.id;
+      const metadata = charge.metadata || {};
+      const licenseType = metadata.licenseType;
+
       if (!checkoutId) {
         console.warn('⚠️ [CoinbaseWebhook] No checkout ID in charge');
         return;
@@ -86,7 +89,66 @@ export class CoinbaseWebhookHandler {
 
       const db = getDatabasePool();
 
-      // Find subscription by checkout ID
+      // Handle feed creation payment
+      if (licenseType === 'feed_creation') {
+        const creatorDid = metadata.creatorDid;
+        const feedName = metadata.feedName;
+        
+        if (!creatorDid || !feedName) {
+          console.warn('⚠️ [CoinbaseWebhook] Missing feed creation metadata');
+          return;
+        }
+
+        // Create pending feed (status: pending_verification)
+        const feedId = `feed_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+        const now = new Date().toISOString();
+
+        await db.query(`
+          INSERT INTO feeds (
+            feed_id, feed_name, feed_category, feed_description, creator_did, creator_tier,
+            is_paid, monthly_price, annual_price, subdomain, branding, created_at, updated_at,
+            subscriber_count, post_count
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+        `, [
+          feedId,
+          feedName,
+          metadata.feedCategory || null,
+          metadata.feedDescription || null,
+          creatorDid,
+          'feed',
+          true,
+          parseFloat(metadata.monthlyPrice || '5.00'),
+          parseFloat(metadata.annualPrice || '50.00'),
+          metadata.subdomain || null,
+          JSON.stringify({}),
+          now,
+          now,
+          0,
+          0
+        ]);
+
+        // Store payment info for feed activation
+        await db.query(`
+          INSERT INTO feed_payments (
+            feed_id, checkout_id, payment_id, status, created_at
+          ) VALUES ($1, $2, $3, $4, $5)
+          ON CONFLICT (checkout_id) DO UPDATE SET
+            payment_id = $3,
+            status = $4,
+            updated_at = NOW()
+        `, [
+          feedId,
+          checkoutId,
+          charge.id,
+          'pending_verification',
+          now
+        ]);
+
+        console.log(`✅ [CoinbaseWebhook] Pending feed created: ${feedId} (checkout: ${checkoutId})`);
+        return;
+      }
+
+      // Handle feed subscription payment
       const result = await db.query(`
         SELECT * FROM feed_subscriptions 
         WHERE checkout_id = $1 AND status = 'pending'

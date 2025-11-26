@@ -5776,7 +5776,7 @@ This invitation expires in 24 hours.`;
                             : 'border-transparent text-text-secondary hover:text-text-primary hover:border-border'
                         }`}
                       >
-                        Developer Portal
+                        Services
                       </button>
 
                   </nav>
@@ -6204,9 +6204,9 @@ This invitation expires in 24 hours.`;
                     </div>
                   )}
 
-                  {/* Developer Portal Tab */}
+                  {/* Services Tab */}
                   {activeTab === 'developer' && (
-                    <DeveloperPortal />
+                    <DeveloperPortal authenticatedUser={authenticatedUser} />
                   )}
 
 

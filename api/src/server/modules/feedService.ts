@@ -82,20 +82,25 @@ export class FeedService {
     feedDescription?: string;
     creatorDid: string;
     creatorTier?: 'free' | 'feed' | 'self-hosted';
+    isPaid?: boolean;
+    monthlyPrice?: number;
+    annualPrice?: number;
+    subdomain?: string;
     // feedRatingRange removed - feeds accept all content
     branding?: {
       bannerImage?: string;
       avatar?: string;
       bio?: string;
     };
+    googleDriveFolderId?: string; // Optional: Google Drive folder ID for feed
   }): Promise<Feed> {
     const db = getDatabasePool();
     
     const result = await db.query<FeedRow>(`
       INSERT INTO feeds (
         feed_name, feed_category, feed_description, creator_did, creator_tier,
-        rating_range, branding
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7)
+        rating_range, branding, is_paid, monthly_price, annual_price, subdomain
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
       RETURNING *
     `, [
       data.feedName,
@@ -104,7 +109,11 @@ export class FeedService {
       data.creatorDid,
       data.creatorTier || 'free',
       JSON.stringify([]), // Legacy field - always empty now
-      JSON.stringify(data.branding || {})
+      JSON.stringify(data.branding || {}),
+      data.isPaid || false,
+      data.monthlyPrice || null,
+      data.annualPrice || null,
+      data.subdomain || null
     ]);
 
     return this.rowToFeed(result.rows[0]);
@@ -125,6 +134,47 @@ export class FeedService {
     }
 
     return this.rowToFeed(result.rows[0]);
+  }
+
+  /**
+   * Check if user has access to feed (owner or delegate)
+   */
+  static async hasFeedAccess(feedId: string, userDid: string, requiredPermission: 'read' | 'write' | 'manage' = 'read'): Promise<boolean> {
+    const db = getDatabasePool();
+    
+    // Check if user is owner
+    const feed = await this.getFeedById(feedId);
+    if (!feed) {
+      return false;
+    }
+
+    if (feed.creatorId === userDid) {
+      return true; // Owner has all permissions
+    }
+
+    // Check if user is a delegate with required permission
+    const delegationResult = await db.query(`
+      SELECT permissions FROM feed_delegations 
+      WHERE feed_id = $1 AND delegate_did = $2
+      LIMIT 1
+    `, [feedId, userDid]);
+
+    if (delegationResult.rows.length === 0) {
+      return false;
+    }
+
+    const permissions = JSON.parse(delegationResult.rows[0].permissions || '["read"]');
+    
+    // Permission hierarchy: manage > write > read
+    if (requiredPermission === 'read') {
+      return permissions.includes('read') || permissions.includes('write') || permissions.includes('manage');
+    } else if (requiredPermission === 'write') {
+      return permissions.includes('write') || permissions.includes('manage');
+    } else if (requiredPermission === 'manage') {
+      return permissions.includes('manage');
+    }
+
+    return false;
   }
 
   /**

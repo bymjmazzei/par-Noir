@@ -356,5 +356,31 @@ export class FeedService {
     const data = await response.json();
     return data.feeds || [];
   }
+
+  /**
+   * Get delegated feeds for a user
+   */
+  static async getDelegatedFeeds(userDid: string): Promise<Feed[]> {
+    const session = PNOAuthService.loadSession();
+    const headers: HeadersInit = {
+      'Content-Type': 'application/json'
+    };
+    
+    if (session?.accessToken) {
+      headers['Authorization'] = `Bearer ${session.accessToken}`;
+    }
+
+    const response = await fetch(`${API_ENDPOINT}/api/users/${userDid}/delegated-feeds`, {
+      headers
+    });
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ error: 'Failed to get delegated feeds' }));
+      throw new Error(error.error || 'Failed to get delegated feeds');
+    }
+
+    const data = await response.json();
+    return data.feeds || [];
+  }
 }
 

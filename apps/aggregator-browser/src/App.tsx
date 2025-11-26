@@ -46,6 +46,10 @@ import { PNOAuthService } from './services/pnOAuthService';
 import { FullScreenFeed } from './components/FullScreenFeed';
 import { FeedNavBar } from './components/FeedNavBar';
 import { BottomNav } from './components/BottomNav';
+import { ContextSwitcher } from './components/ContextSwitcher';
+import { useAppContext } from './hooks/useAppContext';
+import { ContextSwitcher } from './components/ContextSwitcher';
+import { useAppContext } from './hooks/useAppContext';
 import { DiscoveryPage } from './components/DiscoveryPage';
 import { SearchResults } from './components/SearchResults';
 import { CreatorFeedPage } from './components/CreatorFeedPage';
@@ -62,6 +66,7 @@ const EMPTY_ARRAY: IndexedFile[] = [];
 
 function App() {
   const { userState, setLocked, setUnlocked, updateDisplayName } = useUserState();
+  const { activeContext, setActiveContext, availableContexts, loadContexts, isLoading: isLoadingContexts } = useAppContext(userState.pnIdentifier);
   const [indexedFiles, setIndexedFiles] = useState<IndexedFile[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -3545,6 +3550,22 @@ function App() {
               background: 'transparent'
             }}
           >
+            {/* Context Switcher - Show when user is unlocked */}
+            {userState.isUnlocked && activeContext && (
+              <div className="absolute left-4 top-1/2 transform -translate-y-1/2 z-[101]">
+                <ContextSwitcher
+                  currentContext={activeContext}
+                  availableContexts={availableContexts}
+                  onContextChange={(context) => {
+                    setActiveContext(context);
+                    // TODO: Load context-specific content
+                    // loadContextContent(context);
+                  }}
+                  isLoading={isLoadingContexts}
+                />
+              </div>
+            )}
+            
             {/* Feed Rail - Scrollable horizontally, centers active feed (TikTok style) */}
             <FeedRail
               feeds={feedRailItems}

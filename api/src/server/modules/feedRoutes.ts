@@ -4,7 +4,7 @@
  */
 
 import { Request, Response } from 'express';
-import { FeedService, Feed } from './feedService';
+import { FeedService, Feed, FeedRow } from './feedService';
 import { getDatabasePool } from '../utils/database';
 
 export interface FeedPost {
@@ -69,13 +69,14 @@ export function setupFeedRoutes(app: any) {
         return res.status(401).json({ error: 'Invalid token' });
       }
 
-      // Verify user owns the feed
+      // Verify user has write access to the feed (owner or delegate with write permission)
       const feed = await FeedService.getFeedById(feedId);
       if (!feed) {
         return res.status(404).json({ error: 'Feed not found' });
       }
 
-      if (feed.creatorId !== tokenPayload.did) {
+      const hasAccess = await FeedService.hasFeedAccess(feedId, tokenPayload.did, 'write');
+      if (!hasAccess) {
         return res.status(403).json({ error: 'Not authorized' });
       }
 
@@ -189,13 +190,14 @@ export function setupFeedRoutes(app: any) {
         return res.status(401).json({ error: 'Invalid token' });
       }
 
-      // Verify user owns the feed
+      // Verify user has write access to the feed (owner or delegate with write permission)
       const feed = await FeedService.getFeedById(feedId);
       if (!feed) {
         return res.status(404).json({ error: 'Feed not found' });
       }
 
-      if (feed.creatorId !== tokenPayload.did) {
+      const hasAccess = await FeedService.hasFeedAccess(feedId, tokenPayload.did, 'write');
+      if (!hasAccess) {
         return res.status(403).json({ error: 'Not authorized' });
       }
 
@@ -490,6 +492,311 @@ export function setupFeedRoutes(app: any) {
     } catch (error) {
       console.error('Confirm subscription error:', error);
       return res.status(500).json({ error: 'Failed to confirm subscription' });
+    }
+  });
+
+  /**
+   * GET /api/feeds/payment-status/:checkoutId
+   * Check payment status for feed creation
+   */
+  app.get('/api/feeds/payment-status/:checkoutId', async (req: Request, res: Response) => {
+    try {
+      const { checkoutId } = req.params;
+
+      // Get authenticated user
+      const authHeader = req.headers.authorization;
+      if (!authHeader || !authHeader.startsWith('Bearer ')) {
+        return res.status(401).json({ error: 'Unauthorized' });
+      }
+
+      const token = authHeader.substring(7);
+      const { PNOAuthService } = await import('./pnOAuthService');
+      const tokenPayload = PNOAuthService.validateAccessToken(token);
+
+      if (!tokenPayload) {
+        return res.status(401).json({ error: 'Invalid token' });
+      }
+
+      // Check feed_payments table
+      const paymentResult = await db.query(`
+        SELECT fp.*, f.feed_id, f.feed_name, f.creator_did
+        FROM feed_payments fp
+        LEFT JOIN feeds f ON f.feed_id = fp.feed_id
+        WHERE fp.checkout_id = $1
+        LIMIT 1
+      `, [checkoutId]);
+
+      if (paymentResult.rows.length === 0) {
+        return res.status(404).json({ error: 'Payment not found' });
+      }
+
+      const payment = paymentResult.rows[0];
+
+      // Verify user owns this payment
+      if (payment.creator_did !== tokenPayload.did) {
+        return res.status(403).json({ error: 'Not authorized' });
+      }
+
+      return res.json({
+        status: payment.status, // 'pending_verification', 'verified', 'active', 'failed'
+        checkoutId: payment.checkout_id,
+        paymentId: payment.payment_id,
+        feedId: payment.feed_id,
+        feedName: payment.feed_name
+      });
+    } catch (error) {
+      console.error('Get payment status error:', error);
+      return res.status(500).json({ error: 'Failed to get payment status' });
+    }
+  });
+
+  /**
+   * POST /api/feeds/:feedId/delegates
+   * Delegate feed access to another pN
+   */
+  app.post('/api/feeds/:feedId/delegates', async (req: Request, res: Response) => {
+    try {
+      const { feedId } = req.params;
+      const { delegateDid, permissions } = req.body;
+
+      // Get authenticated user
+      const authHeader = req.headers.authorization;
+      if (!authHeader || !authHeader.startsWith('Bearer ')) {
+        return res.status(401).json({ error: 'Unauthorized' });
+      }
+
+      const token = authHeader.substring(7);
+      const { PNOAuthService } = await import('./pnOAuthService');
+      const tokenPayload = PNOAuthService.validateAccessToken(token);
+
+      if (!tokenPayload) {
+        return res.status(401).json({ error: 'Invalid token' });
+      }
+
+      // Verify user has write access to the feed (owner or delegate with write permission)
+      const feed = await FeedService.getFeedById(feedId);
+      if (!feed) {
+        return res.status(404).json({ error: 'Feed not found' });
+      }
+
+      const hasAccess = await FeedService.hasFeedAccess(feedId, tokenPayload.did, 'write');
+      if (!hasAccess) {
+        return res.status(403).json({ error: 'Not authorized' });
+      }
+
+      if (!delegateDid) {
+        return res.status(400).json({ error: 'delegateDid is required' });
+      }
+
+      const validPermissions = ['read', 'write', 'manage'];
+      const requestedPermissions = Array.isArray(permissions) 
+        ? permissions.filter((p: string) => validPermissions.includes(p))
+        : ['read'];
+
+      // Ensure 'read' is always included
+      if (!requestedPermissions.includes('read')) {
+        requestedPermissions.push('read');
+      }
+
+      // Create delegation
+      const delegationId = `delegation_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+      const now = new Date().toISOString();
+
+      await db.query(`
+        INSERT INTO feed_delegations (
+          delegation_id, feed_id, owner_did, delegate_did, permissions, created_at, updated_at
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7)
+        ON CONFLICT (feed_id, delegate_did) DO UPDATE SET
+          permissions = $5,
+          updated_at = $7
+      `, [
+        delegationId,
+        feedId,
+        tokenPayload.did,
+        delegateDid,
+        JSON.stringify(requestedPermissions),
+        now,
+        now
+      ]);
+
+      return res.json({
+        delegationId,
+        feedId,
+        delegateDid,
+        permissions: requestedPermissions,
+        createdAt: now
+      });
+    } catch (error) {
+      console.error('Delegate feed error:', error);
+      return res.status(500).json({ error: 'Failed to delegate feed access' });
+    }
+  });
+
+  /**
+   * GET /api/feeds/:feedId/delegates
+   * Get list of delegates for a feed
+   */
+  app.get('/api/feeds/:feedId/delegates', async (req: Request, res: Response) => {
+    try {
+      const { feedId } = req.params;
+
+      // Get authenticated user
+      const authHeader = req.headers.authorization;
+      if (!authHeader || !authHeader.startsWith('Bearer ')) {
+        return res.status(401).json({ error: 'Unauthorized' });
+      }
+
+      const token = authHeader.substring(7);
+      const { PNOAuthService } = await import('./pnOAuthService');
+      const tokenPayload = PNOAuthService.validateAccessToken(token);
+
+      if (!tokenPayload) {
+        return res.status(401).json({ error: 'Invalid token' });
+      }
+
+      // Verify user has write access to the feed (owner or delegate with write permission)
+      const feed = await FeedService.getFeedById(feedId);
+      if (!feed) {
+        return res.status(404).json({ error: 'Feed not found' });
+      }
+
+      const hasAccess = await FeedService.hasFeedAccess(feedId, tokenPayload.did, 'write');
+      if (!hasAccess) {
+        return res.status(403).json({ error: 'Not authorized' });
+      }
+
+      const result = await db.query(`
+        SELECT * FROM feed_delegations 
+        WHERE feed_id = $1
+        ORDER BY created_at DESC
+      `, [feedId]);
+
+      const delegates = result.rows.map(row => ({
+        delegationId: row.delegation_id,
+        delegateDid: row.delegate_did,
+        permissions: JSON.parse(row.permissions || '["read"]'),
+        createdAt: row.created_at
+      }));
+
+      return res.json({ delegates });
+    } catch (error) {
+      console.error('Get delegates error:', error);
+      return res.status(500).json({ error: 'Failed to get delegates' });
+    }
+  });
+
+  /**
+   * DELETE /api/feeds/:feedId/delegates/:delegationId
+   * Remove a delegate from a feed
+   */
+  app.delete('/api/feeds/:feedId/delegates/:delegationId', async (req: Request, res: Response) => {
+    try {
+      const { feedId, delegationId } = req.params;
+
+      // Get authenticated user
+      const authHeader = req.headers.authorization;
+      if (!authHeader || !authHeader.startsWith('Bearer ')) {
+        return res.status(401).json({ error: 'Unauthorized' });
+      }
+
+      const token = authHeader.substring(7);
+      const { PNOAuthService } = await import('./pnOAuthService');
+      const tokenPayload = PNOAuthService.validateAccessToken(token);
+
+      if (!tokenPayload) {
+        return res.status(401).json({ error: 'Invalid token' });
+      }
+
+      // Verify user has write access to the feed (owner or delegate with write permission)
+      const feed = await FeedService.getFeedById(feedId);
+      if (!feed) {
+        return res.status(404).json({ error: 'Feed not found' });
+      }
+
+      const hasAccess = await FeedService.hasFeedAccess(feedId, tokenPayload.did, 'write');
+      if (!hasAccess) {
+        return res.status(403).json({ error: 'Not authorized' });
+      }
+
+      await db.query(`
+        DELETE FROM feed_delegations 
+        WHERE delegation_id = $1 AND feed_id = $2
+      `, [delegationId, feedId]);
+
+      return res.json({ success: true });
+    } catch (error) {
+      console.error('Remove delegate error:', error);
+      return res.status(500).json({ error: 'Failed to remove delegate' });
+    }
+  });
+
+  /**
+   * GET /api/users/:userDid/delegated-feeds
+   * Get feeds where user is a delegate
+   */
+  app.get('/api/users/:userDid/delegated-feeds', async (req: Request, res: Response) => {
+    try {
+      const { userDid } = req.params;
+
+      // Get authenticated user
+      const authHeader = req.headers.authorization;
+      if (!authHeader || !authHeader.startsWith('Bearer ')) {
+        return res.status(401).json({ error: 'Unauthorized' });
+      }
+
+      const token = authHeader.substring(7);
+      const { PNOAuthService } = await import('./pnOAuthService');
+      const tokenPayload = PNOAuthService.validateAccessToken(token);
+
+      if (!tokenPayload) {
+        return res.status(401).json({ error: 'Invalid token' });
+      }
+
+      // Verify user is requesting their own delegated feeds
+      if (tokenPayload.did !== userDid) {
+        return res.status(403).json({ error: 'Not authorized' });
+      }
+
+      const result = await db.query(`
+        SELECT f.*, fd.permissions, fd.delegation_id
+        FROM feeds f
+        INNER JOIN feed_delegations fd ON f.feed_id = fd.feed_id
+        WHERE fd.delegate_did = $1
+        ORDER BY fd.created_at DESC
+      `, [userDid]);
+
+      const feeds = result.rows.map(row => {
+        // Convert database row to FeedRow format
+        const feedRow: FeedRow = {
+          feed_id: row.feed_id,
+          feed_name: row.feed_name,
+          feed_category: row.feed_category,
+          feed_description: row.feed_description,
+          creator_did: row.creator_did,
+          creator_tier: row.creator_tier,
+          rating_range: [],
+          branding: row.branding,
+          subscriber_count: row.subscriber_count || 0,
+          post_count: row.post_count || 0,
+          created_at: row.created_at,
+          updated_at: row.updated_at,
+          is_paid: row.is_paid,
+          monthly_price: row.monthly_price,
+          annual_price: row.annual_price,
+          subdomain: row.subdomain
+        };
+        const feed = FeedService.rowToFeed(feedRow);
+        return {
+          ...feed,
+          delegationId: row.delegation_id,
+          delegatePermissions: JSON.parse(row.permissions || '["read"]')
+        };
+      });
+
+      return res.json({ feeds });
+    } catch (error) {
+      console.error('Get delegated feeds error:', error);
+      return res.status(500).json({ error: 'Failed to get delegated feeds' });
     }
   });
 }

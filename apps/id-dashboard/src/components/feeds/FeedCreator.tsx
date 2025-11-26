@@ -3,10 +3,12 @@
  * Create and configure a new paid feed with enhanced top post
  */
 
-import React, { useState } from 'react';
-import { X, Plus, Image, Globe, DollarSign, Settings } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { X, Plus, Image, Globe, DollarSign, Settings, Loader, CheckCircle } from 'lucide-react';
 import { FeedService, Feed } from '../../services/feeds/FeedService';
 import { EnhancedThoughtCreator, EnhancedPostContent } from './EnhancedThoughtCreator';
+import { IdentityVerificationModal } from '../IdentityVerificationModal';
+import { CoinbaseProxy, CheckoutRequest } from '../../utils/coinbaseProxy';
 import type { FeedCategory } from '../../types/aggregator';
 import { FEED_CATEGORIES } from '../../constants/feedCategories';
 
@@ -42,6 +44,16 @@ export const FeedCreator: React.FC<FeedCreatorProps> = ({
   const [topPostContent, setTopPostContent] = useState<EnhancedPostContent | null>(null);
   const [isCreating, setIsCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  
+  // Payment & Verification state
+  const [showVerificationModal, setShowVerificationModal] = useState(false);
+  const [pendingFeedData, setPendingFeedData] = useState<{
+    checkoutId: string;
+    feedData: Partial<Feed>;
+    topPostContent: EnhancedPostContent | null;
+  } | null>(null);
+  const [paymentStatus, setPaymentStatus] = useState<'idle' | 'processing' | 'paid' | 'failed'>('idle');
+  const [checkoutUrl, setCheckoutUrl] = useState<string | null>(null);
 
   if (!isOpen) return null;
 
@@ -100,6 +112,40 @@ export const FeedCreator: React.FC<FeedCreatorProps> = ({
     });
   };
 
+  // Poll for payment status after checkout is created
+  useEffect(() => {
+    if (!checkoutUrl || !pendingFeedData) return;
+
+    const pollInterval = setInterval(async () => {
+      try {
+        // Check payment status via API
+        const response = await fetch(`${import.meta.env.VITE_API_ENDPOINT || 'https://api.parnoir.com'}/api/feeds/payment-status/${pendingFeedData.checkoutId}`, {
+          headers: {
+            'Authorization': `Bearer ${JSON.parse(localStorage.getItem('authenticated_user') || '{}').accessToken || ''}`
+          }
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          if (data.status === 'confirmed' || data.status === 'resolved') {
+            setPaymentStatus('paid');
+            clearInterval(pollInterval);
+            // Open verification modal
+            setShowVerificationModal(true);
+          } else if (data.status === 'failed') {
+            setPaymentStatus('failed');
+            setError('Payment failed. Please try again.');
+            clearInterval(pollInterval);
+          }
+        }
+      } catch (err) {
+        console.error('Error checking payment status:', err);
+      }
+    }, 3000); // Poll every 3 seconds
+
+    return () => clearInterval(pollInterval);
+  }, [checkoutUrl, pendingFeedData]);
+
   const handleCreateFeed = async () => {
     if (!authenticatedUser) {
       setError('User not authenticated');
@@ -113,27 +159,116 @@ export const FeedCreator: React.FC<FeedCreatorProps> = ({
 
     setIsCreating(true);
     setError(null);
+    setPaymentStatus('processing');
 
     try {
-      // Create feed
+      // Create Coinbase Commerce checkout for feed purchase
+      const checkoutData: CheckoutRequest = {
+        name: `Feed Creation: ${feedData.feedName}`,
+        description: `Create and activate your paid feed "${feedData.feedName}"`,
+        pricing_type: 'fixed_price',
+        local_price: {
+          amount: '5.00', // $5 one-time fee for feed creation
+          currency: 'USD'
+        },
+        requested_info: ['email'],
+        metadata: {
+          licenseType: 'feed_creation',
+          identityHash: authenticatedUser.id,
+          licensePrice: '5.00',
+          feedName: feedData.feedName,
+          feedCategory: feedData.feedCategory || '',
+          feedDescription: feedData.feedDescription || '',
+          monthlyPrice: feedData.monthlyPrice?.toString() || '5.00',
+          annualPrice: feedData.annualPrice?.toString() || '50.00',
+          subdomain: feedData.subdomain || '',
+          creatorDid: authenticatedUser.id
+        }
+      };
+
+      const checkout = await CoinbaseProxy.createCheckout(checkoutData);
+      
+      // Store pending feed data
+      setPendingFeedData({
+        checkoutId: checkout.id,
+        feedData: feedData,
+        topPostContent: topPostContent
+      });
+      
+      setCheckoutUrl(checkout.hosted_url || null);
+
+      // Open payment window
+      if (checkout.hosted_url) {
+        window.open(checkout.hosted_url, '_blank');
+      } else {
+        throw new Error('Failed to get checkout URL');
+      }
+    } catch (err) {
+      console.error('Feed creation error:', err);
+      setError(err instanceof Error ? err.message : 'Failed to create payment checkout');
+      setPaymentStatus('failed');
+      setIsCreating(false);
+    }
+  };
+
+  const handleVerificationComplete = async (verifiedData: any) => {
+    if (!pendingFeedData || !authenticatedUser) {
+      setError('Missing feed data or authentication');
+      return;
+    }
+
+    setShowVerificationModal(false);
+    setIsCreating(true);
+    setError(null);
+
+    try {
+      // Create feed with verified identity
       const feed = await FeedService.createFeed({
-        feedName: feedData.feedName!,
-        feedCategory: feedData.feedCategory,
-        feedDescription: feedData.feedDescription,
-        branding: feedData.branding,
-        isPaid: feedData.isPaid,
-        monthlyPrice: feedData.monthlyPrice,
-        annualPrice: feedData.annualPrice,
-        subdomain: feedData.subdomain
+        feedName: pendingFeedData.feedData.feedName!,
+        feedCategory: pendingFeedData.feedData.feedCategory,
+        feedDescription: pendingFeedData.feedData.feedDescription,
+        branding: pendingFeedData.feedData.branding,
+        isPaid: true,
+        monthlyPrice: pendingFeedData.feedData.monthlyPrice,
+        annualPrice: pendingFeedData.feedData.annualPrice,
+        subdomain: pendingFeedData.feedData.subdomain
       });
 
       // Create top post if content provided
-      if (topPostContent) {
+      if (pendingFeedData.topPostContent) {
         await FeedService.createFeedPost(feed.feedId, {
-          ...topPostContent,
+          content: pendingFeedData.topPostContent.text,
+          media: pendingFeedData.topPostContent.media.map(m => ({
+            type: m.type,
+            url: m.url,
+            thumbnail: m.thumbnail
+          })),
+          buttons: pendingFeedData.topPostContent.buttons.map(b => ({
+            label: b.label,
+            url: b.url,
+            style: b.style
+          })),
+          polls: pendingFeedData.topPostContent.polls.map(p => ({
+            question: p.question,
+            options: p.options
+          })),
+          forms: pendingFeedData.topPostContent.forms.map(f => ({
+            title: f.title,
+            fields: f.fields.map(field => ({
+              name: field.name,
+              type: field.type,
+              required: field.required,
+              options: field.options
+            }))
+          })),
           isTopPost: true
         });
       }
+
+      // Activate feed (update status from pending to active)
+      await FeedService.updateFeed(feed.feedId, {
+        // Feed is now active
+      });
 
       onFeedCreated?.(feed);
       onClose();
@@ -156,9 +291,12 @@ export const FeedCreator: React.FC<FeedCreatorProps> = ({
       });
       setTopPostContent(null);
       setStep('basic');
+      setPendingFeedData(null);
+      setPaymentStatus('idle');
+      setCheckoutUrl(null);
     } catch (err) {
-      console.error('Feed creation error:', err);
-      setError(err instanceof Error ? err.message : 'Failed to create feed');
+      console.error('Feed activation error:', err);
+      setError(err instanceof Error ? err.message : 'Failed to activate feed');
     } finally {
       setIsCreating(false);
     }
@@ -443,15 +581,45 @@ export const FeedCreator: React.FC<FeedCreatorProps> = ({
               </button>
               <button
                 onClick={handleCreateFeed}
-                disabled={isCreating}
-                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50"
+                disabled={isCreating || paymentStatus === 'processing'}
+                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 flex items-center space-x-2"
               >
-                {isCreating ? 'Creating...' : 'Create Feed'}
+                {paymentStatus === 'processing' ? (
+                  <>
+                    <Loader className="h-4 w-4 animate-spin" />
+                    <span>Processing Payment...</span>
+                  </>
+                ) : paymentStatus === 'paid' ? (
+                  <>
+                    <CheckCircle className="h-4 w-4" />
+                    <span>Payment Confirmed</span>
+                  </>
+                ) : isCreating ? (
+                  <>
+                    <Loader className="h-4 w-4 animate-spin" />
+                    <span>Creating...</span>
+                  </>
+                ) : (
+                  <span>Create & Pay</span>
+                )}
               </button>
             </div>
           </div>
         )}
       </div>
+
+      {/* Verification Modal */}
+      {showVerificationModal && authenticatedUser && (
+        <IdentityVerificationModal
+          isOpen={showVerificationModal}
+          onClose={() => {
+            setShowVerificationModal(false);
+            // Don't reset payment status - user can retry verification
+          }}
+          onVerificationComplete={handleVerificationComplete}
+          identityId={authenticatedUser.id}
+        />
+      )}
     </div>
   );
 };
