@@ -2844,6 +2844,8 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
       let pdfFileId: string | undefined = undefined;
       let shareToken: any = undefined;
       let freshAccessToken: string | undefined = undefined;
+      // Declare thumbnailShareToken at function scope so it's accessible for metadata submission
+      let thumbnailShareToken: any = undefined;
       
       if (isPDF && pdfPageThumbnailIds.length > 0) {
         // PDF thumbnails were created - upload the original PDF file
@@ -2940,9 +2942,6 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
         // Generate thumbnail for images and videos BEFORE encryption
         const isImage = file.type.startsWith('image/');
         const isVideo = file.type.startsWith('video/');
-        
-        // Declare thumbnailShareToken outside the block so it's accessible for metadata submission
-        let thumbnailShareToken: any = undefined;
         
         if ((isImage || isVideo) && !thumbnailFileId) {
           try {
