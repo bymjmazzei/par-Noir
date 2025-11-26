@@ -4172,7 +4172,7 @@ function App() {
           <EditFileModal
             file={editingFile}
             onClose={() => setEditingFile(null)}
-            onSave={(updatedFile) => {
+            onSave={async (updatedFile) => {
               // Update the file in creatorFilesState
               setCreatorFilesState(prev => 
                 prev.map(f => 
@@ -4187,9 +4187,18 @@ function App() {
               );
               setEditingFile(null);
               success('File updated successfully!');
-              // Refresh files from Google Drive if needed
+              
+              // Clear cache and force refresh to ensure updated files appear
+              try {
+                const { CentralMetadataAggregator } = await import('./services/storage/CentralMetadataAggregator');
+                CentralMetadataAggregator.clearCache();
+              } catch (err) {
+                console.warn('Failed to clear cache:', err);
+              }
+              
+              // Force refresh files from API (forceRefresh=true ensures fresh data)
               if (discoverFilesRef.current) {
-                discoverFilesRef.current(undefined, true);
+                await discoverFilesRef.current(undefined, true, 0, false);
               }
             }}
           />
