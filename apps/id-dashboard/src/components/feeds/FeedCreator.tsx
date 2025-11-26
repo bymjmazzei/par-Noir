@@ -236,31 +236,32 @@ export const FeedCreator: React.FC<FeedCreatorProps> = ({
 
       // Create top post if content provided
       if (pendingFeedData.topPostContent) {
+        const content = pendingFeedData.topPostContent;
         await FeedService.createFeedPost(feed.feedId, {
-          content: pendingFeedData.topPostContent.text,
-          media: pendingFeedData.topPostContent.media.map(m => ({
+          content: content.text || '',
+          media: Array.isArray(content.media) ? content.media.map(m => ({
             type: m.type,
             url: m.url,
             thumbnail: m.thumbnail
-          })),
-          buttons: pendingFeedData.topPostContent.buttons.map(b => ({
+          })) : [],
+          buttons: Array.isArray(content.buttons) ? content.buttons.map(b => ({
             label: b.label,
             url: b.url,
             style: b.style
-          })),
-          polls: pendingFeedData.topPostContent.polls.map(p => ({
+          })) : [],
+          polls: Array.isArray(content.polls) ? content.polls.map(p => ({
             question: p.question,
             options: p.options
-          })),
-          forms: pendingFeedData.topPostContent.forms.map(f => ({
+          })) : [],
+          forms: Array.isArray(content.forms) ? content.forms.map(f => ({
             title: f.title,
-            fields: f.fields.map(field => ({
+            fields: Array.isArray(f.fields) ? f.fields.map(field => ({
               name: field.name,
               type: field.type,
               required: field.required,
               options: field.options
-            }))
-          })),
+            })) : []
+          })) : [],
           isTopPost: true
         });
       }
