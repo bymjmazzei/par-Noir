@@ -2623,7 +2623,6 @@ class ProductionServer {
         } else {
           console.log(`[MetadataIndex PUT] File ${fileId} already existed (fileExistedBefore=${fileExistedBefore}) - skipping companion metadata creation`);
         }
-        }
 
         // Handle isTopPost update
         if (isTopPost !== undefined) {
