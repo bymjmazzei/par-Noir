@@ -3161,8 +3161,22 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
           
           // CRITICAL: Submit THUMBNAIL FILE to public index (not main file)
           // The thumbnail is what appears in the feed, main file is only for downloads
-          if (thumbnailFileId && (isImage || isVideo)) {
+          // For PDFs, use the first page thumbnail; for images/videos, use the generated thumbnail
+          const hasThumbnail = thumbnailFileId && (
+            (isPDF && pdfPageThumbnailIds.length > 0) || 
+            (!isPDF && (file.type.startsWith('image/') || file.type.startsWith('video/')))
+          );
+          
+          if (hasThumbnail && thumbnailFileId) {
             try {
+              // For PDFs, get the publicToken from the first page thumbnail token
+              let thumbnailPublicToken: string | undefined = undefined;
+              if (isPDF && pdfPageThumbnailTokens.length > 0) {
+                thumbnailPublicToken = pdfPageThumbnailTokens[0]; // First page thumbnail token
+              } else if (thumbnailShareToken) {
+                thumbnailPublicToken = JSON.stringify(thumbnailShareToken);
+              }
+              
               // Submit thumbnail to public index
               const thumbnailMetadataResponse = await fetch(`${apiEndpoint}/api/aggregator/metadata-index/${thumbnailFileId}`, {
                 method: 'PUT',
@@ -3182,7 +3196,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
                   isNSFW: false,
                   // Store reference to main file for downloads
                   mainFileId: fileId, // Reference to the full file for downloads
-                  publicToken: thumbnailShareToken ? JSON.stringify(thumbnailShareToken) : undefined, // CRITICAL: Required for feed decryption
+                  publicToken: thumbnailPublicToken, // CRITICAL: Required for feed decryption
                 }),
               });
               
