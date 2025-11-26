@@ -5411,7 +5411,10 @@ class ProductionServer {
       const { fileId } = req.params;
       const accountId = req.query.accountId as string | undefined;
       
-      // STEP 0: Validate token FIRST (but don't delete yet)
+      let dbRemoved = false;
+      
+      try {
+        // STEP 0: Validate token FIRST (but don't delete yet)
       const authHeader = req.headers.authorization;
       let tokenPayload = null;
       let userIdentifier: string | null = null;
@@ -5632,12 +5635,12 @@ class ProductionServer {
         });
       } catch (error: any) {
         // Even if Google Drive operations fail, database removal succeeded
-        console.error('Error in Google Drive operations (database already cleaned):', error);
+        console.error('Error in delete operation:', error);
         return res.json({ 
           success: true, 
           fileId,
           removedFromDatabase: dbRemoved,
-          warning: 'Database cleaned but Google Drive operations failed',
+          warning: 'Database cleaned but Google Drive operations may have failed',
           error: error.message
         });
       }
