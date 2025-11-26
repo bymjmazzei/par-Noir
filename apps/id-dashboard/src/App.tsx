@@ -3519,7 +3519,23 @@ This invitation expires in 24 hours.`;
                 try {
                   // SECURITY: Decryption requires BOTH pnName and passcode
                   // encryptedUserData is stored as JSON string of EncryptedData object
-                  const encryptedDataObj = JSON.parse(existingDataPoint.encryptedUserData);
+                  // Handle both string and object cases (API might return object directly)
+                  let encryptedDataObj;
+                  if (typeof existingDataPoint.encryptedUserData === 'string') {
+                    try {
+                      encryptedDataObj = JSON.parse(existingDataPoint.encryptedUserData);
+                    } catch (parseError) {
+                      // If parsing fails, it might be "[object Object]" string or invalid format
+                      console.warn('[App] Failed to parse encryptedUserData string:', parseError);
+                      throw new Error('Invalid encryptedUserData format');
+                    }
+                  } else if (typeof existingDataPoint.encryptedUserData === 'object' && existingDataPoint.encryptedUserData !== null) {
+                    // Already an object (from API JSON response)
+                    encryptedDataObj = existingDataPoint.encryptedUserData;
+                  } else {
+                    throw new Error('encryptedUserData is neither string nor object');
+                  }
+                  
                   const decryptedUserDataJson = await IdentityCrypto.decryptData(
                     encryptedDataObj,
                     credentials.pnName,

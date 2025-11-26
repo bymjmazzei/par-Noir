@@ -137,6 +137,17 @@ export class ZKPDataPointsService {
     }
 
     // Return the proof and encrypted userData (for editing purposes)
+    // Ensure encryptedUserData is always a string (if it exists)
+    let encryptedUserDataString: string | undefined;
+    if (dataPoint.encryptedUserData) {
+      if (typeof dataPoint.encryptedUserData === 'string') {
+        encryptedUserDataString = dataPoint.encryptedUserData;
+      } else if (typeof dataPoint.encryptedUserData === 'object') {
+        // If it's an object (from JSON parsing), stringify it
+        encryptedUserDataString = JSON.stringify(dataPoint.encryptedUserData);
+      }
+    }
+    
     return {
       dataPointId: dataPoint.dataPointId,
       proofType: dataPoint.proofType,
@@ -146,7 +157,7 @@ export class ZKPDataPointsService {
       expiresAt: dataPoint.expiresAt,
       verificationLevel: dataPoint.verificationLevel,
       metadata: dataPoint.metadata,
-      encryptedUserData: dataPoint.encryptedUserData // Include encrypted userData for editing
+      encryptedUserData: encryptedUserDataString // Include encrypted userData for editing (always as string)
     };
   }
 
