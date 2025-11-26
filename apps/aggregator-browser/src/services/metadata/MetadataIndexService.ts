@@ -104,8 +104,9 @@ export class MetadataIndexService {
               // This handles cases where metadata.fileId might be missing after upgrade
               fileId: metadata.fileId || entry.fileId,
               // Explicitly preserve textPost and thought fields
-              textPost: metadata.textPost || metadata.thought,
-              thought: metadata.thought || metadata.textPost,
+              // FIX: Ensure both textPost and thought are preserved even if one is missing
+              textPost: metadata.textPost || metadata.thought || undefined,
+              thought: metadata.thought || metadata.textPost || undefined,
               // Use normalized pnIdentifier as creatorId - they're the same thing
               creatorId: normalizedPnId || metadata.creatorId,
               // Include publicToken from entry level if it exists (API may return it at entry level)
