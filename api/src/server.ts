@@ -1749,8 +1749,54 @@ class ProductionServer {
       await CoinbaseWebhookHandler.handleWebhook(req as any, res as any);
     });
 
-    // Migration endpoint removed - migration completed successfully
-    // If needed again, uncomment and use MIGRATION_SECRET environment variable
+    // Temporary migration endpoint for feed system
+    // SECURITY: Protected by MIGRATION_SECRET environment variable
+    this.app.post('/api/admin/run-feed-migration', async (req, res) => {
+      try {
+        const migrationSecret = process.env.MIGRATION_SECRET || 'temp-secret-change-me';
+        const providedSecret = req.headers['x-migration-secret'] as string;
+
+        if (providedSecret !== migrationSecret) {
+          return res.status(401).json({ error: 'Unauthorized' });
+        }
+
+        const fs = require('fs');
+        const path = require('path');
+        const { getDatabasePool } = await import('./server/utils/database');
+        const db = getDatabasePool();
+
+        console.log('📦 [Migration] Starting feed system migration...');
+        
+        const migrationPath = path.join(__dirname, '../migrations/add_enhanced_feed_posts.sql');
+        const migrationSQL = fs.readFileSync(migrationPath, 'utf8');
+
+        await db.query(migrationSQL);
+        
+        console.log('✅ [Migration] Feed system migration completed successfully!');
+        
+        // Verify tables were created
+        const tablesCheck = await db.query(`
+          SELECT table_name 
+          FROM information_schema.tables 
+          WHERE table_schema = 'public' 
+          AND table_name IN ('feed_payments', 'feed_delegations')
+        `);
+        
+        const createdTables = tablesCheck.rows.map(r => r.table_name);
+        
+        return res.json({
+          success: true,
+          message: 'Migration completed successfully',
+          createdTables
+        });
+      } catch (error: any) {
+        console.error('❌ [Migration] Migration failed:', error);
+        return res.status(500).json({
+          error: 'Migration failed',
+          message: error.message
+        });
+      }
+    });
 
     // GET /api/aggregator/metadata-index/:fileId - Get metadata for a specific file (creates entry if doesn't exist)
     this.app.get('/api/aggregator/metadata-index/:fileId', async (req, res) => {
