@@ -1038,7 +1038,15 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
   // Load cloud accounts
   useEffect(() => {
     const loadAccounts = async () => {
+      console.log('[FileStorageAggregator] loadAccounts called', { 
+        hasAuthenticatedUser: !!authenticatedUser,
+        authenticatedUserId: authenticatedUser?.id,
+        userStateUnlocked: userState.isUnlocked,
+        userStatePnIdentifier: userState.pnIdentifier
+      });
+      
       if (!authenticatedUser?.id) {
+        console.log('[FileStorageAggregator] No authenticatedUser.id, clearing accounts');
         setDriveAccounts([]);
         return;
       }
@@ -1050,19 +1058,26 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
           return;
         }
 
+        console.log('[FileStorageAggregator] Fetching accounts from:', `${apiEndpoint}/api/storage/accounts/${authenticatedUser.id}`);
         const response = await fetch(`${apiEndpoint}/api/storage/accounts/${authenticatedUser.id}`, {
           headers: {
             'Authorization': `Bearer ${accessToken}`
           }
         });
 
+        console.log('[FileStorageAggregator] Accounts response:', { status: response.status, ok: response.ok });
+        
         if (response.ok) {
           const data = await response.json();
           const accounts = data.accounts || [];
+          console.log('[FileStorageAggregator] Loaded accounts:', accounts.length);
           setDriveAccounts(accounts);
           if (accounts.length > 0 && !selectedAccountId) {
             setSelectedAccountId(accounts[0].accountId);
           }
+        } else {
+          const errorText = await response.text().catch(() => 'Unknown error');
+          console.error('[FileStorageAggregator] Failed to load accounts:', response.status, errorText);
         }
       } catch (err) {
         console.error('[FileStorageAggregator] Failed to load accounts:', err);
@@ -1070,7 +1085,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
     };
 
     loadAccounts();
-  }, [authenticatedUser?.id, selectedAccountId]);
+  }, [authenticatedUser?.id, selectedAccountId, userState.isUnlocked, userState.pnIdentifier]);
 
   // Load files for a specific account
   const loadFilesForAccount = async (accountId: string) => {
