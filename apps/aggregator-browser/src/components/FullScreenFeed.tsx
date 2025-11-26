@@ -563,16 +563,32 @@ export function FullScreenFeed({
   }, [visibleFileId, getPopularComments]);
 
   // Load thought content from Google Drive when metadata only has filename
+  // FIX: Load thoughts for ALL files in feed, not just visible ones
+  // This ensures thoughts render immediately when feed loads, not just when scrolled into view
   useEffect(() => {
     const loadThoughtContent = async () => {
-      // Load current file and adjacent files
+      // Load current file and adjacent files (for smooth scrolling)
       const indicesToLoad = [
         currentIndex - 1,
         currentIndex,
         currentIndex + 1
       ].filter(idx => idx >= 0 && idx < files.length);
+      
+      // ALSO load thoughts for all files in the feed (not just visible ones)
+      // This ensures thoughts render on initial page load
+      const allThoughtIndices = files.map((_, idx) => idx).filter(idx => {
+        const indexedFile = files[idx];
+        const file = indexedFile.metadata;
+        const thoughtFileName = file.name || file.title || '';
+        const isThoughtFile = /^thought-\d+\.(thought|png)/i.test(thoughtFileName);
+        const isTextPost = file.fileType === 'text' || file.fileType === 'thought';
+        return isThoughtFile || isTextPost;
+      });
+      
+      // Combine visible indices with all thought indices, remove duplicates
+      const allIndicesToLoad = Array.from(new Set([...indicesToLoad, ...allThoughtIndices]));
 
-      await Promise.all(indicesToLoad.map(async (idx) => {
+      await Promise.all(allIndicesToLoad.map(async (idx) => {
         const indexedFile = files[idx];
         const file = indexedFile.metadata;
         const fileId = file.fileId;
@@ -776,8 +792,17 @@ export function FullScreenFeed({
         }
         
         // Check for PDF document with page thumbnails
+        // FIX: Also check by file extension and mimeType for PDFs that might not have pdfPageThumbnailIds in metadata
         const pdfPageThumbnailIds = indexedFile.metadata?.pdfPageThumbnailIds;
-        const isPdfDocument = !isTextPost && file.fileType === 'document' && pdfPageThumbnailIds && pdfPageThumbnailIds.length > 0;
+        const fileNameForPdfCheck = file.name || file.title || '';
+        const hasPdfExtension = /\.pdf$/i.test(fileNameForPdfCheck);
+        const mimeTypeForPdf = (file as any).mimeType || indexedFile.metadata?.mimeType || file.encodingFormat || indexedFile.metadata?.encodingFormat || '';
+        const hasPdfMimeType = mimeTypeForPdf === 'application/pdf' || mimeTypeForPdf.includes('pdf');
+        const isPdfDocument = !isTextPost && (
+          (file.fileType === 'document' && pdfPageThumbnailIds && pdfPageThumbnailIds.length > 0) ||
+          (file.fileType === 'document' && (hasPdfExtension || hasPdfMimeType)) ||
+          (hasPdfExtension || hasPdfMimeType)
+        );
         
 
         // Only load video if not provided externally or if external map doesn't have this file
@@ -1044,6 +1069,7 @@ export function FullScreenFeed({
         }
 
         // Load PDF document FIRST thumbnail - USE THUMBNAIL'S OWN PUBLICTOKEN (NO API CALLS!)
+        // FIX: Only load if pdfPageThumbnailIds exists and has items
         if (isPdfDocument && pdfPageThumbnailIds && pdfPageThumbnailIds.length > 0 && !thumbnails.has(fileId)) {
           const pdfPageThumbnailTokens = (file as any)?.pdfPageThumbnailTokens as string[] | undefined;
           
@@ -1554,8 +1580,18 @@ export function FullScreenFeed({
         // Check metadata immediately - don't wait for async operations
         const pdfPageThumbnailIds = indexedFile.metadata?.pdfPageThumbnailIds;
         
-        // Check if this is a PDF document (reuse pdfPageThumbnailIds from above)
-        const isPdfDoc = !isTextPost && file.fileType === 'document' && pdfPageThumbnailIds && pdfPageThumbnailIds.length > 0;
+        // Check if this is a PDF document
+        // FIX: Also check by file extension and mimeType for PDFs that might not have pdfPageThumbnailIds in metadata
+        // This handles cases where PDFs were uploaded before pdfPageThumbnailIds was added to metadata
+        const fileNameForPdfCheck = file.name || file.title || '';
+        const hasPdfExtension = /\.pdf$/i.test(fileNameForPdfCheck);
+        const mimeTypeForPdf = (file as any).mimeType || indexedFile.metadata?.mimeType || file.encodingFormat || indexedFile.metadata?.encodingFormat || '';
+        const hasPdfMimeType = mimeTypeForPdf === 'application/pdf' || mimeTypeForPdf.includes('pdf');
+        const isPdfDoc = !isTextPost && (
+          (file.fileType === 'document' && pdfPageThumbnailIds && pdfPageThumbnailIds.length > 0) ||
+          (file.fileType === 'document' && (hasPdfExtension || hasPdfMimeType)) ||
+          (hasPdfExtension || hasPdfMimeType)
+        );
         
         // CRITICAL: If it's a thought, force all other types to false to prevent flickering
         // This ensures only ONE content type renders at a time
@@ -1877,6 +1913,21 @@ export function FullScreenFeed({
             {/* PDF Document - Display like image but with horizontal swipe for pages */}
             {/* Render PDF immediately, even if thumbnail not loaded yet (shows placeholder) */}
             {isPdfDocFinal && !isTextPost && !textPostData && (() => {
+              // FIX: Handle PDFs that don't have pdfPageThumbnailIds in metadata
+              // If pdfPageThumbnailIds is missing but it's a PDF, show a message or try to load
+              if (!pdfPageThumbnailIds || pdfPageThumbnailIds.length === 0) {
+                // PDF detected but no thumbnail IDs - this might be an old PDF without slideshow metadata
+                // Show a message indicating the PDF needs to be re-uploaded or metadata updated
+                return (
+                  <div className="flex flex-col items-center justify-center text-neutral-500 p-8">
+                    <div className="text-center">
+                      <p className="text-sm mb-2">PDF detected</p>
+                      <p className="text-xs opacity-70">This PDF needs to be re-uploaded to generate thumbnails</p>
+                    </div>
+                  </div>
+                );
+              }
+              
               // If thumbnail not loaded yet, show placeholder
               if (!thumbnails.get(fileId)) {
                 return (
@@ -1886,7 +1937,7 @@ export function FullScreenFeed({
                   </div>
                 );
               }
-              const totalPages = pdfPageThumbnailIds?.length || 0;
+              const totalPages = pdfPageThumbnailIds.length;
               
               return (
                 <div
