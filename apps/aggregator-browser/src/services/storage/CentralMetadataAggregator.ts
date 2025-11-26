@@ -123,7 +123,7 @@ export class CentralMetadataAggregator {
       if (filters?.limit !== undefined) params.append('limit', filters.limit.toString());      // SCALABILITY: Pagination
       if (filters?.offset !== undefined) params.append('offset', filters.offset.toString());    // SCALABILITY: Pagination
 
-      console.log(`🔍 [CentralMetadataAggregator] Fetching from API: ${this.API_ENDPOINT}${this.CENTRAL_INDEX_PATH}?${params.toString()}`);
+      // Removed verbose logging - only log errors
 
       const response = await fetch(
         `${this.API_ENDPOINT}${this.CENTRAL_INDEX_PATH}?${params.toString()}`,
@@ -137,7 +137,7 @@ export class CentralMetadataAggregator {
 
       if (response.ok) {
         const data: CentralIndexResponse & { total?: number; hasMore?: boolean } = await response.json();
-        console.log(`✅ [CentralMetadataAggregator] Received ${data.files?.length || 0} files from API (total: ${data.totalFiles || data.total || 'unknown'}, hasMore: ${data.hasMore || false})`);
+        // Removed verbose success logging
         
         // Warn if NSFW files are found in public index (should never happen)
         if (data.files && data.files.length > 0) {
@@ -286,7 +286,7 @@ export class CentralMetadataAggregator {
       if (filters?.offset !== undefined) params.append('offset', filters.offset.toString());    // SCALABILITY: Pagination
 
       const nsfwIndexPath = '/api/aggregator/nsfw-index';
-      console.log(`🔍 [CentralMetadataAggregator] Fetching NSFW index from API: ${this.API_ENDPOINT}${nsfwIndexPath}?${params.toString()}`);
+      // Removed verbose logging - only log errors
 
       const response = await fetch(
         `${this.API_ENDPOINT}${nsfwIndexPath}?${params.toString()}`,
@@ -300,7 +300,7 @@ export class CentralMetadataAggregator {
 
       if (response.ok) {
         const data: CentralIndexResponse & { total?: number; hasMore?: boolean } = await response.json();
-        console.log(`✅ [CentralMetadataAggregator] Received ${data.files?.length || 0} NSFW files from API (total: ${data.totalFiles || data.total || 'unknown'}, hasMore: ${data.hasMore || false})`);
+        // Removed verbose success logging
         return {
           files: data.files || [],
           total: data.totalFiles || data.total || 0,

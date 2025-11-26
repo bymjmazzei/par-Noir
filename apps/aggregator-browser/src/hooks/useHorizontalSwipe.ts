@@ -43,7 +43,6 @@ export function useHorizontalSwipe({
 
   useEffect(() => {
     if (!enabled) {
-      console.log('[useHorizontalSwipe] Hook disabled');
       return;
     }
 
@@ -76,7 +75,6 @@ export function useHorizontalSwipe({
         y: touch.clientY,
         time: Date.now()
       };
-      console.log('[useHorizontalSwipe] Touch start:', { x: touch.clientX, y: touch.clientY, target: target.tagName, element: element ? 'found' : 'null' });
     };
 
     const handleTouchMove = (e: TouchEvent) => {

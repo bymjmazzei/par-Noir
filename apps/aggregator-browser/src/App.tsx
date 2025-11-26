@@ -73,6 +73,7 @@ function App() {
   // SCALABILITY: Pagination state for infinite scroll
   const [currentPage, setCurrentPage] = useState(0);
   const [hasMore, setHasMore] = useState(true);
+  const hasMoreRef = useRef(true); // Ref to track hasMore for infinite scroll observer
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const PAGE_SIZE = 50;
   const [searchQuery, setSearchQuery] = useState('');
@@ -534,6 +535,7 @@ function App() {
     // SCALABILITY: Reset pagination when feed changes
     setCurrentPage(0);
     setHasMore(true);
+    hasMoreRef.current = true;
     
     discoverFilesTimeoutRef.current = setTimeout(() => {
       if (discoverFilesRef.current && !isDiscoveringRef.current) {
@@ -556,6 +558,7 @@ function App() {
     // SCALABILITY: Reset pagination when feed changes
     setCurrentPage(0);
     setHasMore(true);
+    hasMoreRef.current = true;
   }, [activeFeedId, visibleFileId]);
 
   // Track previous viewingCreatorId to detect when profile is first opened
@@ -1075,31 +1078,31 @@ function App() {
     let sentinel: HTMLElement | null = null;
     
     const setupObserver = () => {
-      // Double-check conditions before creating observer
-      if (!hasMore || isLoadingMore || isDiscoveringRef.current || !discoverFilesRef.current) {
+      // Double-check conditions before creating observer (use ref to get current value)
+      if (!hasMoreRef.current || isLoadingMore || isDiscoveringRef.current || !discoverFilesRef.current) {
         return;
       }
       
       observer = new IntersectionObserver(
         (entries) => {
           entries.forEach((entry) => {
-            // Triple-check conditions in callback to prevent race conditions
-            if (entry.isIntersecting && hasMore && !isLoadingMore && !isDiscoveringRef.current && discoverFilesRef.current) {
+            // Triple-check conditions in callback to prevent race conditions (use ref for hasMore)
+            if (entry.isIntersecting && hasMoreRef.current && !isLoadingMore && !isDiscoveringRef.current && discoverFilesRef.current) {
               // Disconnect observer immediately to prevent multiple triggers
               if (observer) {
                 observer.disconnect();
                 observer = null;
               }
-              console.log('📜 [Infinite Scroll] Loading next page...');
               setIsLoadingMore(true);
               discoverFilesRef.current(undefined, false, currentPage + 1, true).finally(() => {
                 setIsLoadingMore(false);
-                // Reconnect observer after loading completes (if still hasMore)
+                // Only reconnect observer if there's more content AND we're still in feed mode
+                // Use ref to check current hasMore value (avoids stale closure)
                 setTimeout(() => {
-                  if (hasMore && sentinel && !observer) {
+                  if (viewMode === 'feed' && hasMoreRef.current && sentinel && !observer) {
                     setupObserver();
                   }
-                }, 100);
+                }, 300);
               });
             }
           });
@@ -1278,7 +1281,7 @@ function App() {
               };
             });
           
-          console.log(`✅ Discovered ${nsfwFiles.length} NSFW files`);
+          // Removed verbose logging
         } catch (nsfwError) {
           console.warn('Failed to fetch NSFW index:', nsfwError);
           // Continue with public files only if NSFW fetch fails
@@ -1322,9 +1325,10 @@ function App() {
       
       // Update pagination state
       setHasMore(paginationInfo.hasMore);
+      hasMoreRef.current = paginationInfo.hasMore; // Update ref as well
       setCurrentPage(page);
       
-      console.log(`✅ Discovered ${discoveredFiles.length} public files (page ${page}, hasMore: ${paginationInfo.hasMore})`);
+      // Removed verbose logging - only log errors
       
       // Generate thumbnails for image files (only for newly loaded files)
       if (generateThumbnailsForImagesRef.current) {
@@ -1397,6 +1401,7 @@ function App() {
   const handleSearch = () => {
     setCurrentPage(0); // SCALABILITY: Reset pagination on search
     setHasMore(true);
+    hasMoreRef.current = true;
     discoverFiles(undefined, false, 0, false);
   };
 
@@ -1408,6 +1413,7 @@ function App() {
     setFilters(newFilters);
     setCurrentPage(0); // SCALABILITY: Reset pagination on filter change
     setHasMore(true);
+    hasMoreRef.current = true;
     discoverFiles(newFilters, false, 0, false);
   };
 
@@ -3547,6 +3553,7 @@ function App() {
               // Refresh files after upload - reset to page 0
               setCurrentPage(0);
               setHasMore(true);
+    hasMoreRef.current = true;
               discoverFiles(undefined, true, 0, false);
             }}
           />
@@ -3618,6 +3625,7 @@ function App() {
                   setFilters({});
                   setCurrentPage(0); // SCALABILITY: Reset pagination
                   setHasMore(true);
+    hasMoreRef.current = true;
                   discoverFiles({}, false, 0, false);
                 }}
                 className="px-4 py-2 bg-neutral-700 text-white text-sm font-medium rounded-lg hover:bg-neutral-600 transition-colors"
@@ -3668,6 +3676,7 @@ function App() {
                     onClick={() => {
                       setCurrentPage(0); // SCALABILITY: Reset pagination
                       setHasMore(true);
+    hasMoreRef.current = true;
                       discoverFiles(undefined, true, 0, false);
                     }}
                     disabled={isLoading}
@@ -4126,6 +4135,7 @@ function App() {
               // Refresh files to show updated feed membership - reset to page 0
               setCurrentPage(0);
               setHasMore(true);
+    hasMoreRef.current = true;
               discoverFiles(undefined, true, 0, false);
               setAddingToFeedFile(null);
             }}
@@ -4183,6 +4193,7 @@ function App() {
               // Refresh files after upload - reset to page 0
               setCurrentPage(0);
               setHasMore(true);
+    hasMoreRef.current = true;
               discoverFiles(undefined, true, 0, false);
             }}
           />
