@@ -1471,6 +1471,28 @@ export function FullScreenFeed({
           >
             {/* Text Post / Thought - Render as its own tile, not an overlay */}
             {(isTextPost || textPostData) && (() => {
+              // Debug logging for thoughts that aren't rendering properly
+              if (process.env.NODE_ENV === 'development' && isTextPost && !textPostData?.content) {
+                console.warn(`[FullScreenFeed] Thought detected but missing content:`, {
+                  fileId,
+                  fileDisplayName: file.name || file.title,
+                  fileType: file.fileType,
+                  hasTextPostData: !!textPostData,
+                  textPostData,
+                  fileDescription: file.description,
+                  fileTitle: file.title,
+                  fileName: file.name,
+                  metadata: indexedFile.metadata
+                });
+              }
+              
+              // Ensure we have content to render - create fallback if needed
+              const contentToRender = textPostData?.content || 
+                                     file.description || 
+                                     file.name || 
+                                     file.title || 
+                                     (thoughtFileName ? thoughtFileName.replace(/\.(thought|png)$/i, '') : 'Thought');
+              
               // Reference dimensions from thought creator (1080x1920 canvas)
               const REFERENCE_WIDTH = 1080;
               const REFERENCE_HEIGHT = 1920;
@@ -1554,8 +1576,8 @@ export function FullScreenFeed({
                       }
                       return textPostData.content;
                     }
-                    // Fallback to description, name, or title
-                    return file.description || file.name || file.title || 'Thought';
+                    // Fallback to content we prepared above
+                    return contentToRender;
                   })()}
                 </div>
               </div>
