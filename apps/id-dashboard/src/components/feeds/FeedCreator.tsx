@@ -62,13 +62,28 @@ export const FeedCreator: React.FC<FeedCreatorProps> = ({
   };
 
   const handleBrandingChange = (field: string, value: any) => {
-    setFeedData(prev => ({
-      ...prev,
-      branding: {
-        ...prev.branding,
-        [field]: value
-      }
-    }));
+    setFeedData(prev => {
+      const currentBranding = prev.branding || {
+        avatar: '',
+        bannerImage: '',
+        bio: '',
+        links: []
+      };
+      
+      // Ensure links is always an array
+      const updatedBranding = {
+        ...currentBranding,
+        [field]: field === 'links' && !Array.isArray(value) ? [] : value,
+        links: field === 'links' 
+          ? (Array.isArray(value) ? value : [])
+          : (Array.isArray(currentBranding.links) ? currentBranding.links : [])
+      };
+      
+      return {
+        ...prev,
+        branding: updatedBranding
+      };
+    });
   };
 
   const handleAddLink = () => {
@@ -472,7 +487,7 @@ export const FeedCreator: React.FC<FeedCreatorProps> = ({
                     </button>
                   </div>
                   <div className="space-y-2">
-                    {Array.isArray(feedData.branding?.links) && feedData.branding.links.map((link, index) => (
+                    {(Array.isArray(feedData.branding?.links) ? feedData.branding.links : []).map((link, index) => (
                       <div key={index} className="flex items-center space-x-2">
                         <input
                           type="text"
