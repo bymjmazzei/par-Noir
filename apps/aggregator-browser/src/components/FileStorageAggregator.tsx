@@ -3116,7 +3116,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
                   'Authorization': `Bearer ${freshAccessToken}`
                 },
                 body: JSON.stringify({
-                  name: file.name, // Use original filename (without thumb_ prefix) for display
+                  name: `thumb_${file.name}`, // Include thumb_ prefix so public index query can find it
                   description: '',
                   keywords: [],
                   tags: [],
