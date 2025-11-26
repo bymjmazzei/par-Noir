@@ -2312,9 +2312,9 @@ class ProductionServer {
             }
           }
           
-          // Create companion metadata file when file becomes public for the first time
-          if (isBecomingPublic) {
-            console.log(`[MetadataIndex PUT] File ${fileId} is becoming public - creating companion metadata...`);
+          // Create companion metadata file when file is public (either becoming public OR already public but missing companion metadata)
+          if (finalIsPublic) {
+            console.log(`[MetadataIndex PUT] File ${fileId} is public (isBecomingPublic=${isBecomingPublic}) - checking/creating companion metadata...`);
             try {
               const authHeader = req.headers.authorization;
               if (authHeader && authHeader.startsWith('Bearer ')) {
@@ -2419,32 +2419,111 @@ class ProductionServer {
                       }
                       
                       if (metadataFolderId) {
-                        // TODO: Generate publicToken (share token) for public files
-                        // This requires:
-                        // 1. Downloading the encrypted file from Google Drive
-                        // 2. Parsing the encrypted package JSON
-                        // 3. Decrypting with owner's DID + publicKey
-                        // 4. Generating a share key and re-encrypting
-                        // 5. Creating ShareToken structure with shareKey and shareEncrypted
-                        // Without publicToken, files won't be decryptable in the public feed
-                        // For now, publicToken is omitted - files will appear in feed but won't load until publicToken is generated
-                        
-                        // Create companion metadata spreadsheet (Google Sheets format)
-                        // Get publicToken from request body if provided (generated client-side)
-                        // IMPORTANT: Refetch metadata AFTER database update to ensure we have the latest publicToken
-                        const currentMetadata = await service.getFileMetadata(fileId);
-                        const existingPublicToken = currentMetadata?.metadata?.publicToken;
-                        const tokenToUse = publicToken || existingPublicToken;
-                        
-                        console.log(`[MetadataIndex PUT] Companion metadata for file ${fileId}:`, {
-                          hasPublicTokenInRequest: !!publicToken,
-                          hasPublicTokenInDatabase: !!existingPublicToken,
-                          usingToken: !!tokenToUse
-                        });
-                        
                         const { CompanionMetadataSheets } = await import('./server/modules/companionMetadataSheets');
                         
-                        const companionMetadata = {
+                        // Check if companion metadata already exists
+                        const existingSpreadsheetId = await CompanionMetadataSheets.findSpreadsheet(
+                          accessToken,
+                          metadataFolderId,
+                          fileId
+                        );
+                        
+                        if (!existingSpreadsheetId) {
+                          // Companion metadata doesn't exist - create it
+                          console.log(`[MetadataIndex PUT] Companion metadata not found for public file ${fileId} - creating...`);
+                          
+                          // Get publicToken from request body if provided (generated client-side)
+                          // IMPORTANT: Refetch metadata AFTER database update to ensure we have the latest publicToken
+                          const currentMetadata = await service.getFileMetadata(fileId);
+                          const existingPublicToken = currentMetadata?.metadata?.publicToken;
+                          const tokenToUse = publicToken || existingPublicToken;
+                          
+                          console.log(`[MetadataIndex PUT] Companion metadata for file ${fileId}:`, {
+                            hasPublicTokenInRequest: !!publicToken,
+                            hasPublicTokenInDatabase: !!existingPublicToken,
+                            usingToken: !!tokenToUse
+                          });
+                          
+                          const companionMetadata = {
+                            fileId: fileId,
+                            googleDriveFileId: fileId,
+                            fileName: driveFile.name || fileId,
+                            originalName: originalFileName,
+                            mimeType: originalMimeType,
+                            size: parseInt(driveFile.size || '0', 10),
+                            visibility: 'public' as const,
+                            uploadedAt: driveFile.createdTime || new Date().toISOString(),
+                            owner: {
+                              did: tokenPayload.did,
+                              identifier: pnIdentifier
+                            },
+                            tags: [],
+                            ...(tokenToUse && { publicToken: tokenToUse }),
+                            engagement: {
+                              views: 0,
+                              likes: 0,
+                              comments: 0,
+                              shares: 0,
+                              lastUpdated: new Date().toISOString(),
+                              engagementHistory: []
+                            }
+                          };
+                          
+                          // Create new metadata spreadsheet
+                          const spreadsheetId = await CompanionMetadataSheets.createSpreadsheet(
+                            accessToken,
+                            metadataFolderId,
+                            fileId,
+                            companionMetadata
+                          );
+                          console.log(`[MetadataIndex PUT] Created new companion metadata spreadsheet for ${fileId}: ${spreadsheetId}`);
+                        } else {
+                          // Companion metadata exists - update it if needed
+                          console.log(`[MetadataIndex PUT] Companion metadata already exists for ${fileId} - updating if needed...`);
+                          
+                          const currentMetadata = await service.getFileMetadata(fileId);
+                          const existingPublicToken = currentMetadata?.metadata?.publicToken;
+                          const tokenToUse = publicToken || existingPublicToken;
+                          
+                          const companionMetadata = {
+                            fileId: fileId,
+                            googleDriveFileId: fileId,
+                            fileName: driveFile.name || fileId,
+                            originalName: originalFileName,
+                            mimeType: originalMimeType,
+                            size: parseInt(driveFile.size || '0', 10),
+                            visibility: 'public' as const,
+                            uploadedAt: driveFile.createdTime || new Date().toISOString(),
+                            owner: {
+                              did: tokenPayload.did,
+                              identifier: pnIdentifier
+                            },
+                            tags: [],
+                            ...(tokenToUse && { publicToken: tokenToUse }),
+                            engagement: {
+                              views: 0,
+                              likes: 0,
+                              comments: 0,
+                              shares: 0,
+                              lastUpdated: new Date().toISOString(),
+                              engagementHistory: []
+                            }
+                          };
+                          
+                          await CompanionMetadataSheets.updateMetadata(
+                            accessToken,
+                            existingSpreadsheetId,
+                            companionMetadata
+                          );
+                          console.log(`[MetadataIndex PUT] Updated existing companion metadata spreadsheet for ${fileId}`);
+                        }
+                        
+                        // Get companion metadata for index updates
+                        const currentMetadataForIndex = await service.getFileMetadata(fileId);
+                        const existingPublicTokenForIndex = currentMetadataForIndex?.metadata?.publicToken;
+                        const tokenToUseForIndex = publicToken || existingPublicTokenForIndex;
+                        
+                        const companionMetadataForIndex = {
                           fileId: fileId,
                           googleDriveFileId: fileId,
                           fileName: driveFile.name || fileId,
@@ -2458,7 +2537,7 @@ class ProductionServer {
                             identifier: pnIdentifier
                           },
                           tags: [],
-                          ...(tokenToUse && { publicToken: tokenToUse }),
+                          ...(tokenToUseForIndex && { publicToken: tokenToUseForIndex }),
                           engagement: {
                             views: 0,
                             likes: 0,
@@ -2469,56 +2548,23 @@ class ProductionServer {
                           }
                         };
                         
-                        // Check if metadata spreadsheet already exists
-                        const existingSpreadsheetId = await CompanionMetadataSheets.findSpreadsheet(
-                          accessToken,
-                          metadataFolderId,
-                          fileId
-                        );
-                        
-                        if (existingSpreadsheetId) {
-                          // Update existing metadata spreadsheet
-                          await CompanionMetadataSheets.updateMetadata(
-                            accessToken,
-                            existingSpreadsheetId,
-                            companionMetadata
-                          );
-                          console.log(`[MetadataIndex PUT] Updated existing companion metadata spreadsheet for ${fileId}`);
-                        } else {
-                          // Create new metadata spreadsheet
-                          const spreadsheetId = await CompanionMetadataSheets.createSpreadsheet(
-                            accessToken,
-                            metadataFolderId,
-                            fileId,
-                            companionMetadata
-                          );
-                          console.log(`[MetadataIndex PUT] Created new companion metadata spreadsheet for ${fileId}: ${spreadsheetId}`);
-                        }
-                        
                         // Update owner index (contains ALL files for the owner)
                         try {
                           await this.updateOwnerFileIndex(
                             accessToken,
                             pnIdentifier,
                             metadataFolderId,
-                            companionMetadata
+                            companionMetadataForIndex
                           );
                         } catch (ownerIndexError: any) {
                           console.warn(`[MetadataIndex] Failed to update owner index (non-critical):`, ownerIndexError?.message || ownerIndexError);
                         }
                         
                         // Update public file index (adds file to public index)
-                        // Ensure publicToken is included from current metadata if not in companionMetadata
-                        if (!companionMetadata.publicToken) {
-                          const currentMeta = await service.getFileMetadata(fileId);
-                          if (currentMeta?.metadata?.publicToken) {
-                            companionMetadata.publicToken = currentMeta.metadata.publicToken;
-                            console.log(`[MetadataIndex] Using publicToken from database for file ${fileId}`);
-                          } else {
-                            console.warn(`[MetadataIndex] No publicToken found for public file ${fileId} - file may not load in public feed`);
-                          }
+                        if (!companionMetadataForIndex.publicToken) {
+                          console.warn(`[MetadataIndex] No publicToken found for public file ${fileId} - file may not load in public feed`);
                         } else {
-                          console.log(`[MetadataIndex] Using publicToken from request for file ${fileId}`);
+                          console.log(`[MetadataIndex] Using publicToken for public file index update: ${fileId}`);
                         }
                         
                         try {
@@ -2527,7 +2573,7 @@ class ProductionServer {
                             pnIdentifier,
                             metadataFolderId,
                             pnFolderId,
-                            companionMetadata
+                            companionMetadataForIndex
                           );
                           console.log(`[MetadataIndex] Successfully updated public file index for file ${fileId}`);
                         } catch (indexError: any) {
