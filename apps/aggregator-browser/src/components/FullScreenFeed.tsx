@@ -2265,7 +2265,7 @@ export function FullScreenFeed({
             {!isImageFinal && !isVideoFinal && !isPdfDocFinal && !isTextPost && !textPostData && (
               <div className="flex flex-col items-center justify-center text-neutral-500">
                 <File className="h-24 w-24 mb-4" />
-                <h3 className="text-white text-xl font-medium mb-2">{fileName}</h3>
+                <h3 className="text-white text-xl font-medium mb-2">{cleanTitle(fileName)}</h3>
                 <p className="text-text-secondary text-sm">{file.fileType || 'File'}</p>
               </div>
             )}
