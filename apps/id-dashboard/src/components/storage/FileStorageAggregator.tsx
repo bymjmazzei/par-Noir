@@ -3526,6 +3526,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
         const thoughtFileName = fileTitle.toLowerCase();
         const isThoughtFile = /^thought-\d+\.(thought|png)/i.test(thoughtFileName);
         const isTextFile = mimeCategory === 'text' || file.fileType === 'text' || file.fileType === 'thought';
+        const isPDF = mimeCategory === 'application' && (file.fileType === 'pdf' || file.name.toLowerCase().endsWith('.pdf'));
         
         let existingTextPost = existingMetadata?.textPost || existingMetadata?.thought || (file as any).textPost || (file as any).thought;
         
@@ -3574,14 +3575,53 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
           }
         }
         
+        // CRITICAL: If this is a PDF and we don't have PDF metadata, load it from the API database
+        let existingPdfPageThumbnailIds = existingMetadata?.pdfPageThumbnailIds;
+        let existingPdfPageThumbnailTokens = existingMetadata?.pdfPageThumbnailTokens;
+        let existingPdfFileId = existingMetadata?.pdfFileId;
+        let existingThumbnailFileId = existingMetadata?.thumbnailFileId;
+        
+        if (isPDF && (!existingPdfPageThumbnailIds || existingPdfPageThumbnailIds.length === 0)) {
+          try {
+            console.log(`[handleTogglePublic] Loading PDF metadata from API database for ${file.id}...`);
+            const targetFileId = file.id || file.backendFileId;
+            const apiResponse = await fetch(
+              `${apiEndpoint}/api/aggregator/metadata-index/${encodeURIComponent(targetFileId)}${authenticatedUser?.accessToken ? `?accountId=${encodeURIComponent(file.backend || '')}` : ''}`,
+              {
+                headers: {
+                  ...(authenticatedUser?.accessToken && {
+                    'Authorization': `Bearer ${authenticatedUser.accessToken}`
+                  })
+                }
+              }
+            );
+            
+            if (apiResponse.ok) {
+              const apiMetadata = await apiResponse.json();
+              if (apiMetadata.metadata) {
+                const dbMetadata = typeof apiMetadata.metadata === 'string' 
+                  ? JSON.parse(apiMetadata.metadata) 
+                  : apiMetadata.metadata;
+                
+                if (dbMetadata.pdfPageThumbnailIds && Array.isArray(dbMetadata.pdfPageThumbnailIds) && dbMetadata.pdfPageThumbnailIds.length > 0) {
+                  existingPdfPageThumbnailIds = dbMetadata.pdfPageThumbnailIds;
+                  existingPdfPageThumbnailTokens = dbMetadata.pdfPageThumbnailTokens || [];
+                  existingPdfFileId = dbMetadata.pdfFileId;
+                  existingThumbnailFileId = dbMetadata.thumbnailFileId;
+                  console.log(`[handleTogglePublic] ✅ Loaded PDF metadata from API database: ${existingPdfPageThumbnailIds.length} thumbnails`);
+                }
+              }
+            }
+          } catch (error) {
+            console.warn(`[handleTogglePublic] Failed to load PDF metadata from API database:`, error);
+            // Continue without PDF metadata - user can manually fix later
+          }
+        }
+        
         const existingDescription = existingMetadata?.description || '';
         const existingKeywords = existingMetadata?.keywords || existingMetadata?.tags || [];
         const existingSubjects = existingMetadata?.subjects || [];
         const existingFeedCategories = existingMetadata?.feedCategories || [];
-        const existingPdfPageThumbnailIds = existingMetadata?.pdfPageThumbnailIds;
-        const existingPdfPageThumbnailTokens = existingMetadata?.pdfPageThumbnailTokens;
-        const existingPdfFileId = existingMetadata?.pdfFileId;
-        const existingThumbnailFileId = existingMetadata?.thumbnailFileId;
         
         const publicMetadata: PublicMetadata = {
           "@context": [
@@ -3603,14 +3643,15 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
           uploadDate: file.modifiedTime || new Date().toISOString(),
           fileType: mimeCategory,
           
-          // Preserve thought/textPost content if it exists
-          ...(existingTextPost && { textPost: existingTextPost, thought: existingTextPost }),
+          // CRITICAL: Always include textPost/thought (even if null) so backend can preserve/clear it
+          textPost: existingTextPost || null,
+          thought: existingTextPost || null,
           
-          // Preserve PDF slideshow data if it exists
-          ...(existingPdfPageThumbnailIds && { pdfPageThumbnailIds: existingPdfPageThumbnailIds }),
-          ...(existingPdfPageThumbnailTokens && { pdfPageThumbnailTokens: existingPdfPageThumbnailTokens }),
-          ...(existingPdfFileId && { pdfFileId: existingPdfFileId }),
-          ...(existingThumbnailFileId && { thumbnailFileId: existingThumbnailFileId }),
+          // CRITICAL: Always include PDF slideshow data (even if null/empty) so backend can preserve/clear it
+          pdfPageThumbnailIds: existingPdfPageThumbnailIds || null,
+          pdfPageThumbnailTokens: existingPdfPageThumbnailTokens || null,
+          pdfFileId: existingPdfFileId || null,
+          thumbnailFileId: existingThumbnailFileId || null,
           
           // Preserve subjects and feed categories
           ...(existingSubjects.length > 0 && { subjects: existingSubjects }),
@@ -3812,15 +3853,15 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
                     fileType: publicMetadata.fileType || 'other',
                     uploadDate: publicMetadata.uploadDate || new Date().toISOString(),
                     subjects: publicMetadata.subjects || [],
-                    // CRITICAL: Include textPost/thought content so thoughts render properly
-                    textPost: publicMetadata.textPost,
-                    thought: publicMetadata.thought,
-                    // Include PDF slideshow data
-                    pdfPageThumbnailIds: publicMetadata.pdfPageThumbnailIds,
-                    pdfPageThumbnailTokens: publicMetadata.pdfPageThumbnailTokens,
-                    pdfFileId: publicMetadata.pdfFileId,
-                    thumbnailFileId: publicMetadata.thumbnailFileId,
-                    feedCategories: publicMetadata.feedCategories,
+                    // CRITICAL: Always include textPost/thought (even if null) so backend can preserve/clear it
+                    textPost: publicMetadata.textPost ?? null,
+                    thought: publicMetadata.thought ?? null,
+                    // CRITICAL: Always include PDF slideshow data (even if null) so backend can preserve/clear it
+                    pdfPageThumbnailIds: publicMetadata.pdfPageThumbnailIds ?? null,
+                    pdfPageThumbnailTokens: publicMetadata.pdfPageThumbnailTokens ?? null,
+                    pdfFileId: publicMetadata.pdfFileId ?? null,
+                    thumbnailFileId: publicMetadata.thumbnailFileId ?? null,
+                    feedCategories: publicMetadata.feedCategories || [],
                   }),
                 }
               );
