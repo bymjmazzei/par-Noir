@@ -2624,12 +2624,14 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
               const sessionId = authenticatedUser?.id;
               const credentials = sessionId ? SecureCredentialManager.getCredentials(sessionId) : null;
               
-              // SECURITY: Get pnName from credentials (secrets), publicKey from resolvedAuth (public)
-              if (credentials?.pnName && credentials?.passcode && resolvedAuth?.publicKey) {
+              // SECURITY: Get pnName from credentials (secrets), publicKey from resolvedAuth or authenticatedUser (public)
+              const publicKey = resolvedAuth?.publicKey || authenticatedUser?.publicKey;
+              
+              if (credentials?.pnName && credentials?.passcode && publicKey) {
                 pnIdentifier = await VolumeIdGenerator.generateVolumeId({
                   pnName: credentials.pnName,
                   passcode: credentials.passcode,
-                  publicKey: resolvedAuth.publicKey
+                  publicKey: publicKey
                 });
                 console.log(`✅ [Metadata] Generated pN identifier (VolumeIdGenerator): ${pnIdentifier}`);
                 console.log(`📁 [Metadata] Expected folder: "par Noir - ${pnIdentifier}"`);
@@ -2643,6 +2645,14 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
                     console.warn(`⚠️ [Metadata] Using CORRECT identifier: ${pnIdentifier}`);
                   }
                 }
+              } else {
+                console.warn('⚠️ [Metadata] Missing credentials for volume ID generation:', {
+                  hasPnName: !!credentials?.pnName,
+                  hasPasscode: !!credentials?.passcode,
+                  hasPublicKey: !!publicKey,
+                  hasResolvedAuth: !!resolvedAuth,
+                  hasAuthenticatedUser: !!authenticatedUser
+                });
               }
             } catch (volumeIdError) {
               console.warn('⚠️ [Metadata] Failed to generate volume ID, using fallback:', volumeIdError);
@@ -3663,18 +3673,26 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
           const sessionId = authenticatedUser?.id;
           const credentials = sessionId ? SecureCredentialManager.getCredentials(sessionId) : null;
           
-          // SECURITY: Get pnName from credentials (secrets), publicKey from resolvedAuth (public)
-          if (credentials?.pnName && credentials?.passcode && resolvedAuth?.publicKey) {
+          // SECURITY: Get pnName from credentials (secrets), publicKey from resolvedAuth or authenticatedUser (public)
+          const publicKey = resolvedAuth?.publicKey || authenticatedUser?.publicKey;
+          
+          if (credentials?.pnName && credentials?.passcode && publicKey) {
             // Use VolumeIdGenerator for consistent identifier (same as folder naming)
             metadataPnIdentifier = await VolumeIdGenerator.generateVolumeId({
               pnName: credentials.pnName,
               passcode: credentials.passcode,
-              publicKey: resolvedAuth.publicKey
+              publicKey: publicKey
             });
             console.log('📁 [Phase 3] Generated pN identifier (standardized):', metadataPnIdentifier);
           } else {
             // STANDARDIZED: Only use VolumeIdGenerator - no fallbacks
-            console.warn('⚠️ [Phase 3] Cannot generate standardized pN identifier - credentials required');
+            console.warn('⚠️ [Phase 3] Cannot generate standardized pN identifier - credentials required:', {
+              hasPnName: !!credentials?.pnName,
+              hasPasscode: !!credentials?.passcode,
+              hasPublicKey: !!publicKey,
+              hasResolvedAuth: !!resolvedAuth,
+              hasAuthenticatedUser: !!authenticatedUser
+            });
             console.warn('⚠️ [Phase 3] Metadata indexing skipped - credentials must be available');
           }
         } catch (err) {
