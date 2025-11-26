@@ -174,6 +174,10 @@ export class AggregatorMetadataServiceDB {
     const db = getDatabasePool();
 
     try {
+      // If filtering by feedId, use INNER JOIN to only get files in that feed
+      // Otherwise use LEFT JOIN to get all files with their feedIds
+      const joinType = filters?.feedId ? 'INNER' : 'LEFT';
+      
       let query = `
         SELECT 
           am.file_id, 
@@ -182,7 +186,7 @@ export class AggregatorMetadataServiceDB {
           am.pn_identifier,
           COALESCE(ARRAY_AGG(DISTINCT fp.feed_id::text) FILTER (WHERE fp.feed_id IS NOT NULL), ARRAY[]::text[]) as feed_ids
         FROM aggregator_metadata am
-        LEFT JOIN feed_posts fp ON am.file_id = fp.file_id
+        ${joinType} JOIN feed_posts fp ON am.file_id = fp.file_id
         WHERE am.metadata->>'isPublic' = 'true'
         AND (
           am.metadata->>'isNSFW' IS NULL 
@@ -198,10 +202,18 @@ export class AggregatorMetadataServiceDB {
           OR (am.metadata->>'isNSFW')::text = 'true'
           OR (am.metadata->'isNSFW')::boolean = true
         )
-        GROUP BY am.file_id, am.metadata, am.submitted_at, am.pn_identifier
       `;
       const params: any[] = [];
       let paramIndex = 1;
+      
+      // Add feedId filter if provided
+      if (filters?.feedId) {
+        query += ` AND fp.feed_id = $${paramIndex}`;
+        params.push(filters.feedId);
+        paramIndex++;
+      }
+      
+      query += ` GROUP BY am.file_id, am.metadata, am.submitted_at, am.pn_identifier`;
 
       // Apply filters
       if (filters?.fileType) {
