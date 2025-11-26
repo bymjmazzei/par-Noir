@@ -122,6 +122,9 @@ export class MetadataIndexService {
               // CRITICAL FIX: Ensure fileId is set from entry-level fileId if missing in metadata
               // This handles cases where metadata.fileId might be missing after upgrade
               fileId: metadata.fileId || entry.fileId,
+              // Explicitly preserve title field (cleaned display name) - prioritize over name
+              // title is cleaned (no thumb_ prefix, no extension), name has thumb_ prefix for query matching
+              title: metadata.title || metadata.name || undefined,
               // Explicitly preserve textPost and thought fields
               // FIX: Ensure both textPost and thought are preserved even if one is missing
               textPost: metadata.textPost || metadata.thought || undefined,
