@@ -2312,9 +2312,13 @@ class ProductionServer {
             }
           }
           
-          // Create companion metadata file when file is public (either becoming public OR already public but missing companion metadata)
-          if (finalIsPublic) {
-            console.log(`[MetadataIndex PUT] File ${fileId} is public (isBecomingPublic=${isBecomingPublic}) - checking/creating companion metadata...`);
+          // Create companion metadata file for ALL files at upload/creation time (just like share tokens)
+          // Companion metadata is created regardless of public/private status - it's just metadata storage
+          // This matches the behavior of share tokens which are generated at upload time
+          const shouldCreateCompanionMetadata = !fileExistedBefore; // Only create on initial upload, not on updates
+          
+          if (shouldCreateCompanionMetadata) {
+            console.log(`[MetadataIndex PUT] File ${fileId} is new - creating companion metadata (isPublic=${finalIsPublic})...`);
             try {
               const authHeader = req.headers.authorization;
               if (authHeader && authHeader.startsWith('Bearer ')) {
@@ -2451,7 +2455,7 @@ class ProductionServer {
                             originalName: originalFileName,
                             mimeType: originalMimeType,
                             size: parseInt(driveFile.size || '0', 10),
-                            visibility: 'public' as const,
+                            visibility: finalIsPublic ? 'public' as const : 'private' as const,
                             uploadedAt: driveFile.createdTime || new Date().toISOString(),
                             owner: {
                               did: tokenPayload.did,
@@ -2492,7 +2496,7 @@ class ProductionServer {
                             originalName: originalFileName,
                             mimeType: originalMimeType,
                             size: parseInt(driveFile.size || '0', 10),
-                            visibility: 'public' as const,
+                            visibility: finalIsPublic ? 'public' as const : 'private' as const,
                             uploadedAt: driveFile.createdTime || new Date().toISOString(),
                             owner: {
                               did: tokenPayload.did,
@@ -2530,7 +2534,7 @@ class ProductionServer {
                           originalName: originalFileName,
                           mimeType: originalMimeType,
                           size: parseInt(driveFile.size || '0', 10),
-                          visibility: 'public' as const,
+                          visibility: finalIsPublic ? 'public' as const : 'private' as const,
                           uploadedAt: driveFile.createdTime || new Date().toISOString(),
                           owner: {
                             did: tokenPayload.did,
@@ -2560,25 +2564,29 @@ class ProductionServer {
                           console.warn(`[MetadataIndex] Failed to update owner index (non-critical):`, ownerIndexError?.message || ownerIndexError);
                         }
                         
-                        // Update public file index (adds file to public index)
-                        if (!companionMetadataForIndex.publicToken) {
-                          console.warn(`[MetadataIndex] No publicToken found for public file ${fileId} - file may not load in public feed`);
+                        // Update public file index (only if file is public)
+                        if (finalIsPublic) {
+                          if (!companionMetadataForIndex.publicToken) {
+                            console.warn(`[MetadataIndex] No publicToken found for public file ${fileId} - file may not load in public feed`);
+                          } else {
+                            console.log(`[MetadataIndex] Using publicToken for public file index update: ${fileId}`);
+                          }
+                          
+                          try {
+                            await this.updatePublicFileIndex(
+                              accessToken,
+                              pnIdentifier,
+                              metadataFolderId,
+                              pnFolderId,
+                              companionMetadataForIndex
+                            );
+                            console.log(`[MetadataIndex] Successfully updated public file index for file ${fileId}`);
+                          } catch (indexError: any) {
+                            console.error(`[MetadataIndex] Failed to update public file index:`, indexError?.message || indexError);
+                            console.error(`[MetadataIndex] Stack trace:`, indexError?.stack);
+                          }
                         } else {
-                          console.log(`[MetadataIndex] Using publicToken for public file index update: ${fileId}`);
-                        }
-                        
-                        try {
-                          await this.updatePublicFileIndex(
-                            accessToken,
-                            pnIdentifier,
-                            metadataFolderId,
-                            pnFolderId,
-                            companionMetadataForIndex
-                          );
-                          console.log(`[MetadataIndex] Successfully updated public file index for file ${fileId}`);
-                        } catch (indexError: any) {
-                          console.error(`[MetadataIndex] Failed to update public file index:`, indexError?.message || indexError);
-                          console.error(`[MetadataIndex] Stack trace:`, indexError?.stack);
+                          console.log(`[MetadataIndex] File ${fileId} is private - skipping public index update`);
                         }
                       }
                     }
