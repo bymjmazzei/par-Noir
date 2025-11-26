@@ -3072,8 +3072,9 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
         // Default to public content (isNSFW: false)
         // Users can mark content as NSFW during upload or edit
         
-        // Create metadata entry via API (this also updates owner index automatically)
-        console.log(`📝 [Upload] Saving metadata${pdfPageThumbnailIds.length > 0 ? ` with ${pdfPageThumbnailIds.length} PDF page thumbnails` : ''}`);
+        // Create metadata entry for MAIN FILE (private - not in public index)
+        // Main file is only used for downloads, thumbnail is what appears in feed
+        console.log(`📝 [Upload] Saving metadata for main file (private)${pdfPageThumbnailIds.length > 0 ? ` with ${pdfPageThumbnailIds.length} PDF page thumbnails` : ''}`);
         const metadataResponse = await fetch(`${apiEndpoint}/api/aggregator/metadata-index/${fileId}`, {
           method: 'PUT',
           headers: {
@@ -3086,14 +3087,14 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
             keywords: [],
             tags: [],
             fileType: fileType,
-            isPublic: true, // Default to public so files appear in feeds
-            publicToken: shareToken ? JSON.stringify(shareToken) : undefined, // Store share token for future use
+            isPublic: false, // Main file is PRIVATE - only thumbnail appears in public index
+            publicToken: shareToken ? JSON.stringify(shareToken) : undefined, // Store share token for downloads
             uploadDate: new Date().toISOString(),
-            isNSFW: false, // Default to public content
+            isNSFW: false,
             pdfPageThumbnailIds: pdfPageThumbnailIds.length > 0 ? pdfPageThumbnailIds : undefined, // Store PDF page thumbnail IDs for slideshow
             pdfPageThumbnailTokens: pdfPageThumbnailTokens.length > 0 ? pdfPageThumbnailTokens : undefined, // Store PDF page thumbnail tokens (NO API CALLS!)
             pdfFileId: pdfFileId, // Store original PDF file ID for on-demand rendering
-            thumbnailFileId: thumbnailFileId, // Store thumbnail file ID for fast feed loading
+            thumbnailFileId: thumbnailFileId, // Store thumbnail file ID reference
             // Include accountId in query params if needed
           }),
         });
