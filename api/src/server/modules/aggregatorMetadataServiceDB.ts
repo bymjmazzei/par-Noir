@@ -167,6 +167,7 @@ export class AggregatorMetadataServiceDB {
     fileType?: string;
     authorDid?: string;
     indexerId?: string;
+    feedId?: string;
     limit?: number;
     offset?: number;
   }): Promise<{ files: CentralIndexEntry[]; total: number; hasMore: boolean }> {
@@ -239,9 +240,11 @@ export class AggregatorMetadataServiceDB {
       
       // Get total count before pagination (for pagination info)
       // Note: This count doesn't include JS filters (tags, authorDid) for performance
+      const countJoinType = filters?.feedId ? 'INNER' : 'LEFT';
       const countQuery = `
-        SELECT COUNT(*) as count
+        SELECT COUNT(DISTINCT am.file_id) as count
         FROM aggregator_metadata am
+        ${countJoinType} JOIN feed_posts fp ON am.file_id = fp.file_id
         WHERE am.metadata->>'isPublic' = 'true'
         AND (
           am.metadata->>'isNSFW' IS NULL 
@@ -257,22 +260,24 @@ export class AggregatorMetadataServiceDB {
           OR (am.metadata->'isNSFW')::boolean = true
         )
         ${filters?.fileType ? `AND am.metadata->>'fileType' = $1` : ''}
+        ${filters?.feedId ? `AND fp.feed_id = $${filters?.fileType ? '2' : '1'}` : ''}
         ${filters?.indexerId ? `AND (
           am.metadata->'indexingPermissions' IS NULL
           OR am.metadata->'indexingPermissions'->>'mode' IS NULL
           OR (
             am.metadata->'indexingPermissions'->>'mode' = 'all'
-            AND NOT (COALESCE(am.metadata->'indexingPermissions'->'blocked', '[]'::jsonb) ? $${filters?.fileType ? '2' : '1'})
+            AND NOT (COALESCE(am.metadata->'indexingPermissions'->'blocked', '[]'::jsonb) ? $${filters?.fileType && filters?.feedId ? '3' : filters?.fileType || filters?.feedId ? '2' : '1'})
           )
           OR (
             am.metadata->'indexingPermissions'->>'mode' = 'custom'
-            AND (COALESCE(am.metadata->'indexingPermissions'->'allowed', '[]'::jsonb) ? $${filters?.fileType ? '2' : '1'})
-            AND NOT (COALESCE(am.metadata->'indexingPermissions'->'blocked', '[]'::jsonb) ? $${filters?.fileType ? '2' : '1'})
+            AND (COALESCE(am.metadata->'indexingPermissions'->'allowed', '[]'::jsonb) ? $${filters?.fileType && filters?.feedId ? '3' : filters?.fileType || filters?.feedId ? '2' : '1'})
+            AND NOT (COALESCE(am.metadata->'indexingPermissions'->'blocked', '[]'::jsonb) ? $${filters?.fileType && filters?.feedId ? '3' : filters?.fileType || filters?.feedId ? '2' : '1'})
           )
         )` : ''}
       `;
       const countParams: any[] = [];
       if (filters?.fileType) countParams.push(filters.fileType);
+      if (filters?.feedId) countParams.push(filters.feedId);
       if (filters?.indexerId) countParams.push(filters.indexerId);
       
       const countResult = await db.query(countQuery, countParams);
