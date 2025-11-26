@@ -9,6 +9,7 @@ import { FEED_CATEGORIES } from '../constants/feedCategories';
 import { Info, Heart, MessageCircle, Share2, Bookmark } from 'lucide-react';
 import { useUserState } from '../contexts/UserStateContext';
 import { getUserProfile } from '../services/profileService';
+import { cleanTitle } from '../utils/cleanTitle';
 
 interface DiscoveryPageProps {
   files: IndexedFile[];
@@ -310,10 +311,7 @@ export function DiscoveryPage({
         id: file.metadata.fileId,
         item: file,
         thumbnail: getThumbnail(file),
-        title: (() => {
-          const { cleanTitle } = require('../utils/cleanTitle');
-          return cleanTitle(file.metadata.name || file.metadata.title);
-        })(),
+        title: cleanTitle(file.metadata.name || file.metadata.title),
         subtitle: displayName,
         metadata: '',
         engagement: {

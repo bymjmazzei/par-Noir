@@ -8,6 +8,7 @@ import { IndexedFile, Feed } from '../types/aggregator';
 import { Grid, List, TrendingUp, Eye, Heart, MessageCircle, Share2, Users } from 'lucide-react';
 import { FullScreenFeed } from './FullScreenFeed';
 import { useUserState } from '../contexts/UserStateContext';
+import { cleanTitle } from '../utils/cleanTitle';
 
 interface CreatorFeedPageProps {
   creatorId: string;
@@ -334,10 +335,7 @@ export function CreatorFeedPage({
                     )}
                   </div>
                   <h3 className="text-white text-sm line-clamp-2 group-hover:text-blue-400 transition-colors">
-                    {(() => {
-                      const { cleanTitle } = require('../utils/cleanTitle');
-                      return cleanTitle(file.metadata.name || file.metadata.title);
-                    })()}
+                    {cleanTitle(file.metadata.name || file.metadata.title)}
                   </h3>
                   <p className="text-neutral-400 text-xs mt-1">
                     {new Date(file.metadata.uploadDate).toLocaleDateString()}
