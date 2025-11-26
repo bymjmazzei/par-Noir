@@ -3518,11 +3518,13 @@ This invitation expires in 24 hours.`;
               if (existingDataPoint.encryptedUserData) {
                 try {
                   // SECURITY: Decryption requires BOTH pnName and passcode
-                  const decryptedUserDataJson = await IdentityCrypto.decrypt(
-                    existingDataPoint.encryptedUserData,
+                  // encryptedUserData is stored as JSON string of EncryptedData object
+                  const encryptedDataObj = JSON.parse(existingDataPoint.encryptedUserData);
+                  const decryptedUserDataJson = await IdentityCrypto.decryptData(
+                    encryptedDataObj,
                     credentials.pnName,
-          credentials.passcode
-        );
+                    credentials.passcode
+                  );
                   existingData = JSON.parse(decryptedUserDataJson);
                   console.log('[App] Decrypted existing userData for editing:', existingData);
                 } catch (error) {
@@ -3593,11 +3595,13 @@ This invitation expires in 24 hours.`;
         try {
           const userDataJson = JSON.stringify(userData);
           // SECURITY: Encryption requires BOTH pnName and passcode
-          encryptedUserData = await IdentityCrypto.encrypt(
+          const encryptedDataObj = await IdentityCrypto.encryptData(
             userDataJson,
             credentials.pnName,
-              credentials.passcode
-            );
+            credentials.passcode
+          );
+          // Serialize EncryptedData object to string for storage
+          encryptedUserData = JSON.stringify(encryptedDataObj);
         } catch (error) {
           console.warn('Failed to encrypt userData, continuing without it:', error);
         }
