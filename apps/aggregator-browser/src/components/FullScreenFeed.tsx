@@ -592,6 +592,27 @@ export function FullScreenFeed({
         const currentContent = textPostData?.content || file.description || file.name || file.title || '';
         const isJustFilename = /^thought-\d+\.(thought|png)/i.test(currentContent);
         
+        // ALWAYS log when we detect a thought that needs loading (even if already loading/loaded)
+        if ((isThoughtFile || isTextPost) && (isJustFilename || !textPostData?.content)) {
+          console.log(`[FullScreenFeed] 🔍 Thought detected but content missing:`, {
+            fileId,
+            isThoughtFile,
+            isTextPost,
+            hasTextPostData: !!textPostData,
+            textPostDataContent: textPostData?.content,
+            currentContent: currentContent.substring(0, 50),
+            isJustFilename,
+            alreadyLoaded: loadedThoughtContent.has(fileId),
+            alreadyLoading: loadingThoughtsRef.current.has(fileId),
+            fileType: file.fileType,
+            fileName: file.name || file.title,
+            metadataKeys: Object.keys(indexedFile.metadata || {}),
+            metadataTextPost: (indexedFile.metadata as any)?.textPost ? 'EXISTS' : 'MISSING',
+            metadataThought: (indexedFile.metadata as any)?.thought ? 'EXISTS' : 'MISSING',
+            fullMetadata: indexedFile.metadata
+          });
+        }
+        
         if ((isThoughtFile || isTextPost) && (isJustFilename || !textPostData?.content) && !loadedThoughtContent.has(fileId) && !loadingThoughtsRef.current.has(fileId)) {
           loadingThoughtsRef.current.add(fileId);
           console.log(`[FullScreenFeed] Loading thought content for ${fileId}...`);
