@@ -18,6 +18,61 @@ import { formatTimestamp } from '../utils/formatTimestamp';
 import { decryptWithToken, ShareToken } from '../utils/tokenDecryption';
 // ImageSlideshow removed - PDF handling integrated directly into FullScreenFeed
 
+// Helper function to resize image blob to thumbnail size (max 300x300)
+async function resizeImageBlob(blob: Blob, maxWidth: number, maxHeight: number): Promise<Blob> {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    const url = URL.createObjectURL(blob);
+    
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      
+      // Calculate dimensions maintaining aspect ratio
+      let width = img.width;
+      let height = img.height;
+      
+      if (width > height) {
+        if (width > maxWidth) {
+          height = (height * maxWidth) / width;
+          width = maxWidth;
+        }
+      } else {
+        if (height > maxHeight) {
+          width = (width * maxHeight) / height;
+          height = maxHeight;
+        }
+      }
+      
+      const canvas = document.createElement('canvas');
+      canvas.width = width;
+      canvas.height = height;
+      
+      const ctx = canvas.getContext('2d');
+      if (!ctx) {
+        reject(new Error('Failed to get canvas context'));
+        return;
+      }
+      
+      ctx.drawImage(img, 0, 0, width, height);
+      
+      canvas.toBlob((thumbnailBlob) => {
+        if (thumbnailBlob) {
+          resolve(thumbnailBlob);
+        } else {
+          reject(new Error('Failed to create thumbnail blob'));
+        }
+      }, 'image/jpeg', 0.8);
+    };
+    
+    img.onerror = () => {
+      URL.revokeObjectURL(url);
+      reject(new Error('Failed to load image for thumbnail'));
+    };
+    
+    img.src = url;
+  });
+}
+
 interface FullScreenFeedProps {
   files: IndexedFile[];
   currentIndex: number;
@@ -918,15 +973,16 @@ export function FullScreenFeed({
                       thumbnailBlob = blob;
                     }
                     
-                    const thumbnailUrlObj = URL.createObjectURL(thumbnailBlob);
+                    // CRITICAL: Resize thumbnail to 300x300 max to ensure feed only shows thumbnails, not full images
+                    // The thumbnail file might be 800x800, but we want 300x300 for feed display
+                    const resizedThumbnailBlob = await resizeImageBlob(thumbnailBlob, 300, 300);
+                    const thumbnailUrlObj = URL.createObjectURL(resizedThumbnailBlob);
                     setThumbnails(prev => {
                       const newMap = new Map(prev);
                       newMap.set(fileId, thumbnailUrlObj);
                       return newMap;
                     });
                     
-                    // Load full image in background (optional - user can tap to load full quality)
-                    // This is handled by the existing logic below if needed
                     return; // Skip to next file, thumbnail is loaded
                   }
                 }
@@ -1004,12 +1060,25 @@ export function FullScreenFeed({
                     }
                     
                     if (thumbnailBlob) {
-                      const thumbnailUrlObj = URL.createObjectURL(thumbnailBlob);
-                      setThumbnails(prev => {
-                        const newMap = new Map(prev);
-                        newMap.set(fileId, thumbnailUrlObj);
-                        return newMap;
-                      });
+                      // CRITICAL: Resize thumbnail to 300x300 max to ensure feed only shows thumbnails, not full images
+                      try {
+                        const resizedThumbnailBlob = await resizeImageBlob(thumbnailBlob, 300, 300);
+                        const thumbnailUrlObj = URL.createObjectURL(resizedThumbnailBlob);
+                        setThumbnails(prev => {
+                          const newMap = new Map(prev);
+                          newMap.set(fileId, thumbnailUrlObj);
+                          return newMap;
+                        });
+                      } catch (resizeError) {
+                        // If resize fails, use original thumbnail blob
+                        console.warn(`[FullScreenFeed] Failed to resize thumbnail, using original:`, resizeError);
+                        const thumbnailUrlObj = URL.createObjectURL(thumbnailBlob);
+                        setThumbnails(prev => {
+                          const newMap = new Map(prev);
+                          newMap.set(fileId, thumbnailUrlObj);
+                          return newMap;
+                        });
+                      }
                       return; // Success - thumbnail loaded via API
                     }
                   }
@@ -1045,7 +1114,9 @@ export function FullScreenFeed({
               if (token) {
                 try {
                   const decryptedBlob = await decryptWithToken(token);
-                  const thumbnailUrlObj = URL.createObjectURL(decryptedBlob);
+                  // CRITICAL: Resize PDF thumbnail to 300x300 max to ensure feed only shows thumbnails
+                  const resizedThumbnailBlob = await resizeImageBlob(decryptedBlob, 300, 300);
+                  const thumbnailUrlObj = URL.createObjectURL(resizedThumbnailBlob);
                   
                   setThumbnails(prev => {
                     const newMap = new Map(prev);
@@ -2240,7 +2311,7 @@ export function FullScreenFeed({
                     src={thumbnailUrl}
                     alt={fileName}
                     style={{ 
-                        // Fill container while maintaining aspect ratio - use max of width/height
+                        // Fill container while maintaining aspect ratio
                         height: '100%',
                         width: '100%',
                         objectFit: 'contain', // Maintain aspect ratio, fill container
