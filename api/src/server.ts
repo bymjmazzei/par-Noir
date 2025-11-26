@@ -2621,8 +2621,8 @@ class ProductionServer {
             console.error(`[MetadataIndex] Stack trace:`, metadataError?.stack);
           }
         } else {
-            console.log(`[MetadataIndex PUT] File ${fileId} already existed (fileExistedBefore=${fileExistedBefore}) - skipping companion metadata creation`);
-          }
+          console.log(`[MetadataIndex PUT] File ${fileId} already existed (fileExistedBefore=${fileExistedBefore}) - skipping companion metadata creation`);
+        }
         }
 
         // Handle isTopPost update
