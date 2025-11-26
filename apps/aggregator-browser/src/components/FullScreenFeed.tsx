@@ -77,8 +77,10 @@ export function FullScreenFeed({
   const [thumbnails, setThumbnails] = useState<Map<string, string>>(externalThumbnails || new Map());
   const [pdfPageThumbnails, setPdfPageThumbnails] = useState<Map<string, Map<number, string>>>(new Map()); // fileId -> pageIndex -> thumbnailUrl
   const [pdfCurrentPage, setPdfCurrentPage] = useState<Map<string, number>>(new Map()); // fileId -> current page index (0-based)
+  const [loadedThoughtContent, setLoadedThoughtContent] = useState<Map<string, any>>(new Map()); // fileId -> textPostData
   const accountIdCacheRef = useRef<string | null>(null); // Cache accountId to avoid repeated API calls
   const thoughtDetectionLogged = useRef<Set<string>>(new Set()); // Track which thoughts we've logged to reduce console spam
+  const loadingThoughtsRef = useRef<Set<string>>(new Set()); // Track which thoughts are currently loading
   
   // Sync external thumbnails/videoBlobs when they change
   // Merge instead of replace to preserve PDF thumbnails loaded internally
@@ -1471,12 +1473,17 @@ export function FullScreenFeed({
           >
             {/* Text Post / Thought - Render as its own tile, not an overlay */}
             {(isTextPost || textPostData) && (() => {
-              // Ensure we have content to render - create fallback if needed (define first!)
-              const contentToRender = textPostData?.content || 
+              // Check if content is just a filename - if so, we need to load the actual thought file
+              const currentContent = textPostData?.content || file.description || file.name || file.title || '';
+              const isJustFilename = /^thought-\d+\.(thought|png)/i.test(currentContent);
+              
+              // If content is just a filename, we'll need to load it (handled in useEffect below)
+              // For now, use a placeholder
+              const contentToRender = isJustFilename ? 'Loading thought...' : (textPostData?.content || 
                                      file.description || 
                                      file.name || 
                                      file.title || 
-                                     (thoughtFileName ? thoughtFileName.replace(/\.(thought|png)$/i, '') : 'Thought');
+                                     (thoughtFileName ? thoughtFileName.replace(/\.(thought|png)$/i, '') : 'Thought'));
               
               // Always log when rendering thoughts to debug black tiles issue
               console.log(`[FullScreenFeed] Rendering thought/textPost for ${fileId}:`, {
@@ -1484,6 +1491,7 @@ export function FullScreenFeed({
                 hasTextPostData: !!textPostData,
                 hasContent: !!textPostData?.content,
                 contentToRender,
+                isJustFilename,
                 fileType: file.fileType,
                 fileName: file.name || file.title
               });
