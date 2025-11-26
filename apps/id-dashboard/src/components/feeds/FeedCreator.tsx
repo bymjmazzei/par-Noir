@@ -1,16 +1,13 @@
 /**
  * Feed Creator Component
- * Create and configure a new paid feed with enhanced top post
+ * Simple "Buy Feed" flow - no form, just payment → verification → activation
  */
 
 import React, { useState, useEffect } from 'react';
-import { X, Plus, Image, Globe, DollarSign, Settings, Loader, CheckCircle } from 'lucide-react';
+import { X, Loader, CheckCircle, DollarSign } from 'lucide-react';
 import { FeedService, Feed } from '../../services/feeds/FeedService';
-// Removed EnhancedThoughtCreator import - top post creation moved to browser
 import { IdentityVerificationModal } from '../IdentityVerificationModal';
 import { CoinbaseProxy, CheckoutRequest } from '../../utils/coinbaseProxy';
-import type { FeedCategory } from '../../types/aggregator';
-import { FEED_CATEGORY_LIST } from '../../constants/feedCategories';
 
 interface FeedCreatorProps {
   isOpen: boolean;
@@ -25,121 +22,25 @@ export const FeedCreator: React.FC<FeedCreatorProps> = ({
   onFeedCreated,
   authenticatedUser
 }) => {
-  const [step, setStep] = useState<'basic' | 'pricing'>('basic');
-  const [feedData, setFeedData] = useState<Partial<Feed>>({
-    feedName: '',
-    feedCategory: undefined,
-    feedDescription: '',
-    isPaid: true,
-    monthlyPrice: 5.00,
-    annualPrice: 50.00,
-    subdomain: '',
-    branding: {
-      avatar: '',
-      bannerImage: '',
-      bio: '',
-      links: [] as Array<{ label: string; url: string }>
-    }
-  });
-  // Removed topPostContent - will be handled in browser
   const [isCreating, setIsCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   
   // Payment & Verification state
   const [showVerificationModal, setShowVerificationModal] = useState(false);
-  const [pendingFeedData, setPendingFeedData] = useState<{
-    checkoutId: string;
-    feedData: Partial<Feed>;
-    topPostContent: EnhancedPostContent | null;
-  } | null>(null);
+  const [pendingCheckoutId, setPendingCheckoutId] = useState<string | null>(null);
   const [paymentStatus, setPaymentStatus] = useState<'idle' | 'processing' | 'paid' | 'failed'>('idle');
   const [checkoutUrl, setCheckoutUrl] = useState<string | null>(null);
 
   if (!isOpen) return null;
 
-  const handleBasicInfoChange = (field: keyof Feed, value: any) => {
-    setFeedData(prev => ({ ...prev, [field]: value }));
-  };
-
-  const handleBrandingChange = (field: string, value: any) => {
-    setFeedData(prev => {
-      const currentBranding = prev.branding || {
-        avatar: '',
-        bannerImage: '',
-        bio: '',
-        links: []
-      };
-      
-      // Ensure links is always an array
-      const updatedBranding = {
-        ...currentBranding,
-        [field]: field === 'links' && !Array.isArray(value) ? [] : value,
-        links: field === 'links' 
-          ? (Array.isArray(value) ? value : [])
-          : (Array.isArray(currentBranding.links) ? currentBranding.links : [])
-      };
-      
-      return {
-        ...prev,
-        branding: updatedBranding
-      };
-    });
-  };
-
-  const handleAddLink = () => {
-    setFeedData(prev => {
-      const currentLinks = Array.isArray(prev.branding?.links) ? prev.branding.links : [];
-      return {
-        ...prev,
-        branding: {
-          ...prev.branding,
-          links: [
-            ...currentLinks,
-            { label: '', url: '' }
-          ]
-        }
-      };
-    });
-  };
-
-  const handleUpdateLink = (index: number, field: 'label' | 'url', value: string) => {
-    setFeedData(prev => {
-      const currentLinks = Array.isArray(prev.branding?.links) ? prev.branding.links : [];
-      const links = [...currentLinks];
-      links[index] = { ...(links[index] || { label: '', url: '' }), [field]: value };
-      return {
-        ...prev,
-        branding: {
-          ...prev.branding,
-          links
-        }
-      };
-    });
-  };
-
-  const handleRemoveLink = (index: number) => {
-    setFeedData(prev => {
-      const currentLinks = Array.isArray(prev.branding?.links) ? prev.branding.links : [];
-      const links = [...currentLinks];
-      links.splice(index, 1);
-      return {
-        ...prev,
-        branding: {
-          ...prev.branding,
-          links
-        }
-      };
-    });
-  };
-
   // Poll for payment status after checkout is created
   useEffect(() => {
-    if (!checkoutUrl || !pendingFeedData) return;
+    if (!checkoutUrl || !pendingCheckoutId) return;
 
     const pollInterval = setInterval(async () => {
       try {
         // Check payment status via API
-        const response = await fetch(`${import.meta.env.VITE_API_ENDPOINT || 'https://api.parnoir.com'}/api/feeds/payment-status/${pendingFeedData.checkoutId}`, {
+        const response = await fetch(`${import.meta.env.VITE_API_ENDPOINT || 'https://api.parnoir.com'}/api/feeds/payment-status/${pendingCheckoutId}`, {
           headers: {
             'Authorization': `Bearer ${JSON.parse(localStorage.getItem('authenticated_user') || '{}').accessToken || ''}`
           }
@@ -164,16 +65,11 @@ export const FeedCreator: React.FC<FeedCreatorProps> = ({
     }, 3000); // Poll every 3 seconds
 
     return () => clearInterval(pollInterval);
-  }, [checkoutUrl, pendingFeedData]);
+  }, [checkoutUrl, pendingCheckoutId]);
 
-  const handleCreateFeed = async () => {
+  const handleBuyFeed = async () => {
     if (!authenticatedUser) {
       setError('User not authenticated');
-      return;
-    }
-
-    if (!feedData.feedName) {
-      setError('Feed name is required');
       return;
     }
 
@@ -184,8 +80,8 @@ export const FeedCreator: React.FC<FeedCreatorProps> = ({
     try {
       // Create Coinbase Commerce checkout for feed purchase
       const checkoutData: CheckoutRequest = {
-        name: `Feed Creation: ${feedData.feedName}`,
-        description: `Create and activate your paid feed "${feedData.feedName}"`,
+        name: 'Feed Purchase',
+        description: 'Purchase a new feed',
         pricing_type: 'fixed_price',
         local_price: {
           amount: '5.00', // $5 one-time fee for feed creation
@@ -194,26 +90,13 @@ export const FeedCreator: React.FC<FeedCreatorProps> = ({
         requested_info: ['email'],
         metadata: {
           licenseType: 'feed_creation',
-          identityHash: authenticatedUser.id,
-          licensePrice: '5.00',
-          feedName: feedData.feedName,
-          feedCategory: feedData.feedCategory || '',
-          feedDescription: feedData.feedDescription || '',
-          monthlyPrice: feedData.monthlyPrice?.toString() || '5.00',
-          annualPrice: feedData.annualPrice?.toString() || '50.00',
-          subdomain: feedData.subdomain || '',
           creatorDid: authenticatedUser.id
         }
       };
 
       const checkout = await CoinbaseProxy.createCheckout(checkoutData);
       
-      // Store pending feed data
-      setPendingFeedData({
-        checkoutId: checkout.id,
-        feedData: feedData
-      });
-      
+      setPendingCheckoutId(checkout.id);
       setCheckoutUrl(checkout.hosted_url || null);
 
       // Open payment window
@@ -223,7 +106,7 @@ export const FeedCreator: React.FC<FeedCreatorProps> = ({
         throw new Error('Failed to get checkout URL');
       }
     } catch (err) {
-      console.error('Feed creation error:', err);
+      console.error('Feed purchase error:', err);
       setError(err instanceof Error ? err.message : 'Failed to create payment checkout');
       setPaymentStatus('failed');
       setIsCreating(false);
@@ -231,8 +114,8 @@ export const FeedCreator: React.FC<FeedCreatorProps> = ({
   };
 
   const handleVerificationComplete = async (verifiedData: any) => {
-    if (!pendingFeedData || !authenticatedUser) {
-      setError('Missing feed data or authentication');
+    if (!pendingCheckoutId || !authenticatedUser) {
+      setError('Missing checkout ID or authentication');
       return;
     }
 
@@ -241,9 +124,9 @@ export const FeedCreator: React.FC<FeedCreatorProps> = ({
     setError(null);
 
     try {
-      // Activate feed: creates sub-pN, Google Drive folder, and activates feed
+      // Activate feed: creates sub-pN with tokens, Google Drive folder, and activates feed
       const feed = await FeedService.activateFeedAfterVerification(
-        pendingFeedData.checkoutId,
+        pendingCheckoutId,
         {
           verificationId: verifiedData.verificationId,
           verifiedZKPs: verifiedData.dataPoints
@@ -253,24 +136,8 @@ export const FeedCreator: React.FC<FeedCreatorProps> = ({
       onFeedCreated?.(feed);
       onClose();
       
-      // Reset form
-      setFeedData({
-        feedName: '',
-        feedCategory: undefined,
-        feedDescription: '',
-        isPaid: true,
-        monthlyPrice: 5.00,
-        annualPrice: 50.00,
-        subdomain: '',
-        branding: {
-          avatar: '',
-          bannerImage: '',
-          bio: '',
-          links: []
-        }
-      });
-      setStep('basic');
-      setPendingFeedData(null);
+      // Reset state
+      setPendingCheckoutId(null);
       setPaymentStatus('idle');
       setCheckoutUrl(null);
     } catch (err) {
@@ -283,40 +150,16 @@ export const FeedCreator: React.FC<FeedCreatorProps> = ({
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-50">
-      <div className="bg-neutral-900 border border-neutral-700 rounded-lg p-6 max-w-4xl w-full mx-4 max-h-[90vh] overflow-y-auto">
+      <div className="bg-neutral-900 border border-neutral-700 rounded-lg p-6 max-w-md w-full mx-4">
         {/* Header */}
         <div className="flex justify-between items-center mb-6">
-          <h2 className="text-xl font-semibold text-white">Create Paid Feed</h2>
+          <h2 className="text-xl font-semibold text-white">Buy Feed</h2>
           <button
             onClick={onClose}
             className="text-neutral-400 hover:text-white transition-colors"
           >
             <X className="h-5 w-5" />
           </button>
-        </div>
-
-        {/* Progress Steps */}
-        <div className="flex items-center justify-center mb-6 space-x-4">
-          {(['basic', 'pricing'] as const).map((s, index) => (
-            <React.Fragment key={s}>
-              <button
-                onClick={() => setStep(s)}
-                className={`flex items-center space-x-2 px-4 py-2 rounded-lg transition-colors ${
-                  step === s
-                    ? 'bg-blue-600 text-white'
-                    : 'bg-neutral-800 text-neutral-400 hover:text-neutral-300'
-                }`}
-              >
-                {index === 0 && <Settings className="h-4 w-4" />}
-                {index === 1 && <Image className="h-4 w-4" />}
-                {index === 2 && <DollarSign className="h-4 w-4" />}
-                <span className="text-sm font-medium">
-                  {s === 'basic' ? 'Basic Info' : s === 'top-post' ? 'Top Post' : 'Pricing'}
-                </span>
-              </button>
-              {index < 2 && <div className="w-8 h-0.5 bg-neutral-700" />}
-            </React.Fragment>
-          ))}
         </div>
 
         {/* Error Message */}
@@ -326,155 +169,54 @@ export const FeedCreator: React.FC<FeedCreatorProps> = ({
           </div>
         )}
 
-        {/* Step 1: Basic Info */}
-        {step === 'basic' && (
-          <div className="space-y-4">
-            <div>
-              <label className="block text-sm font-medium text-white mb-2">
-                Feed Name *
-              </label>
-              <input
-                type="text"
-                value={feedData.feedName || ''}
-                onChange={(e) => handleBasicInfoChange('feedName', e.target.value)}
-                placeholder="My Awesome Feed"
-                className="w-full px-4 py-2 bg-neutral-800 border border-neutral-700 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-white mb-2">
-                Category
-              </label>
-              <select
-                value={feedData.feedCategory || ''}
-                onChange={(e) => handleBasicInfoChange('feedCategory', e.target.value || undefined)}
-                className="w-full px-4 py-2 bg-neutral-800 border border-neutral-700 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-              >
-                <option value="">Select a category</option>
-                {FEED_CATEGORY_LIST.map(cat => (
-                  <option key={cat.id} value={cat.id}>{cat.name}</option>
-                ))}
-              </select>
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-white mb-2">
-                Description
-              </label>
-              <textarea
-                value={feedData.feedDescription || ''}
-                onChange={(e) => handleBasicInfoChange('feedDescription', e.target.value)}
-                placeholder="Describe your feed..."
-                rows={3}
-                className="w-full px-4 py-2 bg-neutral-800 border border-neutral-700 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-white mb-2">
-                Subdomain (optional)
-              </label>
-              <div className="flex items-center space-x-2">
-                <input
-                  type="text"
-                  value={feedData.subdomain || ''}
-                  onChange={(e) => handleBasicInfoChange('subdomain', e.target.value)}
-                  placeholder="myfeed"
-                  className="flex-1 px-4 py-2 bg-neutral-800 border border-neutral-700 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-                <span className="text-neutral-400">.parnoir.com</span>
-              </div>
-            </div>
-
-            <div className="flex justify-end">
-              <button
-                onClick={() => setStep('pricing')}
-                disabled={!feedData.feedName}
-                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                Next: Pricing
-              </button>
+        {/* Content */}
+        <div className="space-y-6">
+          <div className="text-center">
+            <DollarSign className="h-12 w-12 text-blue-400 mx-auto mb-4" />
+            <h3 className="text-lg font-medium text-white mb-2">Purchase a Feed</h3>
+            <p className="text-sm text-neutral-400 mb-4">
+              Get your own feed with a sub-pN identity. After purchase, complete identity verification to activate your feed.
+            </p>
+            <div className="bg-neutral-800 p-4 rounded-lg mb-4">
+              <p className="text-2xl font-bold text-white">$5.00</p>
+              <p className="text-xs text-neutral-400">One-time payment</p>
             </div>
           </div>
-        )}
 
-        {/* Step 2: Pricing */}
-        {step === 'pricing' && (
-          <div className="space-y-4">
-            <div className="mb-4">
-              <h3 className="text-lg font-medium text-white mb-2">Subscription Pricing</h3>
-              <p className="text-sm text-neutral-400">
-                Set your feed's subscription prices. Users can subscribe monthly or annually.
-              </p>
-            </div>
+          <button
+            onClick={handleBuyFeed}
+            disabled={isCreating || paymentStatus === 'processing' || paymentStatus === 'paid'}
+            className="w-full px-4 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center space-x-2"
+          >
+            {paymentStatus === 'processing' ? (
+              <>
+                <Loader className="h-5 w-5 animate-spin" />
+                <span>Processing Payment...</span>
+              </>
+            ) : paymentStatus === 'paid' ? (
+              <>
+                <CheckCircle className="h-5 w-5" />
+                <span>Payment Confirmed</span>
+              </>
+            ) : isCreating ? (
+              <>
+                <Loader className="h-5 w-5 animate-spin" />
+                <span>Creating...</span>
+              </>
+            ) : (
+              <>
+                <DollarSign className="h-5 w-5" />
+                <span>Buy Feed - $5.00</span>
+              </>
+            )}
+          </button>
 
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-white mb-2">
-                  Monthly Price ($)
-                </label>
-                <input
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  value={feedData.monthlyPrice || 5.00}
-                  onChange={(e) => handleBasicInfoChange('monthlyPrice', parseFloat(e.target.value) || 0)}
-                  className="w-full px-4 py-2 bg-neutral-800 border border-neutral-700 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-                <p className="text-xs text-neutral-400 mt-1">Default: $5/month</p>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-white mb-2">
-                  Annual Price ($)
-                </label>
-                <input
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  value={feedData.annualPrice || 50.00}
-                  onChange={(e) => handleBasicInfoChange('annualPrice', parseFloat(e.target.value) || 0)}
-                  className="w-full px-4 py-2 bg-neutral-800 border border-neutral-700 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-                <p className="text-xs text-neutral-400 mt-1">Default: $50/year</p>
-              </div>
-            </div>
-
-            <div className="flex justify-between pt-4 border-t border-neutral-700">
-              <button
-                onClick={() => setStep('basic')}
-                className="px-4 py-2 text-sm font-medium text-neutral-300 hover:text-white transition-colors"
-              >
-                Back
-              </button>
-              <button
-                onClick={handleCreateFeed}
-                disabled={isCreating || paymentStatus === 'processing'}
-                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 flex items-center space-x-2"
-              >
-                {paymentStatus === 'processing' ? (
-                  <>
-                    <Loader className="h-4 w-4 animate-spin" />
-                    <span>Processing Payment...</span>
-                  </>
-                ) : paymentStatus === 'paid' ? (
-                  <>
-                    <CheckCircle className="h-4 w-4" />
-                    <span>Payment Confirmed</span>
-                  </>
-                ) : isCreating ? (
-                  <>
-                    <Loader className="h-4 w-4 animate-spin" />
-                    <span>Creating...</span>
-                  </>
-                ) : (
-                  <span>Create & Pay</span>
-                )}
-              </button>
-            </div>
-          </div>
-        )}
+          {paymentStatus === 'paid' && (
+            <p className="text-sm text-center text-neutral-400">
+              Complete identity verification to activate your feed.
+            </p>
+          )}
+        </div>
       </div>
 
       {/* Verification Modal */}
@@ -492,4 +234,3 @@ export const FeedCreator: React.FC<FeedCreatorProps> = ({
     </div>
   );
 };
-
