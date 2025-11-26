@@ -112,6 +112,36 @@ export class AggregatorMetadataServiceDB {
     const db = getDatabasePool();
 
     try {
+      // CRITICAL FIX: Also delete from feed_posts table - files can't appear in feeds if removed
+      // First, try to find the file_id to use for feed_posts deletion
+      let actualFileId: string | null = null;
+      
+      // Try to find file_id by checking aggregator_metadata first
+      const findResult = await db.query(
+        `SELECT file_id FROM aggregator_metadata 
+         WHERE file_id = $1 
+            OR metadata->>'backendFileId' = $1 
+            OR metadata->>'fileId' = $1
+         LIMIT 1`,
+        [fileIdOrBackendFileId]
+      );
+      
+      if (findResult.rows.length > 0) {
+        actualFileId = findResult.rows[0].file_id;
+      } else {
+        // If not found, use the provided ID as-is
+        actualFileId = fileIdOrBackendFileId;
+      }
+      
+      // Delete from feed_posts FIRST (foreign key constraint)
+      try {
+        await db.query('DELETE FROM feed_posts WHERE file_id = $1', [actualFileId]);
+        console.log(`🗑️ [removeMetadata] Removed file ${actualFileId} from feed_posts`);
+      } catch (feedPostsError: any) {
+        // Table might not exist or have different structure - that's okay
+        console.warn(`⚠️ [removeMetadata] Could not delete from feed_posts (non-critical):`, feedPostsError?.message || feedPostsError);
+      }
+      
       // Try to remove by file_id first (most common case)
       let result = await db.query(
         'DELETE FROM aggregator_metadata WHERE file_id = $1',
