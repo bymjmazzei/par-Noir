@@ -1420,7 +1420,11 @@ function App() {
                             typeof file.publicToken === 'string' && 
                             file.publicToken.trim().length > 0;
       
-      if ((!isImage && !isVideo) || !hasValidToken || thumbnailsRef.current.has(file.fileId) || generatingThumbnails.has(file.fileId)) {
+      // CRITICAL: Skip if thumbnailFileId exists - we should use the thumbnail file, not generate from full image
+      // This prevents showing both the thumbnail file AND a generated thumbnail from the full image
+      const hasThumbnailFile = !!file.thumbnailFileId;
+      
+      if ((!isImage && !isVideo) || !hasValidToken || thumbnailsRef.current.has(file.fileId) || generatingThumbnails.has(file.fileId) || hasThumbnailFile) {
         if (hasValidToken === false && (isImage || isVideo)) {
           console.warn(`⚠️ [Feed] Skipping ${file.fileId} - missing or invalid publicToken:`, {
             fileId: file.fileId,
@@ -1428,6 +1432,10 @@ function App() {
             publicTokenType: typeof file.publicToken,
             publicTokenLength: file.publicToken ? String(file.publicToken).length : 0
           });
+        }
+        if (hasThumbnailFile && (isImage || isVideo)) {
+          // Silently skip - thumbnail file exists, FullScreenFeed will load it
+          continue;
         }
         continue;
       }
