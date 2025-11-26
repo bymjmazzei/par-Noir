@@ -1240,164 +1240,66 @@ export class AggregatorMetadataServiceDB {
           continue;
         }
         
-        // If we couldn't access any index files (service account has no access),
-        // we should NOT remove files - we can't verify what's valid
-        // This check is already done at the top level, but keep this as a safety check
-        if (usersWithIndexFiles.size === 0 && pnIdentifiers.length > 0) {
-          // EXTENDED GRACE PERIOD: Don't remove files that were added recently (within last 24 hours)
-          // This gives time for files to be properly shared with the service account
-          // If service account can't see folders, we can't verify files reliably
-          const updatedAt = row.updated_at as Date;
-          const now = new Date();
-          const ageMinutes = updatedAt ? (now.getTime() - updatedAt.getTime()) / (1000 * 60) : Infinity;
-          const EXTENDED_GRACE_PERIOD_HOURS = 24; // 24 hours when service account can't see folders
-          
-          if (ageMinutes < (EXTENDED_GRACE_PERIOD_HOURS * 60)) {
-            console.log(`⏳ [cleanupOrphanedFilesFromIndex] File ${fileId} (${fileName}) was added ${(ageMinutes / 60).toFixed(1)} hours ago - extended grace period active (service account can't see folders), skipping verification`);
-            continue;
-          }
-          
-          console.log(`⚠️ [cleanupOrphanedFilesFromIndex] No pN folders found - service account may not have access. Verifying file exists before removing (file is ${(ageMinutes / 60).toFixed(1)} hours old): ${fileId} (${fileName})`);
-          console.log(`🔍 [cleanupOrphanedFilesFromIndex] Available IDs: fileId=${fileId}, backendFileId=${backendFileId}, metadataFileId=${metadataFileId}, googleDriveFileId=${(metadata as any).googleDriveFileId}`);
-          
-          // If we don't have a backendFileId, we can't verify the file exists in Google Drive
-          // In this case, don't remove it - it might be a valid file that just doesn't have the ID set
-          if (!backendFileId) {
-            console.log(`⚠️ [cleanupOrphanedFilesFromIndex] No backendFileId available - cannot verify file exists. Keeping in database: ${fileId} (${fileName})`);
-            continue;
-          }
-          
-          // Verify file exists in Google Drive - if it doesn't exist, remove it
-          // Use backendFileId (actual Google Drive file ID)
-          // NOTE: 404 might mean file doesn't exist OR service account doesn't have access
-          // So we only remove if file is old (past grace period) AND returns 404
-          const fileToVerify = backendFileId;
-          console.log(`🔍 [cleanupOrphanedFilesFromIndex] Verifying Google Drive file: ${fileToVerify}`);
-          try {
-            const verifyResponse = await fetch(
-              `https://www.googleapis.com/drive/v3/files/${fileToVerify}?fields=id,trashed`,
-              {
-                headers: {
-                  'Authorization': `Bearer ${accessToken}`
-                }
-              }
-            );
-            
-            if (verifyResponse.status === 404) {
-              // 404 means file doesn't exist in Google Drive - remove it from database
-              // Even if service account can't see folders, if we can query the file directly and get 404,
-              // it means the file was deleted (service account can still query files by ID if they exist)
-              console.log(`🗑️ [cleanupOrphanedFilesFromIndex] File ${fileToVerify} not found (404) - removing from database: ${fileId} (${fileName})`);
-                orphanedFileIds.push(fileId);
-            } else if (verifyResponse.status === 403 || verifyResponse.status === 401) {
-              // Permission denied - service account doesn't have access to this file
-              // This could mean the file is private or was deleted and permissions were revoked
-              // For now, keep it in database (might be a permission issue)
-              console.log(`⚠️ [cleanupOrphanedFilesFromIndex] Permission denied for ${fileToVerify} (${verifyResponse.status}) - keeping in database (might be permission issue): ${fileId} (${fileName})`);
-            } else if (!verifyResponse.ok) {
-              console.log(`⚠️ [cleanupOrphanedFilesFromIndex] Could not verify file ${fileToVerify} (${verifyResponse.status}) - keeping in database: ${fileId} (${fileName})`);
-              // Don't remove if we can't verify (might be permission issue)
-            } else {
-              const fileData = await verifyResponse.json() as { id?: string; trashed?: boolean };
-              if (fileData.trashed) {
-                console.log(`🗑️ [cleanupOrphanedFilesFromIndex] File ${fileToVerify} is trashed - removing from database: ${fileId} (${fileName})`);
-                orphanedFileIds.push(fileId);
-              } else {
-                console.log(`✅ [cleanupOrphanedFilesFromIndex] File ${fileToVerify} exists and is not trashed - keeping: ${fileId} (${fileName})`);
-              }
-            }
-          } catch (verifyError) {
-            console.warn(`⚠️ [cleanupOrphanedFilesFromIndex] Error verifying file ${fileToVerify} - keeping in database: ${fileId} (${fileName})`, verifyError);
-            // Don't remove on error - might be temporary issue
-          }
+        // CRITICAL FIX: Always verify files directly if:
+        // 1. User's folder/index file is not accessible, OR
+        // 2. File is not in the valid set from index file
+        // This ensures deleted files are removed even if folders are deleted
+        const userHasIndexFile = pnIdentifier && usersWithIndexFiles.has(pnIdentifier);
+        const fileInValidSet = userHasIndexFile && validFileIdsByUser.get(pnIdentifier)?.has(fileId);
+        
+        // If file is in valid set from index file, skip direct verification (already verified)
+        if (fileInValidSet) {
           continue;
         }
         
-        // If user doesn't have a public index file, verify file exists before removing
-        if (pnIdentifier && !usersWithIndexFiles.has(pnIdentifier)) {
-          // GRACE PERIOD: Don't remove files that were just added (within last 10 minutes)
-          const updatedAt = row.updated_at as Date;
-          const now = new Date();
-          const ageMinutes = updatedAt ? (now.getTime() - updatedAt.getTime()) / (1000 * 60) : Infinity;
-          const GRACE_PERIOD_MINUTES = 10;
-          
-          if (ageMinutes < GRACE_PERIOD_MINUTES) {
-            console.log(`⏳ [cleanupOrphanedFilesFromIndex] File ${fileId} (${fileName}) was added ${ageMinutes.toFixed(1)} minutes ago - grace period active, skipping verification`);
-            continue;
-          }
-          
-          console.log(`⚠️ [cleanupOrphanedFilesFromIndex] User ${pnIdentifier} has no public index file - verifying file exists: ${fileId} (${fileName})`);
-          
-          // If we don't have a backendFileId, we can't verify the file exists in Google Drive
-          // In this case, don't remove it - it might be a valid file that just doesn't have the ID set
-          if (!backendFileId) {
-            console.log(`⚠️ [cleanupOrphanedFilesFromIndex] No backendFileId available - cannot verify file exists. Keeping in database: ${fileId} (${fileName})`);
-            continue;
-          }
-          
-          // Verify file exists in Google Drive - if it doesn't exist, remove it
-          // Use backendFileId (actual Google Drive file ID)
-          const fileToVerify = backendFileId;
-          try {
-            const verifyResponse = await fetch(
-              `https://www.googleapis.com/drive/v3/files/${fileToVerify}?fields=id,trashed`,
-              {
-                headers: {
-                  'Authorization': `Bearer ${accessToken}`
-                }
+        // GRACE PERIOD: Don't remove files that were just added (within last 10 minutes)
+        const updatedAt = row.updated_at as Date;
+        const now = new Date();
+        const ageMinutes = updatedAt ? (now.getTime() - updatedAt.getTime()) / (1000 * 60) : Infinity;
+        const GRACE_PERIOD_MINUTES = 10;
+        
+        if (ageMinutes < GRACE_PERIOD_MINUTES) {
+          console.log(`⏳ [cleanupOrphanedFilesFromIndex] File ${fileId} (${fileName}) was added ${ageMinutes.toFixed(1)} minutes ago - grace period active, skipping verification`);
+          continue;
+        }
+        
+        // If we don't have a backendFileId, we can't verify the file exists in Google Drive
+        if (!backendFileId) {
+          console.log(`⚠️ [cleanupOrphanedFilesFromIndex] No backendFileId available - cannot verify file exists. Keeping in database: ${fileId} (${fileName})`);
+          continue;
+        }
+        
+        // Verify file exists in Google Drive directly
+        console.log(`🔍 [cleanupOrphanedFilesFromIndex] Verifying file exists in Google Drive: ${backendFileId} (${fileName})`);
+        try {
+          const verifyResponse = await fetch(
+            `https://www.googleapis.com/drive/v3/files/${backendFileId}?fields=id,trashed`,
+            {
+              headers: {
+                'Authorization': `Bearer ${accessToken}`
               }
-            );
-            
-            if (verifyResponse.status === 404) {
-              console.log(`🗑️ [cleanupOrphanedFilesFromIndex] File ${fileToVerify} not found (404) - removing from database: ${fileId} (${fileName})`);
+            }
+          );
+          
+          if (verifyResponse.status === 404) {
+            // 404 means file doesn't exist - remove it
+            console.log(`🗑️ [cleanupOrphanedFilesFromIndex] File ${backendFileId} not found (404) - removing from database: ${fileId} (${fileName})`);
+            orphanedFileIds.push(fileId);
+          } else if (verifyResponse.ok) {
+            const fileData = await verifyResponse.json() as { id?: string; trashed?: boolean };
+            if (fileData.trashed) {
+              console.log(`🗑️ [cleanupOrphanedFilesFromIndex] File ${backendFileId} is trashed - removing from database: ${fileId} (${fileName})`);
               orphanedFileIds.push(fileId);
-            } else if (!verifyResponse.ok) {
-              console.log(`⚠️ [cleanupOrphanedFilesFromIndex] Could not verify file ${fileToVerify} (${verifyResponse.status}) - keeping in database: ${fileId} (${fileName})`);
-              // Don't remove if we can't verify (might be permission issue)
             } else {
-              const fileData = await verifyResponse.json() as { id?: string; trashed?: boolean };
-              if (fileData.trashed) {
-                console.log(`🗑️ [cleanupOrphanedFilesFromIndex] File ${fileToVerify} is trashed - removing from database: ${fileId} (${fileName})`);
-                orphanedFileIds.push(fileId);
-              } else {
-                console.log(`✅ [cleanupOrphanedFilesFromIndex] File ${fileToVerify} exists and is not trashed - keeping: ${fileId} (${fileName})`);
-              }
+              console.log(`✅ [cleanupOrphanedFilesFromIndex] File ${backendFileId} exists and is not trashed - keeping: ${fileId} (${fileName})`);
             }
-          } catch (verifyError) {
-            console.warn(`⚠️ [cleanupOrphanedFilesFromIndex] Error verifying file ${fileToVerify} - keeping in database: ${fileId} (${fileName})`, verifyError);
-            // Don't remove on error - might be temporary issue
+          } else {
+            // Permission denied or other error - keep file (might be temporary)
+            console.log(`⚠️ [cleanupOrphanedFilesFromIndex] Could not verify file ${backendFileId} (${verifyResponse.status}) - keeping in database: ${fileId} (${fileName})`);
           }
-          continue;
+        } catch (verifyError) {
+          console.warn(`⚠️ [cleanupOrphanedFilesFromIndex] Error verifying file ${backendFileId} - keeping in database: ${fileId} (${fileName})`, verifyError);
         }
-        
-        // Get valid file IDs for this user
-        const userValidFileIds = pnIdentifier ? validFileIdsByUser.get(pnIdentifier) : null;
-        
-        // If user has no valid files (empty index), verify file exists before removing
-        if (pnIdentifier && userValidFileIds && userValidFileIds.size === 0) {
-          // GRACE PERIOD: Don't remove files that were just added (within last 10 minutes)
-          const updatedAt = row.updated_at as Date;
-          const now = new Date();
-          const ageMinutes = updatedAt ? (now.getTime() - updatedAt.getTime()) / (1000 * 60) : Infinity;
-          const GRACE_PERIOD_MINUTES = 10;
-          
-          if (ageMinutes < GRACE_PERIOD_MINUTES) {
-            console.log(`⏳ [cleanupOrphanedFilesFromIndex] File ${fileId} (${fileName}) was added ${ageMinutes.toFixed(1)} minutes ago - grace period active, skipping verification`);
-            continue;
-          }
-          
-          console.log(`⚠️ [cleanupOrphanedFilesFromIndex] User ${pnIdentifier} has empty public index - verifying file exists: ${fileId} (${fileName})`);
-          
-          // If we don't have a backendFileId, we can't verify the file exists in Google Drive
-          // In this case, don't remove it - it might be a valid file that just doesn't have the ID set
-          if (!backendFileId) {
-            console.log(`⚠️ [cleanupOrphanedFilesFromIndex] No backendFileId available - cannot verify file exists. Keeping in database: ${fileId} (${fileName})`);
-            continue;
-          }
-          
-          // Verify file exists in Google Drive - if it doesn't exist, remove it
-          // Use backendFileId (actual Google Drive file ID)
-          const fileToVerify = backendFileId;
           try {
             const verifyResponse = await fetch(
               `https://www.googleapis.com/drive/v3/files/${fileToVerify}?fields=id,trashed`,
@@ -1489,12 +1391,8 @@ export class AggregatorMetadataServiceDB {
               }
             }
           } catch (verifyError) {
-            console.warn(`⚠️ [cleanupOrphanedFilesFromIndex] Error verifying file ${fileToVerify} - keeping in database: ${fileId} (${fileName})`, verifyError);
-            // Don't remove on error - might be temporary issue
+            console.warn(`⚠️ [cleanupOrphanedFilesFromIndex] Error verifying file ${backendFileId} - keeping in database: ${fileId} (${fileName})`, verifyError);
           }
-        } else {
-          console.log(`✅ [cleanupOrphanedFilesFromIndex] File in index: ${fileId} (${fileName}) - keeping`);
-        }
       }
 
       if (orphanedFileIds.length > 0) {
