@@ -2343,19 +2343,26 @@ class ProductionServer {
                     const originalMimeType = driveFile.mimeType || 'application/octet-stream';
                     
                     // Get or create pN folder
-                    const pnFolderName = `par Noir - pn-${pnIdentifier}`;
-                    const folderSearchQuery = `name='${pnFolderName.replace(/'/g, "\\'")}' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
-                    const folderSearchUrl = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(folderSearchQuery)}&fields=files(id,name)&pageSize=1`;
-                    
-                    const folderResponse = await fetch(folderSearchUrl, {
-                      headers: { 'Authorization': `Bearer ${accessToken}` }
-                    });
-                    
+                    // Try both formats: "par Noir - pn-{hash}" and "par Noir - {hash}"
                     let pnFolderId: string | null = null;
-                    if (folderResponse.ok) {
-                      const folderData = await folderResponse.json() as { files?: Array<{ id: string; name: string }> };
-                      if (folderData.files && folderData.files.length > 0) {
-                        pnFolderId = folderData.files[0].id;
+                    const pnFolderName1 = `par Noir - ${pnIdentifier}`;
+                    const pnFolderName2 = `par Noir - pn-${pnIdentifier}`;
+                    
+                    for (const pnFolderName of [pnFolderName1, pnFolderName2]) {
+                      const folderSearchQuery = `name='${pnFolderName.replace(/'/g, "\\'")}' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
+                      const folderSearchUrl = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(folderSearchQuery)}&fields=files(id,name)&pageSize=1`;
+                      
+                      const folderResponse = await fetch(folderSearchUrl, {
+                        headers: { 'Authorization': `Bearer ${accessToken}` }
+                      });
+                      
+                      if (folderResponse.ok) {
+                        const folderData = await folderResponse.json() as { files?: Array<{ id: string; name: string }> };
+                        if (folderData.files && folderData.files.length > 0) {
+                          pnFolderId = folderData.files[0].id;
+                          console.log(`[MetadataIndex PUT] Found pN folder: ${pnFolderName} (ID: ${pnFolderId})`);
+                          break;
+                        }
                       }
                     }
                     
