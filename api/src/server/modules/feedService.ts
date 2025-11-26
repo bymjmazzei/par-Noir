@@ -877,7 +877,7 @@ export class FeedService {
 
         let googleDriveFolderId: string | null = null;
         if (feedFolderResponse.ok) {
-          const folderData = await feedFolderResponse.json();
+          const folderData = await feedFolderResponse.json() as { id: string };
           googleDriveFolderId = folderData.id;
 
           // Create subfolders
