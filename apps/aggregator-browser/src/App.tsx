@@ -64,7 +64,9 @@ const EMPTY_ARRAY: IndexedFile[] = [];
 
 function App() {
   const { userState, setLocked, setUnlocked, updateDisplayName } = useUserState();
+  console.log('🔧 [App] userState.pnIdentifier:', userState.pnIdentifier);
   const { activeContext, setActiveContext, availableContexts, loadContexts, isLoading: isLoadingContexts } = useAppContext(userState.pnIdentifier);
+  console.log('🔧 [App] useAppContext returned:', { activeContext, availableContextsCount: availableContexts.length, isLoadingContexts });
   const [indexedFiles, setIndexedFiles] = useState<IndexedFile[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);

@@ -12,12 +12,17 @@ export type AppContext =
   | { type: 'feed', id: string, name: string, feedId: string, isOwned: boolean, feedToken?: FeedToken };
 
 export function useAppContext(pnIdentifier?: string) {
+  console.log('🔧 [useAppContext] Hook initialized with pnIdentifier:', pnIdentifier);
+  
   const [activeContext, setActiveContext] = useState<AppContext | null>(null);
   const [availableContexts, setAvailableContexts] = useState<AppContext[]>([]);
   const [isLoading, setIsLoading] = useState(false);
 
   const loadContexts = useCallback(async () => {
+    console.log('🔄 [useAppContext] loadContexts called with pnIdentifier:', pnIdentifier);
+    
     if (!pnIdentifier) {
+      console.log('⚠️ [useAppContext] No pnIdentifier, clearing contexts');
       setAvailableContexts([]);
       setActiveContext(null);
       return;
