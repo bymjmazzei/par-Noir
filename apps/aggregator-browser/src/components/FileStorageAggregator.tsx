@@ -13,6 +13,7 @@ import { FEED_CATEGORIES, FEED_CATEGORY_LIST } from '../constants/feedCategories
 import { LICENSE_TYPES } from '../constants/licenses';
 import { FeedCategory } from '../types/aggregator';
 import { useUserState } from '../contexts/UserStateContext';
+import { cleanTitle } from '../utils/cleanTitle';
 
 const apiEndpoint = process.env.REACT_APP_API_ENDPOINT || 'https://api.parnoir.com';
 
@@ -3115,7 +3116,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
                   'Authorization': `Bearer ${freshAccessToken}`
                 },
                 body: JSON.stringify({
-                  name: `thumb_${file.name}`,
+                  name: file.name, // Use original filename (without thumb_ prefix) for display
                   description: '',
                   keywords: [],
                   tags: [],
@@ -3514,15 +3515,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
 
                     <div className="p-3">
                       <p className="text-white text-xs truncate mb-1" title={fileMetadataMap.get(file.id)?.name || (file as any).displayName || file.name}>
-                        {(() => {
-                          const displayName = fileMetadataMap.get(file.id)?.name || (file as any).displayName || file.name;
-                          // Strip file extension (but keep .thought extension for thoughts)
-                          if (displayName.toLowerCase().endsWith('.thought') || displayName.toLowerCase().endsWith('.thought.encrypted')) {
-                            return displayName.replace(/\.encrypted$/i, '').replace(/\.thought$/i, '');
-                          }
-                          // Remove common file extensions
-                          return displayName.replace(/\.(encrypted|pdf|jpg|jpeg|png|gif|webp|mp4|mov|avi|mkv|webm|doc|docx|xls|xlsx|ppt|pptx|txt|zip|rar)$/i, '');
-                        })()}
+                        {cleanTitle(fileMetadataMap.get(file.id)?.name || (file as any).displayName || file.name)}
                       </p>
                       <p className="text-text-secondary text-xs">
                         {(parseInt(file.size || '0') / 1024).toFixed(1)} KB
@@ -3608,15 +3601,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center space-x-2">
                           <p className="text-white text-sm truncate">
-                            {(() => {
-                              const displayName = fileMetadataMap.get(file.id)?.name || (file as any).displayName || file.name;
-                              // Strip file extension (but keep .thought extension for thoughts)
-                              if (displayName.toLowerCase().endsWith('.thought') || displayName.toLowerCase().endsWith('.thought.encrypted')) {
-                                return displayName.replace(/\.encrypted$/i, '').replace(/\.thought$/i, '');
-                              }
-                              // Remove common file extensions
-                              return displayName.replace(/\.(encrypted|pdf|jpg|jpeg|png|gif|webp|mp4|mov|avi|mkv|webm|doc|docx|xls|xlsx|ppt|pptx|txt|zip|rar)$/i, '');
-                            })()}
+                            {cleanTitle(fileMetadataMap.get(file.id)?.name || (file as any).displayName || file.name)}
                           </p>
                           {file.isPublic && (
                             <Globe className="h-3 w-3 text-green-400 flex-shrink-0" aria-label="Public" />
