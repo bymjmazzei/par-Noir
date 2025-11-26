@@ -2076,6 +2076,7 @@ class ProductionServer {
               backendFileId: fileId,
               backend: 'google_drive',
               name: name || fileId,
+              ...(title && { title }),
               fileType: determinedFileType,
               uploadDate: new Date().toISOString(),
               isPublic: isPublic !== undefined ? isPublic : defaultIsPublic,
