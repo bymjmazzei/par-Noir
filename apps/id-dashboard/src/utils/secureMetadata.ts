@@ -99,6 +99,8 @@ export interface MetadataContent {
   recoveryKeys?: any[];
   syncedDevices?: any[];
   privacySettings?: any;
+  storageCredentials?: any; // Google Drive and other storage credentials
+  apiKeys?: Record<string, any>; // API keys encrypted and stored in cloud
   notifications?: {
     unread: NotificationEvent[];
     read: NotificationEvent[];

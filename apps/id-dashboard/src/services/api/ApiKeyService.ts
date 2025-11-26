@@ -3,7 +3,13 @@
  * Manages API key generation, activation, and validation
  * All pNs automatically get an inactive API key
  * Activation requires Veriff verification (AML/KYC)
+ * 
+ * SECURITY: API keys are stored encrypted in Google Drive metadata
+ * for persistence and cross-device sync
  */
+
+import { SecureMetadataStorage } from '../../utils/secureMetadataStorage';
+import { SecureCredentialManager } from '../../utils/secureCredentialManager';
 
 export interface ApiKey {
   id: string;
@@ -80,13 +86,36 @@ export class ApiKeyService {
 
   /**
    * Get API key for a pN
+   * Retrieves from encrypted Google Drive metadata (primary) or localStorage (fallback)
    */
   async getApiKey(pnId: string): Promise<ApiKey | null> {
     try {
+      // Try to get from encrypted metadata storage (Google Drive)
+      try {
+        const userCredentials = SecureCredentialManager.getCredentials(pnId);
+        if (userCredentials) {
+          const { SecureMetadataStorage } = await import('../../utils/secureMetadataStorage');
+          const metadata = await SecureMetadataStorage.getMetadata(pnId);
+          
+          if (metadata) {
+            const { SecureMetadataCrypto } = await import('../../utils/secureMetadata');
+            const decrypted = await SecureMetadataCrypto.decryptMetadata(
+              metadata,
+              userCredentials.pnName,
+              userCredentials.passcode
+            );
+            
+            if (decrypted.apiKeys && decrypted.apiKeys[pnId]) {
+              return decrypted.apiKeys[pnId];
+            }
+          }
+        }
+      } catch (error) {
+        console.warn('⚠️ [ApiKeyService] Failed to get API key from encrypted metadata:', error);
+      }
+
+      // Fallback to localStorage (for backward compatibility)
       const storageKey = `${ApiKeyService.STORAGE_KEY_PREFIX}${pnId}`;
-      
-      // Use localStorage for API key storage
-      // API keys are less sensitive than pnName/passcode, so localStorage is acceptable
       const stored = localStorage.getItem(storageKey);
       if (stored) {
         return JSON.parse(stored);
@@ -178,15 +207,59 @@ export class ApiKeyService {
   }
 
   /**
-   * Store API key
-   * Uses localStorage - API keys are less sensitive than pnName/passcode
+   * Store API key encrypted in Google Drive metadata
+   * Falls back to localStorage if metadata storage fails
    */
   private async storeApiKey(apiKey: ApiKey): Promise<void> {
     try {
+      // Try to store in encrypted metadata (Google Drive) - primary storage
+      try {
+        const userCredentials = SecureCredentialManager.getCredentials(apiKey.pnId);
+        if (userCredentials) {
+          const { SecureMetadataStorage } = await import('../../utils/secureMetadataStorage');
+          const { SecureMetadataCrypto } = await import('../../utils/secureMetadata');
+          
+          // Get current metadata
+          const currentMetadata = await SecureMetadataStorage.getMetadata(apiKey.pnId);
+          let apiKeys: Record<string, ApiKey> = {};
+          
+          if (currentMetadata) {
+            try {
+              const decrypted = await SecureMetadataCrypto.decryptMetadata(
+                currentMetadata,
+                userCredentials.pnName,
+                userCredentials.passcode
+              );
+              apiKeys = decrypted.apiKeys || {};
+            } catch (decryptError) {
+              console.warn('⚠️ [ApiKeyService] Failed to decrypt existing metadata, creating new apiKeys object');
+            }
+          }
+          
+          // Update API keys object
+          apiKeys[apiKey.pnId] = apiKey;
+          
+          // Store updated API keys in encrypted metadata
+          await SecureMetadataStorage.updateMetadataField(
+            apiKey.pnId,
+            userCredentials.pnName,
+            userCredentials.passcode,
+            'apiKeys',
+            apiKeys
+          );
+          
+          console.log('✅ [ApiKeyService] Stored API key in encrypted Google Drive metadata');
+          return;
+        }
+      } catch (error) {
+        console.warn('⚠️ [ApiKeyService] Failed to store API key in encrypted metadata, using localStorage fallback:', error);
+      }
+
+      // Fallback to localStorage (for backward compatibility and when metadata unavailable)
       const storageKey = `${ApiKeyService.STORAGE_KEY_PREFIX}${apiKey.pnId}`;
       const jsonData = JSON.stringify(apiKey);
-
       localStorage.setItem(storageKey, jsonData);
+      console.log('✅ [ApiKeyService] Stored API key in localStorage (fallback)');
     } catch (error) {
       console.error('❌ [ApiKeyService] Failed to store API key:', error);
       throw error;
