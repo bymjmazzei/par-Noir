@@ -5411,60 +5411,25 @@ class ProductionServer {
       const { fileId } = req.params;
       const accountId = req.query.accountId as string | undefined;
       
-      // CRITICAL: Remove from database metadata index FIRST (before any other operations)
-      // This ensures the file is removed from the public feed even if token is expired or Drive deletion fails
-      // The database is the source of truth for the public feed
-      let dbRemoved = false;
-      try {
-        const { AggregatorMetadataServiceDB } = await import('./server/modules/aggregatorMetadataServiceDB');
-        const metadataService = AggregatorMetadataServiceDB.getInstance();
-        // removeMetadata accepts both fileId (pN file ID) and backendFileId (Google Drive file ID)
-        dbRemoved = await metadataService.removeMetadata(fileId);
-        if (dbRemoved) {
-          console.log(`✅ [DeleteFile] Removed file ${fileId} from database metadata index (public feed)`);
-        } else {
-          console.log(`ℹ️ [DeleteFile] File ${fileId} was not in database metadata index (may have been private or not indexed)`);
-        }
-      } catch (dbError: any) {
-        console.error(`❌ [DeleteFile] Failed to remove from database metadata index:`, dbError?.message || dbError);
-        // Continue even if database removal fails - will try Drive deletion
-      }
+      // STEP 0: Validate token FIRST (but don't delete yet)
+      const authHeader = req.headers.authorization;
+      let tokenPayload = null;
+      let userIdentifier: string | null = null;
+      let pnIdentifier: string | null = null;
       
-      // Now validate token for Google Drive operations
-      try {
-        const authHeader = req.headers.authorization;
-        if (!authHeader || !authHeader.startsWith('Bearer ')) {
-          // Database already removed, return success even without auth
-          return res.json({ 
-            success: true, 
-            fileId,
-            removedFromDatabase: dbRemoved,
-            message: 'File removed from database. Google Drive deletion skipped (no auth).'
-          });
-        }
-
+      if (authHeader && authHeader.startsWith('Bearer ')) {
         const token = authHeader.substring(7);
         const { PNOAuthService } = await import('./server/modules/pnOAuthService');
-        const tokenPayload = PNOAuthService.validateAccessToken(token);
-        
-        if (!tokenPayload) {
-          // Database already removed, return success even with expired token
-          console.log(`⚠️ [DeleteFile] Token expired/invalid, but file ${fileId} already removed from database`);
-          return res.json({ 
-            success: true, 
-            fileId,
-            removedFromDatabase: dbRemoved,
-            message: 'File removed from database. Google Drive deletion skipped (token expired).'
-          });
+        tokenPayload = PNOAuthService.validateAccessToken(token);
+        if (tokenPayload) {
+          userIdentifier = tokenPayload.pnIdentifier || tokenPayload.did;
+          pnIdentifier = tokenPayload.pnIdentifier;
         }
-
-        const userIdentifier = tokenPayload.pnIdentifier || tokenPayload.did;
-        const pnIdentifier = tokenPayload.pnIdentifier;
-        const { googleDriveProxyService } = await import('./server/modules/googleDriveProxy');
-        const { AggregatorMetadataServiceDB } = await import('./server/modules/aggregatorMetadataServiceDB');
-        const metadataService = AggregatorMetadataServiceDB.getInstance();
-        
-        // STEP 1: Get file metadata FIRST (before deleting) to find paired files and PDF page thumbnails
+      }
+      
+      // STEP 1: READ METADATA FIRST (before deleting!) to find PDF thumbnails and paired files
+      const { AggregatorMetadataServiceDB } = await import('./server/modules/aggregatorMetadataServiceDB');
+      const metadataService = AggregatorMetadataServiceDB.getInstance();
         let fileMetadata: any = null;
         let fileName = '';
         let isThumbnail = false;
