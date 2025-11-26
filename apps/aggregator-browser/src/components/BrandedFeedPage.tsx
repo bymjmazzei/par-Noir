@@ -9,6 +9,7 @@ import { Feed, IndexedFile } from '../types/aggregator';
 import { ContentRatingBadge } from './ContentRatingBadge'; // Still used for isNSFW badge
 import { EngagementActions } from './EngagementActions';
 import { useEngagement } from '../hooks/useEngagement';
+import { cleanTitle } from '../utils/cleanTitle';
 
 interface BrandedFeedPageProps {
   feed: Feed;
@@ -157,7 +158,7 @@ export function BrandedFeedPage({ feed, files, onBack, onFileClick }: BrandedFee
                   {/* Content Info */}
                   <div className="p-4">
                     <h3 className="text-white font-medium mb-2 line-clamp-2 group-hover:text-blue-400 transition-colors">
-                      {file.name || file.title || 'Untitled'}
+                      {cleanTitle(file.name || file.title || 'Untitled')}
                     </h3>
                     {file.description && (
                       <p className="text-text-secondary text-sm mb-3 line-clamp-2">
