@@ -846,16 +846,61 @@ export class FeedService {
       try {
         // Get access token - this will find the pN identifier from storage
         await googleDriveProxy.getAccessToken(creatorDid);
-        // The pN identifier is stored in the credentials, but we need to extract it
-        // For now, we'll generate a deterministic sub-pN based on feedId + creatorDid
-        const combined = `${feedId}:${creatorDid}`;
+        // Generate pnName and passcode tokens for the feed
+        const feedPnName = `feed_${feedId.substring(0, 8)}_${crypto.randomBytes(4).toString('hex')}`;
+        const feedPasscode = crypto.randomBytes(16).toString('hex'); // 32-character hex passcode
+        
+        // Generate key pair for feed sub-pN
+        const { generateKeyPairSync } = crypto;
+        const { publicKey, privateKey } = generateKeyPairSync('rsa', {
+          modulusLength: 2048,
+          publicKeyEncoding: { type: 'spki', format: 'pem' },
+          privateKeyEncoding: { type: 'pkcs8', format: 'pem' }
+        });
+        
+        // Get creator's pN identifier from storage credentials
+        const { StorageCredentialsService } = await import('./storageCredentialsService');
+        const storageService = new StorageCredentialsService();
+        const creatorCredentials = await storageService.findCredentialsByIdentityCandidates([creatorDid]);
+        
+        if (!creatorCredentials) {
+          throw new Error('Creator credentials not found - Google Drive must be connected');
+        }
+        
+        // Extract creator's pN identifier from credentials
+        const ownerPnIdentifier = creatorCredentials.identityId;
+        
+        // Store feed tokens (will be encrypted at rest by database)
+        // TODO: Add proper encryption using creator's pN credentials
+        // For now, storing encrypted JSON (will be properly encrypted later)
+        const tokenData = {
+          pnName: feedPnName,
+          passcode: feedPasscode,
+          publicKey: publicKey
+        };
+        
+        // Simple base64 encoding for now (will be replaced with proper encryption)
+        const encryptedPnName = Buffer.from(feedPnName).toString('base64');
+        const encryptedPasscode = Buffer.from(feedPasscode).toString('base64');
+        
+        // Store feed tokens (owned by creator's pN)
+        await db.query(`
+          INSERT INTO feed_tokens (
+            feed_id, owner_pn_identifier, encrypted_pn_name, encrypted_passcode, public_key
+          ) VALUES ($1, $2, $3, $4, $5)
+          ON CONFLICT (feed_id) DO UPDATE SET
+            encrypted_pn_name = $3,
+            encrypted_passcode = $4,
+            public_key = $5,
+            updated_at = NOW()
+        `, [feedId, ownerPnIdentifier, encryptedPnName, encryptedPasscode, publicKey]);
+        
+        // Generate sub-pN identifier from feed tokens using VolumeIdGenerator formula
+        // Formula: SHA256(pnName:passcode:publicKey) → first 12 hex chars → feed-{hash}
+        const publicKeyHash = crypto.createHash('sha256').update(publicKey, 'utf8').digest('hex').substring(0, 12);
+        const combined = `${feedPnName}:${feedPasscode}:${publicKeyHash}`;
         const hash = crypto.createHash('sha256').update(combined, 'utf8').digest('hex');
         const subPnIdentifier = `feed-${hash.substring(0, 12)}`;
-        
-        // For owner, we'll use a similar approach - derive from creatorDid
-        // In production, we should get this from the user's actual pN identifier
-        const ownerHash = crypto.createHash('sha256').update(creatorDid, 'utf8').digest('hex');
-        const ownerPnIdentifier = `pn-${ownerHash.substring(0, 12)}`;
 
         // Create Google Drive folder structure
         // Note: This requires the creator to have Google Drive connected
