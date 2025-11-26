@@ -2107,9 +2107,6 @@ class ProductionServer {
           }
         }
 
-        // Check if file existed BEFORE we created it (to detect new files)
-        const fileExistedBefore = !!current;
-        
         // Refetch to ensure entry exists (in case it was just created)
         current = await service.getFileMetadata(fileId);
         console.log(`[MetadataIndex PUT] After upsert, refetch for ${fileId}: ${current ? 'found' : 'not found'}, existedBefore: ${fileExistedBefore}`);
