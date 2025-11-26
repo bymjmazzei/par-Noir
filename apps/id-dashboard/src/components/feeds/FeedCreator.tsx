@@ -6,7 +6,7 @@
 import React, { useState, useEffect } from 'react';
 import { X, Plus, Image, Globe, DollarSign, Settings, Loader, CheckCircle } from 'lucide-react';
 import { FeedService, Feed } from '../../services/feeds/FeedService';
-import { EnhancedThoughtCreator, EnhancedPostContent } from './EnhancedThoughtCreator';
+// Removed EnhancedThoughtCreator import - top post creation moved to browser
 import { IdentityVerificationModal } from '../IdentityVerificationModal';
 import { CoinbaseProxy, CheckoutRequest } from '../../utils/coinbaseProxy';
 import type { FeedCategory } from '../../types/aggregator';
@@ -25,7 +25,7 @@ export const FeedCreator: React.FC<FeedCreatorProps> = ({
   onFeedCreated,
   authenticatedUser
 }) => {
-  const [step, setStep] = useState<'basic' | 'top-post' | 'pricing'>('basic');
+  const [step, setStep] = useState<'basic' | 'pricing'>('basic');
   const [feedData, setFeedData] = useState<Partial<Feed>>({
     feedName: '',
     feedCategory: undefined,
@@ -41,7 +41,7 @@ export const FeedCreator: React.FC<FeedCreatorProps> = ({
       links: [] as Array<{ label: string; url: string }>
     }
   });
-  const [topPostContent, setTopPostContent] = useState<EnhancedPostContent | null>(null);
+  // Removed topPostContent - will be handled in browser
   const [isCreating, setIsCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   
@@ -211,8 +211,7 @@ export const FeedCreator: React.FC<FeedCreatorProps> = ({
       // Store pending feed data
       setPendingFeedData({
         checkoutId: checkout.id,
-        feedData: feedData,
-        topPostContent: topPostContent
+        feedData: feedData
       });
       
       setCheckoutUrl(checkout.hosted_url || null);
@@ -242,54 +241,14 @@ export const FeedCreator: React.FC<FeedCreatorProps> = ({
     setError(null);
 
     try {
-      // Create feed with verified identity
-      const feed = await FeedService.createFeed({
-        feedName: pendingFeedData.feedData.feedName!,
-        feedCategory: pendingFeedData.feedData.feedCategory,
-        feedDescription: pendingFeedData.feedData.feedDescription,
-        branding: pendingFeedData.feedData.branding,
-        isPaid: true,
-        monthlyPrice: pendingFeedData.feedData.monthlyPrice,
-        annualPrice: pendingFeedData.feedData.annualPrice,
-        subdomain: pendingFeedData.feedData.subdomain
-      });
-
-      // Create top post if content provided
-      if (pendingFeedData.topPostContent) {
-        const content = pendingFeedData.topPostContent;
-        await FeedService.createFeedPost(feed.feedId, {
-          content: content.text || '',
-          media: Array.isArray(content.media) ? content.media.map(m => ({
-            type: m.type,
-            url: m.url,
-            thumbnail: m.thumbnail
-          })) : [],
-          buttons: Array.isArray(content.buttons) ? content.buttons.map(b => ({
-            label: b.label,
-            url: b.url,
-            style: b.style
-          })) : [],
-          polls: Array.isArray(content.polls) ? content.polls.map(p => ({
-            question: p.question,
-            options: p.options
-          })) : [],
-          forms: Array.isArray(content.forms) ? content.forms.map(f => ({
-            title: f.title,
-            fields: Array.isArray(f.fields) ? f.fields.map(field => ({
-              name: field.name,
-              type: field.type,
-              required: field.required,
-              options: field.options
-            })) : []
-          })) : [],
-          isTopPost: true
-        });
-      }
-
-      // Activate feed (update status from pending to active)
-      await FeedService.updateFeed(feed.feedId, {
-        // Feed is now active
-      });
+      // Activate feed: creates sub-pN, Google Drive folder, and activates feed
+      const feed = await FeedService.activateFeedAfterVerification(
+        pendingFeedData.checkoutId,
+        {
+          verificationId: verifiedData.verificationId,
+          verifiedZKPs: verifiedData.dataPoints
+        }
+      );
 
       onFeedCreated?.(feed);
       onClose();
@@ -310,7 +269,6 @@ export const FeedCreator: React.FC<FeedCreatorProps> = ({
           links: []
         }
       });
-      setTopPostContent(null);
       setStep('basic');
       setPendingFeedData(null);
       setPaymentStatus('idle');
@@ -339,7 +297,7 @@ export const FeedCreator: React.FC<FeedCreatorProps> = ({
 
         {/* Progress Steps */}
         <div className="flex items-center justify-center mb-6 space-x-4">
-          {(['basic', 'top-post', 'pricing'] as const).map((s, index) => (
+          {(['basic', 'pricing'] as const).map((s, index) => (
             <React.Fragment key={s}>
               <button
                 onClick={() => setStep(s)}
@@ -429,133 +387,19 @@ export const FeedCreator: React.FC<FeedCreatorProps> = ({
               </div>
             </div>
 
-            {/* Branding */}
-            <div className="border-t border-neutral-700 pt-4">
-              <h3 className="text-sm font-medium text-white mb-4">Branding</h3>
-              
-              <div className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-neutral-300 mb-2">
-                    Avatar URL
-                  </label>
-                  <input
-                    type="url"
-                    value={feedData.branding?.avatar || ''}
-                    onChange={(e) => handleBrandingChange('avatar', e.target.value)}
-                    placeholder="https://..."
-                    className="w-full px-4 py-2 bg-neutral-800 border border-neutral-700 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-neutral-300 mb-2">
-                    Banner Image URL
-                  </label>
-                  <input
-                    type="url"
-                    value={feedData.branding?.bannerImage || ''}
-                    onChange={(e) => handleBrandingChange('bannerImage', e.target.value)}
-                    placeholder="https://..."
-                    className="w-full px-4 py-2 bg-neutral-800 border border-neutral-700 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-neutral-300 mb-2">
-                    Bio
-                  </label>
-                  <textarea
-                    value={feedData.branding?.bio || ''}
-                    onChange={(e) => handleBrandingChange('bio', e.target.value)}
-                    placeholder="Tell people about your feed..."
-                    rows={3}
-                    className="w-full px-4 py-2 bg-neutral-800 border border-neutral-700 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
-                  />
-                </div>
-
-                <div>
-                  <div className="flex items-center justify-between mb-2">
-                    <label className="block text-sm font-medium text-neutral-300">
-                      Links
-                    </label>
-                    <button
-                      onClick={handleAddLink}
-                      className="text-sm text-blue-400 hover:text-blue-300 flex items-center space-x-1"
-                    >
-                      <Plus className="h-4 w-4" />
-                      <span>Add Link</span>
-                    </button>
-                  </div>
-                  <div className="space-y-2">
-                    {(() => {
-                      const branding = feedData.branding || { avatar: '', bannerImage: '', bio: '', links: [] };
-                      const links = Array.isArray(branding.links) ? branding.links : [];
-                      return links.map((link, index) => (
-                        <div key={index} className="flex items-center space-x-2">
-                          <input
-                            type="text"
-                            value={link?.label || ''}
-                            onChange={(e) => handleUpdateLink(index, 'label', e.target.value)}
-                            placeholder="Label"
-                            className="flex-1 px-3 py-2 bg-neutral-800 border border-neutral-700 rounded text-white text-sm"
-                          />
-                          <input
-                            type="url"
-                            value={link?.url || ''}
-                            onChange={(e) => handleUpdateLink(index, 'url', e.target.value)}
-                            placeholder="https://..."
-                            className="flex-1 px-3 py-2 bg-neutral-800 border border-neutral-700 rounded text-white text-sm"
-                          />
-                          <button
-                            onClick={() => handleRemoveLink(index)}
-                            className="text-red-400 hover:text-red-300"
-                          >
-                            <X className="h-4 w-4" />
-                          </button>
-                        </div>
-                      ));
-                    })()}
-                  </div>
-                </div>
-              </div>
-            </div>
-
             <div className="flex justify-end">
               <button
-                onClick={() => setStep('top-post')}
+                onClick={() => setStep('pricing')}
                 disabled={!feedData.feedName}
                 className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                Next: Top Post
+                Next: Pricing
               </button>
             </div>
           </div>
         )}
 
-        {/* Step 2: Top Post */}
-        {step === 'top-post' && (
-          <div className="space-y-4">
-            <div className="mb-4">
-              <h3 className="text-lg font-medium text-white mb-2">Create Enhanced Top Post</h3>
-              <p className="text-sm text-neutral-400">
-                The top post acts as your feed's profile. It appears at the top of your feed and can include
-                rich content, buttons, polls, and forms.
-              </p>
-            </div>
-
-            <EnhancedThoughtCreator
-              initialContent={topPostContent || undefined}
-              onSubmit={async (content) => {
-                setTopPostContent(content);
-                setStep('pricing');
-              }}
-              onCancel={() => setStep('basic')}
-              isTopPost={true}
-            />
-          </div>
-        )}
-
-        {/* Step 3: Pricing */}
+        {/* Step 2: Pricing */}
         {step === 'pricing' && (
           <div className="space-y-4">
             <div className="mb-4">
@@ -599,7 +443,7 @@ export const FeedCreator: React.FC<FeedCreatorProps> = ({
 
             <div className="flex justify-between pt-4 border-t border-neutral-700">
               <button
-                onClick={() => setStep('top-post')}
+                onClick={() => setStep('basic')}
                 className="px-4 py-2 text-sm font-medium text-neutral-300 hover:text-white transition-colors"
               >
                 Back

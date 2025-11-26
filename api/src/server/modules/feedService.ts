@@ -70,6 +70,10 @@ export interface FeedRow {
   monthly_price?: number;
   annual_price?: number;
   subdomain?: string | null;
+  sub_pn_identifier?: string | null;
+  owner_pn_identifier?: string | null;
+  status?: string | null;
+  google_drive_folder_id?: string | null;
 }
 
 export class FeedService {
@@ -808,6 +812,173 @@ export class FeedService {
     const result = await db.query<FeedRow>(query, params);
     
     return result.rows.map(row => this.rowToFeed(row));
+  }
+
+  /**
+   * Activate feed after verification
+   * Creates sub-pN identifier, Google Drive folder structure, and activates feed
+   */
+  static async activateFeedAfterVerification(
+    feedId: string,
+    creatorDid: string,
+    verificationData: {
+      verificationId: string;
+      verifiedZKPs: any;
+    }
+  ): Promise<Feed> {
+    const db = getDatabasePool();
+    const crypto = await import('crypto');
+
+    try {
+      // Get feed
+      const feed = await this.getFeedById(feedId);
+      if (!feed) {
+        throw new Error('Feed not found');
+      }
+
+      // Get creator's pN identifier from Google Drive credentials
+      // We'll derive it from DID or get it from storage
+      const { GoogleDriveProxyService } = await import('./googleDriveProxy');
+      const googleDriveProxy = new GoogleDriveProxyService();
+      
+      // Try to get access token - this will help us find the pN identifier
+      let creatorPnIdentifier: string | undefined;
+      try {
+        // Get access token - this will find the pN identifier from storage
+        await googleDriveProxy.getAccessToken(creatorDid);
+        // The pN identifier is stored in the credentials, but we need to extract it
+        // For now, we'll generate a deterministic sub-pN based on feedId + creatorDid
+        const combined = `${feedId}:${creatorDid}`;
+        const hash = crypto.createHash('sha256').update(combined, 'utf8').digest('hex');
+        const subPnIdentifier = `feed-${hash.substring(0, 12)}`;
+        
+        // For owner, we'll use a similar approach - derive from creatorDid
+        // In production, we should get this from the user's actual pN identifier
+        const ownerHash = crypto.createHash('sha256').update(creatorDid, 'utf8').digest('hex');
+        const ownerPnIdentifier = `pn-${ownerHash.substring(0, 12)}`;
+
+        // Create Google Drive folder structure
+        // Note: This requires the creator to have Google Drive connected
+        const accessToken = await googleDriveProxy.getAccessToken(creatorDid);
+        
+        // Create feed folder structure
+        const feedFolderName = `par Noir - Feed: ${feed.feedName}`;
+        const feedFolderResponse = await fetch('https://www.googleapis.com/drive/v3/files', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${accessToken}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            name: feedFolderName,
+            mimeType: 'application/vnd.google-apps.folder'
+          })
+        });
+
+        let googleDriveFolderId: string | null = null;
+        if (feedFolderResponse.ok) {
+          const folderData = await feedFolderResponse.json();
+          googleDriveFolderId = folderData.id;
+
+          // Create subfolders
+          const subfolders = ['_metadata', 'top-post', 'posts'];
+          for (const subfolderName of subfolders) {
+            await fetch('https://www.googleapis.com/drive/v3/files', {
+              method: 'POST',
+              headers: {
+                'Authorization': `Bearer ${accessToken}`,
+                'Content-Type': 'application/json'
+              },
+              body: JSON.stringify({
+                name: subfolderName,
+                mimeType: 'application/vnd.google-apps.folder',
+                parents: [googleDriveFolderId]
+              })
+            });
+          }
+        }
+
+        // Update feed with sub-pN, owner pN, status, and Google Drive folder ID
+        const updateFields: string[] = [];
+        const params: any[] = [];
+        let paramCount = 0;
+
+        paramCount++;
+        updateFields.push(`sub_pn_identifier = $${paramCount}`);
+        params.push(subPnIdentifier);
+
+        paramCount++;
+        updateFields.push(`owner_pn_identifier = $${paramCount}`);
+        params.push(ownerPnIdentifier);
+
+        paramCount++;
+        updateFields.push(`status = $${paramCount}`);
+        params.push('active');
+
+        if (googleDriveFolderId) {
+          paramCount++;
+          updateFields.push(`google_drive_folder_id = $${paramCount}`);
+          params.push(googleDriveFolderId);
+        }
+
+        paramCount++;
+        updateFields.push(`updated_at = NOW()`);
+        params.push(feedId);
+
+        await db.query(`
+          UPDATE feeds
+          SET ${updateFields.join(', ')}
+          WHERE feed_id = $${paramCount}
+        `, params);
+
+        // Update payment status
+        await db.query(`
+          UPDATE feed_payments
+          SET status = 'completed', updated_at = NOW()
+          WHERE feed_id = $1
+        `, [feedId]);
+
+        // Get updated feed
+        const updatedFeed = await this.getFeedById(feedId);
+        if (!updatedFeed) {
+          throw new Error('Failed to retrieve updated feed');
+        }
+
+        console.log(`✅ [FeedService] Feed ${feedId} activated with sub-pN: ${subPnIdentifier}`);
+        return updatedFeed;
+      } catch (error) {
+        console.error('❌ [FeedService] Error activating feed:', error);
+        // If Google Drive folder creation fails, still activate the feed
+        // User can create folder later
+        const combined = `${feedId}:${creatorDid}`;
+        const hash = crypto.createHash('sha256').update(combined, 'utf8').digest('hex');
+        const subPnIdentifier = `feed-${hash.substring(0, 12)}`;
+        const ownerHash = crypto.createHash('sha256').update(creatorDid, 'utf8').digest('hex');
+        const ownerPnIdentifier = `pn-${ownerHash.substring(0, 12)}`;
+
+        await db.query(`
+          UPDATE feeds
+          SET sub_pn_identifier = $1, owner_pn_identifier = $2, status = 'active', updated_at = NOW()
+          WHERE feed_id = $3
+        `, [subPnIdentifier, ownerPnIdentifier, feedId]);
+
+        await db.query(`
+          UPDATE feed_payments
+          SET status = 'completed', updated_at = NOW()
+          WHERE feed_id = $1
+        `, [feedId]);
+
+        const updatedFeed = await this.getFeedById(feedId);
+        if (!updatedFeed) {
+          throw new Error('Failed to retrieve updated feed');
+        }
+
+        return updatedFeed;
+      }
+    } catch (error) {
+      console.error('❌ [FeedService] Error in activateFeedAfterVerification:', error);
+      throw error;
+    }
   }
 
   /**

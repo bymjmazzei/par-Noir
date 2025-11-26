@@ -799,5 +799,67 @@ export function setupFeedRoutes(app: any) {
       return res.status(500).json({ error: 'Failed to get delegated feeds' });
     }
   });
+
+  /**
+   * POST /api/feeds/activate-after-verification
+   * Activate feed after verification: creates sub-pN, Google Drive folder, and activates feed
+   */
+  app.post('/api/feeds/activate-after-verification', async (req: Request, res: Response) => {
+    try {
+      const { checkoutId, verificationId, verifiedZKPs } = req.body;
+
+      // Get authenticated user
+      const authHeader = req.headers.authorization;
+      if (!authHeader || !authHeader.startsWith('Bearer ')) {
+        return res.status(401).json({ error: 'Unauthorized' });
+      }
+
+      const token = authHeader.substring(7);
+      const { PNOAuthService } = await import('./pnOAuthService');
+      const tokenPayload = PNOAuthService.validateAccessToken(token);
+
+      if (!tokenPayload) {
+        return res.status(401).json({ error: 'Invalid token' });
+      }
+
+      // Find feed by checkoutId
+      const paymentResult = await db.query(`
+        SELECT feed_id, status
+        FROM feed_payments
+        WHERE checkout_id = $1
+      `, [checkoutId]);
+
+      if (paymentResult.rows.length === 0) {
+        return res.status(404).json({ error: 'Payment not found' });
+      }
+
+      const feedId = paymentResult.rows[0].feed_id;
+      const feed = await FeedService.getFeedById(feedId);
+
+      if (!feed) {
+        return res.status(404).json({ error: 'Feed not found' });
+      }
+
+      // Verify user is the creator
+      if (feed.creatorId !== tokenPayload.did) {
+        return res.status(403).json({ error: 'Not authorized' });
+      }
+
+      // Activate feed (creates sub-pN, Google Drive folder, updates status)
+      const activatedFeed = await FeedService.activateFeedAfterVerification(
+        feedId,
+        feed.creatorId,
+        {
+          verificationId,
+          verifiedZKPs
+        }
+      );
+
+      return res.json(activatedFeed);
+    } catch (error) {
+      console.error('Activate feed error:', error);
+      return res.status(500).json({ error: 'Failed to activate feed' });
+    }
+  });
 }
 

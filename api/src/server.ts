@@ -989,6 +989,40 @@ class ProductionServer {
   }
 
   private async setupRoutes(): Promise<void> {
+    // TEMPORARY: Admin endpoint to run feed sub-pN migration
+    // TODO: Remove after migration is complete
+    this.app.post('/api/admin/run-feed-sub-pn-migration', async (req, res) => {
+      try {
+        // Check Origin header in production
+        if (process.env.NODE_ENV === 'production') {
+          const origin = req.headers.origin;
+          if (!origin || !ALLOWED_ORIGINS.includes(origin)) {
+            return res.status(403).json({ error: 'Origin header required in production' });
+          }
+        }
+
+        const fs = await import('fs');
+        const path = await import('path');
+        const { getDatabasePool } = await import('./server/utils/database');
+        
+        const db = getDatabasePool();
+        const migrationPath = path.join(__dirname, '../migrations/add_feed_sub_pn.sql');
+        const migrationSQL = fs.readFileSync(migrationPath, 'utf8');
+
+        console.log('📝 Running feed sub-pN migration...');
+        await db.query(migrationSQL);
+        
+        console.log('✅ Feed sub-pN migration completed successfully!');
+        
+        return res.json({ success: true, message: 'Migration completed successfully' });
+      } catch (error: any) {
+        console.error('❌ Migration failed:', error);
+        return res.status(500).json({ 
+          error: 'Migration failed', 
+          message: error.message 
+        });
+      }
+    });
     // Health check endpoint
     this.app.get('/health', (req, res) => {
       res.json({

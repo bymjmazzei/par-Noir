@@ -181,6 +181,44 @@ export class FeedService {
   }
 
   /**
+   * Activate feed after verification
+   * Creates sub-pN, Google Drive folder, and activates feed
+   */
+  static async activateFeedAfterVerification(
+    checkoutId: string,
+    verificationData: {
+      verificationId: string;
+      verifiedZKPs: any;
+    }
+  ): Promise<Feed> {
+    const authenticatedUserStr = localStorage.getItem('authenticated_user');
+    if (!authenticatedUserStr) {
+      throw new Error('User not authenticated');
+    }
+
+    const authenticatedUser = JSON.parse(authenticatedUserStr);
+    const response = await fetch(`${this.API_BASE}/api/feeds/activate-after-verification`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${authenticatedUser.accessToken || ''}`
+      },
+      body: JSON.stringify({
+        checkoutId,
+        verificationId: verificationData.verificationId,
+        verifiedZKPs: verificationData.verifiedZKPs
+      })
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.message || 'Failed to activate feed');
+    }
+
+    return await response.json();
+  }
+
+  /**
    * Delete feed
    */
   static async deleteFeed(feedId: string): Promise<void> {
