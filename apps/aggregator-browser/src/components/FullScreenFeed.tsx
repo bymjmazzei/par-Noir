@@ -1645,20 +1645,23 @@ export function FullScreenFeed({
               const heightScale = viewportHeight / REFERENCE_HEIGHT;
               const scale = Math.min(widthScale, heightScale); // Use smaller to maintain aspect ratio
               
+              // Use loaded content if available, otherwise use textPostData
+              const styleData = effectiveTextPostData?.style || textPostData?.style;
+              
               // Scale all style properties proportionally
-              const baseFontSize = textPostData?.style?.fontSize || 48;
+              const baseFontSize = styleData?.fontSize || 48;
               const scaledFontSize = baseFontSize * scale;
-              const basePadding = textPostData?.style?.padding || 40;
+              const basePadding = styleData?.padding || 40;
               const scaledPadding = basePadding * scale;
-              const baseShadowOffsetX = textPostData?.style?.dropShadowOffsetX || 2;
-              const baseShadowOffsetY = textPostData?.style?.dropShadowOffsetY || 2;
-              const baseShadowBlur = textPostData?.style?.dropShadowBlur || 10;
+              const baseShadowOffsetX = styleData?.dropShadowOffsetX || 2;
+              const baseShadowOffsetY = styleData?.dropShadowOffsetY || 2;
+              const baseShadowBlur = styleData?.dropShadowBlur || 10;
               
               return (
                 <div 
                   className="w-full h-full flex items-center justify-center relative"
                   style={{
-                    backgroundColor: textPostData?.style?.backgroundColor || '#000000',
+                    backgroundColor: styleData?.backgroundColor || '#000000',
                     backgroundImage: styleData?.backgroundImage 
                       ? `url(${styleData.backgroundImage})` 
                       : 'none',
