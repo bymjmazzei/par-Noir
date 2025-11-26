@@ -2155,6 +2155,14 @@ class ProductionServer {
           const isBecomingPublic = finalIsPublic && (!wasPublic || !fileExistedBefore);
           const isBecomingPrivate = !finalIsPublic && wasPublic;
           
+          console.log(`[MetadataIndex PUT] Public status check for ${fileId}:`, {
+            finalIsPublic,
+            wasPublic,
+            fileExistedBefore,
+            isBecomingPublic,
+            isBecomingPrivate
+          });
+          
           if (current) {
             const updatedMetadata = {
               ...current.metadata,
@@ -2306,6 +2314,7 @@ class ProductionServer {
           
           // Create companion metadata file when file becomes public for the first time
           if (isBecomingPublic) {
+            console.log(`[MetadataIndex PUT] File ${fileId} is becoming public - creating companion metadata...`);
             try {
               const authHeader = req.headers.authorization;
               if (authHeader && authHeader.startsWith('Bearer ')) {
@@ -2532,8 +2541,11 @@ class ProductionServer {
               }
             } catch (metadataError: any) {
               // Don't fail the update if metadata creation fails - log and continue
-              console.warn(`[MetadataIndex] Failed to create companion metadata file:`, metadataError?.message || metadataError);
+              console.error(`[MetadataIndex] Failed to create companion metadata file for ${fileId}:`, metadataError?.message || metadataError);
+              console.error(`[MetadataIndex] Stack trace:`, metadataError?.stack);
             }
+          } else {
+            console.log(`[MetadataIndex PUT] File ${fileId} is NOT becoming public (isBecomingPublic=${isBecomingPublic}) - skipping companion metadata creation`);
           }
         }
 
