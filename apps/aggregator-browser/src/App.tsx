@@ -46,9 +46,6 @@ import { PNOAuthService } from './services/pnOAuthService';
 import { FullScreenFeed } from './components/FullScreenFeed';
 import { FeedNavBar } from './components/FeedNavBar';
 import { BottomNav } from './components/BottomNav';
-import { ContextSwitcher } from './components/ContextSwitcher';
-import { useAppContext } from './hooks/useAppContext';
-import { ContextSwitcher } from './components/ContextSwitcher';
 import { useAppContext } from './hooks/useAppContext';
 import { DiscoveryPage } from './components/DiscoveryPage';
 import { SearchResults } from './components/SearchResults';
@@ -3574,23 +3571,8 @@ function App() {
               background: 'transparent'
             }}
           >
-            {/* Context Switcher - Show when user is unlocked */}
-            {userState.isUnlocked && activeContext && (
-              <div className="absolute left-4 top-1/2 transform -translate-y-1/2 z-[101]">
-                <ContextSwitcher
-                  currentContext={activeContext}
-                  availableContexts={availableContexts}
-                  onContextChange={(context) => {
-                    setActiveContext(context);
-                    // TODO: Load context-specific content
-                    // loadContextContent(context);
-                  }}
-                  isLoading={isLoadingContexts}
-                />
-              </div>
-            )}
-            
             {/* Feed Rail - Scrollable horizontally, centers active feed (TikTok style) */}
+            {/* pN feed button: tap to go to pN feed, tap and hold to open context menu */}
             <FeedRail
               feeds={feedRailItems}
               activeFeedId={activeFeedId}
@@ -3599,7 +3581,14 @@ function App() {
                 setActiveFeedId(feedId);
               }}
               onBrowseFeeds={undefined}
-                  />
+              currentContext={userState.isUnlocked ? activeContext : null}
+              availableContexts={userState.isUnlocked ? availableContexts : []}
+              onContextChange={(context) => {
+                setActiveContext(context);
+                // TODO: Load context-specific content
+                // loadContextContent(context);
+              }}
+            />
           </div>
         )}
 

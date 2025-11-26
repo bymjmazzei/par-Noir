@@ -1,13 +1,15 @@
 /**
  * Feed Rail Component
  * Horizontal scrolling feed selector for TikTok-style navigation
+ * pN feed button: tap to go to pN feed, tap and hold to open context menu
  */
 
-import React, { useRef, useEffect, useCallback } from 'react';
+import React, { useRef, useEffect, useCallback, useState } from 'react';
 import { Feed } from '../types/aggregator';
 import { useUserState } from '../contexts/UserStateContext';
-import { Globe, Sparkles } from 'lucide-react';
+import { Globe, Sparkles, User, Rss } from 'lucide-react';
 import { FEED_CATEGORIES } from '../constants/feedCategories';
+import { AppContext } from '../hooks/useAppContext';
 
 export interface FeedRailItem {
   feedId: string;
@@ -23,13 +25,81 @@ interface FeedRailProps {
   activeFeedId: string;
   onFeedSelect: (feedId: string) => void;
   onBrowseFeeds?: () => void;
+  // Context switching props (for pN feed button)
+  currentContext?: AppContext | null;
+  availableContexts?: AppContext[];
+  onContextChange?: (context: AppContext) => void;
 }
 
-export function FeedRail({ feeds, activeFeedId, onFeedSelect, onBrowseFeeds }: FeedRailProps) {
+export function FeedRail({ 
+  feeds, 
+  activeFeedId, 
+  onFeedSelect, 
+  onBrowseFeeds,
+  currentContext,
+  availableContexts = [],
+  onContextChange
+}: FeedRailProps) {
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const innerContainerRef = useRef<HTMLDivElement>(null);
   const { userState } = useUserState();
-  
+  const [showContextMenu, setShowContextMenu] = useState(false);
+  const [contextMenuPosition, setContextMenuPosition] = useState<{ x: number; y: number } | null>(null);
+  const pnButtonRef = useRef<HTMLButtonElement>(null);
+  const contextMenuRef = useRef<HTMLDivElement>(null);
+  const longPressTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Close context menu when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (
+        contextMenuRef.current && 
+        !contextMenuRef.current.contains(event.target as Node) &&
+        pnButtonRef.current &&
+        !pnButtonRef.current.contains(event.target as Node)
+      ) {
+        setShowContextMenu(false);
+        setContextMenuPosition(null);
+      }
+    };
+
+    if (showContextMenu) {
+      document.addEventListener('mousedown', handleClickOutside);
+      return () => document.removeEventListener('mousedown', handleClickOutside);
+    }
+  }, [showContextMenu]);
+
+  // Handle long press on pN feed button
+  const handlePnButtonPressStart = useCallback((event: React.MouseEvent | React.TouchEvent) => {
+    if (!userState.isUnlocked || !currentContext || !availableContexts.length) return;
+
+    const startTime = Date.now();
+    const buttonElement = pnButtonRef.current;
+    if (!buttonElement) return;
+
+    // Get button position for menu placement
+    const rect = buttonElement.getBoundingClientRect();
+    const x = rect.left;
+    const y = rect.bottom + 8; // Position below button
+
+    longPressTimerRef.current = setTimeout(() => {
+      setContextMenuPosition({ x, y });
+      setShowContextMenu(true);
+    }, 500); // 500ms long press
+  }, [userState.isUnlocked, currentContext, availableContexts]);
+
+  const handlePnButtonPressEnd = useCallback(() => {
+    if (longPressTimerRef.current) {
+      clearTimeout(longPressTimerRef.current);
+      longPressTimerRef.current = null;
+    }
+  }, []);
+
+  const handleContextSelect = useCallback((context: AppContext) => {
+    onContextChange?.(context);
+    setShowContextMenu(false);
+    setContextMenuPosition(null);
+  }, [onContextChange]);
 
   // Calculate max scroll position based on last feed at midpoint
   const calculateMaxScroll = useCallback(() => {
@@ -132,8 +202,22 @@ export function FeedRail({ feeds, activeFeedId, onFeedSelect, onBrowseFeeds }: F
           return (
             <button
               key={feed.feedId}
+              ref={isPublicFeed ? pnButtonRef : undefined}
               data-feed-id={feed.feedId}
-              onClick={() => onFeedSelect(feed.feedId)}
+              onClick={() => {
+                if (isPublicFeed && showContextMenu) {
+                  // If context menu is open, clicking closes it
+                  setShowContextMenu(false);
+                  setContextMenuPosition(null);
+                } else {
+                  onFeedSelect(feed.feedId);
+                }
+              }}
+              onMouseDown={isPublicFeed ? handlePnButtonPressStart : undefined}
+              onMouseUp={isPublicFeed ? handlePnButtonPressEnd : undefined}
+              onMouseLeave={isPublicFeed ? handlePnButtonPressEnd : undefined}
+              onTouchStart={isPublicFeed ? handlePnButtonPressStart : undefined}
+              onTouchEnd={isPublicFeed ? handlePnButtonPressEnd : undefined}
               className="relative whitespace-nowrap text-white/85 hover:text-white transition-colors flex items-center justify-center"
               style={{ opacity: isActive ? 1 : 0.85 }}
             >
@@ -152,7 +236,7 @@ export function FeedRail({ feeds, activeFeedId, onFeedSelect, onBrowseFeeds }: F
                     y="15" 
                     fontSize="16" 
                     fontFamily="system-ui, -apple-system, sans-serif" 
-                    fontWeight="500" 
+                    fontWeight="500"
                     fill="currentColor"
                     letterSpacing="0.05em"
                   >
@@ -178,6 +262,103 @@ export function FeedRail({ feeds, activeFeedId, onFeedSelect, onBrowseFeeds }: F
           );
         })}
       </div>
+
+      {/* Context Menu - Shows when pN feed button is long-pressed */}
+      {showContextMenu && contextMenuPosition && userState.isUnlocked && currentContext && availableContexts.length > 0 && (
+        <div
+          ref={contextMenuRef}
+          className="fixed bg-neutral-900 border border-neutral-700 rounded-lg shadow-xl z-[200] max-h-[400px] overflow-y-auto"
+          style={{
+            left: `${contextMenuPosition.x}px`,
+            top: `${contextMenuPosition.y}px`,
+            minWidth: '240px',
+            maxWidth: '280px'
+          }}
+        >
+          {/* pN Identity */}
+          {availableContexts.find(c => c.type === 'pn') && (
+            <div className="p-2">
+              <div className="text-xs font-semibold text-neutral-400 uppercase mb-2 px-2">
+                Identity
+              </div>
+              {availableContexts
+                .filter(c => c.type === 'pn')
+                .map(context => (
+                  <button
+                    key={context.id}
+                    onClick={() => handleContextSelect(context)}
+                    className={`w-full flex items-center space-x-2 px-3 py-2 rounded-lg transition-colors text-left ${
+                      currentContext.id === context.id && currentContext.type === context.type
+                        ? 'bg-blue-900/30 text-blue-300'
+                        : 'hover:bg-neutral-800 text-white'
+                    }`}
+                  >
+                    <User className="h-4 w-4 text-blue-400 flex-shrink-0" />
+                    <span className="text-sm truncate">{context.name}</span>
+                  </button>
+                ))}
+            </div>
+          )}
+
+          {/* Owned Feeds */}
+          {availableContexts.filter(c => c.type === 'feed' && c.isOwned).length > 0 && (
+            <div className="p-2 border-t border-neutral-700">
+              <div className="text-xs font-semibold text-neutral-400 uppercase mb-2 px-2">
+                My Feeds
+              </div>
+              {availableContexts
+                .filter(c => c.type === 'feed' && c.isOwned)
+                .map(context => (
+                  <button
+                    key={context.id}
+                    onClick={() => handleContextSelect(context)}
+                    className={`w-full flex items-center space-x-2 px-3 py-2 rounded-lg transition-colors text-left ${
+                      currentContext.id === context.id && currentContext.type === context.type
+                        ? 'bg-purple-900/30 text-purple-300'
+                        : 'hover:bg-neutral-800 text-white'
+                    }`}
+                  >
+                    <Rss className="h-4 w-4 text-purple-400 flex-shrink-0" />
+                    <span className="text-sm truncate">{context.name}</span>
+                  </button>
+                ))}
+            </div>
+          )}
+
+          {/* Delegated Feeds */}
+          {availableContexts.filter(c => c.type === 'feed' && !c.isOwned).length > 0 && (
+            <div className="p-2 border-t border-neutral-700">
+              <div className="text-xs font-semibold text-neutral-400 uppercase mb-2 px-2">
+                Delegated Feeds
+              </div>
+              {availableContexts
+                .filter(c => c.type === 'feed' && !c.isOwned)
+                .map(context => (
+                  <button
+                    key={context.id}
+                    onClick={() => handleContextSelect(context)}
+                    className={`w-full flex items-center space-x-2 px-3 py-2 rounded-lg transition-colors text-left ${
+                      currentContext.id === context.id && currentContext.type === context.type
+                        ? 'bg-purple-900/30 text-purple-300'
+                        : 'hover:bg-neutral-800 text-white'
+                    }`}
+                  >
+                    <Rss className="h-4 w-4 text-purple-400 flex-shrink-0" />
+                    <span className="text-sm truncate">{context.name}</span>
+                    <span className="text-xs text-neutral-500 ml-auto">Delegated</span>
+                  </button>
+                ))}
+            </div>
+          )}
+
+          {/* Empty State */}
+          {availableContexts.filter(c => c.type === 'feed').length === 0 && (
+            <div className="p-4 text-center text-neutral-400 text-sm">
+              No feeds available
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
