@@ -2951,6 +2951,10 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
                 freshAccessToken,
                 accountId
               );
+              
+              // CRITICAL: Submit THUMBNAIL FILE to public index (not main file)
+              // The thumbnail is what appears in the feed, main file is only for downloads
+              // Note: This will be done after main file upload so we have fileId reference
             } else {
               throw new Error('Thumbnail blob not available');
             }

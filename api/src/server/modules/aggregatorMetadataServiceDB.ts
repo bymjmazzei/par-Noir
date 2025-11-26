@@ -234,12 +234,10 @@ export class AggregatorMetadataServiceDB {
           OR (am.metadata->>'isNSFW')::text = 'true'
           OR (am.metadata->'isNSFW')::boolean = true
         )
-        -- CRITICAL: Public index should only show entries that HAVE thumbnails (thumbnailFileId set)
-        -- This means images/videos with thumbnails, not the thumbnail files themselves
-        -- Exclude entries that ARE thumbnails (names starting with thumb_)
-        AND am.metadata->>'thumbnailFileId' IS NOT NULL
-        AND am.metadata->>'thumbnailFileId' != ''
-        AND NOT (
+        -- CRITICAL: Public index should ONLY contain thumbnail files (what's displayed in feed)
+        -- Thumbnail files have names starting with "thumb_" and are what appear in the public feed
+        -- Main files are private and only used for downloads
+        AND (
           LOWER(COALESCE(am.metadata->>'name', '')) LIKE 'thumb_%'
           OR LOWER(COALESCE(am.metadata->>'title', '')) LIKE 'thumb_%'
           OR LOWER(COALESCE(am.metadata->>'originalName', '')) LIKE 'thumb_%'
@@ -317,12 +315,10 @@ export class AggregatorMetadataServiceDB {
           OR am.metadata->>'isNSFW' = 'TRUE'
           OR (am.metadata->'isNSFW')::boolean = true
         )
-        -- CRITICAL: Public index should only show entries that HAVE thumbnails (thumbnailFileId set)
-        -- This means images/videos with thumbnails, not the thumbnail files themselves
-        -- Exclude entries that ARE thumbnails (names starting with thumb_)
-        AND am.metadata->>'thumbnailFileId' IS NOT NULL
-        AND am.metadata->>'thumbnailFileId' != ''
-        AND NOT (
+        -- CRITICAL: Public index should ONLY contain thumbnail files (what's displayed in feed)
+        -- Thumbnail files have names starting with "thumb_" and are what appear in the public feed
+        -- Main files are private and only used for downloads
+        AND (
           LOWER(COALESCE(am.metadata->>'name', '')) LIKE 'thumb_%'
           OR LOWER(COALESCE(am.metadata->>'title', '')) LIKE 'thumb_%'
           OR LOWER(COALESCE(am.metadata->>'originalName', '')) LIKE 'thumb_%'
