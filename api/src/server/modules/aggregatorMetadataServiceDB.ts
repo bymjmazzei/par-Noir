@@ -187,7 +187,11 @@ export class AggregatorMetadataServiceDB {
           COALESCE(ARRAY_AGG(DISTINCT fp.feed_id::text) FILTER (WHERE fp.feed_id IS NOT NULL), ARRAY[]::text[]) as feed_ids
         FROM aggregator_metadata am
         ${joinType} JOIN feed_posts fp ON am.file_id = fp.file_id
-        WHERE am.metadata->>'isPublic' = 'true'
+        WHERE (
+          am.metadata->>'isPublic' = 'true' 
+          OR (am.metadata->>'isPublic')::boolean = true
+          OR am.metadata->'isPublic' = 'true'::jsonb
+        )
         AND (
           am.metadata->>'isNSFW' IS NULL 
           OR am.metadata->>'isNSFW' = 'false'
@@ -257,7 +261,11 @@ export class AggregatorMetadataServiceDB {
         SELECT COUNT(DISTINCT am.file_id) as count
         FROM aggregator_metadata am
         ${countJoinType} JOIN feed_posts fp ON am.file_id = fp.file_id
-        WHERE am.metadata->>'isPublic' = 'true'
+        WHERE (
+          am.metadata->>'isPublic' = 'true' 
+          OR (am.metadata->>'isPublic')::boolean = true
+          OR am.metadata->'isPublic' = 'true'::jsonb
+        )
         AND (
           am.metadata->>'isNSFW' IS NULL 
           OR am.metadata->>'isNSFW' = 'false'
@@ -410,7 +418,11 @@ export class AggregatorMetadataServiceDB {
           COALESCE(ARRAY_AGG(DISTINCT fp.feed_id::text) FILTER (WHERE fp.feed_id IS NOT NULL), ARRAY[]::text[]) as feed_ids
         FROM aggregator_metadata am
         LEFT JOIN feed_posts fp ON am.file_id = fp.file_id
-        WHERE am.metadata->>'isPublic' = 'true'
+        WHERE (
+          am.metadata->>'isPublic' = 'true' 
+          OR (am.metadata->>'isPublic')::boolean = true
+          OR am.metadata->'isPublic' = 'true'::jsonb
+        )
         AND am.metadata->>'isNSFW' = 'true'
         GROUP BY am.file_id, am.metadata, am.submitted_at, am.pn_identifier
       `;
@@ -453,7 +465,11 @@ export class AggregatorMetadataServiceDB {
       const countQuery = `
         SELECT COUNT(*) as count
         FROM aggregator_metadata am
-        WHERE am.metadata->>'isPublic' = 'true'
+        WHERE (
+          am.metadata->>'isPublic' = 'true' 
+          OR (am.metadata->>'isPublic')::boolean = true
+          OR am.metadata->'isPublic' = 'true'::jsonb
+        )
         AND am.metadata->>'isNSFW' = 'true'
         ${filters?.fileType ? `AND am.metadata->>'fileType' = $1` : ''}
         ${filters?.indexerId ? `AND (
