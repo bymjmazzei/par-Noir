@@ -1967,30 +1967,33 @@ class ProductionServer {
           return res.status(400).json({ error: 'Missing fileId parameter' });
         }
 
-        // Check if metadata entry exists
-        const existing = await service.getFileMetadata(fileId);
-        console.log(`[MetadataIndex PUT] Existing entry check for ${fileId}: ${existing ? 'found' : 'not found'}`);
+        // Check if metadata entry exists BEFORE creating/updating (to detect new files)
+        let current = await service.getFileMetadata(fileId);
+        const fileExistedBefore = !!current;
+        console.log(`[MetadataIndex PUT] Existing entry check for ${fileId}: ${current ? 'found' : 'not found'}, existedBefore: ${fileExistedBefore}`);
         
-        if (!existing) {
-          // Create new metadata entry - fetch file info from Google Drive
-          const authHeader = req.headers.authorization;
-          if (!authHeader || !authHeader.startsWith('Bearer ')) {
-            return res.status(401).json({
-              error: 'unauthorized',
-              error_description: 'Missing or invalid Authorization header'
-            });
-          }
+        // Get auth token for operations (needed for both new and existing files)
+        const authHeader = req.headers.authorization;
+        if (!authHeader || !authHeader.startsWith('Bearer ')) {
+          return res.status(401).json({
+            error: 'unauthorized',
+            error_description: 'Missing or invalid Authorization header'
+          });
+        }
 
-          const token = authHeader.substring(7);
-          const { PNOAuthService } = await import('./server/modules/pnOAuthService');
-          const tokenPayload = PNOAuthService.validateAccessToken(token);
-          
-          if (!tokenPayload) {
-            return res.status(401).json({
-              error: 'unauthorized',
-              error_description: 'Invalid or expired access token'
-            });
-          }
+        const token = authHeader.substring(7);
+        const { PNOAuthService } = await import('./server/modules/pnOAuthService');
+        const tokenPayload = PNOAuthService.validateAccessToken(token);
+        
+        if (!tokenPayload) {
+          return res.status(401).json({
+            error: 'unauthorized',
+            error_description: 'Invalid or expired access token'
+          });
+        }
+        
+        if (!current) {
+          // Create new metadata entry - fetch file info from Google Drive
 
           const userIdentifier = tokenPayload.pnIdentifier || tokenPayload.did;
           const identifierCandidates: string[] = [];
