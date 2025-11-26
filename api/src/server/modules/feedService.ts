@@ -859,9 +859,8 @@ export class FeedService {
         });
         
         // Get creator's pN identifier from storage credentials
-        const { StorageCredentialsService } = await import('./storageCredentialsService');
-        const storageService = new StorageCredentialsService();
-        const creatorCredentials = await storageService.findCredentialsByIdentityCandidates([creatorDid]);
+        const { storageCredentialsService } = await import('./storageCredentialsService');
+        const creatorCredentials = await storageCredentialsService.findCredentialsByIdentityCandidates([creatorDid]);
         
         if (!creatorCredentials) {
           throw new Error('Creator credentials not found - Google Drive must be connected');
