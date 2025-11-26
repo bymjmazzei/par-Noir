@@ -234,9 +234,12 @@ export class AggregatorMetadataServiceDB {
           OR (am.metadata->>'isNSFW')::text = 'true'
           OR (am.metadata->'isNSFW')::boolean = true
         )
-        -- CRITICAL: Public index should ONLY contain thumbnails, not main files
-        -- Only include files whose names start with "thumb_" - these are the thumbnail files
-        AND (
+        -- CRITICAL: Public index should only show entries that HAVE thumbnails (thumbnailFileId set)
+        -- This means images/videos with thumbnails, not the thumbnail files themselves
+        -- Exclude entries that ARE thumbnails (names starting with thumb_)
+        AND am.metadata->>'thumbnailFileId' IS NOT NULL
+        AND am.metadata->>'thumbnailFileId' != ''
+        AND NOT (
           LOWER(COALESCE(am.metadata->>'name', '')) LIKE 'thumb_%'
           OR LOWER(COALESCE(am.metadata->>'title', '')) LIKE 'thumb_%'
           OR LOWER(COALESCE(am.metadata->>'originalName', '')) LIKE 'thumb_%'
@@ -314,9 +317,12 @@ export class AggregatorMetadataServiceDB {
           OR am.metadata->>'isNSFW' = 'TRUE'
           OR (am.metadata->'isNSFW')::boolean = true
         )
-        -- CRITICAL: Public index should ONLY contain thumbnails, not main files
-        -- Only include files whose names start with "thumb_" - these are the thumbnail files
-        AND (
+        -- CRITICAL: Public index should only show entries that HAVE thumbnails (thumbnailFileId set)
+        -- This means images/videos with thumbnails, not the thumbnail files themselves
+        -- Exclude entries that ARE thumbnails (names starting with thumb_)
+        AND am.metadata->>'thumbnailFileId' IS NOT NULL
+        AND am.metadata->>'thumbnailFileId' != ''
+        AND NOT (
           LOWER(COALESCE(am.metadata->>'name', '')) LIKE 'thumb_%'
           OR LOWER(COALESCE(am.metadata->>'title', '')) LIKE 'thumb_%'
           OR LOWER(COALESCE(am.metadata->>'originalName', '')) LIKE 'thumb_%'
