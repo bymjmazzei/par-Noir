@@ -3101,7 +3101,44 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
 
         if (metadataResponse.ok) {
           const metadataResult = await metadataResponse.json();
-          console.log('✅ [Upload] Metadata entry created successfully');
+          console.log('✅ [Upload] Main file metadata entry created (private)');
+          
+          // CRITICAL: Submit THUMBNAIL FILE to public index (not main file)
+          // The thumbnail is what appears in the feed, main file is only for downloads
+          if (thumbnailFileId && (isImage || isVideo)) {
+            try {
+              // Submit thumbnail to public index
+              const thumbnailMetadataResponse = await fetch(`${apiEndpoint}/api/aggregator/metadata-index/${thumbnailFileId}`, {
+                method: 'PUT',
+                headers: {
+                  'Content-Type': 'application/json',
+                  'Authorization': `Bearer ${freshAccessToken}`
+                },
+                body: JSON.stringify({
+                  name: `thumb_${file.name}`,
+                  description: '',
+                  keywords: [],
+                  tags: [],
+                  fileType: 'image', // Thumbnails are always images
+                  isPublic: true, // Thumbnail goes in public index
+                  uploadDate: new Date().toISOString(),
+                  isNSFW: false,
+                  // Store reference to main file for downloads
+                  mainFileId: fileId, // Reference to the full file for downloads
+                }),
+              });
+              
+              if (thumbnailMetadataResponse.ok) {
+                console.log('✅ [Upload] Thumbnail submitted to public index');
+              } else {
+                const errorText = await thumbnailMetadataResponse.text().catch(() => 'Unknown error');
+                console.warn('⚠️ [Upload] Failed to submit thumbnail to public index:', errorText);
+              }
+            } catch (thumbIndexError) {
+              console.error('❌ [Upload] Failed to submit thumbnail to public index:', thumbIndexError);
+              // Don't fail upload if thumbnail indexing fails
+            }
+          }
           
           // Update local metadata map
           if (metadataResult.metadata) {
