@@ -92,7 +92,7 @@ export function setupFeedRoutes(app: any) {
         // Update file metadata to include this feedId in feedIds array
         try {
           const { AggregatorMetadataServiceDB } = await import('./aggregatorMetadataServiceDB');
-          const metadataService = new AggregatorMetadataServiceDB();
+          const metadataService = AggregatorMetadataServiceDB.getInstance();
           
           // Get current metadata
           const currentMetadata = await metadataService.getFileMetadata(fileId);
@@ -206,7 +206,7 @@ export function setupFeedRoutes(app: any) {
       // Update file metadata to remove this feedId from feedIds array
       try {
         const { AggregatorMetadataServiceDB } = await import('./aggregatorMetadataServiceDB');
-        const metadataService = new AggregatorMetadataServiceDB();
+        const metadataService = AggregatorMetadataServiceDB.getInstance();
         
         // Get current metadata
         const currentMetadata = await metadataService.getFileMetadata(fileId);
