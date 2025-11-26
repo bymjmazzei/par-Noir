@@ -932,11 +932,97 @@ export function FullScreenFeed({
                 }
               }
               
-              // PRIORITY 2: If image has publicToken, use decryptWithToken (for shared/public images)
-              // FIX: For public images, we should use thumbnailFileId if available, not the full file
-              // But if thumbnailFileId is not set, decryptWithToken will get the full file
-              // This is acceptable for now since publicToken images are meant to be shareable
-              if (file.publicToken) {
+              // PRIORITY 2: Try API endpoint with ?thumbnail=true first (even for public images)
+              // This ensures we get thumbnails, not full files
+              // Only fall back to publicToken decryption if thumbnail endpoint fails
+              const { PNOAuthService } = await import('../services/pnOAuthService');
+              const apiEndpoint = process.env.REACT_APP_API_ENDPOINT || 'https://api.parnoir.com';
+              const accessToken = await PNOAuthService.getValidAccessToken();
+              
+              if (accessToken) {
+                // Get accountId with caching
+                const accountId = await getAccountId(indexedFile, accessToken);
+                
+                // Try thumbnail endpoint first (works for both public and private images)
+                let thumbnailUrl = `${apiEndpoint}/api/drive/files/${fileId}?thumbnail=true`;
+                if (accountId && accountId.includes('::')) {
+                  thumbnailUrl += `&accountId=${encodeURIComponent(accountId)}`;
+                }
+                
+                let response = await fetch(thumbnailUrl, {
+                  headers: { 'Authorization': `Bearer ${accessToken}` }
+                });
+                
+                if (response.status === 401) {
+                  const refreshedToken = await PNOAuthService.getValidAccessToken(true);
+                  if (refreshedToken) {
+                    response = await fetch(thumbnailUrl, {
+                      headers: { 'Authorization': `Bearer ${refreshedToken}` }
+                    });
+                  }
+                }
+                
+                if (response.ok) {
+                  const contentType = response.headers.get('content-type') || '';
+                  const blob = await response.blob();
+                  
+                  // Decrypt thumbnail if encrypted
+                  let thumbnailBlob: Blob | null = null;
+                  if (contentType.includes('application/json') || contentType.includes('application/octet-stream')) {
+                    const { EncryptionManager } = await import('../utils/encryptionManager');
+                    const session = PNOAuthService.loadSession();
+                    if (session?.did) {
+                      const pnId = session.did;
+                      let publicKey = session?.publicKey;
+                      if (!publicKey && session.did.startsWith('did:key:')) {
+                        publicKey = session.did.substring(8);
+                      }
+                      if (publicKey) {
+                        try {
+                          const encryptedText = await blob.text();
+                          const encryptedPackage = JSON.parse(encryptedText);
+                          const encryptionManager = new EncryptionManager();
+                          const decryptedData = await encryptionManager.decrypt(
+                            encryptedPackage.encrypted,
+                            encryptedPackage.iv,
+                            encryptedPackage.salt,
+                            pnId,
+                            publicKey
+                          );
+                          const arrayBuffer = decryptedData.buffer.slice(decryptedData.byteOffset, decryptedData.byteOffset + decryptedData.byteLength) as ArrayBuffer;
+                          thumbnailBlob = new Blob([arrayBuffer], {
+                            type: encryptedPackage.metadata.originalMimeType || 'image/jpeg'
+                          });
+                        } catch (decryptErr) {
+                          console.warn(`[FullScreenFeed] Failed to decrypt thumbnail for ${fileId}:`, decryptErr);
+                          thumbnailBlob = null;
+                        }
+                      }
+                    }
+                  } else {
+                    thumbnailBlob = blob;
+                  }
+                  
+                  if (thumbnailBlob) {
+                    const thumbnailUrlObj = URL.createObjectURL(thumbnailBlob);
+                    setThumbnails(prev => {
+                      const newMap = new Map(prev);
+                      newMap.set(fileId, thumbnailUrlObj);
+                      return newMap;
+                    });
+                    return; // Success - thumbnail loaded via API
+                  }
+                } else {
+                  // API request failed - log but continue to next priority
+                  console.warn(`[FullScreenFeed] Thumbnail API failed for ${fileId}: ${response.status}`);
+                }
+              }
+              
+              // PRIORITY 3: Fall back to publicToken decryption ONLY if thumbnail endpoint failed
+              // FIX: This should only happen if we can't get a thumbnail via API
+              // For public images, decryptWithToken gets the FULL file, so we should avoid this
+              // unless absolutely necessary
+              if (file.publicToken && !thumbnails.has(fileId)) {
                 let token: ShareToken;
                 try {
                   token = typeof file.publicToken === 'string' ? JSON.parse(file.publicToken) : file.publicToken;
@@ -958,126 +1044,21 @@ export function FullScreenFeed({
                   decryptedBlob = await decryptWithToken(token);
                 }
                 
-                // FIX: For public images without thumbnailFileId, the decrypted blob is the full file
-                // This is fine for now, but ideally we'd have thumbnailFileId for all public images
+                // WARNING: This is the FULL file, not a thumbnail
+                // Only use this as last resort when thumbnail endpoint fails
+                console.warn(`[FullScreenFeed] Using full file as thumbnail for ${fileId} (thumbnailFileId missing and thumbnail endpoint failed)`);
                 const thumbnailUrl = URL.createObjectURL(decryptedBlob);
                 setThumbnails(prev => {
                   const newMap = new Map(prev);
                   newMap.set(fileId, thumbnailUrl);
                   return newMap;
                 });
-              } else {
-                // No publicToken - use API endpoint directly (like upload page does)
-                // This works for images the user owns but hasn't made public
-                const { PNOAuthService } = await import('../services/pnOAuthService');
-                const apiEndpoint = process.env.REACT_APP_API_ENDPOINT || 'https://api.parnoir.com';
-                const accessToken = await PNOAuthService.getValidAccessToken();
-                
-                if (!accessToken) {
-                  console.warn(`[FullScreenFeed] No access token for image ${fileId}`);
-                  return; // Skip this file if no access token
-                }
-
-                // Get accountId with caching
-                const accountId = await getAccountId(indexedFile, accessToken);
-
-                // Use thumbnail endpoint - for encrypted files, API will return the full encrypted file
-                let thumbnailUrl = `${apiEndpoint}/api/drive/files/${fileId}?thumbnail=true`;
-                if (accountId && accountId.includes('::')) {
-                  thumbnailUrl += `&accountId=${encodeURIComponent(accountId)}`;
-                }
-
-                let response = await fetch(thumbnailUrl, {
-                  headers: {
-                    'Authorization': `Bearer ${accessToken}`
-                  }
-                });
-
-                // If we get 401, refresh token and retry once
-                if (response.status === 401) {
-                  const refreshedToken = await PNOAuthService.getValidAccessToken(true);
-                  if (refreshedToken) {
-                    response = await fetch(thumbnailUrl, {
-                      headers: {
-                        'Authorization': `Bearer ${refreshedToken}`
-                      }
-                    });
-                  }
-                }
-
-                if (!response.ok) {
-                  console.warn(`[FullScreenFeed] Failed to load image ${fileId} from API: ${response.status}`);
-                  return; // Skip this file if API request failed
-                }
-
-                const contentType = response.headers.get('content-type') || '';
-                const blob = await response.blob();
-
-                // Check if this is an encrypted file (JSON) or a direct image
-                let imageBlob: Blob;
-                
-                if (contentType.includes('application/json') || contentType.includes('application/octet-stream')) {
-                  // This is an encrypted file - decrypt it
-                  const { EncryptionManager } = await import('../utils/encryptionManager');
-                  
-                  interface EncryptedFilePackage {
-                    encrypted: string;
-                    iv: string;
-                    salt: string;
-                    metadata: {
-                      originalName: string;
-                      originalSize: number;
-                      originalMimeType: string;
-                    };
-                  }
-                  
-                  const session = PNOAuthService.loadSession();
-                  if (!session?.did) {
-                    throw new Error('No session for decryption');
-                  }
-                  
-                  const pnId = session.did;
-                  let publicKey = session?.publicKey;
-                  
-                  if (!publicKey && session.did.startsWith('did:key:')) {
-                    publicKey = session.did.substring(8);
-                  }
-                  
-                  if (!publicKey) {
-                    throw new Error('No public key for decryption');
-                  }
-                  
-                  // Parse encrypted package
-                  const encryptedText = await blob.text();
-                  const encryptedPackage: EncryptedFilePackage = JSON.parse(encryptedText);
-                  
-                  // Decrypt
-                  const encryptionManager = new EncryptionManager();
-                  const decryptedData = await encryptionManager.decrypt(
-                    encryptedPackage.encrypted,
-                    encryptedPackage.iv,
-                    encryptedPackage.salt,
-                    pnId,
-                    publicKey
-                  );
-                  
-                  // Create image blob from decrypted data - convert Uint8Array to ArrayBuffer
-                  const arrayBuffer = decryptedData.buffer.slice(decryptedData.byteOffset, decryptedData.byteOffset + decryptedData.byteLength) as ArrayBuffer;
-                  imageBlob = new Blob([arrayBuffer], {
-                    type: encryptedPackage.metadata.originalMimeType || 'image/png'
-                  });
-                } else {
-                  // Direct image (non-encrypted or already decrypted by API)
-                  imageBlob = blob;
-                }
-
-                const thumbnailUrlObj = URL.createObjectURL(imageBlob);
-                setThumbnails(prev => {
-                  const newMap = new Map(prev);
-                  newMap.set(fileId, thumbnailUrlObj);
-                  return newMap;
-                });
+                return; // Skip to next file
               }
+              
+              // PRIORITY 4 removed - duplicate of PRIORITY 2
+              // If we get here, all thumbnail loading methods failed
+              // Don't load anything - image will show placeholder
             } catch (err) {
               console.error(`[FullScreenFeed] Failed to load thumbnail for ${fileId}:`, err);
             }
