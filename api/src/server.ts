@@ -5466,7 +5466,8 @@ class ProductionServer {
           }
           
           // Find paired file (thumbnail if main, main if thumbnail) - only if not PDF
-          if (!pdfPageThumbnailIds.length) {
+          if (!pdfPageThumbnailIds.length && userIdentifier) {
+            const { googleDriveProxyService } = await import('./server/modules/googleDriveProxy');
             const accessToken = await googleDriveProxyService.getAccessToken(userIdentifier, accountId);
             
             if (isThumbnail) {
