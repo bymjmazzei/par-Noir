@@ -74,14 +74,43 @@ export class ApiKeyService {
 
   /**
    * Get or create API key for a pN
+   * Also migrates existing localStorage keys to encrypted storage
    */
   async getOrCreateApiKey(pnId: string): Promise<ApiKey> {
     const existing = await this.getApiKey(pnId);
     if (existing) {
+      // Migrate from localStorage to encrypted storage if needed
+      await this.migrateFromLocalStorage(pnId, existing);
       return existing;
     }
 
     return await this.generateApiKey(pnId);
+  }
+
+  /**
+   * Migrate API key from localStorage to encrypted metadata storage
+   */
+  private async migrateFromLocalStorage(pnId: string, apiKey: ApiKey): Promise<void> {
+    try {
+      const storageKey = `${ApiKeyService.STORAGE_KEY_PREFIX}${pnId}`;
+      const localStorageKey = localStorage.getItem(storageKey);
+      
+      // If key exists in localStorage, migrate it to encrypted storage
+      if (localStorageKey) {
+        const userCredentials = SecureCredentialManager.getCredentials(pnId);
+        if (userCredentials) {
+          // Try to store in encrypted metadata
+          await this.storeApiKey(apiKey);
+          
+          // Remove from localStorage after successful migration
+          localStorage.removeItem(storageKey);
+          console.log('✅ [ApiKeyService] Migrated API key from localStorage to encrypted metadata');
+        }
+      }
+    } catch (error) {
+      console.warn('⚠️ [ApiKeyService] Failed to migrate API key from localStorage:', error);
+      // Don't throw - migration is optional
+    }
   }
 
   /**
