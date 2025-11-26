@@ -1592,21 +1592,46 @@ class ProductionServer {
           SELECT 
             file_id, 
             metadata->>'isPublic' as is_public, 
+            metadata->>'isPublic'::boolean as is_public_bool,
             metadata->>'name' as name,
+            metadata->>'fileType' as file_type,
             metadata->>'publicToken' as has_public_token,
             metadata->>'backendFileId' as backend_file_id,
             metadata->>'backend' as backend,
+            CASE 
+              WHEN metadata->>'textPost' IS NOT NULL OR metadata->>'thought' IS NOT NULL THEN 'thought'
+              WHEN metadata->>'pdfPageThumbnailIds' IS NOT NULL THEN 'pdf_slideshow'
+              ELSE metadata->>'fileType'
+            END as detected_type,
             updated_at
           FROM aggregator_metadata
           ORDER BY updated_at DESC
         `);
         
-        const publicFiles = allFiles.rows.filter((r: any) => r.is_public === 'true');
-        const privateFiles = allFiles.rows.filter((r: any) => r.is_public === 'false' || r.is_public === null);
+        const publicFiles = allFiles.rows.filter((r: any) => 
+          r.is_public === 'true' || r.is_public_bool === true
+        );
+        const privateFiles = allFiles.rows.filter((r: any) => 
+          (r.is_public === 'false' || r.is_public === null) && r.is_public_bool !== true
+        );
         const filesWithTokenButNotPublic = allFiles.rows.filter((r: any) => 
-          r.is_public !== 'true' && r.has_public_token
+          r.is_public !== 'true' && r.is_public_bool !== true && r.has_public_token
         );
         const googleDriveFiles = allFiles.rows.filter((r: any) => r.backend === 'google_drive');
+        
+        // Count by file type
+        const pdfs = allFiles.rows.filter((r: any) => 
+          r.file_type === 'document' || r.detected_type === 'pdf_slideshow'
+        );
+        const thoughts = allFiles.rows.filter((r: any) => 
+          r.file_type === 'thought' || r.file_type === 'text' || r.detected_type === 'thought'
+        );
+        const publicPdfs = pdfs.filter((r: any) => 
+          r.is_public === 'true' || r.is_public_bool === true
+        );
+        const publicThoughts = thoughts.filter((r: any) => 
+          r.is_public === 'true' || r.is_public_bool === true
+        );
         
         return res.json({
           totalFiles: allFiles.rows.length,
