@@ -2038,6 +2038,7 @@ class ProductionServer {
               backendFileId: fileId,
               backend: 'google_drive',
               name: name || driveFile.name?.replace(/\.encrypted$/i, '') || fileId,
+              ...(title && { title }),
               fileType: determinedFileType,
               uploadDate: driveFile.createdTime || new Date().toISOString(),
               isPublic: isPublic !== undefined ? isPublic : defaultIsPublic,
