@@ -48,12 +48,14 @@ export function setupFeedRoutes(app: any) {
 
   /**
    * POST /api/feeds/:feedId/posts
-   * Create a feed post
+   * Create a feed post OR add an existing file to a feed
+   * If fileId is provided, adds existing file to feed
+   * Otherwise, creates a new feed post with content/media/buttons
    */
   app.post('/api/feeds/:feedId/posts', async (req: Request, res: Response) => {
     try {
       const { feedId } = req.params;
-      const { content, media, buttons, polls, forms, isTopPost } = req.body;
+      const { fileId, addedBy, content, media, buttons, polls, forms, isTopPost } = req.body;
 
       // Get authenticated user from token
       const authHeader = req.headers.authorization;
@@ -80,7 +82,38 @@ export function setupFeedRoutes(app: any) {
         return res.status(403).json({ error: 'Not authorized' });
       }
 
-      // Create post
+      // If fileId is provided, add existing file to feed
+      if (fileId) {
+        const success = await FeedService.addPostToFeed(feedId, fileId, addedBy || tokenPayload.did);
+        if (!success) {
+          return res.status(500).json({ error: 'Failed to add file to feed' });
+        }
+
+        // Update file metadata to include this feedId in feedIds array
+        try {
+          const { AggregatorMetadataServiceDB } = await import('./aggregatorMetadataServiceDB');
+          const metadataService = new AggregatorMetadataServiceDB();
+          
+          // Get current metadata
+          const currentMetadata = await metadataService.getFileMetadata(fileId);
+          if (currentMetadata) {
+            const currentFeedIds = currentMetadata.feedIds || [];
+            if (!currentFeedIds.includes(feedId)) {
+              // Update metadata to include this feedId
+              await metadataService.updateFileMetadata(fileId, {
+                feedIds: [...currentFeedIds, feedId]
+              });
+            }
+          }
+        } catch (metadataError) {
+          console.warn('Failed to update file metadata with feedId:', metadataError);
+          // Don't fail the operation if metadata update fails
+        }
+
+        return res.json({ success: true, feedId, fileId });
+      }
+
+      // Otherwise, create a new feed post with content
       const postId = `post_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
       const now = new Date().toISOString();
 
@@ -127,6 +160,74 @@ export function setupFeedRoutes(app: any) {
     } catch (error) {
       console.error('Create post error:', error);
       return res.status(500).json({ error: 'Failed to create post' });
+    }
+  });
+
+  /**
+   * DELETE /api/feeds/:feedId/posts/:fileId
+   * Remove a file from a feed
+   */
+  app.delete('/api/feeds/:feedId/posts/:fileId', async (req: Request, res: Response) => {
+    try {
+      const { feedId, fileId } = req.params;
+      const { creatorDid } = req.body;
+
+      // Get authenticated user from token
+      const authHeader = req.headers.authorization;
+      if (!authHeader || !authHeader.startsWith('Bearer ')) {
+        return res.status(401).json({ error: 'Unauthorized' });
+      }
+
+      const token = authHeader.substring(7);
+      const { PNOAuthService } = await import('./pnOAuthService');
+      const tokenPayload = PNOAuthService.validateAccessToken(token);
+
+      if (!tokenPayload) {
+        return res.status(401).json({ error: 'Invalid token' });
+      }
+
+      // Verify user has write access to the feed (owner or delegate with write permission)
+      const feed = await FeedService.getFeedById(feedId);
+      if (!feed) {
+        return res.status(404).json({ error: 'Feed not found' });
+      }
+
+      const hasAccess = await FeedService.hasFeedAccess(feedId, tokenPayload.did, 'write');
+      if (!hasAccess) {
+        return res.status(403).json({ error: 'Not authorized' });
+      }
+
+      // Remove file from feed
+      const success = await FeedService.removePostFromFeed(feedId, fileId);
+      if (!success) {
+        return res.status(500).json({ error: 'Failed to remove file from feed' });
+      }
+
+      // Update file metadata to remove this feedId from feedIds array
+      try {
+        const { AggregatorMetadataServiceDB } = await import('./aggregatorMetadataServiceDB');
+        const metadataService = new AggregatorMetadataServiceDB();
+        
+        // Get current metadata
+        const currentMetadata = await metadataService.getFileMetadata(fileId);
+        if (currentMetadata) {
+          const currentFeedIds = currentMetadata.feedIds || [];
+          const updatedFeedIds = currentFeedIds.filter((id: string) => id !== feedId);
+          
+          // Update metadata to remove this feedId
+          await metadataService.updateFileMetadata(fileId, {
+            feedIds: updatedFeedIds
+          });
+        }
+      } catch (metadataError) {
+        console.warn('Failed to update file metadata to remove feedId:', metadataError);
+        // Don't fail the operation if metadata update fails
+      }
+
+      return res.json({ success: true, feedId, fileId });
+    } catch (error) {
+      console.error('Remove post from feed error:', error);
+      return res.status(500).json({ error: 'Failed to remove post from feed' });
     }
   });
 
