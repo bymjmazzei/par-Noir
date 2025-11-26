@@ -274,5 +274,37 @@ export class FeedService {
 
     return await response.json();
   }
+
+  /**
+   * Get delegated feeds for a user
+   */
+  static async getDelegatedFeeds(userDid: string): Promise<Feed[]> {
+    try {
+      const authenticatedUserStr = localStorage.getItem('authenticated_user');
+      if (!authenticatedUserStr) {
+        throw new Error('User not authenticated');
+      }
+
+      const authenticatedUser = JSON.parse(authenticatedUserStr);
+      const response = await fetch(`${this.API_BASE}/api/users/${userDid}/delegated-feeds`, {
+        headers: {
+          'Authorization': `Bearer ${authenticatedUser.accessToken || ''}`
+        }
+      });
+
+      if (!response.ok) {
+        if (response.status === 404) {
+          return [];
+        }
+        throw new Error('Failed to fetch delegated feeds');
+      }
+
+      const data = await response.json();
+      return data.feeds || [];
+    } catch (error) {
+      console.error('Failed to get delegated feeds:', error);
+      return [];
+    }
+  }
 }
 

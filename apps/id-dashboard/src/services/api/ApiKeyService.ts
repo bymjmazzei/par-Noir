@@ -6,7 +6,6 @@
  */
 
 import { SecureCredentialManager } from '../../utils/secureCredentialManager';
-import { IntegrationCredentialManager } from '../../utils/integrationCredentialManager';
 
 export interface ApiKey {
   id: string;
@@ -88,7 +87,7 @@ export class ApiKeyService {
     try {
       const storageKey = `${ApiKeyService.STORAGE_KEY_PREFIX}${pnId}`;
       
-      // Try secure credential manager first
+      // Use secure credential manager
       try {
         const secureManager = new SecureCredentialManager();
         const encrypted = await secureManager.getCredential(storageKey);
@@ -96,14 +95,17 @@ export class ApiKeyService {
           return JSON.parse(encrypted);
         }
       } catch (error) {
-        console.warn('⚠️ [ApiKeyService] Secure storage unavailable, trying integration manager');
+        console.warn('⚠️ [ApiKeyService] Secure storage unavailable:', error);
       }
 
-      // Fallback to integration credential manager
-      const integrationManager = new IntegrationCredentialManager();
-      const stored = integrationManager.getApiKey('api', storageKey);
-      if (stored) {
-        return JSON.parse(stored);
+      // Fallback to localStorage (for backward compatibility)
+      try {
+        const stored = localStorage.getItem(storageKey);
+        if (stored) {
+          return JSON.parse(stored);
+        }
+      } catch (error) {
+        console.warn('⚠️ [ApiKeyService] Failed to read from localStorage:', error);
       }
 
       return null;
@@ -199,18 +201,22 @@ export class ApiKeyService {
       const storageKey = `${ApiKeyService.STORAGE_KEY_PREFIX}${apiKey.pnId}`;
       const jsonData = JSON.stringify(apiKey);
 
-      // Try secure credential manager first
+      // Use secure credential manager
       try {
         const secureManager = new SecureCredentialManager();
         await secureManager.setCredential(storageKey, jsonData);
         return;
       } catch (error) {
-        console.warn('⚠️ [ApiKeyService] Secure storage unavailable, using integration manager');
+        console.warn('⚠️ [ApiKeyService] Secure storage unavailable, using localStorage fallback:', error);
       }
 
-      // Fallback to integration credential manager
-      const integrationManager = new IntegrationCredentialManager();
-      integrationManager.setApiKey('api', storageKey, jsonData);
+      // Fallback to localStorage (for backward compatibility)
+      try {
+        localStorage.setItem(storageKey, jsonData);
+      } catch (storageError) {
+        console.error('❌ [ApiKeyService] Failed to store API key in localStorage:', storageError);
+        throw new Error('Failed to store API key: storage unavailable');
+      }
     } catch (error) {
       console.error('❌ [ApiKeyService] Failed to store API key:', error);
       throw error;
