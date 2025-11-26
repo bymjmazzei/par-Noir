@@ -1069,17 +1069,23 @@ function App() {
   // SCALABILITY: Infinite scroll - load more files when user scrolls near bottom
   useEffect(() => {
     // Don't set up observer if conditions aren't met
-    if (viewMode !== 'feed' || !hasMore || isLoadingMore || isDiscoveringRef.current) {
+    if (viewMode !== 'feed' || !hasMoreRef.current || isLoadingMore || isDiscoveringRef.current) {
       return;
     }
     if (!discoverFilesRef.current) return; // Wait for discoverFiles to be initialized
     
     let observer: IntersectionObserver | null = null;
     let sentinel: HTMLElement | null = null;
+    let isReconnecting = false; // Prevent multiple reconnections
     
     const setupObserver = () => {
       // Double-check conditions before creating observer (use ref to get current value)
-      if (!hasMoreRef.current || isLoadingMore || isDiscoveringRef.current || !discoverFilesRef.current) {
+      if (!hasMoreRef.current || isLoadingMore || isDiscoveringRef.current || !discoverFilesRef.current || isReconnecting) {
+        return;
+      }
+      
+      // Don't create if observer already exists
+      if (observer) {
         return;
       }
       
@@ -1087,22 +1093,28 @@ function App() {
         (entries) => {
           entries.forEach((entry) => {
             // Triple-check conditions in callback to prevent race conditions (use ref for hasMore)
-            if (entry.isIntersecting && hasMoreRef.current && !isLoadingMore && !isDiscoveringRef.current && discoverFilesRef.current) {
+            if (entry.isIntersecting && hasMoreRef.current && !isLoadingMore && !isDiscoveringRef.current && discoverFilesRef.current && !isReconnecting) {
               // Disconnect observer immediately to prevent multiple triggers
               if (observer) {
                 observer.disconnect();
                 observer = null;
               }
               setIsLoadingMore(true);
-              discoverFilesRef.current(undefined, false, currentPage + 1, true).finally(() => {
+              isReconnecting = true; // Prevent reconnection until done
+              
+              // Get current page value at time of trigger
+              const pageToLoad = currentPage + 1;
+              
+              discoverFilesRef.current(undefined, false, pageToLoad, true).finally(() => {
                 setIsLoadingMore(false);
+                isReconnecting = false;
                 // Only reconnect observer if there's more content AND we're still in feed mode
                 // Use ref to check current hasMore value (avoids stale closure)
                 setTimeout(() => {
-                  if (viewMode === 'feed' && hasMoreRef.current && sentinel && !observer) {
+                  if (viewMode === 'feed' && hasMoreRef.current && sentinel && !observer && !isReconnecting) {
                     setupObserver();
                   }
-                }, 300);
+                }, 500); // Increased delay to prevent rapid reconnections
               });
             }
           });
@@ -1137,8 +1149,9 @@ function App() {
         observer.disconnect();
         observer = null;
       }
+      isReconnecting = false;
     };
-  }, [viewMode, hasMore, isLoadingMore, currentPage]);
+  }, [viewMode, hasMore, isLoadingMore]); // Removed currentPage from dependencies
 
   // Auto-refresh metadata when Google Drive token becomes available
   useEffect(() => {

@@ -80,8 +80,13 @@ export function useAppContext(pnIdentifier?: string) {
           feedId: f.feedId,
           isOwned: false
         }));
-      } catch (err) {
-        console.error('❌ [useAppContext] Failed to load delegated feeds:', err);
+      } catch (err: any) {
+        // Handle 403 gracefully - endpoint might not be available or user might not have delegated feeds
+        if (err.message?.includes('Not authorized') || err.message?.includes('403')) {
+          console.log('ℹ️ [useAppContext] Delegated feeds endpoint not available or no access (403) - skipping');
+        } else {
+          console.error('❌ [useAppContext] Failed to load delegated feeds:', err);
+        }
       }
 
       const contexts = [
