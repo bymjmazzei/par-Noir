@@ -3082,7 +3082,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
             keywords: [],
             tags: [],
             fileType: fileType,
-            isPublic: false, // Default to private
+            isPublic: true, // Default to public so files appear in feeds
             publicToken: shareToken ? JSON.stringify(shareToken) : undefined, // Store share token for future use
             uploadDate: new Date().toISOString(),
             isNSFW: false, // Default to public content
