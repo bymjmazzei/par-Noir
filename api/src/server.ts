@@ -2104,9 +2104,12 @@ class ProductionServer {
           }
         }
 
+        // Check if file existed BEFORE we created it (to detect new files)
+        const fileExistedBefore = !!current;
+        
         // Refetch to ensure entry exists (in case it was just created)
-        let current = await service.getFileMetadata(fileId);
-        console.log(`[MetadataIndex PUT] After upsert, refetch for ${fileId}: ${current ? 'found' : 'not found'}`);
+        current = await service.getFileMetadata(fileId);
+        console.log(`[MetadataIndex PUT] After upsert, refetch for ${fileId}: ${current ? 'found' : 'not found'}, existedBefore: ${fileExistedBefore}`);
         if (!current) {
           console.error(`[MetadataIndex PUT] Failed to create/find metadata entry for ${fileId}`);
           return res.status(404).json({ error: 'File not found in index' });
@@ -2146,7 +2149,10 @@ class ProductionServer {
           const finalIsPublic = isPublic !== undefined ? isPublic : ((textPost || thought) ? true : false);
           current = await service.getFileMetadata(fileId);
           const wasPublic = current?.metadata?.isPublic || false;
-          const isBecomingPublic = finalIsPublic && !wasPublic;
+          // CRITICAL: A file is "becoming public" if:
+          // 1. It's being set to public AND wasn't public before, OR
+          // 2. It's a NEW file being created as public (didn't exist before)
+          const isBecomingPublic = finalIsPublic && (!wasPublic || !fileExistedBefore);
           const isBecomingPrivate = !finalIsPublic && wasPublic;
           
           if (current) {
