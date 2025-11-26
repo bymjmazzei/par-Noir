@@ -2926,6 +2926,9 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
         const isImage = file.type.startsWith('image/');
         const isVideo = file.type.startsWith('video/');
         
+        // Declare thumbnailShareToken outside the block so it's accessible for metadata submission
+        let thumbnailShareToken: any = undefined;
+        
         if ((isImage || isVideo) && !thumbnailFileId) {
           try {
             let thumbnailBlob: Blob;
@@ -2942,7 +2945,44 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
             }
             
             // Upload thumbnail using the local helper function
+            // CRITICAL: Generate publicToken for thumbnail BEFORE uploading so it can be included in metadata
             if (thumbnailBlob) {
+              // Create thumbnail package to generate share token
+              const thumbnailArrayBuffer = await thumbnailBlob.arrayBuffer();
+              const thumbnailData = new Uint8Array(thumbnailArrayBuffer);
+              const thumbnailEncrypted = await encryptionManager.encrypt(
+                thumbnailData,
+                session.did,
+                publicKey
+              );
+              
+              const thumbnailPackage: EncryptedFilePackage = {
+                encrypted: thumbnailEncrypted.encrypted,
+                iv: thumbnailEncrypted.iv,
+                salt: thumbnailEncrypted.salt,
+                metadata: {
+                  originalName: `thumb_${file.name}`,
+                  originalSize: thumbnailBlob.size,
+                  originalMimeType: 'image/jpeg',
+                },
+              };
+              
+              // Generate share token for thumbnail (required for public feed decryption)
+              try {
+                const encryptionService = getEncryptionService();
+                thumbnailShareToken = await encryptionService.generateShareToken(
+                  thumbnailPackage,
+                  {
+                    id: session.did,
+                    publicKey: publicKey
+                  }
+                );
+                console.log('✅ [Upload] Thumbnail share token generated');
+              } catch (tokenError) {
+                console.warn('⚠️ [Upload] Share token generation failed for thumbnail:', tokenError);
+              }
+              
+              // Now upload the thumbnail
               thumbnailFileId = await uploadThumbnailLocal(
                 thumbnailBlob,
                 file.name,
@@ -3117,7 +3157,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
                 },
                 body: JSON.stringify({
                   name: `thumb_${file.name}`, // Include thumb_ prefix so public index query can find it
-                  title: file.name.replace(/\.(jpg|jpeg|png|gif|webp|mp4|mov|avi|mkv|webm|pdf|doc|docx|xls|xlsx|ppt|pptx|txt|zip|rar)$/i, ''), // Clean title for display (no thumb_ prefix, no extension)
+                  title: cleanTitle(file.name), // Clean title for display (no thumb_ prefix, no extension)
                   description: '',
                   keywords: [],
                   tags: [],
@@ -3127,6 +3167,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
                   isNSFW: false,
                   // Store reference to main file for downloads
                   mainFileId: fileId, // Reference to the full file for downloads
+                  publicToken: thumbnailShareToken ? JSON.stringify(thumbnailShareToken) : undefined, // CRITICAL: Required for feed decryption
                 }),
               });
               
