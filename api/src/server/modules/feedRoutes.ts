@@ -95,14 +95,16 @@ export function setupFeedRoutes(app: any) {
           const metadataService = AggregatorMetadataServiceDB.getInstance();
           
           // Get current metadata
-          const currentMetadata = await metadataService.getFileMetadata(fileId);
-          if (currentMetadata) {
-            const currentFeedIds = currentMetadata.feedIds || [];
+          const currentEntry = await metadataService.getFileMetadata(fileId);
+          if (currentEntry) {
+            const currentFeedIds = (currentEntry.metadata as any).feedIds || [];
             if (!currentFeedIds.includes(feedId)) {
               // Update metadata to include this feedId
-              await metadataService.updateFileMetadata(fileId, {
+              const updatedMetadata = {
+                ...currentEntry.metadata,
                 feedIds: [...currentFeedIds, feedId]
-              });
+              };
+              await metadataService.submitMetadata(updatedMetadata, currentEntry.pnIdentifier);
             }
           }
         } catch (metadataError) {
@@ -209,15 +211,17 @@ export function setupFeedRoutes(app: any) {
         const metadataService = AggregatorMetadataServiceDB.getInstance();
         
         // Get current metadata
-        const currentMetadata = await metadataService.getFileMetadata(fileId);
-        if (currentMetadata) {
-          const currentFeedIds = currentMetadata.feedIds || [];
+        const currentEntry = await metadataService.getFileMetadata(fileId);
+        if (currentEntry) {
+          const currentFeedIds = (currentEntry.metadata as any).feedIds || [];
           const updatedFeedIds = currentFeedIds.filter((id: string) => id !== feedId);
           
           // Update metadata to remove this feedId
-          await metadataService.updateFileMetadata(fileId, {
+          const updatedMetadata = {
+            ...currentEntry.metadata,
             feedIds: updatedFeedIds
-          });
+          };
+          await metadataService.submitMetadata(updatedMetadata, currentEntry.pnIdentifier);
         }
       } catch (metadataError) {
         console.warn('Failed to update file metadata to remove feedId:', metadataError);
