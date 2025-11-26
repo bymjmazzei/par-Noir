@@ -80,10 +80,16 @@ export class ZKPDataPointsService {
       } else if (response.status === 404) {
         // No data points yet - return empty array
         return [];
+      } else if (response.status === 401) {
+        // Authentication failed (Google Drive token expired) - fail silently
+        // User needs to reconnect Google Drive, but don't break the app
+        console.warn('⚠️ [ZKPDataPoints] Google Drive authentication failed. Please reconnect Google Drive in the dashboard.');
+        return []; // Return empty array instead of throwing
       } else {
         const errorText = await response.text();
         console.error('Failed to get data points:', response.status, errorText);
-        throw new Error(`Failed to get data points: ${errorText}`);
+        // For other errors, still fail silently to avoid breaking the app
+        return [];
       }
     } catch (error) {
       console.error('Error getting data points from API:', error);
