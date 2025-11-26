@@ -38,7 +38,7 @@ export const FeedCreator: React.FC<FeedCreatorProps> = ({
       avatar: '',
       bannerImage: '',
       bio: '',
-      links: []
+      links: [] as Array<{ label: string; url: string }>
     }
   });
   const [topPostContent, setTopPostContent] = useState<EnhancedPostContent | null>(null);
@@ -487,30 +487,34 @@ export const FeedCreator: React.FC<FeedCreatorProps> = ({
                     </button>
                   </div>
                   <div className="space-y-2">
-                    {(Array.isArray(feedData.branding?.links) ? feedData.branding.links : []).map((link, index) => (
-                      <div key={index} className="flex items-center space-x-2">
-                        <input
-                          type="text"
-                          value={link?.label || ''}
-                          onChange={(e) => handleUpdateLink(index, 'label', e.target.value)}
-                          placeholder="Label"
-                          className="flex-1 px-3 py-2 bg-neutral-800 border border-neutral-700 rounded text-white text-sm"
-                        />
-                        <input
-                          type="url"
-                          value={link?.url || ''}
-                          onChange={(e) => handleUpdateLink(index, 'url', e.target.value)}
-                          placeholder="https://..."
-                          className="flex-1 px-3 py-2 bg-neutral-800 border border-neutral-700 rounded text-white text-sm"
-                        />
-                        <button
-                          onClick={() => handleRemoveLink(index)}
-                          className="text-red-400 hover:text-red-300"
-                        >
-                          <X className="h-4 w-4" />
-                        </button>
-                      </div>
-                    ))}
+                    {(() => {
+                      const branding = feedData.branding || { avatar: '', bannerImage: '', bio: '', links: [] };
+                      const links = Array.isArray(branding.links) ? branding.links : [];
+                      return links.map((link, index) => (
+                        <div key={index} className="flex items-center space-x-2">
+                          <input
+                            type="text"
+                            value={link?.label || ''}
+                            onChange={(e) => handleUpdateLink(index, 'label', e.target.value)}
+                            placeholder="Label"
+                            className="flex-1 px-3 py-2 bg-neutral-800 border border-neutral-700 rounded text-white text-sm"
+                          />
+                          <input
+                            type="url"
+                            value={link?.url || ''}
+                            onChange={(e) => handleUpdateLink(index, 'url', e.target.value)}
+                            placeholder="https://..."
+                            className="flex-1 px-3 py-2 bg-neutral-800 border border-neutral-700 rounded text-white text-sm"
+                          />
+                          <button
+                            onClick={() => handleRemoveLink(index)}
+                            className="text-red-400 hover:text-red-300"
+                          >
+                            <X className="h-4 w-4" />
+                          </button>
+                        </div>
+                      ));
+                    })()}
                   </div>
                 </div>
               </div>
