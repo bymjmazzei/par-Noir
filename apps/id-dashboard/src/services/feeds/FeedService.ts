@@ -282,21 +282,32 @@ export class FeedService {
     try {
       const authenticatedUserStr = localStorage.getItem('authenticated_user');
       if (!authenticatedUserStr) {
-        throw new Error('User not authenticated');
+        // User not authenticated - return empty array instead of throwing
+        console.warn('⚠️ [FeedService] User not authenticated, returning empty delegated feeds');
+        return [];
       }
 
       const authenticatedUser = JSON.parse(authenticatedUserStr);
+      const accessToken = authenticatedUser.accessToken || authenticatedUser.token || '';
+      
+      if (!accessToken) {
+        console.warn('⚠️ [FeedService] No access token available, returning empty delegated feeds');
+        return [];
+      }
+
       const response = await fetch(`${this.API_BASE}/api/users/${userDid}/delegated-feeds`, {
         headers: {
-          'Authorization': `Bearer ${authenticatedUser.accessToken || ''}`
+          'Authorization': `Bearer ${accessToken}`
         }
       });
 
       if (!response.ok) {
-        if (response.status === 404) {
+        if (response.status === 404 || response.status === 401) {
+          // No feeds or not authorized - return empty array
           return [];
         }
-        throw new Error('Failed to fetch delegated feeds');
+        console.error('Failed to fetch delegated feeds:', response.status, response.statusText);
+        return [];
       }
 
       const data = await response.json();

@@ -5,8 +5,6 @@
  * Activation requires Veriff verification (AML/KYC)
  */
 
-import { SecureCredentialManager } from '../../utils/secureCredentialManager';
-
 export interface ApiKey {
   id: string;
   pnId: string;
@@ -87,25 +85,11 @@ export class ApiKeyService {
     try {
       const storageKey = `${ApiKeyService.STORAGE_KEY_PREFIX}${pnId}`;
       
-      // Use secure credential manager
-      try {
-        const secureManager = new SecureCredentialManager();
-        const encrypted = await secureManager.getCredential(storageKey);
-        if (encrypted) {
-          return JSON.parse(encrypted);
-        }
-      } catch (error) {
-        console.warn('⚠️ [ApiKeyService] Secure storage unavailable:', error);
-      }
-
-      // Fallback to localStorage (for backward compatibility)
-      try {
-        const stored = localStorage.getItem(storageKey);
-        if (stored) {
-          return JSON.parse(stored);
-        }
-      } catch (error) {
-        console.warn('⚠️ [ApiKeyService] Failed to read from localStorage:', error);
+      // Use localStorage for API key storage
+      // API keys are less sensitive than pnName/passcode, so localStorage is acceptable
+      const stored = localStorage.getItem(storageKey);
+      if (stored) {
+        return JSON.parse(stored);
       }
 
       return null;
@@ -194,29 +178,15 @@ export class ApiKeyService {
   }
 
   /**
-   * Store API key (encrypted)
+   * Store API key
+   * Uses localStorage - API keys are less sensitive than pnName/passcode
    */
   private async storeApiKey(apiKey: ApiKey): Promise<void> {
     try {
       const storageKey = `${ApiKeyService.STORAGE_KEY_PREFIX}${apiKey.pnId}`;
       const jsonData = JSON.stringify(apiKey);
 
-      // Use secure credential manager
-      try {
-        const secureManager = new SecureCredentialManager();
-        await secureManager.setCredential(storageKey, jsonData);
-        return;
-      } catch (error) {
-        console.warn('⚠️ [ApiKeyService] Secure storage unavailable, using localStorage fallback:', error);
-      }
-
-      // Fallback to localStorage (for backward compatibility)
-      try {
-        localStorage.setItem(storageKey, jsonData);
-      } catch (storageError) {
-        console.error('❌ [ApiKeyService] Failed to store API key in localStorage:', storageError);
-        throw new Error('Failed to store API key: storage unavailable');
-      }
+      localStorage.setItem(storageKey, jsonData);
     } catch (error) {
       console.error('❌ [ApiKeyService] Failed to store API key:', error);
       throw error;
