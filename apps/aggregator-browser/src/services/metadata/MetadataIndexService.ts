@@ -100,6 +100,9 @@ export class MetadataIndexService {
           return {
             metadata: {
               ...metadata,
+              // CRITICAL FIX: Ensure fileId is set from entry-level fileId if missing in metadata
+              // This handles cases where metadata.fileId might be missing after upgrade
+              fileId: metadata.fileId || entry.fileId,
               // Explicitly preserve textPost and thought fields
               textPost: metadata.textPost || metadata.thought,
               thought: metadata.thought || metadata.textPost,

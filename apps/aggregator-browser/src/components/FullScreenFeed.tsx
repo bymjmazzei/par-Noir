@@ -629,7 +629,14 @@ export function FullScreenFeed({
           });
         }
         
-        if ((isThoughtFile || isTextPost) && (isJustFilename || !textPostData?.content) && !loadedThoughtContent.has(fileId) && !loadingThoughtsRef.current.has(fileId)) {
+        // FIX: Only try to load from Google Drive if authenticated AND content is actually missing
+        // For public thoughts, content should already be in metadata - don't try to load
+        const shouldLoadThought = (isThoughtFile || isTextPost) && 
+                                  (isJustFilename || !textPostData?.content) && 
+                                  !loadedThoughtContent.has(fileId) && 
+                                  !loadingThoughtsRef.current.has(fileId);
+        
+        if (shouldLoadThought) {
           loadingThoughtsRef.current.add(fileId);
           console.log(`[FullScreenFeed] Loading thought content for ${fileId}...`);
           
@@ -637,7 +644,11 @@ export function FullScreenFeed({
             const { PNOAuthService } = await import('../services/pnOAuthService');
             const accessToken = await PNOAuthService.getValidAccessToken();
             if (!accessToken) {
-              console.warn(`[FullScreenFeed] No access token to load thought ${fileId}`);
+              // FIX: Don't warn for public thoughts - this is expected
+              // Only warn if we actually expected to load it
+              if (isJustFilename) {
+                console.warn(`[FullScreenFeed] No access token to load thought ${fileId} - thought content should be in metadata for public thoughts`);
+              }
               return;
             }
             
@@ -1652,13 +1663,21 @@ export function FullScreenFeed({
               const currentContent = effectiveTextPostData?.content || file.description || file.name || file.title || '';
               const isJustFilename = /^thought-\d+\.(thought|png)/i.test(currentContent);
               
+              // FIX: For public thoughts, content should already be in metadata.textPost.content
+              // Only try to load from Google Drive if we're authenticated AND content is missing
+              // If not authenticated (public feed), use what's in metadata or show fallback
+              const hasAuth = userState.isUnlocked;
+              const shouldLoadFromDrive = hasAuth && isJustFilename && !loadedContent;
+              
               // If content is just a filename and we're loading, show loading state
               // Otherwise use the actual content
-              const contentToRender = (isJustFilename && !loadedContent) ? 'Loading thought...' : (effectiveTextPostData?.content || 
-                                     file.description || 
-                                     file.name || 
-                                     file.title || 
-                                     (thoughtFileName ? thoughtFileName.replace(/\.(thought|png)$/i, '') : 'Thought'));
+              const contentToRender = shouldLoadFromDrive ? 'Loading thought...' : (
+                effectiveTextPostData?.content || 
+                file.description || 
+                file.name || 
+                file.title || 
+                (thoughtFileName ? thoughtFileName.replace(/\.(thought|png)$/i, '') : 'Thought')
+              );
               
               // Always log when rendering thoughts to debug black tiles issue
               console.log(`[FullScreenFeed] Rendering thought/textPost for ${fileId}:`, {
