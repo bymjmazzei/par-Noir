@@ -1219,7 +1219,9 @@ export function FullScreenFeed({
         // Check for text post FIRST before checking image/video
         // This prevents thoughts from being misclassified as images/videos
         // Check multiple possible locations for thought data
-        let textPostData: any = (indexedFile.metadata as any)?.textPost || 
+        // Also check loaded thought content (for thoughts loaded from Google Drive)
+        let textPostData: any = loadedThoughtContent.get(fileId) ||
+                            (indexedFile.metadata as any)?.textPost || 
                             (indexedFile.metadata as any)?.thought ||
                             (file as any)?.textPost ||
                             (file as any)?.thought ||
