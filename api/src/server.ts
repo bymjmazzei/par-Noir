@@ -2317,6 +2317,13 @@ class ProductionServer {
           // This matches the behavior of share tokens which are generated at upload time
           const shouldCreateCompanionMetadata = !fileExistedBefore; // Only create on initial upload, not on updates
           
+          console.log(`[MetadataIndex PUT] Companion metadata creation check for ${fileId}:`, {
+            fileExistedBefore,
+            shouldCreateCompanionMetadata,
+            finalIsPublic,
+            hasAuthHeader: !!(req.headers.authorization && req.headers.authorization.startsWith('Bearer '))
+          });
+          
           if (shouldCreateCompanionMetadata) {
             console.log(`[MetadataIndex PUT] File ${fileId} is new - creating companion metadata (isPublic=${finalIsPublic})...`);
             try {
@@ -2599,7 +2606,7 @@ class ProductionServer {
               console.error(`[MetadataIndex] Stack trace:`, metadataError?.stack);
             }
           } else {
-            console.log(`[MetadataIndex PUT] File ${fileId} is NOT becoming public (isBecomingPublic=${isBecomingPublic}) - skipping companion metadata creation`);
+            console.log(`[MetadataIndex PUT] File ${fileId} already existed (fileExistedBefore=${fileExistedBefore}) - skipping companion metadata creation`);
           }
         }
 
