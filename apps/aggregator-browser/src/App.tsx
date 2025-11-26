@@ -6,6 +6,7 @@
 
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { Search, Filter, File, Globe, Tag, Calendar, User, Download, RefreshCw, Lock, Unlock, Image as ImageIcon, X, Grid } from 'lucide-react';
+import { LockButtonWithContext } from './components/LockButtonWithContext';
 import { getMetadataIndexService } from './services/metadata/MetadataIndexService';
 import { PublicMetadata, MetadataFilters, IndexedFile, Feed } from './types/aggregator';
 import { decryptWithToken, ShareToken } from './utils/tokenDecryption';
@@ -3312,18 +3313,17 @@ function App() {
       )}
       
       <div className={`min-h-screen ${viewMode === 'feed' ? 'h-screen overflow-hidden bg-black' : 'bg-gradient-to-br from-neutral-900 via-neutral-800 to-neutral-900'}`}>
-        {/* Lock/Unlock Button - Top right corner, always visible on ALL screens */}
-      <button
-        onClick={handleLockUnlock}
-        className="fixed top-3 right-3 z-[110] p-2 flex items-center justify-center text-white/85 hover:text-white transition-colors pointer-events-auto"
-        title={userState.isUnlocked ? 'Lock pN' : 'Unlock pN'}
-      >
-        {userState.isUnlocked ? (
-          <Unlock className="h-5 w-5" />
-        ) : (
-          <Lock className="h-5 w-5" />
-        )}
-      </button>
+        {/* Lock/Unlock Button with Context Switcher - Top right corner, always visible on ALL screens */}
+        <LockButtonWithContext
+          onLockUnlock={handleLockUnlock}
+          currentContext={userState.isUnlocked ? activeContext : null}
+          availableContexts={userState.isUnlocked ? availableContexts : []}
+          onContextChange={(context) => {
+            setActiveContext(context);
+            // TODO: Load context-specific content
+            // loadContextContent(context);
+          }}
+        />
 
       {/* Conditional rendering for different views */}
       {viewingBrandedFeed ? (
@@ -3567,12 +3567,11 @@ function App() {
           <div 
             className="fixed top-0 left-0 h-12 flex items-center z-[100] bg-transparent"
             style={{ 
-              right: '56px', // Space for lock button (40px button + 12px right-3 + 4px gap)
+              right: '56px', // Space for lock button with context switcher (40px button + 12px right-3 + 4px gap)
               background: 'transparent'
             }}
           >
             {/* Feed Rail - Scrollable horizontally, centers active feed (TikTok style) */}
-            {/* pN feed button: tap to go to pN feed, tap and hold to open context menu */}
             <FeedRail
               feeds={feedRailItems}
               activeFeedId={activeFeedId}
@@ -3581,13 +3580,6 @@ function App() {
                 setActiveFeedId(feedId);
               }}
               onBrowseFeeds={undefined}
-              currentContext={userState.isUnlocked ? activeContext : null}
-              availableContexts={userState.isUnlocked ? availableContexts : []}
-              onContextChange={(context) => {
-                setActiveContext(context);
-                // TODO: Load context-specific content
-                // loadContextContent(context);
-              }}
             />
           </div>
         )}
