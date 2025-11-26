@@ -1424,7 +1424,12 @@ function App() {
       // This prevents showing both the thumbnail file AND a generated thumbnail from the full image
       const hasThumbnailFile = !!file.thumbnailFileId;
       
-      if ((!isImage && !isVideo) || !hasValidToken || thumbnailsRef.current.has(file.fileId) || generatingThumbnails.has(file.fileId) || hasThumbnailFile) {
+      // CRITICAL: Skip if this IS a thumbnail file (name starts with thumb_)
+      // Thumbnail files are already thumbnails - don't generate thumbnails from thumbnails
+      const fileName = (file.name || file.title || '').toLowerCase();
+      const isThumbnailFile = fileName.startsWith('thumb_');
+      
+      if ((!isImage && !isVideo) || !hasValidToken || thumbnailsRef.current.has(file.fileId) || generatingThumbnails.has(file.fileId) || hasThumbnailFile || isThumbnailFile) {
         if (hasValidToken === false && (isImage || isVideo)) {
           console.warn(`⚠️ [Feed] Skipping ${file.fileId} - missing or invalid publicToken:`, {
             fileId: file.fileId,
@@ -1433,8 +1438,8 @@ function App() {
             publicTokenLength: file.publicToken ? String(file.publicToken).length : 0
           });
         }
-        if (hasThumbnailFile && (isImage || isVideo)) {
-          // Silently skip - thumbnail file exists, FullScreenFeed will load it
+        if ((hasThumbnailFile || isThumbnailFile) && (isImage || isVideo)) {
+          // Silently skip - thumbnail file exists or this IS a thumbnail file, FullScreenFeed will load it directly
           continue;
         }
         continue;
