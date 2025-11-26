@@ -10,7 +10,7 @@ import { EnhancedThoughtCreator, EnhancedPostContent } from './EnhancedThoughtCr
 import { IdentityVerificationModal } from '../IdentityVerificationModal';
 import { CoinbaseProxy, CheckoutRequest } from '../../utils/coinbaseProxy';
 import type { FeedCategory } from '../../types/aggregator';
-import { FEED_CATEGORIES } from '../../constants/feedCategories';
+import { FEED_CATEGORY_LIST } from '../../constants/feedCategories';
 
 interface FeedCreatorProps {
   isOpen: boolean;
@@ -394,8 +394,8 @@ export const FeedCreator: React.FC<FeedCreatorProps> = ({
                 className="w-full px-4 py-2 bg-neutral-800 border border-neutral-700 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
                 <option value="">Select a category</option>
-                {FEED_CATEGORIES.map(cat => (
-                  <option key={cat.value} value={cat.value}>{cat.label}</option>
+                {FEED_CATEGORY_LIST.map(cat => (
+                  <option key={cat.id} value={cat.id}>{cat.name}</option>
                 ))}
               </select>
             </div>
