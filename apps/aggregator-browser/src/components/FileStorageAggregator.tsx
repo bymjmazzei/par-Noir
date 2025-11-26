@@ -3117,6 +3117,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
                 },
                 body: JSON.stringify({
                   name: `thumb_${file.name}`, // Include thumb_ prefix so public index query can find it
+                  title: file.name.replace(/\.(jpg|jpeg|png|gif|webp|mp4|mov|avi|mkv|webm|pdf|doc|docx|xls|xlsx|ppt|pptx|txt|zip|rar)$/i, ''), // Clean title for display (no thumb_ prefix, no extension)
                   description: '',
                   keywords: [],
                   tags: [],
