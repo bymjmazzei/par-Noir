@@ -234,16 +234,6 @@ export class AggregatorMetadataServiceDB {
           OR (am.metadata->>'isNSFW')::text = 'true'
           OR (am.metadata->'isNSFW')::boolean = true
         )
-        -- CRITICAL: Exclude thumbnail files from public index
-        -- Thumbnail files should never appear in the feed - they're only referenced by thumbnailFileId
-        AND NOT (
-          LOWER(am.metadata->>'name') LIKE 'thumb_%'
-          OR LOWER(am.metadata->>'name') LIKE 'thumb-%'
-          OR LOWER(am.metadata->>'title') LIKE 'thumb_%'
-          OR LOWER(am.metadata->>'title') LIKE 'thumb-%'
-          OR LOWER(am.metadata->>'originalName') LIKE 'thumb_%'
-          OR LOWER(am.metadata->>'originalName') LIKE 'thumb-%'
-        )
       `;
       const params: any[] = [];
       let paramIndex = 1;
