@@ -25,6 +25,8 @@ export function useAppContext(pnIdentifier?: string) {
 
     setIsLoading(true);
     try {
+      console.log('🔄 [useAppContext] Loading contexts for pN:', pnIdentifier);
+      
       // Load pN identity context
       const session = PNOAuthService.loadSession();
       const displayName = session?.nickname || 'My pN';
@@ -36,28 +38,36 @@ export function useAppContext(pnIdentifier?: string) {
       };
 
       // Load owned feeds and match with feed tokens from session
-      const ownedFeedsResult = await FeedService.listFeeds({ 
-        creatorId: pnIdentifier,
-        limit: 100 
-      });
-      
-      // Get feed tokens from session
-      const feedTokens = session?.feedTokens || [];
-      const feedTokensMap = new Map(feedTokens.map(ft => [ft.feedId, ft]));
-      
-      const ownedFeedContexts: AppContext[] = ownedFeedsResult.feeds.map(f => ({
-        type: 'feed' as const,
-        id: f.feedId,
-        name: f.feedName,
-        feedId: f.feedId,
-        isOwned: true,
-        feedToken: feedTokensMap.get(f.feedId) // Include feed token if available
-      }));
+      let ownedFeedContexts: AppContext[] = [];
+      try {
+        const ownedFeedsResult = await FeedService.listFeeds({ 
+          creatorId: pnIdentifier,
+          limit: 100 
+        });
+        
+        console.log('📊 [useAppContext] Loaded owned feeds:', ownedFeedsResult.feeds.length);
+        
+        // Get feed tokens from session
+        const feedTokens = session?.feedTokens || [];
+        const feedTokensMap = new Map(feedTokens.map(ft => [ft.feedId, ft]));
+        
+        ownedFeedContexts = ownedFeedsResult.feeds.map(f => ({
+          type: 'feed' as const,
+          id: f.feedId,
+          name: f.feedName,
+          feedId: f.feedId,
+          isOwned: true,
+          feedToken: feedTokensMap.get(f.feedId) // Include feed token if available
+        }));
+      } catch (err) {
+        console.error('❌ [useAppContext] Failed to load owned feeds:', err);
+      }
 
       // Load delegated feeds
       let delegatedFeedContexts: AppContext[] = [];
       try {
         const delegatedFeeds = await FeedService.getDelegatedFeeds(pnIdentifier);
+        console.log('📊 [useAppContext] Loaded delegated feeds:', delegatedFeeds.length);
         delegatedFeedContexts = delegatedFeeds.map(f => ({
           type: 'feed' as const,
           id: f.feedId,
@@ -66,7 +76,7 @@ export function useAppContext(pnIdentifier?: string) {
           isOwned: false
         }));
       } catch (err) {
-        console.error('Failed to load delegated feeds:', err);
+        console.error('❌ [useAppContext] Failed to load delegated feeds:', err);
       }
 
       const contexts = [
@@ -74,6 +84,12 @@ export function useAppContext(pnIdentifier?: string) {
         ...ownedFeedContexts,
         ...delegatedFeedContexts
       ];
+
+      console.log('✅ [useAppContext] Total contexts loaded:', contexts.length, {
+        pn: 1,
+        ownedFeeds: ownedFeedContexts.length,
+        delegatedFeeds: delegatedFeedContexts.length
+      });
 
       setAvailableContexts(contexts);
 
