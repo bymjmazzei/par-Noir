@@ -692,19 +692,8 @@ function App() {
     return (hasTextPostData || hasTextFileType || isThoughtFile) && !hasMediaExtension;
   };
 
-  // Helper function to check if a feed is media-only (should exclude thoughts)
-  const isMediaOnlyFeed = (feedId: string): boolean => {
-    // Check if feed name contains "media" (case-insensitive)
-    const feed = feeds.find(f => f.feedId === feedId);
-    if (feed && feed.feedName.toLowerCase().includes('media')) {
-      return true;
-    }
-    // Check if feed has a mediaOnly property (for future use)
-    if ((feed as any)?.mediaOnly === true) {
-      return true;
-    }
-    return false;
-  };
+  // REMOVED: isMediaOnlyFeed function - thoughts should appear in ALL feeds
+  // The only place thoughts are excluded is the me page "media" tab, which handles it separately
 
   const filteredFilesByFeed = useMemo(() => {
     const showNSFW = userState.preferences.showNSFW;
@@ -892,14 +881,7 @@ function App() {
       // ALWAYS filter by NSFW preference (for both unlocked and locked users)
       filtered = filtered.filter(shouldShowFile);
       
-      // Check if any feed in this category is media-only
-      // If so, exclude thoughts from this niche feed
-      const categoryFeeds = feeds.filter(f => f.feedCategory === categoryId);
-      const hasMediaOnlyFeed = categoryFeeds.some(feed => isMediaOnlyFeed(feed.feedId));
-      if (hasMediaOnlyFeed) {
-        filtered = filtered.filter(file => !isThought(file));
-      }
-      
+      // Thoughts should appear in all niche feeds - no filtering needed
       return filtered;
     }
     
@@ -909,13 +891,8 @@ function App() {
     );
     filtered = filtered.filter(shouldShowFile);
     
-    // If this is a media-only feed, exclude thoughts
-    // PN feeds (regular feeds) should include thoughts, images, videos, and slideshows
-    // Media feeds should only show images, videos, and slideshows (exclude thoughts)
-    if (isMediaOnlyFeed(activeFeedId)) {
-      filtered = filtered.filter(file => !isThought(file));
-    }
-    
+    // Thoughts should appear in all feeds - no filtering needed
+    // The only place thoughts are excluded is the me page "media" tab, which handles it separately
     return filtered;
   }, [indexedFiles, activeFeedId, userState.preferences.subscribedFeedIds, userState.preferences.blockedCategories, userState.preferences.subscribedSubjects, userState.preferences.blockedSubjects, userState.preferences.showNSFW, userState.preferences.hasAgeZKP, userState.preferences.isOver18, userState.isUnlocked, feeds]);
 
