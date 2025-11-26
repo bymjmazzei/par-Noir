@@ -3190,12 +3190,12 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
                   keywords: [],
                   tags: [],
                   fileType: 'image', // Thumbnails are always images
-                  isPublic: true, // Thumbnail goes in public index
+                  isPublic: false, // Thumbnail is PRIVATE by default - only becomes public when user shares the file
                   uploadDate: new Date().toISOString(),
                   isNSFW: false,
                   // Store reference to main file for downloads
                   mainFileId: fileId, // Reference to the full file for downloads
-                  publicToken: thumbnailPublicToken, // CRITICAL: Required for feed decryption
+                  publicToken: thumbnailPublicToken, // Store token for when file becomes public
                 }),
               });
               
