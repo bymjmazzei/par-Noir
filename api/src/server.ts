@@ -1939,6 +1939,7 @@ class ProductionServer {
 
         const { 
           name, 
+          title,
           description, 
           keywords, 
           tags,
@@ -2112,6 +2113,7 @@ class ProductionServer {
         // Now update with provided fields
         const updated = await service.updateMetadata(fileId, {
           name,
+          title,
           description,
           keywords: keywords || tags,
           tags: tags || keywords,

@@ -47,6 +47,7 @@ export function EditFileModal({ file, onClose, onSave }: EditFileModalProps) {
         },
         body: JSON.stringify({
           name: name.trim() || undefined,
+          title: name.trim() || undefined, // Also send as title for display
           description: description.trim() || undefined,
           keywords: tags.split(',').map(t => t.trim()).filter(Boolean),
           tags: tags.split(',').map(t => t.trim()).filter(Boolean),

@@ -1590,6 +1590,7 @@ export class AggregatorMetadataServiceDB {
     fileId: string,
     updates: {
       name?: string;
+      title?: string;
       description?: string;
       keywords?: string[];
       tags?: string[];
@@ -1634,6 +1635,7 @@ export class AggregatorMetadataServiceDB {
       const updatedMetadata: PublicMetadata = {
         ...metadata,
         ...(updates.name && { name: updates.name }),
+        ...(updates.title !== undefined && { title: updates.title }),
         ...(updates.description !== undefined && { description: updates.description }),
         ...(updates.keywords && { keywords: updates.keywords }),
         // Keep legacy tags for backward compatibility
