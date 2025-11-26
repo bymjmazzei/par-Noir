@@ -82,6 +82,25 @@ export class MetadataIndexService {
           // Include if: isPublic is true/undefined/null OR has publicToken
           const shouldInclude = isPublic !== false || hasPublicToken;
           
+          // Debug logging for thoughts (only in development)
+          if (process.env.NODE_ENV === 'development') {
+            const fileType = metadata.fileType;
+            const hasTextPost = !!(metadata.textPost || metadata.thought);
+            const fileName = metadata.name || metadata.title || '';
+            const isThoughtFile = /^thought-\d+\.(thought|png)/i.test(fileName);
+            if (fileType === 'text' || fileType === 'thought' || hasTextPost || isThoughtFile) {
+              if (!shouldInclude) {
+                console.warn(`[MetadataIndexService] Thought excluded: ${entry.fileId}`, {
+                  isPublic,
+                  hasPublicToken,
+                  fileType,
+                  hasTextPost,
+                  fileName
+                });
+              }
+            }
+          }
+          
           return shouldInclude;
         })
         .map((entry: any) => {
