@@ -562,6 +562,118 @@ export function FullScreenFeed({
     };
   }, [visibleFileId, getPopularComments]);
 
+  // Load thought content from Google Drive when metadata only has filename
+  useEffect(() => {
+    const loadThoughtContent = async () => {
+      // Load current file and adjacent files
+      const indicesToLoad = [
+        currentIndex - 1,
+        currentIndex,
+        currentIndex + 1
+      ].filter(idx => idx >= 0 && idx < files.length);
+
+      await Promise.all(indicesToLoad.map(async (idx) => {
+        const indexedFile = files[idx];
+        const file = indexedFile.metadata;
+        const fileId = file.fileId;
+        
+        // Check if this is a thought that needs content loaded
+        const textPostData = loadedThoughtContent.get(fileId) ||
+                            (indexedFile.metadata as any)?.textPost || 
+                            (indexedFile.metadata as any)?.thought ||
+                            (file as any)?.textPost ||
+                            (file as any)?.thought;
+        
+        const thoughtFileName = file.name || file.title || '';
+        const isThoughtFile = /^thought-\d+\.(thought|png)/i.test(thoughtFileName);
+        const isTextPost = file.fileType === 'text' || file.fileType === 'thought';
+        
+        // If it's a thought but content is missing or just a filename, load it
+        const currentContent = textPostData?.content || file.description || file.name || file.title || '';
+        const isJustFilename = /^thought-\d+\.(thought|png)/i.test(currentContent);
+        
+        if ((isThoughtFile || isTextPost) && (isJustFilename || !textPostData?.content) && !loadedThoughtContent.has(fileId) && !loadingThoughtsRef.current.has(fileId)) {
+          loadingThoughtsRef.current.add(fileId);
+          console.log(`[FullScreenFeed] Loading thought content for ${fileId}...`);
+          
+          try {
+            const { PNOAuthService } = await import('../services/pnOAuthService');
+            const accessToken = await PNOAuthService.getValidAccessToken();
+            if (!accessToken) {
+              console.warn(`[FullScreenFeed] No access token to load thought ${fileId}`);
+              return;
+            }
+            
+            const session = PNOAuthService.loadSession();
+            if (!session?.did) {
+              console.warn(`[FullScreenFeed] No session to load thought ${fileId}`);
+              return;
+            }
+            
+            const pnId = session.did;
+            let publicKey = session?.publicKey;
+            if (!publicKey && session.did.startsWith('did:key:')) {
+              publicKey = session.did.substring(8);
+            }
+            if (!publicKey) {
+              console.warn(`[FullScreenFeed] No publicKey to load thought ${fileId}`);
+              return;
+            }
+            
+            // Get accountId
+            const accountId = await getAccountId(indexedFile, accessToken);
+            const apiEndpoint = process.env.REACT_APP_API_ENDPOINT || 'https://api.parnoir.com';
+            
+            // Download the thought file
+            const thoughtFileUrl = `${apiEndpoint}/api/drive/files/${fileId}?accountId=${accountId}&download=true`;
+            const thoughtResponse = await fetch(thoughtFileUrl, {
+              headers: { 'Authorization': `Bearer ${accessToken}` }
+            });
+            
+            if (!thoughtResponse.ok) {
+              console.warn(`[FullScreenFeed] Failed to download thought file ${fileId}:`, thoughtResponse.status);
+              return;
+            }
+            
+            const { EncryptionManager } = await import('../utils/encryptionManager');
+            const encryptedText = await thoughtResponse.text();
+            const encryptedPackage = JSON.parse(encryptedText);
+            const encryptionManager = new EncryptionManager();
+            const decryptedData = await encryptionManager.decrypt(
+              encryptedPackage.encrypted,
+              encryptedPackage.iv,
+              encryptedPackage.salt,
+              pnId,
+              publicKey
+            );
+            
+            // Parse the thought data
+            const decryptedText = new TextDecoder().decode(decryptedData);
+            const thoughtData = JSON.parse(decryptedText);
+            const loadedTextPost = thoughtData.textPost;
+            
+            if (loadedTextPost) {
+              console.log(`[FullScreenFeed] ✅ Loaded thought content for ${fileId}`);
+              setLoadedThoughtContent(prev => {
+                const next = new Map(prev);
+                next.set(fileId, loadedTextPost);
+                return next;
+              });
+            } else {
+              console.warn(`[FullScreenFeed] Thought file ${fileId} missing textPost data:`, thoughtData);
+            }
+          } catch (error) {
+            console.error(`[FullScreenFeed] Error loading thought ${fileId}:`, error);
+          } finally {
+            loadingThoughtsRef.current.delete(fileId);
+          }
+        }
+      }));
+    };
+    
+    loadThoughtContent();
+  }, [currentIndex, files, loadedThoughtContent]);
+
   // Load video blobs and thumbnails for visible files (only if not provided externally)
   useEffect(() => {
     const loadMedia = async () => {
@@ -1475,13 +1587,17 @@ export function FullScreenFeed({
           >
             {/* Text Post / Thought - Render as its own tile, not an overlay */}
             {(isTextPost || textPostData) && (() => {
+              // Check loaded thought content first (for thoughts loaded from Google Drive)
+              const loadedContent = loadedThoughtContent.get(fileId);
+              const effectiveTextPostData = loadedContent || textPostData;
+              
               // Check if content is just a filename - if so, we need to load the actual thought file
-              const currentContent = textPostData?.content || file.description || file.name || file.title || '';
+              const currentContent = effectiveTextPostData?.content || file.description || file.name || file.title || '';
               const isJustFilename = /^thought-\d+\.(thought|png)/i.test(currentContent);
               
-              // If content is just a filename, we'll need to load it (handled in useEffect below)
-              // For now, use a placeholder
-              const contentToRender = isJustFilename ? 'Loading thought...' : (textPostData?.content || 
+              // If content is just a filename and we're loading, show loading state
+              // Otherwise use the actual content
+              const contentToRender = (isJustFilename && !loadedContent) ? 'Loading thought...' : (effectiveTextPostData?.content || 
                                      file.description || 
                                      file.name || 
                                      file.title || 
@@ -1543,8 +1659,8 @@ export function FullScreenFeed({
                   className="w-full h-full flex items-center justify-center relative"
                   style={{
                     backgroundColor: textPostData?.style?.backgroundColor || '#000000',
-                    backgroundImage: textPostData?.style?.backgroundImage 
-                      ? `url(${textPostData.style.backgroundImage})` 
+                    backgroundImage: styleData?.backgroundImage 
+                      ? `url(${styleData.backgroundImage})` 
                       : 'none',
                     backgroundSize: 'cover',
                     backgroundPosition: 'center',
@@ -1557,18 +1673,18 @@ export function FullScreenFeed({
                   <div
                     className="text-center"
                     style={{
-                      fontFamily: textPostData?.style?.fontFamily || 'Arial',
+                      fontFamily: styleData?.fontFamily || 'Arial',
                       fontSize: `${scaledFontSize}px`,
-                      color: textPostData?.style?.textColor || '#FFFFFF',
-                      fontWeight: textPostData?.style?.textStyle === 'bold' ? 'bold' : 'normal',
-                      fontStyle: textPostData?.style?.textStyle === 'italic' ? 'italic' : 'normal',
-                      textDecoration: textPostData?.style?.textStyle === 'strikethrough' ? 'line-through' : 'none',
-                      textAlign: (textPostData?.style?.textAlign || 'center') as 'left' | 'center' | 'right' | 'justify',
+                      color: styleData?.textColor || '#FFFFFF',
+                      fontWeight: styleData?.textStyle === 'bold' ? 'bold' : 'normal',
+                      fontStyle: styleData?.textStyle === 'italic' ? 'italic' : 'normal',
+                      textDecoration: styleData?.textStyle === 'strikethrough' ? 'line-through' : 'none',
+                      textAlign: (styleData?.textAlign || 'center') as 'left' | 'center' | 'right' | 'justify',
                       textShadow: `
                         ${baseShadowOffsetX * scale}px 
                         ${baseShadowOffsetY * scale}px 
                         ${baseShadowBlur * scale}px 
-                        ${textPostData?.style?.dropShadowColor || '#000000'}
+                        ${styleData?.dropShadowColor || '#000000'}
                       `,
                       // Scale padding proportionally to maintain layout
                       padding: `${scaledPadding}px`,
@@ -1586,25 +1702,29 @@ export function FullScreenFeed({
                     }}
                   >
                   {(() => {
+                    // Use effectiveTextPostData (loaded content or original)
+                    const content = effectiveTextPostData?.content || contentToRender;
+                    
                     // Handle different content formats
-                    if (textPostData?.content) {
+                    if (content && typeof content === 'string') {
                       // If content is HTML, sanitize it before rendering
-                      if (typeof textPostData.content === 'string' && textPostData.content.includes('<')) {
+                      if (content.includes('<')) {
                         // SECURITY: Sanitize HTML to prevent XSS attacks
-                        const sanitizedContent = DOMPurify.sanitize(textPostData.content, {
+                        const sanitizedContent = DOMPurify.sanitize(content, {
                           ALLOWED_TAGS: ['p', 'br', 'strong', 'em', 'u', 'a', 'ul', 'ol', 'li', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6'],
                           ALLOWED_ATTR: ['href', 'target', 'rel'],
                           ALLOW_DATA_ATTR: false
                         });
                         return <div dangerouslySetInnerHTML={{ __html: sanitizedContent }} />;
                       }
-                      return textPostData.content;
+                      return content;
                     }
                     // Fallback to content we prepared above
                     // Log if we're using fallback content
-                    if (!contentToRender || contentToRender === 'Thought') {
+                    if (!contentToRender || contentToRender === 'Thought' || contentToRender === 'Loading thought...') {
                       console.warn(`[FullScreenFeed] Using fallback content for thought ${fileId}:`, {
                         contentToRender,
+                        hasLoadedContent: !!loadedContent,
                         fileDescription: file.description,
                         fileName: file.name,
                         fileTitle: file.title,
