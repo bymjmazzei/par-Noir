@@ -1951,8 +1951,13 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
         const accountIdParam = sharingAccountId ? `?accountId=${encodeURIComponent(sharingAccountId)}` : '';
         const updateBody: any = {};
         
-        if (makePublic !== isCurrentlyPublic) {
-          updateBody.isPublic = makePublic;
+        // Always send isPublic when making public (even if already marked public in DB)
+        // This ensures companion metadata is created/updated even if DB state is inconsistent
+        if (makePublic) {
+          updateBody.isPublic = true;
+        } else if (makePublic !== isCurrentlyPublic) {
+          // Only send false if explicitly making private
+          updateBody.isPublic = false;
         }
         
         // ALWAYS update NSFW status if file is public (whether making public or already public)
