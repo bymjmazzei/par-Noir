@@ -1471,6 +1471,13 @@ export function FullScreenFeed({
           >
             {/* Text Post / Thought - Render as its own tile, not an overlay */}
             {(isTextPost || textPostData) && (() => {
+              // Ensure we have content to render - create fallback if needed (define first!)
+              const contentToRender = textPostData?.content || 
+                                     file.description || 
+                                     file.name || 
+                                     file.title || 
+                                     (thoughtFileName ? thoughtFileName.replace(/\.(thought|png)$/i, '') : 'Thought');
+              
               // Always log when rendering thoughts to debug black tiles issue
               console.log(`[FullScreenFeed] Rendering thought/textPost for ${fileId}:`, {
                 isTextPost,
@@ -1499,13 +1506,6 @@ export function FullScreenFeed({
                   metadata: indexedFile.metadata
                 });
               }
-              
-              // Ensure we have content to render - create fallback if needed
-              const contentToRender = textPostData?.content || 
-                                     file.description || 
-                                     file.name || 
-                                     file.title || 
-                                     (thoughtFileName ? thoughtFileName.replace(/\.(thought|png)$/i, '') : 'Thought');
               
               // Reference dimensions from thought creator (1080x1920 canvas)
               const REFERENCE_WIDTH = 1080;
