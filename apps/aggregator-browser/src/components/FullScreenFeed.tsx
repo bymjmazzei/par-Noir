@@ -1471,8 +1471,18 @@ export function FullScreenFeed({
           >
             {/* Text Post / Thought - Render as its own tile, not an overlay */}
             {(isTextPost || textPostData) && (() => {
-              // Debug logging for thoughts that aren't rendering properly
-              if (process.env.NODE_ENV === 'development' && isTextPost && !textPostData?.content) {
+              // Always log when rendering thoughts to debug black tiles issue
+              console.log(`[FullScreenFeed] Rendering thought/textPost for ${fileId}:`, {
+                isTextPost,
+                hasTextPostData: !!textPostData,
+                hasContent: !!textPostData?.content,
+                contentToRender,
+                fileType: file.fileType,
+                fileName: file.name || file.title
+              });
+              
+              // Debug logging for thoughts that aren't rendering properly (always log, not just dev)
+              if (isTextPost && !textPostData?.content) {
                 console.warn(`[FullScreenFeed] Thought detected but missing content:`, {
                   fileId,
                   fileDisplayName: file.name || file.title,
@@ -1482,6 +1492,10 @@ export function FullScreenFeed({
                   fileDescription: file.description,
                   fileTitle: file.title,
                   fileName: file.name,
+                  thoughtFileName,
+                  isThoughtFile,
+                  hasTextFileType,
+                  actualFileType,
                   metadata: indexedFile.metadata
                 });
               }
@@ -1577,7 +1591,17 @@ export function FullScreenFeed({
                       return textPostData.content;
                     }
                     // Fallback to content we prepared above
-                    return contentToRender;
+                    // Log if we're using fallback content
+                    if (!contentToRender || contentToRender === 'Thought') {
+                      console.warn(`[FullScreenFeed] Using fallback content for thought ${fileId}:`, {
+                        contentToRender,
+                        fileDescription: file.description,
+                        fileName: file.name,
+                        fileTitle: file.title,
+                        thoughtFileName
+                      });
+                    }
+                    return contentToRender || 'No content available';
                   })()}
                 </div>
               </div>
