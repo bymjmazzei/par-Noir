@@ -58,7 +58,7 @@ export const LockButtonWithContext: React.FC<LockButtonWithContextProps> = ({
   // Removed debug logging - only log errors
 
   return (
-    <div ref={containerRef} className="fixed top-3 right-3 z-[110] flex flex-col items-end space-y-1">
+    <div ref={containerRef} className="fixed top-3 right-3 z-[110] flex flex-col items-center space-y-0.5">
       {/* Lock/Unlock Button */}
       <button
         onClick={onLockUnlock}
@@ -76,7 +76,7 @@ export const LockButtonWithContext: React.FC<LockButtonWithContextProps> = ({
       {userState.isUnlocked && hasFeeds && (
         <button
           onClick={() => setShowContextMenu(!showContextMenu)}
-          className="p-1 flex items-center justify-center text-white/60 hover:text-white/85 transition-colors pointer-events-auto"
+          className="p-0.5 flex items-center justify-center text-white/60 hover:text-white/85 transition-colors pointer-events-auto w-full"
           title="Switch context"
         >
           <ChevronDown className={`h-3 w-3 transition-transform ${showContextMenu ? 'rotate-180' : ''}`} />
