@@ -211,7 +211,17 @@ export class MetadataIndexService {
         uploadDate: publicMetadata.uploadDate || new Date().toISOString(),
         publicToken: publicMetadata.publicToken,
         indexingPermissions: publicMetadata.indexingPermissions,
-        pnIdentifier
+        pnIdentifier,
+        // CRITICAL: Include textPost/thought content so thoughts render in feeds
+        textPost: publicMetadata.textPost,
+        thought: publicMetadata.thought,
+        // Include PDF slideshow data
+        pdfPageThumbnailIds: publicMetadata.pdfPageThumbnailIds,
+        pdfPageThumbnailTokens: publicMetadata.pdfPageThumbnailTokens,
+        pdfFileId: publicMetadata.pdfFileId,
+        thumbnailFileId: publicMetadata.thumbnailFileId,
+        subjects: publicMetadata.subjects,
+        feedCategories: publicMetadata.feedCategories
       });
       console.log('✅ [MetadataIndexService] Metadata submitted to central aggregator API');
     } catch (error) {
