@@ -1665,6 +1665,56 @@ class ProductionServer {
       }
     });
 
+    // GET /api/aggregator/metadata-index/:fileId/inspect - Deep inspection of a specific file's metadata
+    this.app.get('/api/aggregator/metadata-index/:fileId/inspect', async (req, res) => {
+      try {
+        const { AggregatorMetadataServiceDB } = await import('./server/modules/aggregatorMetadataServiceDB');
+        const service = AggregatorMetadataServiceDB.getInstance();
+        const { fileId } = req.params;
+        
+        const entry = await service.getFileMetadata(fileId);
+        if (!entry) {
+          return res.json({ 
+            exists: false,
+            fileId,
+            message: 'File not found in database'
+          });
+        }
+        
+        const metadata = entry.metadata as any;
+        const hasTextPost = !!metadata.textPost;
+        const hasThought = !!metadata.thought;
+        const textPostContent = metadata.textPost?.content;
+        const thoughtContent = metadata.thought?.content;
+        const isJustFilename = /^thought-\d+\.(thought|png)/i.test(textPostContent || thoughtContent || '');
+        const hasPdfThumbnails = !!metadata.pdfPageThumbnailIds && Array.isArray(metadata.pdfPageThumbnailIds) && metadata.pdfPageThumbnailIds.length > 0;
+        
+        return res.json({
+          exists: true,
+          fileId,
+          isPublic: metadata.isPublic === true || metadata.isPublic === 'true',
+          fileType: metadata.fileType,
+          name: metadata.name,
+          hasTextPost,
+          hasThought,
+          textPostContent: textPostContent ? (textPostContent.length > 100 ? textPostContent.substring(0, 100) + '...' : textPostContent) : null,
+          thoughtContent: thoughtContent ? (thoughtContent.length > 100 ? thoughtContent.substring(0, 100) + '...' : thoughtContent) : null,
+          isJustFilename,
+          hasPdfThumbnails,
+          pdfThumbnailCount: hasPdfThumbnails ? metadata.pdfPageThumbnailIds.length : 0,
+          hasPublicToken: !!metadata.publicToken,
+          metadataKeys: Object.keys(metadata),
+          fullMetadata: metadata // Include full metadata for inspection
+        });
+      } catch (error: any) {
+        console.error('Error inspecting file metadata:', error);
+        return res.status(500).json({ 
+          error: 'Failed to inspect file metadata',
+          message: error.message 
+        });
+      }
+    });
+
 
     // GET /api/aggregator/metadata-index/stats - Get index statistics
     this.app.get('/api/aggregator/metadata-index/stats', async (req, res) => {
