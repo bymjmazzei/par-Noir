@@ -8,6 +8,9 @@
         ],
         "par-noir-dashboard": [
           "par-noir-dashboard"
+        ],
+        "browse": [
+          "apps/aggregator-browser/dist"
         ]
       }
     }

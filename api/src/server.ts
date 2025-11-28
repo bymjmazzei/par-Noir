@@ -2199,6 +2199,179 @@ class ProductionServer {
                 console.warn(`[MetadataIndex PUT] No publicToken found for file ${fileId} - file may not load in public feed`);
               }
             }
+            
+            // CRITICAL FIX: Update Google Drive public index when existing file becomes public
+            // This ensures the file persists in the index and won't be removed by cleanup
+            if (!fileExistedBefore) {
+              // New files are handled in the companion metadata creation block below
+              console.log(`[MetadataIndex PUT] File ${fileId} is new - public index will be updated in companion metadata creation`);
+            } else {
+              // Existing file becoming public - need to update index now
+              try {
+                const authHeader = req.headers.authorization;
+                if (authHeader && authHeader.startsWith('Bearer ')) {
+                  const token = authHeader.substring(7);
+                  const { PNOAuthService } = await import('./server/modules/pnOAuthService');
+                  const tokenPayload = PNOAuthService.validateAccessToken(token);
+                  
+                  if (tokenPayload) {
+                    const pnIdentifier = tokenPayload.pnIdentifier;
+                    if (!pnIdentifier) {
+                      console.error(`[MetadataIndex PUT] Missing pnIdentifier in token payload`);
+                      throw new Error('Missing pnIdentifier in token');
+                    }
+                    const userIdentifier = tokenPayload.pnIdentifier || tokenPayload.did;
+                    const identifierCandidates: string[] = [];
+                    if (tokenPayload.pnIdentifier) {
+                      identifierCandidates.push(tokenPayload.pnIdentifier);
+                    }
+                    if (tokenPayload.did) {
+                      identifierCandidates.push(tokenPayload.did);
+                      if (tokenPayload.did.startsWith('did:key:')) {
+                        const keyPart = tokenPayload.did.substring(8);
+                        if (keyPart) {
+                          identifierCandidates.push(keyPart);
+                        }
+                      }
+                    }
+                    
+                    const { googleDriveProxyService } = await import('./server/modules/googleDriveProxy');
+                    const accountId = req.query.accountId as string | undefined;
+                    const accessToken = await googleDriveProxyService.getAccessToken(userIdentifier, accountId, identifierCandidates);
+                    
+                    // Fetch file info from Google Drive
+                    const driveResponse = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?fields=id,name,mimeType,size,createdTime,modifiedTime`, {
+                      headers: { 'Authorization': `Bearer ${accessToken}` }
+                    });
+                    
+                    if (!driveResponse.ok) {
+                      const errorText = await driveResponse.text().catch(() => 'Unknown error');
+                      console.error(`[MetadataIndex PUT] Failed to fetch file info: ${driveResponse.status} ${errorText}`);
+                      throw new Error(`Failed to fetch file info: ${driveResponse.status}`);
+                    }
+                    
+                    const driveFile = await driveResponse.json() as { name?: string; mimeType?: string; size?: string; createdTime?: string };
+                    const originalFileName = driveFile.name?.replace(/\.encrypted$/i, '') || fileId;
+                    const originalMimeType = driveFile.mimeType || 'application/octet-stream';
+                    
+                    // Get or create pN folder
+                    // Try both formats: "par Noir - pn-{hash}" and "par Noir - {hash}"
+                    let pnFolderId: string | null = null;
+                    const pnFolderName1 = `par Noir - ${pnIdentifier}`;
+                    const pnFolderName2 = `par Noir - pn-${pnIdentifier}`;
+                    
+                    for (const pnFolderName of [pnFolderName1, pnFolderName2]) {
+                      const folderSearchQuery = `name='${pnFolderName.replace(/'/g, "\\'")}' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
+                      const folderSearchUrl = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(folderSearchQuery)}&fields=files(id,name)&pageSize=1`;
+                      
+                      const folderResponse = await fetch(folderSearchUrl, {
+                        headers: { 'Authorization': `Bearer ${accessToken}` }
+                      });
+                      
+                      if (folderResponse.ok) {
+                        const folderData = await folderResponse.json() as { files?: Array<{ id: string; name: string }> };
+                        if (folderData.files && folderData.files.length > 0) {
+                          pnFolderId = folderData.files[0].id;
+                          console.log(`[MetadataIndex PUT] Found pN folder: ${pnFolderName} (ID: ${pnFolderId})`);
+                          break;
+                        }
+                      }
+                    }
+                    
+                    if (!pnFolderId) {
+                      console.warn(`[MetadataIndex PUT] pN folder not found for ${pnIdentifier} - cannot update public index`);
+                    } else {
+                      // Get metadata folder
+                      const metadataFolderName = '_metadata';
+                      const metadataSearchQuery = `name='${metadataFolderName}' and '${pnFolderId}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`;
+                      const metadataSearchUrl = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(metadataSearchQuery)}&fields=files(id,name)&pageSize=1`;
+                      
+                      const metadataFolderResponse = await fetch(metadataSearchUrl, {
+                        headers: { 'Authorization': `Bearer ${accessToken}` }
+                      });
+                      
+                      let metadataFolderId: string | null = null;
+                      if (metadataFolderResponse.ok) {
+                        const metadataFolderData = await metadataFolderResponse.json() as { files?: Array<{ id: string; name: string }> };
+                        if (metadataFolderData.files && metadataFolderData.files.length > 0) {
+                          metadataFolderId = metadataFolderData.files[0].id;
+                        }
+                      }
+                      
+                      if (metadataFolderId) {
+                        // Get current metadata from database
+                        const currentMetadataForIndex = await service.getFileMetadata(fileId);
+                        const existingPublicTokenForIndex = currentMetadataForIndex?.metadata?.publicToken;
+                        const tokenToUseForIndex = publicToken || existingPublicTokenForIndex;
+                        
+                        // Build companion metadata for index update
+                        const companionMetadataForIndex = {
+                          fileId: fileId,
+                          googleDriveFileId: fileId,
+                          fileName: driveFile.name || fileId,
+                          originalName: originalFileName,
+                          mimeType: originalMimeType,
+                          size: parseInt(driveFile.size || '0', 10),
+                          visibility: 'public' as const,
+                          uploadedAt: driveFile.createdTime || currentMetadataForIndex?.metadata?.uploadedAt || new Date().toISOString(),
+                          owner: {
+                            did: tokenPayload.did,
+                            identifier: pnIdentifier
+                          },
+                          tags: currentMetadataForIndex?.metadata?.tags || [],
+                          description: currentMetadataForIndex?.metadata?.description,
+                          ...(tokenToUseForIndex && { publicToken: tokenToUseForIndex }),
+                          ...(currentMetadataForIndex?.metadata?.engagement && { engagement: currentMetadataForIndex.metadata.engagement }),
+                          ...(currentMetadataForIndex?.metadata?.fileType && { fileType: currentMetadataForIndex.metadata.fileType }),
+                          ...(currentMetadataForIndex?.metadata?.isNSFW !== undefined && { isNSFW: currentMetadataForIndex.metadata.isNSFW }),
+                          ...(currentMetadataForIndex?.metadata?.textPost && { textPost: currentMetadataForIndex.metadata.textPost }),
+                          ...(currentMetadataForIndex?.metadata?.thought && { thought: currentMetadataForIndex.metadata.thought })
+                        };
+                        
+                        // Update owner index (contains ALL files for the owner)
+                        try {
+                          await this.updateOwnerFileIndex(
+                            accessToken,
+                            pnIdentifier,
+                            metadataFolderId,
+                            companionMetadataForIndex
+                          );
+                          console.log(`[MetadataIndex PUT] Updated owner index for file ${fileId}`);
+                        } catch (ownerIndexError: any) {
+                          console.warn(`[MetadataIndex PUT] Failed to update owner index (non-critical):`, ownerIndexError?.message || ownerIndexError);
+                        }
+                        
+                        // Update public file index
+                        if (!companionMetadataForIndex.publicToken) {
+                          console.warn(`[MetadataIndex PUT] No publicToken found for public file ${fileId} - file may not load in public feed`);
+                        } else {
+                          console.log(`[MetadataIndex PUT] Using publicToken for public file index update: ${fileId}`);
+                        }
+                        
+                        try {
+                          await this.updatePublicFileIndex(
+                            accessToken,
+                            pnIdentifier,
+                            metadataFolderId,
+                            pnFolderId,
+                            companionMetadataForIndex
+                          );
+                          console.log(`[MetadataIndex PUT] Successfully updated public file index for file ${fileId}`);
+                        } catch (indexError: any) {
+                          console.error(`[MetadataIndex PUT] Failed to update public file index:`, indexError?.message || indexError);
+                          console.error(`[MetadataIndex PUT] Stack trace:`, indexError?.stack);
+                        }
+                      } else {
+                        console.warn(`[MetadataIndex PUT] Metadata folder not found for ${pnIdentifier} - cannot update public index`);
+                      }
+                    }
+                  }
+                }
+              } catch (publicError: any) {
+                console.warn(`[MetadataIndex PUT] Failed to update public index when making file public:`, publicError?.message || publicError);
+                // Don't fail the request - index update is important but not critical for the API response
+              }
+            }
           }
           
           // Handle making file private - remove from public index
