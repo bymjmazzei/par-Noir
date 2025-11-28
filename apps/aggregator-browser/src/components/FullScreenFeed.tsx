@@ -1584,7 +1584,7 @@ export function FullScreenFeed({
               const firstThumbnailUrl = thumbnails.get(fileId);
               
               return (
-                <div className="w-full h-full flex items-center justify-center" style={{ height: viewportHeightCSS }}>
+                <div className="w-full h-full" style={{ height: viewportHeightCSS }}>
                   <ImageSlideshow
                     thumbnailIds={pdfPageThumbnailIds}
                     fileName={file.name || file.title}
