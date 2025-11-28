@@ -2313,7 +2313,7 @@ class ProductionServer {
                           mimeType: originalMimeType,
                           size: parseInt(driveFile.size || '0', 10),
                           visibility: 'public' as const,
-                          uploadedAt: driveFile.createdTime || currentMetadataForIndex?.metadata?.uploadedAt || new Date().toISOString(),
+                          uploadedAt: driveFile.createdTime || currentMetadataForIndex?.metadata?.uploadDate || new Date().toISOString(),
                           owner: {
                             did: tokenPayload.did,
                             identifier: pnIdentifier
