@@ -35,11 +35,20 @@ The Google Drive sync service allows the API to automatically scan Google Drive 
 7. Skip role assignment (not needed), click **"Continue"**
 8. Click **"Done"**
 
-### 2.2 Enable Google Drive API
+### 2.2 Enable Required Google APIs
 
+You need to enable **both** Google Drive API and Google Sheets API:
+
+**Enable Google Drive API:**
 1. Go to **"APIs & Services"** → **"Library"**
 2. Search for **"Google Drive API"**
 3. Click on it and click **"Enable"**
+
+**Enable Google Sheets API (Required for Companion Metadata):**
+1. In the same **"APIs & Services"** → **"Library"** page
+2. Search for **"Google Sheets API"**
+3. Click on it and click **"Enable"**
+4. **Important**: This API is required for creating companion metadata sheets in the `_metadata` folder
 
 ### 2.3 Create and Download Key
 

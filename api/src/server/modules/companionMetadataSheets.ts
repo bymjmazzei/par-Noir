@@ -7,9 +7,13 @@
  * - Shares: Engagement shares (rows for each share)
  * 
  * Engagement counts are derived by counting rows in engagement sheets.
+ * 
+ * SECURITY: Sensitive fields (publicToken, ownerDid, ownerIdentifier) are encrypted
+ * before storage to make them machine-readable only.
  */
 
 import { google } from 'googleapis';
+import { MetadataEncryption } from '../utils/metadataEncryption';
 
 export interface CompanionMetadata {
   fileId: string;
@@ -160,7 +164,7 @@ export class CompanionMetadataSheets {
               'publicToken',
               'lastUpdated'
             ],
-            // Data row
+            // Data row (encrypt sensitive fields)
             [
               metadata.fileId,
               metadata.googleDriveFileId,
@@ -170,12 +174,12 @@ export class CompanionMetadataSheets {
               metadata.size.toString(),
               metadata.visibility,
               metadata.uploadedAt,
-              metadata.owner.did,
-              metadata.owner.identifier,
+              MetadataEncryption.encryptField(metadata.owner.did), // Encrypted
+              MetadataEncryption.encryptField(metadata.owner.identifier), // Encrypted
               (metadata.tags || []).join(','),
               metadata.description || '',
               metadata.thumbnail || '',
-              metadata.publicToken || '',
+              MetadataEncryption.encryptField(metadata.publicToken ? (typeof metadata.publicToken === 'string' ? metadata.publicToken : JSON.stringify(metadata.publicToken)) : undefined), // Encrypted
               new Date().toISOString()
             ]
           ]
@@ -284,7 +288,11 @@ export class CompanionMetadataSheets {
       const headers = rows[0] as string[];
       const data = rows[1] as any[];
 
-      // Map headers to data
+      // Map headers to data (decrypt sensitive fields)
+      const ownerDidEncrypted = data[headers.indexOf('ownerDid')] || '';
+      const ownerIdentifierEncrypted = data[headers.indexOf('ownerIdentifier')] || '';
+      const publicTokenEncrypted = data[headers.indexOf('publicToken')] || '';
+
       const metadata: CompanionMetadata = {
         fileId: data[headers.indexOf('fileId')] || '',
         googleDriveFileId: data[headers.indexOf('googleDriveFileId')] || '',
@@ -295,13 +303,22 @@ export class CompanionMetadataSheets {
         visibility: (data[headers.indexOf('visibility')] || 'private') as 'public' | 'private' | 'friends',
         uploadedAt: data[headers.indexOf('uploadedAt')] || new Date().toISOString(),
         owner: {
-          did: data[headers.indexOf('ownerDid')] || '',
-          identifier: data[headers.indexOf('ownerIdentifier')] || ''
+          did: MetadataEncryption.decryptField(ownerDidEncrypted), // Decrypted
+          identifier: MetadataEncryption.decryptField(ownerIdentifierEncrypted) // Decrypted
         },
         tags: data[headers.indexOf('tags')] ? (data[headers.indexOf('tags')] as string).split(',').filter(Boolean) : [],
         description: data[headers.indexOf('description')] || undefined,
         thumbnail: data[headers.indexOf('thumbnail')] || undefined,
-        publicToken: data[headers.indexOf('publicToken')] || undefined
+        publicToken: (() => {
+          const decrypted = MetadataEncryption.decryptField(publicTokenEncrypted);
+          if (!decrypted) return undefined;
+          // Try to parse as JSON if it looks like JSON (for backward compatibility)
+          try {
+            return JSON.parse(decrypted);
+          } catch {
+            return decrypted; // Return as string if not valid JSON
+          }
+        })()
       };
 
       // Derive engagement counts from sheets
@@ -428,7 +445,7 @@ export class CompanionMetadataSheets {
       const headers = rows[0] as string[];
       const currentData = [...(rows[1] as any[])];
 
-      // Update fields
+      // Update fields (encrypt sensitive fields)
       if (metadata.visibility !== undefined) {
         const idx = headers.indexOf('visibility');
         if (idx >= 0) currentData[idx] = metadata.visibility;
@@ -447,7 +464,21 @@ export class CompanionMetadataSheets {
       }
       if (metadata.publicToken !== undefined) {
         const idx = headers.indexOf('publicToken');
-        if (idx >= 0) currentData[idx] = metadata.publicToken || '';
+        if (idx >= 0) {
+          const tokenValue = typeof metadata.publicToken === 'string' 
+            ? metadata.publicToken 
+            : JSON.stringify(metadata.publicToken);
+          currentData[idx] = MetadataEncryption.encryptField(tokenValue); // Encrypted
+        }
+      }
+      // Update owner fields if provided (encrypted)
+      if (metadata.owner?.did !== undefined) {
+        const idx = headers.indexOf('ownerDid');
+        if (idx >= 0) currentData[idx] = MetadataEncryption.encryptField(metadata.owner.did); // Encrypted
+      }
+      if (metadata.owner?.identifier !== undefined) {
+        const idx = headers.indexOf('ownerIdentifier');
+        if (idx >= 0) currentData[idx] = MetadataEncryption.encryptField(metadata.owner.identifier); // Encrypted
       }
 
       // Always update lastUpdated
