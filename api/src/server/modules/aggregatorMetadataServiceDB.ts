@@ -238,13 +238,24 @@ export class AggregatorMetadataServiceDB {
         -- Exclude main files that have a thumbnailFileId (those are private, only thumbnails are public)
         -- Exclude main PDF files that have pdfPageThumbnailIds (only their thumbnails should appear in feeds)
         -- BUT: Allow thumbnail files (name starts with "thumb_") that have pdfPageThumbnailIds (they're slideshow entry points)
+        -- AND: Always allow thoughts/text posts (they don't have thumbnails, so they should always be included)
         AND (
-          am.metadata->>'thumbnailFileId' IS NULL 
-          OR am.metadata->>'thumbnailFileId' = ''
+          -- Allow thoughts/text posts (they don't have thumbnails, so they should always be included)
+          am.metadata->>'fileType' = 'text' 
+          OR am.metadata->>'fileType' = 'thought' 
+          OR am.metadata->'textPost' IS NOT NULL 
+          OR am.metadata->'thought' IS NOT NULL
+          -- OR exclude main files that have a thumbnailFileId (those are private, only thumbnails are public)
+          OR (am.metadata->>'thumbnailFileId' IS NULL OR am.metadata->>'thumbnailFileId' = '')
         )
         AND (
-          -- Allow thumbnail files with pdfPageThumbnailIds (they're slideshow entry points)
-          (LOWER(am.metadata->>'name') LIKE 'thumb_%' OR LOWER(am.metadata->>'title') LIKE 'thumb_%')
+          -- Allow thoughts/text posts (they don't have pdfPageThumbnailIds)
+          am.metadata->>'fileType' = 'text' 
+          OR am.metadata->>'fileType' = 'thought' 
+          OR am.metadata->'textPost' IS NOT NULL 
+          OR am.metadata->'thought' IS NOT NULL
+          -- OR allow thumbnail files with pdfPageThumbnailIds (they're slideshow entry points)
+          OR (LOWER(am.metadata->>'name') LIKE 'thumb_%' OR LOWER(am.metadata->>'title') LIKE 'thumb_%')
           -- OR exclude main PDF files (not thumbnails) that have pdfPageThumbnailIds
           OR NOT (
             am.metadata->>'pdfPageThumbnailIds' IS NOT NULL 
@@ -330,13 +341,24 @@ export class AggregatorMetadataServiceDB {
         -- Exclude main files that have a thumbnailFileId (those are private, only thumbnails are public)
         -- Exclude main PDF files that have pdfPageThumbnailIds (only their thumbnails should appear in feeds)
         -- BUT: Allow thumbnail files (name starts with "thumb_") that have pdfPageThumbnailIds (they're slideshow entry points)
+        -- AND: Always allow thoughts/text posts (they don't have thumbnails, so they should always be included)
         AND (
-          am.metadata->>'thumbnailFileId' IS NULL 
-          OR am.metadata->>'thumbnailFileId' = ''
+          -- Allow thoughts/text posts (they don't have thumbnails, so they should always be included)
+          am.metadata->>'fileType' = 'text' 
+          OR am.metadata->>'fileType' = 'thought' 
+          OR am.metadata->'textPost' IS NOT NULL 
+          OR am.metadata->'thought' IS NOT NULL
+          -- OR exclude main files that have a thumbnailFileId (those are private, only thumbnails are public)
+          OR (am.metadata->>'thumbnailFileId' IS NULL OR am.metadata->>'thumbnailFileId' = '')
         )
         AND (
-          -- Allow thumbnail files with pdfPageThumbnailIds (they're slideshow entry points)
-          (LOWER(am.metadata->>'name') LIKE 'thumb_%' OR LOWER(am.metadata->>'title') LIKE 'thumb_%')
+          -- Allow thoughts/text posts (they don't have pdfPageThumbnailIds)
+          am.metadata->>'fileType' = 'text' 
+          OR am.metadata->>'fileType' = 'thought' 
+          OR am.metadata->'textPost' IS NOT NULL 
+          OR am.metadata->'thought' IS NOT NULL
+          -- OR allow thumbnail files with pdfPageThumbnailIds (they're slideshow entry points)
+          OR (LOWER(am.metadata->>'name') LIKE 'thumb_%' OR LOWER(am.metadata->>'title') LIKE 'thumb_%')
           -- OR exclude main PDF files (not thumbnails) that have pdfPageThumbnailIds
           OR NOT (
             am.metadata->>'pdfPageThumbnailIds' IS NOT NULL 
