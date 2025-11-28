@@ -2187,6 +2187,57 @@ class ProductionServer {
           
           // Handle making file public - create companion metadata and update indexes
           if (isBecomingPublic) {
+            // CRITICAL: If this is a main file with a thumbnail, make the thumbnail public too
+            // Main files are excluded from feeds - only thumbnails appear
+            const currentMetadata = current?.metadata || {};
+            const thumbnailFileId = currentMetadata.thumbnailFileId;
+            const pdfPageThumbnailIds = currentMetadata.pdfPageThumbnailIds;
+            
+            if (thumbnailFileId) {
+              // Main file has a thumbnail - make thumbnail public
+              try {
+                const thumbnailMetadata = await service.getFileMetadata(thumbnailFileId);
+                if (thumbnailMetadata) {
+                  const updatedThumbnailMetadata = {
+                    ...thumbnailMetadata.metadata,
+                    isPublic: true
+                  };
+                  const db = (await import('./server/utils/database')).getDatabasePool();
+                  await db.query(
+                    `UPDATE aggregator_metadata 
+                     SET metadata = $1, updated_at = NOW()
+                     WHERE file_id = $2`,
+                    [JSON.stringify(updatedThumbnailMetadata), thumbnailFileId]
+                  );
+                  console.log(`[MetadataIndex PUT] Made thumbnail ${thumbnailFileId} public for main file ${fileId}`);
+                }
+              } catch (thumbError: any) {
+                console.warn(`[MetadataIndex PUT] Failed to make thumbnail public:`, thumbError?.message || thumbError);
+              }
+            } else if (pdfPageThumbnailIds && Array.isArray(pdfPageThumbnailIds) && pdfPageThumbnailIds.length > 0) {
+              // PDF file has page thumbnails - make first thumbnail public
+              const firstThumbnailId = pdfPageThumbnailIds[0];
+              try {
+                const thumbnailMetadata = await service.getFileMetadata(firstThumbnailId);
+                if (thumbnailMetadata) {
+                  const updatedThumbnailMetadata = {
+                    ...thumbnailMetadata.metadata,
+                    isPublic: true
+                  };
+                  const db = (await import('./server/utils/database')).getDatabasePool();
+                  await db.query(
+                    `UPDATE aggregator_metadata 
+                     SET metadata = $1, updated_at = NOW()
+                     WHERE file_id = $2`,
+                    [JSON.stringify(updatedThumbnailMetadata), firstThumbnailId]
+                  );
+                  console.log(`[MetadataIndex PUT] Made PDF thumbnail ${firstThumbnailId} public for PDF file ${fileId}`);
+                }
+              } catch (thumbError: any) {
+                console.warn(`[MetadataIndex PUT] Failed to make PDF thumbnail public:`, thumbError?.message || thumbError);
+              }
+            }
+            
             // Ensure publicToken is saved before proceeding
             if (publicToken) {
               console.log(`[MetadataIndex PUT] publicToken provided in request for file ${fileId}`);

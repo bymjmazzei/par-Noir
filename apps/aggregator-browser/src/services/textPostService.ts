@@ -315,76 +315,8 @@ export async function createTextPost(
     const fileId = uploadedFile.id;
     console.log('✅ [TextPost] File uploaded successfully, fileId:', fileId);
 
-    // Generate thumbnail for thought (render at thumbnail scale ~300px width)
-    console.log('🖼️ [TextPost] Generating thumbnail...');
-    let thumbnailFileId: string | undefined;
-    try {
-      // Render at thumbnail scale (300px width / 1080px = ~0.278 scale)
-      const thumbnailScale = 300 / 1080;
-      const thumbnailBlob = await renderTextPostToBlob(textPost, thumbnailScale);
-      const thumbnailArrayBuffer = await thumbnailBlob.arrayBuffer();
-      const thumbnailData = new Uint8Array(thumbnailArrayBuffer);
-      
-      const encryptedThumbnail = await encryptionManager.encrypt(
-        thumbnailData,
-        session.did,
-        publicKey
-      );
-      
-      // Create encrypted thumbnail package
-      const thumbnailPackage: EncryptedFilePackage = {
-        encrypted: encryptedThumbnail.encrypted,
-        iv: encryptedThumbnail.iv,
-        salt: encryptedThumbnail.salt,
-        metadata: {
-          originalName: `thumb_${fileName}`,
-          originalSize: thumbnailBlob.size,
-          originalMimeType: 'image/png',
-        },
-      };
-      
-      // Convert to base64
-      const thumbnailBlobJson = new Blob([JSON.stringify(thumbnailPackage)], {
-        type: 'application/json',
-      });
-      
-      const thumbnailBase64 = await new Promise<string>((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = () => {
-          const result = reader.result as string;
-          resolve(result.includes(',') ? result.split(',')[1] : result);
-        };
-        reader.onerror = () => reject(new Error('Failed to read thumbnail'));
-        reader.readAsDataURL(thumbnailBlobJson);
-      });
-      
-      // Upload encrypted thumbnail
-      const thumbnailFileName = `thumb_${fileName}.encrypted`;
-      const thumbnailResponse = await fetch(`${apiEndpoint}/api/drive/files`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${uploadToken}`
-        },
-        body: JSON.stringify({
-          fileData: thumbnailBase64,
-          fileName: thumbnailFileName,
-          mimeType: 'application/json',
-          accountId: accountId
-        })
-      });
-      
-      if (thumbnailResponse.ok) {
-        const thumbnailResult = await thumbnailResponse.json();
-        thumbnailFileId = thumbnailResult.file?.id;
-        if (thumbnailFileId) {
-          console.log('✅ [TextPost] Thumbnail uploaded successfully:', thumbnailFileId);
-        }
-      }
-    } catch (thumbnailError: any) {
-      console.warn('⚠️ [TextPost] Thumbnail generation/upload failed:', thumbnailError);
-      // Continue without thumbnail - not critical
-    }
+    // Thoughts don't need thumbnails - they render directly from HTML/CSS
+    // No thumbnail creation needed
 
     // Get fresh access token right before metadata update to ensure it's valid
     const metadataToken = await PNOAuthService.getValidAccessToken();
