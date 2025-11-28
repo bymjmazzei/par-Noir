@@ -2654,7 +2654,6 @@ class ProductionServer {
                   }
                 }
               }
-            }
           } catch (metadataError: any) {
             // Don't fail the update if metadata creation fails - log and continue
             console.error(`[MetadataIndex] Failed to create companion metadata file for ${fileId}:`, metadataError?.message || metadataError);
