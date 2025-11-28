@@ -2207,6 +2207,7 @@ class ProductionServer {
                   const updatedThumbnailMetadata = {
                     ...thumbnailMetadata.metadata,
                     isPublic: true,
+                    fileType: 'document', // CRITICAL: Must be 'document' for isPdfSlideshow to detect it
                     // CRITICAL: Add pdfPageThumbnailIds so frontend knows this is a slideshow
                     pdfPageThumbnailIds: pdfPageThumbnailIds,
                     pdfPageThumbnailTokens: pdfPageThumbnailTokens,
