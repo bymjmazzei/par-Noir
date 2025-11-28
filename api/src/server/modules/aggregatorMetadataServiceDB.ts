@@ -236,9 +236,15 @@ export class AggregatorMetadataServiceDB {
         )
         -- CRITICAL: Public index contains thumbnails and standalone files (text posts, PDFs)
         -- Exclude main files that have a thumbnailFileId (those are private, only thumbnails are public)
+        -- Also exclude PDF files that have pdfPageThumbnailIds (only their thumbnails should appear in feeds)
         AND (
           am.metadata->>'thumbnailFileId' IS NULL 
           OR am.metadata->>'thumbnailFileId' = ''
+        )
+        AND (
+          am.metadata->>'pdfPageThumbnailIds' IS NULL 
+          OR am.metadata->>'pdfPageThumbnailIds' = '[]'
+          OR jsonb_array_length(am.metadata->'pdfPageThumbnailIds') = 0
         )
       `;
       const params: any[] = [];
@@ -315,9 +321,15 @@ export class AggregatorMetadataServiceDB {
         )
         -- CRITICAL: Public index contains thumbnails and standalone files (text posts, PDFs)
         -- Exclude main files that have a thumbnailFileId (those are private, only thumbnails are public)
+        -- Also exclude PDF files that have pdfPageThumbnailIds (only their thumbnails should appear in feeds)
         AND (
           am.metadata->>'thumbnailFileId' IS NULL 
           OR am.metadata->>'thumbnailFileId' = ''
+        )
+        AND (
+          am.metadata->>'pdfPageThumbnailIds' IS NULL 
+          OR am.metadata->>'pdfPageThumbnailIds' = '[]'
+          OR jsonb_array_length(am.metadata->'pdfPageThumbnailIds') = 0
         )
         ${filters?.fileType ? `AND am.metadata->>'fileType' = $1` : ''}
         ${filters?.feedId ? `AND fp.feed_id = $${filters?.fileType ? '2' : '1'}` : ''}
