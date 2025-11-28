@@ -2189,9 +2189,9 @@ class ProductionServer {
           if (isBecomingPublic) {
             // CRITICAL: If this is a main file with a thumbnail, make the thumbnail public too
             // Main files are excluded from feeds - only thumbnails appear
-            const currentMetadata = current?.metadata || {};
-            const thumbnailFileId = currentMetadata.thumbnailFileId;
-            const pdfPageThumbnailIds = currentMetadata.pdfPageThumbnailIds;
+            const currentMetadata = current?.metadata || {} as any;
+            const thumbnailFileId = (currentMetadata as any).thumbnailFileId;
+            const pdfPageThumbnailIds = (currentMetadata as any).pdfPageThumbnailIds;
             
             if (thumbnailFileId) {
               // Main file has a thumbnail - make thumbnail public
