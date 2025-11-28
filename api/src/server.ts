@@ -5796,6 +5796,7 @@ class ProductionServer {
         let pairedFileId: string | null = null;
         let pdfPageThumbnailIds: string[] = []; // PDF page thumbnails to delete
         let pdfThumbnailFileId: string | null = null; // Main PDF thumbnail (first page)
+        let parentPdfFileId: string | null = null; // Parent PDF if deleting a thumbnail
         
         try {
           // Get metadata from database first (more reliable than Drive API)
@@ -5823,6 +5824,67 @@ class ProductionServer {
             fileMetadata = await googleDriveProxyService.getFileMetadata(userIdentifier, fileId, accountId);
             fileName = fileMetadata.name?.toLowerCase() || '';
             isThumbnail = fileName.startsWith('thumb_');
+          }
+          
+          // CRITICAL FIX: If deleting a thumbnail file, find the parent PDF that references it
+          if (isThumbnail && !pdfPageThumbnailIds.length) {
+            try {
+              const { getDatabasePool } = await import('./server/utils/database');
+              const db = getDatabasePool();
+              // Search for PDFs that have this thumbnail ID in their pdfPageThumbnailIds array
+              const parentPdfQuery = await db.query(
+                `SELECT file_id, metadata->>'pdfPageThumbnailIds' as pdfPageThumbnailIds
+                 FROM aggregator_metadata
+                 WHERE metadata->'pdfPageThumbnailIds' @> $1::jsonb
+                 LIMIT 1`,
+                [JSON.stringify([fileId])]
+              );
+              
+              if (parentPdfQuery.rows.length > 0) {
+                parentPdfFileId = parentPdfQuery.rows[0].file_id;
+                const parentPdfThumbnailIds = JSON.parse(parentPdfQuery.rows[0].pdfPageThumbnailIds || '[]');
+                pdfPageThumbnailIds = parentPdfThumbnailIds;
+                console.log(`📄 [DeleteFile] Found parent PDF ${parentPdfFileId} with ${pdfPageThumbnailIds.length} thumbnails`);
+              }
+            } catch (parentPdfError: any) {
+              console.warn(`⚠️ [DeleteFile] Could not find parent PDF for thumbnail ${fileId}:`, parentPdfError?.message || parentPdfError);
+            }
+          }
+          
+          // CRITICAL FIX: If deleting a PDF and no thumbnails found in metadata, search by filename pattern
+          const isPdfFile = fileName.includes('.pdf') && !fileName.startsWith('thumb_');
+          if (!isThumbnail && !pdfPageThumbnailIds.length && userIdentifier && isPdfFile) {
+            try {
+              const { googleDriveProxyService } = await import('./server/modules/googleDriveProxy');
+              const accessToken = await googleDriveProxyService.getAccessToken(userIdentifier, accountId);
+              
+              // Search for thumbnail files that match PDF naming pattern
+              // PDF thumbnails are typically named like: "thumb_filename-page-1.png.encrypted", "thumb_filename-page-2.png.encrypted", etc.
+              const baseFileName = fileName.replace(/\.pdf$/i, '').replace(/\.encrypted$/i, '');
+              // Google Drive API doesn't support LIKE, so search for files containing base filename and "thumb_" prefix
+              // Then filter client-side to match the exact pattern
+              const searchQuery = `name contains 'thumb_${baseFileName.replace(/'/g, "\\'")}-page-' and trashed=false`;
+              const searchUrl = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(searchQuery)}&fields=files(id,name)&pageSize=100`;
+              
+              const searchResponse = await fetch(searchUrl, {
+                headers: { 'Authorization': `Bearer ${accessToken}` }
+              });
+              
+              if (searchResponse.ok) {
+                const searchData = await searchResponse.json() as { files?: Array<{ id: string; name: string }> };
+                if (searchData.files && searchData.files.length > 0) {
+                  // Filter to match exact pattern: thumb_<baseFileName>-page-<number>.png.encrypted
+                  const thumbnailPattern = new RegExp(`^thumb_${baseFileName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}-page-\\d+\\.png\\.encrypted$`, 'i');
+                  const matchingThumbnails = searchData.files.filter(f => 
+                    thumbnailPattern.test(f.name.toLowerCase())
+                  );
+                  pdfPageThumbnailIds = matchingThumbnails.map(f => f.id);
+                  console.log(`📄 [DeleteFile] Found ${pdfPageThumbnailIds.length} PDF thumbnails by filename pattern`);
+                }
+              }
+            } catch (patternSearchError: any) {
+              console.warn(`⚠️ [DeleteFile] Could not search for PDF thumbnails by pattern:`, patternSearchError?.message || patternSearchError);
+            }
           }
           
           // Find paired file (thumbnail if main, main if thumbnail) - only if not PDF
@@ -5880,6 +5942,9 @@ class ProductionServer {
         if (pairedFileId) {
           filesToRemoveFromDb.push(pairedFileId);
         }
+        if (parentPdfFileId) {
+          filesToRemoveFromDb.push(parentPdfFileId);
+        }
         if (pdfThumbnailFileId) {
           filesToRemoveFromDb.push(pdfThumbnailFileId);
         }
@@ -5901,6 +5966,9 @@ class ProductionServer {
         const filesToDelete = [fileId];
         if (pairedFileId) {
           filesToDelete.push(pairedFileId);
+        }
+        if (parentPdfFileId) {
+          filesToDelete.push(parentPdfFileId);
         }
         if (pdfThumbnailFileId) {
           filesToDelete.push(pdfThumbnailFileId);
