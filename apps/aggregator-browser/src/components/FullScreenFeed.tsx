@@ -844,6 +844,12 @@ export function FullScreenFeed({
 
                 // Only load image if not provided externally or if external map doesn't have this file
                 if (isImage && !thumbnails.has(fileId)) {
+          // CRITICAL: Skip PDFs - they're handled by the PDF-specific loading logic below
+          // PDFs should only render as slideshows using pdfPageThumbnailIds, not as regular images
+          if (isPdfDocument) {
+            return; // Don't load PDFs as images - they have their own rendering logic
+          }
+          
           // Check if external thumbnails has this file
           const hasExternalThumbnail = externalThumbnails && externalThumbnails.has(fileId);
           if (!hasExternalThumbnail) {
