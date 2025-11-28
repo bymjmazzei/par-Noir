@@ -3194,7 +3194,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
                   description: '',
                   keywords: [],
                   tags: [],
-                  fileType: 'image', // Thumbnails are always images
+                  fileType: (isPDF && pdfPageThumbnailIds.length > 0) ? 'document' : 'image', // PDF thumbnails are 'document' so isPdfSlideshow detects them
                   isPublic: false, // Thumbnail is PRIVATE by default - only becomes public when user shares the file
                   uploadDate: new Date().toISOString(),
                   isNSFW: false,
