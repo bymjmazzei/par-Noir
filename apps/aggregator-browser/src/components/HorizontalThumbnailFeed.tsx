@@ -11,7 +11,6 @@ interface HorizontalThumbnailFeedProps {
   thumbnailIds: string[]; // Array of thumbnail file IDs
   fileName?: string;
   accountId?: string; // Account ID for downloading images
-  pdfFileId?: string; // PDF file ID (optional, for future use)
   onThumbnailClick?: (index: number, thumbnailId: string) => void; // Optional: handle thumbnail clicks
 }
 
@@ -19,7 +18,6 @@ export function HorizontalThumbnailFeed({
   thumbnailIds, 
   fileName, 
   accountId,
-  pdfFileId,
   onThumbnailClick 
 }: HorizontalThumbnailFeedProps) {
   const [currentIndex, setCurrentIndex] = useState(0);

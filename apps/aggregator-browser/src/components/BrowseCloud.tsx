@@ -184,7 +184,7 @@ export function BrowseCloud({ onClose, onUploadClick }: { onClose: () => void; o
     if (mimeType.startsWith('video/')) {
       return <Video className="h-8 w-8 text-purple-400" />;
     }
-    if (mimeType.includes('pdf') || mimeType.includes('document')) {
+    if (mimeType.includes('document')) {
       return <FileText className="h-8 w-8 text-red-400" />;
     }
     return <File className="h-8 w-8 text-gray-400" />;

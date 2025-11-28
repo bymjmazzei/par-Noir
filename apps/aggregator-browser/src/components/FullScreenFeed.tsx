@@ -17,7 +17,6 @@ import { useViewportHeightCSS } from '../hooks/useViewportHeight';
 import { formatTimestamp } from '../utils/formatTimestamp';
 import { decryptWithToken, ShareToken } from '../utils/tokenDecryption';
 import { cleanTitle } from '../utils/cleanTitle';
-import { ImageSlideshow } from './ImageSlideshow';
 
 interface FullScreenFeedProps {
   files: IndexedFile[];
@@ -82,7 +81,7 @@ export function FullScreenFeed({
   const loadingThoughtsRef = useRef<Set<string>>(new Set()); // Track which thoughts are currently loading
   
   // Sync external thumbnails/videoBlobs when they change
-  // Merge instead of replace to preserve PDF thumbnails loaded internally
+  // Merge instead of replace to preserve thumbnails loaded internally
   useEffect(() => {
     if (externalThumbnails) {
       setThumbnails(prev => {
@@ -129,7 +128,7 @@ export function FullScreenFeed({
     snapThreshold: 0.2
   });
 
-  // Handle horizontal swipe for feed switching (disabled when viewing PDF - PDF uses its own swipe)
+  // Handle horizontal swipe for feed switching
   const horizontalSwipeRef = useHorizontalSwipe({
     onSwipeLeft,
     onSwipeRight,
@@ -631,9 +630,6 @@ export function FullScreenFeed({
           console.warn(`[FullScreenFeed] Image extension detected but not loading: ${fileId}`);
         }
         
-        // Simple PDF detection - check for pdfPageThumbnailIds
-        const pdfPageThumbnailIds = indexedFile.metadata?.pdfPageThumbnailIds;
-        const isPdfDocument = !isTextPost && pdfPageThumbnailIds && pdfPageThumbnailIds.length > 0;
         
 
         // Only load video if not provided externally or if external map doesn't have this file
@@ -1153,7 +1149,7 @@ export function FullScreenFeed({
         // This prevents images/videos from being incorrectly detected as thoughts
         const isTextPost = (hasTextPostData || hasTextFileType || isThoughtFile) && (!hasMediaExt || isThoughtFile) ||
                           (!hasMediaExt && file.description && file.description.trim().length > 0 && 
-                           !actualFileType && !thoughtFileName.match(/\.(jpg|jpeg|png|gif|webp|svg|bmp|ico|mp4|mov|avi|webm|mkv|flv|wmv|pdf)$/i));
+                           !actualFileType && !thoughtFileName.match(/\.(jpg|jpeg|png|gif|webp|svg|bmp|ico|mp4|mov|avi|webm|mkv|flv|wmv)$/i));
         
         // CRITICAL FIX: If isTextPost is true but textPostData is missing, create it from available data
         // This ensures thoughts render even when textPostData isn't populated
@@ -1162,7 +1158,7 @@ export function FullScreenFeed({
           const content = file.description || file.name || file.title || '';
           if (content && content.trim().length > 0) {
             // Skip if content looks like a filename
-            if (!/\.(png|jpg|jpeg|gif|webp|svg|mp4|mov|avi|webm|pdf)$/i.test(content)) {
+            if (!/\.(png|jpg|jpeg|gif|webp|svg|mp4|mov|avi|webm)$/i.test(content)) {
               textPostData = {
                 content: content,
                 style: {
@@ -1222,16 +1218,10 @@ export function FullScreenFeed({
           hasImageExtension
         );
         
-        // Simple PDF detection - check for pdfPageThumbnailIds
-        const pdfPageThumbnailIds = indexedFile.metadata?.pdfPageThumbnailIds;
-        const isPdfDoc = !isTextPost && pdfPageThumbnailIds && pdfPageThumbnailIds.length > 0;
-        
         // CRITICAL: If it's a thought, force all other types to false to prevent flickering
         // This ensures only ONE content type renders at a time
-        // Must be declared AFTER isVideo, isImage, and isPdfDoc are declared
         const isVideoFinal = isTextPost ? false : isVideo;
         const isImageFinal = isTextPost ? false : isImage;
-        const isPdfDocFinal = isTextPost ? false : isPdfDoc;
         
         // Debug logging for image detection (only in development)
         if (process.env.NODE_ENV === 'development' && (file.fileType === 'image' || (file.name || file.title || '').match(/\.(jpg|jpeg|png|gif|webp|svg|bmp|ico)$/i)) && !isImageFinal) {
@@ -1551,54 +1541,9 @@ export function FullScreenFeed({
               );
             })()}
             
-            {/* PDF Document - Use ImageSlideshow component */}
-            {isPdfDocFinal && !isTextPost && !textPostData && (() => {
-              const pdfPageThumbnailIds = indexedFile.metadata?.pdfPageThumbnailIds;
-              // Check both file and indexedFile.metadata for tokens
-              const pdfPageThumbnailTokens = (indexedFile.metadata as any)?.pdfPageThumbnailTokens || 
-                                             (file as any)?.pdfPageThumbnailTokens as string[] | undefined;
-              
-              // Debug logging
-              console.log(`[FullScreenFeed] Rendering PDF:`, {
-                fileId,
-                thumbnailIdsCount: pdfPageThumbnailIds?.length || 0,
-                tokensCount: pdfPageThumbnailTokens?.length || 0,
-                hasTokens: !!pdfPageThumbnailTokens,
-                tokensFromMetadata: !!(indexedFile.metadata as any)?.pdfPageThumbnailTokens,
-                tokensFromFile: !!(file as any)?.pdfPageThumbnailTokens,
-                firstThumbnailUrl: thumbnails.get(fileId) ? 'yes' : 'no'
-              });
-              
-              if (!pdfPageThumbnailIds || pdfPageThumbnailIds.length === 0) {
-                return (
-                  <div className="flex flex-col items-center justify-center text-neutral-500 p-8">
-                    <div className="text-center">
-                      <p className="text-sm mb-2">PDF detected</p>
-                      <p className="text-xs opacity-70">This PDF needs to be re-uploaded to generate thumbnails</p>
-                    </div>
-                  </div>
-                );
-              }
-              
-              // Get first thumbnail URL if already loaded
-              const firstThumbnailUrl = thumbnails.get(fileId);
-              
-              return (
-                <div className="w-full h-full" style={{ height: viewportHeightCSS }}>
-                  <ImageSlideshow
-                    thumbnailIds={pdfPageThumbnailIds}
-                    fileName={file.name || file.title}
-                    isPublic={!!file.publicToken}
-                    publicTokens={pdfPageThumbnailTokens}
-                    initialThumbnailUrl={firstThumbnailUrl}
-                  />
-                </div>
-              );
-            })()}
-            
-            {/* Full-screen image (single image, not PDF) - Only render if NOT a text post and NOT PDF */}
+            {/* Full-screen image (single image) - Only render if NOT a text post */}
             {/* Show image if detected as image (show placeholder if thumbnail not loaded yet) */}
-            {isImageFinal && !isPdfDocFinal && !isTextPost && !textPostData && (() => {
+            {isImageFinal && !isTextPost && !textPostData && (() => {
               const thumbnailUrl = thumbnails.get(fileId);
               if (!thumbnailUrl) {
                 // Show placeholder while thumbnail loads
@@ -1708,7 +1653,7 @@ export function FullScreenFeed({
             })()}
 
             {/* Non-image/video/text/slideshow file */}
-            {!isImageFinal && !isVideoFinal && !isPdfDocFinal && !isTextPost && !textPostData && (
+            {!isImageFinal && !isVideoFinal && !isTextPost && !textPostData && (
               <div className="flex flex-col items-center justify-center text-neutral-500">
                 <File className="h-24 w-24 mb-4" />
                 <h3 className="text-white text-xl font-medium mb-2">{cleanTitle(fileName)}</h3>
@@ -1804,10 +1749,7 @@ export function FullScreenFeed({
 
             {/* Content Info Overlay - Split into two halves */}
             {(() => {
-              // Check if this is a PDF with multiple pages (pagination circles will be shown)
-              const pdfPageThumbnailIds = indexedFile.metadata?.pdfPageThumbnailIds;
-              const totalPages = pdfPageThumbnailIds?.length || 0;
-              const hasPaginationCircles = isPdfDocFinal && totalPages > 1;
+              const hasPaginationCircles = false;
               
               return (
                 <div 

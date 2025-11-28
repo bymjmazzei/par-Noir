@@ -50,63 +50,6 @@ const ThumbnailImage: React.FC<{ fileId: string; accountId: string; fileName: st
           return;
         }
 
-        // Check if this is a PDF slideshow folder (folder ending with "-pages")
-        const nameWithoutEncrypted = fileName.replace(/\.encrypted$/i, '');
-        const isPDFSlideshowFolder = mimeType === 'application/vnd.google-apps.folder' && nameWithoutEncrypted.toLowerCase().endsWith('-pages');
-        
-        // For PDF slideshow folders, get the first PNG page as thumbnail
-        if (isPDFSlideshowFolder) {
-          try {
-            // List files in folder and get the first PNG page
-            const folderQuery = `'${fileId}' in parents and trashed=false`;
-            const filesUrl = `${apiEndpoint}/api/drive/files?q=${encodeURIComponent(folderQuery)}&pageSize=1000${accountId ? `&accountId=${encodeURIComponent(accountId)}` : ''}`;
-            
-            const folderResponse = await fetch(filesUrl, {
-              headers: {
-                'Authorization': `Bearer ${accessToken}`
-              }
-            });
-            
-            if (folderResponse.ok) {
-              const folderData = await folderResponse.json();
-              const files = folderData.files || [];
-              
-              // Find the first PNG page (sorted by page number)
-              const pageFiles = files
-                .map((f: any) => {
-                  const match = f.name.match(/-page-(\d+)\.png\.encrypted$/i);
-                  if (match) {
-                    return { ...f, pageNum: parseInt(match[1], 10) };
-                  }
-                  return null;
-                })
-                .filter((f: any) => f !== null)
-                .sort((a: any, b: any) => a.pageNum - b.pageNum);
-              
-              if (pageFiles.length > 0) {
-                // Use the first page as thumbnail
-                const firstPageId = pageFiles[0].id;
-                const thumbnailUrl = `${apiEndpoint}/api/drive/files/${firstPageId}?accountId=${encodeURIComponent(accountId)}&thumbnail=true`;
-                
-                const thumbResponse = await fetch(thumbnailUrl, {
-                  headers: {
-                    'Authorization': `Bearer ${accessToken}`
-                  }
-                });
-                
-                if (thumbResponse.ok) {
-                  const thumbBlob = await thumbResponse.blob();
-                  const url = URL.createObjectURL(thumbBlob);
-                  setThumbnailUrl(url);
-                  setError(false);
-                  return;
-                }
-              }
-            }
-          } catch (folderError: any) {
-            // Fall through to regular handling
-          }
-        }
 
         // Check if this is a thought file or thought thumbnail - if so, render directly from HTML/CSS content
         const fileNameWithoutEncrypted = fileName.replace(/\.encrypted$/i, '');
@@ -208,10 +151,8 @@ const ThumbnailImage: React.FC<{ fileId: string; accountId: string; fileName: st
           }
         }
         
-        // Check if this is a PDF file - if so, try to use thumbnailFileId from metadata first
         // Note: Skip this for thought thumbnails (isThoughtThumbnail) as they should render from thought content
-        const isPDF = /\.pdf$/i.test(fileNameWithoutEncrypted);
-        if ((isPDF || (isThought && !isThoughtThumbnail)) && isEncrypted && !isThumbnail) {
+        if ((isThought && !isThoughtThumbnail) && isEncrypted && !isThumbnail) {
           try {
             // Try to get thumbnailFileId from metadata
             const metadataResponse = await fetch(`${apiEndpoint}/api/aggregator/metadata-index/${fileId}`, {
@@ -362,16 +303,7 @@ const ThumbnailImage: React.FC<{ fileId: string; accountId: string; fileName: st
             type: encryptedPackage.metadata.originalMimeType || 'image/jpeg'
           });
           
-          // Check if it's a PDF
-          const isPDF = encryptedPackage.metadata.originalMimeType === 'application/pdf' || 
-                       encryptedPackage.metadata.originalName.toLowerCase().endsWith('.pdf');
-          
-          if (isPDF) {
-            const thumbnailBlob = await createPDFThumbnail(decryptedBlob, 300, 300);
-            blobUrl = URL.createObjectURL(thumbnailBlob);
-            setThumbnailUrl(blobUrl);
-            setError(false);
-          } else {
+          {
             // Double-check: Don't try to create thumbnail from blob if this is a thought file
             // Thought files contain JSON text, not image data
             // Only check originalName - don't check mimeType because encrypted files are always JSON packages
@@ -433,19 +365,12 @@ const ThumbnailImage: React.FC<{ fileId: string; accountId: string; fileName: st
             if (response.ok) {
               const fileBlob = await response.blob();
               
-              // Check if it's an image, video, or PDF
+              // Check if it's an image or video
               const mimeType = fileBlob.type || '';
               const isImage = mimeType.startsWith('image/');
               const isVideo = mimeType.startsWith('video/');
-              const isPDF = mimeType === 'application/pdf' || fileName.toLowerCase().endsWith('.pdf');
               
-              if (isPDF) {
-                // Generate PDF thumbnail (first page)
-                const thumbnailBlob = await createPDFThumbnail(fileBlob, 300, 300);
-                blobUrl = URL.createObjectURL(thumbnailBlob);
-                setThumbnailUrl(blobUrl);
-                setError(false);
-              } else if (isImage || isVideo) {
+              if (isImage || isVideo) {
                 // Generate thumbnail from the full file
                 try {
                   const thumbnailBlob = await createThumbnailFromBlob(fileBlob, 300, 300);
@@ -495,61 +420,6 @@ const ThumbnailImage: React.FC<{ fileId: string; accountId: string; fileName: st
     };
   }, [fileId, accountId, isEncrypted, fileName, mainFileId, isThumbnail]);
 
-// Helper function to create PDF thumbnail (first page)
-async function createPDFThumbnail(blob: Blob, maxWidth: number, maxHeight: number): Promise<Blob> {
-  try {
-    const pdfjsLib = await import('pdfjs-dist');
-    // Ensure worker is set (should already be set globally, but set as fallback)
-    if (!pdfjsLib.GlobalWorkerOptions.workerSrc) {
-      pdfjsLib.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs';
-    }
-    
-    // Convert blob to ArrayBuffer for PDF.js (avoids blob URL XHR issues)
-    const arrayBuffer = await blob.arrayBuffer();
-    const uint8Array = new Uint8Array(arrayBuffer);
-    
-    // Use data directly instead of URL to avoid blob URL XHR issues
-    const loadingTask = pdfjsLib.getDocument({ data: uint8Array });
-    const pdf = await loadingTask.promise;
-    
-    // Get first page
-    const page = await pdf.getPage(1);
-    const viewport = page.getViewport({ scale: 1.0 });
-    
-    // Calculate scale to fit max dimensions
-    const scale = Math.min(maxWidth / viewport.width, maxHeight / viewport.height, 1.0);
-    const scaledViewport = page.getViewport({ scale });
-    
-    // Create canvas
-    const canvas = document.createElement('canvas');
-    canvas.width = scaledViewport.width;
-    canvas.height = scaledViewport.height;
-    
-    const ctx = canvas.getContext('2d');
-    if (!ctx) {
-      throw new Error('Failed to get canvas context');
-    }
-    
-    // Render PDF page to canvas
-    await page.render({
-      canvasContext: ctx,
-      viewport: scaledViewport
-    }).promise;
-    
-    // Convert canvas to blob
-    return new Promise((resolve, reject) => {
-      canvas.toBlob((thumbnailBlob) => {
-        if (thumbnailBlob) {
-          resolve(thumbnailBlob);
-        } else {
-          reject(new Error('Failed to create PDF thumbnail blob'));
-        }
-      }, 'image/jpeg', 0.8);
-    });
-  } catch (error) {
-    throw new Error(`Failed to create PDF thumbnail: ${error}`);
-  }
-}
 
 // Helper function to create thumbnail from blob
 async function createThumbnailFromBlob(blob: Blob, maxWidth: number, maxHeight: number): Promise<Blob> {
@@ -1151,11 +1021,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
           return !name.startsWith('thumb_');
         });
         
-        // Filter out PDF page thumbnails (thumb_*-page-*.png.encrypted) - these are part of PDF slideshows
-        const regularThumbnails = thumbnails.filter((thumb: DriveFile) => {
-          const name = thumb.name.toLowerCase();
-          return !/^thumb_.+-page-\d+\.png\.encrypted$/i.test(name);
-        });
+        const regularThumbnails = thumbnails;
         
         // Separate thought thumbnails from regular thumbnails
         const thoughtThumbnails = regularThumbnails.filter((thumb: DriveFile) => {
@@ -1221,16 +1087,11 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
           };
         });
         
-        // Filter to show thumbnails (representing main files), PDF files (for slideshows), and thought thumbnails
+        // Filter to show thumbnails (representing main files) and thought thumbnails
         const mediaFiles = thumbnailEntries.concat(thoughtThumbnailEntries).concat(
           allFiles.filter((file: DriveFile) => {
           const name = file.name.toLowerCase();
           const mimeType = file.mimeType || '';
-          
-          // Include PDF files (they represent slideshows with pdfPageThumbnailIds)
-          if (name.endsWith('.pdf.encrypted')) {
-            return true; // Include PDF files (they'll show as slideshows in the feed)
-          }
           
           // Include thoughts that don't have thumbnails (legacy thoughts)
           if (name.startsWith('thought-') && (name.endsWith('.thought.encrypted') || name.endsWith('.png.encrypted'))) {
@@ -1244,7 +1105,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
             return !hasThumbnail;
           }
           
-          // Exclude everything else (main files already have thumbnails, PDF page thumbnails are hidden)
+          // Exclude everything else (main files already have thumbnails)
           return false;
         })
         );
@@ -1283,11 +1144,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
           return !name.startsWith('thumb_');
         });
         
-        // Filter out PDF page thumbnails (thumb_*-page-*.png.encrypted) - these are part of PDF slideshows
-        const regularThumbnails = thumbnails.filter((thumb: DriveFile) => {
-          const name = thumb.name.toLowerCase();
-          return !/^thumb_.+-page-\d+\.png\.encrypted$/i.test(name);
-        });
+        const regularThumbnails = thumbnails;
         
         // Map regular thumbnails to their main files and create display entries
         const thumbnailEntries = regularThumbnails.map((thumb: DriveFile) => {
@@ -1313,16 +1170,11 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
           };
         });
         
-        // Filter to show thumbnails (representing main files), PDF files (for slideshows), and thoughts
+        // Filter to show thumbnails (representing main files) and thoughts
         const mediaFiles = thumbnailEntries.concat(
           allFiles.filter((file: DriveFile) => {
           const name = file.name.toLowerCase();
           const mimeType = file.mimeType || '';
-          
-          // Include PDF files (they represent slideshows with pdfPageThumbnailIds)
-          if (name.endsWith('.pdf.encrypted')) {
-            return true; // Include PDF files (they'll show as slideshows in the feed)
-          }
           
           // Include thoughts (they don't have thumbnails, show the thought file itself)
           // Support both new .thought format and legacy .png format
@@ -1330,7 +1182,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
             return true;
           }
           
-          // Exclude everything else (main files already have thumbnails, PDF page thumbnails are hidden)
+          // Exclude everything else (main files already have thumbnails)
           return false;
         })
         );
@@ -1856,21 +1708,8 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
         // Generate share token if making public OR if already public but missing token
         if (needsTokenGeneration) {
           try {
-            // Check if this is a PDF slideshow folder (folders can't be downloaded)
-            const isPDFSlideshowFolder = sharingFile?.mimeType === 'application/vnd.google-apps.folder' && 
-                                         (sharingFile?.name || '').toLowerCase().endsWith('-pages');
-            
-            if (isPDFSlideshowFolder) {
-              // For folders, create a special share token that references the folder ID
-              // The viewer will know to list files in the folder instead of downloading
-              console.log('📁 [ShareSettings] Generating share token for PDF slideshow folder:', targetFileId);
-              
-              const session = PNOAuthService.loadSession();
-              if (session?.did && session?.publicKey) {
-                // Create a minimal share token structure for folders
-                // The folder itself doesn't need encryption - the PNG files inside are already encrypted
-                const folderShareToken = {
-                  fileId: targetFileId,
+            {
+              // Generate share token for file
                   folderId: targetFileId, // Same as fileId for folders
                   type: 'folder-slideshow', // Indicates this is a folder-based slideshow
                   permissions: ['read'],
@@ -2577,372 +2416,20 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
 
       console.log('📤 [Upload] Starting upload...', { fileName: file.name, fileSize: file.size });
 
-      // Initialize encryption manager (needed for PDF conversion)
+      // Initialize encryption manager
       const encryptionManager = new EncryptionManager();
-
-      // Check if this is a PDF - if so, convert to PNG pages first
-      const isPDF = file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
-      let pdfPageThumbnailIds: string[] = []; // Array of thumbnail file IDs (loaded directly, no folder listing)
-      let pdfPageThumbnailTokens: string[] = []; // Array of publicToken for each thumbnail (same order as pdfPageThumbnailIds) - NO API CALLS!
       
-      if (isPDF) {
-        console.log('📄 [Upload] PDF detected, converting to PNG pages...');
-        try {
-          // CRITICAL: Read pnIdentifier directly from session at upload time, not from React state
-          // React closures can capture stale state values, so we need to read fresh from session
-          const currentSession = PNOAuthService.loadSession();
-          let pnIdentifier = currentSession?.pnIdentifier;
-          
-          // Debug logging
-          console.log('🔍 [Upload] Checking pnIdentifier:', {
-            session_pnIdentifier: currentSession?.pnIdentifier,
-            session_did: currentSession?.did,
-            userState_pnIdentifier: userState.pnIdentifier,
-            userState_isUnlocked: userState.isUnlocked
-          });
-          
-          // If session doesn't have pnIdentifier or it's a DID, throw error
-          if (!pnIdentifier) {
-            console.error('❌ [Upload] No pnIdentifier in session');
-            throw new Error('No pnIdentifier available in session. Please reconnect your pN.');
-          }
-          
-          // Validate that we have a pnIdentifier, not a DID
-          if (pnIdentifier.startsWith('did:key:')) {
-            console.error('❌ [Upload] Session pnIdentifier is a DID:', pnIdentifier);
-            throw new Error('Session pnIdentifier is still a DID. Please reconnect your pN to get the correct identifier.');
-          }
-          
-          console.log('✅ [Upload] Using pnIdentifier from session:', pnIdentifier);
-          const baseFileName = file.name.replace(/\.pdf$/i, '');
-          
-          // Now convert PDF to PNG pages
-          const pdfjsLib = await import('pdfjs-dist');
-          if (!pdfjsLib.GlobalWorkerOptions.workerSrc) {
-            pdfjsLib.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs';
-          }
-          
-          // Load PDF
-          const arrayBuffer = await file.arrayBuffer();
-          const uint8Array = new Uint8Array(arrayBuffer);
-          const loadingTask = pdfjsLib.getDocument({ data: uint8Array });
-          const pdf = await loadingTask.promise;
-          
-          const numPages = pdf.numPages;
-          console.log(`📄 [Upload] PDF has ${numPages} pages, generating thumbnails...`);
-          
-          // Generate thumbnails for each page (only thumbnails, not full-size PNGs)
-          for (let pageNum = 1; pageNum <= numPages; pageNum++) {
-            try {
-              // Refresh access token before each upload to prevent expiration
-              const freshAccessToken = await PNOAuthService.getValidAccessToken();
-              if (!freshAccessToken) {
-                console.warn(`⚠️ [Upload] No access token for page ${pageNum}, skipping thumbnail generation`);
-                break; // Stop conversion if we can't get a token
-              }
-              
-              const page = await pdf.getPage(pageNum);
-              const viewport = page.getViewport({ scale: 1.0 });
-              
-              // Calculate thumbnail scale (800px max width/height)
-              const scale = Math.min(800 / viewport.width, 800 / viewport.height);
-              const thumbnailViewport = page.getViewport({ scale });
-              
-              // Render to canvas at thumbnail size
-              const canvas = document.createElement('canvas');
-              const context = canvas.getContext('2d');
-              if (!context) {
-                console.warn(`⚠️ [Upload] Failed to get canvas context for page ${pageNum}`);
-                continue;
-              }
-              
-              canvas.width = thumbnailViewport.width;
-              canvas.height = thumbnailViewport.height;
-              
-              await page.render({
-                canvasContext: context,
-                viewport: thumbnailViewport
-              }).promise;
-              
-              // Convert canvas to JPEG blob (thumbnail only, not PNG)
-              const thumbnailBlob = await new Promise<Blob>((resolve, reject) => {
-                canvas.toBlob((blob) => {
-                  if (blob) resolve(blob);
-                  else reject(new Error('Failed to convert canvas to blob'));
-                }, 'image/jpeg', 0.8); // JPEG for smaller file size
-              });
-              
-              // Encrypt thumbnail
-              const thumbnailArrayBuffer = await thumbnailBlob.arrayBuffer();
-              const thumbnailData = new Uint8Array(thumbnailArrayBuffer);
-              const thumbnailEncrypted = await encryptionManager.encrypt(
-                thumbnailData,
-                session.did,
-                publicKey
-              );
-              
-              // Create encrypted package for thumbnail
-              const thumbnailPackage: EncryptedFilePackage = {
-                encrypted: thumbnailEncrypted.encrypted,
-                iv: thumbnailEncrypted.iv,
-                salt: thumbnailEncrypted.salt,
-                metadata: {
-                  originalName: `thumb_${baseFileName}-page-${pageNum}.png`,
-                  originalSize: thumbnailBlob.size,
-                  originalMimeType: 'image/jpeg', // Thumbnails are JPEG
-                },
-              };
-              
-              // Generate share token for thumbnail (optional, don't fail if it doesn't work)
-              let thumbnailShareToken: any = undefined;
-              try {
-                const encryptionService = getEncryptionService();
-                thumbnailShareToken = await encryptionService.generateShareToken(
-                  thumbnailPackage,
-                  {
-                    id: session.did,
-                    publicKey: publicKey
-                  }
-                );
-              } catch (tokenError) {
-                console.warn(`⚠️ [Upload] Share token generation failed for page ${pageNum} (non-critical)`);
-              }
-              
-              // Convert thumbnail to JSON string
-              const thumbnailEncryptedBlob = new Blob([JSON.stringify(thumbnailPackage)], {
-                type: 'application/json',
-              });
-              
-              const thumbnailBase64 = await new Promise<string>((resolve, reject) => {
-                const reader = new FileReader();
-                reader.onload = () => {
-                  const result = reader.result as string;
-                  const base64 = result.includes(',') ? result.split(',')[1] : result;
-                  resolve(base64);
-                };
-                reader.onerror = () => reject(new Error('Failed to read thumbnail encrypted file'));
-                reader.readAsDataURL(thumbnailEncryptedBlob);
-              });
-              
-              // Upload thumbnail directly (no folder - just collect IDs)
-              const thumbnailEncryptedFileName = `thumb_${baseFileName}-page-${pageNum}.png.encrypted`;
-              const thumbnailResponse = await fetch(`${apiEndpoint}/api/drive/files`, {
-                method: 'POST',
-                headers: {
-                  'Content-Type': 'application/json',
-                  'Authorization': `Bearer ${freshAccessToken}`
-                },
-                body: JSON.stringify({
-                  fileData: thumbnailBase64,
-                  fileName: thumbnailEncryptedFileName,
-                  mimeType: 'application/json',
-                  accountId: accountId
-                })
-              });
-              
-              if (thumbnailResponse.ok) {
-                const thumbnailUploadResult = await thumbnailResponse.json();
-                if (thumbnailUploadResult.file?.id) {
-                  pdfPageThumbnailIds.push(thumbnailUploadResult.file.id); // Collect thumbnail ID
-                  // Store share token for this thumbnail (NO API CALLS!)
-                  if (thumbnailShareToken) {
-                    pdfPageThumbnailTokens.push(JSON.stringify(thumbnailShareToken));
-                  } else {
-                    pdfPageThumbnailTokens.push(''); // Placeholder - token generation failed
-                    console.warn(`⚠️ [Upload] No share token for page ${pageNum} thumbnail - will require API calls`);
-                  }
-                  console.log(`✅ [Upload] Page ${pageNum}/${numPages} thumbnail uploaded (ID: ${thumbnailUploadResult.file.id})${thumbnailShareToken ? ' with publicToken' : ''}`);
-                } else {
-                  console.warn(`⚠️ [Upload] Page ${pageNum} thumbnail upload succeeded but no file ID returned`);
-                }
-              } else {
-                const thumbErrorText = await thumbnailResponse.text().catch(() => 'Unknown error');
-                console.warn(`⚠️ [Upload] Failed to upload page ${pageNum} thumbnail: ${thumbnailResponse.status} - ${thumbErrorText}`);
-                // Continue with other pages even if one fails
-              }
-            } catch (pageError: any) {
-              console.error(`❌ [Upload] Error converting page ${pageNum}:`, pageError?.message || pageError);
-              // Continue with other pages even if one fails
-            }
-          }
-          
-          if (pdfPageThumbnailIds.length > 0) {
-            console.log(`✅ [Upload] Generated ${pdfPageThumbnailIds.length} PDF page thumbnails`);
-          } else {
-            console.log(`⚠️ [Upload] No PDF thumbnails were generated`);
-          }
-        } catch (pdfError: any) {
-          console.error('❌ [Upload] PDF conversion failed:', pdfError?.message || pdfError);
-          console.log('📄 [Upload] Continuing with regular PDF upload (PNG conversion is optional)');
-          // Continue with regular PDF upload as fallback - don't fail the entire upload
-          pdfPageThumbnailIds = []; // Clear thumbnail IDs
-          pdfPageThumbnailTokens = []; // Clear thumbnail tokens
-        }
-      }
-
-      // Generate thumbnail for slideshow (from first PDF page) - use first thumbnail ID if available
-      let thumbnailFileId: string | undefined = undefined;
-      if (isPDF && pdfPageThumbnailIds.length > 0) {
-        // Use the first thumbnail ID as the main thumbnail for the feed
-        thumbnailFileId = pdfPageThumbnailIds[0];
-        console.log(`✅ [Upload] Using first PDF page thumbnail as main thumbnail: ${thumbnailFileId}`);
-      } else if (isPDF) {
-        // The first thumbnail was already uploaded to the folder, we can use it
-        // For now, we'll generate a separate thumbnail for the feed (can optimize later)
-        try {
-          const pdfjsLib = await import('pdfjs-dist');
-          if (!pdfjsLib.GlobalWorkerOptions.workerSrc) {
-            pdfjsLib.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs';
-          }
-          
-          const arrayBuffer = await file.arrayBuffer();
-          const uint8Array = new Uint8Array(arrayBuffer);
-          const loadingTask = pdfjsLib.getDocument({ data: uint8Array });
-          const pdf = await loadingTask.promise;
-          
-          // Render first page at thumbnail size (800px max width)
-          const page = await pdf.getPage(1);
-          const viewport = page.getViewport({ scale: 1.0 });
-          const scale = Math.min(800 / viewport.width, 800 / viewport.height);
-          const thumbnailViewport = page.getViewport({ scale });
-          
-          const canvas = document.createElement('canvas');
-          const context = canvas.getContext('2d');
-          if (context) {
-            canvas.width = thumbnailViewport.width;
-            canvas.height = thumbnailViewport.height;
-            
-            await page.render({
-              canvasContext: context,
-              viewport: thumbnailViewport
-            }).promise;
-            
-            // Convert to JPEG blob
-            const thumbnailBlob = await new Promise<Blob>((resolve, reject) => {
-              canvas.toBlob((blob) => {
-                if (blob) resolve(blob);
-                else reject(new Error('Failed to convert canvas to blob'));
-              }, 'image/jpeg', 0.8);
-            });
-            
-            // Upload thumbnail
-            const freshToken = await PNOAuthService.getValidAccessToken();
-            if (freshToken) {
-              thumbnailFileId = await uploadThumbnailLocal(
-                thumbnailBlob,
-                file.name.replace(/\.pdf$/i, ''),
-                encryptionManager,
-                session,
-                publicKey,
-                freshToken,
-                accountId
-              );
-            }
-          }
-        } catch (thumbError: any) {
-          // Don't fail upload if thumbnail fails
-        }
-      }
-      
-      // Upload the original PDF file (always upload PDF, even if thumbnails were created)
+      // Upload the original file
       let fileId: string | undefined = undefined;
-      let pdfFileId: string | undefined = undefined;
       let shareToken: any = undefined;
       let freshAccessToken: string | undefined = undefined;
-      // Declare thumbnailShareToken at function scope so it's accessible for metadata submission
       let thumbnailShareToken: any = undefined;
       
-      if (isPDF && pdfPageThumbnailIds.length > 0) {
-        // PDF thumbnails were created - upload the original PDF file
-        console.log('📄 [Upload] PDF thumbnails created, uploading original PDF file...');
-        
-        // Get access token for PDF upload
-        freshAccessToken = await PNOAuthService.getValidAccessToken();
-        if (!freshAccessToken) {
-          throw new Error('No valid access token available for PDF upload');
-        }
-        
-        // Upload the original PDF file
-        const pdfArrayBuffer = await file.arrayBuffer();
-        const pdfData = new Uint8Array(pdfArrayBuffer);
-        const pdfEncrypted = await encryptionManager.encrypt(
-          pdfData,
-          session.did,
-          publicKey
-        );
-        
-        const pdfPackage: EncryptedFilePackage = {
-          encrypted: pdfEncrypted.encrypted,
-          iv: pdfEncrypted.iv,
-          salt: pdfEncrypted.salt,
-          metadata: {
-            originalName: file.name,
-            originalSize: file.size,
-            originalMimeType: 'application/pdf',
-          },
-        };
-        
-        // Generate share token for PDF
-        try {
-          const encryptionService = getEncryptionService();
-          shareToken = await encryptionService.generateShareToken(
-            pdfPackage,
-            {
-              id: session.did,
-              publicKey: publicKey
-            }
-          );
-        } catch (tokenError) {
-          console.warn('⚠️ [Upload] Share token generation failed for PDF (non-critical)');
-        }
-        
-        const pdfEncryptedBlob = new Blob([JSON.stringify(pdfPackage)], {
-          type: 'application/json',
-        });
-        
-        const pdfBase64 = await new Promise<string>((resolve, reject) => {
-          const reader = new FileReader();
-          reader.onload = () => {
-            const result = reader.result as string;
-            const base64 = result.includes(',') ? result.split(',')[1] : result;
-            resolve(base64);
-          };
-          reader.onerror = () => reject(new Error('Failed to read PDF encrypted file'));
-          reader.readAsDataURL(pdfEncryptedBlob);
-        });
-        
-        const pdfEncryptedFileName = `${file.name}.encrypted`;
-        const pdfUploadResponse = await fetch(`${apiEndpoint}/api/drive/files`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${freshAccessToken}`
-          },
-          body: JSON.stringify({
-            fileData: pdfBase64,
-            fileName: pdfEncryptedFileName,
-            mimeType: 'application/json',
-            accountId: accountId
-          })
-        });
-        
-        if (pdfUploadResponse.ok) {
-          const pdfUploadResult = await pdfUploadResponse.json();
-          pdfFileId = pdfUploadResult.file?.id;
-          fileId = pdfFileId; // Use PDF file ID as the main file ID
-          console.log(`✅ [Upload] Original PDF uploaded (ID: ${pdfFileId})`);
-        } else {
-          const errorText = await pdfUploadResponse.text().catch(() => 'Unknown error');
-          console.error(`❌ [Upload] Failed to upload PDF: ${pdfUploadResponse.status} - ${errorText}`);
-          throw new Error(`Failed to upload PDF: ${errorText}`);
-        }
-      } else {
-        // Upload the original file (either not a PDF, or PDF conversion failed)
-        // Refresh access token before uploading main file (in case it expired during PNG conversion)
-        freshAccessToken = await PNOAuthService.getValidAccessToken();
-        if (!freshAccessToken) {
-          throw new Error('No valid access token available for upload');
-        }
+      // Refresh access token before uploading main file
+      freshAccessToken = await PNOAuthService.getValidAccessToken();
+      if (!freshAccessToken) {
+        throw new Error('No valid access token available for upload');
+      }
 
         // Generate thumbnail for images and videos BEFORE encryption
         const isImage = file.type.startsWith('image/');
@@ -3122,9 +2609,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
         console.log('📝 [Upload] Creating initial metadata entry...');
         
         // Determine file type from MIME type
-        // For PDF slideshows, set fileType to 'document' so they're treated as media files
-        const fileType = (isPDF && pdfPageThumbnailIds.length > 0) ? 'document' // PDF slideshow
-          : file.type.startsWith('image/') ? 'image' 
+        const fileType = file.type.startsWith('image/') ? 'image' 
           : file.type.startsWith('video/') ? 'video'
           : file.type.startsWith('audio/') ? 'audio'
           : 'document';
@@ -3134,7 +2619,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
         
         // Create metadata entry for MAIN FILE (private - not in public index)
         // Main file is only used for downloads, thumbnail is what appears in feed
-        console.log(`📝 [Upload] Saving metadata for main file (private)${pdfPageThumbnailIds.length > 0 ? ` with ${pdfPageThumbnailIds.length} PDF page thumbnails` : ''}`);
+        console.log(`📝 [Upload] Saving metadata for main file (private)`);
         const metadataResponse = await fetch(`${apiEndpoint}/api/aggregator/metadata-index/${fileId}`, {
           method: 'PUT',
           headers: {
@@ -3151,9 +2636,6 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
             publicToken: shareToken ? JSON.stringify(shareToken) : undefined, // Store share token for downloads
             uploadDate: new Date().toISOString(),
             isNSFW: false,
-            pdfPageThumbnailIds: pdfPageThumbnailIds.length > 0 ? pdfPageThumbnailIds : undefined, // Store PDF page thumbnail IDs for slideshow
-            pdfPageThumbnailTokens: pdfPageThumbnailTokens.length > 0 ? pdfPageThumbnailTokens : undefined, // Store PDF page thumbnail tokens (NO API CALLS!)
-            pdfFileId: pdfFileId, // Store original PDF file ID for on-demand rendering
             thumbnailFileId: thumbnailFileId, // Store thumbnail file ID reference
             // Include accountId in query params if needed
           }),
@@ -3165,19 +2647,12 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
           
           // CRITICAL: Submit THUMBNAIL FILE to public index (not main file)
           // The thumbnail is what appears in the feed, main file is only for downloads
-          // For PDFs, use the first page thumbnail; for images/videos, use the generated thumbnail
-          const hasThumbnail = thumbnailFileId && (
-            (isPDF && pdfPageThumbnailIds.length > 0) || 
-            (!isPDF && (file.type.startsWith('image/') || file.type.startsWith('video/')))
-          );
+          const hasThumbnail = thumbnailFileId && (file.type.startsWith('image/') || file.type.startsWith('video/'));
           
           if (hasThumbnail && thumbnailFileId) {
             try {
-              // For PDFs, get the publicToken from the first page thumbnail token
               let thumbnailPublicToken: string | undefined = undefined;
-              if (isPDF && pdfPageThumbnailTokens.length > 0) {
-                thumbnailPublicToken = pdfPageThumbnailTokens[0]; // First page thumbnail token
-              } else if (thumbnailShareToken) {
+              if (thumbnailShareToken) {
                 thumbnailPublicToken = JSON.stringify(thumbnailShareToken);
               }
               
@@ -3194,19 +2669,13 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
                   description: '',
                   keywords: [],
                   tags: [],
-                  fileType: (isPDF && pdfPageThumbnailIds.length > 0) ? 'document' : 'image', // PDF thumbnails are 'document' so isPdfSlideshow detects them
+                  fileType: 'image',
                   isPublic: false, // Thumbnail is PRIVATE by default - only becomes public when user shares the file
                   uploadDate: new Date().toISOString(),
                   isNSFW: false,
                   // Store reference to main file for downloads
                   mainFileId: fileId, // Reference to the full file for downloads
                   publicToken: thumbnailPublicToken, // Store token for when file becomes public
-                  // CRITICAL: For PDFs, include pdfPageThumbnailIds so frontend knows it's a slideshow
-                  ...(isPDF && pdfPageThumbnailIds.length > 0 && {
-                    pdfPageThumbnailIds: pdfPageThumbnailIds,
-                    pdfPageThumbnailTokens: pdfPageThumbnailTokens,
-                    pdfFileId: fileId
-                  }),
                 }),
               });
               
@@ -3461,33 +2930,21 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
                 const isEncrypted = file.name.toLowerCase().endsWith('.encrypted');
                 const nameWithoutEncrypted = file.name.replace(/\.encrypted$/i, '');
                 
-                // Check if this is a PDF slideshow folder (folder ending with "-pages")
-                const isPDFSlideshowFolder = file.mimeType === 'application/vnd.google-apps.folder' && 
-                                             nameWithoutEncrypted.toLowerCase().endsWith('-pages');
-                
-                
                 // For encrypted files, check if they're media files by extension
-                // Also treat PDF slideshow folders as PDF files
-                const isPDF = file.mimeType === 'application/pdf' || /\.pdf$/i.test(file.name) || isPDFSlideshowFolder;
                 const isThought = nameWithoutEncrypted.toLowerCase().startsWith('thought-') && 
                                  (nameWithoutEncrypted.toLowerCase().endsWith('.thought') || nameWithoutEncrypted.toLowerCase().endsWith('.png'));
                 const isThoughtThumbnail = nameWithoutEncrypted.toLowerCase().startsWith('thumb_thought-') && 
                                           (nameWithoutEncrypted.toLowerCase().endsWith('.thought') || nameWithoutEncrypted.toLowerCase().endsWith('.png'));
-                let isMediaFile = isImage || isVideo || isPDF || isThought || isThoughtThumbnail;
+                let isMediaFile = isImage || isVideo || isThought || isThoughtThumbnail;
                 if (isEncrypted) {
                   const hasImageExt = /\.(jpg|jpeg|png|gif|webp|bmp|svg|heic|heif)$/i.test(nameWithoutEncrypted);
                   const hasVideoExt = /\.(mp4|mov|avi|mkv|webm|flv|wmv|m4v|3gp)$/i.test(nameWithoutEncrypted);
-                  const hasPDFExt = /\.pdf$/i.test(nameWithoutEncrypted);
                   const hasThoughtExt = /\.thought$/i.test(nameWithoutEncrypted) || 
                                        (nameWithoutEncrypted.toLowerCase().startsWith('thought-') && nameWithoutEncrypted.toLowerCase().endsWith('.png')) ||
                                        nameWithoutEncrypted.toLowerCase().startsWith('thumb_thought-');
-                  isMediaFile = hasImageExt || hasVideoExt || hasPDFExt || hasThoughtExt;
+                  isMediaFile = hasImageExt || hasVideoExt || hasThoughtExt;
                 }
                 
-                // PDF slideshow folders are always media files
-                if (isPDFSlideshowFolder) {
-                  isMediaFile = true;
-                }
                 
 
                 return (
@@ -3614,21 +3071,19 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
                 const isEncrypted = file.name.toLowerCase().endsWith('.encrypted');
                 
                 // For encrypted files, check if they're media files by extension
-                const isPDF = file.mimeType === 'application/pdf' || /\.pdf$/i.test(file.name);
                 const nameWithoutEncrypted = file.name.replace(/\.encrypted$/i, '');
                 const isThought = nameWithoutEncrypted.toLowerCase().startsWith('thought-') && 
                                  (nameWithoutEncrypted.toLowerCase().endsWith('.thought') || nameWithoutEncrypted.toLowerCase().endsWith('.png'));
                 const isThoughtThumbnail = nameWithoutEncrypted.toLowerCase().startsWith('thumb_thought-') && 
                                           (nameWithoutEncrypted.toLowerCase().endsWith('.thought') || nameWithoutEncrypted.toLowerCase().endsWith('.png'));
-                let isMediaFile = isImage || isVideo || isPDF || isThought || isThoughtThumbnail;
+                let isMediaFile = isImage || isVideo || isThought || isThoughtThumbnail;
                 if (isEncrypted) {
                   const hasImageExt = /\.(jpg|jpeg|png|gif|webp|bmp|svg|heic|heif)$/i.test(nameWithoutEncrypted);
                   const hasVideoExt = /\.(mp4|mov|avi|mkv|webm|flv|wmv|m4v|3gp)$/i.test(nameWithoutEncrypted);
-                  const hasPDFExt = /\.pdf$/i.test(nameWithoutEncrypted);
                   const hasThoughtExt = /\.thought$/i.test(nameWithoutEncrypted) || 
                                        (nameWithoutEncrypted.toLowerCase().startsWith('thought-') && nameWithoutEncrypted.toLowerCase().endsWith('.png')) ||
                                        nameWithoutEncrypted.toLowerCase().startsWith('thumb_thought-');
-                  isMediaFile = hasImageExt || hasVideoExt || hasPDFExt || hasThoughtExt;
+                  isMediaFile = hasImageExt || hasVideoExt || hasThoughtExt;
                 }
 
                 return (
