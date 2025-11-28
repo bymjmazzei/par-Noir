@@ -2215,14 +2215,21 @@ class ProductionServer {
                 console.warn(`[MetadataIndex PUT] Failed to make thumbnail public:`, thumbError?.message || thumbError);
               }
             } else if (pdfPageThumbnailIds && Array.isArray(pdfPageThumbnailIds) && pdfPageThumbnailIds.length > 0) {
-              // PDF file has page thumbnails - make first thumbnail public
+              // PDF file has page thumbnails - make first thumbnail public and add slideshow metadata
               const firstThumbnailId = pdfPageThumbnailIds[0];
               try {
                 const thumbnailMetadata = await service.getFileMetadata(firstThumbnailId);
+                const mainPdfMetadata = current?.metadata || {};
+                const pdfPageThumbnailTokens = (mainPdfMetadata as any).pdfPageThumbnailTokens || [];
+                
                 if (thumbnailMetadata) {
                   const updatedThumbnailMetadata = {
                     ...thumbnailMetadata.metadata,
-                    isPublic: true
+                    isPublic: true,
+                    // CRITICAL: Add pdfPageThumbnailIds so frontend knows this is a slideshow
+                    pdfPageThumbnailIds: pdfPageThumbnailIds,
+                    pdfPageThumbnailTokens: pdfPageThumbnailTokens,
+                    pdfFileId: fileId
                   };
                   const db = (await import('./server/utils/database')).getDatabasePool();
                   await db.query(
@@ -2231,7 +2238,7 @@ class ProductionServer {
                      WHERE file_id = $2`,
                     [JSON.stringify(updatedThumbnailMetadata), firstThumbnailId]
                   );
-                  console.log(`[MetadataIndex PUT] Made PDF thumbnail ${firstThumbnailId} public for PDF file ${fileId}`);
+                  console.log(`[MetadataIndex PUT] Made PDF thumbnail ${firstThumbnailId} public with slideshow metadata for PDF file ${fileId}`);
                 }
               } catch (thumbError: any) {
                 console.warn(`[MetadataIndex PUT] Failed to make PDF thumbnail public:`, thumbError?.message || thumbError);

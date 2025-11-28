@@ -236,16 +236,22 @@ export class AggregatorMetadataServiceDB {
         )
         -- CRITICAL: Public index contains thumbnails and standalone files (text posts, PDFs)
         -- Exclude main files that have a thumbnailFileId (those are private, only thumbnails are public)
-        -- Also exclude PDF files that have pdfPageThumbnailIds (only their thumbnails should appear in feeds)
+        -- Exclude main PDF files that have pdfPageThumbnailIds (only their thumbnails should appear in feeds)
+        -- BUT: Allow thumbnail files (name starts with "thumb_") that have pdfPageThumbnailIds (they're slideshow entry points)
         AND (
           am.metadata->>'thumbnailFileId' IS NULL 
           OR am.metadata->>'thumbnailFileId' = ''
         )
-        AND NOT (
-          am.metadata->>'pdfPageThumbnailIds' IS NOT NULL 
-          AND am.metadata->>'pdfPageThumbnailIds' != '[]'
-          AND jsonb_typeof(am.metadata->'pdfPageThumbnailIds') = 'array'
-          AND jsonb_array_length(am.metadata->'pdfPageThumbnailIds') > 0
+        AND (
+          -- Allow thumbnail files with pdfPageThumbnailIds (they're slideshow entry points)
+          (LOWER(am.metadata->>'name') LIKE 'thumb_%' OR LOWER(am.metadata->>'title') LIKE 'thumb_%')
+          -- OR exclude main PDF files (not thumbnails) that have pdfPageThumbnailIds
+          OR NOT (
+            am.metadata->>'pdfPageThumbnailIds' IS NOT NULL 
+            AND am.metadata->>'pdfPageThumbnailIds' != '[]'
+            AND jsonb_typeof(am.metadata->'pdfPageThumbnailIds') = 'array'
+            AND jsonb_array_length(am.metadata->'pdfPageThumbnailIds') > 0
+          )
         )
       `;
       const params: any[] = [];
@@ -322,16 +328,22 @@ export class AggregatorMetadataServiceDB {
         )
         -- CRITICAL: Public index contains thumbnails and standalone files (text posts, PDFs)
         -- Exclude main files that have a thumbnailFileId (those are private, only thumbnails are public)
-        -- Also exclude PDF files that have pdfPageThumbnailIds (only their thumbnails should appear in feeds)
+        -- Exclude main PDF files that have pdfPageThumbnailIds (only their thumbnails should appear in feeds)
+        -- BUT: Allow thumbnail files (name starts with "thumb_") that have pdfPageThumbnailIds (they're slideshow entry points)
         AND (
           am.metadata->>'thumbnailFileId' IS NULL 
           OR am.metadata->>'thumbnailFileId' = ''
         )
-        AND NOT (
-          am.metadata->>'pdfPageThumbnailIds' IS NOT NULL 
-          AND am.metadata->>'pdfPageThumbnailIds' != '[]'
-          AND jsonb_typeof(am.metadata->'pdfPageThumbnailIds') = 'array'
-          AND jsonb_array_length(am.metadata->'pdfPageThumbnailIds') > 0
+        AND (
+          -- Allow thumbnail files with pdfPageThumbnailIds (they're slideshow entry points)
+          (LOWER(am.metadata->>'name') LIKE 'thumb_%' OR LOWER(am.metadata->>'title') LIKE 'thumb_%')
+          -- OR exclude main PDF files (not thumbnails) that have pdfPageThumbnailIds
+          OR NOT (
+            am.metadata->>'pdfPageThumbnailIds' IS NOT NULL 
+            AND am.metadata->>'pdfPageThumbnailIds' != '[]'
+            AND jsonb_typeof(am.metadata->'pdfPageThumbnailIds') = 'array'
+            AND jsonb_array_length(am.metadata->'pdfPageThumbnailIds') > 0
+          )
         )
         ${filters?.fileType ? `AND am.metadata->>'fileType' = $1` : ''}
         ${filters?.feedId ? `AND fp.feed_id = $${filters?.fileType ? '2' : '1'}` : ''}

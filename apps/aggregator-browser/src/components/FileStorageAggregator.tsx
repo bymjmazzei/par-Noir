@@ -3201,6 +3201,12 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
                   // Store reference to main file for downloads
                   mainFileId: fileId, // Reference to the full file for downloads
                   publicToken: thumbnailPublicToken, // Store token for when file becomes public
+                  // CRITICAL: For PDFs, include pdfPageThumbnailIds so frontend knows it's a slideshow
+                  ...(isPDF && pdfPageThumbnailIds.length > 0 && {
+                    pdfPageThumbnailIds: pdfPageThumbnailIds,
+                    pdfPageThumbnailTokens: pdfPageThumbnailTokens,
+                    pdfFileId: fileId
+                  }),
                 }),
               });
               
