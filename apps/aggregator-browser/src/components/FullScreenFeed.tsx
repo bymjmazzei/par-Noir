@@ -1554,7 +1554,20 @@ export function FullScreenFeed({
             {/* PDF Document - Use ImageSlideshow component */}
             {isPdfDocFinal && !isTextPost && !textPostData && (() => {
               const pdfPageThumbnailIds = indexedFile.metadata?.pdfPageThumbnailIds;
-              const pdfPageThumbnailTokens = (file as any)?.pdfPageThumbnailTokens as string[] | undefined;
+              // Check both file and indexedFile.metadata for tokens
+              const pdfPageThumbnailTokens = (indexedFile.metadata as any)?.pdfPageThumbnailTokens || 
+                                             (file as any)?.pdfPageThumbnailTokens as string[] | undefined;
+              
+              // Debug logging
+              console.log(`[FullScreenFeed] Rendering PDF:`, {
+                fileId,
+                thumbnailIdsCount: pdfPageThumbnailIds?.length || 0,
+                tokensCount: pdfPageThumbnailTokens?.length || 0,
+                hasTokens: !!pdfPageThumbnailTokens,
+                tokensFromMetadata: !!(indexedFile.metadata as any)?.pdfPageThumbnailTokens,
+                tokensFromFile: !!(file as any)?.pdfPageThumbnailTokens,
+                firstThumbnailUrl: thumbnails.get(fileId) ? 'yes' : 'no'
+              });
               
               if (!pdfPageThumbnailIds || pdfPageThumbnailIds.length === 0) {
                 return (

@@ -140,42 +140,52 @@ export function ImageSlideshow({ thumbnailIds, fileName, accountId, pdfFileId, i
     try {
       // PRIORITY: If publicTokens array is provided, use token directly for decryption (NO API CALLS!)
       // This is for PDF thumbnails that have their own tokens
-      if (publicTokens && publicTokens[pageNum - 1]) {
-        try {
-          const thumbnailToken = publicTokens[pageNum - 1];
-          let token: ShareToken;
+      if (publicTokens && publicTokens.length > 0) {
+        const tokenIndex = pageNum - 1;
+        const thumbnailToken = publicTokens[tokenIndex];
+        
+        if (thumbnailToken) {
+          console.log(`[ImageSlideshow] Using publicToken for page ${pageNum} (index ${tokenIndex}, token length: ${thumbnailToken.length})`);
           try {
-            token = typeof thumbnailToken === 'string' ? JSON.parse(thumbnailToken) : thumbnailToken;
-          } catch (e) {
-            console.warn(`[ImageSlideshow] Failed to parse thumbnail token for page ${pageNum}:`, e);
-            failedPagesRef.current.add(pageNum);
-            loadingPagesRef.current.delete(pageNum);
-            return;
-          }
-          
-          if (token) {
+            let token: ShareToken;
             try {
-              const decryptedBlob = await decryptWithToken(token);
-              const thumbnailUrl = URL.createObjectURL(decryptedBlob);
-              
-              setPageUrls(prev => new Map(prev).set(pageNum, thumbnailUrl));
-              setPageIsThumbnail(prev => new Map(prev).set(pageNum, true));
-              loadedPagesRef.current.add(pageNum);
-              loadingPagesRef.current.delete(pageNum);
-              return; // Success - NO API CALLS!
-            } catch (decryptErr) {
-              console.warn(`[ImageSlideshow] Failed to decrypt PDF thumbnail with token:`, decryptErr);
+              token = typeof thumbnailToken === 'string' ? JSON.parse(thumbnailToken) : thumbnailToken;
+            } catch (e) {
+              console.warn(`[ImageSlideshow] Failed to parse thumbnail token for page ${pageNum}:`, e);
               failedPagesRef.current.add(pageNum);
               loadingPagesRef.current.delete(pageNum);
-              return; // Don't fall back to API
+              return;
             }
+            
+            if (token) {
+              try {
+                const decryptedBlob = await decryptWithToken(token);
+                const thumbnailUrl = URL.createObjectURL(decryptedBlob);
+                
+                console.log(`[ImageSlideshow] Successfully decrypted thumbnail for page ${pageNum}`);
+                setPageUrls(prev => new Map(prev).set(pageNum, thumbnailUrl));
+                setPageIsThumbnail(prev => new Map(prev).set(pageNum, true));
+                loadedPagesRef.current.add(pageNum);
+                loadingPagesRef.current.delete(pageNum);
+                return; // Success - NO API CALLS!
+              } catch (decryptErr) {
+                console.error(`[ImageSlideshow] Failed to decrypt PDF thumbnail with token:`, decryptErr);
+                failedPagesRef.current.add(pageNum);
+                loadingPagesRef.current.delete(pageNum);
+                return; // Don't fall back to API
+              }
+            }
+          } catch (err) {
+            console.error(`[ImageSlideshow] Error using thumbnail token:`, err);
+            failedPagesRef.current.add(pageNum);
+            loadingPagesRef.current.delete(pageNum);
+            return; // Don't fall back to API
           }
-        } catch (err) {
-          console.warn(`[ImageSlideshow] Error using thumbnail token:`, err);
-          failedPagesRef.current.add(pageNum);
-          loadingPagesRef.current.delete(pageNum);
-          return; // Don't fall back to API
+        } else {
+          console.warn(`[ImageSlideshow] No token at index ${tokenIndex} for page ${pageNum} (publicTokens.length: ${publicTokens.length})`);
         }
+      } else {
+        console.log(`[ImageSlideshow] No publicTokens provided, will use API for page ${pageNum}`);
       }
       
       // If requesting full-size and PDF is available, render from PDF
@@ -598,7 +608,7 @@ export function ImageSlideshow({ thumbnailIds, fileName, accountId, pdfFileId, i
     } finally {
       loadingPagesRef.current.delete(pageNum);
     }
-  }, [pdfFileId]);
+  }, [pdfFileId, publicTokens, isPublic, publicToken, accountId]);
 
   // CRITICAL: Update pageUrls immediately when initialThumbnailUrl becomes available
   // This handles the case where FullScreenFeed finishes loading after ImageSlideshow mounts
