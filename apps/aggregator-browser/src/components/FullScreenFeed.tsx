@@ -17,7 +17,7 @@ import { useViewportHeightCSS } from '../hooks/useViewportHeight';
 import { formatTimestamp } from '../utils/formatTimestamp';
 import { decryptWithToken, ShareToken } from '../utils/tokenDecryption';
 import { cleanTitle } from '../utils/cleanTitle';
-// ImageSlideshow removed - PDF handling integrated directly into FullScreenFeed
+import { ImageSlideshow } from './ImageSlideshow';
 
 interface FullScreenFeedProps {
   files: IndexedFile[];
@@ -76,8 +76,6 @@ export function FullScreenFeed({
   const imageRefs = useRef<Map<string, HTMLImageElement>>(new Map());
   const [videoBlobs, setVideoBlobs] = useState<Map<string, string>>(externalVideoBlobs || new Map());
   const [thumbnails, setThumbnails] = useState<Map<string, string>>(externalThumbnails || new Map());
-  const [pdfPageThumbnails, setPdfPageThumbnails] = useState<Map<string, Map<number, string>>>(new Map()); // fileId -> pageIndex -> thumbnailUrl
-  const [pdfCurrentPage, setPdfCurrentPage] = useState<Map<string, number>>(new Map()); // fileId -> current page index (0-based)
   const [loadedThoughtContent, setLoadedThoughtContent] = useState<Map<string, any>>(new Map()); // fileId -> textPostData
   const accountIdCacheRef = useRef<string | null>(null); // Cache accountId to avoid repeated API calls
   const thoughtDetectionLogged = useRef<Set<string>>(new Set()); // Track which thoughts we've logged to reduce console spam
@@ -109,8 +107,6 @@ export function FullScreenFeed({
   const [expandedCaptions, setExpandedCaptions] = useState<Set<string>>(new Set());
   const [currentCommentIndex, setCurrentCommentIndex] = useState<Map<string, number>>(new Map());
   
-  // Refs for PDF horizontal scrolling (one per PDF file)
-  const pdfScrollRefs = useRef<Map<string, HTMLDivElement>>(new Map());
   const [commentOpacity, setCommentOpacity] = useState<Map<string, number>>(new Map());
 
   // MOBILE FIX: Use actual viewport height instead of 100vh to account for mobile browser UI
@@ -142,106 +138,6 @@ export function FullScreenFeed({
     snapThreshold: 0.2
   });
 
-  // Handle horizontal swipe for PDF pages (only active when viewing PDF)
-  useHorizontalSwipe({
-    onSwipeLeft: () => {
-      const currentFile = files[currentIndex];
-      if (!currentFile) return;
-      const fileId = currentFile.metadata.fileId;
-      const pdfPageThumbnailIds = currentFile.metadata?.pdfPageThumbnailIds;
-      const isPdfDoc = currentFile.metadata.fileType === 'document' && pdfPageThumbnailIds && pdfPageThumbnailIds.length > 0;
-      
-      // Only handle swipe if this is a PDF and it's visible
-      if (!isPdfDoc || visibleFileId !== fileId) return;
-      
-      const currentPage = pdfCurrentPage.get(fileId) || 0;
-      
-      if (pdfPageThumbnailIds && currentPage < pdfPageThumbnailIds.length - 1) {
-        const nextPageIndex = currentPage + 1;
-        const pageThumbnails = pdfPageThumbnails.get(fileId);
-        
-        // Update page index immediately
-        setPdfCurrentPage(prev => {
-          const newMap = new Map(prev);
-          newMap.set(fileId, nextPageIndex);
-          return newMap;
-        });
-        
-        // Update thumbnail immediately if already loaded, otherwise load it
-        if (pageThumbnails?.has(nextPageIndex)) {
-          setThumbnails(prev => {
-            const newMap = new Map(prev);
-            newMap.set(fileId, pageThumbnails.get(nextPageIndex)!);
-            return newMap;
-          });
-        } else {
-          // Load next page thumbnail
-          const nextThumbnailId = pdfPageThumbnailIds[nextPageIndex];
-          loadPdfPageThumbnail(fileId, nextThumbnailId, nextPageIndex, currentFile).then(() => {
-            // Update thumbnail once loaded
-            const updatedPageThumbnails = pdfPageThumbnails.get(fileId);
-            if (updatedPageThumbnails?.has(nextPageIndex)) {
-              setThumbnails(prev => {
-                const newMap = new Map(prev);
-                newMap.set(fileId, updatedPageThumbnails.get(nextPageIndex)!);
-                return newMap;
-              });
-            }
-          }).catch(() => {});
-        }
-      }
-    },
-    onSwipeRight: () => {
-      const currentFile = files[currentIndex];
-      if (!currentFile) return;
-      const fileId = currentFile.metadata.fileId;
-      const pdfPageThumbnailIds = currentFile.metadata?.pdfPageThumbnailIds;
-      const isPdfDoc = currentFile.metadata.fileType === 'document' && pdfPageThumbnailIds && pdfPageThumbnailIds.length > 0;
-      
-      // Only handle swipe if this is a PDF and it's visible
-      if (!isPdfDoc || visibleFileId !== fileId) return;
-      
-      const currentPage = pdfCurrentPage.get(fileId) || 0;
-      
-      if (pdfPageThumbnailIds && currentPage > 0) {
-        const prevPageIndex = currentPage - 1;
-        const pageThumbnails = pdfPageThumbnails.get(fileId);
-        
-        // Update page index immediately
-        setPdfCurrentPage(prev => {
-          const newMap = new Map(prev);
-          newMap.set(fileId, prevPageIndex);
-          return newMap;
-        });
-        
-        // Update thumbnail immediately if already loaded, otherwise load it
-        if (pageThumbnails?.has(prevPageIndex)) {
-          setThumbnails(prev => {
-            const newMap = new Map(prev);
-            newMap.set(fileId, pageThumbnails.get(prevPageIndex)!);
-            return newMap;
-          });
-        } else {
-          // Load previous page thumbnail
-          const prevThumbnailId = pdfPageThumbnailIds[prevPageIndex];
-          loadPdfPageThumbnail(fileId, prevThumbnailId, prevPageIndex, currentFile).then(() => {
-            // Update thumbnail once loaded
-            const updatedPageThumbnails = pdfPageThumbnails.get(fileId);
-            if (updatedPageThumbnails?.has(prevPageIndex)) {
-              setThumbnails(prev => {
-                const newMap = new Map(prev);
-                newMap.set(fileId, updatedPageThumbnails.get(prevPageIndex)!);
-                return newMap;
-              });
-            }
-          }).catch(() => {});
-        }
-      }
-    },
-    enabled: true, // Always enabled - ref attachment controls when it's active
-    threshold: 50,
-    snapThreshold: 0.2
-  });
 
   // Helper function to get accountId with caching
   const getAccountId = async (indexedFile: IndexedFile, accessToken: string | null): Promise<string | null> => {
@@ -287,74 +183,6 @@ export function FullScreenFeed({
     return accountId || null;
   };
 
-  // Load PDF page thumbnail on-demand - USE THUMBNAIL'S OWN PUBLICTOKEN (NO API CALLS!)
-  const loadPdfPageThumbnail = async (
-    fileId: string,
-    _thumbnailId: string,
-    pageIndex: number,
-    indexedFile: IndexedFile
-  ) => {
-    try {
-      const file = indexedFile.metadata;
-      const pdfPageThumbnailTokens = (file as any)?.pdfPageThumbnailTokens as string[] | undefined;
-      
-      // Use thumbnail's own publicToken (stored in pdfPageThumbnailTokens array)
-      if (pdfPageThumbnailTokens && pdfPageThumbnailTokens[pageIndex]) {
-        try {
-          const thumbnailToken = pdfPageThumbnailTokens[pageIndex];
-          let token: ShareToken;
-          try {
-            token = typeof thumbnailToken === 'string' ? JSON.parse(thumbnailToken) : thumbnailToken;
-          } catch (e) {
-            console.warn(`[FullScreenFeed] Failed to parse thumbnail token for page ${pageIndex + 1}:`, e);
-            return;
-          }
-          
-          if (token) {
-            try {
-              const decryptedBlob = await decryptWithToken(token);
-              const thumbnailUrl = URL.createObjectURL(decryptedBlob);
-              
-              // Store in PDF pages map
-              setPdfPageThumbnails(prev => {
-                const newMap = new Map(prev);
-                if (!newMap.has(fileId)) {
-                  newMap.set(fileId, new Map());
-                }
-                const pageMap = newMap.get(fileId)!;
-                pageMap.set(pageIndex, thumbnailUrl);
-                return newMap;
-              });
-              
-              // If this is the current page, update main thumbnail too
-              const currentPage = pdfCurrentPage.get(fileId) || 0;
-              if (pageIndex === currentPage) {
-                setThumbnails(prev => {
-                  const newMap = new Map(prev);
-                  newMap.set(fileId, thumbnailUrl);
-                  return newMap;
-                });
-              }
-              
-              return; // Success - NO API CALLS!
-            } catch (decryptErr) {
-              console.warn(`[FullScreenFeed] Failed to decrypt PDF thumbnail with token:`, decryptErr);
-              return; // Don't fall back to API
-            }
-          }
-        } catch (err) {
-          console.warn(`[FullScreenFeed] Error using thumbnail token:`, err);
-          return; // Don't fall back to API
-        }
-      }
-      
-      // No token available - can't load without API (but user doesn't want API calls)
-      console.warn(`[FullScreenFeed] PDF thumbnail page ${pageIndex + 1} has no publicToken - cannot load without API`);
-      return;
-    } catch (err) {
-      console.error(`[FullScreenFeed] Failed to load PDF page thumbnail:`, err);
-    }
-  };
 
   // Function to get popular comments for a file
   const getPopularComments = useCallback((fileId: string): any[] => {
@@ -803,18 +631,9 @@ export function FullScreenFeed({
           console.warn(`[FullScreenFeed] Image extension detected but not loading: ${fileId}`);
         }
         
-        // Check for PDF document with page thumbnails
-        // FIX: Also check by file extension and mimeType for PDFs that might not have pdfPageThumbnailIds in metadata
+        // Simple PDF detection - check for pdfPageThumbnailIds
         const pdfPageThumbnailIds = indexedFile.metadata?.pdfPageThumbnailIds;
-        const fileNameForPdfCheck = file.name || file.title || '';
-        const hasPdfExtension = /\.pdf$/i.test(fileNameForPdfCheck);
-        const mimeTypeForPdf = (file as any).mimeType || indexedFile.metadata?.mimeType || file.encodingFormat || indexedFile.metadata?.encodingFormat || '';
-        const hasPdfMimeType = mimeTypeForPdf === 'application/pdf' || mimeTypeForPdf.includes('pdf');
-        const isPdfDocument = !isTextPost && (
-          (file.fileType === 'document' && pdfPageThumbnailIds && pdfPageThumbnailIds.length > 0) ||
-          (file.fileType === 'document' && (hasPdfExtension || hasPdfMimeType)) ||
-          (hasPdfExtension || hasPdfMimeType)
-        );
+        const isPdfDocument = !isTextPost && pdfPageThumbnailIds && pdfPageThumbnailIds.length > 0;
         
 
         // Only load video if not provided externally or if external map doesn't have this file
@@ -844,12 +663,6 @@ export function FullScreenFeed({
 
                 // Only load image if not provided externally or if external map doesn't have this file
                 if (isImage && !thumbnails.has(fileId)) {
-          // CRITICAL: Skip PDFs - they're handled by the PDF-specific loading logic below
-          // PDFs should only render as slideshows using pdfPageThumbnailIds, not as regular images
-          if (isPdfDocument) {
-            return; // Don't load PDFs as images - they have their own rendering logic
-          }
-          
           // Check if external thumbnails has this file
           const hasExternalThumbnail = externalThumbnails && externalThumbnails.has(fileId);
           if (!hasExternalThumbnail) {
@@ -1070,81 +883,6 @@ export function FullScreenFeed({
           }
         }
 
-        // Load PDF document FIRST thumbnail - USE THUMBNAIL'S OWN PUBLICTOKEN (NO API CALLS!)
-        // FIX: Only load if pdfPageThumbnailIds exists and has items
-        if (isPdfDocument && pdfPageThumbnailIds && pdfPageThumbnailIds.length > 0 && !thumbnails.has(fileId)) {
-          const pdfPageThumbnailTokens = (file as any)?.pdfPageThumbnailTokens as string[] | undefined;
-          
-          
-          // Use thumbnail's own publicToken from pdfPageThumbnailTokens array (NO API CALLS!)
-          if (pdfPageThumbnailTokens && pdfPageThumbnailTokens[0]) {
-            try {
-              const firstThumbnailToken = pdfPageThumbnailTokens[0];
-              let token: ShareToken;
-              try {
-                token = typeof firstThumbnailToken === 'string' ? JSON.parse(firstThumbnailToken) : firstThumbnailToken;
-              } catch (e) {
-                console.warn(`[FullScreenFeed] Failed to parse thumbnail token:`, e);
-                return; // Can't proceed
-              }
-              
-              if (token) {
-                try {
-                  const decryptedBlob = await decryptWithToken(token);
-                  const thumbnailUrlObj = URL.createObjectURL(decryptedBlob);
-                  
-                  setThumbnails(prev => {
-                    const newMap = new Map(prev);
-                    newMap.set(fileId, thumbnailUrlObj);
-                    return newMap;
-                  });
-                  
-                  // Initialize PDF page state
-                  setPdfCurrentPage(prev => {
-                    const newMap = new Map(prev);
-                    if (!newMap.has(fileId)) {
-                      newMap.set(fileId, 0);
-                    }
-                    return newMap;
-                  });
-                  
-                  // Store first thumbnail in PDF pages map
-                  setPdfPageThumbnails(prev => {
-                    const newMap = new Map(prev);
-                    if (!newMap.has(fileId)) {
-                      newMap.set(fileId, new Map());
-                    }
-                    const pageMap = newMap.get(fileId)!;
-                    pageMap.set(0, thumbnailUrlObj);
-                    return newMap;
-                  });
-                  
-                  // Preload adjacent pages in background (they'll also use their own publicToken - NO API!)
-                  if (pdfPageThumbnailIds.length > 1) {
-                    loadPdfPageThumbnail(fileId, pdfPageThumbnailIds[1], 1, indexedFile).catch(() => {});
-                    if (pdfPageThumbnailIds.length > 2) {
-                      loadPdfPageThumbnail(fileId, pdfPageThumbnailIds[2], 2, indexedFile).catch(() => {});
-                    }
-                  }
-                  
-                  return; // Success - NO API CALLS!
-                } catch (decryptErr) {
-                  console.warn(`[FullScreenFeed] Failed to decrypt PDF thumbnail with token:`, decryptErr);
-                  return; // Don't fall back to API
-                }
-              }
-            } catch (err) {
-              console.warn(`[FullScreenFeed] Error using thumbnail token:`, err);
-              return; // Don't fall back to API
-            }
-          } else {
-            console.warn(`[FullScreenFeed] PDF thumbnail has no publicToken - cannot load without API`);
-            return;
-          }
-        }
-        
-        // OLD API METHOD - COMPLETELY REMOVED (user doesn't want API calls)
-        // PDF thumbnails MUST use pdfPageThumbnailTokens array - NO API CALLS!
       }));
     };
 
@@ -1170,99 +908,6 @@ export function FullScreenFeed({
     }
   }, [visibleFileId, files, videoBlobs]);
 
-  // Track scroll position for PDF pages to update current page
-  // Use a ref to track cleanup functions
-  const scrollListenersSetupRef = useRef<Map<string, () => void>>(new Map());
-  
-  useEffect(() => {
-    // Check for all containers (both new and existing)
-    const containers = Array.from(pdfScrollRefs.current.entries());
-    
-    const handlePdfScroll = (fileId: string, container: HTMLDivElement) => {
-      const scrollLeft = container.scrollLeft;
-      const pageWidth = container.clientWidth;
-      // Use Math.round for better snap detection, but also check if we're closer to a different page
-      let newPage = Math.round(scrollLeft / pageWidth);
-      
-      // More accurate calculation: check which page center we're closest to
-      const scrollCenter = scrollLeft + (pageWidth / 2);
-      const calculatedPage = Math.floor(scrollCenter / pageWidth);
-      if (calculatedPage !== newPage && calculatedPage >= 0) {
-        newPage = calculatedPage;
-      }
-      
-      const currentFile = files.find(f => f.metadata.fileId === fileId);
-      if (!currentFile) return;
-      
-      const pdfPageThumbnailIds = currentFile.metadata?.pdfPageThumbnailIds;
-      if (!pdfPageThumbnailIds) return;
-      
-      const totalPages = pdfPageThumbnailIds.length;
-      const currentPage = pdfCurrentPage.get(fileId) || 0;
-      
-      // Clamp to valid range
-      newPage = Math.max(0, Math.min(newPage, totalPages - 1));
-      
-      // Always update current page based on scroll position (for pagination circles)
-      if (newPage >= 0 && newPage < totalPages && newPage !== currentPage) {
-        setPdfCurrentPage(prev => {
-          const newMap = new Map(prev);
-          newMap.set(fileId, newPage);
-          return newMap;
-        });
-        
-        // Load thumbnail if not loaded (on-demand loading)
-        const pageThumbnails = pdfPageThumbnails.get(fileId);
-        if (!pageThumbnails?.has(newPage)) {
-          const thumbnailId = pdfPageThumbnailIds[newPage];
-          loadPdfPageThumbnail(fileId, thumbnailId, newPage, currentFile).catch(() => {});
-        }
-        
-        // Also preload adjacent pages
-        if (newPage + 1 < totalPages && !pageThumbnails?.has(newPage + 1)) {
-          const nextThumbnailId = pdfPageThumbnailIds[newPage + 1];
-          loadPdfPageThumbnail(fileId, nextThumbnailId, newPage + 1, currentFile).catch(() => {});
-        }
-        if (newPage - 1 >= 0 && !pageThumbnails?.has(newPage - 1)) {
-          const prevThumbnailId = pdfPageThumbnailIds[newPage - 1];
-          loadPdfPageThumbnail(fileId, prevThumbnailId, newPage - 1, currentFile).catch(() => {});
-        }
-      }
-    };
-    
-    // Set up listeners for all containers
-    containers.forEach(([fileId, container]) => {
-      if (!container) return;
-      
-      // Remove old listener if exists
-      const oldCleanup = scrollListenersSetupRef.current.get(fileId);
-      if (oldCleanup) {
-        oldCleanup();
-      }
-      
-      const handler = () => handlePdfScroll(fileId, container);
-      container.addEventListener('scroll', handler, { passive: true });
-      
-      // Store cleanup function
-      const cleanup = () => {
-        container.removeEventListener('scroll', handler);
-        scrollListenersSetupRef.current.delete(fileId);
-      };
-      scrollListenersSetupRef.current.set(fileId, cleanup);
-      
-      // Trigger initial scroll check to set current page
-      setTimeout(() => {
-        handlePdfScroll(fileId, container);
-      }, 100);
-    });
-    
-    return () => {
-      scrollListenersSetupRef.current.forEach(cleanup => cleanup());
-      scrollListenersSetupRef.current.clear();
-    };
-  }, [files, pdfCurrentPage, pdfPageThumbnails, loadPdfPageThumbnail, visibleFileId]); // Re-run when visibleFileId changes
-
-  // Enable PDF horizontal swipe when viewing PDF (handled by ref in render)
 
   // Intersection Observer for auto-playing videos
   useEffect(() => {
@@ -1577,23 +1222,9 @@ export function FullScreenFeed({
           hasImageExtension
         );
         
-        // Check if this is an image slideshow folder (folder ending with "-pages")
-        // PDF slideshow detection: check for pdfPageThumbnailIds array (thumbnails loaded directly, no folder listing)
-        // Check metadata immediately - don't wait for async operations
+        // Simple PDF detection - check for pdfPageThumbnailIds
         const pdfPageThumbnailIds = indexedFile.metadata?.pdfPageThumbnailIds;
-        
-        // Check if this is a PDF document
-        // FIX: Also check by file extension and mimeType for PDFs that might not have pdfPageThumbnailIds in metadata
-        // This handles cases where PDFs were uploaded before pdfPageThumbnailIds was added to metadata
-        const fileNameForPdfCheck = file.name || file.title || '';
-        const hasPdfExtension = /\.pdf$/i.test(fileNameForPdfCheck);
-        const mimeTypeForPdf = (file as any).mimeType || indexedFile.metadata?.mimeType || file.encodingFormat || indexedFile.metadata?.encodingFormat || '';
-        const hasPdfMimeType = mimeTypeForPdf === 'application/pdf' || mimeTypeForPdf.includes('pdf');
-        const isPdfDoc = !isTextPost && (
-          (file.fileType === 'document' && pdfPageThumbnailIds && pdfPageThumbnailIds.length > 0) ||
-          (file.fileType === 'document' && (hasPdfExtension || hasPdfMimeType)) ||
-          (hasPdfExtension || hasPdfMimeType)
-        );
+        const isPdfDoc = !isTextPost && pdfPageThumbnailIds && pdfPageThumbnailIds.length > 0;
         
         // CRITICAL: If it's a thought, force all other types to false to prevent flickering
         // This ensures only ONE content type renders at a time
@@ -1920,14 +1551,12 @@ export function FullScreenFeed({
               );
             })()}
             
-            {/* PDF Document - Display like image but with horizontal swipe for pages */}
-            {/* Render PDF immediately, even if thumbnail not loaded yet (shows placeholder) */}
+            {/* PDF Document - Use ImageSlideshow component */}
             {isPdfDocFinal && !isTextPost && !textPostData && (() => {
-              // FIX: Handle PDFs that don't have pdfPageThumbnailIds in metadata
-              // If pdfPageThumbnailIds is missing but it's a PDF, show a message or try to load
+              const pdfPageThumbnailIds = indexedFile.metadata?.pdfPageThumbnailIds;
+              const pdfPageThumbnailTokens = (file as any)?.pdfPageThumbnailTokens as string[] | undefined;
+              
               if (!pdfPageThumbnailIds || pdfPageThumbnailIds.length === 0) {
-                // PDF detected but no thumbnail IDs - this might be an old PDF without slideshow metadata
-                // Show a message indicating the PDF needs to be re-uploaded or metadata updated
                 return (
                   <div className="flex flex-col items-center justify-center text-neutral-500 p-8">
                     <div className="text-center">
@@ -1938,261 +1567,18 @@ export function FullScreenFeed({
                 );
               }
               
-              // If thumbnail not loaded yet, show placeholder
-              if (!thumbnails.get(fileId)) {
-                return (
-                  <div className="flex flex-col items-center justify-center text-neutral-500">
-                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-400 mb-2"></div>
-                    <span className="text-xs">Loading PDF...</span>
-                  </div>
-                );
-              }
-              const totalPages = pdfPageThumbnailIds.length;
+              // Get first thumbnail URL if already loaded
+              const firstThumbnailUrl = thumbnails.get(fileId);
               
               return (
-                <div
-                  ref={(el) => {
-                    if (el) {
-                      pdfScrollRefs.current.set(fileId, el);
-                    } else {
-                      pdfScrollRefs.current.delete(fileId);
-                    }
-                  }}
-                  data-pdf-scroll-container="true"
-                  className="w-full overflow-x-scroll snap-x snap-mandatory"
-                  style={{ 
-                    scrollbarWidth: 'none',
-                    msOverflowStyle: 'none',
-                    WebkitOverflowScrolling: 'touch',
-                    display: 'flex',
-                    flexDirection: 'row',
-                    touchAction: 'pan-x pan-y', // Allow horizontal and vertical scrolling
-                    // MOBILE FIX: Use actual viewport height (excludes mobile browser UI)
-                    height: viewportHeightCSS,
-                    minHeight: viewportHeightCSS,
-                    maxHeight: viewportHeightCSS,
-                    // Start at top of window
-                    marginTop: '0',
-                    paddingTop: '0',
-                    overflowY: 'hidden' // Prevent vertical scrolling
-                  }}
-                  onTouchStart={(e) => {
-                    // Stop PDF horizontal scroll from triggering feed navigation
-                    e.stopPropagation();
-                  }}
-                  onTouchMove={(e) => {
-                    // Stop PDF horizontal scroll from triggering feed navigation
-                    e.stopPropagation();
-                  }}
-                  onTouchEnd={(e) => {
-                    // Stop PDF horizontal scroll from triggering feed navigation
-                    e.stopPropagation();
-                  }}
-                >
-                  {/* Render all PDF pages in horizontal scrollable container */}
-                  {Array.from({ length: totalPages }, (_, pageIndex) => {
-                    // Get thumbnail URL - check pdfPageThumbnails first, then fallback to main thumbnails for page 0
-                    let pageThumbnailUrl = pdfPageThumbnails.get(fileId)?.get(pageIndex);
-                    if (!pageThumbnailUrl && pageIndex === 0) {
-                      pageThumbnailUrl = thumbnails.get(fileId) || undefined;
-                    }
-                    
-                    // Calculate aspect ratio for background blur (same as images)
-                    const containerHeight = window.innerHeight - 64; // Account for bottom nav
-                    const containerWidth = window.innerWidth;
-                    const containerAspect = containerWidth / containerHeight;
-                    const dims = mediaDimensions.get(fileId);
-                    const imageAspect = dims ? dims.width / dims.height : 16/9; // Default to 16:9
-                    
-                    // If image is wider than container (widescreen), scale background to fill height
-                    // If image is taller than container (portrait), scale background to fill width
-                    const isWidescreen = imageAspect > containerAspect;
-                    const backgroundStyle: React.CSSProperties = {
-                      filter: 'blur(40px)',
-                      opacity: 0.6,
-                      zIndex: 0,
-                      position: 'absolute',
-                      top: 0,
-                      right: 0,
-                      bottom: 0,
-                      objectFit: 'cover',
-                      ...(isWidescreen 
-                        ? { 
-                            width: 'auto', 
-                            height: '100%',
-                            left: '50%',
-                            transform: 'translateX(-50%) scale(1.1)'
-                          }
-                        : {
-                            height: 'auto',
-                            width: '100%',
-                            top: '50%',
-                            transform: 'translateY(-50%) scale(1.1)'
-                          }
-                      )
-                    };
-                    
-                    // Use callback ref to set up IntersectionObserver (no hooks in loop!)
-                    const pageRefCallback = (el: HTMLDivElement | null) => {
-                      if (!el) return; // No element
-                      if (pageThumbnailUrl) return; // Already loaded
-                      
-                      const observer = new IntersectionObserver(
-                        (entries) => {
-                          entries.forEach((entry) => {
-                            if (entry.isIntersecting) {
-                              // Update current page based on which page is visible (for pagination dots)
-                              setPdfCurrentPage(prev => {
-                                const newMap = new Map(prev);
-                                const oldPage = newMap.get(fileId) || 0;
-                                if (pageIndex !== oldPage) {
-                                  newMap.set(fileId, pageIndex);
-                                }
-                                return newMap;
-                              });
-                              
-                              // Always load if page is visible (no range restriction)
-                              if (!pageThumbnailUrl && pdfPageThumbnailIds) {
-                                const thumbnailId = pdfPageThumbnailIds[pageIndex];
-                                loadPdfPageThumbnail(fileId, thumbnailId, pageIndex, indexedFile).catch((err) => {
-                                  console.error(`[FullScreenFeed] Failed to load page ${pageIndex + 1} thumbnail:`, err);
-                                });
-                                observer.disconnect();
-                              } else {
-                                observer.disconnect();
-                              }
-                            }
-                          });
-                        },
-                        { threshold: 0.1, rootMargin: '50px' } // Add rootMargin to trigger earlier
-                      );
-                      
-                      observer.observe(el);
-                    };
-                    
-                    return (
-                      <div
-                        ref={pageRefCallback}
-                        key={pageIndex}
-                        className="w-full h-full snap-start flex-shrink-0 relative"
-                        style={{
-                          minWidth: '100%',
-                          maxWidth: '100%'
-                        }}
-                      >
-                        {/* Blurred background PDF page */}
-                        {pageThumbnailUrl && (
-                          <img
-                            src={pageThumbnailUrl}
-                            alt=""
-                            className="absolute"
-                            style={backgroundStyle}
-                            loading="lazy"
-                            decoding="async"
-                            onError={(e) => {
-                              console.error(`[FullScreenFeed] Background PDF page failed to load for ${fileId} page ${pageIndex + 1}:`, e);
-                            }}
-                          />
-                        )}
-                        
-                        {/* Main PDF Page Thumbnail */}
-                        <div className="w-full h-full flex items-center justify-center relative z-10">
-                          {pageThumbnailUrl ? (
-                            <img
-                              ref={(el) => {
-                                if (el && pageIndex === 0) {
-                                  // Track dimensions when loaded (for background blur calculation)
-                                  el.addEventListener('load', () => {
-                                    setMediaDimensions(prev => {
-                                      const newMap = new Map(prev);
-                                      newMap.set(fileId, { width: el.naturalWidth, height: el.naturalHeight });
-                                      return newMap;
-                                    });
-                                  });
-                                }
-                              }}
-                              src={pageThumbnailUrl}
-                              alt={`Page ${pageIndex + 1}${fileName ? ` of ${fileName}` : ''}`}
-                              className="object-contain"
-                              style={{
-                                height: '100%',
-                                width: '100%',
-                                objectFit: 'contain',
-                                imageRendering: 'auto' as const,
-                                backfaceVisibility: 'hidden',
-                                WebkitBackfaceVisibility: 'hidden',
-                                transform: 'translateZ(0)'
-                              }}
-                              loading={pageIndex === 0 ? "eager" : "lazy"}
-                              decoding={pageIndex === 0 ? "sync" : "async"}
-                              onError={(e) => {
-                                console.error(`[FullScreenFeed] PDF page image failed to load for ${fileId} page ${pageIndex + 1}:`, e);
-                              }}
-                            />
-                          ) : (
-                            <div className="flex flex-col items-center justify-center text-neutral-500">
-                              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-400 mb-2"></div>
-                              <span className="text-xs">Loading page {pageIndex + 1}...</span>
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    );
-                  })}
-                  
-                  {/* Page indicator dots - fixed position overlay */}
-                  {totalPages > 1 && (() => {
-                    const currentPage = pdfCurrentPage.get(fileId) || 0;
-                    return (
-                      <div 
-                        className="absolute left-1/2 transform -translate-x-1/2 z-50 flex items-center gap-2 pointer-events-none"
-                        style={{
-                          // MOBILE FIX: Position close to bottom nav with safe area padding
-                          bottom: '0',
-                          paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 8px)'
-                        }}
-                      >
-                        {Array.from({ length: totalPages }, (_, index) => {
-                          const isActive = currentPage === index;
-                          return (
-                            <button
-                              key={index}
-                              type="button"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                e.preventDefault();
-                                const container = pdfScrollRefs.current.get(fileId);
-                                if (container) {
-                                  const pageWidth = container.clientWidth;
-                                  container.scrollTo({ left: index * pageWidth, behavior: 'smooth' });
-                                  // Also update current page immediately
-                                  setPdfCurrentPage(prev => {
-                                    const newMap = new Map(prev);
-                                    newMap.set(fileId, index);
-                                    return newMap;
-                                  });
-                                }
-                              }}
-                              className={`transition-all duration-200 rounded-full cursor-pointer pointer-events-auto ${
-                                isActive
-                                  ? 'bg-white'
-                                  : 'bg-white/40 hover:bg-white/60'
-                              }`}
-                              style={{
-                                width: isActive ? '10px' : '8px',
-                                height: isActive ? '10px' : '8px',
-                                minWidth: isActive ? '10px' : '8px',
-                                minHeight: isActive ? '10px' : '8px',
-                                maxWidth: isActive ? '10px' : '8px',
-                                maxHeight: isActive ? '10px' : '8px'
-                              }}
-                              aria-label={`Go to page ${index + 1}`}
-                            />
-                          );
-                        })}
-                      </div>
-                    );
-                  })()}
+                <div className="w-full h-full flex items-center justify-center" style={{ height: viewportHeightCSS }}>
+                  <ImageSlideshow
+                    thumbnailIds={pdfPageThumbnailIds}
+                    fileName={file.name || file.title}
+                    isPublic={!!file.publicToken}
+                    publicTokens={pdfPageThumbnailTokens}
+                    initialThumbnailUrl={firstThumbnailUrl}
+                  />
                 </div>
               );
             })()}

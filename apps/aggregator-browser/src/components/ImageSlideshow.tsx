@@ -9,6 +9,7 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { useHorizontalSwipe } from '../hooks/useHorizontalSwipe';
+import { decryptWithToken, ShareToken } from '../utils/tokenDecryption';
 
 interface ImageSlideshowProps {
   thumbnailIds: string[]; // Array of thumbnail file IDs (loaded directly, no folder listing)
@@ -16,11 +17,12 @@ interface ImageSlideshowProps {
   accountId?: string; // Account ID for downloading images
   pdfFileId?: string; // PDF file ID for on-demand rendering (if PDF slideshow)
   isPublic?: boolean; // Whether the file is public (allows loading without auth)
-  publicToken?: string; // Public token for accessing public files
+  publicToken?: string; // Public token for accessing public files (single token for all pages)
+  publicTokens?: string[]; // Array of public tokens, one per page (for PDF thumbnails)
   initialThumbnailUrl?: string; // Already-loaded first thumbnail URL (from FullScreenFeed) - use immediately
 }
 
-export function ImageSlideshow({ thumbnailIds, fileName, accountId, pdfFileId, isPublic, publicToken, initialThumbnailUrl }: ImageSlideshowProps) {
+export function ImageSlideshow({ thumbnailIds, fileName, accountId, pdfFileId, isPublic, publicToken, publicTokens, initialThumbnailUrl }: ImageSlideshowProps) {
   // Initialize pages synchronously from thumbnailIds - INSTANT display, no loading screen!
   const initialPages = thumbnailIds.length > 0 
     ? Array.from({ length: thumbnailIds.length }, (_, i) => i + 1)
@@ -136,6 +138,46 @@ export function ImageSlideshow({ thumbnailIds, fileName, accountId, pdfFileId, i
     loadingPagesRef.current.add(pageNum);
     
     try {
+      // PRIORITY: If publicTokens array is provided, use token directly for decryption (NO API CALLS!)
+      // This is for PDF thumbnails that have their own tokens
+      if (publicTokens && publicTokens[pageNum - 1]) {
+        try {
+          const thumbnailToken = publicTokens[pageNum - 1];
+          let token: ShareToken;
+          try {
+            token = typeof thumbnailToken === 'string' ? JSON.parse(thumbnailToken) : thumbnailToken;
+          } catch (e) {
+            console.warn(`[ImageSlideshow] Failed to parse thumbnail token for page ${pageNum}:`, e);
+            failedPagesRef.current.add(pageNum);
+            loadingPagesRef.current.delete(pageNum);
+            return;
+          }
+          
+          if (token) {
+            try {
+              const decryptedBlob = await decryptWithToken(token);
+              const thumbnailUrl = URL.createObjectURL(decryptedBlob);
+              
+              setPageUrls(prev => new Map(prev).set(pageNum, thumbnailUrl));
+              setPageIsThumbnail(prev => new Map(prev).set(pageNum, true));
+              loadedPagesRef.current.add(pageNum);
+              loadingPagesRef.current.delete(pageNum);
+              return; // Success - NO API CALLS!
+            } catch (decryptErr) {
+              console.warn(`[ImageSlideshow] Failed to decrypt PDF thumbnail with token:`, decryptErr);
+              failedPagesRef.current.add(pageNum);
+              loadingPagesRef.current.delete(pageNum);
+              return; // Don't fall back to API
+            }
+          }
+        } catch (err) {
+          console.warn(`[ImageSlideshow] Error using thumbnail token:`, err);
+          failedPagesRef.current.add(pageNum);
+          loadingPagesRef.current.delete(pageNum);
+          return; // Don't fall back to API
+        }
+      }
+      
       // If requesting full-size and PDF is available, render from PDF
       if (loadFullSize && pdfFileId) {
         const apiEndpoint = process.env.REACT_APP_API_ENDPOINT || 'https://api.parnoir.com';
