@@ -3938,10 +3938,14 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
               if (accessToken) {
                 const { GoogleDriveMetadataService } = await import('../../services/storage/GoogleDriveMetadataService');
                 
-                // Get or create companion metadata file to ensure it exists
+                // SIMPLIFIED: The API endpoint already creates Google Sheets companion metadata
+                // We only need to update the public-file-index.json as a backup/cache
+                // The database (updated via API) is the source of truth
+                // CRITICAL: Ensure we use the actual Google Drive file ID for googleDriveFileId
+                // file.backendFileId is the Google Drive file ID, file.id might be a composite ID
                 const companionMetadata: CompanionMetadata = {
                   fileId: file.id,
-                  googleDriveFileId: file.backendFileId || file.id,
+                  googleDriveFileId: file.backendFileId || (file.backend === 'google_drive' ? file.id : undefined),
                   fileName: file.name,
                   originalName: file.originalName || file.name.replace('.encrypted', ''),
                   mimeType: file.mimeType || 'application/octet-stream',
@@ -3958,52 +3962,26 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
                   engagement: publicMetadata.engagement
                 };
                 
-                console.log('📝 [Phase 3] Creating/updating companion metadata file and indexes...', {
+                console.log('📝 [Phase 3] Updating public index file (backup/cache only)...', {
                   fileId: companionMetadata.fileId,
                   googleDriveFileId: companionMetadata.googleDriveFileId,
                   fileName: companionMetadata.fileName,
                   visibility: companionMetadata.visibility
                 });
                 
-                // OPTIMIZATION: Run all Google Drive operations in parallel
-                // These operations are independent and can execute simultaneously
-                const [companionResult, ownerIndexResult, publicIndexResult] = await Promise.allSettled([
-                  GoogleDriveMetadataService.createCompanionMetadataFile(
-                    accessToken,
-                    metadataPnIdentifier,
-                    companionMetadata
-                  ),
-                  GoogleDriveMetadataService.updateOwnerFileIndex(
-                    accessToken,
-                    metadataPnIdentifier,
-                    companionMetadata
-                  ).catch(err => {
-                    console.warn('⚠️ [Phase 3] Failed to update owner index (non-critical):', err);
-                    throw err; // Re-throw to mark as rejected in Promise.allSettled
-                  }),
-                  GoogleDriveMetadataService.updatePublicFileIndex(
-                    accessToken,
-                    metadataPnIdentifier,
-                    companionMetadata
-                  )
-                ]);
+                // Only update the public index file - API endpoint handles Google Sheets creation
+                const publicIndexResult = await GoogleDriveMetadataService.updatePublicFileIndex(
+                  accessToken,
+                  metadataPnIdentifier,
+                  companionMetadata
+                ).catch(err => {
+                  console.warn('⚠️ [Phase 3] Failed to update public index (non-critical, API is source of truth):', err);
+                  return null;
+                });
                 
-                // Log results
-                if (companionResult.status === 'fulfilled') {
-                  console.log('✅ [Phase 3] Companion metadata file created/updated successfully');
-                } else {
-                  console.error('❌ [Phase 3] Failed to create companion metadata file:', companionResult.reason);
-                }
-                
-                if (ownerIndexResult.status === 'fulfilled') {
-                  console.log('✅ [Phase 3] Owner index updated successfully');
-                }
-                
-                if (publicIndexResult.status === 'fulfilled') {
-                  console.log('✅ [Phase 3] Public index file updated successfully');
-                  setSuccessMessage('File made public and added to public index!');
-                } else {
-                  console.error('❌ [Phase 3] Failed to update public index:', publicIndexResult.reason);
+                if (publicIndexResult) {
+                  console.log('✅ [Phase 3] Public index file updated successfully (backup/cache)');
+                  setSuccessMessage('File made public!');
                 }
               } else {
                 console.warn('⚠️ [Phase 3] No access token available to update Google Drive public index');

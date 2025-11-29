@@ -366,8 +366,21 @@ export class GoogleDriveSyncService {
       // and we successfully confirmed they're missing
       if (!hasErrors && successfullyScannedFolders > 0) {
         try {
-          const currentFileIds = new Set(allMetadata.map(entry => entry.metadata.fileId));
-          console.log(`🔍 Checking for orphaned files. Found ${currentFileIds.size} valid file(s) in Google Drive, successfully scanned ${successfullyScannedFolders}/${pnFolders.length} pN folder(s)`);
+          // CRITICAL: Collect ALL possible file ID variants to match against database
+          // Database uses Google Drive file IDs, so we need to collect:
+          // - fileId (from index file)
+          // - backendFileId (Google Drive file ID)
+          // - googleDriveFileId (legacy field, if present)
+          const currentFileIds = new Set<string>();
+          allMetadata.forEach(entry => {
+            const meta = entry.metadata;
+            // Add all possible ID fields to ensure we match database entries
+            if (meta.fileId) currentFileIds.add(meta.fileId);
+            if (meta.backendFileId) currentFileIds.add(meta.backendFileId);
+            // Also check for googleDriveFileId in case it's stored separately
+            if ((meta as any).googleDriveFileId) currentFileIds.add((meta as any).googleDriveFileId);
+          });
+          console.log(`🔍 Checking for orphaned files. Found ${currentFileIds.size} valid file ID(s) (including variants) from Google Drive, successfully scanned ${successfullyScannedFolders}/${pnFolders.length} pN folder(s)`);
           const removedCount = await metadataService.removeOrphanedFiles(currentFileIds);
           if (removedCount > 0) {
             console.log(`🗑️ Removed ${removedCount} orphaned file(s) from database (deleted from Google Drive)`);

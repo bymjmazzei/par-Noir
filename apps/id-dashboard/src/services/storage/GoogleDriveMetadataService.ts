@@ -990,44 +990,9 @@ export class GoogleDriveMetadataService {
       };
     }
 
-    // AUTOMATIC CLEANUP: Remove files that were deleted from Google Drive
-    // Only remove if we're CERTAIN the file doesn't exist (404) or is trashed
-    // verifyFileExists already handles errors safely (assumes file exists on errors)
-    // Skip cleanup when updating the index to avoid removing files we're about to add
-    if (!skipCleanup && index && index.files && index.files.length > 0) {
-      const originalCount = index.files.length;
-      const verifiedFiles = [];
-
-      for (const fileEntry of index.files) {
-        const googleDriveFileId = (fileEntry as any).googleDriveFileId;
-        const fileName = (fileEntry as any).fileName || (fileEntry as any).originalName || 'unknown';
-        
-        if (googleDriveFileId) {
-          // Simple check: does the file exist in Google Drive?
-          // verifyFileExists only returns false for 404 (deleted) or trashed files
-          // It returns true (assumes file exists) for any other error to avoid false positives
-          const exists = await this.verifyFileExists(accessToken, googleDriveFileId);
-          
-          if (exists) {
-            verifiedFiles.push(fileEntry);
-          } else {
-            // File doesn't exist (404) or is trashed - remove from index
-            console.log(`🗑️ [getPublicFileIndex] Removing deleted file: ${googleDriveFileId} (${fileName})`);
-          }
-        } else {
-          // Keep entries without googleDriveFileId
-          verifiedFiles.push(fileEntry);
-        }
-      }
-
-      // If we removed any deleted files, update the index
-      if (verifiedFiles.length !== originalCount) {
-        index.files = verifiedFiles;
-        index.updatedAt = new Date().toISOString();
-        await this.saveIndexFile(accessToken, metadataFolderId, this.PUBLIC_INDEX_FILE_NAME, index);
-        console.log(`✅ [getPublicFileIndex] Cleaned index: removed ${originalCount - verifiedFiles.length} deleted file(s)`);
-      }
-    }
+    // REMOVED AUTOMATIC CLEANUP: getPublicFileIndex is now read-only
+    // Cleanup should be done explicitly via cleanupOrphanedIndexEntries or a dedicated cleanup endpoint
+    // This prevents files from being removed incorrectly during normal reads
 
     return index;
   }
@@ -1426,8 +1391,9 @@ export class GoogleDriveMetadataService {
       }
 
       // Clean up public index
+      // Pass skipCleanup: true to avoid double cleanup (getPublicFileIndex no longer does cleanup, but keeping for safety)
       try {
-        const publicIndex = await this.getPublicFileIndex(accessToken, metadataFolderId, pnIdentifier);
+        const publicIndex = await this.getPublicFileIndex(accessToken, metadataFolderId, pnIdentifier, true);
         if (publicIndex && publicIndex.files) {
           const originalCount = publicIndex.files.length;
           const verifiedFiles = [];

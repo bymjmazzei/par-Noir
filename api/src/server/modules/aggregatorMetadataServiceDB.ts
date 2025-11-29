@@ -1536,12 +1536,32 @@ export class AggregatorMetadataServiceDB {
                            !(backendFileId && validFileIds.has(backendFileId));
         
         if (isOrphaned) {
+          // Log for debugging - helps identify ID mismatches
+          console.log(`🔍 [removeOrphanedFiles] File marked as orphaned:`, {
+            dbFileId,
+            metadataFileId,
+            backendFileId,
+            validFileIdsSample: Array.from(validFileIds).slice(0, 3),
+            reason: 'None of the IDs match valid files from Google Drive'
+          });
           orphanedFileIds.push(dbFileId);
         }
       }
 
       if (orphanedFileIds.length === 0) {
         return 0;
+      }
+
+      // SAFETY: If we're about to delete more than 50% of files, something is wrong
+      const totalFiles = result.rows.length;
+      const deletionRatio = orphanedFileIds.length / totalFiles;
+      
+      if (deletionRatio > 0.5) {
+        console.error(`🚨 [removeOrphanedFiles] SAFETY CHECK FAILED: About to delete ${orphanedFileIds.length} of ${totalFiles} files (${(deletionRatio * 100).toFixed(1)}%)`);
+        console.error(`🚨 This likely indicates an ID mismatch bug. Aborting cleanup.`);
+        console.error(`🚨 Sample orphaned IDs:`, orphanedFileIds.slice(0, 5));
+        console.error(`🚨 Sample valid IDs:`, Array.from(validFileIds).slice(0, 5));
+        throw new Error(`Safety check failed: Would delete ${(deletionRatio * 100).toFixed(1)}% of files. This indicates a bug.`);
       }
 
       // Delete orphaned files
