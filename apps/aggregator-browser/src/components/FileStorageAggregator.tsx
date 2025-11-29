@@ -1710,22 +1710,10 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
         // Generate share token if making public OR if already public but missing token
         if (needsTokenGeneration) {
           try {
-            {
-              // Generate share token for file
-                  folderId: targetFileId, // Same as fileId for folders
-                  type: 'folder-slideshow', // Indicates this is a folder-based slideshow
-                  permissions: ['read'],
-                  expiresAt: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString(), // 1 year expiry
-                  createdBy: session.did
-                };
-                publicToken = JSON.stringify(folderShareToken);
-                console.log('✅ [ShareSettings] Generated folder share token');
-              } else {
-                console.warn('⚠️ [ShareSettings] Missing session data for folder token generation');
-              }
-            } else {
+            const session = PNOAuthService.loadSession();
+            if (session?.did) {
               // Regular file - download and generate share token as usual
-            const downloadResponse = await fetch(
+              const downloadResponse = await fetch(
               `${apiEndpoint}/api/drive/files/${targetFileId}?accountId=${encodeURIComponent(sharingAccountId || '')}&download=true`,
               {
                 headers: {
@@ -1763,9 +1751,8 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
                 throw new Error('Invalid encrypted file package structure - missing required fields');
               }
               
-              // Get user session for token generation
-              const session = PNOAuthService.loadSession();
-              if (session?.did && session?.publicKey) {
+              // Generate share token using session
+              if (session?.publicKey) {
                 const encryptionService = getEncryptionService();
                 const shareToken = await encryptionService.generateShareToken(
                   encryptedPackage,
@@ -2689,9 +2676,8 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
         throw new Error('Upload succeeded but no file ID returned');
       }
 
-        fileId = uploadedFile.id;
+      fileId = uploadedFile.id;
       console.log('✅ [Upload] File uploaded successfully, fileId:', fileId);
-      }
 
       // Create initial metadata entry (matches dashboard behavior)
       // This ensures the file appears properly in the system and can be edited/shared later

@@ -1,6 +1,6 @@
 import { PNOAuthService } from './pnOAuthService';
 import { EncryptionManager } from '../utils/encryptionManager';
-import { getEncryptionService } from '../utils/encryptionService';
+import { getEncryptionService } from '../services/encryptionService';
 
 const apiEndpoint = process.env.REACT_APP_API_ENDPOINT || 'https://api.parnoir.com';
 
