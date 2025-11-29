@@ -3063,21 +3063,23 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
                       setViewingFile({ ...file, accountId: file.accountId || account.accountId });
                     }}
                   >
-                    {/* Checkbox for bulk delete mode */}
+                    {/* Checkbox or order number for collection/bulk delete mode */}
                     {(isBulkDeleteMode || isCollectionMode) && (
                       <div className="absolute top-2 left-2 z-30" onClick={(e) => e.stopPropagation()}>
-                        <input
-                          type="checkbox"
-                          checked={selectedFiles.has(file.id)}
-                          onChange={() => toggleFileSelection(file.id)}
-                          className="w-5 h-5 rounded border-neutral-600 bg-neutral-800 text-blue-600 focus:ring-2 focus:ring-blue-500"
-                        />
-                      </div>
-                    )}
-                    {/* Order marker for collection mode */}
-                    {isCollectionMode && collectionFileOrder.has(file.id) && (
-                      <div className="absolute top-2 right-2 z-30 bg-blue-600 text-white rounded-full w-6 h-6 flex items-center justify-center text-xs font-bold">
-                        {collectionFileOrder.get(file.id)}
+                        {isCollectionMode && collectionFileOrder.has(file.id) ? (
+                          // Show number badge when selected in collection mode
+                          <div className="bg-blue-600 text-white rounded-full w-6 h-6 flex items-center justify-center text-xs font-bold">
+                            {collectionFileOrder.get(file.id)}
+                          </div>
+                        ) : (
+                          // Show checkbox when not selected or in bulk delete mode
+                          <input
+                            type="checkbox"
+                            checked={selectedFiles.has(file.id)}
+                            onChange={() => toggleFileSelection(file.id)}
+                            className="w-5 h-5 rounded border-neutral-600 bg-neutral-800 text-blue-600 focus:ring-2 focus:ring-blue-500"
+                          />
+                        )}
                       </div>
                     )}
                     <div className="relative aspect-square bg-neutral-700/50 overflow-hidden">
@@ -3096,9 +3098,9 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
                           <Lock className="h-8 w-8 text-blue-400" />
                         </div>
                       )}
-                      {/* Public indicator - moved to top left to make room for menu */}
+                      {/* Public indicator - moved to bottom left to avoid conflict with checkbox/number */}
                       {file.isPublic && (
-                        <div className="absolute top-2 left-2 bg-green-500/80 rounded-full p-1 z-10">
+                        <div className="absolute bottom-2 left-2 bg-green-500/80 rounded-full p-1 z-10">
                           <Globe className="h-3 w-3 text-white" />
                         </div>
                       )}
@@ -3203,15 +3205,23 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
                       setViewingFile({ ...file, accountId: file.accountId || account.accountId });
                     }}
                   >
-                    {/* Checkbox for bulk delete mode */}
-                    {isBulkDeleteMode && (
+                    {/* Checkbox or order number for collection/bulk delete mode */}
+                    {(isBulkDeleteMode || isCollectionMode) && (
                       <div className="flex-shrink-0 mr-3" onClick={(e) => e.stopPropagation()}>
-                        <input
-                          type="checkbox"
-                          checked={selectedFiles.has(file.id)}
-                          onChange={() => toggleFileSelection(file.id)}
-                          className="w-5 h-5 rounded border-neutral-600 bg-neutral-800 text-blue-600 focus:ring-2 focus:ring-blue-500"
-                        />
+                        {isCollectionMode && collectionFileOrder.has(file.id) ? (
+                          // Show number badge when selected in collection mode
+                          <div className="bg-blue-600 text-white rounded-full w-6 h-6 flex items-center justify-center text-xs font-bold">
+                            {collectionFileOrder.get(file.id)}
+                          </div>
+                        ) : (
+                          // Show checkbox when not selected or in bulk delete mode
+                          <input
+                            type="checkbox"
+                            checked={selectedFiles.has(file.id)}
+                            onChange={() => toggleFileSelection(file.id)}
+                            className="w-5 h-5 rounded border-neutral-600 bg-neutral-800 text-blue-600 focus:ring-2 focus:ring-blue-500"
+                          />
+                        )}
                       </div>
                     )}
                     <div className="flex items-center space-x-3 flex-1 min-w-0">
