@@ -219,7 +219,7 @@ export class MetadataIndexService {
         pdfPageThumbnailIds: publicMetadata.pdfPageThumbnailIds,
         pdfPageThumbnailTokens: publicMetadata.pdfPageThumbnailTokens,
         pdfFileId: publicMetadata.pdfFileId,
-        thumbnailFileId: publicMetadata.thumbnailFileId,
+        thumbnailFileId: publicMetadata.thumbnailFileId ?? null,
         subjects: publicMetadata.subjects,
         feedCategories: publicMetadata.feedCategories
       });
