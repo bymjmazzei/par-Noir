@@ -723,7 +723,15 @@ export class AggregatorMetadataServiceDB {
       }
 
       console.log(`📤 [getAllFilesForUser] Returning ${entries.length} files (public + private) for user ${pnIdentifier}`);
-      return entries;
+      
+      // Verify files exist in Google Drive before returning (filter out deleted files)
+      const verifiedEntries = await this.verifyGoogleDriveFilesExist(entries);
+      
+      if (verifiedEntries.length !== entries.length) {
+        console.log(`✅ [getAllFilesForUser] Filtered out ${entries.length - verifiedEntries.length} deleted file(s)`);
+      }
+      
+      return verifiedEntries;
     } catch (error) {
       console.error('❌ Failed to get all files for user:', error);
       throw error;
