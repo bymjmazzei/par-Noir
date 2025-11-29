@@ -985,8 +985,119 @@ export class AggregatorMetadataServiceDB {
   }
 
   /**
+   * Filter results to only include files that exist in Google Drive
+   * This ensures we only show files with active URLs
+   * Gracefully handles errors - keeps files when verification fails
+   */
+  private async filterActiveFiles(result: { files: CentralIndexEntry[]; total: number; hasMore: boolean }): Promise<{ files: CentralIndexEntry[]; total: number; hasMore: boolean }> {
+    // Get service account token for verification
+    let accessToken: string | null = null;
+    try {
+      const { GoogleDriveSyncService } = await import('./googleDriveSyncService');
+      const syncService = GoogleDriveSyncService.getInstance();
+      accessToken = await syncService.getAccessToken();
+    } catch (error) {
+      // If we can't get token, return all files (graceful degradation)
+      console.warn('⚠️ [filterActiveFiles] Cannot get access token - returning all files (cannot verify)');
+      return result;
+    }
+    
+    if (!accessToken) {
+      console.warn('⚠️ [filterActiveFiles] No access token available - returning all files (cannot verify)');
+      return result; // Can't verify without token
+    }
+    
+    const activeFiles: CentralIndexEntry[] = [];
+    const batchSize = 10; // Process in batches to avoid rate limits
+    
+    // Process files in batches
+    for (let i = 0; i < result.files.length; i += batchSize) {
+      const batch = result.files.slice(i, i + batchSize);
+      const batchPromises = batch.map(async (file) => {
+        const backend = file.metadata.backend || 'google_drive';
+        
+        // Skip non-Google Drive files (no way to verify them)
+        if (!backend || !backend.startsWith('google_drive')) {
+          return file; // Keep non-Google Drive files
+        }
+        
+        // Get Google Drive file ID
+        const backendFileId = (file.metadata as any).googleDriveFileId || file.metadata.backendFileId;
+        
+        // If no backendFileId, skip (can't verify)
+        if (!backendFileId) {
+          console.log(`⚠️ [filterActiveFiles] No backendFileId for file ${file.fileId} - skipping`);
+          return null;
+        }
+        
+        // Verify file exists in Google Drive
+        try {
+          const verifyResponse = await fetch(
+            `https://www.googleapis.com/drive/v3/files/${backendFileId}?fields=id,trashed`,
+            {
+              headers: {
+                'Authorization': `Bearer ${accessToken}`
+              }
+            }
+          );
+          
+          if (verifyResponse.status === 404) {
+            // File doesn't exist - filter it out
+            console.log(`🗑️ [filterActiveFiles] File ${backendFileId} not found (404) - filtering out: ${file.metadata.name || file.fileId}`);
+            return null;
+          }
+          
+          if (verifyResponse.ok) {
+            const fileData = await verifyResponse.json() as { trashed?: boolean };
+            if (fileData.trashed) {
+              // File is trashed - filter it out
+              console.log(`🗑️ [filterActiveFiles] File ${backendFileId} is trashed - filtering out: ${file.metadata.name || file.fileId}`);
+              return null;
+            }
+            
+            // File exists and is not trashed - include it
+            return file;
+          } else {
+            // Permission error or other issue - include file (don't filter on error)
+            // This prevents false positives when service account doesn't have access
+            console.log(`⚠️ [filterActiveFiles] Could not verify file ${backendFileId} (status: ${verifyResponse.status}) - keeping: ${file.metadata.name || file.fileId}`);
+            return file;
+          }
+        } catch (error) {
+          // Network error or other exception - include file (don't filter on error)
+          // This prevents removing valid files due to temporary network issues
+          console.warn(`⚠️ [filterActiveFiles] Error verifying file ${backendFileId} - keeping: ${file.metadata.name || file.fileId}`, error);
+          return file;
+        }
+      });
+      
+      const batchResults = await Promise.all(batchPromises);
+      // Filter out null values (files that were filtered out)
+      const validFiles = batchResults.filter((file): file is CentralIndexEntry => file !== null);
+      activeFiles.push(...validFiles);
+    }
+    
+    // Calculate new total and hasMore based on filtered results
+    // Adjust total proportionally (conservative estimate)
+    const filteredCount = result.files.length - activeFiles.length;
+    const filteredTotal = Math.max(0, result.total - filteredCount);
+    
+    // If we filtered out files, hasMore might need adjustment
+    // Keep hasMore false if we have fewer files than the limit
+    const hasMore = activeFiles.length === result.files.length 
+      ? result.hasMore 
+      : activeFiles.length > 0; // Only set hasMore if we still have files
+    
+    return {
+      files: activeFiles,
+      total: filteredTotal,
+      hasMore
+    };
+  }
+
+  /**
    * Get full index response
-   * Automatically cleans up deleted files using public index files as source of truth
+   * Filters results to only show files with active URLs (files that exist in Google Drive)
    */
   async getIndexResponse(filters?: {
     tags?: string[];
@@ -996,56 +1107,65 @@ export class AggregatorMetadataServiceDB {
     limit?: number;
     offset?: number;
   }): Promise<CentralIndexResponse & { total: number; hasMore: boolean }> {
-    // CRITICAL: Always run cleanup FIRST to ensure database is in sync with Google Drive
-    // This ensures deleted files are removed before any cache check or query
-    console.log(`🔍 [getIndexResponse] Running cleanup to sync database with Google Drive...`);
-    try {
-      await this.cleanupOrphanedFilesFromIndex();
-      // Invalidate cache after cleanup since database may have changed
-      try {
-        const { invalidateIndexCache } = await import('../utils/cache');
-        await invalidateIndexCache();
-        console.log(`🗑️ [getIndexResponse] Invalidated cache after cleanup`);
-      } catch (cacheError) {
-        console.warn('⚠️ [getIndexResponse] Cache invalidation failed (non-critical):', cacheError);
-      }
-    } catch (error) {
-      console.error('❌ [getIndexResponse] Cleanup failed (non-critical, continuing):', error);
-      // Continue even if cleanup fails - still return results
-    }
-    
-    // SCALABILITY: Check cache after cleanup (cache was invalidated, so this will miss and query fresh)
+    // Check cache first
     try {
       const { getCachedIndex } = await import('../utils/cache');
       const cached = await getCachedIndex(filters);
       if (cached) {
         console.log(`✅ [getIndexResponse] Cache hit for filters:`, filters);
-        return cached;
+        // Filter cached results to ensure only active files are returned
+        // Extract the fields needed for filtering (cached may have additional fields like updatedAt)
+        const filteredResult = await this.filterActiveFiles({
+          files: cached.files || [],
+          total: cached.total || cached.totalFiles || 0,
+          hasMore: cached.hasMore || false
+        });
+        if (filteredResult.files.length !== (cached.files || []).length) {
+          console.log(`🔍 [getIndexResponse] Filtered ${(cached.files || []).length - filteredResult.files.length} inactive file(s) from cache`);
+        }
+        // Return with same structure as cached (preserve updatedAt, etc.)
+        return {
+          ...cached,
+          files: filteredResult.files,
+          total: filteredResult.total,
+          totalFiles: filteredResult.total,
+          hasMore: filteredResult.hasMore
+        };
       }
     } catch (error) {
       console.warn('⚠️ [getIndexResponse] Cache check failed (non-critical):', error);
       // Continue to database query if cache fails
     }
     
-    // Query database for fresh data (after cleanup ensures it's accurate)
+    // Query database for fresh data
     const result = await this.getPublicMetadata(filters);
-    console.log(`📤 [getIndexResponse] Returning ${result.files.length} file(s) after cleanup`);
+    
+    // Filter to only show files with active URLs (files that exist in Google Drive)
+    const filteredResult = await this.filterActiveFiles({
+      files: result.files,
+      total: result.total,
+      hasMore: result.hasMore
+    });
+    
+    if (filteredResult.files.length !== result.files.length) {
+      console.log(`🔍 [getIndexResponse] Filtered ${result.files.length - filteredResult.files.length} inactive file(s) (${filteredResult.files.length} active files remaining)`);
+    }
     
     const stats = await this.getStats();
 
     const response = {
-      files: result.files,
+      files: filteredResult.files,
       updatedAt: stats.lastUpdated,
-      totalFiles: result.total,  // Total matching files
-      total: result.total,        // Alias for consistency
-      hasMore: result.hasMore     // Whether more pages exist
+      totalFiles: filteredResult.total,  // Total matching files after filtering
+      total: filteredResult.total,        // Alias for consistency
+      hasMore: filteredResult.hasMore     // Whether more pages exist
     };
     
-    // SCALABILITY: Cache the response (5 minutes TTL)
+    // SCALABILITY: Cache the filtered response (5 minutes TTL)
     try {
       const { setCachedIndex } = await import('../utils/cache');
       await setCachedIndex(filters, response, 300); // 5 minutes
-      console.log(`💾 [getIndexResponse] Cached response for filters:`, filters);
+      console.log(`💾 [getIndexResponse] Cached filtered response for filters:`, filters);
     } catch (error) {
       console.warn('⚠️ [getIndexResponse] Cache set failed (non-critical):', error);
       // Continue even if cache fails
