@@ -90,22 +90,39 @@ export async function createCollection(
       console.error('Share token generation failed:', tokenError);
     }
 
-    // Upload encrypted file
-    const formData = new FormData();
+    // Upload encrypted file (same format as regular file uploads)
     const encryptedBlob = new Blob([JSON.stringify(packageData)], { type: 'application/json' });
-    formData.append('file', encryptedBlob, `${fileName}.encrypted`);
-    formData.append('accountId', accountId);
+    
+    // Convert encrypted blob to base64
+    const base64File = await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const result = reader.result as string;
+        const base64 = result.includes(',') ? result.split(',')[1] : result;
+        resolve(base64);
+      };
+      reader.onerror = () => reject(new Error('Failed to read encrypted file'));
+      reader.readAsDataURL(encryptedBlob);
+    });
 
-    const uploadResponse = await fetch(`${apiEndpoint}/api/drive/upload`, {
+    const encryptedFileName = `${fileName}.encrypted`;
+    const uploadResponse = await fetch(`${apiEndpoint}/api/drive/files`, {
       method: 'POST',
       headers: {
+        'Content-Type': 'application/json',
         'Authorization': `Bearer ${accessToken}`
       },
-      body: formData
+      body: JSON.stringify({
+        fileData: base64File,
+        fileName: encryptedFileName,
+        mimeType: 'application/json', // Encrypted files are stored as JSON
+        accountId: accountId
+      })
     });
 
     if (!uploadResponse.ok) {
-      throw new Error('Failed to upload collection file');
+      const errorText = await uploadResponse.text().catch(() => 'Unknown error');
+      throw new Error(`Failed to upload collection file: ${errorText}`);
     }
 
     const uploadResult = await uploadResponse.json();
