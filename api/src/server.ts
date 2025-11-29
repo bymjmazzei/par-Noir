@@ -1410,23 +1410,12 @@ class ProductionServer {
       }
     });
 
-    // POST /api/aggregator/cleanup - Manually trigger cleanup (for debugging)
+    // POST /api/aggregator/cleanup - Cleanup disabled (was removing all posts from feeds)
     this.app.post('/api/aggregator/cleanup', async (req, res) => {
-      try {
-        console.log('🧹 [POST /api/aggregator/cleanup] Manual cleanup triggered');
-        const { AggregatorMetadataServiceDB } = await import('./server/modules/aggregatorMetadataServiceDB');
-        const service = AggregatorMetadataServiceDB.getInstance();
-        
-        // Call cleanup method (now public)
-        await service.cleanupOrphanedFilesFromIndex();
-        return res.json({ success: true, message: 'Cleanup completed' });
-      } catch (error: any) {
-        console.error('❌ [POST /api/aggregator/cleanup] Error:', error);
-        return res.status(500).json({ 
-          error: 'Cleanup failed',
-          message: error.message 
-        });
-      }
+      return res.status(410).json({ 
+        error: 'Cleanup disabled',
+        message: 'Cleanup logic has been disabled as it was removing all posts from feeds. Manual cleanup is no longer available.' 
+      });
     });
 
     // POST /api/aggregator/metadata-index - Submit public metadata
@@ -4754,118 +4743,12 @@ class ProductionServer {
       }
     });
 
-    // POST /api/aggregator/metadata-index/cleanup - Aggressively clean up orphaned files by verifying they exist in Google Drive
+    // POST /api/aggregator/metadata-index/cleanup - Cleanup disabled (was removing all posts from feeds)
     this.app.post('/api/aggregator/metadata-index/cleanup', async (req, res) => {
-      try {
-        const { AggregatorMetadataServiceDB } = await import('./server/modules/aggregatorMetadataServiceDB');
-        const { GoogleDriveSyncService } = await import('./server/modules/googleDriveSyncService');
-        const metadataService = AggregatorMetadataServiceDB.getInstance();
-        const syncService = GoogleDriveSyncService.getInstance();
-
-        console.log('🧹 Aggressive cleanup triggered via API');
-        
-        // Get all Google Drive files from database first (don't wait for sync)
-        const db = (await import('./server/utils/database')).getDatabasePool();
-        const result = await db.query(
-          `SELECT file_id, metadata->>'fileId' as file_id_from_metadata, metadata->>'backendFileId' as backend_file_id, metadata->>'backend' as backend
-           FROM aggregator_metadata 
-           WHERE metadata->>'backend' LIKE 'google_drive%'`
-        );
-
-        console.log(`🔍 Found ${result.rows.length} Google Drive files in database`);
-        
-        if (result.rows.length === 0) {
-          return res.json({
-            success: true,
-            message: 'No Google Drive files found in database',
-            checked: 0,
-            removed: 0,
-            orphanedFileIds: []
-          });
-        }
-        
-        // Get access token for Google Drive API
-        const { GoogleAuth } = await import('google-auth-library');
-        const serviceAccountKey = process.env.GOOGLE_SERVICE_ACCOUNT_KEY;
-        if (!serviceAccountKey) {
-          return res.status(500).json({ error: 'Google service account not configured' });
-        }
-
-        const credentials = JSON.parse(serviceAccountKey);
-        const auth = new GoogleAuth({
-          credentials,
-          scopes: ['https://www.googleapis.com/auth/drive.readonly']
-        });
-        const client = await auth.getClient();
-        const accessToken = await (client as any).getAccessToken();
-        const token = accessToken.token;
-
-        const orphanedFileIds: string[] = [];
-        let checked = 0;
-
-        // Check each file to see if it actually exists in Google Drive
-        for (const row of result.rows) {
-          checked++;
-          const backendFileId = row.backend_file_id || row.file_id_from_metadata || row.file_id;
-          
-          try {
-            // Try to get file metadata from Google Drive
-            const fileResponse = await fetch(
-              `https://www.googleapis.com/drive/v3/files/${backendFileId}?fields=id,name,trashed`,
-              {
-                headers: {
-                  'Authorization': `Bearer ${token}`
-                }
-              }
-            );
-
-            if (!fileResponse.ok || fileResponse.status === 404) {
-              // File doesn't exist in Google Drive - mark as orphaned
-              orphanedFileIds.push(row.file_id);
-              console.log(`🗑️ File ${row.file_id} (Drive ID: ${backendFileId}) not found in Google Drive`);
-            } else {
-              const fileData = await fileResponse.json() as { id?: string; name?: string; trashed?: boolean };
-              if (fileData.trashed) {
-                // File is in trash - mark as orphaned
-                orphanedFileIds.push(row.file_id);
-                console.log(`🗑️ File ${row.file_id} (Drive ID: ${backendFileId}) is trashed`);
-              }
-            }
-          } catch (checkError) {
-            // If we can't check, assume it's orphaned (safer to remove than keep invalid data)
-            console.warn(`⚠️ Could not verify file ${row.file_id} (Drive ID: ${backendFileId}):`, checkError);
-            orphanedFileIds.push(row.file_id);
-          }
-
-          // Log progress every 10 files
-          if (checked % 10 === 0) {
-            console.log(`🔍 Checked ${checked}/${result.rows.length} files...`);
-          }
-        }
-
-        // Delete orphaned files
-        if (orphanedFileIds.length > 0) {
-          await db.query(
-            `DELETE FROM aggregator_metadata WHERE file_id = ANY($1::text[])`,
-            [orphanedFileIds]
-          );
-          console.log(`✅ Removed ${orphanedFileIds.length} orphaned file(s) from database`);
-        }
-
-        return res.json({
-          success: true,
-          message: 'Cleanup completed',
-          checked: checked,
-          removed: orphanedFileIds.length,
-          orphanedFileIds: orphanedFileIds.slice(0, 10) // Return first 10 for debugging
-        });
-      } catch (error: any) {
-        console.error('Error during aggressive cleanup:', error);
-        return res.status(500).json({ 
-          error: 'Failed to cleanup',
-          message: error.message 
-        });
-      }
+      return res.status(410).json({ 
+        error: 'Cleanup disabled',
+        message: 'Cleanup logic has been disabled as it was removing all posts from feeds. Manual cleanup is no longer available.' 
+      });
     });
 
     // POST /api/aggregator/metadata-index/refresh - Clear and rebuild index from Google Drive

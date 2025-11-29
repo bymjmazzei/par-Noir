@@ -358,44 +358,9 @@ export class GoogleDriveSyncService {
         }
       }
 
-      // Step 6: Remove orphaned files from database (files that no longer exist in Google Drive)
-      // CRITICAL: Only run cleanup if we successfully scanned ALL folders without errors
-      // If any folder had errors reading its public-file-index.json, we can't trust that files are orphaned
-      // Files are properly managed through the API (added on public, removed on private/delete/disconnect)
-      // Cleanup should only handle cases where folders/files were manually deleted from Google Drive
-      // and we successfully confirmed they're missing
-      if (!hasErrors && successfullyScannedFolders > 0) {
-        try {
-          // CRITICAL: Collect ALL possible file ID variants to match against database
-          // Database uses Google Drive file IDs, so we need to collect:
-          // - fileId (from index file)
-          // - backendFileId (Google Drive file ID)
-          // - googleDriveFileId (legacy field, if present)
-          const currentFileIds = new Set<string>();
-          allMetadata.forEach(entry => {
-            const meta = entry.metadata;
-            // Add all possible ID fields to ensure we match database entries
-            if (meta.fileId) currentFileIds.add(meta.fileId);
-            if (meta.backendFileId) currentFileIds.add(meta.backendFileId);
-            // Also check for googleDriveFileId in case it's stored separately
-            if ((meta as any).googleDriveFileId) currentFileIds.add((meta as any).googleDriveFileId);
-          });
-          console.log(`🔍 Checking for orphaned files. Found ${currentFileIds.size} valid file ID(s) (including variants) from Google Drive, successfully scanned ${successfullyScannedFolders}/${pnFolders.length} pN folder(s)`);
-          const removedCount = await metadataService.removeOrphanedFiles(currentFileIds);
-          if (removedCount > 0) {
-            console.log(`🗑️ Removed ${removedCount} orphaned file(s) from database (deleted from Google Drive)`);
-          } else {
-            console.log('✅ No orphaned files to clean up - database is in sync with Google Drive');
-          }
-        } catch (cleanupError) {
-          console.error('❌ Failed to cleanup orphaned files:', cleanupError);
-          // Don't fail the sync if cleanup fails, but log it as an error
-        }
-      } else if (hasErrors) {
-        console.warn('⚠️ Skipping cleanup - sync had errors. Files may still exist in Google Drive but failed to read. Cleanup will run on next successful sync.');
-      } else {
-        console.log('ℹ️ No folders with public files found - skipping cleanup');
-      }
+      // Step 6: Cleanup logic removed - was causing all posts to be removed from feeds
+      // Cleanup has been disabled per user request due to configuration issues
+      console.log('ℹ️ Cleanup logic disabled - files will not be automatically removed from feeds');
 
     } catch (error) {
       console.error('❌ Google Drive sync failed:', error);

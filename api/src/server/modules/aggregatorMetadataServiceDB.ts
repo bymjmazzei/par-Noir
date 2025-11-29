@@ -987,7 +987,15 @@ export class AggregatorMetadataServiceDB {
   /**
    * Filter results to only include files that exist in Google Drive
    * This ensures we only show files with active URLs
-   * Gracefully handles errors - keeps files when verification fails
+   * 
+   * Filtering strategy:
+   * - Files marked as public (isPublic = true) are always kept (trust database)
+   * - Files with publicToken are always kept (accessible through token system)
+   * - Only filter files confirmed deleted (404 or trashed status)
+   * - Always keep files when verification fails (graceful degradation)
+   * 
+   * This prevents false positives where valid files are filtered out due to
+   * service account access limitations.
    */
   private async filterActiveFiles(result: { files: CentralIndexEntry[]; total: number; hasMore: boolean }): Promise<{ files: CentralIndexEntry[]; total: number; hasMore: boolean }> {
     // Get service account token for verification
@@ -1021,16 +1029,32 @@ export class AggregatorMetadataServiceDB {
           return file; // Keep non-Google Drive files
         }
         
+        // If file is marked as public, trust that it's accessible and keep it
+        // This prevents filtering out valid public files that the service account can't access
+        const isPublic = file.metadata.isPublic === true || file.metadata.isPublic === 'true';
+        if (isPublic) {
+          // File is marked public - trust the database and keep it
+          // Even if service account can't verify, if it's in the database as public, it's accessible
+          return file;
+        }
+        
+        // For non-public files, check if they have publicToken (accessible through token system)
+        const publicToken = file.metadata.publicToken;
+        if (publicToken) {
+          // File has publicToken, so it's accessible through token system - keep it
+          return file;
+        }
+        
         // Get Google Drive file ID
         const backendFileId = (file.metadata as any).googleDriveFileId || file.metadata.backendFileId;
         
-        // If no backendFileId, skip (can't verify)
+        // If no backendFileId, we can't verify but keep it (might be from other backends or valid)
         if (!backendFileId) {
-          console.log(`⚠️ [filterActiveFiles] No backendFileId for file ${file.fileId} - skipping`);
-          return null;
+          console.log(`⚠️ [filterActiveFiles] No backendFileId for file ${file.fileId} - keeping (cannot verify)`);
+          return file; // Keep files we can't verify
         }
         
-        // Verify file exists in Google Drive
+        // Verify file exists in Google Drive (only for files that aren't clearly public)
         try {
           const verifyResponse = await fetch(
             `https://www.googleapis.com/drive/v3/files/${backendFileId}?fields=id,trashed`,
@@ -1042,7 +1066,7 @@ export class AggregatorMetadataServiceDB {
           );
           
           if (verifyResponse.status === 404) {
-            // File doesn't exist - filter it out
+            // File doesn't exist - filter it out (confirmed deletion)
             console.log(`🗑️ [filterActiveFiles] File ${backendFileId} not found (404) - filtering out: ${file.metadata.name || file.fileId}`);
             return null;
           }
@@ -1050,16 +1074,28 @@ export class AggregatorMetadataServiceDB {
           if (verifyResponse.ok) {
             const fileData = await verifyResponse.json() as { trashed?: boolean };
             if (fileData.trashed) {
-              // File is trashed - filter it out
+              // File is trashed - filter it out (confirmed deletion)
               console.log(`🗑️ [filterActiveFiles] File ${backendFileId} is trashed - filtering out: ${file.metadata.name || file.fileId}`);
               return null;
             }
             
             // File exists and is not trashed - include it
             return file;
+          } else if (verifyResponse.status === 403 || verifyResponse.status === 401) {
+            // Permission error - service account doesn't have access
+            // BUT: If file is marked public (isPublic = true), trust that it's accessible and keep it
+            // The file might be shared publicly even if service account can't see it
+            const isPublic = file.metadata.isPublic === true || file.metadata.isPublic === 'true';
+            if (isPublic) {
+              console.log(`✅ [filterActiveFiles] File ${backendFileId} is public but service account can't verify (${verifyResponse.status}) - keeping: ${file.metadata.name || file.fileId}`);
+              return file; // Trust that public files are accessible
+            } else {
+              // Not public and can't verify - keep it anyway (better to show than hide)
+              console.log(`⚠️ [filterActiveFiles] File ${backendFileId} can't be verified (${verifyResponse.status}) - keeping: ${file.metadata.name || file.fileId}`);
+              return file;
+            }
           } else {
-            // Permission error or other issue - include file (don't filter on error)
-            // This prevents false positives when service account doesn't have access
+            // Other error (network, etc.) - include file (don't filter on error)
             console.log(`⚠️ [filterActiveFiles] Could not verify file ${backendFileId} (status: ${verifyResponse.status}) - keeping: ${file.metadata.name || file.fileId}`);
             return file;
           }
@@ -1203,147 +1239,6 @@ export class AggregatorMetadataServiceDB {
   }
 
   /**
-   * Clean up orphaned files by comparing database with public index files
-   * Each user has their own public index file - if it doesn't exist or is empty, remove all their files
-   * Public index files in Google Drive are the source of truth per user
-   * 
-   * @public - Made public for manual cleanup endpoint
-   */
-  /**
-   * Simplified cleanup: Only removes files that were directly deleted from Google Drive
-   * Does not require access to index files - only verifies files exist in Google Drive
-   * Gracefully handles errors (keeps files if verification fails)
-   */
-  async cleanupOrphanedFilesFromIndex(): Promise<void> {
-    console.log(`🔍 [cleanupOrphanedFilesFromIndex] Starting simplified cleanup (direct file verification only)...`);
-    
-    try {
-      // Get service account access token (required for verification)
-      const { GoogleDriveSyncService } = await import('./googleDriveSyncService');
-      const syncService = GoogleDriveSyncService.getInstance();
-      let accessToken: string | null = null;
-      
-      try {
-        accessToken = await syncService.getAccessToken();
-        console.log(`✅ [cleanupOrphanedFilesFromIndex] Got access token`);
-      } catch (tokenError) {
-        console.warn(`⚠️ [cleanupOrphanedFilesFromIndex] Cannot get access token - skipping cleanup (no Google Drive connection)`);
-        return; // Exit early if we can't get access token
-      }
-      
-      if (!accessToken) {
-        console.warn(`⚠️ [cleanupOrphanedFilesFromIndex] No access token available - skipping cleanup`);
-        return;
-      }
-      
-      const db = getDatabasePool();
-      
-      // Get ALL public files from database (only Google Drive files)
-      const allFilesResult = await db.query(
-        `SELECT file_id, metadata, pn_identifier, updated_at 
-         FROM aggregator_metadata 
-         WHERE metadata->>'isPublic' = 'true' 
-           AND (metadata->>'backend' LIKE 'google_drive%' OR metadata->>'backend' IS NULL)`
-      );
-      
-      console.log(`🔍 [cleanupOrphanedFilesFromIndex] Checking ${allFilesResult.rows.length} public file(s) for direct deletion from Google Drive`);
-      
-      if (allFilesResult.rows.length === 0) {
-        console.log(`✅ [cleanupOrphanedFilesFromIndex] No files to check`);
-        return;
-      }
-      
-      const orphanedFileIds: string[] = [];
-      
-      // Check each file individually
-      for (const row of allFilesResult.rows) {
-        const fileId = row.file_id;
-        const metadata = row.metadata as PublicMetadata & { googleDriveFileId?: string };
-        const fileName = metadata.name || metadata.title || 'unknown';
-        const backend = metadata.backend || 'google_drive';
-        
-        // Skip non-Google Drive files
-        if (backend && !backend.startsWith('google_drive')) {
-          continue;
-        }
-        
-        // Get Google Drive file ID from metadata
-        const backendFileId = (metadata as any).googleDriveFileId || metadata.backendFileId;
-        
-        // Skip if we don't have a Google Drive file ID to verify
-        if (!backendFileId) {
-          console.log(`⚠️ [cleanupOrphanedFilesFromIndex] No backendFileId for file ${fileId} (${fileName}) - skipping verification`);
-          continue;
-        }
-        
-        // GRACE PERIOD: Don't remove files that were just added (within last 10 minutes)
-        // This prevents removing files that are still being processed
-        const updatedAt = row.updated_at as Date;
-        if (updatedAt) {
-          const now = new Date();
-          const ageMinutes = (now.getTime() - updatedAt.getTime()) / (1000 * 60);
-          const GRACE_PERIOD_MINUTES = 10;
-          
-          if (ageMinutes < GRACE_PERIOD_MINUTES) {
-            console.log(`⏳ [cleanupOrphanedFilesFromIndex] File ${fileId} (${fileName}) was added ${ageMinutes.toFixed(1)} minutes ago - grace period active, skipping`);
-            continue;
-          }
-        }
-        
-        // Direct verification: Check if file exists in Google Drive
-        try {
-          const verifyResponse = await fetch(
-            `https://www.googleapis.com/drive/v3/files/${backendFileId}?fields=id,trashed`,
-            {
-              headers: {
-                'Authorization': `Bearer ${accessToken}`
-              }
-            }
-          );
-          
-          if (verifyResponse.status === 404) {
-            // File doesn't exist - was deleted from Google Drive
-            console.log(`🗑️ [cleanupOrphanedFilesFromIndex] File ${backendFileId} not found (404) - removing from database: ${fileId} (${fileName})`);
-            orphanedFileIds.push(fileId);
-          } else if (verifyResponse.ok) {
-            const fileData = await verifyResponse.json() as { id?: string; trashed?: boolean };
-            if (fileData.trashed) {
-              // File is in trash - was deleted from Google Drive
-              console.log(`🗑️ [cleanupOrphanedFilesFromIndex] File ${backendFileId} is trashed - removing from database: ${fileId} (${fileName})`);
-              orphanedFileIds.push(fileId);
-            } else {
-              // File exists and is not trashed - keep it
-              // (Silent success - no need to log every file that's fine)
-            }
-          } else {
-            // Permission denied or other error - KEEP the file (might be temporary issue)
-            // This is critical: we don't remove files when we can't verify them
-            console.log(`⚠️ [cleanupOrphanedFilesFromIndex] Could not verify file ${backendFileId} (status: ${verifyResponse.status}) - keeping in database: ${fileId} (${fileName})`);
-          }
-        } catch (verifyError) {
-          // Network error or other exception - KEEP the file (don't remove on error)
-          console.warn(`⚠️ [cleanupOrphanedFilesFromIndex] Error verifying file ${backendFileId} - keeping in database: ${fileId} (${fileName})`, verifyError);
-        }
-      }
-      
-      // Remove orphaned files from database
-      if (orphanedFileIds.length > 0) {
-        await db.query(
-          `DELETE FROM aggregator_metadata WHERE file_id = ANY($1::text[])`,
-          [orphanedFileIds]
-        );
-        console.log(`🗑️ [cleanupOrphanedFilesFromIndex] Removed ${orphanedFileIds.length} file(s) that were deleted from Google Drive: ${orphanedFileIds.join(', ')}`);
-      } else {
-        console.log(`✅ [cleanupOrphanedFilesFromIndex] No orphaned files found - all files still exist in Google Drive`);
-      }
-      
-    } catch (error) {
-      console.error('❌ [cleanupOrphanedFilesFromIndex] Failed to cleanup orphaned files:', error);
-      // Don't throw - cleanup is non-critical
-    }
-  }
-
-  /**
    * Verify Google Drive files still exist
    * Uses authenticated Google Drive API with service account
    * Google Drive is the source of truth - deleted files are removed from database
@@ -1465,77 +1360,6 @@ export class AggregatorMetadataServiceDB {
     return verifiedFiles;
   }
 
-  /**
-   * Remove orphaned files from database (files that no longer exist in Google Drive)
-   * Returns the number of files removed
-   */
-  async removeOrphanedFiles(validFileIds: Set<string>): Promise<number> {
-    const db = getDatabasePool();
-
-    try {
-      // Get all file IDs from database (both fileId and backendFileId for Google Drive files)
-      const result = await db.query(
-        `SELECT file_id, metadata->>'fileId' as file_id_from_metadata, metadata->>'backendFileId' as backend_file_id
-         FROM aggregator_metadata 
-         WHERE metadata->>'backend' = $1`,
-        ['google_drive']
-      );
-
-      const orphanedFileIds: string[] = [];
-      
-      for (const row of result.rows) {
-        const dbFileId = row.file_id;
-        const metadataFileId = row.file_id_from_metadata;
-        const backendFileId = row.backend_file_id;
-        
-        // Check if any of the IDs (file_id, fileId, or backendFileId) match valid files
-        // If none match, this file is orphaned
-        const isOrphaned = !validFileIds.has(dbFileId) && 
-                           !validFileIds.has(metadataFileId) && 
-                           !(backendFileId && validFileIds.has(backendFileId));
-        
-        if (isOrphaned) {
-          // Log for debugging - helps identify ID mismatches
-          console.log(`🔍 [removeOrphanedFiles] File marked as orphaned:`, {
-            dbFileId,
-            metadataFileId,
-            backendFileId,
-            validFileIdsSample: Array.from(validFileIds).slice(0, 3),
-            reason: 'None of the IDs match valid files from Google Drive'
-          });
-          orphanedFileIds.push(dbFileId);
-        }
-      }
-
-      if (orphanedFileIds.length === 0) {
-        return 0;
-      }
-
-      // SAFETY: If we're about to delete more than 50% of files, something is wrong
-      const totalFiles = result.rows.length;
-      const deletionRatio = orphanedFileIds.length / totalFiles;
-      
-      if (deletionRatio > 0.5) {
-        console.error(`🚨 [removeOrphanedFiles] SAFETY CHECK FAILED: About to delete ${orphanedFileIds.length} of ${totalFiles} files (${(deletionRatio * 100).toFixed(1)}%)`);
-        console.error(`🚨 This likely indicates an ID mismatch bug. Aborting cleanup.`);
-        console.error(`🚨 Sample orphaned IDs:`, orphanedFileIds.slice(0, 5));
-        console.error(`🚨 Sample valid IDs:`, Array.from(validFileIds).slice(0, 5));
-        throw new Error(`Safety check failed: Would delete ${(deletionRatio * 100).toFixed(1)}% of files. This indicates a bug.`);
-      }
-
-      // Delete orphaned files
-      await db.query(
-        `DELETE FROM aggregator_metadata WHERE file_id = ANY($1::text[])`,
-        [orphanedFileIds]
-      );
-
-      console.log(`🗑️ Removed ${orphanedFileIds.length} orphaned file(s): ${orphanedFileIds.slice(0, 5).join(', ')}${orphanedFileIds.length > 5 ? '...' : ''}`);
-      return orphanedFileIds.length;
-    } catch (error) {
-      console.error('❌ Failed to remove orphaned files:', error);
-      throw error;
-    }
-  }
 
   /**
    * Update engagement metrics for a file
