@@ -2717,6 +2717,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
                     inReplyTo: indexEntry.inReplyTo,
                     repostOf: indexEntry.repostOf,
                     isPartOf: indexEntry.isPartOf,
+                    thumbnailFileId: (indexEntry as any).thumbnailFileId || null,
                     '@context': ['https://schema.org/'],
                     '@type': 'CreativeWork',
                     '@id': `https://parnoir.com/resource/${indexEntry.fileId || file.id}`
