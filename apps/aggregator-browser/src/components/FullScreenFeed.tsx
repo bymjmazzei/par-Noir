@@ -390,9 +390,7 @@ export function FullScreenFeed({
     };
   }, [visibleFileId, getPopularComments]);
 
-  // Load thought content from Google Drive when metadata only has filename
   // Thoughts now render as images (thumbnails) - no special loading needed!
-
   // Load video blobs and thumbnails for visible files (only if not provided externally)
   useEffect(() => {
     const loadMedia = async () => {
@@ -409,71 +407,27 @@ export function FullScreenFeed({
         const file = indexedFile.metadata;
         const fileId = file.fileId;
 
-        // Check if it's a text post/thought first (same logic as render section)
-        // Check multiple locations for thought data (same as render logic)
-        const textPostData = (indexedFile.metadata as any)?.textPost ||
-                            (indexedFile.metadata as any)?.thought ||
-                            (file as any)?.textPost ||
-                            (file as any)?.thought ||
-                            (indexedFile as any)?.textPost ||
-                            (indexedFile as any)?.thought;
+        // Thoughts now render as images (thumbnails) - no special detection needed!
+        // Just detect images and videos
         
-        // Check fileType in ALL possible locations (file.fileType, indexedFile.metadata.fileType, etc.)
-        const fileTypeFromFile = file.fileType;
-        const fileTypeFromMetadata = indexedFile.metadata?.fileType;
-        const fileTypeFromIndexedFile = (indexedFile as any)?.fileType;
-        const actualFileType = fileTypeFromFile || fileTypeFromMetadata || fileTypeFromIndexedFile;
+        // Detect videos
+        const isVideo = file.fileType === 'video' || 
+          !!(file.name || file.title || '').match(/\.(mp4|mov|avi|webm|mkv|flv|wmv)$/i);
         
-        const hasTextFileType = actualFileType === 'text' || actualFileType === 'thought';
-        
-        // Check for thought filename pattern - check filename in multiple locations
-        const thoughtFileName = file.name || 
-                               file.title || 
-                               (file as any).originalName ||
-                               indexedFile.metadata?.originalName ||
-                               indexedFile.metadata?.name ||
-                               '';
-        const isThoughtFile = /^thought-\d+\.(thought|png)/i.test(thoughtFileName);
-        
-        // Check if file has media extension (image/video) - if so, prioritize media detection over thought
-        const fileNameForMediaCheck = file.name || file.title || '';
-        const hasImageExt = !!(fileNameForMediaCheck.match(/\.(jpg|jpeg|png|gif|webp|svg|bmp|ico)$/i));
-        const hasVideoExt = !!(fileNameForMediaCheck.match(/\.(mp4|mov|avi|webm|mkv|flv|wmv)$/i));
-        const hasMediaExt = hasImageExt || hasVideoExt;
-        
-        // If we have textPost/thought data OR fileType is 'text'/'thought', it's DEFINITELY a thought
-        // BUT: If file has media extension and is NOT a thought file pattern, prioritize media over thought
-        // This prevents images/videos from being incorrectly detected as thoughts
-        const isTextPost = (!!textPostData || hasTextFileType || isThoughtFile) && (!hasMediaExt || isThoughtFile);
-        
-        const isVideo = !isTextPost && (
-          file.fileType === 'video' || 
-          !!(file.name || file.title || '').match(/\.(mp4|mov|avi|webm|mkv|flv|wmv)$/i)
-        );
+        // Detect images (includes thought thumbnails which are just PNG images)
         const fileNameForImageCheck = file.name || file.title || '';
         const hasImageExtension = !!(fileNameForImageCheck.match(/\.(jpg|jpeg|png|gif|webp|svg|bmp|ico)$/i));
-        // Check mimeType in multiple locations and also check encodingFormat
         const mimeType = (file as any).mimeType || indexedFile.metadata?.mimeType || file.encodingFormat || indexedFile.metadata?.encodingFormat || '';
         const hasImageMimeType = mimeType.startsWith('image/');
-        // Check @type field (JSON-LD semantic web field) for ImageObject
         const atType = file['@type'] || indexedFile.metadata?.['@type'];
         const isImageObject = Array.isArray(atType) 
           ? atType.some(t => String(t).toLowerCase().includes('image'))
           : String(atType || '').toLowerCase().includes('image');
-        const isImage = !isTextPost && (
-          file.fileType === 'image' || 
+        const isImage = file.fileType === 'image' || 
           isImageObject ||
           (file.fileType === 'other' && hasImageExtension) ||
           hasImageExtension ||
-          hasImageMimeType
-        );
-        
-        // Debug logging only in development mode
-        if (process.env.NODE_ENV === 'development' && hasImageExtension && !isImage) {
-          console.warn(`[FullScreenFeed] Image extension detected but not loading: ${fileId}`);
-        }
-        
-        
+          hasImageMimeType;
 
         // Only load video if not provided externally or if external map doesn't have this file
         if (isVideo && file.publicToken && !videoBlobs.has(fileId)) {
@@ -861,207 +815,35 @@ export function FullScreenFeed({
         const file = indexedFile.metadata;
         const fileId = file.fileId;
         
-        // Check for text post FIRST before checking image/video
-        // This prevents thoughts from being misclassified as images/videos
-        // Check multiple possible locations for thought data
-        // NOTE: Thoughts now render as images (thumbnails), but we still check for textPost data for backwards compatibility
-        let textPostData: any = (indexedFile.metadata as any)?.textPost || 
-                            (indexedFile.metadata as any)?.thought ||
-                            (file as any)?.textPost ||
-                            (file as any)?.thought ||
-                            (indexedFile as any)?.textPost ||
-                            (indexedFile as any)?.thought;
+        // Thoughts now render as images (thumbnails) - no special detection needed!
+        // Just detect images, videos, and collections
         
-        // Also check nested metadata structure
-        if (!textPostData && indexedFile.metadata) {
-          const metadata = indexedFile.metadata as any;
-          textPostData = metadata.data?.textPost || 
-                        metadata.data?.thought ||
-                        metadata.content?.textPost ||
-                        metadata.content?.thought;
-        }
-        
-        // FALLBACK: If fileType is 'text' or 'thought' but textPost/thought data is missing,
-        // OR if filename suggests it's a thought (thought-*.thought or thought-*.png), try to reconstruct it from other metadata fields
-        // This handles cases where the metadata was created before textPost/thought fields were added
-        const isLikelyThought = !textPostData && (
-          file.fileType === 'text' || 
-          file.fileType === 'thought' || 
-          indexedFile.metadata?.fileType === 'text' || 
-          indexedFile.metadata?.fileType === 'thought' ||
-          (file.name && /thought-\d+\.png/i.test(file.name)) ||
-          (file.title && /thought-\d+\.png/i.test(file.title))
-        );
-        
-        if (isLikelyThought) {
-          const content = file.description || file.name || file.title || '';
-          if (content && content.trim().length > 0) {
-            // Skip if content looks like a filename (contains .png, .jpg, etc.)
-            if (!/\.(png|jpg|jpeg|gif|webp|svg|mp4|mov|avi|webm)$/i.test(content)) {
-              textPostData = {
-                content: content,
-                style: {
-                  backgroundColor: '#000000',
-                  textColor: '#FFFFFF',
-                  fontSize: 48,
-                  fontFamily: 'Arial',
-                  textAlign: 'center',
-                  padding: 40,
-                  dropShadowColor: '#000000',
-                  dropShadowBlur: 10,
-                  dropShadowOffsetX: 2,
-                  dropShadowOffsetY: 2
-                }
-              };
-              console.warn('[FullScreenFeed] Reconstructed textPostData from metadata (fallback):', {
-                fileId,
-                fileType: file.fileType,
-                metadataFileType: indexedFile.metadata?.fileType,
-                fileName: file.name,
-                content: content.substring(0, 50)
-              });
-            }
-          }
-        }
-        
-        // Parse textPost if it's a string (could be JSON string or plain string)
-        if (textPostData && typeof textPostData === 'string') {
-          try {
-            // Try to parse as JSON first
-            const parsed = JSON.parse(textPostData);
-            if (parsed && typeof parsed === 'object') {
-              textPostData = parsed;
-            } else {
-              // If parsing returns a primitive, treat original string as content
-              textPostData = { content: textPostData };
-            }
-          } catch (e) {
-            // Not JSON, treat as plain text content
-            textPostData = { content: textPostData };
-          }
-        }
-        
-        // If textPostData is an object but doesn't have content, try to extract from it
-        if (textPostData && typeof textPostData === 'object' && !textPostData.content) {
-          // Check if it has HTML content or other fields
-          if (textPostData.html) {
-            textPostData.content = textPostData.html;
-          } else if (textPostData.text) {
-            textPostData.content = textPostData.text;
-          } else if (textPostData.value) {
-            textPostData.content = textPostData.value;
-          }
-        }
-        
-        const hasTextPostData = !!textPostData;
-        
-        // Check fileType in ALL possible locations (file.fileType, indexedFile.metadata.fileType, etc.)
+        // Check fileType in ALL possible locations
         const fileTypeFromFile = file.fileType;
         const fileTypeFromMetadata = indexedFile.metadata?.fileType;
         const fileTypeFromIndexedFile = (indexedFile as any)?.fileType;
         const actualFileType = fileTypeFromFile || fileTypeFromMetadata || fileTypeFromIndexedFile;
         
-        const hasTextFileType = actualFileType === 'text' || actualFileType === 'thought';
+        // Detect videos
+        const isVideo = file.fileType === 'video' || 
+          !!(file.name || file.title || '').match(/\.(mp4|mov|avi|webm|mkv|flv|wmv)$/i);
         
-        // Check for thought filename pattern BEFORE determining isTextPost
-        // This ensures thoughts are detected consistently and prevents flickering
-        // Check filename in multiple locations (file.name might be content, not filename)
-        const thoughtFileName = file.name || 
-                               file.title || 
-                               (file as any).originalName ||
-                               indexedFile.metadata?.originalName ||
-                               indexedFile.metadata?.name ||
-                               '';
-        const isThoughtFile = /^thought-\d+\.(thought|png)/i.test(thoughtFileName);
-        
-        // Debug logging for thoughts (only in development, only log once per file)
-        if (process.env.NODE_ENV === 'development' && (isThoughtFile || hasTextPostData || hasTextFileType) && !thoughtDetectionLogged.current.has(fileId)) {
-          thoughtDetectionLogged.current.add(fileId);
-          console.log(`[FullScreenFeed] Thought detected: ${fileId}`);
-        }
-        
-        // Check if file has media extension (image/video) - if so, prioritize media detection over thought
-        const fileNameForMediaCheck = file.name || file.title || '';
-        const hasImageExt = !!(fileNameForMediaCheck.match(/\.(jpg|jpeg|png|gif|webp|svg|bmp|ico)$/i));
-        const hasVideoExt = !!(fileNameForMediaCheck.match(/\.(mp4|mov|avi|webm|mkv|flv|wmv)$/i));
-        const hasMediaExt = hasImageExt || hasVideoExt;
-        
-        // If we have textPost/thought data OR fileType is 'text'/'thought', it's DEFINITELY a thought
-        // BUT: If file has media extension and is NOT a thought file pattern, prioritize media over thought
-        // This prevents images/videos from being incorrectly detected as thoughts
-        const isTextPost = (hasTextPostData || hasTextFileType || isThoughtFile) && (!hasMediaExt || isThoughtFile) ||
-                          (!hasMediaExt && file.description && file.description.trim().length > 0 && 
-                           !actualFileType && !thoughtFileName.match(/\.(jpg|jpeg|png|gif|webp|svg|bmp|ico|mp4|mov|avi|webm|mkv|flv|wmv)$/i));
-        
-        // CRITICAL FIX: If isTextPost is true but textPostData is missing, create it from available data
-        // This ensures thoughts render even when textPostData isn't populated
-        if (isTextPost && !textPostData) {
-          // Use description, name, or title as content
-          const content = file.description || file.name || file.title || '';
-          if (content && content.trim().length > 0) {
-            // Skip if content looks like a filename
-            if (!/\.(png|jpg|jpeg|gif|webp|svg|mp4|mov|avi|webm)$/i.test(content)) {
-              textPostData = {
-                content: content,
-                style: {
-                  backgroundColor: '#000000',
-                  textColor: '#FFFFFF',
-                  fontSize: 48,
-                  fontFamily: 'Arial',
-                  textAlign: 'center',
-                  padding: 40,
-                  dropShadowColor: '#000000',
-                  dropShadowBlur: 10,
-                  dropShadowOffsetX: 2,
-                  dropShadowOffsetY: 2
-                }
-              };
-              if (process.env.NODE_ENV === 'development') {
-                console.log(`[FullScreenFeed] Created textPostData for thought: ${fileId}`);
-              }
-            }
-          }
-        }
-        
-        // If it's a thought but fileType is wrong, log it for debugging
-        if (hasTextPostData && !hasTextFileType) {
-          if (process.env.NODE_ENV === 'development') {
-            console.warn(`[FullScreenFeed] Thought detected but fileType incorrect: ${fileId}`);
-          }
-        }
-        
-        // Only check for image/video if it's NOT a text post
-        // This prevents thoughts with image-like filenames from being misclassified
-        const isVideo = !isTextPost && (
-          file.fileType === 'video' || 
-          !!(file.name || file.title || '').match(/\.(mp4|mov|avi|webm|mkv|flv|wmv)$/i)
-        );
-        
-        // IMPORTANT: If it's a thought, it should NEVER be detected as an image, even if filename matches image pattern
-        // This prevents flickering where thoughts are detected as both thoughts and images
-        // isThoughtFile is already defined above (line 1356)
-        // Use !! to convert match result (array or null) to boolean
-        // CRITICAL FIX: Check for image fileType OR image extension OR mimeType, but only exclude if it's DEFINITELY a thought
+        // Detect images (includes thought thumbnails which are just PNG images)
         const fileNameForImageCheck = file.name || file.title || '';
         const hasImageExtension = !!(fileNameForImageCheck.match(/\.(jpg|jpeg|png|gif|webp|svg|bmp|ico|heic|heif)$/i));
-        // Check mimeType in multiple locations and also check encodingFormat (which is the standard field in PublicMetadata)
         const mimeType = (file as any).mimeType || indexedFile.metadata?.mimeType || file.encodingFormat || indexedFile.metadata?.encodingFormat || '';
         const hasImageMimeType = mimeType.startsWith('image/');
-        // Check @type field (JSON-LD semantic web field) for ImageObject
         const atType = file['@type'] || indexedFile.metadata?.['@type'];
         const isImageObject = Array.isArray(atType) 
           ? atType.some(t => String(t).toLowerCase().includes('image'))
           : String(atType || '').toLowerCase().includes('image');
-        const isImage = !isTextPost && (
-          file.fileType === 'image' || 
+        const isImage = file.fileType === 'image' || 
           isImageObject ||
           hasImageMimeType ||
           (file.fileType === 'other' && hasImageExtension) ||
-          hasImageExtension
-        );
+          hasImageExtension;
         
-        // Check for collection - ONLY check metadata, be very strict to avoid false positives
-        // Don't check file.collection or (file as any).collection as those might be empty objects
+        // Check for collection
         const collectionData = indexedFile.metadata?.collection;
         const isCollectionFile = actualFileType === 'collection' && 
                                 collectionData && 
@@ -1070,12 +852,11 @@ export function FullScreenFeed({
                                 Array.isArray(collectionData.collectionFileIds) &&
                                 collectionData.collectionFileIds.length > 0;
         
-        // CRITICAL: Only block images/videos if it's ACTUALLY a collection
-        // Don't block based on file.collection - that might be an empty object on non-collection files
-        const isVideoFinal = (isTextPost || isCollectionFile) ? false : isVideo;
-        // Thoughts with thumbnails should render as images (new thumbnail-based system)
-        const hasThumbnail = file.thumbnailFileId || (file.name || file.title || '').startsWith('thumb_');
-        const isImageFinal = (isCollectionFile) ? false : (isImage || (isTextPost && hasThumbnail));
+        // Final detection (collections take precedence)
+        const isVideoFinal = isCollectionFile ? false : isVideo;
+        const isImageFinal = isCollectionFile ? false : isImage;
+        
+        // NO THOUGHT DETECTION - thoughts are just images (thumbnails) now!
         
         // Debug logging for image detection (only in development)
         if (process.env.NODE_ENV === 'development' && (file.fileType === 'image' || (file.name || file.title || '').match(/\.(jpg|jpeg|png|gif|webp|svg|bmp|ico)$/i)) && !isImageFinal) {
@@ -1089,7 +870,7 @@ export function FullScreenFeed({
                                hasImageMimeType;
           
           if (isLikelyImage && !isImageFinal) {
-            console.warn(`[FullScreenFeed] Image not rendering: ${fileId} (isTextPost: ${isTextPost})`);
+            console.warn(`[FullScreenFeed] Image not rendering: ${fileId}`);
           }
         }
         
@@ -1375,8 +1156,8 @@ export function FullScreenFeed({
               return null;
             })()}
 
-            {/* Non-image/video/text/slideshow/collection file */}
-            {!isImageFinal && !isVideoFinal && !isTextPost && !textPostData && !isCollectionFile && (
+            {/* Non-image/video/slideshow/collection file */}
+            {!isImageFinal && !isVideoFinal && !isCollectionFile && (
               <div className="flex flex-col items-center justify-center text-neutral-500">
                 <File className="h-24 w-24 mb-4" />
                 <h3 className="text-white text-xl font-medium mb-2">{cleanTitle(fileName)}</h3>
