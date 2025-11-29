@@ -2385,11 +2385,23 @@ function App() {
       return;
     }
     
+    // If mePageTab changed but we're not navigating to a file, don't run the navigation logic
+    // This prevents flickering when user manually changes tabs
+    if (!isNavigatingToFileRef.current && mePageTab !== prevMePageTabRef.current) {
+      // User manually changed tab - don't interfere
+      return;
+    }
+    
     // Mark that we're navigating to a file
     isNavigatingToFileRef.current = true;
     
     // Helper function to find and set file index
     const findAndSetFileIndex = () => {
+      // If user manually changed tab (not navigating to a file), don't auto-switch tabs
+      if (!isNavigatingToFileRef.current && !visibleFileId) {
+        return false;
+      }
+      
       // Use creatorFilesState directly instead of computed creatorFiles to avoid initialization issues
       const currentCreatorFiles = viewingCreatorId ? creatorFilesState : [];
       const currentIsOwnIndex = viewingCreatorId === userState.pnIdentifier && userState.isUnlocked;
@@ -2514,6 +2526,34 @@ function App() {
       }
       
       // If not found in current tab, check other tabs
+      // BUT: Only auto-switch tabs if we're navigating to a file (isNavigatingToFileRef), not if user manually changed tabs
+      if (!isNavigatingToFileRef.current || !visibleFileId) {
+        return false; // User manually changed tab or no file to navigate to - don't auto-switch
+      }
+      
+      // Check thoughts tab first (if not already on thoughts)
+      if (mePageTab !== 'thoughts' && currentCreatorFiles.length > 0) {
+        const thoughtsFiles = currentCreatorFiles.filter(f => isThought(f));
+        const thoughtsIndex = thoughtsFiles.findIndex(f => f.metadata.fileId === visibleFileId);
+        if (thoughtsIndex !== -1) {
+          setMePageTab('thoughts');
+          if (currentFeedIndex !== thoughtsIndex) {
+            setCurrentFeedIndex(thoughtsIndex);
+          }
+          lastNavigatedFileIdRef.current = visibleFileId;
+          lastNavigatedFileIndexRef.current = thoughtsIndex;
+          setTimeout(() => {
+            isNavigatingToFileRef.current = false;
+            setVisibleFileId(null);
+            setTimeout(() => {
+              lastNavigatedFileIdRef.current = null;
+              lastNavigatedFileIndexRef.current = null;
+            }, 1000);
+          }, 1000);
+          return true;
+        }
+      }
+      
       // Check media tab (currentCreatorFiles)
       if (currentCreatorFiles.length > 0) {
         // Apply top post pinning for media tab
