@@ -1305,33 +1305,18 @@ export function FullScreenFeed({
                 (thoughtFileName ? thoughtFileName.replace(/\.(thought|png)$/i, '') : 'Thought')
               );
               
-              // Always log when rendering thoughts to debug black tiles issue
-              console.log(`[FullScreenFeed] Rendering thought/textPost for ${fileId}:`, {
-                isTextPost,
-                hasTextPostData: !!textPostData,
-                hasContent: !!textPostData?.content,
-                contentToRender,
-                isJustFilename,
-                fileType: file.fileType,
-                fileName: file.name || file.title
-              });
+              // Debug logging removed - was causing performance issues
+              // Only log in development mode and only once per file
+              if (process.env.NODE_ENV === 'development' && !thoughtDetectionLogged.current.has(fileId)) {
+                thoughtDetectionLogged.current.add(fileId);
+                console.log(`[FullScreenFeed] Rendering thought/textPost for ${fileId}`);
+              }
               
-              // Debug logging for thoughts that aren't rendering properly (always log, not just dev)
-              if (isTextPost && !textPostData?.content) {
+              // Only log warnings in development mode (performance optimization)
+              if (isTextPost && !textPostData?.content && process.env.NODE_ENV === 'development') {
                 console.warn(`[FullScreenFeed] Thought detected but missing content:`, {
                   fileId,
-                  fileDisplayName: file.name || file.title,
-                  fileType: file.fileType,
-                  hasTextPostData: !!textPostData,
-                  textPostData,
-                  fileDescription: file.description,
-                  fileTitle: file.title,
-                  fileName: file.name,
-                  thoughtFileName,
-                  isThoughtFile,
-                  hasTextFileType,
-                  actualFileType,
-                  metadata: indexedFile.metadata
+                  fileDisplayName: file.name || file.title
                 });
               }
               
@@ -1678,11 +1663,14 @@ export function FullScreenFeed({
                                       collectionData.collectionFileIds.length > 0;
               
               if (isCollectionFile && collectionData.collectionFileIds) {
-                console.log('[FullScreenFeed] Rendering collection:', {
-                  fileId,
-                  fileType: actualFileType,
-                  collectionFileIds: collectionData.collectionFileIds
-                });
+                // Only log in development mode (performance optimization)
+                if (process.env.NODE_ENV === 'development') {
+                  console.log('[FullScreenFeed] Rendering collection:', {
+                    fileId,
+                    fileType: actualFileType,
+                    collectionFileIds: collectionData.collectionFileIds.length
+                  });
+                }
                 return (
                   <CollectionFeed
                     key={fileId}
