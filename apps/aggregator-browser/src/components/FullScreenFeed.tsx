@@ -3,7 +3,7 @@
  * TikTok-style full-screen vertical feed with swipe navigation
  */
 
-import React, { useRef, useEffect, useState, useCallback } from 'react';
+import React, { useRef, useEffect, useState, useCallback, useMemo } from 'react';
 import DOMPurify from 'dompurify';
 import { IndexedFile } from '../types/aggregator';
 import { FeedEngagementSidebar } from './FeedEngagementSidebar';
@@ -83,6 +83,7 @@ export function FullScreenFeed({
   const accountIdCacheRef = useRef<string | null>(null); // Cache accountId to avoid repeated API calls
   const thoughtDetectionLogged = useRef<Set<string>>(new Set()); // Track which thoughts we've logged to reduce console spam
   const loadingThoughtsRef = useRef<Set<string>>(new Set()); // Track which thoughts are currently loading
+  const sanitizedContentCache = useRef<Map<string, string>>(new Map()); // Cache sanitized HTML content
   
   // Sync external thumbnails/videoBlobs when they change
   // Merge instead of replace to preserve thumbnails loaded internally
@@ -399,28 +400,15 @@ export function FullScreenFeed({
   // This ensures thoughts render immediately when feed loads, not just when scrolled into view
   useEffect(() => {
     const loadThoughtContent = async () => {
-      // Load current file and adjacent files (for smooth scrolling)
+      // OPTIMIZATION: Only load current file and adjacent files (for smooth scrolling)
+      // Don't load all thoughts in the feed - this was causing the delay
       const indicesToLoad = [
         currentIndex - 1,
         currentIndex,
         currentIndex + 1
       ].filter(idx => idx >= 0 && idx < files.length);
-      
-      // ALSO load thoughts for all files in the feed (not just visible ones)
-      // This ensures thoughts render on initial page load
-      const allThoughtIndices = files.map((_, idx) => idx).filter(idx => {
-        const indexedFile = files[idx];
-        const file = indexedFile.metadata;
-        const thoughtFileName = file.name || file.title || '';
-        const isThoughtFile = /^thought-\d+\.(thought|png)/i.test(thoughtFileName);
-        const isTextPost = file.fileType === 'text' || file.fileType === 'thought';
-        return isThoughtFile || isTextPost;
-      });
-      
-      // Combine visible indices with all thought indices, remove duplicates
-      const allIndicesToLoad = Array.from(new Set([...indicesToLoad, ...allThoughtIndices]));
 
-      await Promise.all(allIndicesToLoad.map(async (idx) => {
+      await Promise.all(indicesToLoad.map(async (idx) => {
         const indexedFile = files[idx];
         const file = indexedFile.metadata;
         const fileId = file.fileId;
@@ -432,6 +420,14 @@ export function FullScreenFeed({
                             (file as any)?.textPost ||
                             (file as any)?.thought;
         
+        // OPTIMIZATION: Early exit if content is already available in metadata
+        if (textPostData?.content && 
+            textPostData.content.length > 0 && 
+            !/^thought-\d+\.(thought|png)/i.test(textPostData.content)) {
+          // Content is already available in metadata - no need to load from Drive
+          return;
+        }
+        
         const thoughtFileName = file.name || file.title || '';
         const isThoughtFile = /^thought-\d+\.(thought|png)/i.test(thoughtFileName);
         const isTextPost = file.fileType === 'text' || file.fileType === 'thought';
@@ -440,53 +436,26 @@ export function FullScreenFeed({
         const currentContent = textPostData?.content || file.description || file.name || file.title || '';
         const isJustFilename = /^thought-\d+\.(thought|png)/i.test(currentContent);
         
-        // ALWAYS log when we detect a thought that needs loading (even if already loading/loaded)
-        if ((isThoughtFile || isTextPost) && (isJustFilename || !textPostData?.content)) {
-          console.log(`[FullScreenFeed] 🔍 Thought detected but content missing:`, {
-            fileId,
-            isThoughtFile,
-            isTextPost,
-            hasTextPostData: !!textPostData,
-            textPostDataContent: textPostData?.content,
-            currentContent: currentContent.substring(0, 50),
-            isJustFilename,
-            alreadyLoaded: loadedThoughtContent.has(fileId),
-            alreadyLoading: loadingThoughtsRef.current.has(fileId),
-            fileType: file.fileType,
-            fileName: file.name || file.title,
-            metadataKeys: Object.keys(indexedFile.metadata || {}),
-            metadataTextPost: (indexedFile.metadata as any)?.textPost ? 'EXISTS' : 'MISSING',
-            metadataThought: (indexedFile.metadata as any)?.thought ? 'EXISTS' : 'MISSING',
-            fullMetadata: indexedFile.metadata
-          });
-        }
-        
-        // FIX: Only try to load from Google Drive if authenticated AND content is actually missing
+        // OPTIMIZATION: Only try to load from Google Drive if authenticated AND content is actually missing
         // For public thoughts, content should already be in metadata - don't try to load
         const shouldLoadThought = (isThoughtFile || isTextPost) && 
                                   (isJustFilename || !textPostData?.content) && 
                                   !loadedThoughtContent.has(fileId) && 
-                                  !loadingThoughtsRef.current.has(fileId);
+                                  !loadingThoughtsRef.current.has(fileId) &&
+                                  userState.isUnlocked; // Only load if authenticated
         
         if (shouldLoadThought) {
           loadingThoughtsRef.current.add(fileId);
-          console.log(`[FullScreenFeed] Loading thought content for ${fileId}...`);
           
           try {
             const { PNOAuthService } = await import('../services/pnOAuthService');
             const accessToken = await PNOAuthService.getValidAccessToken();
             if (!accessToken) {
-              // FIX: Don't warn for public thoughts - this is expected
-              // Only warn if we actually expected to load it
-              if (isJustFilename) {
-                console.warn(`[FullScreenFeed] No access token to load thought ${fileId} - thought content should be in metadata for public thoughts`);
-              }
               return;
             }
             
             const session = PNOAuthService.loadSession();
             if (!session?.did) {
-              console.warn(`[FullScreenFeed] No session to load thought ${fileId}`);
               return;
             }
             
@@ -496,7 +465,6 @@ export function FullScreenFeed({
               publicKey = session.did.substring(8);
             }
             if (!publicKey) {
-              console.warn(`[FullScreenFeed] No publicKey to load thought ${fileId}`);
               return;
             }
             
@@ -533,14 +501,11 @@ export function FullScreenFeed({
             const loadedTextPost = thoughtData.textPost;
             
             if (loadedTextPost) {
-              console.log(`[FullScreenFeed] ✅ Loaded thought content for ${fileId}`);
               setLoadedThoughtContent(prev => {
                 const next = new Map(prev);
                 next.set(fileId, loadedTextPost);
                 return next;
               });
-            } else {
-              console.warn(`[FullScreenFeed] Thought file ${fileId} missing textPost data:`, thoughtData);
             }
           } catch (error) {
             console.error(`[FullScreenFeed] Error loading thought ${fileId}:`, error);
@@ -552,7 +517,9 @@ export function FullScreenFeed({
     };
     
     loadThoughtContent();
-  }, [currentIndex, files, loadedThoughtContent]);
+    // OPTIMIZATION: Remove loadedThoughtContent from dependencies to prevent re-renders on every load
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentIndex, files, userState.isUnlocked]);
 
   // Load video blobs and thumbnails for visible files (only if not provided externally)
   useEffect(() => {
@@ -1399,19 +1366,25 @@ export function FullScreenFeed({
                     if (content && typeof content === 'string') {
                       // If content is HTML, sanitize it before rendering
                       if (content.includes('<')) {
-                        // SECURITY: Sanitize HTML to prevent XSS attacks
-                        const sanitizedContent = DOMPurify.sanitize(content, {
-                          ALLOWED_TAGS: ['p', 'br', 'strong', 'em', 'u', 'a', 'ul', 'ol', 'li', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6'],
-                          ALLOWED_ATTR: ['href', 'target', 'rel'],
-                          ALLOW_DATA_ATTR: false
-                        });
+                        // OPTIMIZATION: Cache sanitized content to avoid re-sanitizing on every render
+                        let sanitizedContent = sanitizedContentCache.current.get(content);
+                        if (!sanitizedContent) {
+                          // SECURITY: Sanitize HTML to prevent XSS attacks
+                          sanitizedContent = DOMPurify.sanitize(content, {
+                            ALLOWED_TAGS: ['p', 'br', 'strong', 'em', 'u', 'a', 'ul', 'ol', 'li', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6'],
+                            ALLOWED_ATTR: ['href', 'target', 'rel'],
+                            ALLOW_DATA_ATTR: false
+                          });
+                          sanitizedContentCache.current.set(content, sanitizedContent);
+                        }
                         return <div dangerouslySetInnerHTML={{ __html: sanitizedContent }} />;
                       }
                       return content;
                     }
                     // Fallback to content we prepared above
-                    // Log if we're using fallback content
-                    if (!contentToRender || contentToRender === 'Thought' || contentToRender === 'Loading thought...') {
+                    // Only log in development mode (performance optimization)
+                    if ((!contentToRender || contentToRender === 'Thought' || contentToRender === 'Loading thought...') && 
+                        process.env.NODE_ENV === 'development') {
                       console.warn(`[FullScreenFeed] Using fallback content for thought ${fileId}:`, {
                         contentToRender,
                         hasLoadedContent: !!loadedContent,
