@@ -1031,7 +1031,7 @@ export class AggregatorMetadataServiceDB {
         
         // If file is marked as public, trust that it's accessible and keep it
         // This prevents filtering out valid public files that the service account can't access
-        const isPublic = file.metadata.isPublic === true || file.metadata.isPublic === 'true';
+        const isPublic = file.metadata.isPublic === true;
         if (isPublic) {
           // File is marked public - trust the database and keep it
           // Even if service account can't verify, if it's in the database as public, it's accessible
@@ -1085,7 +1085,7 @@ export class AggregatorMetadataServiceDB {
             // Permission error - service account doesn't have access
             // BUT: If file is marked public (isPublic = true), trust that it's accessible and keep it
             // The file might be shared publicly even if service account can't see it
-            const isPublic = file.metadata.isPublic === true || file.metadata.isPublic === 'true';
+            const isPublic = file.metadata.isPublic === true;
             if (isPublic) {
               console.log(`✅ [filterActiveFiles] File ${backendFileId} is public but service account can't verify (${verifyResponse.status}) - keeping: ${file.metadata.name || file.fileId}`);
               return file; // Trust that public files are accessible
