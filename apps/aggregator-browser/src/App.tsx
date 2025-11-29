@@ -692,6 +692,15 @@ function App() {
     return (hasTextPostData || hasTextFileType || isThoughtFile) && !hasMediaExtension;
   };
 
+  // Helper function to check if a file is a collection
+  const isCollection = (file: IndexedFile): boolean => {
+    const collectionData = file.metadata?.collection;
+    return file.metadata.fileType === 'collection' && 
+           collectionData?.collectionFileIds && 
+           Array.isArray(collectionData.collectionFileIds) &&
+           collectionData.collectionFileIds.length > 0;
+  };
+
   // REMOVED: isMediaOnlyFeed function - thoughts should appear in ALL feeds
   // The only place thoughts are excluded is the me page "media" tab, which handles it separately
 

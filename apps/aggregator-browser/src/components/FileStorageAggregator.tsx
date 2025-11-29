@@ -5,7 +5,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
-import { Download, File, RefreshCw, AlertCircle, Lock, Globe, X, Edit, Eye, Grid, List, Plus, Cloud, MoreVertical, Share2, Star, Type, Upload, Minus, Trash2 } from 'lucide-react';
+import { Download, File, RefreshCw, AlertCircle, Lock, Globe, X, Edit, Eye, Grid, List, Plus, Cloud, MoreVertical, Share2, Star, Type, Upload, Minus, Trash2, Layers } from 'lucide-react';
 import { PNOAuthService } from '../services/pnOAuthService';
 import { EncryptionManager } from '../utils/encryptionManager';
 import { getEncryptionService } from '../services/encryptionService';
@@ -899,7 +899,9 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
   const [showAddMenuFor, setShowAddMenuFor] = useState<string | null>(null);
   const [addMenuPosition, setAddMenuPosition] = useState<{ top: number; left: number } | null>(null);
   const [isBulkDeleteMode, setIsBulkDeleteMode] = useState(false);
+  const [isCollectionMode, setIsCollectionMode] = useState(false);
   const [selectedFiles, setSelectedFiles] = useState<Set<string>>(new Set());
+  const [collectionFileOrder, setCollectionFileOrder] = useState<Map<string, number>>(new Map());
   const fileInputRefs = useRef<Map<string, HTMLInputElement | null>>(new Map());
   const actionMenuRef = useRef<HTMLDivElement | null>(null);
   const menuButtonRefs = useRef<Map<string, HTMLButtonElement | null>>(new Map());
@@ -2017,17 +2019,105 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
     }
   };
 
+  // Collection creation handler
+  const handleCreateCollection = async (accountId: string) => {
+    if (!authenticatedUser?.id || !accountId) return;
+    if (selectedFiles.size === 0) return;
+
+    setIsLoading(true);
+    setError(null);
+
+    try {
+      // Sort files by collection order
+      const accountFiles = filesByAccount.get(accountId) || [];
+      const selectedFilesArray = accountFiles
+        .filter(file => selectedFiles.has(file.id))
+        .sort((a, b) => {
+          const orderA = collectionFileOrder.get(a.id) || 0;
+          const orderB = collectionFileOrder.get(b.id) || 0;
+          return orderA - orderB;
+        });
+
+      const collectionFileIds = selectedFilesArray.map(f => f.id);
+      
+      // Import and use collection service
+      const { createCollection } = await import('../services/collectionService');
+      const result = await createCollection(
+        {
+          collectionFileIds: collectionFileIds,
+          title: `Collection of ${collectionFileIds.length} files`
+        },
+        accountId,
+        {
+          isPublic: true,
+          isNSFW: false
+        }
+      );
+
+      if (result.success) {
+        // Clear selection and exit collection mode
+        setSelectedFiles(new Set());
+        setCollectionFileOrder(new Map());
+        setIsCollectionMode(false);
+        
+        // Reload files
+        await loadFilesForAccount(accountId);
+      } else {
+        throw new Error(result.error || 'Failed to create collection');
+      }
+      
+    } catch (err: any) {
+      setError(err.message || 'Failed to create collection');
+      console.error('[FileStorageAggregator] Collection creation error:', err);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   // Toggle file selection
   const toggleFileSelection = (fileId: string) => {
-    setSelectedFiles(prev => {
-      const newSet = new Set(prev);
-      if (newSet.has(fileId)) {
-        newSet.delete(fileId);
-      } else {
-        newSet.add(fileId);
-      }
-      return newSet;
-    });
+    if (isCollectionMode) {
+      setSelectedFiles(prev => {
+        const newSet = new Set(prev);
+        if (newSet.has(fileId)) {
+          // Deselecting - remove from order and renumber remaining files
+          newSet.delete(fileId);
+          const removedOrder = collectionFileOrder.get(fileId) || 0;
+          setCollectionFileOrder(prevOrder => {
+            const newOrder = new Map(prevOrder);
+            newOrder.delete(fileId);
+            // Renumber files that came after this one
+            newOrder.forEach((order, id) => {
+              if (order > removedOrder) {
+                newOrder.set(id, order - 1);
+              }
+            });
+            return newOrder;
+          });
+        } else {
+          // Selecting - assign next number
+          newSet.add(fileId);
+          const nextOrder = collectionFileOrder.size + 1;
+          setCollectionFileOrder(prevOrder => {
+            const newOrder = new Map(prevOrder);
+            newOrder.set(fileId, nextOrder);
+            return newOrder;
+          });
+        }
+        return newSet;
+      });
+    } else {
+      // Regular bulk delete mode behavior
+      setSelectedFiles(prev => {
+        const newSet = new Set(prev);
+        if (newSet.has(fileId)) {
+          newSet.delete(fileId);
+        } else {
+          newSet.add(fileId);
+        }
+        return newSet;
+      });
+    }
   };
 
   // Select all files in current account
@@ -2876,6 +2966,21 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
                             <Upload className="h-4 w-4" />
                             Add File
                           </button>
+                          <button
+                            onClick={() => {
+                              setSelectedAccountId(account.accountId);
+                              setIsCollectionMode(true);
+                              setIsBulkDeleteMode(false);
+                              setSelectedFiles(new Set());
+                              setCollectionFileOrder(new Map());
+                              setShowAddMenuFor(null);
+                              setAddMenuPosition(null);
+                            }}
+                            className="w-full px-4 py-2 text-left text-white hover:bg-neutral-700 flex items-center gap-2 text-sm"
+                          >
+                            <Layers className="h-4 w-4" />
+                            Add Collection
+                          </button>
                         </div>
                       )}
                     </div>
@@ -2951,11 +3056,11 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
                   <div
                     key={file.id}
                     className={`bg-neutral-800/50 rounded-lg overflow-hidden hover:bg-neutral-800 transition-colors group ${
-                      isBulkDeleteMode ? 'cursor-default' : 'cursor-pointer'
+                      (isBulkDeleteMode || isCollectionMode) ? 'cursor-default' : 'cursor-pointer'
                     } ${selectedFiles.has(file.id) ? 'ring-2 ring-blue-500' : ''}`}
                     onClick={(e) => {
-                      // Handle checkbox click in bulk delete mode
-                      if (isBulkDeleteMode) {
+                      // Handle checkbox click in bulk delete or collection mode
+                      if (isBulkDeleteMode || isCollectionMode) {
                         const target = e.target as HTMLElement;
                         if (target.closest('input[type="checkbox"]') || target.closest('label')) {
                           toggleFileSelection(file.id);
@@ -2973,7 +3078,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
                     }}
                   >
                     {/* Checkbox for bulk delete mode */}
-                    {isBulkDeleteMode && (
+                    {(isBulkDeleteMode || isCollectionMode) && (
                       <div className="absolute top-2 left-2 z-30" onClick={(e) => e.stopPropagation()}>
                         <input
                           type="checkbox"
@@ -2981,6 +3086,12 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
                           onChange={() => toggleFileSelection(file.id)}
                           className="w-5 h-5 rounded border-neutral-600 bg-neutral-800 text-blue-600 focus:ring-2 focus:ring-blue-500"
                         />
+                      </div>
+                    )}
+                    {/* Order marker for collection mode */}
+                    {isCollectionMode && collectionFileOrder.has(file.id) && (
+                      <div className="absolute top-2 right-2 z-30 bg-blue-600 text-white rounded-full w-6 h-6 flex items-center justify-center text-xs font-bold">
+                        {collectionFileOrder.get(file.id)}
                       </div>
                     )}
                     <div className="relative aspect-square bg-neutral-700/50 overflow-hidden">
@@ -3005,8 +3116,8 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
                           <Globe className="h-3 w-3 text-white" />
                         </div>
                       )}
-                      {/* Menu button - top right corner (hidden in bulk delete mode) */}
-                      {!isBulkDeleteMode && (
+                      {/* Menu button - top right corner (hidden in bulk delete or collection mode) */}
+                      {!isBulkDeleteMode && !isCollectionMode && (
                         <div className="absolute top-2 right-2 z-20 menu-container" onClick={(e) => e.stopPropagation()}>
                           <button
                           ref={(el) => {
@@ -3148,7 +3259,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
                         </p>
                       </div>
                     </div>
-                    {!isBulkDeleteMode && (
+                    {!isBulkDeleteMode && !isCollectionMode && (
                       <div className="flex items-center justify-center space-x-2" onClick={(e) => e.stopPropagation()}>
                         <div className="relative">
                           <button
@@ -3205,6 +3316,36 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
                   </div>
                 )}
                 
+                {/* Collection Mode UI */}
+                {isCollectionMode && (
+                  <div className="mt-4 pt-4 border-t border-neutral-700 flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <span className="text-text-secondary text-sm">
+                        {selectedFiles.size} file{selectedFiles.size !== 1 ? 's' : ''} selected
+                      </span>
+                    </div>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => {
+                          setIsCollectionMode(false);
+                          setSelectedFiles(new Set());
+                          setCollectionFileOrder(new Map());
+                        }}
+                        className="px-3 py-1.5 text-sm text-white hover:bg-neutral-700 rounded transition-colors"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        onClick={() => handleCreateCollection(account.accountId)}
+                        disabled={selectedFiles.size === 0 || isLoading}
+                        className="px-3 py-1.5 text-sm bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        Create Collection
+                      </button>
+                    </div>
+                  </div>
+                )}
+
                 {/* Bulk Delete Button */}
                 {isBulkDeleteMode && (() => {
                   const accountSelectedFiles = accountFiles.filter(f => selectedFiles.has(f.id));

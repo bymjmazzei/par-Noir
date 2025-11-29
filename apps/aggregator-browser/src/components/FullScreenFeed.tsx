@@ -17,6 +17,10 @@ import { useViewportHeightCSS } from '../hooks/useViewportHeight';
 import { formatTimestamp } from '../utils/formatTimestamp';
 import { decryptWithToken, ShareToken } from '../utils/tokenDecryption';
 import { cleanTitle } from '../utils/cleanTitle';
+import { CollectionFeed } from './CollectionFeed';
+import { PNOAuthService } from '../services/pnOAuthService';
+
+const apiEndpoint = process.env.REACT_APP_API_ENDPOINT || 'https://api.parnoir.com';
 
 interface FullScreenFeedProps {
   files: IndexedFile[];
@@ -1218,10 +1222,17 @@ export function FullScreenFeed({
           hasImageExtension
         );
         
-        // CRITICAL: If it's a thought, force all other types to false to prevent flickering
+        // Check for collection
+        const collectionData = file.collection || (file as any).collection || indexedFile.metadata?.collection;
+        const isCollectionFile = file.fileType === 'collection' && 
+                                collectionData?.collectionFileIds && 
+                                Array.isArray(collectionData.collectionFileIds) &&
+                                collectionData.collectionFileIds.length > 0;
+        
+        // CRITICAL: If it's a thought or collection, force all other types to false to prevent flickering
         // This ensures only ONE content type renders at a time
-        const isVideoFinal = isTextPost ? false : isVideo;
-        const isImageFinal = isTextPost ? false : isImage;
+        const isVideoFinal = (isTextPost || isCollectionFile) ? false : isVideo;
+        const isImageFinal = (isTextPost || isCollectionFile) ? false : isImage;
         
         // Debug logging for image detection (only in development)
         if (process.env.NODE_ENV === 'development' && (file.fileType === 'image' || (file.name || file.title || '').match(/\.(jpg|jpeg|png|gif|webp|svg|bmp|ico)$/i)) && !isImageFinal) {
@@ -1652,8 +1663,35 @@ export function FullScreenFeed({
               );
             })()}
 
-            {/* Non-image/video/text/slideshow file */}
-            {!isImageFinal && !isVideoFinal && !isTextPost && !textPostData && (
+            {/* Collection */}
+            {(() => {
+              const collectionData = file.collection || (file as any).collection || indexedFile.metadata?.collection;
+              const isCollectionFile = file.fileType === 'collection' && 
+                                      collectionData?.collectionFileIds && 
+                                      Array.isArray(collectionData.collectionFileIds) &&
+                                      collectionData.collectionFileIds.length > 0;
+              
+              if (isCollectionFile && collectionData.collectionFileIds) {
+                return (
+                  <CollectionFeed
+                    key={fileId}
+                    collectionFileIds={collectionData.collectionFileIds}
+                    accountId={undefined} // Will be fetched inside component
+                  />
+                );
+              }
+              return null;
+            })()}
+
+            {/* Non-image/video/text/slideshow/collection file */}
+            {!isImageFinal && !isVideoFinal && !isTextPost && !textPostData && (() => {
+              const collectionData = file.collection || (file as any).collection || indexedFile.metadata?.collection;
+              const isCollectionFile = file.fileType === 'collection' && 
+                                      collectionData?.collectionFileIds && 
+                                      Array.isArray(collectionData.collectionFileIds) &&
+                                      collectionData.collectionFileIds.length > 0;
+              return !isCollectionFile;
+            })() && (
               <div className="flex flex-col items-center justify-center text-neutral-500">
                 <File className="h-24 w-24 mb-4" />
                 <h3 className="text-white text-xl font-medium mb-2">{cleanTitle(fileName)}</h3>

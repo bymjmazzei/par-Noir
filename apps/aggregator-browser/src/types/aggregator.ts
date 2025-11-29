@@ -343,6 +343,11 @@ export interface PublicMetadata {
   textPost?: TextPostData;
   thought?: TextPostData; // Alias for textPost
   
+  // Collection Support
+  collection?: {
+    collectionFileIds: string[]; // Array of file IDs in order
+  };
+  
   // PDF Slideshow Support
   pdfPageThumbnailIds?: string[]; // Array of thumbnail file IDs for PDF slideshow pages (loaded directly, no folder listing)
   pdfFileId?: string; // ID of the original PDF file (for on-demand rendering)
