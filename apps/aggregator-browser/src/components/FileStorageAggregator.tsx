@@ -2501,6 +2501,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
       let shareToken: any = undefined;
       let freshAccessToken: string | undefined = undefined;
       let thumbnailShareToken: any = undefined;
+      let thumbnailFileId: string | undefined = undefined;
       
       // Refresh access token before uploading main file
       freshAccessToken = await PNOAuthService.getValidAccessToken();
