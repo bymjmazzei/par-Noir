@@ -238,22 +238,36 @@ export class AggregatorMetadataServiceDB {
         -- Exclude main files that have a thumbnailFileId (those are private, only thumbnails are public)
         -- Exclude main PDF files that have pdfPageThumbnailIds (only their thumbnails should appear in feeds)
         -- BUT: Allow thumbnail files (name starts with "thumb_") that have pdfPageThumbnailIds (they're slideshow entry points)
-        -- AND: Always allow thoughts/text posts (they don't have thumbnails, so they should always be included)
+        -- NOTE: Thoughts with thumbnails should NOT appear - only their thumbnails should be in feeds
         AND (
-          -- Allow thoughts/text posts (they don't have thumbnails, so they should always be included)
-          am.metadata->>'fileType' = 'text' 
-          OR am.metadata->>'fileType' = 'thought' 
-          OR am.metadata->'textPost' IS NOT NULL 
-          OR am.metadata->'thought' IS NOT NULL
-          -- OR exclude main files that have a thumbnailFileId (those are private, only thumbnails are public)
-          OR (am.metadata->>'thumbnailFileId' IS NULL OR am.metadata->>'thumbnailFileId' = '')
+          -- Exclude thought/text post files that have a thumbnailFileId (only their thumbnails should appear)
+          NOT (
+            (am.metadata->>'fileType' = 'text' 
+             OR am.metadata->>'fileType' = 'thought' 
+             OR am.metadata->'textPost' IS NOT NULL 
+             OR am.metadata->'thought' IS NOT NULL)
+            AND am.metadata->>'thumbnailFileId' IS NOT NULL 
+            AND am.metadata->>'thumbnailFileId' != ''
+          )
+          -- Allow standalone text posts/thoughts that don't have thumbnails (legacy support)
+          AND (
+            -- Standalone thoughts/text posts (no thumbnail)
+            ((am.metadata->>'fileType' = 'text' 
+              OR am.metadata->>'fileType' = 'thought' 
+              OR am.metadata->'textPost' IS NOT NULL 
+              OR am.metadata->'thought' IS NOT NULL)
+             AND (am.metadata->>'thumbnailFileId' IS NULL OR am.metadata->>'thumbnailFileId' = ''))
+            -- OR exclude main files that have a thumbnailFileId (those are private, only thumbnails are public)
+            OR (am.metadata->>'thumbnailFileId' IS NULL OR am.metadata->>'thumbnailFileId' = '')
+          )
         )
         AND (
-          -- Allow thoughts/text posts (they don't have pdfPageThumbnailIds)
-          am.metadata->>'fileType' = 'text' 
-          OR am.metadata->>'fileType' = 'thought' 
-          OR am.metadata->'textPost' IS NOT NULL 
-          OR am.metadata->'thought' IS NOT NULL
+          -- Allow standalone thoughts/text posts (they don't have pdfPageThumbnailIds)
+          ((am.metadata->>'fileType' = 'text' 
+            OR am.metadata->>'fileType' = 'thought' 
+            OR am.metadata->'textPost' IS NOT NULL 
+            OR am.metadata->'thought' IS NOT NULL)
+           AND (am.metadata->>'thumbnailFileId' IS NULL OR am.metadata->>'thumbnailFileId' = ''))
           -- OR allow thumbnail files with pdfPageThumbnailIds (they're slideshow entry points)
           OR (LOWER(am.metadata->>'name') LIKE 'thumb_%' OR LOWER(am.metadata->>'title') LIKE 'thumb_%')
           -- OR exclude main PDF files (not thumbnails) that have pdfPageThumbnailIds

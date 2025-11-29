@@ -435,7 +435,9 @@ export async function createTextPost(
     );
 
     // Create metadata entry with text post data
-    console.log('📝 [TextPost] Creating metadata entry with text post data...');
+    // NOTE: Original thought file is PRIVATE (isPublic: false) - only the thumbnail appears in feeds
+    // The original file is kept for editing purposes only
+    console.log('📝 [TextPost] Creating metadata entry with text post data (private, for editing only)...');
     const metadataResponse = await fetch(`${apiEndpoint}/api/aggregator/metadata-index/${fileId}`, {
       method: 'PUT',
       headers: {
@@ -448,7 +450,7 @@ export async function createTextPost(
         keywords: metadata?.keywords || [],
         tags: metadata?.tags || [],
         fileType: 'thought', // Custom filetype for thoughts (not PNG)
-        isPublic: metadata?.isPublic ?? true, // Thoughts are public by default
+        isPublic: false, // Original thought file is PRIVATE - only thumbnail appears in feeds
         publicToken: shareToken ? JSON.stringify(shareToken) : undefined,
         uploadDate: new Date().toISOString(),
         textPost: textPost, // Include the full text post data (for editing)
