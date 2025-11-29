@@ -3579,7 +3579,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
         let existingPdfPageThumbnailIds = existingMetadata?.pdfPageThumbnailIds;
         let existingPdfPageThumbnailTokens = existingMetadata?.pdfPageThumbnailTokens;
         let existingPdfFileId = existingMetadata?.pdfFileId;
-        let existingThumbnailFileId = existingMetadata?.thumbnailFileId;
+        let existingThumbnailFileId = existingMetadata?.thumbnailFileId || null;
         
         if (isPDF && (!existingPdfPageThumbnailIds || existingPdfPageThumbnailIds.length === 0)) {
           try {
