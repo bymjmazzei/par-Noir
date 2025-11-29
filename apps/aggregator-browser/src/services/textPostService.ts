@@ -488,13 +488,15 @@ export async function createTextPost(
           body: JSON.stringify({
             name: `thumb_thought-${Date.now()}.png`,
             title: metadata?.title || titleFromContent || 'Thought',
-            description: metadata?.description || textPost.content,
+            // No description - thoughts don't show captions by default (can be added later via metadata edit)
             keywords: metadata?.keywords || [],
             tags: metadata?.tags || [],
             fileType: 'image', // Thumbnail is an image
             isPublic: true, // Thumbnail is public
             uploadDate: new Date().toISOString(),
             isNSFW: metadata?.isNSFW || false,
+            // Mark as thought thumbnail so UI knows to render title only (no caption)
+            isThoughtThumbnail: true,
             // Store reference to main file for editing
             mainFileId: fileId, // Reference to JSON file for editing
             publicToken: thumbnailPublicToken,
