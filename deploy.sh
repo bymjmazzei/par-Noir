@@ -13,9 +13,9 @@ if [ $? -ne 0 ]; then
     exit 1
 fi
 
-# Deploy to Firebase
+# Deploy to Firebase (hosting only, functions not configured)
 echo "🔥 Deploying to Firebase..."
-firebase deploy
+firebase deploy --only hosting
 
 if [ $? -eq 0 ]; then
     echo "✅ Deployment successful!"
