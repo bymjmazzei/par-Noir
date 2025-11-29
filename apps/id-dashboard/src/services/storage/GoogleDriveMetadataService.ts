@@ -991,7 +991,8 @@ export class GoogleDriveMetadataService {
     }
 
     // AUTOMATIC CLEANUP: Verify files exist and remove orphaned entries
-    // Google Drive is the source of truth - if file doesn't exist, remove from index
+    // CRITICAL: Companion metadata spreadsheet is the source of truth for visibility
+    // Only remove files if: 1) File doesn't exist (404), AND 2) Spreadsheet says not public
     // Skip cleanup when updating the index to avoid removing files we're about to add
     if (!skipCleanup && index && index.files && index.files.length > 0) {
       const originalCount = index.files.length;
@@ -999,12 +1000,89 @@ export class GoogleDriveMetadataService {
 
       for (const fileEntry of index.files) {
         const googleDriveFileId = (fileEntry as any).googleDriveFileId;
+        const fileId = (fileEntry as any).fileId || googleDriveFileId;
+        const fileName = (fileEntry as any).fileName || (fileEntry as any).originalName || 'unknown';
+        
         if (googleDriveFileId) {
-          const exists = await this.verifyFileExists(accessToken, googleDriveFileId);
-          if (exists) {
+          // CRITICAL: Check companion metadata spreadsheet as source of truth for visibility
+          // If spreadsheet says visibility='public', keep the file even if verifyFileExists fails
+          // (might be temporary API error or permission issue)
+          let shouldKeep = false;
+          let visibilityFromSpreadsheet: string | null = null;
+          
+          try {
+            // Try to find and read companion metadata spreadsheet
+            const spreadsheetQuery = `name='${fileId}.metadata' and '${metadataFolderId}' in parents and trashed=false and mimeType='application/vnd.google-apps.spreadsheet'`;
+            const spreadsheetResponse = await fetch(
+              `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(spreadsheetQuery)}&fields=files(id)&pageSize=1`,
+              {
+                headers: {
+                  'Authorization': `Bearer ${accessToken}`,
+                  'Content-Type': 'application/json'
+                }
+              }
+            );
+            
+            if (spreadsheetResponse.ok) {
+              const spreadsheetData = await spreadsheetResponse.json() as { files?: Array<{ id: string }> };
+              const spreadsheets = spreadsheetData.files || [];
+              
+              if (spreadsheets.length > 0) {
+                const spreadsheetId = spreadsheets[0].id;
+                
+                // Read visibility from spreadsheet Metadata sheet
+                const sheetsResponse = await fetch(
+                  `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/Metadata!A1:O2`,
+                  {
+                    headers: {
+                      'Authorization': `Bearer ${accessToken}`,
+                      'Content-Type': 'application/json'
+                    }
+                  }
+                );
+                
+                if (sheetsResponse.ok) {
+                  const sheetsData = await sheetsResponse.json() as { values?: string[][] };
+                  if (sheetsData.values && sheetsData.values.length >= 2) {
+                    const headers = sheetsData.values[0];
+                    const data = sheetsData.values[1];
+                    const visibilityIndex = headers.indexOf('visibility');
+                    
+                    if (visibilityIndex >= 0 && data[visibilityIndex]) {
+                      visibilityFromSpreadsheet = data[visibilityIndex];
+                      
+                      // If spreadsheet says file is public, keep it regardless of verifyFileExists result
+                      if (visibilityFromSpreadsheet === 'public') {
+                        shouldKeep = true;
+                        console.log(`✅ [getPublicFileIndex] Keeping file ${googleDriveFileId} (${fileName}) - companion metadata says visibility='public'`);
+                      } else {
+                        // Spreadsheet says file is not public - remove from index
+                        console.log(`🗑️ [getPublicFileIndex] Removing file ${googleDriveFileId} (${fileName}) - companion metadata says visibility='${visibilityFromSpreadsheet}'`);
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          } catch (spreadsheetError) {
+            // If we can't check spreadsheet, fall back to verifyFileExists
+            console.warn(`⚠️ [getPublicFileIndex] Could not check companion metadata spreadsheet for ${googleDriveFileId}, using verifyFileExists fallback:`, spreadsheetError);
+          }
+          
+          // If spreadsheet check didn't determine outcome, use verifyFileExists
+          if (!shouldKeep && visibilityFromSpreadsheet !== 'private' && visibilityFromSpreadsheet !== 'friends') {
+            const exists = await this.verifyFileExists(accessToken, googleDriveFileId);
+            if (exists) {
+              shouldKeep = true;
+            } else {
+              // File doesn't exist (404) or is trashed
+              // Only remove if we confirmed it doesn't exist (not just a permission error)
+              console.log(`🗑️ [getPublicFileIndex] Auto-removing orphaned file: ${googleDriveFileId} (${fileName})`);
+            }
+          }
+          
+          if (shouldKeep) {
             verifiedFiles.push(fileEntry);
-          } else {
-            console.log(`🗑️ [getPublicFileIndex] Auto-removing orphaned file: ${googleDriveFileId} (${(fileEntry as any).fileName || (fileEntry as any).originalName || 'unknown'})`);
           }
         } else {
           // Keep entries without googleDriveFileId
