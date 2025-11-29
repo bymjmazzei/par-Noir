@@ -3,8 +3,7 @@
  * TikTok-style full-screen vertical feed with swipe navigation
  */
 
-import React, { useRef, useEffect, useState, useCallback, useMemo } from 'react';
-import DOMPurify from 'dompurify';
+import React, { useRef, useEffect, useState, useCallback } from 'react';
 import { IndexedFile } from '../types/aggregator';
 import { FeedEngagementSidebar } from './FeedEngagementSidebar';
 import { EngagementOverlay } from './EngagementOverlay';
@@ -79,11 +78,7 @@ export function FullScreenFeed({
   const imageRefs = useRef<Map<string, HTMLImageElement>>(new Map());
   const [videoBlobs, setVideoBlobs] = useState<Map<string, string>>(externalVideoBlobs || new Map());
   const [thumbnails, setThumbnails] = useState<Map<string, string>>(externalThumbnails || new Map());
-  const [loadedThoughtContent, setLoadedThoughtContent] = useState<Map<string, any>>(new Map()); // fileId -> textPostData
   const accountIdCacheRef = useRef<string | null>(null); // Cache accountId to avoid repeated API calls
-  const thoughtDetectionLogged = useRef<Set<string>>(new Set()); // Track which thoughts we've logged to reduce console spam
-  const loadingThoughtsRef = useRef<Set<string>>(new Set()); // Track which thoughts are currently loading
-  const sanitizedContentCache = useRef<Map<string, string>>(new Map()); // Cache sanitized HTML content
   
   // Sync external thumbnails/videoBlobs when they change
   // Merge instead of replace to preserve thumbnails loaded internally
@@ -396,130 +391,7 @@ export function FullScreenFeed({
   }, [visibleFileId, getPopularComments]);
 
   // Load thought content from Google Drive when metadata only has filename
-  // FIX: Load thoughts for ALL files in feed, not just visible ones
-  // This ensures thoughts render immediately when feed loads, not just when scrolled into view
-  useEffect(() => {
-    const loadThoughtContent = async () => {
-      // OPTIMIZATION: Only load current file and adjacent files (for smooth scrolling)
-      // Don't load all thoughts in the feed - this was causing the delay
-      const indicesToLoad = [
-        currentIndex - 1,
-        currentIndex,
-        currentIndex + 1
-      ].filter(idx => idx >= 0 && idx < files.length);
-
-      await Promise.all(indicesToLoad.map(async (idx) => {
-        const indexedFile = files[idx];
-        const file = indexedFile.metadata;
-        const fileId = file.fileId;
-        
-        // Check if this is a thought that needs content loaded
-        const textPostData = loadedThoughtContent.get(fileId) ||
-                            (indexedFile.metadata as any)?.textPost || 
-                            (indexedFile.metadata as any)?.thought ||
-                            (file as any)?.textPost ||
-                            (file as any)?.thought;
-        
-        // OPTIMIZATION: Early exit if content is already available in metadata
-        if (textPostData?.content && 
-            textPostData.content.length > 0 && 
-            !/^thought-\d+\.(thought|png)/i.test(textPostData.content)) {
-          // Content is already available in metadata - no need to load from Drive
-          return;
-        }
-        
-        const thoughtFileName = file.name || file.title || '';
-        const isThoughtFile = /^thought-\d+\.(thought|png)/i.test(thoughtFileName);
-        const isTextPost = file.fileType === 'text' || file.fileType === 'thought';
-        
-        // If it's a thought but content is missing or just a filename, load it
-        const currentContent = textPostData?.content || file.description || file.name || file.title || '';
-        const isJustFilename = /^thought-\d+\.(thought|png)/i.test(currentContent);
-        
-        // OPTIMIZATION: Only try to load from Google Drive if authenticated AND content is actually missing
-        // For public thoughts, content should already be in metadata - don't try to load
-        const shouldLoadThought = (isThoughtFile || isTextPost) && 
-                                  (isJustFilename || !textPostData?.content) && 
-                                  !loadedThoughtContent.has(fileId) && 
-                                  !loadingThoughtsRef.current.has(fileId) &&
-                                  userState.isUnlocked; // Only load if authenticated
-        
-        if (shouldLoadThought) {
-          loadingThoughtsRef.current.add(fileId);
-          
-          try {
-            const { PNOAuthService } = await import('../services/pnOAuthService');
-            const accessToken = await PNOAuthService.getValidAccessToken();
-            if (!accessToken) {
-              return;
-            }
-            
-            const session = PNOAuthService.loadSession();
-            if (!session?.did) {
-              return;
-            }
-            
-            const pnId = session.did;
-            let publicKey = session?.publicKey;
-            if (!publicKey && session.did.startsWith('did:key:')) {
-              publicKey = session.did.substring(8);
-            }
-            if (!publicKey) {
-              return;
-            }
-            
-            // Get accountId
-            const accountId = await getAccountId(indexedFile, accessToken);
-            const apiEndpoint = process.env.REACT_APP_API_ENDPOINT || 'https://api.parnoir.com';
-            
-            // Download the thought file
-            const thoughtFileUrl = `${apiEndpoint}/api/drive/files/${fileId}?accountId=${accountId}&download=true`;
-            const thoughtResponse = await fetch(thoughtFileUrl, {
-              headers: { 'Authorization': `Bearer ${accessToken}` }
-            });
-            
-            if (!thoughtResponse.ok) {
-              console.warn(`[FullScreenFeed] Failed to download thought file ${fileId}:`, thoughtResponse.status);
-              return;
-            }
-            
-            const { EncryptionManager } = await import('../utils/encryptionManager');
-            const encryptedText = await thoughtResponse.text();
-            const encryptedPackage = JSON.parse(encryptedText);
-            const encryptionManager = new EncryptionManager();
-            const decryptedData = await encryptionManager.decrypt(
-              encryptedPackage.encrypted,
-              encryptedPackage.iv,
-              encryptedPackage.salt,
-              pnId,
-              publicKey
-            );
-            
-            // Parse the thought data
-            const decryptedText = new TextDecoder().decode(decryptedData);
-            const thoughtData = JSON.parse(decryptedText);
-            const loadedTextPost = thoughtData.textPost;
-            
-            if (loadedTextPost) {
-              setLoadedThoughtContent(prev => {
-                const next = new Map(prev);
-                next.set(fileId, loadedTextPost);
-                return next;
-              });
-            }
-          } catch (error) {
-            console.error(`[FullScreenFeed] Error loading thought ${fileId}:`, error);
-          } finally {
-            loadingThoughtsRef.current.delete(fileId);
-          }
-        }
-      }));
-    };
-    
-    loadThoughtContent();
-    // OPTIMIZATION: Remove loadedThoughtContent from dependencies to prevent re-renders on every load
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentIndex, files, userState.isUnlocked]);
+  // Thoughts now render as images (thumbnails) - no special loading needed!
 
   // Load video blobs and thumbnails for visible files (only if not provided externally)
   useEffect(() => {
@@ -1202,7 +1074,9 @@ export function FullScreenFeed({
         // CRITICAL: Only block images/videos if it's ACTUALLY a collection
         // Don't block based on file.collection - that might be an empty object on non-collection files
         const isVideoFinal = (isTextPost || isCollectionFile) ? false : isVideo;
-        const isImageFinal = (isTextPost || isCollectionFile) ? false : isImage;
+        // Thoughts with thumbnails should render as images (new thumbnail-based system)
+        const hasThumbnail = file.thumbnailFileId || (file.name || file.title || '').startsWith('thumb_');
+        const isImageFinal = (isCollectionFile) ? false : (isImage || (isTextPost && hasThumbnail));
         
         // Debug logging for image detection (only in development)
         if (process.env.NODE_ENV === 'development' && (file.fileType === 'image' || (file.name || file.title || '').match(/\.(jpg|jpeg|png|gif|webp|svg|bmp|ico)$/i)) && !isImageFinal) {
@@ -1246,161 +1120,8 @@ export function FullScreenFeed({
               zIndex: 0 // Ensure all tiles are on the same z-index level
             }}
           >
-            {/* Text Post / Thought - Render as its own tile, not an overlay */}
-            {(isTextPost || textPostData) && (() => {
-              // Check loaded thought content first (for thoughts loaded from Google Drive)
-              const loadedContent = loadedThoughtContent.get(fileId);
-              const effectiveTextPostData = loadedContent || textPostData;
-              
-              // Check if content is just a filename - if so, we need to load the actual thought file
-              const currentContent = effectiveTextPostData?.content || file.description || file.name || file.title || '';
-              const isJustFilename = /^thought-\d+\.(thought|png)/i.test(currentContent);
-              
-              // FIX: For public thoughts, content should already be in metadata.textPost.content
-              // Only try to load from Google Drive if we're authenticated AND content is missing
-              // If not authenticated (public feed), use what's in metadata or show fallback
-              const hasAuth = userState.isUnlocked;
-              const shouldLoadFromDrive = hasAuth && isJustFilename && !loadedContent;
-              
-              // If content is just a filename and we're loading, show loading state
-              // Otherwise use the actual content
-              const contentToRender = shouldLoadFromDrive ? 'Loading thought...' : (
-                effectiveTextPostData?.content || 
-                file.description || 
-                file.name || 
-                file.title || 
-                (thoughtFileName ? thoughtFileName.replace(/\.(thought|png)$/i, '') : 'Thought')
-              );
-              
-              // Debug logging removed - was causing performance issues
-              // Only log in development mode and only once per file
-              if (process.env.NODE_ENV === 'development' && !thoughtDetectionLogged.current.has(fileId)) {
-                thoughtDetectionLogged.current.add(fileId);
-                console.log(`[FullScreenFeed] Rendering thought/textPost for ${fileId}`);
-              }
-              
-              // Only log warnings in development mode (performance optimization)
-              if (isTextPost && !textPostData?.content && process.env.NODE_ENV === 'development') {
-                console.warn(`[FullScreenFeed] Thought detected but missing content:`, {
-                  fileId,
-                  fileDisplayName: file.name || file.title
-                });
-              }
-              
-              // Reference dimensions from thought creator (1080x1920 canvas)
-              const REFERENCE_WIDTH = 1080;
-              const REFERENCE_HEIGHT = 1920;
-              
-              // Calculate scale factor based on current viewport dimensions
-              // Use the smaller dimension to maintain aspect ratio
-              const viewportWidth = typeof window !== 'undefined' ? window.innerWidth : REFERENCE_WIDTH;
-              const viewportHeight = typeof window !== 'undefined' ? (window.innerHeight - 64) : REFERENCE_HEIGHT; // Account for bottom nav
-              const widthScale = viewportWidth / REFERENCE_WIDTH;
-              const heightScale = viewportHeight / REFERENCE_HEIGHT;
-              const scale = Math.min(widthScale, heightScale); // Use smaller to maintain aspect ratio
-              
-              // Use loaded content if available, otherwise use textPostData
-              const styleData = effectiveTextPostData?.style || textPostData?.style;
-              
-              // Scale all style properties proportionally
-              const baseFontSize = styleData?.fontSize || 48;
-              const scaledFontSize = baseFontSize * scale;
-              const basePadding = styleData?.padding || 40;
-              const scaledPadding = basePadding * scale;
-              const baseShadowOffsetX = styleData?.dropShadowOffsetX || 2;
-              const baseShadowOffsetY = styleData?.dropShadowOffsetY || 2;
-              const baseShadowBlur = styleData?.dropShadowBlur || 10;
-              
-              return (
-                <div 
-                  className="w-full h-full flex items-center justify-center relative"
-                  style={{
-                    backgroundColor: styleData?.backgroundColor || '#000000',
-                    backgroundImage: styleData?.backgroundImage 
-                      ? `url(${styleData.backgroundImage})` 
-                      : 'none',
-                    backgroundSize: 'cover',
-                    backgroundPosition: 'center',
-                    position: 'relative', // Ensure it's in normal flow, not absolute
-                    zIndex: 0, // Same z-index as other content types
-                    width: '100%',
-                    height: '100%'
-                  }}
-                >
-                  <div
-                    className="text-center"
-                    style={{
-                      fontFamily: styleData?.fontFamily || 'Arial',
-                      fontSize: `${scaledFontSize}px`,
-                      color: styleData?.textColor || '#FFFFFF',
-                      fontWeight: styleData?.textStyle === 'bold' ? 'bold' : 'normal',
-                      fontStyle: styleData?.textStyle === 'italic' ? 'italic' : 'normal',
-                      textDecoration: styleData?.textStyle === 'strikethrough' ? 'line-through' : 'none',
-                      textAlign: (styleData?.textAlign || 'center') as 'left' | 'center' | 'right' | 'justify',
-                      textShadow: `
-                        ${baseShadowOffsetX * scale}px 
-                        ${baseShadowOffsetY * scale}px 
-                        ${baseShadowBlur * scale}px 
-                        ${styleData?.dropShadowColor || '#000000'}
-                      `,
-                      // Scale padding proportionally to maintain layout
-                      padding: `${scaledPadding}px`,
-                      // Constrain max dimensions to maintain aspect ratio
-                      maxWidth: `${REFERENCE_WIDTH * scale}px`,
-                      maxHeight: `${REFERENCE_HEIGHT * scale}px`,
-                      width: '100%',
-                      lineHeight: 1.2,
-                      wordWrap: 'break-word',
-                      overflowWrap: 'break-word',
-                      whiteSpace: 'pre-wrap',
-                      WebkitFontSmoothing: 'antialiased',
-                      MozOsxFontSmoothing: 'grayscale',
-                      textRendering: 'optimizeLegibility',
-                    }}
-                  >
-                  {(() => {
-                    // Use effectiveTextPostData (loaded content or original)
-                    const content = effectiveTextPostData?.content || contentToRender;
-                    
-                    // Handle different content formats
-                    if (content && typeof content === 'string') {
-                      // If content is HTML, sanitize it before rendering
-                      if (content.includes('<')) {
-                        // OPTIMIZATION: Cache sanitized content to avoid re-sanitizing on every render
-                        let sanitizedContent = sanitizedContentCache.current.get(content);
-                        if (!sanitizedContent) {
-                          // SECURITY: Sanitize HTML to prevent XSS attacks
-                          sanitizedContent = DOMPurify.sanitize(content, {
-                            ALLOWED_TAGS: ['p', 'br', 'strong', 'em', 'u', 'a', 'ul', 'ol', 'li', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6'],
-                            ALLOWED_ATTR: ['href', 'target', 'rel'],
-                            ALLOW_DATA_ATTR: false
-                          });
-                          sanitizedContentCache.current.set(content, sanitizedContent);
-                        }
-                        return <div dangerouslySetInnerHTML={{ __html: sanitizedContent }} />;
-                      }
-                      return content;
-                    }
-                    // Fallback to content we prepared above
-                    // Only log in development mode (performance optimization)
-                    if ((!contentToRender || contentToRender === 'Thought' || contentToRender === 'Loading thought...') && 
-                        process.env.NODE_ENV === 'development') {
-                      console.warn(`[FullScreenFeed] Using fallback content for thought ${fileId}:`, {
-                        contentToRender,
-                        hasLoadedContent: !!loadedContent,
-                        fileDescription: file.description,
-                        fileName: file.name,
-                        fileTitle: file.title,
-                        thoughtFileName
-                      });
-                    }
-                    return contentToRender || 'No content available';
-                  })()}
-                </div>
-              </div>
-            );
-          })()}
-
+            {/* Thoughts now render as images (thumbnails) - no special rendering needed! */}
+            
             {/* Full-screen video */}
             {isVideoFinal && videoBlobs.get(fileId) && (() => {
               const containerHeight = window.innerHeight - 64; // Account for bottom nav
@@ -1515,7 +1236,7 @@ export function FullScreenFeed({
             
             {/* Full-screen image (single image) - Only render if NOT a text post */}
             {/* Show image if detected as image (show placeholder if thumbnail not loaded yet) */}
-            {isImageFinal && !isTextPost && !textPostData && (() => {
+            {isImageFinal && (() => {
               const thumbnailUrl = thumbnails.get(fileId);
               if (!thumbnailUrl) {
                 // Show placeholder while thumbnail loads

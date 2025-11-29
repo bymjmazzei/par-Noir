@@ -315,8 +315,97 @@ export async function createTextPost(
     const fileId = uploadedFile.id;
     console.log('✅ [TextPost] File uploaded successfully, fileId:', fileId);
 
-    // Thoughts don't need thumbnails - they render directly from HTML/CSS
-    // No thumbnail creation needed
+    // Generate and upload thumbnail PNG - thoughts now render as images for instant performance
+    console.log('🖼️ [TextPost] Generating thumbnail PNG...');
+    let thumbnailFileId: string | undefined = undefined;
+    let thumbnailShareToken: any = undefined;
+    
+    try {
+      // Generate full-size PNG thumbnail (1080x1920) - this is what users see in feeds
+      const thumbnailBlob = await renderTextPostToBlob(textPost, 1.0);
+      
+      // Encrypt thumbnail
+      const thumbnailArrayBuffer = await thumbnailBlob.arrayBuffer();
+      const thumbnailData = new Uint8Array(thumbnailArrayBuffer);
+      const encryptedThumbnail = await encryptionManager.encrypt(
+        thumbnailData,
+        session.did,
+        publicKey
+      );
+      
+      // Create encrypted thumbnail package
+      const thumbnailPackage: EncryptedFilePackage = {
+        encrypted: encryptedThumbnail.encrypted,
+        iv: encryptedThumbnail.iv,
+        salt: encryptedThumbnail.salt,
+        metadata: {
+          originalName: `thumb_${fileName.replace('.thought', '.png')}`,
+          originalSize: thumbnailBlob.size,
+          originalMimeType: 'image/png',
+        },
+      };
+      
+      // Generate share token for thumbnail
+      try {
+        const encryptionService = getEncryptionService();
+        thumbnailShareToken = await encryptionService.generateShareToken(
+          thumbnailPackage,
+          {
+            id: session.did,
+            publicKey: publicKey
+          }
+        );
+        console.log('✅ [TextPost] Thumbnail share token generated successfully');
+      } catch (tokenError: any) {
+        console.error('❌ [TextPost] Thumbnail share token generation failed:', tokenError?.message || tokenError);
+        thumbnailShareToken = undefined;
+      }
+      
+      // Convert to base64
+      const thumbnailBlobJson = new Blob([JSON.stringify(thumbnailPackage)], {
+        type: 'application/json',
+      });
+      
+      const thumbnailBase64 = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => {
+          const result = reader.result as string;
+          resolve(result.includes(',') ? result.split(',')[1] : result);
+        };
+        reader.onerror = () => reject(new Error('Failed to read thumbnail'));
+        reader.readAsDataURL(thumbnailBlobJson);
+      });
+      
+      // Upload encrypted thumbnail
+      const thumbnailFileName = `thumb_${fileName.replace('.thought', '.png')}.encrypted`;
+      const thumbnailUploadResponse = await fetch(`${apiEndpoint}/api/drive/files`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${uploadToken}`
+        },
+        body: JSON.stringify({
+          fileData: thumbnailBase64,
+          fileName: thumbnailFileName,
+          mimeType: 'application/json',
+          accountId: accountId
+        })
+      });
+      
+      if (thumbnailUploadResponse.ok) {
+        const thumbnailResult = await thumbnailUploadResponse.json();
+        thumbnailFileId = thumbnailResult.file?.id;
+        if (thumbnailFileId) {
+          console.log('✅ [TextPost] Thumbnail uploaded successfully, thumbnailFileId:', thumbnailFileId);
+        }
+      } else {
+        const errorText = await thumbnailUploadResponse.text().catch(() => 'Unknown error');
+        console.warn('⚠️ [TextPost] Thumbnail upload failed, continuing without thumbnail:', errorText);
+      }
+    } catch (thumbnailError: any) {
+      console.error('❌ [TextPost] Thumbnail generation/upload failed:', thumbnailError);
+      // Continue without thumbnail - thought can still work with textPost in metadata
+    }
 
     // Get fresh access token right before metadata update to ensure it's valid
     const metadataToken = await PNOAuthService.getValidAccessToken();
@@ -362,8 +451,9 @@ export async function createTextPost(
         isPublic: metadata?.isPublic ?? true, // Thoughts are public by default
         publicToken: shareToken ? JSON.stringify(shareToken) : undefined,
         uploadDate: new Date().toISOString(),
-        textPost: textPost, // Include the full text post data
+        textPost: textPost, // Include the full text post data (for editing)
         thought: textPost, // Alias for compatibility
+        thumbnailFileId: thumbnailFileId, // Reference to PNG thumbnail for rendering
         isNSFW: metadata?.isNSFW || false,
         feedCategories: metadata?.keywords && metadata.keywords.length > 0 ? metadata.keywords : undefined,
         category: metadata?.keywords && metadata.keywords.length > 0 ? metadata.keywords[0] : undefined,
@@ -377,6 +467,51 @@ export async function createTextPost(
       // Still return success since file was uploaded
     } else {
       console.log('✅ [TextPost] Metadata entry created successfully');
+    }
+    
+    // If thought is public and we have a thumbnail, submit thumbnail to public index
+    // This makes thoughts render instantly in feeds (just like images/videos)
+    const isPublic = metadata?.isPublic ?? true;
+    if (isPublic && thumbnailFileId) {
+      try {
+        const thumbnailPublicToken = thumbnailShareToken ? JSON.stringify(thumbnailShareToken) : undefined;
+        
+        // Submit thumbnail to public index (this is what appears in feeds)
+        const thumbnailMetadataResponse = await fetch(`${apiEndpoint}/api/aggregator/metadata-index/${thumbnailFileId}`, {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${metadataToken}`
+          },
+          body: JSON.stringify({
+            name: `thumb_thought-${Date.now()}.png`,
+            title: metadata?.title || titleFromContent || 'Thought',
+            description: metadata?.description || textPost.content,
+            keywords: metadata?.keywords || [],
+            tags: metadata?.tags || [],
+            fileType: 'image', // Thumbnail is an image
+            isPublic: true, // Thumbnail is public
+            uploadDate: new Date().toISOString(),
+            isNSFW: metadata?.isNSFW || false,
+            // Store reference to main file for editing
+            mainFileId: fileId, // Reference to JSON file for editing
+            publicToken: thumbnailPublicToken,
+            feedCategories: metadata?.keywords && metadata.keywords.length > 0 ? metadata.keywords : undefined,
+            category: metadata?.keywords && metadata.keywords.length > 0 ? metadata.keywords[0] : undefined,
+            subjects: subjects.length > 0 ? subjects : undefined,
+          }),
+        });
+        
+        if (thumbnailMetadataResponse.ok) {
+          console.log('✅ [TextPost] Thumbnail submitted to public index');
+        } else {
+          const errorText = await thumbnailMetadataResponse.text().catch(() => 'Unknown error');
+          console.warn('⚠️ [TextPost] Failed to submit thumbnail to public index:', errorText);
+        }
+      } catch (thumbIndexError: any) {
+        console.error('❌ [TextPost] Failed to submit thumbnail to public index:', thumbIndexError);
+        // Don't fail the upload if thumbnail indexing fails
+      }
     }
 
     return { fileId, success: true };
