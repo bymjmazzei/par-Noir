@@ -1222,15 +1222,18 @@ export function FullScreenFeed({
           hasImageExtension
         );
         
-        // Check for collection (reuse fileType variables already declared above)
-        const collectionData = file.collection || (file as any).collection || indexedFile.metadata?.collection;
+        // Check for collection - ONLY check metadata, be very strict to avoid false positives
+        // Don't check file.collection or (file as any).collection as those might be empty objects
+        const collectionData = indexedFile.metadata?.collection;
         const isCollectionFile = actualFileType === 'collection' && 
-                                collectionData?.collectionFileIds && 
+                                collectionData && 
+                                typeof collectionData === 'object' &&
+                                collectionData.collectionFileIds && 
                                 Array.isArray(collectionData.collectionFileIds) &&
                                 collectionData.collectionFileIds.length > 0;
         
-        // CRITICAL: If it's a thought or collection, force all other types to false to prevent flickering
-        // This ensures only ONE content type renders at a time
+        // CRITICAL: Only block images/videos if it's ACTUALLY a collection
+        // Don't block based on file.collection - that might be an empty object on non-collection files
         const isVideoFinal = (isTextPost || isCollectionFile) ? false : isVideo;
         const isImageFinal = (isTextPost || isCollectionFile) ? false : isImage;
         
@@ -1665,12 +1668,12 @@ export function FullScreenFeed({
 
             {/* Collection */}
             {(() => {
-              const collectionData = file.collection || (file as any).collection || indexedFile.metadata?.collection;
-              const fileTypeFromFile = file.fileType;
-              const fileTypeFromMetadata = indexedFile.metadata?.fileType;
-              const actualFileType = fileTypeFromFile || fileTypeFromMetadata;
+              // Only check metadata.collection, not file.collection - avoid false positives
+              const collectionData = indexedFile.metadata?.collection;
               const isCollectionFile = actualFileType === 'collection' && 
-                                      collectionData?.collectionFileIds && 
+                                      collectionData && 
+                                      typeof collectionData === 'object' &&
+                                      collectionData.collectionFileIds && 
                                       Array.isArray(collectionData.collectionFileIds) &&
                                       collectionData.collectionFileIds.length > 0;
               
@@ -1678,8 +1681,7 @@ export function FullScreenFeed({
                 console.log('[FullScreenFeed] Rendering collection:', {
                   fileId,
                   fileType: actualFileType,
-                  collectionFileIds: collectionData.collectionFileIds,
-                  collectionData
+                  collectionFileIds: collectionData.collectionFileIds
                 });
                 return (
                   <CollectionFeed
