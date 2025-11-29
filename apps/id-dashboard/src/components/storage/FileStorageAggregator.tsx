@@ -3652,7 +3652,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
           pdfPageThumbnailIds: existingPdfPageThumbnailIds || null,
           pdfPageThumbnailTokens: existingPdfPageThumbnailTokens || null,
           pdfFileId: existingPdfFileId || null,
-          thumbnailFileId: (existingThumbnailFileId !== undefined && existingThumbnailFileId !== null) ? existingThumbnailFileId : null,
+          thumbnailFileId: existingThumbnailFileId ?? null,
           
           // Preserve subjects and feed categories
           ...(existingSubjects.length > 0 && { subjects: existingSubjects }),
@@ -3861,7 +3861,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
                     pdfPageThumbnailIds: publicMetadata.pdfPageThumbnailIds ?? null,
                     pdfPageThumbnailTokens: publicMetadata.pdfPageThumbnailTokens ?? null,
                     pdfFileId: publicMetadata.pdfFileId ?? null,
-                    thumbnailFileId: (publicMetadata.thumbnailFileId !== undefined && publicMetadata.thumbnailFileId !== null) ? publicMetadata.thumbnailFileId : null,
+                    thumbnailFileId: publicMetadata.thumbnailFileId ?? null,
                     feedCategories: publicMetadata.feedCategories || [],
                   }),
                 }
