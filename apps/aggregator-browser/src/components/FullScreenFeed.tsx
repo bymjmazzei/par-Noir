@@ -1222,9 +1222,9 @@ export function FullScreenFeed({
           hasImageExtension
         );
         
-        // Check for collection
+        // Check for collection (reuse fileType variables already declared above)
         const collectionData = file.collection || (file as any).collection || indexedFile.metadata?.collection;
-        const isCollectionFile = file.fileType === 'collection' && 
+        const isCollectionFile = actualFileType === 'collection' && 
                                 collectionData?.collectionFileIds && 
                                 Array.isArray(collectionData.collectionFileIds) &&
                                 collectionData.collectionFileIds.length > 0;
@@ -1666,12 +1666,21 @@ export function FullScreenFeed({
             {/* Collection */}
             {(() => {
               const collectionData = file.collection || (file as any).collection || indexedFile.metadata?.collection;
-              const isCollectionFile = file.fileType === 'collection' && 
+              const fileTypeFromFile = file.fileType;
+              const fileTypeFromMetadata = indexedFile.metadata?.fileType;
+              const actualFileType = fileTypeFromFile || fileTypeFromMetadata;
+              const isCollectionFile = actualFileType === 'collection' && 
                                       collectionData?.collectionFileIds && 
                                       Array.isArray(collectionData.collectionFileIds) &&
                                       collectionData.collectionFileIds.length > 0;
               
               if (isCollectionFile && collectionData.collectionFileIds) {
+                console.log('[FullScreenFeed] Rendering collection:', {
+                  fileId,
+                  fileType: actualFileType,
+                  collectionFileIds: collectionData.collectionFileIds,
+                  collectionData
+                });
                 return (
                   <CollectionFeed
                     key={fileId}
@@ -1684,14 +1693,7 @@ export function FullScreenFeed({
             })()}
 
             {/* Non-image/video/text/slideshow/collection file */}
-            {!isImageFinal && !isVideoFinal && !isTextPost && !textPostData && (() => {
-              const collectionData = file.collection || (file as any).collection || indexedFile.metadata?.collection;
-              const isCollectionFile = file.fileType === 'collection' && 
-                                      collectionData?.collectionFileIds && 
-                                      Array.isArray(collectionData.collectionFileIds) &&
-                                      collectionData.collectionFileIds.length > 0;
-              return !isCollectionFile;
-            })() && (
+            {!isImageFinal && !isVideoFinal && !isTextPost && !textPostData && !isCollectionFile && (
               <div className="flex flex-col items-center justify-center text-neutral-500">
                 <File className="h-24 w-24 mb-4" />
                 <h3 className="text-white text-xl font-medium mb-2">{cleanTitle(fileName)}</h3>

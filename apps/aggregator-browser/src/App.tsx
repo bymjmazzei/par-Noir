@@ -1697,6 +1697,8 @@ function App() {
                     // FIX: Ensure textPost and thought are preserved for thoughts
                     textPost: metadata.textPost || metadata.thought || undefined,
                     thought: metadata.thought || metadata.textPost || undefined,
+                    // Preserve collection data for collections
+                    collection: metadata.collection || undefined,
                     // Ensure owner info is preserved
                     creator: metadata.creator || {
                       identifier: { value: entry.pnIdentifier || viewingCreatorId }

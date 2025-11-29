@@ -129,6 +129,8 @@ export class MetadataIndexService {
               // FIX: Ensure both textPost and thought are preserved even if one is missing
               textPost: metadata.textPost || metadata.thought || undefined,
               thought: metadata.thought || metadata.textPost || undefined,
+              // Preserve collection data for collections
+              collection: metadata.collection || undefined,
               // Use normalized pnIdentifier as creatorId - they're the same thing
               creatorId: normalizedPnId || metadata.creatorId,
               // Include publicToken from entry level if it exists (API may return it at entry level)
