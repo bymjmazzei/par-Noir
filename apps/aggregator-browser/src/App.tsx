@@ -656,10 +656,17 @@ function App() {
 
   // Helper function to identify text posts (thoughts) - MUST be defined before filteredFilesByFeed
   // Use same detection logic as FullScreenFeed for consistency
+  // NOTE: Thoughts now render as thumbnails - thumbnail files should NOT be detected as thoughts
   const isThought = (file: IndexedFile): boolean => {
+    // CRITICAL: Exclude thumbnail files - they are just images, not thoughts
+    const fileName = file.metadata.name || file.metadata.title || '';
+    const isThumbnailFile = fileName.toLowerCase().startsWith('thumb_');
+    if (isThumbnailFile) {
+      return false; // Thumbnail files are images, not thoughts
+    }
+    
     // Normalize fileType first to ensure correct detection
     const normalizedFileType = normalizeFileType(file);
-    const fileName = file.metadata.name || file.metadata.title || '';
     
     // Check for textPost/thought data in multiple locations (same as FullScreenFeed)
     const hasTextPostData = !!(file.metadata as any).textPost || 

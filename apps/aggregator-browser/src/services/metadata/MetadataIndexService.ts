@@ -116,6 +116,10 @@ export class MetadataIndexService {
           //   console.log('[MetadataIndexService] Text file from API:', {...});
           // }
           
+          // Determine if this is a thumbnail file (should NOT have textPost/thought data)
+          const fileName = metadata.name || metadata.title || '';
+          const isThumbnailFile = fileName.toLowerCase().startsWith('thumb_');
+          
           return {
             metadata: {
               ...metadata,
@@ -125,10 +129,11 @@ export class MetadataIndexService {
               // Explicitly preserve title field (cleaned display name) - prioritize over name
               // title is cleaned (no thumb_ prefix, no extension), name has thumb_ prefix for query matching
               title: metadata.title || metadata.name || undefined,
-              // Explicitly preserve textPost and thought fields
+              // Explicitly preserve textPost and thought fields (but NOT for thumbnails - they're just images)
               // FIX: Ensure both textPost and thought are preserved even if one is missing
-              textPost: metadata.textPost || metadata.thought || undefined,
-              thought: metadata.thought || metadata.textPost || undefined,
+              // NOTE: Thumbnail files should NOT have textPost/thought data - they're just images
+              textPost: isThumbnailFile ? undefined : (metadata.textPost || metadata.thought || undefined),
+              thought: isThumbnailFile ? undefined : (metadata.thought || metadata.textPost || undefined),
               // Preserve collection data for collections
               collection: metadata.collection || undefined,
               // Use normalized pnIdentifier as creatorId - they're the same thing
