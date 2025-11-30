@@ -1067,13 +1067,13 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
         });
         
         const thoughtThumbnailEntries = thoughtThumbnails.map((thumb: DriveFile) => {
-          // Remove "thumb_" prefix and ".encrypted" suffix to find thought file
-          const thumbNameWithoutPrefix = thumb.name.replace(/^thumb_/i, '').replace(/\.encrypted$/i, '');
+          // Remove "thumb_" prefix, ".encrypted" suffix, and file extension to get base name
+          const thumbNameBase = thumb.name.replace(/^thumb_/i, '').replace(/\.encrypted$/i, '').replace(/\.(thought|png)$/i, '');
           
-          // Find the corresponding thought file
+          // Find the corresponding thought file by comparing base names (ignoring extension differences)
           const thoughtFile = thoughtFiles.find((tf: DriveFile) => {
-            const thoughtFileName = tf.name.replace(/\.encrypted$/i, '');
-            return thoughtFileName === thumbNameWithoutPrefix;
+            const thoughtFileNameBase = tf.name.replace(/\.encrypted$/i, '').replace(/\.(thought|png)$/i, '');
+            return thoughtFileNameBase === thumbNameBase;
           });
           
           // Clean display name: remove thumb_ prefix and file extension
@@ -1098,10 +1098,12 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
           // Include thoughts that don't have thumbnails (legacy thoughts)
           if (name.startsWith('thought-') && (name.endsWith('.thought.encrypted') || name.endsWith('.png.encrypted'))) {
             // Check if this thought has a thumbnail
-            const thoughtNameWithoutExt = name.replace(/\.encrypted$/i, '');
+            // Remove .encrypted suffix and file extension (.thought or .png) to get base name
+            const thoughtNameBase = name.replace(/\.encrypted$/i, '').replace(/\.(thought|png)$/i, '');
             const hasThumbnail = thoughtThumbnails.some((thumb: DriveFile) => {
-              const thumbNameWithoutExt = thumb.name.replace(/^thumb_/i, '').replace(/\.encrypted$/i, '');
-              return thumbNameWithoutExt === thoughtNameWithoutExt;
+              // Remove thumb_ prefix, .encrypted suffix, and file extension to get base name
+              const thumbNameBase = thumb.name.replace(/^thumb_/i, '').replace(/\.encrypted$/i, '').replace(/\.(thought|png)$/i, '');
+              return thumbNameBase === thoughtNameBase;
             });
             // Only include thoughts without thumbnails (legacy thoughts)
             return !hasThumbnail;
@@ -1190,13 +1192,13 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
         });
         
         const thoughtThumbnailEntries = thoughtThumbnails.map((thumb: DriveFile) => {
-          // Remove "thumb_" prefix and ".encrypted" suffix to find thought file
-          const thumbNameWithoutPrefix = thumb.name.replace(/^thumb_/i, '').replace(/\.encrypted$/i, '');
+          // Remove "thumb_" prefix, ".encrypted" suffix, and file extension to get base name
+          const thumbNameBase = thumb.name.replace(/^thumb_/i, '').replace(/\.encrypted$/i, '').replace(/\.(thought|png)$/i, '');
           
-          // Find the corresponding thought file
+          // Find the corresponding thought file by comparing base names (ignoring extension differences)
           const thoughtFile = thoughtFiles.find((tf: DriveFile) => {
-            const thoughtFileName = tf.name.replace(/\.encrypted$/i, '');
-            return thoughtFileName === thumbNameWithoutPrefix;
+            const thoughtFileNameBase = tf.name.replace(/\.encrypted$/i, '').replace(/\.(thought|png)$/i, '');
+            return thoughtFileNameBase === thumbNameBase;
           });
           
           // Clean display name: remove thumb_ prefix and file extension
@@ -1221,10 +1223,12 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
           // Include thoughts that don't have thumbnails (legacy thoughts)
           if (name.startsWith('thought-') && (name.endsWith('.thought.encrypted') || name.endsWith('.png.encrypted'))) {
             // Check if this thought has a thumbnail
-            const thoughtNameWithoutExt = name.replace(/\.encrypted$/i, '');
+            // Remove .encrypted suffix and file extension (.thought or .png) to get base name
+            const thoughtNameBase = name.replace(/\.encrypted$/i, '').replace(/\.(thought|png)$/i, '');
             const hasThumbnail = thoughtThumbnails.some((thumb: DriveFile) => {
-              const thumbNameWithoutExt = thumb.name.replace(/^thumb_/i, '').replace(/\.encrypted$/i, '');
-              return thumbNameWithoutExt === thoughtNameWithoutExt;
+              // Remove thumb_ prefix, .encrypted suffix, and file extension to get base name
+              const thumbNameBase = thumb.name.replace(/^thumb_/i, '').replace(/\.encrypted$/i, '').replace(/\.(thought|png)$/i, '');
+              return thumbNameBase === thoughtNameBase;
             });
             // Only include thoughts without thumbnails (legacy thoughts)
             return !hasThumbnail;
