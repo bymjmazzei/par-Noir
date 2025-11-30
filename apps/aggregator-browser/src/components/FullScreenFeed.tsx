@@ -746,16 +746,38 @@ export function FullScreenFeed({
   // Load thumbnails for collection files when a collection is visible
   useEffect(() => {
     const loadCollectionThumbnails = async () => {
-      if (!visibleFileId) return;
+      if (!visibleFileId) {
+        console.log(`[FullScreenFeed] loadCollectionThumbnails: no visibleFileId`);
+        return;
+      }
       
       const indexedFile = files.find(f => f.metadata.fileId === visibleFileId);
-      if (!indexedFile) return;
+      if (!indexedFile) {
+        console.log(`[FullScreenFeed] loadCollectionThumbnails: no indexedFile for ${visibleFileId}`);
+        return;
+      }
       
       const file = indexedFile.metadata;
       const collectionData = file.collection || collectionDataCache.get(visibleFileId);
       
+      console.log(`[FullScreenFeed] loadCollectionThumbnails: checking ${visibleFileId}`, {
+        visibleFileId,
+        fileId: file.fileId,
+        fileType: file.fileType,
+        hasCollection: !!file.collection,
+        hasCachedCollection: !!collectionDataCache.get(visibleFileId),
+        collectionData: collectionData ? {
+          hasCollectionFileIds: !!collectionData.collectionFileIds,
+          collectionFileIdsLength: collectionData.collectionFileIds?.length,
+          collectionFileIds: collectionData.collectionFileIds
+        } : null,
+        thumbnailsSize: thumbnails.size,
+        thumbnailsKeys: Array.from(thumbnails.keys())
+      });
+      
       // Check if this is a collection
       if (!collectionData?.collectionFileIds || !Array.isArray(collectionData.collectionFileIds)) {
+        console.log(`[FullScreenFeed] loadCollectionThumbnails: not a collection or no collectionFileIds`);
         return;
       }
       
@@ -1016,7 +1038,7 @@ export function FullScreenFeed({
     };
     
     loadCollectionThumbnails();
-  }, [visibleFileId, files, externalThumbnails, collectionDataCache]); // Removed thumbnails from deps to prevent loops
+  }, [visibleFileId, files, externalThumbnails, collectionDataCache, thumbnails.size]); // Added thumbnails.size to trigger when thumbnails are added
 
   // Auto-play video when it becomes visible
   useEffect(() => {
@@ -1194,12 +1216,280 @@ export function FullScreenFeed({
         // Check for collection - PRIMARY check: collectionFileIds existence
         // A file is a collection if it has collectionFileIds, regardless of fileType
         // Also check cache for fetched collection data
+        // IMPORTANT: Check fileType FIRST to avoid false positives
         let collectionData = indexedFile.metadata?.collection || collectionDataCache.get(fileId);
-        const isCollectionFile = collectionData && 
+        const isCollectionFile = (actualFileType === 'collection' || collectionData) && 
+                                collectionData &&
                                 typeof collectionData === 'object' &&
                                 collectionData.collectionFileIds && 
                                 Array.isArray(collectionData.collectionFileIds) &&
                                 collectionData.collectionFileIds.length > 0;
+        
+        // Trigger thumbnail loading for collection files immediately when collection is detected
+        // (don't wait for visibleFileId to be set)
+        if (isCollectionFile && collectionData?.collectionFileIds) {
+          const missingThumbnailIds = collectionData.collectionFileIds.filter(
+            (cfId: string) => 
+              !thumbnails.has(cfId) && 
+              (!externalThumbnails || !externalThumbnails.has(cfId)) &&
+              !loadingCollectionThumbnailsRef.current.has(cfId)
+          );
+          
+          if (missingThumbnailIds.length > 0) {
+            console.log(`[FullScreenFeed] Triggering thumbnail load for collection ${fileId} (${missingThumbnailIds.length} missing):`, missingThumbnailIds);
+            // Mark as loading
+            missingThumbnailIds.forEach((cfId: string) => {
+              loadingCollectionThumbnailsRef.current.add(cfId);
+            });
+            
+            // Load thumbnails asynchronously (fire and forget)
+            (async () => {
+              try {
+                const { PNOAuthService } = await import('../services/pnOAuthService');
+                const apiEndpoint = process.env.REACT_APP_API_ENDPOINT || 'https://api.parnoir.com';
+                const accessToken = await PNOAuthService.getValidAccessToken();
+                
+                if (!accessToken) {
+                  missingThumbnailIds.forEach((cfId: string) => loadingCollectionThumbnailsRef.current.delete(cfId));
+                  return;
+                }
+                
+                await Promise.all(missingThumbnailIds.map(async (cfId: string) => {
+                  try {
+                    // Fetch metadata for this collection file
+                    const metadataResponse = await fetch(`${apiEndpoint}/api/aggregator/metadata-index/${cfId}`, {
+                      headers: { 'Authorization': `Bearer ${accessToken}` }
+                    });
+                    
+                    if (!metadataResponse.ok) {
+                      console.warn(`[FullScreenFeed] Failed to fetch metadata for collection file ${cfId}:`, metadataResponse.status);
+                      loadingCollectionThumbnailsRef.current.delete(cfId);
+                      return;
+                    }
+                    
+                    const metadataData = await metadataResponse.json();
+                    const collectionFileMetadata = metadataData.metadata || metadataData;
+                    
+                    // Get accountId
+                    let accountId: string | null = collectionFileMetadata.accountId || collectionFileMetadata.backendFileId;
+                    if (!accountId || !accountId.includes('::')) {
+                      const pnIdentifier = collectionFileMetadata.creatorId || collectionFileMetadata.creator?.identifier?.value || 
+                                           collectionFileMetadata.creator?.["@id"] || collectionFileMetadata.author?.did;
+                      if (pnIdentifier && !accountIdCacheRef.current) {
+                        try {
+                          const accountResponse = await fetch(`${apiEndpoint}/api/users/${encodeURIComponent(pnIdentifier)}/accounts`, {
+                            headers: { 'Authorization': `Bearer ${accessToken}` }
+                          });
+                          if (accountResponse.ok) {
+                            const accounts = await accountResponse.json();
+                            if (Array.isArray(accounts) && accounts.length > 0) {
+                              accountId = accounts[0].id;
+                              accountIdCacheRef.current = accountId;
+                            }
+                          }
+                        } catch (err) {
+                          console.warn(`[FullScreenFeed] Failed to get accountId for collection file ${cfId}:`, err);
+                        }
+                      } else if (accountIdCacheRef.current) {
+                        accountId = accountIdCacheRef.current;
+                      }
+                    } else if (accountId) {
+                      accountIdCacheRef.current = accountId;
+                    }
+                    
+                    // Try to load thumbnail
+                    const fileName = (collectionFileMetadata.name || collectionFileMetadata.title || '').toLowerCase();
+                    const isThumbnailFile = fileName.startsWith('thumb_');
+                    
+                    // PRIORITY 1: If this IS a thumbnail file, decrypt using publicToken
+                    if (isThumbnailFile && collectionFileMetadata.publicToken) {
+                      try {
+                        const { decryptWithToken } = await import('../utils/tokenDecryption');
+                        let token: ShareToken;
+                        try {
+                          token = typeof collectionFileMetadata.publicToken === 'string' 
+                            ? JSON.parse(collectionFileMetadata.publicToken) 
+                            : collectionFileMetadata.publicToken;
+                        } catch (e) {
+                          loadingCollectionThumbnailsRef.current.delete(cfId);
+                          return;
+                        }
+                        
+                        const decryptedBlob = await decryptWithToken(token);
+                        const thumbnailUrlObj = URL.createObjectURL(decryptedBlob);
+                        
+                        setThumbnails(prev => {
+                          const newMap = new Map(prev);
+                          newMap.set(cfId, thumbnailUrlObj);
+                          return newMap;
+                        });
+                        
+                        console.log(`[FullScreenFeed] Loaded thumbnail for collection file ${cfId} via publicToken`);
+                        loadingCollectionThumbnailsRef.current.delete(cfId);
+                        return;
+                      } catch (decryptErr) {
+                        console.warn(`[FullScreenFeed] Failed to decrypt thumbnail with publicToken for ${cfId}:`, decryptErr);
+                      }
+                    }
+                    
+                    // PRIORITY 2: Check for thumbnailFileId
+                    const thumbnailFileId = collectionFileMetadata.thumbnailFileId;
+                    if (thumbnailFileId) {
+                      let thumbnailUrl = `${apiEndpoint}/api/drive/files/${thumbnailFileId}?thumbnail=true`;
+                      if (accountId && accountId.includes('::')) {
+                        thumbnailUrl += `&accountId=${encodeURIComponent(accountId)}`;
+                      }
+                      
+                      let response = await fetch(thumbnailUrl, {
+                        headers: { 'Authorization': `Bearer ${accessToken}` }
+                      });
+                      
+                      if (response.status === 401) {
+                        const refreshedToken = await PNOAuthService.getValidAccessToken(true);
+                        if (refreshedToken) {
+                          response = await fetch(thumbnailUrl, {
+                            headers: { 'Authorization': `Bearer ${refreshedToken}` }
+                          });
+                        }
+                      }
+                      
+                      if (response.ok) {
+                        const contentType = response.headers.get('content-type') || '';
+                        const blob = await response.blob();
+                        
+                        let thumbnailBlob: Blob;
+                        if (contentType.includes('application/json') || contentType.includes('application/octet-stream')) {
+                          const { EncryptionManager } = await import('../utils/encryptionManager');
+                          const session = PNOAuthService.loadSession();
+                          if (session?.did) {
+                            const pnId = session.did;
+                            let publicKey = session?.publicKey;
+                            if (!publicKey && session.did.startsWith('did:key:')) {
+                              publicKey = session.did.substring(8);
+                            }
+                            if (publicKey) {
+                              const encryptedText = await blob.text();
+                              const encryptedPackage = JSON.parse(encryptedText);
+                              const encryptionManager = new EncryptionManager();
+                              const decryptedData = await encryptionManager.decrypt(
+                                encryptedPackage.encrypted,
+                                encryptedPackage.iv,
+                                encryptedPackage.salt,
+                                pnId,
+                                publicKey
+                              );
+                              const arrayBuffer = decryptedData.buffer.slice(decryptedData.byteOffset, decryptedData.byteOffset + decryptedData.byteLength) as ArrayBuffer;
+                              thumbnailBlob = new Blob([arrayBuffer], {
+                                type: encryptedPackage.metadata.originalMimeType || 'image/jpeg'
+                              });
+                            } else {
+                              loadingCollectionThumbnailsRef.current.delete(cfId);
+                              return;
+                            }
+                          } else {
+                            loadingCollectionThumbnailsRef.current.delete(cfId);
+                            return;
+                          }
+                        } else {
+                          thumbnailBlob = blob;
+                        }
+                        
+                        const thumbnailUrlObj = URL.createObjectURL(thumbnailBlob);
+                        setThumbnails(prev => {
+                          const newMap = new Map(prev);
+                          newMap.set(cfId, thumbnailUrlObj);
+                          return newMap;
+                        });
+                        
+                        console.log(`[FullScreenFeed] Loaded thumbnail for collection file ${cfId} via thumbnailFileId`);
+                        loadingCollectionThumbnailsRef.current.delete(cfId);
+                        return;
+                      }
+                    }
+                    
+                    // PRIORITY 3: Try API endpoint with ?thumbnail=true
+                    let thumbnailUrl = `${apiEndpoint}/api/drive/files/${cfId}?thumbnail=true`;
+                    if (accountId && accountId.includes('::')) {
+                      thumbnailUrl += `&accountId=${encodeURIComponent(accountId)}`;
+                    }
+                    
+                    let response = await fetch(thumbnailUrl, {
+                      headers: { 'Authorization': `Bearer ${accessToken}` }
+                    });
+                    
+                    if (response.status === 401) {
+                      const refreshedToken = await PNOAuthService.getValidAccessToken(true);
+                      if (refreshedToken) {
+                        response = await fetch(thumbnailUrl, {
+                          headers: { 'Authorization': `Bearer ${refreshedToken}` }
+                        });
+                      }
+                    }
+                    
+                    if (response.ok) {
+                      const contentType = response.headers.get('content-type') || '';
+                      const blob = await response.blob();
+                      
+                      let thumbnailBlob: Blob | null = null;
+                      if (contentType.includes('application/json') || contentType.includes('application/octet-stream')) {
+                        const { EncryptionManager } = await import('../utils/encryptionManager');
+                        const session = PNOAuthService.loadSession();
+                        if (session?.did) {
+                          const pnId = session.did;
+                          let publicKey = session?.publicKey;
+                          if (!publicKey && session.did.startsWith('did:key:')) {
+                            publicKey = session.did.substring(8);
+                          }
+                          if (publicKey) {
+                            try {
+                              const encryptedText = await blob.text();
+                              const encryptedPackage = JSON.parse(encryptedText);
+                              const encryptionManager = new EncryptionManager();
+                              const decryptedData = await encryptionManager.decrypt(
+                                encryptedPackage.encrypted,
+                                encryptedPackage.iv,
+                                encryptedPackage.salt,
+                                pnId,
+                                publicKey
+                              );
+                              const arrayBuffer = decryptedData.buffer.slice(decryptedData.byteOffset, decryptedData.byteOffset + decryptedData.byteLength) as ArrayBuffer;
+                              thumbnailBlob = new Blob([arrayBuffer], {
+                                type: encryptedPackage.metadata.originalMimeType || 'image/jpeg'
+                              });
+                            } catch (decryptErr) {
+                              console.warn(`[FullScreenFeed] Failed to decrypt thumbnail for collection file ${cfId}:`, decryptErr);
+                              thumbnailBlob = null;
+                            }
+                          }
+                        }
+                      } else {
+                        thumbnailBlob = blob;
+                      }
+                      
+                      if (thumbnailBlob) {
+                        const thumbnailUrlObj = URL.createObjectURL(thumbnailBlob);
+                        setThumbnails(prev => {
+                          const newMap = new Map(prev);
+                          newMap.set(cfId, thumbnailUrlObj);
+                          return newMap;
+                        });
+                        
+                        console.log(`[FullScreenFeed] Loaded thumbnail for collection file ${cfId} via API endpoint`);
+                      }
+                    }
+                  } catch (err) {
+                    console.warn(`[FullScreenFeed] Failed to load thumbnail for collection file ${cfId}:`, err);
+                  } finally {
+                    loadingCollectionThumbnailsRef.current.delete(cfId);
+                  }
+                }));
+              } catch (err) {
+                console.error(`[FullScreenFeed] Error loading collection thumbnails:`, err);
+                missingThumbnailIds.forEach((cfId: string) => loadingCollectionThumbnailsRef.current.delete(cfId));
+              }
+            })();
+          }
+        }
         
         // If fileType is 'collection' but collection data is missing, fetch it
         // Use ref to prevent multiple simultaneous fetches
