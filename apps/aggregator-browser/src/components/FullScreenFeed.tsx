@@ -1125,24 +1125,45 @@ export function FullScreenFeed({
               );
             })()}
 
-            {/* Collection */}
+            {/* Collection - Simple thumbnail slideshow */}
             {isCollectionFile && collectionData?.collectionFileIds ? (
               (() => {
-                // Only log in development mode (performance optimization)
-                if (process.env.NODE_ENV === 'development') {
-                  console.log('[FullScreenFeed] Rendering collection:', {
-                    fileId,
-                    fileType: actualFileType,
-                    collectionFileIds: collectionData.collectionFileIds.length
-                  });
+                // Get thumbnails from Map for collection file IDs
+                const collectionThumbnails = collectionData.collectionFileIds
+                  .map((fileId: string) => thumbnails.get(fileId))
+                  .filter((url): url is string => url !== undefined);
+                
+                if (collectionThumbnails.length > 0) {
+                  // Render horizontal slideshow of thumbnails
+                  return (
+                    <div className="w-full h-full flex overflow-x-auto snap-x snap-mandatory scrollbar-hide">
+                      {collectionThumbnails.map((thumbnailUrl, idx) => (
+                        <div
+                          key={`${fileId}-${idx}`}
+                          className="flex-shrink-0 w-full h-full snap-start"
+                        >
+                          <img
+                            src={thumbnailUrl}
+                            alt={`${fileName} - ${idx + 1}`}
+                            className="w-full h-full object-cover"
+                            onError={(e) => {
+                              e.currentTarget.src = '/placeholder-thumbnail.png';
+                            }}
+                          />
+                        </div>
+                      ))}
+                    </div>
+                  );
+                } else {
+                  // Fallback: show placeholder if no thumbnails available
+                  return (
+                    <div className="w-full h-full flex flex-col items-center justify-center text-neutral-400">
+                      <div className="text-4xl mb-2">📚</div>
+                      <div className="text-sm">Collection</div>
+                      <div className="text-xs mt-1">{collectionData.collectionFileIds.length} files</div>
+                    </div>
+                  );
                 }
-                return (
-                  <CollectionFeed
-                    key={fileId}
-                    collectionFileIds={collectionData.collectionFileIds}
-                    accountId={undefined} // Will be fetched inside component
-                  />
-                );
               })()
             ) : null}
 
