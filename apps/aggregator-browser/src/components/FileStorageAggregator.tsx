@@ -1148,8 +1148,19 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
         
         const regularThumbnails = thumbnails;
         
-        // Map regular thumbnails to their main files and create display entries
-        const thumbnailEntries = regularThumbnails.map((thumb: DriveFile) => {
+        // Separate thought thumbnails from regular thumbnails
+        const thoughtThumbnails = regularThumbnails.filter((thumb: DriveFile) => {
+          const name = thumb.name.toLowerCase();
+          return name.startsWith('thumb_thought-') && (name.endsWith('.thought.encrypted') || name.endsWith('.png.encrypted'));
+        });
+        
+        const nonThoughtThumbnails = regularThumbnails.filter((thumb: DriveFile) => {
+          const name = thumb.name.toLowerCase();
+          return !name.startsWith('thumb_thought-');
+        });
+        
+        // Map regular (non-thought) thumbnails to their main files and create display entries
+        const thumbnailEntries = nonThoughtThumbnails.map((thumb: DriveFile) => {
           // Remove "thumb_" prefix and ".encrypted" suffix to find main file
           const thumbNameWithoutPrefix = thumb.name.replace(/^thumb_/i, '').replace(/\.encrypted$/i, '');
           
@@ -1172,16 +1183,51 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
           };
         });
         
-        // Filter to show thumbnails (representing main files) and thoughts
-        const mediaFiles = thumbnailEntries.concat(
+        // Map thought thumbnails to thought files
+        const thoughtFiles = mainFiles.filter((file: DriveFile) => {
+          const name = file.name.toLowerCase();
+          return name.startsWith('thought-') && (name.endsWith('.thought.encrypted') || name.endsWith('.png.encrypted'));
+        });
+        
+        const thoughtThumbnailEntries = thoughtThumbnails.map((thumb: DriveFile) => {
+          // Remove "thumb_" prefix and ".encrypted" suffix to find thought file
+          const thumbNameWithoutPrefix = thumb.name.replace(/^thumb_/i, '').replace(/\.encrypted$/i, '');
+          
+          // Find the corresponding thought file
+          const thoughtFile = thoughtFiles.find((tf: DriveFile) => {
+            const thoughtFileName = tf.name.replace(/\.encrypted$/i, '');
+            return thoughtFileName === thumbNameWithoutPrefix;
+          });
+          
+          // Clean display name: remove thumb_ prefix and file extension
+          let displayName = thumb.name.replace(/^thumb_/i, '').replace(/\.encrypted$/i, '');
+          // Remove file extension
+          displayName = displayName.replace(/\.[^.]+$/, '');
+          
+          return {
+            ...thumb,
+            isThumbnail: true,
+            mainFileId: thoughtFile?.id || thumb.id, // Use thought file ID if found, fallback to thumb ID
+            displayName: displayName
+          };
+        });
+        
+        // Filter to show thumbnails (representing main files) and thought thumbnails
+        const mediaFiles = thumbnailEntries.concat(thoughtThumbnailEntries).concat(
           allFiles.filter((file: DriveFile) => {
           const name = file.name.toLowerCase();
           const mimeType = file.mimeType || '';
           
-          // Include thoughts (they don't have thumbnails, show the thought file itself)
-          // Support both new .thought format and legacy .png format
+          // Include thoughts that don't have thumbnails (legacy thoughts)
           if (name.startsWith('thought-') && (name.endsWith('.thought.encrypted') || name.endsWith('.png.encrypted'))) {
-            return true;
+            // Check if this thought has a thumbnail
+            const thoughtNameWithoutExt = name.replace(/\.encrypted$/i, '');
+            const hasThumbnail = thoughtThumbnails.some((thumb: DriveFile) => {
+              const thumbNameWithoutExt = thumb.name.replace(/^thumb_/i, '').replace(/\.encrypted$/i, '');
+              return thumbNameWithoutExt === thoughtNameWithoutExt;
+            });
+            // Only include thoughts without thumbnails (legacy thoughts)
+            return !hasThumbnail;
           }
           
           // Exclude everything else (main files already have thumbnails)

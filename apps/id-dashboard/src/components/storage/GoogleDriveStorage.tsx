@@ -418,15 +418,23 @@ export const GoogleDriveStorage: React.FC = () => {
                 const allFiles = (data.files || []).map((file: any) => ({
                   id: file.id,
                   name: file.name.replace(/\.encrypted$/i, ''),
+                  originalName: file.name, // Preserve original name to check for thumbnails
                   modifiedTime: file.modifiedTime,
                   size: file.size,
                   mimeType: file.mimeType,
                   accountId: accountId // Include accountId for thumbnail loading
                 }));
                 
+                // Separate thumbnails and main files
+                const thoughtThumbnails = allFiles.filter((file: any) => {
+                  const originalName = file.originalName.toLowerCase();
+                  return originalName.startsWith('thumb_thought-') && (originalName.endsWith('.thought.encrypted') || originalName.endsWith('.png.encrypted'));
+                });
+                
                 // Filter to show media files (images/videos/PDFs/thoughts), excluding metadata and system files
-                const mediaFiles = allFiles.filter((file: GoogleDriveFile) => {
+                const mediaFiles = allFiles.filter((file: GoogleDriveFile & { originalName?: string }) => {
                   const name = file.name.toLowerCase();
+                  const originalName = (file as any).originalName?.toLowerCase() || name;
                   const mimeType = file.mimeType || '';
                   
                   // Exclude folders
@@ -444,20 +452,36 @@ export const GoogleDriveStorage: React.FC = () => {
                     return false;
                   }
                   
+                  // Check if this is a thought thumbnail - include it
+                  if (originalName.startsWith('thumb_thought-') && (originalName.endsWith('.thought.encrypted') || originalName.endsWith('.png.encrypted'))) {
+                    return true;
+                  }
+                  
+                  // Check if this is a main thought file - exclude if it has a thumbnail
+                  const nameWithoutEncrypted = name.replace(/\.encrypted$/i, '');
+                  const isMainThought = /^thought-\d+\.(png|thought)$/i.test(nameWithoutEncrypted);
+                  if (isMainThought) {
+                    // Check if this thought has a thumbnail
+                    const hasThumbnail = thoughtThumbnails.some((thumb: any) => {
+                      const thumbNameWithoutExt = thumb.originalName.replace(/^thumb_/i, '').replace(/\.encrypted$/i, '');
+                      return thumbNameWithoutExt === nameWithoutEncrypted;
+                    });
+                    // Only include thoughts without thumbnails (legacy thoughts)
+                    return !hasThumbnail;
+                  }
+                  
                   // Check MIME types
                   const isImageMime = mimeType.startsWith('image/');
                   const isVideoMime = mimeType.startsWith('video/');
                   const isPDFMime = mimeType === 'application/pdf' || mimeType.includes('pdf');
                   
                   // Check file extensions
-                  const nameWithoutEncrypted = file.name.replace(/\.encrypted$/i, '');
                   const hasImageExt = /\.(jpg|jpeg|png|gif|webp|bmp|svg|heic|heif)$/i.test(nameWithoutEncrypted);
                   const hasVideoExt = /\.(mp4|mov|avi|mkv|webm|flv|wmv|m4v|3gp)$/i.test(nameWithoutEncrypted);
                   const hasPDFExt = /\.pdf$/i.test(nameWithoutEncrypted);
-                  const isThought = /^thought-\d+\.png$/i.test(nameWithoutEncrypted);
                   
-                  // Include images, videos, PDFs, and thoughts
-                  return isImageMime || isVideoMime || isPDFMime || hasImageExt || hasVideoExt || hasPDFExt || isThought;
+                  // Include images, videos, PDFs (but not thoughts - handled above)
+                  return isImageMime || isVideoMime || isPDFMime || hasImageExt || hasVideoExt || hasPDFExt;
                 });
                 
                 console.log(`[GoogleDriveStorage] Filtered to ${mediaFiles.length} media files (thoughts/PDFs/images/videos)`);
@@ -496,16 +520,39 @@ export const GoogleDriveStorage: React.FC = () => {
       }
       
       const data = await response.json();
+        // Separate thumbnails and main files
+        const thoughtThumbnails = (data.files || []).filter((file: GoogleDriveFile) => {
+          const name = file.name.toLowerCase();
+          return name.startsWith('thumb_thought-') && (name.endsWith('.thought.encrypted') || name.endsWith('.png.encrypted'));
+        });
+        
         // Filter to show thoughts and media files
         const filteredFiles = (data.files || []).filter((file: GoogleDriveFile) => {
           const name = file.name.toLowerCase();
           const nameWithoutEncrypted = name.replace(/\.encrypted$/i, '');
-          const isThought = /^thought-\d+\.png$/i.test(nameWithoutEncrypted);
+          
+          // Check if this is a thought thumbnail - include it
+          if (name.startsWith('thumb_thought-') && (name.endsWith('.thought.encrypted') || name.endsWith('.png.encrypted'))) {
+            return true;
+          }
+          
+          // Check if this is a main thought file - exclude if it has a thumbnail
+          const isMainThought = /^thought-\d+\.(png|thought)$/i.test(nameWithoutEncrypted);
+          if (isMainThought) {
+            // Check if this thought has a thumbnail
+            const hasThumbnail = thoughtThumbnails.some((thumb: GoogleDriveFile) => {
+              const thumbNameWithoutExt = thumb.name.replace(/^thumb_/i, '').replace(/\.encrypted$/i, '');
+              return thumbNameWithoutExt === nameWithoutEncrypted;
+            });
+            // Only include thoughts without thumbnails (legacy thoughts)
+            return !hasThumbnail;
+          }
+          
           const isImage = file.mimeType?.startsWith('image/') || /\.(jpg|jpeg|png|gif|webp|bmp|svg|heic|heif)$/i.test(nameWithoutEncrypted);
           const isVideo = file.mimeType?.startsWith('video/') || /\.(mp4|mov|avi|mkv|webm|flv|wmv|m4v|3gp)$/i.test(nameWithoutEncrypted);
           const isPDF = file.mimeType === 'application/pdf' || /\.pdf$/i.test(nameWithoutEncrypted);
           
-          return isThought || isImage || isVideo || isPDF;
+          return isImage || isVideo || isPDF;
         });
         
         setFiles(filteredFiles);
