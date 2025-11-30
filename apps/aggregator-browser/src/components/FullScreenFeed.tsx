@@ -89,22 +89,52 @@ export function FullScreenFeed({
         fileType: f.metadata?.fileType,
         name: f.metadata?.name || f.metadata?.title,
         hasCollection: !!f.metadata?.collection,
-        collectionFileIds: f.metadata?.collection?.collectionFileIds?.length || 0
+        collectionFileIds: f.metadata?.collection?.collectionFileIds?.length || 0,
+        // FULL metadata dump for debugging
+        fullMetadata: f.metadata
       })),
       thumbnailsMapSize: thumbnails.size,
-      externalThumbnailsSize: externalThumbnails?.size || 0
+      externalThumbnailsSize: externalThumbnails?.size || 0,
+      thumbnailsMapKeys: Array.from(thumbnails.keys()),
+      externalThumbnailsKeys: externalThumbnails ? Array.from(externalThumbnails.keys()) : []
     });
     
-    // Check for collections specifically
-    const collections = files.filter(f => f.metadata?.collection?.collectionFileIds?.length > 0);
+    // Check for collections specifically - check ALL possible locations
+    const collections = files.filter(f => {
+      const hasCollection = f.metadata?.collection?.collectionFileIds?.length > 0;
+      if (hasCollection) return true;
+      
+      // Also check if fileType is collection
+      if (f.metadata?.fileType === 'collection') {
+        console.warn(`[FullScreenFeed] File has fileType='collection' but no collectionFileIds:`, {
+          fileId: f.metadata?.fileId,
+          metadata: f.metadata
+        });
+      }
+      return false;
+    });
+    
     if (collections.length > 0) {
       console.log(`[FullScreenFeed] Found ${collections.length} collections in files:`, collections.map(f => ({
         fileId: f.metadata?.fileId,
         collectionFileIds: f.metadata?.collection?.collectionFileIds,
-        collectionData: f.metadata?.collection
+        collectionData: f.metadata?.collection,
+        fullMetadata: f.metadata
       })));
     } else {
       console.warn(`[FullScreenFeed] NO COLLECTIONS FOUND in ${files.length} files`);
+      // Log each file's metadata to see what we're actually getting
+      files.forEach((f, idx) => {
+        console.log(`[FullScreenFeed] File ${idx + 1}/${files.length}:`, {
+          fileId: f.metadata?.fileId,
+          fileType: f.metadata?.fileType,
+          name: f.metadata?.name || f.metadata?.title,
+          hasCollectionProperty: 'collection' in (f.metadata || {}),
+          collectionValue: f.metadata?.collection,
+          metadataKeys: Object.keys(f.metadata || {}),
+          fullMetadata: JSON.stringify(f.metadata, null, 2)
+        });
+      });
     }
   }, [files.length, externalThumbnails]);
   
