@@ -80,6 +80,34 @@ export function FullScreenFeed({
   const [thumbnails, setThumbnails] = useState<Map<string, string>>(externalThumbnails || new Map());
   const accountIdCacheRef = useRef<string | null>(null); // Cache accountId to avoid repeated API calls
   
+  // DEBUG: Log files passed to FullScreenFeed
+  useEffect(() => {
+    console.log(`[FullScreenFeed] Component mounted/received files:`, {
+      filesCount: files.length,
+      files: files.map(f => ({
+        fileId: f.metadata?.fileId,
+        fileType: f.metadata?.fileType,
+        name: f.metadata?.name || f.metadata?.title,
+        hasCollection: !!f.metadata?.collection,
+        collectionFileIds: f.metadata?.collection?.collectionFileIds?.length || 0
+      })),
+      thumbnailsMapSize: thumbnails.size,
+      externalThumbnailsSize: externalThumbnails?.size || 0
+    });
+    
+    // Check for collections specifically
+    const collections = files.filter(f => f.metadata?.collection?.collectionFileIds?.length > 0);
+    if (collections.length > 0) {
+      console.log(`[FullScreenFeed] Found ${collections.length} collections in files:`, collections.map(f => ({
+        fileId: f.metadata?.fileId,
+        collectionFileIds: f.metadata?.collection?.collectionFileIds,
+        collectionData: f.metadata?.collection
+      })));
+    } else {
+      console.warn(`[FullScreenFeed] NO COLLECTIONS FOUND in ${files.length} files`);
+    }
+  }, [files.length, externalThumbnails]);
+  
   // Sync external thumbnails/videoBlobs when they change
   // Merge instead of replace to preserve thumbnails loaded internally
   useEffect(() => {
@@ -814,6 +842,18 @@ export function FullScreenFeed({
         .map((indexedFile) => {
         const file = indexedFile.metadata;
         const fileId = file.fileId;
+        
+        // DEBUG: Log every file being processed, especially if it has collection data
+        if (indexedFile.metadata?.collection) {
+          console.log(`[FullScreenFeed] Processing file with collection data:`, {
+            fileId,
+            fileName: file.name || file.title,
+            fileType: file.fileType,
+            collection: indexedFile.metadata.collection,
+            collectionFileIds: indexedFile.metadata.collection?.collectionFileIds,
+            collectionFileIdsLength: indexedFile.metadata.collection?.collectionFileIds?.length
+          });
+        }
         
         // Thoughts now render as images (thumbnails) - no special detection needed!
         // Just detect images, videos, and collections
