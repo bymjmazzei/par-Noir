@@ -9,6 +9,7 @@ import { Download, File, RefreshCw, AlertCircle, Lock, Globe, X, Edit, Eye, Grid
 import { PNOAuthService } from '../services/pnOAuthService';
 import { EncryptionManager } from '../utils/encryptionManager';
 import { getEncryptionService } from '../services/encryptionService';
+import { createCollection } from '../services/collectionService';
 import { FEED_CATEGORIES, FEED_CATEGORY_LIST } from '../constants/feedCategories';
 import { LICENSE_TYPES } from '../constants/licenses';
 import { FeedCategory } from '../types/aggregator';
@@ -2206,8 +2207,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
 
       const collectionFileIds = selectedFilesArray.map(f => f.id);
       
-      // Import and use collection service
-      const { createCollection } = await import('../services/collectionService');
+      // Use collection service
       const result = await createCollection(
         {
           collectionFileIds: collectionFileIds,
