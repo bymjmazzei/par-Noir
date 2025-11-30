@@ -843,10 +843,10 @@ export function FullScreenFeed({
           (file.fileType === 'other' && hasImageExtension) ||
           hasImageExtension;
         
-        // Check for collection
+        // Check for collection - PRIMARY check: collectionFileIds existence
+        // A file is a collection if it has collectionFileIds, regardless of fileType
         const collectionData = indexedFile.metadata?.collection;
-        const isCollectionFile = actualFileType === 'collection' && 
-                                collectionData && 
+        const isCollectionFile = collectionData && 
                                 typeof collectionData === 'object' &&
                                 collectionData.collectionFileIds && 
                                 Array.isArray(collectionData.collectionFileIds) &&
@@ -1126,17 +1126,8 @@ export function FullScreenFeed({
             })()}
 
             {/* Collection */}
-            {(() => {
-              // Only check metadata.collection, not file.collection - avoid false positives
-              const collectionData = indexedFile.metadata?.collection;
-              const isCollectionFile = actualFileType === 'collection' && 
-                                      collectionData && 
-                                      typeof collectionData === 'object' &&
-                                      collectionData.collectionFileIds && 
-                                      Array.isArray(collectionData.collectionFileIds) &&
-                                      collectionData.collectionFileIds.length > 0;
-              
-              if (isCollectionFile && collectionData.collectionFileIds) {
+            {isCollectionFile && collectionData?.collectionFileIds ? (
+              (() => {
                 // Only log in development mode (performance optimization)
                 if (process.env.NODE_ENV === 'development') {
                   console.log('[FullScreenFeed] Rendering collection:', {
@@ -1152,9 +1143,8 @@ export function FullScreenFeed({
                     accountId={undefined} // Will be fetched inside component
                   />
                 );
-              }
-              return null;
-            })()}
+              })()
+            ) : null}
 
             {/* Non-image/video/slideshow/collection file */}
             {!isImageFinal && !isVideoFinal && !isCollectionFile && (
