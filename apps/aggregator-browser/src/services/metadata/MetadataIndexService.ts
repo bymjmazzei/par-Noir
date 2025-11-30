@@ -129,12 +129,14 @@ export class MetadataIndexService {
               // Explicitly preserve title field (cleaned display name) - prioritize over name
               // title is cleaned (no thumb_ prefix, no extension), name has thumb_ prefix for query matching
               title: metadata.title || metadata.name || undefined,
+              // Explicitly preserve fileType (especially important for collections)
+              fileType: metadata.fileType || undefined,
               // Explicitly preserve textPost and thought fields (but NOT for thumbnails - they're just images)
               // FIX: Ensure both textPost and thought are preserved even if one is missing
               // NOTE: Thumbnail files should NOT have textPost/thought data - they're just images
               textPost: isThumbnailFile ? undefined : (metadata.textPost || metadata.thought || undefined),
               thought: isThumbnailFile ? undefined : (metadata.thought || metadata.textPost || undefined),
-              // Preserve collection data for collections
+              // Preserve collection data for collections (CRITICAL for collection slideshow rendering)
               collection: metadata.collection || undefined,
               // Use normalized pnIdentifier as creatorId - they're the same thing
               creatorId: normalizedPnId || metadata.creatorId,

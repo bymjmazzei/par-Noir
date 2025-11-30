@@ -1219,8 +1219,36 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
           };
         });
         
-        // Filter to show thumbnails (representing main files) and thought thumbnails
-        const mediaFiles = thumbnailEntries.concat(thoughtThumbnailEntries).concat(
+        // Detect collections by filename pattern
+        const collectionFiles = allFiles.filter((file: DriveFile) => {
+          const name = file.name.toLowerCase();
+          return name.startsWith('collection-') && name.endsWith('.collection.encrypted');
+        });
+        
+        // Load metadata for collections to get fileType and collection data
+        const collectionFilesWithMetadata = await Promise.all(
+          collectionFiles.map(async (file: DriveFile) => {
+            try {
+              const metadata = await loadFileMetadata(file.id);
+              return {
+                ...file,
+                fileType: metadata?.fileType || 'collection',
+                collection: metadata?.collection,
+                displayName: metadata?.name || metadata?.title || file.name.replace(/\.encrypted$/i, '').replace(/\.collection$/i, '')
+              };
+            } catch (err) {
+              console.warn(`[FileStorageAggregator] Failed to load metadata for collection ${file.id}:`, err);
+              return {
+                ...file,
+                fileType: 'collection',
+                displayName: file.name.replace(/\.encrypted$/i, '').replace(/\.collection$/i, '')
+              };
+            }
+          })
+        );
+        
+        // Filter to show thumbnails (representing main files), thought thumbnails, and collections
+        const mediaFiles = thumbnailEntries.concat(thoughtThumbnailEntries).concat(collectionFilesWithMetadata).concat(
           allFiles.filter((file: DriveFile) => {
           const name = file.name.toLowerCase();
           const mimeType = file.mimeType || '';
@@ -1239,7 +1267,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
             return !hasThumbnail;
           }
           
-          // Exclude everything else (main files already have thumbnails)
+          // Exclude everything else (main files already have thumbnails, collections already included)
           return false;
         })
         );
@@ -1344,8 +1372,36 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
           };
         });
         
-        // Filter to show thumbnails (representing main files) and thought thumbnails
-        const mediaFiles = thumbnailEntries.concat(thoughtThumbnailEntries).concat(
+        // Detect collections by filename pattern
+        const collectionFiles = allFiles.filter((file: DriveFile) => {
+          const name = file.name.toLowerCase();
+          return name.startsWith('collection-') && name.endsWith('.collection.encrypted');
+        });
+        
+        // Load metadata for collections to get fileType and collection data
+        const collectionFilesWithMetadata = await Promise.all(
+          collectionFiles.map(async (file: DriveFile) => {
+            try {
+              const metadata = await loadFileMetadata(file.id);
+              return {
+                ...file,
+                fileType: metadata?.fileType || 'collection',
+                collection: metadata?.collection,
+                displayName: metadata?.name || metadata?.title || file.name.replace(/\.encrypted$/i, '').replace(/\.collection$/i, '')
+              };
+            } catch (err) {
+              console.warn(`[FileStorageAggregator] Failed to load metadata for collection ${file.id}:`, err);
+              return {
+                ...file,
+                fileType: 'collection',
+                displayName: file.name.replace(/\.encrypted$/i, '').replace(/\.collection$/i, '')
+              };
+            }
+          })
+        );
+        
+        // Filter to show thumbnails (representing main files), thought thumbnails, and collections
+        const mediaFiles = thumbnailEntries.concat(thoughtThumbnailEntries).concat(collectionFilesWithMetadata).concat(
           allFiles.filter((file: DriveFile) => {
           const name = file.name.toLowerCase();
           const mimeType = file.mimeType || '';
@@ -1364,7 +1420,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
             return !hasThumbnail;
           }
           
-          // Exclude everything else (main files already have thumbnails)
+          // Exclude everything else (main files already have thumbnails, collections already included)
           return false;
         })
         );
@@ -3201,13 +3257,18 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
                 const isEncrypted = file.name.toLowerCase().endsWith('.encrypted');
                 const nameWithoutEncrypted = file.name.replace(/\.encrypted$/i, '');
                 
+                // Check if this is a collection
+                const isCollection = (file as any).fileType === 'collection' || 
+                                   nameWithoutEncrypted.toLowerCase().startsWith('collection-') && 
+                                   nameWithoutEncrypted.toLowerCase().endsWith('.collection');
+                
                 // For encrypted files, check if they're media files by extension
                 const isThought = nameWithoutEncrypted.toLowerCase().startsWith('thought-') && 
                                  (nameWithoutEncrypted.toLowerCase().endsWith('.thought') || nameWithoutEncrypted.toLowerCase().endsWith('.png'));
                 const isThoughtThumbnail = nameWithoutEncrypted.toLowerCase().startsWith('thumb_thought-') && 
                                           (nameWithoutEncrypted.toLowerCase().endsWith('.thought') || nameWithoutEncrypted.toLowerCase().endsWith('.png'));
-                let isMediaFile = isImage || isVideo || isThought || isThoughtThumbnail;
-                if (isEncrypted) {
+                let isMediaFile = isImage || isVideo || isThought || isThoughtThumbnail || isCollection;
+                if (isEncrypted && !isCollection) {
                   const hasImageExt = /\.(jpg|jpeg|png|gif|webp|bmp|svg|heic|heif)$/i.test(nameWithoutEncrypted);
                   const hasVideoExt = /\.(mp4|mov|avi|mkv|webm|flv|wmv|m4v|3gp)$/i.test(nameWithoutEncrypted);
                   const hasThoughtExt = /\.thought$/i.test(nameWithoutEncrypted) || 
@@ -3240,7 +3301,14 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
                       if (target.closest('[data-menu-button]') || target.closest('.menu-container')) {
                         return;
                       }
-                      setViewingFile({ ...file, accountId: file.accountId || account.accountId });
+                      // Ensure collection metadata is included when opening
+                      const fileWithMetadata = {
+                        ...file,
+                        accountId: file.accountId || account.accountId,
+                        fileType: (file as any).fileType || fileMetadataMap.get(file.id)?.fileType,
+                        collection: (file as any).collection || fileMetadataMap.get(file.id)?.collection
+                      };
+                      setViewingFile(fileWithMetadata);
                     }}
                   >
                     {/* Checkbox or order number for collection/bulk delete mode */}
@@ -3263,7 +3331,16 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
                       </div>
                     )}
                     <div className="relative aspect-square bg-neutral-700/50 overflow-hidden">
-                      {isMediaFile ? (
+                      {isCollection ? (
+                        <div className="w-full h-full flex flex-col items-center justify-center bg-gradient-to-br from-blue-600/20 to-purple-600/20">
+                          <Layers className="h-12 w-12 text-blue-400 mb-2" />
+                          <span className="text-xs text-white/80 px-2 text-center">
+                            {((file as any).collection?.collectionFileIds?.length || 0) > 0 
+                              ? `${(file as any).collection.collectionFileIds.length} items`
+                              : 'Collection'}
+                          </span>
+                        </div>
+                      ) : isMediaFile ? (
                         <ThumbnailImage 
                           fileId={file.id}
                           accountId={file.accountId || account.accountId}
@@ -3348,15 +3425,20 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
                 const isImage = file.mimeType?.startsWith('image/');
                 const isVideo = file.mimeType?.startsWith('video/');
                 const isEncrypted = file.name.toLowerCase().endsWith('.encrypted');
+                const nameWithoutEncrypted = file.name.replace(/\.encrypted$/i, '');
+                
+                // Check if this is a collection
+                const isCollection = (file as any).fileType === 'collection' || 
+                                   nameWithoutEncrypted.toLowerCase().startsWith('collection-') && 
+                                   nameWithoutEncrypted.toLowerCase().endsWith('.collection');
                 
                 // For encrypted files, check if they're media files by extension
-                const nameWithoutEncrypted = file.name.replace(/\.encrypted$/i, '');
                 const isThought = nameWithoutEncrypted.toLowerCase().startsWith('thought-') && 
                                  (nameWithoutEncrypted.toLowerCase().endsWith('.thought') || nameWithoutEncrypted.toLowerCase().endsWith('.png'));
                 const isThoughtThumbnail = nameWithoutEncrypted.toLowerCase().startsWith('thumb_thought-') && 
                                           (nameWithoutEncrypted.toLowerCase().endsWith('.thought') || nameWithoutEncrypted.toLowerCase().endsWith('.png'));
-                let isMediaFile = isImage || isVideo || isThought || isThoughtThumbnail;
-                if (isEncrypted) {
+                let isMediaFile = isImage || isVideo || isThought || isThoughtThumbnail || isCollection;
+                if (isEncrypted && !isCollection) {
                   const hasImageExt = /\.(jpg|jpeg|png|gif|webp|bmp|svg|heic|heif)$/i.test(nameWithoutEncrypted);
                   const hasVideoExt = /\.(mp4|mov|avi|mkv|webm|flv|wmv|m4v|3gp)$/i.test(nameWithoutEncrypted);
                   const hasThoughtExt = /\.thought$/i.test(nameWithoutEncrypted) || 
@@ -3382,7 +3464,14 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
                         toggleFileSelection(file.id);
                         return;
                       }
-                      setViewingFile({ ...file, accountId: file.accountId || account.accountId });
+                      // Ensure collection metadata is included when opening
+                      const fileWithMetadata = {
+                        ...file,
+                        accountId: file.accountId || account.accountId,
+                        fileType: (file as any).fileType || fileMetadataMap.get(file.id)?.fileType,
+                        collection: (file as any).collection || fileMetadataMap.get(file.id)?.collection
+                      };
+                      setViewingFile(fileWithMetadata);
                     }}
                   >
                     {/* Checkbox or order number for collection/bulk delete mode */}
@@ -3405,7 +3494,11 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
                       </div>
                     )}
                     <div className="flex items-center space-x-3 flex-1 min-w-0">
-                      {isMediaFile ? (
+                      {isCollection ? (
+                        <div className="w-12 h-12 flex-shrink-0 rounded overflow-hidden bg-gradient-to-br from-blue-600/20 to-purple-600/20 flex items-center justify-center">
+                          <Layers className="h-6 w-6 text-blue-400" />
+                        </div>
+                      ) : isMediaFile ? (
                         <div className="w-12 h-12 flex-shrink-0 rounded overflow-hidden bg-neutral-700">
                           <ThumbnailImage 
                             fileId={file.id}
