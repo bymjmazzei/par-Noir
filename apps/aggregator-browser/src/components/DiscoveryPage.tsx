@@ -192,12 +192,36 @@ export function DiscoveryPage({
     return (file.metadata as any).textPost || (file.metadata as any).thought || null;
   };
 
+  // Helper to check if file is a collection
+  const isCollection = (file: IndexedFile): boolean => {
+    const collectionData = file.metadata?.collection;
+    return file.metadata.fileType === 'collection' && 
+           collectionData?.collectionFileIds && 
+           Array.isArray(collectionData.collectionFileIds) &&
+           collectionData.collectionFileIds.length > 0;
+  };
+
   // Helper to get thumbnail URL for a file
   const getThumbnail = (file: IndexedFile): string => {
     if (thumbnails && thumbnails.has(file.metadata.fileId)) {
       return thumbnails.get(file.metadata.fileId)!;
     }
     return file.thumbnail || '/placeholder-thumbnail.png';
+  };
+
+  // Helper to get thumbnails for collection files
+  const getCollectionThumbnails = (file: IndexedFile): string[] => {
+    const collectionData = file.metadata?.collection;
+    if (!collectionData?.collectionFileIds) return [];
+    
+    return collectionData.collectionFileIds
+      .map((fileId: string) => {
+        if (thumbnails && thumbnails.has(fileId)) {
+          return thumbnails.get(fileId)!;
+        }
+        return null;
+      })
+      .filter((url): url is string => url !== null);
   };
 
   // Helper to get creator ID from file metadata (prefer pN identifier over DID)
@@ -561,7 +585,46 @@ export function DiscoveryPage({
             >
               {/* Thumbnail or Thought Preview */}
               <div className="relative aspect-video bg-neutral-800 rounded-lg overflow-hidden mb-2">
-                {item.type === 'file' && isTextPost(item.item as IndexedFile) ? (
+                {item.type === 'file' && isCollection(item.item as IndexedFile) ? (
+                  // Render collection as slideshow of thumbnails
+                  (() => {
+                    const file = item.item as IndexedFile;
+                    const collectionThumbnails = getCollectionThumbnails(file);
+                    const collectionData = file.metadata?.collection;
+                    const collectionFileIds = collectionData?.collectionFileIds || [];
+                    
+                    if (collectionThumbnails.length > 0) {
+                      return (
+                        <div className="w-full h-full flex overflow-x-auto snap-x snap-mandatory scrollbar-hide">
+                          {collectionThumbnails.map((thumbnailUrl, idx) => (
+                            <div
+                              key={`${file.metadata.fileId}-${idx}`}
+                              className="flex-shrink-0 w-full h-full snap-start"
+                            >
+                              <img
+                                src={thumbnailUrl}
+                                alt={`${item.title} - ${idx + 1}`}
+                                className="w-full h-full object-cover"
+                                onError={(e) => {
+                                  e.currentTarget.src = '/placeholder-thumbnail.png';
+                                }}
+                              />
+                            </div>
+                          ))}
+                        </div>
+                      );
+                    } else {
+                      // Fallback: show placeholder with collection count
+                      return (
+                        <div className="w-full h-full flex flex-col items-center justify-center text-neutral-400">
+                          <div className="text-4xl mb-2">📚</div>
+                          <div className="text-sm">Collection</div>
+                          <div className="text-xs mt-1">{collectionFileIds.length} files</div>
+                        </div>
+                      );
+                    }
+                  })()
+                ) : item.type === 'file' && isTextPost(item.item as IndexedFile) ? (
                   // Render thought preview
                   (() => {
                     const textPostData = getTextPostData(item.item as IndexedFile);

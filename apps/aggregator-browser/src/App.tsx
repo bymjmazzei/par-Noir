@@ -3956,6 +3956,15 @@ function App() {
                              !!(file.name || file.title || '').match(/\.(mp4|mov|avi|webm|mkv|flv|wmv)$/i);
               const fileName = file.name || file.title || 'Untitled';
               
+              // Detect if file is a collection
+              const collectionData = indexedFile.metadata?.collection;
+              const isCollectionFile = file.fileType === 'collection' && 
+                                     collectionData && 
+                                     typeof collectionData === 'object' &&
+                                     collectionData.collectionFileIds && 
+                                     Array.isArray(collectionData.collectionFileIds) &&
+                                     collectionData.collectionFileIds.length > 0;
+              
               return (
                 <div
                   key={file.fileId}
@@ -3971,8 +3980,49 @@ function App() {
                     }, 100);
                   }}
                 >
+                  {/* Collection Preview Section */}
+                  {isCollectionFile && collectionData.collectionFileIds && (
+                    <div className="w-full h-48 bg-neutral-800 flex items-center justify-center relative overflow-hidden">
+                      {(() => {
+                        const collectionThumbnails = collectionData.collectionFileIds
+                          .map((fileId: string) => thumbnails.get(fileId))
+                          .filter((url): url is string => url !== undefined);
+                        
+                        if (collectionThumbnails.length > 0) {
+                          return (
+                            <div className="w-full h-full flex overflow-x-auto snap-x snap-mandatory scrollbar-hide">
+                              {collectionThumbnails.map((thumbnailUrl, idx) => (
+                                <div
+                                  key={`${file.fileId}-${idx}`}
+                                  className="flex-shrink-0 w-full h-full snap-start"
+                                >
+                                  <img
+                                    src={thumbnailUrl}
+                                    alt={`${fileName} - ${idx + 1}`}
+                                    className="w-full h-full object-cover"
+                                    onError={(e) => {
+                                      e.currentTarget.src = '/placeholder-thumbnail.png';
+                                    }}
+                                  />
+                                </div>
+                              ))}
+                            </div>
+                          );
+                        } else {
+                          return (
+                            <div className="flex flex-col items-center justify-center text-neutral-400">
+                              <div className="text-4xl mb-2">📚</div>
+                              <div className="text-sm">Collection</div>
+                              <div className="text-xs mt-1">{collectionData.collectionFileIds.length} files</div>
+                            </div>
+                          );
+                        }
+                      })()}
+                    </div>
+                  )}
+                  
                   {/* Image/Video Preview Section */}
-                  {(isImage || isVideo) && (
+                  {!isCollectionFile && (isImage || isVideo) && (
                     <div 
                       className="w-full h-48 bg-neutral-800 flex items-center justify-center relative overflow-hidden group"
                       onMouseEnter={async () => {
