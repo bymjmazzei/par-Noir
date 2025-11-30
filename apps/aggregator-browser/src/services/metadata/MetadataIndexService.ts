@@ -120,6 +120,18 @@ export class MetadataIndexService {
           const fileName = metadata.name || metadata.title || '';
           const isThumbnailFile = fileName.toLowerCase().startsWith('thumb_');
           
+          // DEBUG: Log collection data from API
+          if (metadata.fileType === 'collection' || metadata.collection) {
+            console.log(`[MetadataIndexService] Collection file found:`, {
+              fileId: metadata.fileId || entry.fileId,
+              fileType: metadata.fileType,
+              collectionFromMetadata: metadata.collection,
+              collectionType: typeof metadata.collection,
+              collectionKeys: metadata.collection ? Object.keys(metadata.collection) : [],
+              fullMetadata: JSON.stringify(metadata, null, 2)
+            });
+          }
+          
           return {
             metadata: {
               ...metadata,
@@ -137,7 +149,8 @@ export class MetadataIndexService {
               textPost: isThumbnailFile ? undefined : (metadata.textPost || metadata.thought || undefined),
               thought: isThumbnailFile ? undefined : (metadata.thought || metadata.textPost || undefined),
               // Preserve collection data for collections (CRITICAL for collection slideshow rendering)
-              collection: metadata.collection || undefined,
+              // IMPORTANT: Don't use || undefined - preserve null/empty objects if they exist
+              collection: metadata.collection !== undefined ? metadata.collection : undefined,
               // Use normalized pnIdentifier as creatorId - they're the same thing
               creatorId: normalizedPnId || metadata.creatorId,
               // Include publicToken from entry level if it exists (API may return it at entry level)

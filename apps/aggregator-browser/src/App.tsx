@@ -1705,7 +1705,8 @@ function App() {
                     textPost: metadata.textPost || metadata.thought || undefined,
                     thought: metadata.thought || metadata.textPost || undefined,
                     // Preserve collection data for collections
-                    collection: metadata.collection || undefined,
+                    // IMPORTANT: Don't use || undefined - preserve null/empty objects if they exist
+                    collection: metadata.collection !== undefined ? metadata.collection : undefined,
                     // Ensure owner info is preserved
                     creator: metadata.creator || {
                       identifier: { value: entry.pnIdentifier || viewingCreatorId }
