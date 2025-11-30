@@ -128,8 +128,19 @@ export class MetadataIndexService {
               collectionFromMetadata: metadata.collection,
               collectionType: typeof metadata.collection,
               collectionKeys: metadata.collection ? Object.keys(metadata.collection) : [],
-              fullMetadata: JSON.stringify(metadata, null, 2)
+              // Check ALL possible locations for collection data
+              entryLevelCollection: entry.collection,
+              metadataKeys: Object.keys(metadata),
+              entryKeys: Object.keys(entry),
+              fullMetadata: JSON.stringify(metadata, null, 2),
+              fullEntry: JSON.stringify(entry, null, 2)
             });
+            
+            // If collection data is missing, try to fetch it separately
+            if (metadata.fileType === 'collection' && !metadata.collection) {
+              console.warn(`[MetadataIndexService] Collection file ${metadata.fileId || entry.fileId} has fileType='collection' but no collection data in metadata!`);
+              console.warn(`[MetadataIndexService] This collection data needs to be fetched separately or is missing from the API response.`);
+            }
           }
           
           return {

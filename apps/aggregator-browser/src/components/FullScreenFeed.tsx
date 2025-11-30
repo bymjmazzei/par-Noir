@@ -79,6 +79,7 @@ export function FullScreenFeed({
   const [videoBlobs, setVideoBlobs] = useState<Map<string, string>>(externalVideoBlobs || new Map());
   const [thumbnails, setThumbnails] = useState<Map<string, string>>(externalThumbnails || new Map());
   const accountIdCacheRef = useRef<string | null>(null); // Cache accountId to avoid repeated API calls
+  const [collectionDataCache, setCollectionDataCache] = useState<Map<string, any>>(new Map()); // Cache for fetched collection data
   
   // DEBUG: Log files passed to FullScreenFeed
   useEffect(() => {
@@ -915,12 +916,49 @@ export function FullScreenFeed({
         
         // Check for collection - PRIMARY check: collectionFileIds existence
         // A file is a collection if it has collectionFileIds, regardless of fileType
-        const collectionData = indexedFile.metadata?.collection;
+        // Also check cache for fetched collection data
+        let collectionData = indexedFile.metadata?.collection || collectionDataCache.get(fileId);
         const isCollectionFile = collectionData && 
                                 typeof collectionData === 'object' &&
                                 collectionData.collectionFileIds && 
                                 Array.isArray(collectionData.collectionFileIds) &&
                                 collectionData.collectionFileIds.length > 0;
+        
+        // If fileType is 'collection' but collection data is missing, fetch it
+        if (actualFileType === 'collection' && !collectionData && !collectionDataCache.has(fileId)) {
+          // Fetch collection data asynchronously
+          (async () => {
+            try {
+              const { PNOAuthService } = await import('../services/pnOAuthService');
+              const accessToken = await PNOAuthService.getValidAccessToken();
+              if (!accessToken) return;
+              
+              console.log(`[FullScreenFeed] Fetching collection data for ${fileId}`);
+              const response = await fetch(`${apiEndpoint}/api/aggregator/metadata-index/${fileId}`, {
+                headers: { 'Authorization': `Bearer ${accessToken}` }
+              });
+              
+              if (response.ok) {
+                const data = await response.json();
+                const fetchedCollection = data.metadata?.collection || data.collection;
+                if (fetchedCollection?.collectionFileIds) {
+                  console.log(`[FullScreenFeed] Successfully fetched collection data for ${fileId}:`, fetchedCollection);
+                  setCollectionDataCache(prev => {
+                    const newMap = new Map(prev);
+                    newMap.set(fileId, fetchedCollection);
+                    return newMap;
+                  });
+                } else {
+                  console.warn(`[FullScreenFeed] Collection data fetch returned no collectionFileIds for ${fileId}`);
+                }
+              } else {
+                console.warn(`[FullScreenFeed] Failed to fetch collection data for ${fileId}: ${response.status}`);
+              }
+            } catch (err) {
+              console.error(`[FullScreenFeed] Error fetching collection data for ${fileId}:`, err);
+            }
+          })();
+        }
         
         // DEBUG: Log collection detection
         if (collectionData) {
@@ -1226,20 +1264,24 @@ export function FullScreenFeed({
             })()}
 
             {/* Collection - Simple thumbnail slideshow */}
-            {isCollectionFile && collectionData?.collectionFileIds ? (
+            {isCollectionFile && (collectionData || collectionDataCache.get(fileId))?.collectionFileIds ? (
               (() => {
+                // Use cached collection data if available
+                const finalCollectionData = collectionData || collectionDataCache.get(fileId);
+                
                 console.log(`[FullScreenFeed] RENDERING COLLECTION for ${fileId}:`, {
                   fileId,
-                  collectionFileIds: collectionData.collectionFileIds,
-                  collectionFileIdsLength: collectionData.collectionFileIds.length,
+                  collectionFileIds: finalCollectionData.collectionFileIds,
+                  collectionFileIdsLength: finalCollectionData.collectionFileIds.length,
                   thumbnailsMapSize: thumbnails.size,
                   thumbnailsMapKeys: Array.from(thumbnails.keys()),
                   isCollectionFile,
-                  hasCollectionData: !!collectionData
+                  hasCollectionData: !!finalCollectionData,
+                  fromCache: !!collectionDataCache.get(fileId)
                 });
                 
                 // Get thumbnails from Map for collection file IDs
-                const collectionThumbnails = collectionData.collectionFileIds
+                const collectionThumbnails = finalCollectionData.collectionFileIds
                   .map((fileId: string) => {
                     const thumbnail = thumbnails.get(fileId);
                     console.log(`[FullScreenFeed] Thumbnail lookup for collection file ${fileId}:`, {
@@ -1251,7 +1293,7 @@ export function FullScreenFeed({
                   .filter((url): url is string => url !== undefined);
                 
                 console.log(`[FullScreenFeed] Collection thumbnails result for ${fileId}:`, {
-                  requestedCount: collectionData.collectionFileIds.length,
+                  requestedCount: finalCollectionData.collectionFileIds.length,
                   foundCount: collectionThumbnails.length,
                   thumbnailUrls: collectionThumbnails
                 });
@@ -1289,7 +1331,7 @@ export function FullScreenFeed({
                     <div className="w-full h-full flex flex-col items-center justify-center text-neutral-400">
                       <div className="text-4xl mb-2">📚</div>
                       <div className="text-sm">Collection</div>
-                      <div className="text-xs mt-1">{collectionData.collectionFileIds.length} files</div>
+                      <div className="text-xs mt-1">{finalCollectionData.collectionFileIds.length} files</div>
                     </div>
                   );
                 }
