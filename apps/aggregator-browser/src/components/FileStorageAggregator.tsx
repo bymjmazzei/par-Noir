@@ -1248,10 +1248,17 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
         );
         
         // Filter to show thumbnails (representing main files), thought thumbnails, and collections
+        // IMPORTANT: Exclude collections from allFiles since they're already added via collectionFilesWithMetadata
+        const collectionFileIds = new Set(collectionFiles.map(f => f.id));
         const mediaFiles = thumbnailEntries.concat(thoughtThumbnailEntries).concat(collectionFilesWithMetadata).concat(
           allFiles.filter((file: DriveFile) => {
           const name = file.name.toLowerCase();
           const mimeType = file.mimeType || '';
+          
+          // Exclude collections - they're already added via collectionFilesWithMetadata
+          if (collectionFileIds.has(file.id)) {
+            return false;
+          }
           
           // Include thoughts that don't have thumbnails (legacy thoughts)
           if (name.startsWith('thought-') && (name.endsWith('.thought.encrypted') || name.endsWith('.png.encrypted'))) {
@@ -1401,10 +1408,17 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
         );
         
         // Filter to show thumbnails (representing main files), thought thumbnails, and collections
+        // IMPORTANT: Exclude collections from allFiles since they're already added via collectionFilesWithMetadata
+        const collectionFileIds = new Set(collectionFiles.map(f => f.id));
         const mediaFiles = thumbnailEntries.concat(thoughtThumbnailEntries).concat(collectionFilesWithMetadata).concat(
           allFiles.filter((file: DriveFile) => {
           const name = file.name.toLowerCase();
           const mimeType = file.mimeType || '';
+          
+          // Exclude collections - they're already added via collectionFilesWithMetadata
+          if (collectionFileIds.has(file.id)) {
+            return false;
+          }
           
           // Include thoughts that don't have thumbnails (legacy thoughts)
           if (name.startsWith('thought-') && (name.endsWith('.thought.encrypted') || name.endsWith('.png.encrypted'))) {
