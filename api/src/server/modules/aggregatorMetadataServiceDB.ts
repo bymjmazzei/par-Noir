@@ -1457,6 +1457,7 @@ export class AggregatorMetadataServiceDB {
       fileType?: string;
       textPost?: any;
       thought?: any;
+      collection?: any; // Collection data with collectionFileIds
       isNSFW?: boolean;
       isPublic?: boolean;
       subjects?: string[];
@@ -1481,10 +1482,11 @@ export class AggregatorMetadataServiceDB {
       // Preserve existing schema metadata (static/auto-extracted fields)
       const existingSchema = (metadata as any).schema || {};
 
-      // Preserve textPost/thought from existing metadata if not explicitly updated
-      // These fields are critical for rendering thoughts and should never be lost
+      // Preserve textPost/thought/collection from existing metadata if not explicitly updated
+      // These fields are critical for rendering and should never be lost
       const existingTextPost = (metadata as any).textPost;
       const existingThought = (metadata as any).thought;
+      const existingCollection = (metadata as any).collection;
       
       // Apply updates
       const updatedMetadata: PublicMetadata = {
@@ -1496,9 +1498,10 @@ export class AggregatorMetadataServiceDB {
         // Keep legacy tags for backward compatibility
         ...(updates.tags && { tags: updates.tags, keywords: updates.tags }),
         ...(updates.fileType && { fileType: updates.fileType }),
-        // Always preserve textPost/thought - use update if provided, otherwise keep existing (if it exists)
+        // Always preserve textPost/thought/collection - use update if provided, otherwise keep existing (if it exists)
         ...(updates.textPost !== undefined ? { textPost: updates.textPost } : (existingTextPost !== undefined ? { textPost: existingTextPost } : {})),
         ...(updates.thought !== undefined ? { thought: updates.thought } : (existingThought !== undefined ? { thought: existingThought } : {})),
+        ...(updates.collection !== undefined ? { collection: updates.collection } : (existingCollection !== undefined ? { collection: existingCollection } : {})),
         // Always update isNSFW if provided (even if false, to ensure it's saved)
         ...(updates.isNSFW !== undefined && { isNSFW: Boolean(updates.isNSFW) }),
         ...(updates.isPublic !== undefined && { isPublic: updates.isPublic === true }),

@@ -80,6 +80,7 @@ export function FullScreenFeed({
   const [thumbnails, setThumbnails] = useState<Map<string, string>>(externalThumbnails || new Map());
   const accountIdCacheRef = useRef<string | null>(null); // Cache accountId to avoid repeated API calls
   const [collectionDataCache, setCollectionDataCache] = useState<Map<string, any>>(new Map()); // Cache for fetched collection data
+  const fetchingCollectionRef = useRef<Set<string>>(new Set()); // Track files currently being fetched to prevent duplicates
   
   // DEBUG: Log files passed to FullScreenFeed
   useEffect(() => {
@@ -925,13 +926,19 @@ export function FullScreenFeed({
                                 collectionData.collectionFileIds.length > 0;
         
         // If fileType is 'collection' but collection data is missing, fetch it
-        if (actualFileType === 'collection' && !collectionData && !collectionDataCache.has(fileId)) {
+        // Use ref to prevent multiple simultaneous fetches
+        if (actualFileType === 'collection' && !collectionData && !collectionDataCache.has(fileId) && !fetchingCollectionRef.current.has(fileId)) {
+          fetchingCollectionRef.current.add(fileId);
+          
           // Fetch collection data asynchronously
           (async () => {
             try {
               const { PNOAuthService } = await import('../services/pnOAuthService');
               const accessToken = await PNOAuthService.getValidAccessToken();
-              if (!accessToken) return;
+              if (!accessToken) {
+                fetchingCollectionRef.current.delete(fileId);
+                return;
+              }
               
               console.log(`[FullScreenFeed] Fetching collection data for ${fileId}`);
               const response = await fetch(`${apiEndpoint}/api/aggregator/metadata-index/${fileId}`, {
@@ -940,6 +947,15 @@ export function FullScreenFeed({
               
               if (response.ok) {
                 const data = await response.json();
+                console.log(`[FullScreenFeed] API response for collection ${fileId}:`, {
+                  hasMetadata: !!data.metadata,
+                  hasCollection: !!data.metadata?.collection,
+                  hasTopLevelCollection: !!data.collection,
+                  metadataKeys: data.metadata ? Object.keys(data.metadata) : [],
+                  dataKeys: Object.keys(data),
+                  fullResponse: JSON.stringify(data, null, 2)
+                });
+                
                 const fetchedCollection = data.metadata?.collection || data.collection;
                 if (fetchedCollection?.collectionFileIds) {
                   console.log(`[FullScreenFeed] Successfully fetched collection data for ${fileId}:`, fetchedCollection);
@@ -949,13 +965,20 @@ export function FullScreenFeed({
                     return newMap;
                   });
                 } else {
-                  console.warn(`[FullScreenFeed] Collection data fetch returned no collectionFileIds for ${fileId}`);
+                  console.warn(`[FullScreenFeed] Collection data fetch returned no collectionFileIds for ${fileId}`, {
+                    fetchedCollection,
+                    dataMetadata: data.metadata,
+                    fullData: data
+                  });
                 }
               } else {
-                console.warn(`[FullScreenFeed] Failed to fetch collection data for ${fileId}: ${response.status}`);
+                const errorText = await response.text().catch(() => 'Unknown error');
+                console.warn(`[FullScreenFeed] Failed to fetch collection data for ${fileId}: ${response.status}`, errorText);
               }
             } catch (err) {
               console.error(`[FullScreenFeed] Error fetching collection data for ${fileId}:`, err);
+            } finally {
+              fetchingCollectionRef.current.delete(fileId);
             }
           })();
         }

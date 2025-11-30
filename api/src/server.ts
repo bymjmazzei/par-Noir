@@ -1942,6 +1942,7 @@ class ProductionServer {
           isTopPost,
           textPost,
           thought,
+          collection, // Collection data with collectionFileIds
           fileType,
           isNSFW,
           subjects,
@@ -2037,6 +2038,7 @@ class ProductionServer {
               ...(publicToken && { publicToken }),
               ...(textPost && { textPost }),
               ...(thought && { thought }),
+              ...(collection && { collection }), // Include collection data if provided
               ...(isNSFW !== undefined && { isNSFW: isNSFW === true }),
               "@context": ['https://schema.org/', 'https://parnoir.com/ns/v1#'],
               "@id": `https://parnoir.com/resource/${fileId}`,
@@ -2075,6 +2077,7 @@ class ProductionServer {
               isPublic: isPublic !== undefined ? isPublic : defaultIsPublic,
               ...(textPost && { textPost }),
               ...(thought && { thought }),
+              ...(collection && { collection }), // Include collection data if provided
               ...(isNSFW !== undefined && { isNSFW: isNSFW === true }),
               "@context": ['https://schema.org/', 'https://parnoir.com/ns/v1#'],
               "@id": `https://parnoir.com/resource/${fileId}`,
@@ -2119,6 +2122,7 @@ class ProductionServer {
           fileType,
           textPost,
           thought,
+          collection, // Include collection data if provided
           isNSFW,
           isPublic,
           subjects,
@@ -2157,9 +2161,10 @@ class ProductionServer {
               ...current.metadata,
               isPublic: finalIsPublic,
               ...(publicToken && { publicToken }),
-              // Preserve textPost and thought when updating isPublic
+              // Preserve textPost, thought, and collection when updating isPublic
               ...(textPost && { textPost }),
               ...(thought && { thought }),
+              ...(collection && { collection }),
               ...(fileType && { fileType }),
               ...(isNSFW !== undefined && { isNSFW: isNSFW === true })
             };
