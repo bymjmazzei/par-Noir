@@ -852,9 +852,39 @@ export function FullScreenFeed({
                                 Array.isArray(collectionData.collectionFileIds) &&
                                 collectionData.collectionFileIds.length > 0;
         
+        // DEBUG: Log collection detection
+        if (collectionData) {
+          console.log(`[FullScreenFeed] Collection check for ${fileId}:`, {
+            hasCollectionData: !!collectionData,
+            collectionDataType: typeof collectionData,
+            hasCollectionFileIds: !!collectionData.collectionFileIds,
+            collectionFileIdsType: Array.isArray(collectionData.collectionFileIds),
+            collectionFileIdsLength: collectionData.collectionFileIds?.length,
+            isCollectionFile,
+            actualFileType,
+            fileType: file.fileType,
+            collectionData: JSON.stringify(collectionData)
+          });
+        }
+        
         // Final detection (collections take precedence)
         const isVideoFinal = isCollectionFile ? false : isVideo;
         const isImageFinal = isCollectionFile ? false : isImage;
+        
+        // DEBUG: Log final detection results
+        if (isCollectionFile || collectionData) {
+          console.log(`[FullScreenFeed] Final detection for ${fileId}:`, {
+            isCollectionFile,
+            isVideo,
+            isVideoFinal,
+            isImage,
+            isImageFinal,
+            willRenderCollection: isCollectionFile && collectionData?.collectionFileIds,
+            willRenderVideo: isVideoFinal,
+            willRenderImage: isImageFinal,
+            willRenderFallback: !isImageFinal && !isVideoFinal && !isCollectionFile
+          });
+        }
         
         // NO THOUGHT DETECTION - thoughts are just images (thumbnails) now!
         
@@ -1128,12 +1158,36 @@ export function FullScreenFeed({
             {/* Collection - Simple thumbnail slideshow */}
             {isCollectionFile && collectionData?.collectionFileIds ? (
               (() => {
+                console.log(`[FullScreenFeed] RENDERING COLLECTION for ${fileId}:`, {
+                  fileId,
+                  collectionFileIds: collectionData.collectionFileIds,
+                  collectionFileIdsLength: collectionData.collectionFileIds.length,
+                  thumbnailsMapSize: thumbnails.size,
+                  thumbnailsMapKeys: Array.from(thumbnails.keys()),
+                  isCollectionFile,
+                  hasCollectionData: !!collectionData
+                });
+                
                 // Get thumbnails from Map for collection file IDs
                 const collectionThumbnails = collectionData.collectionFileIds
-                  .map((fileId: string) => thumbnails.get(fileId))
+                  .map((fileId: string) => {
+                    const thumbnail = thumbnails.get(fileId);
+                    console.log(`[FullScreenFeed] Thumbnail lookup for collection file ${fileId}:`, {
+                      found: !!thumbnail,
+                      url: thumbnail || 'NOT FOUND'
+                    });
+                    return thumbnail;
+                  })
                   .filter((url): url is string => url !== undefined);
                 
+                console.log(`[FullScreenFeed] Collection thumbnails result for ${fileId}:`, {
+                  requestedCount: collectionData.collectionFileIds.length,
+                  foundCount: collectionThumbnails.length,
+                  thumbnailUrls: collectionThumbnails
+                });
+                
                 if (collectionThumbnails.length > 0) {
+                  console.log(`[FullScreenFeed] Rendering slideshow with ${collectionThumbnails.length} thumbnails for ${fileId}`);
                   // Render horizontal slideshow of thumbnails
                   return (
                     <div className="w-full h-full flex overflow-x-auto snap-x snap-mandatory scrollbar-hide">
@@ -1147,7 +1201,11 @@ export function FullScreenFeed({
                             alt={`${fileName} - ${idx + 1}`}
                             className="w-full h-full object-cover"
                             onError={(e) => {
+                              console.error(`[FullScreenFeed] Thumbnail failed to load for collection ${fileId}, index ${idx}:`, thumbnailUrl);
                               e.currentTarget.src = '/placeholder-thumbnail.png';
+                            }}
+                            onLoad={() => {
+                              console.log(`[FullScreenFeed] Thumbnail loaded successfully for collection ${fileId}, index ${idx}`);
                             }}
                           />
                         </div>
@@ -1155,6 +1213,7 @@ export function FullScreenFeed({
                     </div>
                   );
                 } else {
+                  console.warn(`[FullScreenFeed] No thumbnails found for collection ${fileId}, showing placeholder`);
                   // Fallback: show placeholder if no thumbnails available
                   return (
                     <div className="w-full h-full flex flex-col items-center justify-center text-neutral-400">
@@ -1165,7 +1224,19 @@ export function FullScreenFeed({
                   );
                 }
               })()
-            ) : null}
+            ) : (() => {
+              // DEBUG: Log why collection is NOT rendering
+              if (collectionData) {
+                console.log(`[FullScreenFeed] Collection NOT rendering for ${fileId}:`, {
+                  isCollectionFile,
+                  hasCollectionData: !!collectionData,
+                  hasCollectionFileIds: !!collectionData.collectionFileIds,
+                  collectionFileIds: collectionData.collectionFileIds,
+                  reason: !isCollectionFile ? 'isCollectionFile is false' : !collectionData?.collectionFileIds ? 'no collectionFileIds' : 'unknown'
+                });
+              }
+              return null;
+            })()}
 
             {/* Non-image/video/slideshow/collection file */}
             {!isImageFinal && !isVideoFinal && !isCollectionFile && (
