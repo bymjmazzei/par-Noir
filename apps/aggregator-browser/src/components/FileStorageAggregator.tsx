@@ -643,6 +643,135 @@ async function uploadThumbnail(
   );
 };
 
+// File viewer modal wrapper that handles thought title display
+const FileViewerModal: React.FC<{ file: DriveFile; fileMetadataMap: Map<string, any>; onClose: () => void; onDownload: () => void }> = ({ file, fileMetadataMap, onClose, onDownload }) => {
+  const [thoughtTitle, setThoughtTitle] = useState<string | null>(null);
+  const [isLoadingTitle, setIsLoadingTitle] = useState(false);
+
+  // Check if this is a thought file
+  const nameWithoutEncrypted = file.name.replace(/\.encrypted$/i, '');
+  const isThought = nameWithoutEncrypted.toLowerCase().startsWith('thought-') && 
+                    (nameWithoutEncrypted.toLowerCase().endsWith('.thought') || nameWithoutEncrypted.toLowerCase().endsWith('.png'));
+  const isThoughtThumbnail = nameWithoutEncrypted.toLowerCase().startsWith('thumb_thought-');
+
+  // Load thought title
+  useEffect(() => {
+    if (!isThought && !isThoughtThumbnail) {
+      return;
+    }
+
+    const loadThoughtTitle = async () => {
+      setIsLoadingTitle(true);
+      try {
+        // First check metadata map
+        const metadata = fileMetadataMap.get(file.id);
+        if (metadata?.title) {
+          setThoughtTitle(metadata.title);
+          setIsLoadingTitle(false);
+          return;
+        }
+
+        // If it's a thumbnail, try to get title from main file metadata
+        if (isThoughtThumbnail && (file as any).mainFileId) {
+          const mainFileMetadata = fileMetadataMap.get((file as any).mainFileId);
+          if (mainFileMetadata?.title) {
+            setThoughtTitle(mainFileMetadata.title);
+            setIsLoadingTitle(false);
+            return;
+          }
+        }
+
+        // Try to load from API metadata
+        const accessToken = await PNOAuthService.getValidAccessToken();
+        if (!accessToken) {
+          setIsLoadingTitle(false);
+          return;
+        }
+
+        // Use mainFileId if it's a thumbnail, otherwise use file.id
+        const fileIdToCheck = isThoughtThumbnail && (file as any).mainFileId ? (file as any).mainFileId : file.id;
+        
+        const response = await fetch(`${apiEndpoint}/api/aggregator/metadata-index/${fileIdToCheck}`, {
+          headers: {
+            'Authorization': `Bearer ${accessToken}`
+          }
+        });
+
+        if (response.ok) {
+          const metadata = await response.json();
+          if (metadata.metadata?.title) {
+            setThoughtTitle(metadata.metadata.title);
+          } else if (metadata.metadata?.textPost?.content || metadata.metadata?.thought?.content) {
+            // Extract title from content (first line or first 50 chars)
+            const content = metadata.metadata.textPost?.content || metadata.metadata.thought?.content || '';
+            const firstLine = content.split('\n')[0].trim();
+            setThoughtTitle(firstLine.length > 50 ? firstLine.substring(0, 50) + '...' : firstLine || 'Thought');
+          }
+        }
+      } catch (err) {
+        console.error('[FileViewerModal] Failed to load thought title:', err);
+      } finally {
+        setIsLoadingTitle(false);
+      }
+    };
+
+    loadThoughtTitle();
+  }, [file.id, file.name, isThought, isThoughtThumbnail, fileMetadataMap]);
+
+  // Get display title
+  const displayTitle = thoughtTitle || (isThought || isThoughtThumbnail ? 'Thought' : null);
+
+  return (
+    <div 
+      className="fixed inset-0 bg-black bg-opacity-90 flex flex-col items-center justify-center z-50 p-4"
+      onClick={onClose}
+    >
+      <div 
+        className="relative max-w-7xl max-h-[90vh] w-full h-full flex flex-col items-center justify-center"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Header with title */}
+        {(displayTitle || isLoadingTitle) && (
+          <div className="absolute top-4 left-4 right-16 z-10">
+            <h2 className="text-white text-lg font-medium truncate">
+              {isLoadingTitle ? 'Loading...' : displayTitle}
+            </h2>
+          </div>
+        )}
+
+        {/* Close button */}
+        <button
+          onClick={onClose}
+          className="absolute top-4 right-4 z-10 p-2 bg-neutral-800/80 rounded-lg text-white hover:bg-neutral-700 transition-colors"
+        >
+          <X className="h-6 w-6" />
+        </button>
+        
+        {/* File viewer */}
+        {file.accountId ? (
+          <div className="flex-1 w-full flex items-center justify-center">
+            <FileViewer 
+              file={file}
+              accountId={file.accountId}
+              onDownload={onDownload}
+            />
+          </div>
+        ) : (
+          <div className="text-center text-white">
+            <p>Preview not available</p>
+            <button
+              onClick={onDownload}
+              className="mt-4 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+            >
+              Download File
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
 // File viewer component that handles authenticated file loading
 const FileViewer: React.FC<{ file: DriveFile; accountId: string; onDownload: () => void }> = ({ file, accountId, onDownload }) => {
   const [fileUrl, setFileUrl] = useState<string | null>(null);
@@ -3441,40 +3570,12 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
 
       {/* File Viewer Modal */}
       {viewingFile && (
-        <div 
-          className="fixed inset-0 bg-black bg-opacity-90 flex items-center justify-center z-50 p-4"
-          onClick={() => setViewingFile(null)}
-        >
-          <div 
-            className="relative max-w-7xl max-h-[90vh] w-full h-full flex items-center justify-center"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <button
-              onClick={() => setViewingFile(null)}
-              className="absolute top-4 right-4 z-10 p-2 bg-neutral-800/80 rounded-lg text-white hover:bg-neutral-700 transition-colors"
-            >
-              <X className="h-6 w-6" />
-            </button>
-            
-            {viewingFile.accountId ? (
-              <FileViewer 
-                file={viewingFile}
-                accountId={viewingFile.accountId}
-                onDownload={() => handleDownload(viewingFile, viewingFile.accountId)}
-              />
-            ) : (
-              <div className="text-center text-white">
-                <p>Preview not available</p>
-                <button
-                  onClick={() => viewingFile.accountId && handleDownload(viewingFile, viewingFile.accountId)}
-                  className="mt-4 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
-                >
-                  Download File
-                </button>
-              </div>
-            )}
-          </div>
-        </div>
+        <FileViewerModal 
+          file={viewingFile}
+          fileMetadataMap={fileMetadataMap}
+          onClose={() => setViewingFile(null)}
+          onDownload={() => viewingFile.accountId && handleDownload(viewingFile, viewingFile.accountId)}
+        />
       )}
 
       {/* Edit Metadata Modal */}
