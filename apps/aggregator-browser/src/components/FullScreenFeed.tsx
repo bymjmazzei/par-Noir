@@ -1225,6 +1225,19 @@ export function FullScreenFeed({
                                 Array.isArray(collectionData.collectionFileIds) &&
                                 collectionData.collectionFileIds.length > 0;
         
+        // Debug: Log collection detection state
+        if (actualFileType === 'collection' || collectionData) {
+          console.log(`[FullScreenFeed] Collection detection check for ${fileId}:`, {
+            actualFileType,
+            hasCollectionData: !!collectionData,
+            collectionDataType: typeof collectionData,
+            hasCollectionFileIds: !!collectionData?.collectionFileIds,
+            collectionFileIdsType: Array.isArray(collectionData?.collectionFileIds),
+            collectionFileIdsLength: collectionData?.collectionFileIds?.length,
+            isCollectionFile
+          });
+        }
+        
         // Trigger thumbnail loading for collection files immediately when collection is detected
         // (don't wait for visibleFileId to be set)
         if (isCollectionFile && collectionData?.collectionFileIds) {
