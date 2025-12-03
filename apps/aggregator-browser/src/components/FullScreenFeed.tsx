@@ -73,6 +73,8 @@ export function FullScreenFeed({
   thumbnails: externalThumbnails,
   videoBlobs: externalVideoBlobs
 }: FullScreenFeedProps) {
+  // CACHE BUSTER: If you see this log, the new code is running! Version: 2024-12-19-v2
+  console.log('%c[FullScreenFeed] NEW CODE LOADED - Version 2024-12-19-v2', 'color: red; font-size: 20px; font-weight: bold;');
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
   const videoRefs = useRef<Map<string, HTMLVideoElement>>(new Map());
   const imageRefs = useRef<Map<string, HTMLImageElement>>(new Map());
@@ -1375,6 +1377,15 @@ export function FullScreenFeed({
                     
                     const metadataData = await metadataResponse.json();
                     const collectionFileMetadata = metadataData.metadata || metadataData;
+                    
+                    console.log(`[FullScreenFeed] IMMEDIATE LOAD: Metadata for ${cfId}:`, {
+                      hasPublicToken: !!collectionFileMetadata.publicToken,
+                      hasThumbnailFileId: !!collectionFileMetadata.thumbnailFileId,
+                      thumbnailFileId: collectionFileMetadata.thumbnailFileId,
+                      fileName: collectionFileMetadata.name || collectionFileMetadata.title,
+                      fileType: collectionFileMetadata.fileType,
+                      isThumbnailFile: (collectionFileMetadata.name || collectionFileMetadata.title || '').toLowerCase().startsWith('thumb_')
+                    });
                     
                     // Get accountId
                     let accountId: string | null = collectionFileMetadata.accountId || collectionFileMetadata.backendFileId;
