@@ -1228,6 +1228,7 @@ export function FullScreenFeed({
         // Trigger thumbnail loading for collection files immediately when collection is detected
         // (don't wait for visibleFileId to be set)
         if (isCollectionFile && collectionData?.collectionFileIds) {
+          console.log(`[FullScreenFeed] IMMEDIATE LOAD: Collection detected ${fileId}, checking thumbnails...`);
           // Debug: Log the state of all collection file IDs
           const collectionFileIds = collectionData.collectionFileIds;
           const thumbnailStates = collectionFileIds.map((cfId: string) => ({
@@ -1236,7 +1237,7 @@ export function FullScreenFeed({
             inExternalThumbnails: externalThumbnails?.has(cfId) || false,
             inLoadingRef: loadingCollectionThumbnailsRef.current.has(cfId)
           }));
-          console.log(`[FullScreenFeed] Collection ${fileId} thumbnail states:`, thumbnailStates);
+          console.log(`[FullScreenFeed] IMMEDIATE LOAD: Collection ${fileId} thumbnail states:`, thumbnailStates);
           
           const missingThumbnailIds = collectionFileIds.filter(
             (cfId: string) => 
@@ -1245,7 +1246,7 @@ export function FullScreenFeed({
               !loadingCollectionThumbnailsRef.current.has(cfId)
           );
           
-          console.log(`[FullScreenFeed] Collection ${fileId} missing thumbnails check:`, {
+          console.log(`[FullScreenFeed] IMMEDIATE LOAD: Collection ${fileId} missing thumbnails check:`, {
             totalCollectionFileIds: collectionFileIds.length,
             missingCount: missingThumbnailIds.length,
             missingIds: missingThumbnailIds,
@@ -1255,7 +1256,7 @@ export function FullScreenFeed({
           });
           
           if (missingThumbnailIds.length > 0) {
-            console.log(`[FullScreenFeed] Triggering thumbnail load for collection ${fileId} (${missingThumbnailIds.length} missing):`, missingThumbnailIds);
+            console.log(`[FullScreenFeed] IMMEDIATE LOAD: Triggering thumbnail load for collection ${fileId} (${missingThumbnailIds.length} missing):`, missingThumbnailIds);
             // Mark as loading
             missingThumbnailIds.forEach((cfId: string) => {
               loadingCollectionThumbnailsRef.current.add(cfId);
