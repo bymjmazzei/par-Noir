@@ -73,8 +73,11 @@ export function FullScreenFeed({
   thumbnails: externalThumbnails,
   videoBlobs: externalVideoBlobs
 }: FullScreenFeedProps) {
-  // CACHE BUSTER: If you see this log, the new code is running! Version: 2024-12-19-v2
-  console.log('%c[FullScreenFeed] NEW CODE LOADED - Version 2024-12-19-v2', 'color: red; font-size: 20px; font-weight: bold;');
+  // CACHE BUSTER: If you see this log, the new code is running! Version: 2024-12-19-v3
+  console.log('%c[FullScreenFeed] NEW CODE LOADED - Version 2024-12-19-v3', 'color: red; font-size: 20px; font-weight: bold;');
+  console.error('[FullScreenFeed] VERSION CHECK - If you see this, new code is loaded!');
+  (window as any).__fullScreenFeedVersion = '2024-12-19-v3';
+  
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
   const videoRefs = useRef<Map<string, HTMLVideoElement>>(new Map());
   const imageRefs = useRef<Map<string, HTMLImageElement>>(new Map());
@@ -84,7 +87,39 @@ export function FullScreenFeed({
   const [collectionDataCache, setCollectionDataCache] = useState<Map<string, any>>(new Map()); // Cache for fetched collection data
   const fetchingCollectionRef = useRef<Set<string>>(new Set()); // Track files currently being fetched to prevent duplicates
   const loadingCollectionThumbnailsRef = useRef<Set<string>>(new Set()); // Track collection file IDs currently loading thumbnails
+  const loadingStartTimesRef = useRef<Map<string, number>>(new Map()); // Track when each file ID started loading
   const triggeredImmediateLoadRef = useRef<Set<string>>(new Set()); // Track collections we've already triggered immediate loading for
+  
+  // Helper function to clear loading state for a file ID
+  const clearLoadingState = (fileId: string) => {
+    loadingCollectionThumbnailsRef.current.delete(fileId);
+    loadingStartTimesRef.current.delete(fileId);
+  };
+  
+  // Clear stuck loading states after 15 seconds
+  useEffect(() => {
+    const interval = setInterval(() => {
+      const now = Date.now();
+      const stuckIds: string[] = [];
+      
+      loadingCollectionThumbnailsRef.current.forEach((fileId) => {
+        const startTime = loadingStartTimesRef.current.get(fileId);
+        if (startTime && (now - startTime) > 15000) {
+          stuckIds.push(fileId);
+        }
+      });
+      
+      if (stuckIds.length > 0) {
+        console.warn(`[FullScreenFeed] Clearing ${stuckIds.length} stuck loading states:`, stuckIds);
+        stuckIds.forEach((fileId) => {
+          loadingCollectionThumbnailsRef.current.delete(fileId);
+          loadingStartTimesRef.current.delete(fileId);
+        });
+      }
+    }, 5000); // Check every 5 seconds
+    
+    return () => clearInterval(interval);
+  }, []);
   
   // DEBUG: Log files passed to FullScreenFeed
   useEffect(() => {
@@ -842,6 +877,7 @@ export function FullScreenFeed({
       // Mark as loading
       missingThumbnailIds.forEach((fileId: string) => {
         loadingCollectionThumbnailsRef.current.add(fileId);
+        loadingStartTimesRef.current.set(fileId, Date.now());
       });
       
       // Load thumbnails for missing collection files
@@ -1347,6 +1383,7 @@ export function FullScreenFeed({
             // Mark as loading
             missingThumbnailIds.forEach((cfId: string) => {
               loadingCollectionThumbnailsRef.current.add(cfId);
+              loadingStartTimesRef.current.set(cfId, Date.now());
             });
             
             // Load thumbnails asynchronously (fire and forget)
@@ -1357,7 +1394,7 @@ export function FullScreenFeed({
                 const accessToken = await PNOAuthService.getValidAccessToken();
                 
                 if (!accessToken) {
-                  missingThumbnailIds.forEach((cfId: string) => loadingCollectionThumbnailsRef.current.delete(cfId));
+                  missingThumbnailIds.forEach((cfId: string) => clearLoadingState(cfId));
                   return;
                 }
                 
@@ -1371,7 +1408,7 @@ export function FullScreenFeed({
                     
                     if (!metadataResponse.ok) {
                       console.warn(`[FullScreenFeed] Failed to fetch metadata for collection file ${cfId}:`, metadataResponse.status);
-                      loadingCollectionThumbnailsRef.current.delete(cfId);
+                      clearLoadingState(cfId);
                       return;
                     }
                     
@@ -1442,7 +1479,7 @@ export function FullScreenFeed({
                         });
                         
                         console.log(`[FullScreenFeed] Loaded thumbnail for collection file ${cfId} via publicToken`);
-                        loadingCollectionThumbnailsRef.current.delete(cfId);
+                        clearLoadingState(cfId);
                         return;
                       } catch (decryptErr) {
                         console.warn(`[FullScreenFeed] Failed to decrypt thumbnail with publicToken for ${cfId}:`, decryptErr);
@@ -1519,7 +1556,7 @@ export function FullScreenFeed({
                         });
                         
                         console.log(`[FullScreenFeed] Loaded thumbnail for collection file ${cfId} via thumbnailFileId`);
-                        loadingCollectionThumbnailsRef.current.delete(cfId);
+                        clearLoadingState(cfId);
                         return;
                       }
                     }
@@ -1592,24 +1629,24 @@ export function FullScreenFeed({
                         });
                         
                         console.log(`[FullScreenFeed] Loaded thumbnail for collection file ${cfId} via API endpoint`);
-                        loadingCollectionThumbnailsRef.current.delete(cfId);
+                        clearLoadingState(cfId);
                         return; // Success - exit early
                       } else {
                         console.warn(`[FullScreenFeed] Failed to decrypt/process thumbnail for collection file ${cfId}`);
-                        loadingCollectionThumbnailsRef.current.delete(cfId);
+                        clearLoadingState(cfId);
                       }
                     } else {
                       console.warn(`[FullScreenFeed] API endpoint returned non-OK status for collection file ${cfId}:`, response.status);
-                      loadingCollectionThumbnailsRef.current.delete(cfId);
+                      clearLoadingState(cfId);
                     }
                   } catch (err) {
                     console.warn(`[FullScreenFeed] Failed to load thumbnail for collection file ${cfId}:`, err);
-                    loadingCollectionThumbnailsRef.current.delete(cfId);
+                    clearLoadingState(cfId);
                   }
                 }));
               } catch (err) {
                 console.error(`[FullScreenFeed] Error loading collection thumbnails:`, err);
-                missingThumbnailIds.forEach((cfId: string) => loadingCollectionThumbnailsRef.current.delete(cfId));
+                missingThumbnailIds.forEach((cfId: string) => clearLoadingState(cfId));
               }
             })();
           }
