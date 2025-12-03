@@ -844,6 +844,7 @@ export function FullScreenFeed({
       
       // Load thumbnails for missing collection files
       await Promise.all(missingThumbnailIds.map(async (fileId: string) => {
+        console.log(`[FullScreenFeed] loadCollectionThumbnails: Starting to load thumbnail for collection file ${fileId}`);
         try {
           const { PNOAuthService } = await import('../services/pnOAuthService');
           const apiEndpoint = process.env.REACT_APP_API_ENDPOINT || 'https://api.parnoir.com';
@@ -1359,6 +1360,7 @@ export function FullScreenFeed({
                 }
                 
                 await Promise.all(missingThumbnailIds.map(async (cfId: string) => {
+                  console.log(`[FullScreenFeed] IMMEDIATE LOAD: Starting to load thumbnail for collection file ${cfId}`);
                   try {
                     // Fetch metadata for this collection file
                     const metadataResponse = await fetch(`${apiEndpoint}/api/aggregator/metadata-index/${cfId}`, {
