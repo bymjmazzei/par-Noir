@@ -82,6 +82,7 @@ export function FullScreenFeed({
   const [collectionDataCache, setCollectionDataCache] = useState<Map<string, any>>(new Map()); // Cache for fetched collection data
   const fetchingCollectionRef = useRef<Set<string>>(new Set()); // Track files currently being fetched to prevent duplicates
   const loadingCollectionThumbnailsRef = useRef<Set<string>>(new Set()); // Track collection file IDs currently loading thumbnails
+  const triggeredImmediateLoadRef = useRef<Set<string>>(new Set()); // Track collections we've already triggered immediate loading for
   
   // DEBUG: Log files passed to FullScreenFeed
   useEffect(() => {
@@ -1270,9 +1271,21 @@ export function FullScreenFeed({
         // Trigger thumbnail loading for collection files immediately when collection is detected
         // (don't wait for visibleFileId to be set)
         if (isCollectionFile && collectionData?.collectionFileIds) {
-          console.log(`[FullScreenFeed] IMMEDIATE LOAD: Collection detected ${fileId}, checking thumbnails...`);
-          // Debug: Log the state of all collection file IDs
           const collectionFileIds = collectionData.collectionFileIds;
+          
+          // Check if we've already triggered loading for this collection
+          const alreadyTriggered = triggeredImmediateLoadRef.current.has(fileId);
+          
+          console.log(`[FullScreenFeed] IMMEDIATE LOAD CHECK: Collection ${fileId}`, {
+            isCollectionFile,
+            hasCollectionData: !!collectionData,
+            hasCollectionFileIds: !!collectionData?.collectionFileIds,
+            collectionFileIdsLength: collectionFileIds?.length,
+            alreadyTriggered,
+            thumbnailsMapSize: thumbnails.size
+          });
+          
+          // Debug: Log the state of all collection file IDs
           const thumbnailStates = collectionFileIds.map((cfId: string) => ({
             fileId: cfId,
             inThumbnails: thumbnails.has(cfId),
@@ -1297,8 +1310,9 @@ export function FullScreenFeed({
             loadingRefIds: Array.from(loadingCollectionThumbnailsRef.current)
           });
           
-          if (missingThumbnailIds.length > 0) {
+          if (missingThumbnailIds.length > 0 && !alreadyTriggered) {
             console.log(`[FullScreenFeed] IMMEDIATE LOAD: Triggering thumbnail load for collection ${fileId} (${missingThumbnailIds.length} missing):`, missingThumbnailIds);
+            triggeredImmediateLoadRef.current.add(fileId);
             // Mark as loading
             missingThumbnailIds.forEach((cfId: string) => {
               loadingCollectionThumbnailsRef.current.add(cfId);
