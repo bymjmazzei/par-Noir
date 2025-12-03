@@ -78,6 +78,48 @@ export function FullScreenFeed({
   console.error('[FullScreenFeed] VERSION CHECK - If you see this, new code is loaded!');
   (window as any).__fullScreenFeedVersion = '2024-12-19-v3';
   
+  // Debug function to test thumbnail loading for a specific file ID
+  (window as any).__testThumbnailLoad = async (fileId: string) => {
+    console.log(`[DEBUG] Testing thumbnail load for: ${fileId}`);
+    try {
+      const { PNOAuthService } = await import('../services/pnOAuthService');
+      const apiEndpoint = process.env.REACT_APP_API_ENDPOINT || 'https://api.parnoir.com';
+      const accessToken = await PNOAuthService.getValidAccessToken();
+      
+      if (!accessToken) {
+        console.error('[DEBUG] No access token');
+        return;
+      }
+      
+      const metadataResponse = await fetch(`${apiEndpoint}/api/aggregator/metadata-index/${fileId}`, {
+        headers: { 'Authorization': `Bearer ${accessToken}` }
+      });
+      
+      console.log(`[DEBUG] Metadata response status: ${metadataResponse.status}`);
+      
+      if (!metadataResponse.ok) {
+        console.error(`[DEBUG] Failed to fetch metadata: ${metadataResponse.status}`);
+        return;
+      }
+      
+      const metadataData = await metadataResponse.json();
+      const metadata = metadataData.metadata || metadataData;
+      
+      console.log(`[DEBUG] Metadata for ${fileId}:`, {
+        hasPublicToken: !!metadata.publicToken,
+        hasThumbnailFileId: !!metadata.thumbnailFileId,
+        thumbnailFileId: metadata.thumbnailFileId,
+        fileName: metadata.name || metadata.title,
+        fileType: metadata.fileType,
+        accountId: metadata.accountId || metadata.backendFileId
+      });
+      
+      return metadata;
+    } catch (err) {
+      console.error(`[DEBUG] Error:`, err);
+    }
+  };
+  
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
   const videoRefs = useRef<Map<string, HTMLVideoElement>>(new Map());
   const imageRefs = useRef<Map<string, HTMLImageElement>>(new Map());
