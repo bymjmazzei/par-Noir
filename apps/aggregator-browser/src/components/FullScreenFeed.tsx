@@ -1443,6 +1443,9 @@ export function FullScreenFeed({
                 await Promise.all(missingThumbnailIds.map(async (cfId: string) => {
                   console.log(`[FullScreenFeed] IMMEDIATE LOAD: Starting to load thumbnail for collection file ${cfId}`);
                   let success = false;
+                  let collectionFileMetadata: any = null;
+                  let accountId: string | null = null;
+                  
                   try {
                     // Fetch metadata for this collection file
                     const metadataResponse = await fetch(`${apiEndpoint}/api/aggregator/metadata-index/${cfId}`, {
@@ -1468,7 +1471,7 @@ export function FullScreenFeed({
                     }
                     
                     const metadataData = await metadataResponse.json();
-                    const collectionFileMetadata = metadataData.metadata || metadataData;
+                    collectionFileMetadata = metadataData.metadata || metadataData;
                     
                     // Log FULL metadata to see what we're working with
                     console.log(`[FullScreenFeed] IMMEDIATE LOAD: FULL Metadata for ${cfId}:`, collectionFileMetadata);
@@ -1484,7 +1487,7 @@ export function FullScreenFeed({
                     });
                     
                     // Get accountId
-                    let accountId: string | null = collectionFileMetadata.accountId || collectionFileMetadata.backendFileId;
+                    accountId = collectionFileMetadata.accountId || collectionFileMetadata.backendFileId;
                     if (!accountId || !accountId.includes('::')) {
                       const pnIdentifier = collectionFileMetadata.creatorId || collectionFileMetadata.creator?.identifier?.value || 
                                            collectionFileMetadata.creator?.["@id"] || collectionFileMetadata.author?.did;
@@ -1705,6 +1708,45 @@ export function FullScreenFeed({
                     console.error(`[FullScreenFeed] ERROR loading thumbnail for collection file ${cfId}:`, err);
                     console.error(`[FullScreenFeed] Error stack:`, err instanceof Error ? err.stack : 'No stack trace');
                     clearLoadingState(cfId);
+                  }
+                  
+                  // Final fallback: if all else failed and file is image/video, try loading the file itself
+                  if (!success) {
+                    try {
+                      const fileType = collectionFileMetadata?.fileType || '';
+                      const isImageOrVideo = fileType === 'image' || fileType === 'video';
+                      
+                      if (isImageOrVideo && accountId) {
+                        console.log(`[FullScreenFeed] IMMEDIATE LOAD: Trying final fallback - load file directly for ${cfId}`);
+                        let fileUrl = `${apiEndpoint}/api/drive/files/${cfId}?thumbnail=true`;
+                        if (accountId && accountId.includes('::')) {
+                          fileUrl += `&accountId=${encodeURIComponent(accountId)}`;
+                        }
+                        
+                        const fileResponse = await fetch(fileUrl, {
+                          headers: { 'Authorization': `Bearer ${accessToken}` }
+                        });
+                        
+                        if (fileResponse.ok) {
+                          const fileBlob = await fileResponse.blob();
+                          const contentType = fileResponse.headers.get('content-type') || '';
+                          
+                          if (contentType.startsWith('image/')) {
+                            const thumbnailUrlObj = URL.createObjectURL(fileBlob);
+                            setThumbnails(prev => {
+                              const newMap = new Map(prev);
+                              newMap.set(cfId, thumbnailUrlObj);
+                              return newMap;
+                            });
+                            console.log(`[FullScreenFeed] IMMEDIATE LOAD: SUCCESS - loaded file directly as thumbnail for ${cfId}`);
+                            success = true;
+                            clearLoadingState(cfId);
+                          }
+                        }
+                      }
+                    } catch (fallbackErr) {
+                      console.warn(`[FullScreenFeed] IMMEDIATE LOAD: Fallback also failed for ${cfId}:`, fallbackErr);
+                    }
                   }
                   
                   // Log final result
