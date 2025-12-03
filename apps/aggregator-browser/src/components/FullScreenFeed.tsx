@@ -1449,8 +1449,20 @@ export function FullScreenFeed({
                       headers: { 'Authorization': `Bearer ${accessToken}` }
                     });
                     
+                    console.log(`[FullScreenFeed] IMMEDIATE LOAD: Response for ${cfId}:`, {
+                      status: metadataResponse.status,
+                      statusText: metadataResponse.statusText,
+                      ok: metadataResponse.ok,
+                      headers: Object.fromEntries(metadataResponse.headers.entries())
+                    });
+                    
                     if (!metadataResponse.ok) {
-                      console.warn(`[FullScreenFeed] Failed to fetch metadata for collection file ${cfId}:`, metadataResponse.status);
+                      const errorText = await metadataResponse.text().catch(() => 'Could not read error response');
+                      console.error(`[FullScreenFeed] Failed to fetch metadata for collection file ${cfId}:`, {
+                        status: metadataResponse.status,
+                        statusText: metadataResponse.statusText,
+                        errorBody: errorText
+                      });
                       clearLoadingState(cfId);
                       return;
                     }
