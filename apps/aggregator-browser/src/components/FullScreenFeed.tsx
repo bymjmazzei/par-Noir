@@ -125,6 +125,8 @@ export function FullScreenFeed({
         collectionData: f.metadata?.collection,
         fullMetadata: f.metadata
       })));
+      
+      // Collections found - thumbnail loading will be handled by the FILES CHANGED useEffect
     } else {
       console.warn(`[FullScreenFeed] NO COLLECTIONS FOUND in ${files.length} files`);
       // Log each file's metadata to see what we're actually getting
@@ -141,6 +143,30 @@ export function FullScreenFeed({
       });
     }
   }, [files.length, externalThumbnails]);
+  
+  // Load collection thumbnails immediately when files change
+  useEffect(() => {
+    console.log(`[FullScreenFeed] FILES CHANGED: Checking for collections to load thumbnails`, {
+      filesLength: files.length,
+      currentIndex,
+      currentFileId: files[currentIndex]?.metadata?.fileId
+    });
+    
+    // Check if current file is a collection
+    const currentFile = files[currentIndex];
+    if (currentFile?.metadata) {
+      const fileId = currentFile.metadata.fileId;
+      const collectionData = currentFile.metadata.collection || collectionDataCache.get(fileId);
+      
+      if (collectionData?.collectionFileIds && Array.isArray(collectionData.collectionFileIds)) {
+        console.log(`[FullScreenFeed] FILES CHANGED: Current file ${fileId} is a collection, loading thumbnails`);
+        // Trigger the existing loadCollectionThumbnails by ensuring visibleFileId is set
+        if (!visibleFileId) {
+          setVisibleFileId(fileId);
+        }
+      }
+    }
+  }, [files, currentIndex]); // Run when files or currentIndex changes
   
   // Sync external thumbnails/videoBlobs when they change
   // Merge instead of replace to preserve thumbnails loaded internally
