@@ -1228,12 +1228,31 @@ export function FullScreenFeed({
         // Trigger thumbnail loading for collection files immediately when collection is detected
         // (don't wait for visibleFileId to be set)
         if (isCollectionFile && collectionData?.collectionFileIds) {
-          const missingThumbnailIds = collectionData.collectionFileIds.filter(
+          // Debug: Log the state of all collection file IDs
+          const collectionFileIds = collectionData.collectionFileIds;
+          const thumbnailStates = collectionFileIds.map((cfId: string) => ({
+            fileId: cfId,
+            inThumbnails: thumbnails.has(cfId),
+            inExternalThumbnails: externalThumbnails?.has(cfId) || false,
+            inLoadingRef: loadingCollectionThumbnailsRef.current.has(cfId)
+          }));
+          console.log(`[FullScreenFeed] Collection ${fileId} thumbnail states:`, thumbnailStates);
+          
+          const missingThumbnailIds = collectionFileIds.filter(
             (cfId: string) => 
               !thumbnails.has(cfId) && 
               (!externalThumbnails || !externalThumbnails.has(cfId)) &&
               !loadingCollectionThumbnailsRef.current.has(cfId)
           );
+          
+          console.log(`[FullScreenFeed] Collection ${fileId} missing thumbnails check:`, {
+            totalCollectionFileIds: collectionFileIds.length,
+            missingCount: missingThumbnailIds.length,
+            missingIds: missingThumbnailIds,
+            thumbnailsMapSize: thumbnails.size,
+            loadingRefSize: loadingCollectionThumbnailsRef.current.size,
+            loadingRefIds: Array.from(loadingCollectionThumbnailsRef.current)
+          });
           
           if (missingThumbnailIds.length > 0) {
             console.log(`[FullScreenFeed] Triggering thumbnail load for collection ${fileId} (${missingThumbnailIds.length} missing):`, missingThumbnailIds);
@@ -1475,11 +1494,18 @@ export function FullScreenFeed({
                         });
                         
                         console.log(`[FullScreenFeed] Loaded thumbnail for collection file ${cfId} via API endpoint`);
+                        loadingCollectionThumbnailsRef.current.delete(cfId);
+                        return; // Success - exit early
+                      } else {
+                        console.warn(`[FullScreenFeed] Failed to decrypt/process thumbnail for collection file ${cfId}`);
+                        loadingCollectionThumbnailsRef.current.delete(cfId);
                       }
+                    } else {
+                      console.warn(`[FullScreenFeed] API endpoint returned non-OK status for collection file ${cfId}:`, response.status);
+                      loadingCollectionThumbnailsRef.current.delete(cfId);
                     }
                   } catch (err) {
                     console.warn(`[FullScreenFeed] Failed to load thumbnail for collection file ${cfId}:`, err);
-                  } finally {
                     loadingCollectionThumbnailsRef.current.delete(cfId);
                   }
                 }));
