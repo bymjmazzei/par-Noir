@@ -745,9 +745,18 @@ export function FullScreenFeed({
 
   // Load thumbnails for collection files when a collection is visible
   useEffect(() => {
+    console.log(`[FullScreenFeed] loadCollectionThumbnails useEffect triggered:`, {
+      visibleFileId,
+      currentIndex,
+      filesLength: files.length,
+      currentFileId: files[currentIndex]?.metadata?.fileId
+    });
+    
     const loadCollectionThumbnails = async () => {
       // Use visibleFileId if available, otherwise use currentIndex
       const targetFileId = visibleFileId || (files[currentIndex]?.metadata?.fileId);
+      
+      console.log(`[FullScreenFeed] loadCollectionThumbnails: starting with targetFileId=${targetFileId}`);
       
       if (!targetFileId) {
         console.log(`[FullScreenFeed] loadCollectionThumbnails: no targetFileId (visibleFileId=${visibleFileId}, currentIndex=${currentIndex})`);
@@ -829,6 +838,15 @@ export function FullScreenFeed({
           
           const metadataData = await metadataResponse.json();
           const collectionFileMetadata = metadataData.metadata || metadataData;
+          
+          console.log(`[FullScreenFeed] Fetched metadata for collection file ${fileId}:`, {
+            fileId,
+            fileName: collectionFileMetadata.name || collectionFileMetadata.title,
+            hasPublicToken: !!collectionFileMetadata.publicToken,
+            hasThumbnailFileId: !!collectionFileMetadata.thumbnailFileId,
+            fileType: collectionFileMetadata.fileType,
+            isThumbnailFile: (collectionFileMetadata.name || collectionFileMetadata.title || '').toLowerCase().startsWith('thumb_')
+          });
           
           // Get accountId for the collection file (try from metadata first, then API)
           let accountId: string | null = collectionFileMetadata.accountId || collectionFileMetadata.backendFileId;
@@ -1035,7 +1053,12 @@ export function FullScreenFeed({
             }
           }
         } catch (err) {
-          console.warn(`[FullScreenFeed] Failed to load thumbnail for collection file ${fileId}:`, err);
+          console.error(`[FullScreenFeed] ERROR loading thumbnail for collection file ${fileId}:`, {
+            error: err,
+            errorMessage: err instanceof Error ? err.message : String(err),
+            errorStack: err instanceof Error ? err.stack : undefined,
+            fileId
+          });
         } finally {
           // Remove from loading set
           loadingCollectionThumbnailsRef.current.delete(fileId);
