@@ -1270,6 +1270,8 @@ export function FullScreenFeed({
         
         // Trigger thumbnail loading for collection files immediately when collection is detected
         // (don't wait for visibleFileId to be set)
+        console.log(`[FullScreenFeed] PRE-CHECK: fileId=${fileId}, isCollectionFile=${isCollectionFile}, hasCollectionData=${!!collectionData}, hasCollectionFileIds=${!!collectionData?.collectionFileIds}`);
+        
         if (isCollectionFile && collectionData?.collectionFileIds) {
           const collectionFileIds = collectionData.collectionFileIds;
           
