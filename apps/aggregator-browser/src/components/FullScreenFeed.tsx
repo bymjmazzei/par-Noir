@@ -746,26 +746,31 @@ export function FullScreenFeed({
   // Load thumbnails for collection files when a collection is visible
   useEffect(() => {
     const loadCollectionThumbnails = async () => {
-      if (!visibleFileId) {
-        console.log(`[FullScreenFeed] loadCollectionThumbnails: no visibleFileId`);
+      // Use visibleFileId if available, otherwise use currentIndex
+      const targetFileId = visibleFileId || (files[currentIndex]?.metadata?.fileId);
+      
+      if (!targetFileId) {
+        console.log(`[FullScreenFeed] loadCollectionThumbnails: no targetFileId (visibleFileId=${visibleFileId}, currentIndex=${currentIndex})`);
         return;
       }
       
-      const indexedFile = files.find(f => f.metadata.fileId === visibleFileId);
+      const indexedFile = files.find(f => f.metadata.fileId === targetFileId);
       if (!indexedFile) {
-        console.log(`[FullScreenFeed] loadCollectionThumbnails: no indexedFile for ${visibleFileId}`);
+        console.log(`[FullScreenFeed] loadCollectionThumbnails: no indexedFile for ${targetFileId}`);
         return;
       }
       
       const file = indexedFile.metadata;
-      const collectionData = file.collection || collectionDataCache.get(visibleFileId);
+      const collectionData = file.collection || collectionDataCache.get(targetFileId);
       
-      console.log(`[FullScreenFeed] loadCollectionThumbnails: checking ${visibleFileId}`, {
+      console.log(`[FullScreenFeed] loadCollectionThumbnails: checking ${targetFileId}`, {
+        targetFileId,
         visibleFileId,
+        currentIndex,
         fileId: file.fileId,
         fileType: file.fileType,
         hasCollection: !!file.collection,
-        hasCachedCollection: !!collectionDataCache.get(visibleFileId),
+        hasCachedCollection: !!collectionDataCache.get(targetFileId),
         collectionData: collectionData ? {
           hasCollectionFileIds: !!collectionData.collectionFileIds,
           collectionFileIdsLength: collectionData.collectionFileIds?.length,
@@ -790,10 +795,11 @@ export function FullScreenFeed({
       );
       
       if (missingThumbnailIds.length === 0) {
+        console.log(`[FullScreenFeed] loadCollectionThumbnails: All thumbnails already loaded or loading for ${targetFileId}`);
         return; // All thumbnails already loaded or loading
       }
       
-      console.log(`[FullScreenFeed] Loading ${missingThumbnailIds.length} missing thumbnails for collection ${visibleFileId}:`, missingThumbnailIds);
+      console.log(`[FullScreenFeed] Loading ${missingThumbnailIds.length} missing thumbnails for collection ${targetFileId}:`, missingThumbnailIds);
       
       // Mark as loading
       missingThumbnailIds.forEach((fileId: string) => {
@@ -1038,7 +1044,7 @@ export function FullScreenFeed({
     };
     
     loadCollectionThumbnails();
-  }, [visibleFileId, files, externalThumbnails, collectionDataCache, thumbnails.size]); // Added thumbnails.size to trigger when thumbnails are added
+  }, [visibleFileId, currentIndex, files, externalThumbnails, collectionDataCache, thumbnails.size]); // Added currentIndex and thumbnails.size to trigger when thumbnails are added
 
   // Auto-play video when it becomes visible
   useEffect(() => {
