@@ -931,6 +931,8 @@ export function FullScreenFeed({
           const accessToken = await PNOAuthService.getValidAccessToken();
           
           if (!accessToken) {
+            console.warn(`[FullScreenFeed] loadCollectionThumbnails: No access token for ${fileId}, skipping`);
+            clearLoadingState(fileId);
             return;
           }
           
@@ -1435,7 +1437,10 @@ export function FullScreenFeed({
                 const apiEndpoint = process.env.REACT_APP_API_ENDPOINT || 'https://api.parnoir.com';
                 const accessToken = await PNOAuthService.getValidAccessToken();
                 
+                console.log(`[FullScreenFeed] IMMEDIATE LOAD: Got access token: ${!!accessToken}`);
+                
                 if (!accessToken) {
+                  console.warn(`[FullScreenFeed] IMMEDIATE LOAD: No access token, clearing loading states for:`, missingThumbnailIds);
                   missingThumbnailIds.forEach((cfId: string) => clearLoadingState(cfId));
                   return;
                 }
@@ -1447,6 +1452,7 @@ export function FullScreenFeed({
                   let accountId: string | null = null;
                   
                   try {
+                    console.log(`[FullScreenFeed] IMMEDIATE LOAD: About to fetch metadata for ${cfId}, accessToken exists: ${!!accessToken}`);
                     // Fetch metadata for this collection file
                     const metadataResponse = await fetch(`${apiEndpoint}/api/aggregator/metadata-index/${cfId}`, {
                       headers: { 'Authorization': `Bearer ${accessToken}` }
