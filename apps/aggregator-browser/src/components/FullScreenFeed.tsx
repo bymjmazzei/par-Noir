@@ -849,6 +849,38 @@ export function FullScreenFeed({
     loadMedia();
   }, [currentIndex, files, externalThumbnails, externalVideoBlobs]); // Removed videoBlobs and thumbnails from deps to prevent loops
 
+  // Retry loading thumbnails when authentication becomes available
+  useEffect(() => {
+    if (!userState.isUnlocked) {
+      return; // Not authenticated yet
+    }
+
+    // When user becomes authenticated, check if there are any collections that need thumbnails loaded
+    const currentFile = files[currentIndex];
+    if (!currentFile) return;
+
+    const fileId = currentFile.metadata.fileId;
+    const collectionData = currentFile.metadata.collection;
+    
+    if (!collectionData?.collectionFileIds) return;
+
+    // Find missing thumbnails
+    const missingThumbnailIds = collectionData.collectionFileIds.filter(
+      (cfId: string) => 
+        !thumbnails.has(cfId) && 
+        (!externalThumbnails || !externalThumbnails.has(cfId)) &&
+        !loadingCollectionThumbnailsRef.current.has(cfId)
+    );
+
+    if (missingThumbnailIds.length === 0) return;
+
+    console.log(`[FullScreenFeed] Authentication available, retrying thumbnail load for ${missingThumbnailIds.length} files:`, missingThumbnailIds);
+
+    // Trigger thumbnail loading by clearing the "already triggered" flag
+    // This will cause the immediate load check to run again
+    triggeredImmediateLoadRef.current.delete(fileId);
+  }, [userState.isUnlocked, currentIndex, files, thumbnails, externalThumbnails]);
+
   // Load thumbnails for collection files when a collection is visible
   useEffect(() => {
     console.log(`[FullScreenFeed] loadCollectionThumbnails useEffect triggered:`, {
@@ -916,6 +948,12 @@ export function FullScreenFeed({
       
       console.log(`[FullScreenFeed] Loading ${missingThumbnailIds.length} missing thumbnails for collection ${targetFileId}:`, missingThumbnailIds);
       
+      // Check if user is authenticated before attempting to load
+      if (!userState.isUnlocked) {
+        console.log(`[FullScreenFeed] loadCollectionThumbnails: User not authenticated, will retry when authenticated`);
+        return; // Will retry when userState.isUnlocked becomes true
+      }
+      
       // Mark as loading
       missingThumbnailIds.forEach((fileId: string) => {
         loadingCollectionThumbnailsRef.current.add(fileId);
@@ -931,8 +969,8 @@ export function FullScreenFeed({
           const accessToken = await PNOAuthService.getValidAccessToken();
           
           if (!accessToken) {
-            console.warn(`[FullScreenFeed] loadCollectionThumbnails: No access token for ${fileId}, skipping`);
-            clearLoadingState(fileId);
+            console.warn(`[FullScreenFeed] loadCollectionThumbnails: No access token for ${fileId}, will retry when available`);
+            // Don't clear loading state - we'll retry when token is available
             return;
           }
           
@@ -1177,7 +1215,7 @@ export function FullScreenFeed({
     };
     
     loadCollectionThumbnails();
-  }, [visibleFileId, currentIndex, files, externalThumbnails, collectionDataCache, thumbnails.size]); // Added currentIndex and thumbnails.size to trigger when thumbnails are added
+  }, [visibleFileId, currentIndex, files, externalThumbnails, collectionDataCache, thumbnails.size, userState.isUnlocked]); // Added userState.isUnlocked to retry when authenticated
 
   // Auto-play video when it becomes visible
   useEffect(() => {
@@ -1433,6 +1471,13 @@ export function FullScreenFeed({
             // Load thumbnails asynchronously (fire and forget)
             (async () => {
               try {
+                // Wait for authentication before attempting to load
+                if (!userState.isUnlocked) {
+                  console.log(`[FullScreenFeed] IMMEDIATE LOAD: User not authenticated, will retry when authenticated`);
+                  // Don't clear loading states - we'll retry when authenticated
+                  return;
+                }
+                
                 const { PNOAuthService } = await import('../services/pnOAuthService');
                 const apiEndpoint = process.env.REACT_APP_API_ENDPOINT || 'https://api.parnoir.com';
                 const accessToken = await PNOAuthService.getValidAccessToken();
@@ -1440,8 +1485,8 @@ export function FullScreenFeed({
                 console.log(`[FullScreenFeed] IMMEDIATE LOAD: Got access token: ${!!accessToken}`);
                 
                 if (!accessToken) {
-                  console.warn(`[FullScreenFeed] IMMEDIATE LOAD: No access token, clearing loading states for:`, missingThumbnailIds);
-                  missingThumbnailIds.forEach((cfId: string) => clearLoadingState(cfId));
+                  console.warn(`[FullScreenFeed] IMMEDIATE LOAD: No access token, will retry when available`);
+                  // Don't clear loading states - we'll retry when token is available
                   return;
                 }
                 
