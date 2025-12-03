@@ -1442,6 +1442,7 @@ export function FullScreenFeed({
                 
                 await Promise.all(missingThumbnailIds.map(async (cfId: string) => {
                   console.log(`[FullScreenFeed] IMMEDIATE LOAD: Starting to load thumbnail for collection file ${cfId}`);
+                  let success = false;
                   try {
                     // Fetch metadata for this collection file
                     const metadataResponse = await fetch(`${apiEndpoint}/api/aggregator/metadata-index/${cfId}`, {
@@ -1457,13 +1458,17 @@ export function FullScreenFeed({
                     const metadataData = await metadataResponse.json();
                     const collectionFileMetadata = metadataData.metadata || metadataData;
                     
-                    console.log(`[FullScreenFeed] IMMEDIATE LOAD: Metadata for ${cfId}:`, {
+                    // Log FULL metadata to see what we're working with
+                    console.log(`[FullScreenFeed] IMMEDIATE LOAD: FULL Metadata for ${cfId}:`, collectionFileMetadata);
+                    console.log(`[FullScreenFeed] IMMEDIATE LOAD: Metadata summary for ${cfId}:`, {
                       hasPublicToken: !!collectionFileMetadata.publicToken,
                       hasThumbnailFileId: !!collectionFileMetadata.thumbnailFileId,
                       thumbnailFileId: collectionFileMetadata.thumbnailFileId,
                       fileName: collectionFileMetadata.name || collectionFileMetadata.title,
                       fileType: collectionFileMetadata.fileType,
-                      isThumbnailFile: (collectionFileMetadata.name || collectionFileMetadata.title || '').toLowerCase().startsWith('thumb_')
+                      isThumbnailFile: (collectionFileMetadata.name || collectionFileMetadata.title || '').toLowerCase().startsWith('thumb_'),
+                      accountId: collectionFileMetadata.accountId || collectionFileMetadata.backendFileId,
+                      allKeys: Object.keys(collectionFileMetadata)
                     });
                     
                     // Get accountId
@@ -1521,6 +1526,7 @@ export function FullScreenFeed({
                         });
                         
                         console.log(`[FullScreenFeed] Loaded thumbnail for collection file ${cfId} via publicToken`);
+                        success = true;
                         clearLoadingState(cfId);
                         return;
                       } catch (decryptErr) {
@@ -1598,6 +1604,7 @@ export function FullScreenFeed({
                         });
                         
                         console.log(`[FullScreenFeed] Loaded thumbnail for collection file ${cfId} via thumbnailFileId`);
+                        success = true;
                         clearLoadingState(cfId);
                         return;
                       }
@@ -1671,6 +1678,7 @@ export function FullScreenFeed({
                         });
                         
                         console.log(`[FullScreenFeed] Loaded thumbnail for collection file ${cfId} via API endpoint`);
+                        success = true;
                         clearLoadingState(cfId);
                         return; // Success - exit early
                       } else {
@@ -1682,10 +1690,25 @@ export function FullScreenFeed({
                       clearLoadingState(cfId);
                     }
                   } catch (err) {
-                    console.warn(`[FullScreenFeed] Failed to load thumbnail for collection file ${cfId}:`, err);
+                    console.error(`[FullScreenFeed] ERROR loading thumbnail for collection file ${cfId}:`, err);
+                    console.error(`[FullScreenFeed] Error stack:`, err instanceof Error ? err.stack : 'No stack trace');
                     clearLoadingState(cfId);
                   }
+                  
+                  // Log final result
+                  if (!success) {
+                    console.warn(`[FullScreenFeed] IMMEDIATE LOAD: FAILED to load thumbnail for ${cfId} - no successful path executed`);
+                  } else {
+                    console.log(`[FullScreenFeed] IMMEDIATE LOAD: SUCCESS loading thumbnail for ${cfId}`);
+                  }
                 }));
+                
+                // Log summary after all thumbnails are processed
+                console.log(`[FullScreenFeed] IMMEDIATE LOAD: Completed processing ${missingThumbnailIds.length} thumbnails`);
+                missingThumbnailIds.forEach((cfId: string) => {
+                  const loaded = thumbnails.has(cfId) || (externalThumbnails?.has(cfId));
+                  console.log(`[FullScreenFeed] IMMEDIATE LOAD: ${cfId} - ${loaded ? 'LOADED' : 'FAILED'}`);
+                });
               } catch (err) {
                 console.error(`[FullScreenFeed] Error loading collection thumbnails:`, err);
                 missingThumbnailIds.forEach((cfId: string) => clearLoadingState(cfId));
