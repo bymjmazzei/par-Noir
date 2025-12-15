@@ -436,9 +436,63 @@ export class AggregatorMetadataServiceDB {
       `);
       const publicFilesInDB = parseInt(publicFilesCheck.rows[0].count, 10);
       
+      // Check how many pass NSFW filter
+      const publicNonNSFWCheck = await db.query(`
+        SELECT COUNT(*) as count 
+        FROM aggregator_metadata 
+        WHERE (
+          metadata->>'isPublic' = 'true' 
+          OR (metadata->>'isPublic')::boolean = true
+          OR metadata->'isPublic' = 'true'::jsonb
+        )
+        AND (
+          metadata->>'isNSFW' IS NULL 
+          OR metadata->>'isNSFW' = 'false'
+          OR metadata->>'isNSFW' = 'False'
+          OR metadata->>'isNSFW' = 'FALSE'
+          OR (metadata->>'isNSFW')::text = 'false'
+        )
+        AND NOT (
+          metadata->>'isNSFW' = 'true'
+          OR metadata->>'isNSFW' = 'True'
+          OR metadata->>'isNSFW' = 'TRUE'
+          OR (metadata->>'isNSFW')::text = 'true'
+          OR (metadata->'isNSFW')::boolean = true
+        )
+      `);
+      const publicNonNSFWInDB = parseInt(publicNonNSFWCheck.rows[0].count, 10);
+      
+      // Get sample of public files to see what they look like
+      const sampleFilesCheck = await db.query(`
+        SELECT file_id, metadata->>'name' as name, metadata->>'fileType' as file_type, 
+               metadata->>'isPublic' as is_public, metadata->>'thumbnailFileId' as thumbnail_file_id,
+               metadata->>'pdfPageThumbnailIds' as pdf_page_thumbnails,
+               metadata->'textPost' IS NOT NULL as has_text_post,
+               metadata->'thought' IS NOT NULL as has_thought
+        FROM aggregator_metadata 
+        WHERE (
+          metadata->>'isPublic' = 'true' 
+          OR (metadata->>'isPublic')::boolean = true
+          OR metadata->'isPublic' = 'true'::jsonb
+        )
+        ORDER BY updated_at DESC
+        LIMIT 10
+      `);
+      
       console.log(`🔍 [getPublicMetadata] Database state:`, {
         totalFilesInDB,
-        publicFilesInDB
+        publicFilesInDB,
+        publicNonNSFWInDB,
+        sampleFiles: sampleFilesCheck.rows.map((r: any) => ({
+          fileId: r.file_id,
+          name: r.name,
+          fileType: r.file_type,
+          isPublic: r.is_public,
+          hasThumbnailFileId: !!r.thumbnail_file_id,
+          hasPdfPageThumbnails: !!r.pdf_page_thumbnails,
+          hasTextPost: r.has_text_post,
+          hasThought: r.has_thought
+        }))
       });
       
       const result = await db.query(query, params);
