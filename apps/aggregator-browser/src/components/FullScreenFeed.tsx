@@ -17,7 +17,6 @@ import { formatTimestamp } from '../utils/formatTimestamp';
 import { decryptWithToken, ShareToken } from '../utils/tokenDecryption';
 import { cleanTitle } from '../utils/cleanTitle';
 import { CollectionFeed } from './CollectionFeed';
-import { HorizontalThumbnailFeed } from './HorizontalThumbnailFeed';
 import { PNOAuthService } from '../services/pnOAuthService';
 
 const apiEndpoint = process.env.REACT_APP_API_ENDPOINT || 'https://api.parnoir.com';
@@ -1433,15 +1432,8 @@ export function FullScreenFeed({
           (file.fileType === 'other' && hasImageExtension) ||
           hasImageExtension;
         
-        // Check for PDF slideshow - has pdfPageThumbnailIds
-        const pdfPageThumbnailIds = file.pdfPageThumbnailIds;
-        const pdfPageThumbnailTokens = file.pdfPageThumbnailTokens;
-        const isPdfSlideshow = file.fileType === 'document' && 
-                               pdfPageThumbnailIds && 
-                               Array.isArray(pdfPageThumbnailIds) && 
-                               pdfPageThumbnailIds.length > 0;
-        
         // Check for collection - PRIMARY check: collectionFileIds existence
+        // PDFs are now converted to collections, so they'll be detected here
         // A file is a collection if it has collectionFileIds, regardless of fileType
         // Also check cache for fetched collection data
         // IMPORTANT: Check fileType FIRST to avoid false positives
@@ -2326,17 +2318,7 @@ export function FullScreenFeed({
               );
             })()}
 
-            {/* PDF Slideshow - Render like collection with all pages */}
-            {isPdfSlideshow && pdfPageThumbnailIds ? (
-              <HorizontalThumbnailFeed
-                thumbnailIds={pdfPageThumbnailIds}
-                thumbnailTokens={pdfPageThumbnailTokens}
-                fileName={file.name || file.title}
-                accountId={undefined} // HorizontalThumbnailFeed will fetch accountId internally if needed
-              />
-            ) : null}
-
-            {/* Collection - Simple thumbnail slideshow */}
+            {/* Collection - Simple thumbnail slideshow (PDFs are now collections) */}
             {isCollectionFile && (collectionData || collectionDataCache.get(fileId))?.collectionFileIds ? (
               (() => {
                 // Use cached collection data if available

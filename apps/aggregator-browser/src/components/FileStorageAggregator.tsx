@@ -3325,73 +3325,75 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
         // Don't fail the upload - metadata can be created later
       }
 
-      // If PDF, create collection from thumbnails and update PDF metadata
+      // If PDF, convert it to a collection by updating its metadata
       if (isPDF && pdfThumbnailFileIds.length > 0) {
         try {
-          console.log('[PDF Upload] Creating collection from PDF thumbnails...');
+          // #region agent log
+          fetch('http://127.0.0.1:7242/ingest/e9725a07-b703-47ab-ba6c-a54c252a4988',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'FileStorageAggregator.tsx:3331',message:'Converting PDF to collection',data:{fileId,thumbnailCount:pdfThumbnailFileIds.length,fileName:file.name},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+          // #endregion
+          console.log('[PDF Upload] Converting PDF to collection...');
           
-          // Refresh token before collection creation (may have expired during PDF processing)
-          let collectionToken = freshAccessToken;
+          // Refresh token before metadata update (may have expired during PDF processing)
+          let metadataToken = freshAccessToken;
           try {
             const refreshedToken = await PNOAuthService.getValidAccessToken(true);
             if (refreshedToken) {
-              collectionToken = refreshedToken;
+              metadataToken = refreshedToken;
             }
           } catch (tokenError) {
-            console.warn('[PDF Upload] Failed to refresh token for collection creation:', tokenError);
+            console.warn('[PDF Upload] Failed to refresh token for collection conversion:', tokenError);
           }
           
-          // Create collection using the thumbnail file IDs
-          const collectionResult = await createCollection(
-            {
-              collectionFileIds: pdfThumbnailFileIds,
-              title: file.name.replace(/\.pdf$/i, '')
-            },
-            accountId,
-            {
-              isPublic: false, // PDF collections are private by default
-              isNSFW: false
-            }
-          );
-
-          if (collectionResult.success) {
-            // Update PDF file metadata with thumbnail IDs
-            try {
-              // Refresh token again before metadata update
-              let metadataToken = collectionToken;
-              try {
-                const refreshedToken = await PNOAuthService.getValidAccessToken(true);
-                if (refreshedToken) {
-                  metadataToken = refreshedToken;
-                }
-              } catch (tokenError) {
-                // Use existing token if refresh fails
-              }
-              
-              await fetch(`${apiEndpoint}/api/aggregator/metadata-index/${fileId}?accountId=${accountId}`, {
-                method: 'PUT',
-                headers: {
-                  'Content-Type': 'application/json',
-                  'Authorization': `Bearer ${metadataToken}`
-                },
-                body: JSON.stringify({
-                  pdfPageThumbnailIds: pdfThumbnailFileIds,
-                  pdfPageThumbnailTokens: pdfThumbnailTokens,
-                  fileType: 'document'
-                })
-              });
-              console.log('[PDF Upload] PDF metadata updated with thumbnail IDs');
-            } catch (pdfMetadataError) {
-              console.warn('[PDF Upload] Failed to update PDF metadata:', pdfMetadataError);
-            }
+          // Convert PDF file to collection by updating its metadata
+          // This makes the PDF file itself a collection (not a separate collection file)
+          try {
+            // #region agent log
+            fetch('http://127.0.0.1:7242/ingest/e9725a07-b703-47ab-ba6c-a54c252a4988',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'FileStorageAggregator.tsx:3350',message:'Updating PDF metadata to collection',data:{fileId,collectionFileIds:pdfThumbnailFileIds.length},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+            // #endregion
             
-            console.log('[PDF Upload] PDF collection created successfully');
-          } else {
-            console.warn('[PDF Upload] Failed to create collection:', collectionResult.error);
+            const updateResponse = await fetch(`${apiEndpoint}/api/aggregator/metadata-index/${fileId}?accountId=${accountId}`, {
+              method: 'PUT',
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${metadataToken}`
+              },
+              body: JSON.stringify({
+                fileType: 'collection', // Convert PDF to collection
+                collection: {
+                  collectionFileIds: pdfThumbnailFileIds // Use thumbnails as collection items
+                },
+                // Keep PDF metadata for reference
+                pdfPageThumbnailIds: pdfThumbnailFileIds,
+                pdfPageThumbnailTokens: pdfThumbnailTokens,
+                name: file.name.replace(/\.pdf$/i, ''), // Remove .pdf extension from display name
+                isPublic: false // PDF collections are private by default
+              })
+            });
+            
+            // #region agent log
+            fetch('http://127.0.0.1:7242/ingest/e9725a07-b703-47ab-ba6c-a54c252a4988',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'FileStorageAggregator.tsx:3375',message:'PDF collection conversion response',data:{fileId,status:updateResponse.status,ok:updateResponse.ok},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+            // #endregion
+            
+            if (updateResponse.ok) {
+              console.log('[PDF Upload] PDF converted to collection successfully');
+            } else {
+              const errorText = await updateResponse.text().catch(() => 'Unknown error');
+              console.warn('[PDF Upload] Failed to convert PDF to collection:', errorText);
+              // #region agent log
+              fetch('http://127.0.0.1:7242/ingest/e9725a07-b703-47ab-ba6c-a54c252a4988',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'FileStorageAggregator.tsx:3383',message:'PDF collection conversion failed',data:{fileId,error:errorText},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+              // #endregion
+            }
+          } catch (pdfMetadataError: any) {
+            console.error('[PDF Upload] Failed to convert PDF to collection:', pdfMetadataError);
+            // #region agent log
+            fetch('http://127.0.0.1:7242/ingest/e9725a07-b703-47ab-ba6c-a54c252a4988',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'FileStorageAggregator.tsx:3389',message:'PDF collection conversion exception',data:{fileId,error:pdfMetadataError?.message},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+            // #endregion
           }
         } catch (collectionError: any) {
-          console.error('[PDF Upload] Failed to create collection:', collectionError);
-          // Don't fail the upload if collection creation fails
+          console.error('[PDF Upload] Failed to convert PDF to collection:', collectionError);
+          // #region agent log
+          fetch('http://127.0.0.1:7242/ingest/e9725a07-b703-47ab-ba6c-a54c252a4988',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'FileStorageAggregator.tsx:3395',message:'PDF collection conversion outer exception',data:{fileId,error:collectionError?.message},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+          // #endregion
         }
       }
 
