@@ -2190,50 +2190,57 @@ class ProductionServer {
             // CRITICAL FIX: Check PDF thumbnails FIRST (they need pdfPageThumbnailIds metadata)
             // Regular thumbnails don't have pdfPageThumbnailIds, so check PDFs before regular thumbnails
             if (pdfPageThumbnailIds && Array.isArray(pdfPageThumbnailIds) && pdfPageThumbnailIds.length > 0) {
-              // PDF file has page thumbnails - make first thumbnail public and add slideshow metadata
-              const firstThumbnailId = pdfPageThumbnailIds[0];
-              try {
-                const thumbnailMetadata = await service.getFileMetadata(firstThumbnailId);
-                const mainPdfMetadata = current?.metadata || {};
-                const pdfPageThumbnailTokens = (mainPdfMetadata as any).pdfPageThumbnailTokens || [];
+              // PDF file has page thumbnails - make ALL thumbnails public with their tokens
+              const mainPdfMetadata = current?.metadata || {};
+              const pdfPageThumbnailTokens = (mainPdfMetadata as any).pdfPageThumbnailTokens || [];
+              
+              // Make ALL thumbnails public, not just the first one
+              for (let i = 0; i < pdfPageThumbnailIds.length; i++) {
+                const thumbnailId = pdfPageThumbnailIds[i];
+                const thumbnailToken = pdfPageThumbnailTokens[i] || null;
                 
-                // Get publicToken for first thumbnail from pdfPageThumbnailTokens array
-                let firstThumbnailToken: string | undefined = undefined;
-                if (pdfPageThumbnailTokens && Array.isArray(pdfPageThumbnailTokens) && pdfPageThumbnailTokens.length > 0) {
-                  const tokenValue = pdfPageThumbnailTokens[0];
-                  // Token might be a string (JSON) or already an object
-                  if (typeof tokenValue === 'string' && tokenValue.trim().length > 0) {
-                    firstThumbnailToken = tokenValue;
-                  } else if (tokenValue && typeof tokenValue === 'object') {
-                    firstThumbnailToken = JSON.stringify(tokenValue);
+                try {
+                  const thumbnailMetadata = await service.getFileMetadata(thumbnailId);
+                  
+                  if (thumbnailMetadata) {
+                    // Parse token if it's a string
+                    let publicToken: string | undefined = undefined;
+                    if (thumbnailToken) {
+                      if (typeof thumbnailToken === 'string' && thumbnailToken.trim().length > 0) {
+                        publicToken = thumbnailToken;
+                      } else if (thumbnailToken && typeof thumbnailToken === 'object') {
+                        publicToken = JSON.stringify(thumbnailToken);
+                      }
+                    }
+                    
+                    const updatedThumbnailMetadata = {
+                      ...thumbnailMetadata.metadata,
+                      isPublic: true,
+                      fileType: i === 0 ? 'document' : 'image', // First thumbnail is entry point, others are images
+                      // Only first thumbnail gets slideshow metadata (so it appears in feed)
+                      ...(i === 0 && {
+                        pdfPageThumbnailIds: pdfPageThumbnailIds,
+                        pdfPageThumbnailTokens: pdfPageThumbnailTokens,
+                        pdfFileId: fileId
+                      }),
+                      // All thumbnails get their publicToken for decryption
+                      ...(publicToken && { publicToken: publicToken })
+                    };
+                    
+                    const db = (await import('./server/utils/database')).getDatabasePool();
+                    await db.query(
+                      `UPDATE aggregator_metadata 
+                       SET metadata = $1, updated_at = NOW()
+                       WHERE file_id = $2`,
+                      [JSON.stringify(updatedThumbnailMetadata), thumbnailId]
+                    );
+                    console.log(`[MetadataIndex PUT] Made PDF thumbnail ${i + 1}/${pdfPageThumbnailIds.length} (${thumbnailId}) public`);
+                  } else {
+                    console.warn(`[MetadataIndex PUT] PDF thumbnail ${i + 1} (${thumbnailId}) not found in metadata index`);
                   }
+                } catch (thumbError: any) {
+                  console.warn(`[MetadataIndex PUT] Failed to make PDF thumbnail ${i + 1} public:`, thumbError?.message || thumbError);
                 }
-                
-                if (thumbnailMetadata) {
-                  const updatedThumbnailMetadata = {
-                    ...thumbnailMetadata.metadata,
-                    isPublic: true,
-                    fileType: 'document', // CRITICAL: Must be 'document' for isPdfSlideshow to detect it
-                    // CRITICAL: Add pdfPageThumbnailIds so frontend knows this is a slideshow
-                    pdfPageThumbnailIds: pdfPageThumbnailIds,
-                    pdfPageThumbnailTokens: pdfPageThumbnailTokens,
-                    pdfFileId: fileId,
-                    // CRITICAL: Add publicToken so thumbnail can be decrypted in public feed
-                    ...(firstThumbnailToken && { publicToken: firstThumbnailToken })
-                  };
-                  const db = (await import('./server/utils/database')).getDatabasePool();
-                  await db.query(
-                    `UPDATE aggregator_metadata 
-                     SET metadata = $1, updated_at = NOW()
-                     WHERE file_id = $2`,
-                    [JSON.stringify(updatedThumbnailMetadata), firstThumbnailId]
-                  );
-                  console.log(`[MetadataIndex PUT] Made PDF thumbnail ${firstThumbnailId} public with slideshow metadata and publicToken for PDF file ${fileId}`);
-                } else {
-                  console.warn(`[MetadataIndex PUT] PDF thumbnail ${firstThumbnailId} not found in metadata index`);
-                }
-              } catch (thumbError: any) {
-                console.warn(`[MetadataIndex PUT] Failed to make PDF thumbnail public:`, thumbError?.message || thumbError);
               }
             } else if (thumbnailFileId) {
               // Regular image/video thumbnail - make thumbnail public

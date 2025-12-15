@@ -17,6 +17,7 @@ import { formatTimestamp } from '../utils/formatTimestamp';
 import { decryptWithToken, ShareToken } from '../utils/tokenDecryption';
 import { cleanTitle } from '../utils/cleanTitle';
 import { CollectionFeed } from './CollectionFeed';
+import { HorizontalThumbnailFeed } from './HorizontalThumbnailFeed';
 import { PNOAuthService } from '../services/pnOAuthService';
 
 const apiEndpoint = process.env.REACT_APP_API_ENDPOINT || 'https://api.parnoir.com';
@@ -1432,6 +1433,14 @@ export function FullScreenFeed({
           (file.fileType === 'other' && hasImageExtension) ||
           hasImageExtension;
         
+        // Check for PDF slideshow - has pdfPageThumbnailIds
+        const pdfPageThumbnailIds = file.pdfPageThumbnailIds;
+        const pdfPageThumbnailTokens = file.pdfPageThumbnailTokens;
+        const isPdfSlideshow = file.fileType === 'document' && 
+                               pdfPageThumbnailIds && 
+                               Array.isArray(pdfPageThumbnailIds) && 
+                               pdfPageThumbnailIds.length > 0;
+        
         // Check for collection - PRIMARY check: collectionFileIds existence
         // A file is a collection if it has collectionFileIds, regardless of fileType
         // Also check cache for fetched collection data
@@ -2317,6 +2326,16 @@ export function FullScreenFeed({
               );
             })()}
 
+            {/* PDF Slideshow - Render like collection with all pages */}
+            {isPdfSlideshow && pdfPageThumbnailIds ? (
+              <HorizontalThumbnailFeed
+                thumbnailIds={pdfPageThumbnailIds}
+                thumbnailTokens={pdfPageThumbnailTokens}
+                fileName={file.name || file.title}
+                accountId={undefined} // HorizontalThumbnailFeed will fetch accountId internally if needed
+              />
+            ) : null}
+
             {/* Collection - Simple thumbnail slideshow */}
             {isCollectionFile && (collectionData || collectionDataCache.get(fileId))?.collectionFileIds ? (
               (() => {
@@ -2512,7 +2531,7 @@ export function FullScreenFeed({
             ) : null}
 
             {/* Non-image/video/slideshow/collection file */}
-            {!isImageFinal && !isVideoFinal && !isCollectionFile && (
+            {!isImageFinal && !isVideoFinal && !isCollectionFile && !isPdfSlideshow && (
               <div className="flex flex-col items-center justify-center text-neutral-500">
                 <File className="h-24 w-24 mb-4" />
                 <h3 className="text-white text-xl font-medium mb-2">{cleanTitle(fileName)}</h3>
