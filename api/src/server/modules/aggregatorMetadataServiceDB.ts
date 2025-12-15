@@ -411,9 +411,45 @@ export class AggregatorMetadataServiceDB {
       params.push(offset);
       paramIndex += 2;
 
+      // CRITICAL DEBUG: Log query details
+      console.log(`🔍 [getPublicMetadata] Executing query with filters:`, {
+        fileType: filters?.fileType,
+        feedId: filters?.feedId,
+        limit,
+        offset,
+        queryLength: query.length
+      });
+      
+      // First, check how many files are in the database total
+      const totalFilesCheck = await db.query(`SELECT COUNT(*) as count FROM aggregator_metadata`);
+      const totalFilesInDB = parseInt(totalFilesCheck.rows[0].count, 10);
+      
+      // Check how many are public
+      const publicFilesCheck = await db.query(`
+        SELECT COUNT(*) as count 
+        FROM aggregator_metadata 
+        WHERE (
+          metadata->>'isPublic' = 'true' 
+          OR (metadata->>'isPublic')::boolean = true
+          OR metadata->'isPublic' = 'true'::jsonb
+        )
+      `);
+      const publicFilesInDB = parseInt(publicFilesCheck.rows[0].count, 10);
+      
+      console.log(`🔍 [getPublicMetadata] Database state:`, {
+        totalFilesInDB,
+        publicFilesInDB
+      });
+      
       const result = await db.query(query, params);
       const hasMore = result.rows.length > limit;
       const rowsToProcess = result.rows.slice(0, limit); // Only process the requested amount
+      
+      console.log(`🔍 [getPublicMetadata] Query result:`, {
+        rowsReturned: result.rows.length,
+        rowsToProcess: rowsToProcess.length,
+        hasMore
+      });
       
       // Check if any NSFW files slipped through the query (should never happen)
       rowsToProcess.forEach((row: any) => {

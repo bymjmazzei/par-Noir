@@ -1329,6 +1329,13 @@ export function FullScreenFeed({
     >
       {/* Only render visible files (currentIndex ± 1) for better performance */}
       {(() => {
+        // CRITICAL DEBUG: Log FullScreenFeed rendering
+        console.log('🔍 [FullScreenFeed] Rendering:', {
+          filesCount: files.length,
+          fileIds: files.slice(0, 5).map((f: any) => f.metadata?.fileId),
+          currentIndex
+        });
+        
         // Debug: Log all files in the array with their indices
         const allFilesWithIndices = files.map((f, idx) => ({
           index: idx,

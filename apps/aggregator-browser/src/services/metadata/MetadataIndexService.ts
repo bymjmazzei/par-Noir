@@ -71,7 +71,20 @@ export class MetadataIndexService {
       // result.files are CentralIndexEntry objects from the API
       // Backend already filters for public files, so we trust what the API returns
       // But we also check: isPublic !== false OR has publicToken (means it's meant to be public)
-      // Processing entries from API (logging removed - was too verbose)
+      
+      // CRITICAL DEBUG: Log API result
+      console.log('🔍 [MetadataIndexService] API Result:', {
+        filesCount: result.files?.length || 0,
+        total: result.total || 0,
+        hasMore: result.hasMore || false,
+        firstFile: result.files?.[0] ? {
+          fileId: result.files[0].fileId || result.files[0].metadata?.fileId,
+          fileType: result.files[0].metadata?.fileType,
+          name: result.files[0].metadata?.name || result.files[0].metadata?.title,
+          isPublic: result.files[0].metadata?.isPublic,
+          hasPublicToken: !!result.files[0].metadata?.publicToken
+        } : null
+      });
       
       let files: IndexedFile[] = result.files
         .filter((entry: any) => {
@@ -175,7 +188,12 @@ export class MetadataIndexService {
           };
         });
       
-      // After initial filtering (logging removed - was too verbose)
+      // CRITICAL DEBUG: Log files after transformation
+      console.log('🔍 [MetadataIndexService] Files after transformation:', {
+        count: files.length,
+        fileIds: files.slice(0, 5).map((f: any) => f.metadata?.fileId),
+        fileTypes: files.slice(0, 5).map((f: any) => f.metadata?.fileType)
+      });
 
       // Apply filters
       const beforeFilters = files.length;

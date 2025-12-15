@@ -137,7 +137,19 @@ export class CentralMetadataAggregator {
 
       if (response.ok) {
         const data: CentralIndexResponse & { total?: number; hasMore?: boolean } = await response.json();
-        // Removed verbose success logging
+        
+        // CRITICAL DEBUG: Log API response
+        console.log('🔍 [CentralMetadataAggregator] API Response:', {
+          filesCount: data.files?.length || 0,
+          total: data.totalFiles || data.total || 0,
+          hasMore: data.hasMore || false,
+          firstFile: data.files?.[0] ? {
+            fileId: data.files[0].fileId || data.files[0].metadata?.fileId,
+            fileType: data.files[0].metadata?.fileType,
+            name: data.files[0].metadata?.name || data.files[0].metadata?.title,
+            isPublic: data.files[0].metadata?.isPublic
+          } : null
+        });
         
         // Warn if NSFW files are found in public index (should never happen)
         if (data.files && data.files.length > 0) {

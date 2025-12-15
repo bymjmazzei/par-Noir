@@ -712,6 +712,12 @@ function App() {
   // The only place thoughts are excluded is the me page "media" tab, which handles it separately
 
   const filteredFilesByFeed = useMemo(() => {
+    // CRITICAL DEBUG: Log filteredFilesByFeed start
+    console.log('🔍 [App] filteredFilesByFeed useMemo start:', {
+      activeFeedId,
+      indexedFilesCount: indexedFiles.length
+    });
+    
     const showNSFW = userState.preferences.showNSFW;
     const hasAgeZKP = userState.preferences.hasAgeZKP;
     const isOver18 = userState.preferences.isOver18;
@@ -740,6 +746,13 @@ function App() {
       // Public feed: ALWAYS filter out NSFW content unless user has it enabled
       // This ensures NSFW content never appears in public feed unless explicitly enabled
       const filtered = indexedFiles.filter(shouldShowFile);
+      
+      // CRITICAL DEBUG: Log public feed filtered
+      console.log('🔍 [App] Public feed filtered:', {
+        beforeCount: indexedFiles.length,
+        afterCount: filtered.length,
+        fileIds: filtered.slice(0, 5).map((f: any) => f.metadata?.fileId)
+      });
       
       // Helper function to detect images - check fileType, name, title, mimeType, encodingFormat, and @type
       const isImageFile = (f: IndexedFile): boolean => {
@@ -1237,10 +1250,12 @@ function App() {
         ? { total: publicFiles.length, hasMore: false }
         : { total: publicFilesResult.total, hasMore: publicFilesResult.hasMore };
       
-      // DEBUG: Only log in development mode
-      if (process.env.NODE_ENV === 'development' && publicFiles.length > 0) {
-        console.log(`[Discover Files] Found ${publicFiles.length} files from API`);
-      }
+      // CRITICAL DEBUG: Log discovered files
+      console.log('🔍 [App] Files discovered from API:', {
+        count: publicFiles.length,
+        fileIds: publicFiles.slice(0, 5).map((f: any) => f.metadata?.fileId),
+        fileTypes: publicFiles.slice(0, 5).map((f: any) => f.metadata?.fileType)
+      });
       
       // If user has age ZKP, is over 18, AND has NSFW enabled, also load NSFW index
       let nsfwFiles: IndexedFile[] = [];
@@ -1318,6 +1333,12 @@ function App() {
       setIndexedFiles(prev => {
         if (page === 0 || !append) {
           // First page or force refresh - replace all files
+          // CRITICAL DEBUG: Log setting indexedFiles
+          console.log('🔍 [App] Setting indexedFiles (replace):', {
+            count: discoveredFiles.length,
+            fileIds: discoveredFiles.slice(0, 5).map((f: any) => f.metadata?.fileId),
+            fileTypes: discoveredFiles.slice(0, 5).map((f: any) => f.metadata?.fileType)
+          });
           return discoveredFiles;
         } else {
           // Subsequent pages - append new files (avoid duplicates)
