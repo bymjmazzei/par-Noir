@@ -288,15 +288,15 @@ export class AggregatorMetadataServiceDB {
         params.push(filters.feedId);
         paramIndex++;
       }
-      
-      query += ` GROUP BY am.file_id, am.metadata, am.submitted_at, am.pn_identifier`;
 
-      // Apply filters
+      // Apply fileType filter before GROUP BY
       if (filters?.fileType) {
         query += ` AND am.metadata->>'fileType' = $${paramIndex}`;
         params.push(filters.fileType);
         paramIndex++;
       }
+      
+      query += ` GROUP BY am.file_id, am.metadata, am.submitted_at, am.pn_identifier`;
 
       // Note: authorDid filter is applied in JavaScript (same pattern as tags)
       // This avoids SQL type issues with NULL comparisons
