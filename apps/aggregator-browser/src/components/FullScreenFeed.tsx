@@ -21,6 +21,7 @@ import { PNOAuthService } from '../services/pnOAuthService';
 
 const apiEndpoint = process.env.REACT_APP_API_ENDPOINT || 'https://api.parnoir.com';
 
+
 interface FullScreenFeedProps {
   files: IndexedFile[];
   currentIndex: number;
@@ -128,6 +129,8 @@ export function FullScreenFeed({
   const accountIdCacheRef = useRef<string | null>(null); // Cache accountId to avoid repeated API calls
   const [collectionDataCache, setCollectionDataCache] = useState<Map<string, any>>(new Map()); // Cache for fetched collection data
   const fetchingCollectionRef = useRef<Set<string>>(new Set()); // Track files currently being fetched to prevent duplicates
+  const [visibleCollectionSlide, setVisibleCollectionSlide] = useState<Map<string, number>>(new Map()); // Track visible slide index per collection
+  const collectionScrollRefs = useRef<Map<string, HTMLDivElement>>(new Map()); // Refs to collection scroll containers
   const loadingCollectionThumbnailsRef = useRef<Set<string>>(new Set()); // Track collection file IDs currently loading thumbnails
   const loadingStartTimesRef = useRef<Map<string, number>>(new Map()); // Track when each file ID started loading
   const triggeredImmediateLoadRef = useRef<Set<string>>(new Set()); // Track collections we've already triggered immediate loading for
@@ -172,7 +175,7 @@ export function FullScreenFeed({
         fileType: f.metadata?.fileType,
         name: f.metadata?.name || f.metadata?.title,
         hasCollection: !!f.metadata?.collection,
-        collectionFileIds: f.metadata?.collection?.collectionFileIds?.length || 0,
+        collectionFileIds: (f.metadata?.collection?.collectionFileIds?.length ?? 0) || 0,
         // FULL metadata dump for debugging
         fullMetadata: f.metadata
       })),
@@ -184,7 +187,7 @@ export function FullScreenFeed({
     
     // Check for collections specifically - check ALL possible locations
     const collections = files.filter(f => {
-      const hasCollection = f.metadata?.collection?.collectionFileIds?.length > 0;
+      const hasCollection = (f.metadata?.collection?.collectionFileIds?.length ?? 0) > 0;
       if (hasCollection) return true;
       
       // Also check if fileType is collection
@@ -933,13 +936,24 @@ export function FullScreenFeed({
         return;
       }
       
-      // Find collection file IDs that don't have thumbnails yet and aren't currently loading
-      const missingThumbnailIds = collectionData.collectionFileIds.filter(
-        (fileId: string) => 
-          !thumbnails.has(fileId) && 
-          (!externalThumbnails || !externalThumbnails.has(fileId)) &&
-          !loadingCollectionThumbnailsRef.current.has(fileId)
-      );
+      // Find collection file IDs that don't have thumbnails yet
+      // If user is authenticated, also check loading states. If not authenticated, clear stuck loading states
+      const missingThumbnailIds = collectionData.collectionFileIds.filter((fileId: string) => {
+        const hasThumbnail = thumbnails.has(fileId) || (externalThumbnails && externalThumbnails.has(fileId));
+        if (hasThumbnail) return false;
+        
+        // If authenticated, respect loading states. If not authenticated, clear stuck loading states
+        if (userState.isUnlocked) {
+          return !loadingCollectionThumbnailsRef.current.has(fileId);
+        } else {
+          // Clear stuck loading states when not authenticated (they'll retry when auth is available)
+          if (loadingCollectionThumbnailsRef.current.has(fileId)) {
+            loadingCollectionThumbnailsRef.current.delete(fileId);
+            console.log(`[FullScreenFeed] Cleared stuck loading state for ${fileId} (not authenticated)`);
+          }
+          return true; // Include in missing list to retry when auth is available
+        }
+      });
       
       if (missingThumbnailIds.length === 0) {
         console.log(`[FullScreenFeed] loadCollectionThumbnails: All thumbnails already loaded or loading for ${targetFileId}`);
@@ -948,12 +962,7 @@ export function FullScreenFeed({
       
       console.log(`[FullScreenFeed] Loading ${missingThumbnailIds.length} missing thumbnails for collection ${targetFileId}:`, missingThumbnailIds);
       
-      // Check if user is authenticated before attempting to load
-      if (!userState.isUnlocked) {
-        console.log(`[FullScreenFeed] loadCollectionThumbnails: User not authenticated, will retry when authenticated`);
-        return; // Will retry when userState.isUnlocked becomes true
-      }
-      
+      // Check if user is authenticated before attempting to load (check dynamically, not from closure)
       // Mark as loading
       missingThumbnailIds.forEach((fileId: string) => {
         loadingCollectionThumbnailsRef.current.add(fileId);
@@ -964,20 +973,64 @@ export function FullScreenFeed({
       await Promise.all(missingThumbnailIds.map(async (fileId: string) => {
         console.log(`[FullScreenFeed] loadCollectionThumbnails: Starting to load thumbnail for collection file ${fileId}`);
         try {
-          const { PNOAuthService } = await import('../services/pnOAuthService');
-          const apiEndpoint = process.env.REACT_APP_API_ENDPOINT || 'https://api.parnoir.com';
-          const accessToken = await PNOAuthService.getValidAccessToken();
-          
-          if (!accessToken) {
-            console.warn(`[FullScreenFeed] loadCollectionThumbnails: No access token for ${fileId}, will retry when available`);
-            // Don't clear loading state - we'll retry when token is available
-            return;
+          // PRIORITY 0: Check if this file is already in the files array (it might have publicToken)
+          const existingFile = files.find(f => f.metadata.fileId === fileId);
+          if (existingFile) {
+            const file = existingFile.metadata;
+            const fileName = (file.name || file.title || '').toLowerCase();
+            const isThumbnailFile = fileName.startsWith('thumb_');
+            const publicToken = existingFile.publicToken || file.publicToken;
+            
+            // If it's a thumbnail file with publicToken, decrypt it directly (NO AUTH NEEDED)
+            if (isThumbnailFile && publicToken) {
+              try {
+                const { decryptWithToken } = await import('../utils/tokenDecryption');
+                let token: ShareToken | null = null;
+                try {
+                  token = typeof publicToken === 'string' ? JSON.parse(publicToken) : publicToken;
+                } catch (e) {
+                  // Continue to fetch metadata
+                }
+                
+                if (token) {
+                  const decryptedBlob = await decryptWithToken(token);
+                  const thumbnailUrlObj = URL.createObjectURL(decryptedBlob);
+                  
+                  setThumbnails(prev => {
+                    const newMap = new Map(prev);
+                    newMap.set(fileId, thumbnailUrlObj);
+                    return newMap;
+                  });
+                  
+                  console.log(`[FullScreenFeed] Loaded thumbnail for collection file ${fileId} via publicToken from files array`);
+                  return;
+                }
+              } catch (decryptErr) {
+                console.warn(`[FullScreenFeed] Failed to decrypt thumbnail with publicToken from files array for ${fileId}:`, decryptErr);
+              }
+            }
           }
           
-          // Fetch metadata for this collection file to get publicToken/thumbnailFileId
-          const metadataResponse = await fetch(`${apiEndpoint}/api/aggregator/metadata-index/${fileId}`, {
-            headers: { 'Authorization': `Bearer ${accessToken}` }
-          });
+          const { PNOAuthService } = await import('../services/pnOAuthService');
+          const apiEndpoint = process.env.REACT_APP_API_ENDPOINT || 'https://api.parnoir.com';
+          
+          // PRIORITY 1: Try to fetch metadata WITHOUT authentication first (for public files)
+          console.log(`[FullScreenFeed] loadCollectionThumbnails: Fetching metadata for ${fileId} without auth (public file)`);
+          let metadataResponse = await fetch(`${apiEndpoint}/api/aggregator/metadata-index/${fileId}`);
+          
+          // If that fails with 401, try with auth (if available)
+          if (metadataResponse.status === 401) {
+            const accessToken = await PNOAuthService.getValidAccessToken();
+            if (accessToken) {
+              console.log(`[FullScreenFeed] loadCollectionThumbnails: Public fetch failed, trying with auth for ${fileId}`);
+              metadataResponse = await fetch(`${apiEndpoint}/api/aggregator/metadata-index/${fileId}`, {
+                headers: { 'Authorization': `Bearer ${accessToken}` }
+              });
+            }
+          }
+          
+          // Get accessToken for subsequent API calls (if needed)
+          const accessToken = await PNOAuthService.getValidAccessToken();
           
           if (!metadataResponse.ok) {
             console.warn(`[FullScreenFeed] Failed to fetch metadata for collection file ${fileId}:`, metadataResponse.status);
@@ -1350,17 +1403,6 @@ export function FullScreenFeed({
         const file = indexedFile.metadata;
         const fileId = file.fileId;
         
-        // DEBUG: Log every file being processed, especially if it has collection data
-        if (indexedFile.metadata?.collection) {
-          console.log(`[FullScreenFeed] Processing file with collection data:`, {
-            fileId,
-            fileName: file.name || file.title,
-            fileType: file.fileType,
-            collection: indexedFile.metadata.collection,
-            collectionFileIds: indexedFile.metadata.collection?.collectionFileIds,
-            collectionFileIdsLength: indexedFile.metadata.collection?.collectionFileIds?.length
-          });
-        }
         
         // Thoughts now render as images (thumbnails) - no special detection needed!
         // Just detect images, videos, and collections
@@ -1402,46 +1444,14 @@ export function FullScreenFeed({
                                 Array.isArray(collectionData.collectionFileIds) &&
                                 collectionData.collectionFileIds.length > 0;
         
-        // Debug: Log collection detection state
-        if (actualFileType === 'collection' || collectionData) {
-          console.log(`[FullScreenFeed] Collection detection check for ${fileId}:`, {
-            actualFileType,
-            hasCollectionData: !!collectionData,
-            collectionDataType: typeof collectionData,
-            hasCollectionFileIds: !!collectionData?.collectionFileIds,
-            collectionFileIdsType: Array.isArray(collectionData?.collectionFileIds),
-            collectionFileIdsLength: collectionData?.collectionFileIds?.length,
-            isCollectionFile
-          });
-        }
-        
         // Trigger thumbnail loading for collection files immediately when collection is detected
         // (don't wait for visibleFileId to be set)
-        console.log(`[FullScreenFeed] PRE-CHECK: fileId=${fileId}, isCollectionFile=${isCollectionFile}, hasCollectionData=${!!collectionData}, hasCollectionFileIds=${!!collectionData?.collectionFileIds}`);
         
         if (isCollectionFile && collectionData?.collectionFileIds) {
           const collectionFileIds = collectionData.collectionFileIds;
           
           // Check if we've already triggered loading for this collection
           const alreadyTriggered = triggeredImmediateLoadRef.current.has(fileId);
-          
-          console.log(`[FullScreenFeed] IMMEDIATE LOAD CHECK: Collection ${fileId}`, {
-            isCollectionFile,
-            hasCollectionData: !!collectionData,
-            hasCollectionFileIds: !!collectionData?.collectionFileIds,
-            collectionFileIdsLength: collectionFileIds?.length,
-            alreadyTriggered,
-            thumbnailsMapSize: thumbnails.size
-          });
-          
-          // Debug: Log the state of all collection file IDs
-          const thumbnailStates = collectionFileIds.map((cfId: string) => ({
-            fileId: cfId,
-            inThumbnails: thumbnails.has(cfId),
-            inExternalThumbnails: externalThumbnails?.has(cfId) || false,
-            inLoadingRef: loadingCollectionThumbnailsRef.current.has(cfId)
-          }));
-          console.log(`[FullScreenFeed] IMMEDIATE LOAD: Collection ${fileId} thumbnail states:`, thumbnailStates);
           
           const missingThumbnailIds = collectionFileIds.filter(
             (cfId: string) => 
@@ -1450,17 +1460,7 @@ export function FullScreenFeed({
               !loadingCollectionThumbnailsRef.current.has(cfId)
           );
           
-          console.log(`[FullScreenFeed] IMMEDIATE LOAD: Collection ${fileId} missing thumbnails check:`, {
-            totalCollectionFileIds: collectionFileIds.length,
-            missingCount: missingThumbnailIds.length,
-            missingIds: missingThumbnailIds,
-            thumbnailsMapSize: thumbnails.size,
-            loadingRefSize: loadingCollectionThumbnailsRef.current.size,
-            loadingRefIds: Array.from(loadingCollectionThumbnailsRef.current)
-          });
-          
           if (missingThumbnailIds.length > 0 && !alreadyTriggered) {
-            console.log(`[FullScreenFeed] IMMEDIATE LOAD: Triggering thumbnail load for collection ${fileId} (${missingThumbnailIds.length} missing):`, missingThumbnailIds);
             triggeredImmediateLoadRef.current.add(fileId);
             // Mark as loading
             missingThumbnailIds.forEach((cfId: string) => {
@@ -1472,13 +1472,35 @@ export function FullScreenFeed({
             (async () => {
               try {
                 // Wait for authentication before attempting to load
-                if (!userState.isUnlocked) {
-                  console.log(`[FullScreenFeed] IMMEDIATE LOAD: User not authenticated, will retry when authenticated`);
-                  // Don't clear loading states - we'll retry when authenticated
+                // Check auth state dynamically (not from closure)
+                const { PNOAuthService } = await import('../services/pnOAuthService');
+                let authWaitTime = 0;
+                const maxAuthWait = 10000; // 10 seconds max wait
+                let isAuthenticated = false;
+                
+                while (authWaitTime < maxAuthWait) {
+                  // Check auth state dynamically
+                  const session = PNOAuthService.loadSession();
+                  isAuthenticated = session !== null && PNOAuthService.isSessionValid(session);
+                  
+                  if (isAuthenticated) {
+                    break;
+                  }
+                  
+                  await new Promise(resolve => setTimeout(resolve, 100));
+                  authWaitTime += 100;
+                }
+                
+                if (!isAuthenticated) {
+                  console.log(`[FullScreenFeed] IMMEDIATE LOAD: User still not authenticated after ${maxAuthWait}ms, clearing loading states`);
+                  // Clear loading states so retry mechanism can try again
+                  missingThumbnailIds.forEach((cfId: string) => {
+                    loadingCollectionThumbnailsRef.current.delete(cfId);
+                  });
+                  triggeredImmediateLoadRef.current.delete(fileId);
                   return;
                 }
                 
-                const { PNOAuthService } = await import('../services/pnOAuthService');
                 const apiEndpoint = process.env.REACT_APP_API_ENDPOINT || 'https://api.parnoir.com';
                 const accessToken = await PNOAuthService.getValidAccessToken();
                 
@@ -1497,11 +1519,57 @@ export function FullScreenFeed({
                   let accountId: string | null = null;
                   
                   try {
-                    console.log(`[FullScreenFeed] IMMEDIATE LOAD: About to fetch metadata for ${cfId}, accessToken exists: ${!!accessToken}`);
-                    // Fetch metadata for this collection file
-                    const metadataResponse = await fetch(`${apiEndpoint}/api/aggregator/metadata-index/${cfId}`, {
-                      headers: { 'Authorization': `Bearer ${accessToken}` }
-                    });
+                    // PRIORITY 0: Check if this file is already in the files array (it might have publicToken)
+                    const existingFile = files.find(f => f.metadata.fileId === cfId);
+                    if (existingFile) {
+                      const file = existingFile.metadata;
+                      const fileName = (file.name || file.title || '').toLowerCase();
+                      const isThumbnailFile = fileName.startsWith('thumb_');
+                      const publicToken = existingFile.publicToken || file.publicToken;
+                      
+                      // If it's a thumbnail file with publicToken, decrypt it directly (NO AUTH NEEDED)
+                      if (isThumbnailFile && publicToken) {
+                        try {
+                          const { decryptWithToken } = await import('../utils/tokenDecryption');
+                          let token: ShareToken | null = null;
+                          try {
+                            token = typeof publicToken === 'string' ? JSON.parse(publicToken) : publicToken;
+                          } catch (e) {
+                            // Continue to fetch metadata
+                          }
+                          
+                          if (token) {
+                            const decryptedBlob = await decryptWithToken(token);
+                            const thumbnailUrlObj = URL.createObjectURL(decryptedBlob);
+                            
+                            setThumbnails(prev => {
+                              const newMap = new Map(prev);
+                              newMap.set(cfId, thumbnailUrlObj);
+                              return newMap;
+                            });
+                            
+                            console.log(`[FullScreenFeed] Loaded thumbnail for collection file ${cfId} via publicToken from files array`);
+                            success = true;
+                            clearLoadingState(cfId);
+                            return;
+                          }
+                        } catch (decryptErr) {
+                          console.warn(`[FullScreenFeed] Failed to decrypt thumbnail with publicToken from files array for ${cfId}:`, decryptErr);
+                        }
+                      }
+                    }
+                    
+                    // PRIORITY 1: Try to fetch metadata WITHOUT authentication first (for public files)
+                    console.log(`[FullScreenFeed] IMMEDIATE LOAD: Fetching metadata for ${cfId} without auth (public file)`);
+                    let metadataResponse = await fetch(`${apiEndpoint}/api/aggregator/metadata-index/${cfId}`);
+                    
+                    // If that fails with 401, try with auth (if available)
+                    if (metadataResponse.status === 401 && accessToken) {
+                      console.log(`[FullScreenFeed] IMMEDIATE LOAD: Public fetch failed, trying with auth for ${cfId}`);
+                      metadataResponse = await fetch(`${apiEndpoint}/api/aggregator/metadata-index/${cfId}`, {
+                        headers: { 'Authorization': `Bearer ${accessToken}` }
+                      });
+                    }
                     
                     console.log(`[FullScreenFeed] IMMEDIATE LOAD: Response for ${cfId}:`, {
                       status: metadataResponse.status,
@@ -2088,6 +2156,72 @@ export function FullScreenFeed({
                 );
               }
               
+              // Detect if this is a thought/text post
+              // CRITICAL: Thought thumbnails are named like "thumb_thought-123.png" - they ARE thoughts
+              // Only exclude non-thought thumbnails (like "thumb_image-123.png")
+              const fileName = (file.name || file.title || '').toLowerCase();
+              const isThumbnailFile = fileName.startsWith('thumb_');
+              const isThoughtThumbnail = isThumbnailFile && /thumb_thought-\d+\.(thought|png)/i.test(fileName);
+              const hasTextPostData = !!(file as any).textPost || 
+                                     !!(file as any).thought ||
+                                     !!(indexedFile.metadata as any).textPost || 
+                                     !!(indexedFile.metadata as any).thought;
+              const hasTextFileType = file.fileType === 'text' || 
+                                     file.fileType === 'thought' ||
+                                     indexedFile.metadata?.fileType === 'text' ||
+                                     indexedFile.metadata?.fileType === 'thought';
+              const isThoughtFile = /^thought-\d+\.(thought|png)/i.test(fileName);
+              // A file is a thought if: it's a thought thumbnail, has thought data, has thought fileType, or matches thought filename pattern
+              const isThought = isThoughtThumbnail || (!isThumbnailFile && (hasTextPostData || hasTextFileType || isThoughtFile));
+              
+              // For thoughts, don't show blurred background - just render the image scaled to fit
+              if (isThought) {
+                return (
+                  <div className="w-full h-full flex items-center justify-center">
+                    <img
+                      ref={(el) => {
+                        if (el) {
+                          imageRefs.current.set(fileId, el);
+                          // Track dimensions when loaded
+                          el.addEventListener('load', () => {
+                            setMediaDimensions(prev => {
+                              const newMap = new Map(prev);
+                              newMap.set(fileId, { width: el.naturalWidth, height: el.naturalHeight });
+                              return newMap;
+                            });
+                          });
+                          el.addEventListener('error', (err) => {
+                            console.error(`[FullScreenFeed] Image failed to load for ${fileId}:`, err);
+                            console.error(`[FullScreenFeed] Image src:`, el.src);
+                            console.error(`[FullScreenFeed] Thumbnail URL:`, thumbnailUrl);
+                          });
+                        }
+                      }}
+                      src={thumbnailUrl}
+                      alt={fileName}
+                      style={{ 
+                        // Fill container while maintaining aspect ratio - scale to fit screen
+                        height: '100%',
+                        width: '100%',
+                        objectFit: 'contain', // Maintain aspect ratio, fit to screen
+                        imageRendering: 'auto' as const,
+                        // Prevent pixelation and ensure high quality
+                        backfaceVisibility: 'hidden',
+                        WebkitBackfaceVisibility: 'hidden',
+                        transform: 'translateZ(0)' // Force hardware acceleration
+                      }}
+                      loading="eager"
+                      decoding="sync"
+                      onError={(e) => {
+                        console.error(`[FullScreenFeed] Main image failed to load for ${fileId}:`, e);
+                        console.error(`[FullScreenFeed] Image src:`, (e.target as HTMLImageElement).src);
+                      }}
+                    />
+                  </div>
+                );
+              }
+              
+              // For regular images, show blurred background
               const containerHeight = window.innerHeight - 64; // Account for bottom nav
               const containerWidth = window.innerWidth;
               const containerAspect = containerWidth / containerHeight;
@@ -2189,59 +2323,178 @@ export function FullScreenFeed({
                 // Use cached collection data if available
                 const finalCollectionData = collectionData || collectionDataCache.get(fileId);
                 
-                console.log(`[FullScreenFeed] RENDERING COLLECTION for ${fileId}:`, {
-                  fileId,
-                  collectionFileIds: finalCollectionData.collectionFileIds,
-                  collectionFileIdsLength: finalCollectionData.collectionFileIds.length,
-                  thumbnailsMapSize: thumbnails.size,
-                  thumbnailsMapKeys: Array.from(thumbnails.keys()),
-                  isCollectionFile,
-                  hasCollectionData: !!finalCollectionData,
-                  fromCache: !!collectionDataCache.get(fileId)
-                });
-                
                 // Get thumbnails from Map for collection file IDs
                 const collectionThumbnails = finalCollectionData.collectionFileIds
-                  .map((fileId: string) => {
-                    const thumbnail = thumbnails.get(fileId);
-                    console.log(`[FullScreenFeed] Thumbnail lookup for collection file ${fileId}:`, {
-                      found: !!thumbnail,
-                      url: thumbnail || 'NOT FOUND'
-                    });
-                    return thumbnail;
-                  })
-                  .filter((url): url is string => url !== undefined);
-                
-                console.log(`[FullScreenFeed] Collection thumbnails result for ${fileId}:`, {
-                  requestedCount: finalCollectionData.collectionFileIds.length,
-                  foundCount: collectionThumbnails.length,
-                  thumbnailUrls: collectionThumbnails
-                });
+                  .map((fileId: string) => thumbnails.get(fileId))
+                  .filter((url: string | undefined): url is string => url !== undefined);
                 
                 if (collectionThumbnails.length > 0) {
-                  console.log(`[FullScreenFeed] Rendering slideshow with ${collectionThumbnails.length} thumbnails for ${fileId}`);
+                  
+                  // Get currently visible slide index (default to 0)
+                  const currentSlideIndex = visibleCollectionSlide.get(fileId) ?? 0;
+                  const currentThumbnailUrl = collectionThumbnails[currentSlideIndex] || collectionThumbnails[0];
+                  const currentCollectionFileId = finalCollectionData.collectionFileIds[currentSlideIndex] || finalCollectionData.collectionFileIds[0];
+                  
+                  // Check if current visible slide is a thought
+                  // Try to find the collection file in the files array to check its metadata
+                  const currentCollectionFile = files.find(f => f.metadata.fileId === currentCollectionFileId);
+                  const currentCollectionFileName = currentCollectionFile?.metadata?.name || currentCollectionFile?.metadata?.title || '';
+                  const isThumbnailFile = currentCollectionFileName.toLowerCase().startsWith('thumb_');
+                  const isThoughtThumbnail = isThumbnailFile && /thumb_thought-\d+\.(thought|png)/i.test(currentCollectionFileName);
+                  const hasTextPostData = !!(currentCollectionFile?.metadata as any)?.textPost || 
+                                         !!(currentCollectionFile?.metadata as any)?.thought;
+                  const hasTextFileType = currentCollectionFile?.metadata?.fileType === 'text' || 
+                                         currentCollectionFile?.metadata?.fileType === 'thought';
+                  const isThoughtFile = /^thought-\d+\.(thought|png)/i.test(currentCollectionFileName);
+                  const isCurrentSlideThought = isThoughtThumbnail || (!isThumbnailFile && (hasTextPostData || hasTextFileType || isThoughtFile));
+                  
+                  const containerHeight = window.innerHeight - 64; // Account for bottom nav
+                  const containerWidth = window.innerWidth;
+                  const containerAspect = containerWidth / containerHeight;
+                  
+                  // Get image dimensions from mediaDimensions map
+                  const dims = mediaDimensions.get(currentCollectionFileId);
+                  const imageAspect = dims ? dims.width / dims.height : 16/9; // Default to 16:9
+                  
+                  // If image is wider than container (widescreen), scale background to fill height
+                  // If image is taller than container (portrait), scale background to fill width
+                  const isWidescreen = imageAspect > containerAspect;
+                  const backgroundStyle: React.CSSProperties = {
+                    filter: 'blur(40px)',
+                    opacity: 0.6,
+                    zIndex: 0,
+                    position: 'absolute',
+                    top: 0,
+                    right: 0,
+                    bottom: 0,
+                    objectFit: 'cover', // Ensure it covers the entire area
+                    ...(isWidescreen 
+                      ? { 
+                          width: 'auto', 
+                          height: '100%',
+                          left: '50%',
+                          transform: 'translateX(-50%) scale(1.1)'
+                        }
+                      : { 
+                          height: 'auto', 
+                          width: '100%',
+                          left: 0,
+                          top: '50%',
+                          transform: 'translateY(-50%) scale(1.1)'
+                        }
+                    )
+                  };
+                  
+                  // Handle scroll to update visible slide
+                  const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
+                    const container = e.currentTarget;
+                    const scrollLeft = container.scrollLeft;
+                    const containerWidth = container.clientWidth;
+                    const slideIndex = Math.round(scrollLeft / containerWidth);
+                    
+                    if (slideIndex !== currentSlideIndex && slideIndex >= 0 && slideIndex < collectionThumbnails.length) {
+                      setVisibleCollectionSlide(prev => {
+                        const newMap = new Map(prev);
+                        newMap.set(fileId, slideIndex);
+                        return newMap;
+                      });
+                    }
+                  };
+                  
                   // Render horizontal slideshow of thumbnails
                   return (
-                    <div className="w-full h-full flex overflow-x-auto snap-x snap-mandatory scrollbar-hide">
-                      {collectionThumbnails.map((thumbnailUrl, idx) => (
-                        <div
-                          key={`${fileId}-${idx}`}
-                          className="flex-shrink-0 w-full h-full snap-start"
-                        >
-                          <img
-                            src={thumbnailUrl}
-                            alt={`${fileName} - ${idx + 1}`}
-                            className="w-full h-full object-cover"
-                            onError={(e) => {
-                              console.error(`[FullScreenFeed] Thumbnail failed to load for collection ${fileId}, index ${idx}:`, thumbnailUrl);
-                              e.currentTarget.src = '/placeholder-thumbnail.png';
-                            }}
-                            onLoad={() => {
-                              console.log(`[FullScreenFeed] Thumbnail loaded successfully for collection ${fileId}, index ${idx}`);
-                            }}
-                          />
-                        </div>
-                      ))}
+                    <div className="w-full h-full relative">
+                      {/* Blurred background image - on outer container, updates based on visible slide */}
+                      {/* Only show blurred background if current slide is NOT a thought */}
+                      {!isCurrentSlideThought && (
+                        <img
+                          key={`bg-${fileId}-${currentSlideIndex}`} // Force re-render when slide changes
+                          src={currentThumbnailUrl}
+                          alt=""
+                          className="absolute"
+                          style={backgroundStyle}
+                          loading="eager"
+                          decoding="async"
+                          onError={(e) => {
+                            console.error(`[FullScreenFeed] Background image failed to load for collection ${fileId}, slide ${currentSlideIndex}:`, e);
+                            console.error(`[FullScreenFeed] Thumbnail URL:`, currentThumbnailUrl);
+                          }}
+                        />
+                      )}
+                      {/* Scrollable slideshow container */}
+                      <div 
+                        ref={(el) => {
+                          if (el) {
+                            collectionScrollRefs.current.set(fileId, el);
+                            // Initialize visible slide on mount
+                            if (!visibleCollectionSlide.has(fileId)) {
+                              const scrollLeft = el.scrollLeft;
+                              const containerWidth = el.clientWidth;
+                              const slideIndex = Math.round(scrollLeft / containerWidth);
+                              setVisibleCollectionSlide(prev => {
+                                const newMap = new Map(prev);
+                                newMap.set(fileId, Math.max(0, Math.min(slideIndex, collectionThumbnails.length - 1)));
+                                return newMap;
+                              });
+                            }
+                          } else {
+                            collectionScrollRefs.current.delete(fileId);
+                          }
+                        }}
+                        className="w-full h-full flex overflow-x-auto snap-x snap-mandatory scrollbar-hide relative z-10"
+                        onScroll={handleScroll}
+                      >
+                        {collectionThumbnails.map((thumbnailUrl: string, idx: number) => {
+                          const collectionFileId = finalCollectionData.collectionFileIds[idx];
+                          
+                          return (
+                            <div
+                              key={`${fileId}-${idx}`}
+                              className="flex-shrink-0 w-full h-full snap-start"
+                            >
+                              {/* Main image container - centers image */}
+                              <div className="w-full h-full flex items-center justify-center">
+                                <img
+                                  src={thumbnailUrl}
+                                  alt={`${fileName} - ${idx + 1}`}
+                                  ref={(el) => {
+                                    if (el && collectionFileId) {
+                                      // Track dimensions when loaded
+                                      el.addEventListener('load', () => {
+                                        setMediaDimensions(prev => {
+                                          const newMap = new Map(prev);
+                                          newMap.set(collectionFileId, { width: el.naturalWidth, height: el.naturalHeight });
+                                          return newMap;
+                                        });
+                                      });
+                                    }
+                                  }}
+                                  style={{
+                                    // Fill container while maintaining aspect ratio
+                                    height: '100%',
+                                    width: '100%',
+                                    objectFit: 'contain', // Maintain aspect ratio, fit to screen
+                                    imageRendering: 'auto' as const,
+                                    // Prevent pixelation and ensure high quality
+                                    backfaceVisibility: 'hidden',
+                                    WebkitBackfaceVisibility: 'hidden',
+                                    transform: 'translateZ(0)' // Force hardware acceleration
+                                  }}
+                                  loading="eager"
+                                  decoding="sync"
+                                  onError={(e) => {
+                                    console.error(`[FullScreenFeed] Thumbnail failed to load for collection ${fileId}, index ${idx}:`, thumbnailUrl);
+                                    e.currentTarget.src = '/placeholder-thumbnail.png';
+                                  }}
+                                onLoad={() => {
+                                  // Thumbnail loaded successfully
+                                }}
+                                />
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
                     </div>
                   );
                 } else {
@@ -2256,19 +2509,7 @@ export function FullScreenFeed({
                   );
                 }
               })()
-            ) : (() => {
-              // DEBUG: Log why collection is NOT rendering
-              if (collectionData) {
-                console.log(`[FullScreenFeed] Collection NOT rendering for ${fileId}:`, {
-                  isCollectionFile,
-                  hasCollectionData: !!collectionData,
-                  hasCollectionFileIds: !!collectionData.collectionFileIds,
-                  collectionFileIds: collectionData.collectionFileIds,
-                  reason: !isCollectionFile ? 'isCollectionFile is false' : !collectionData?.collectionFileIds ? 'no collectionFileIds' : 'unknown'
-                });
-              }
-              return null;
-            })()}
+            ) : null}
 
             {/* Non-image/video/slideshow/collection file */}
             {!isImageFinal && !isVideoFinal && !isCollectionFile && (

@@ -371,7 +371,7 @@ export function CollectionFeed({
       const textPost = content.data;
       const style = textPost.style || {};
       const REFERENCE_WIDTH = 1080;
-      const REFERENCE_HEIGHT = 1920;
+      const REFERENCE_HEIGHT = 1080; // Square format to match thumbnail dimensions
       const viewportWidth = typeof window !== 'undefined' ? window.innerWidth : REFERENCE_WIDTH;
       const viewportHeight = typeof window !== 'undefined' ? (window.innerHeight - 64) : REFERENCE_HEIGHT;
       const widthScale = viewportWidth / REFERENCE_WIDTH;

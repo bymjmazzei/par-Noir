@@ -1163,7 +1163,15 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
         
         const nonThoughtThumbnails = regularThumbnails.filter((thumb: DriveFile) => {
           const name = thumb.name.toLowerCase();
-          return !name.startsWith('thumb_thought-');
+          // Exclude thought thumbnails
+          if (name.startsWith('thumb_thought-')) {
+            return false;
+          }
+          // Exclude PDF page thumbnails (format: thumb_filename-page-N.png.encrypted)
+          if (name.match(/thumb_.*-page-\d+\.(png|jpg|jpeg)\.encrypted$/i)) {
+            return false;
+          }
+          return true;
         });
         
         // Map regular (non-thought) thumbnails to their main files and create display entries
@@ -1249,7 +1257,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
         
         // Filter to show thumbnails (representing main files), thought thumbnails, and collections
         // IMPORTANT: Exclude collections from allFiles since they're already added via collectionFilesWithMetadata
-        const collectionFileIds = new Set(collectionFiles.map(f => f.id));
+        const collectionFileIds = new Set(collectionFiles.map((f: DriveFile) => f.id));
         const mediaFiles = thumbnailEntries.concat(thoughtThumbnailEntries).concat(collectionFilesWithMetadata).concat(
           allFiles.filter((file: DriveFile) => {
           const name = file.name.toLowerCase();
@@ -1258,6 +1266,11 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
           // Exclude collections - they're already added via collectionFilesWithMetadata
           if (collectionFileIds.has(file.id)) {
             return false;
+          }
+          
+          // Include PDF files (they will be displayed as collections)
+          if (name.endsWith('.pdf.encrypted') || mimeType === 'application/pdf') {
+            return true;
           }
           
           // Include thoughts that don't have thumbnails (legacy thoughts)
@@ -1323,7 +1336,15 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
         
         const nonThoughtThumbnails = regularThumbnails.filter((thumb: DriveFile) => {
           const name = thumb.name.toLowerCase();
-          return !name.startsWith('thumb_thought-');
+          // Exclude thought thumbnails
+          if (name.startsWith('thumb_thought-')) {
+            return false;
+          }
+          // Exclude PDF page thumbnails (format: thumb_filename-page-N.png.encrypted)
+          if (name.match(/thumb_.*-page-\d+\.(png|jpg|jpeg)\.encrypted$/i)) {
+            return false;
+          }
+          return true;
         });
         
         // Map regular (non-thought) thumbnails to their main files and create display entries
@@ -1409,7 +1430,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
         
         // Filter to show thumbnails (representing main files), thought thumbnails, and collections
         // IMPORTANT: Exclude collections from allFiles since they're already added via collectionFilesWithMetadata
-        const collectionFileIds = new Set(collectionFiles.map(f => f.id));
+        const collectionFileIds = new Set(collectionFiles.map((f: DriveFile) => f.id));
         const mediaFiles = thumbnailEntries.concat(thoughtThumbnailEntries).concat(collectionFilesWithMetadata).concat(
           allFiles.filter((file: DriveFile) => {
           const name = file.name.toLowerCase();
@@ -1418,6 +1439,11 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
           // Exclude collections - they're already added via collectionFilesWithMetadata
           if (collectionFileIds.has(file.id)) {
             return false;
+          }
+          
+          // Include PDF files (they will be displayed as collections)
+          if (name.endsWith('.pdf.encrypted') || mimeType === 'application/pdf') {
+            return true;
           }
           
           // Include thoughts that don't have thumbnails (legacy thoughts)
@@ -2692,6 +2718,164 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
     }
   };
 
+  // Helper function to convert PDF pages to thumbnails
+  const convertPDFPagesToThumbnails = async (
+    pdfBlob: Blob,
+    baseFileName: string,
+    accountId: string,
+    session: any,
+    publicKey: string,
+    encryptionManager: EncryptionManager,
+    accessToken: string
+  ): Promise<{ thumbnailFileIds: string[]; thumbnailTokens: string[] }> => {
+    try {
+      const pdfjsLib = await import('pdfjs-dist');
+      if (!pdfjsLib.GlobalWorkerOptions.workerSrc) {
+        pdfjsLib.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs';
+      }
+      
+      // Convert blob to ArrayBuffer
+      const arrayBuffer = await pdfBlob.arrayBuffer();
+      const uint8Array = new Uint8Array(arrayBuffer);
+      
+      // Load PDF
+      const loadingTask = pdfjsLib.getDocument({ data: uint8Array });
+      const pdf = await loadingTask.promise;
+      const numPages = pdf.numPages;
+      
+      const thumbnailFileIds: string[] = [];
+      const thumbnailTokens: string[] = [];
+      
+      console.log(`[PDF Upload] Converting ${numPages} pages to thumbnails...`);
+      
+      // Process each page
+      for (let pageNum = 1; pageNum <= numPages; pageNum++) {
+        const page = await pdf.getPage(pageNum);
+        const viewport = page.getViewport({ scale: 1.0 });
+        
+        // Calculate scale for thumbnail (max 800x800)
+        const maxWidth = 800;
+        const maxHeight = 800;
+        const scale = Math.min(maxWidth / viewport.width, maxHeight / viewport.height, 1.0);
+        const scaledViewport = page.getViewport({ scale });
+        
+        // Create canvas
+        const canvas = document.createElement('canvas');
+        canvas.width = scaledViewport.width;
+        canvas.height = scaledViewport.height;
+        
+        const ctx = canvas.getContext('2d');
+        if (!ctx) {
+          throw new Error('Failed to get canvas context');
+        }
+        
+        // Render PDF page to canvas
+        await page.render({
+          canvasContext: ctx,
+          viewport: scaledViewport,
+          canvas: canvas
+        } as any).promise;
+        
+        // Convert canvas to blob
+        const thumbnailBlob = await new Promise<Blob>((resolve, reject) => {
+          canvas.toBlob((blob) => {
+            if (blob) {
+              resolve(blob);
+            } else {
+              reject(new Error('Failed to create thumbnail blob'));
+            }
+          }, 'image/jpeg', 0.85);
+        });
+        
+        // Create thumbnail file name (format: thumb_filename-page-N.png)
+        const thumbnailFileName = `thumb_${baseFileName}-page-${pageNum}.png`;
+        
+        // Upload thumbnail using existing helper
+        const thumbnailFileId = await uploadThumbnailLocal(
+          thumbnailBlob,
+          `${baseFileName}-page-${pageNum}.png`,
+          encryptionManager,
+          session,
+          publicKey,
+          accessToken,
+          accountId
+        );
+        
+        if (!thumbnailFileId) {
+          console.warn(`[PDF Upload] Failed to upload thumbnail for page ${pageNum}`);
+          continue;
+        }
+        
+        // Generate share token for thumbnail
+        let thumbnailShareToken: any = undefined;
+        try {
+          const thumbnailArrayBuffer = await thumbnailBlob.arrayBuffer();
+          const thumbnailData = new Uint8Array(thumbnailArrayBuffer);
+          const encryptedThumbnail = await encryptionManager.encrypt(
+            thumbnailData,
+            session.did,
+            publicKey
+          );
+          
+          const thumbnailPackage: EncryptedFilePackage = {
+            encrypted: encryptedThumbnail.encrypted,
+            iv: encryptedThumbnail.iv,
+            salt: encryptedThumbnail.salt,
+            metadata: {
+              originalName: thumbnailFileName,
+              originalSize: thumbnailBlob.size,
+              originalMimeType: 'image/png',
+            },
+          };
+          
+          const encryptionService = getEncryptionService();
+          thumbnailShareToken = await encryptionService.generateShareToken(
+            thumbnailPackage,
+            {
+              id: session.did,
+              publicKey: publicKey
+            }
+          );
+        } catch (tokenError: any) {
+          console.warn(`[PDF Upload] Failed to generate share token for page ${pageNum}:`, tokenError);
+        }
+        
+        // Create metadata entry for thumbnail
+        try {
+          await fetch(`${apiEndpoint}/api/aggregator/metadata-index/${thumbnailFileId}?accountId=${accountId}`, {
+            method: 'PUT',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${accessToken}`
+            },
+            body: JSON.stringify({
+              name: thumbnailFileName,
+              fileType: 'image',
+              isPublic: false, // Thumbnails are private by default
+              ...(thumbnailShareToken && { publicToken: JSON.stringify(thumbnailShareToken) })
+            })
+          });
+        } catch (metadataError) {
+          console.warn(`[PDF Upload] Failed to create metadata for thumbnail page ${pageNum}`);
+        }
+        
+        thumbnailFileIds.push(thumbnailFileId);
+        if (thumbnailShareToken) {
+          thumbnailTokens.push(JSON.stringify(thumbnailShareToken));
+        } else {
+          thumbnailTokens.push('');
+        }
+        
+        console.log(`[PDF Upload] Created thumbnail for page ${pageNum}/${numPages}`);
+      }
+      
+      return { thumbnailFileIds, thumbnailTokens };
+    } catch (error) {
+      console.error('[PDF Upload] Failed to convert PDF pages:', error);
+      throw error;
+    }
+  };
+
   const handleUploadForAccount = async (accountId: string, event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     
@@ -2742,6 +2926,9 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
 
       console.log('📤 [Upload] Starting upload...', { fileName: file.name, fileSize: file.size });
 
+      // Check if file is a PDF
+      const isPDF = file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
+
       // Initialize encryption manager
       const encryptionManager = new EncryptionManager();
       
@@ -2751,11 +2938,36 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
       let freshAccessToken: string | undefined = undefined;
       let thumbnailShareToken: any = undefined;
       let thumbnailFileId: string | undefined = undefined;
+      let pdfThumbnailFileIds: string[] = [];
+      let pdfThumbnailTokens: string[] = [];
       
       // Refresh access token before uploading main file
       freshAccessToken = await PNOAuthService.getValidAccessToken();
       if (!freshAccessToken) {
         throw new Error('No valid access token available for upload');
+      }
+
+      // If PDF, convert pages to thumbnails first
+      if (isPDF) {
+        console.log('[PDF Upload] Detected PDF, converting pages to thumbnails...');
+        const baseFileName = file.name.replace(/\.pdf$/i, '');
+        try {
+          const result = await convertPDFPagesToThumbnails(
+            file,
+            baseFileName,
+            accountId,
+            session,
+            publicKey,
+            encryptionManager,
+            freshAccessToken
+          );
+          pdfThumbnailFileIds = result.thumbnailFileIds;
+          pdfThumbnailTokens = result.thumbnailTokens;
+          console.log(`[PDF Upload] Created ${pdfThumbnailFileIds.length} thumbnails`);
+        } catch (pdfError: any) {
+          console.error('[PDF Upload] Failed to convert PDF pages:', pdfError);
+          throw new Error(`Failed to convert PDF: ${pdfError.message || pdfError}`);
+        }
       }
 
         // Generate thumbnail for images and videos BEFORE encryption
@@ -2935,7 +3147,8 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
         console.log('📝 [Upload] Creating initial metadata entry...');
         
         // Determine file type from MIME type
-        const fileType = file.type.startsWith('image/') ? 'image' 
+        const fileType = isPDF ? 'document'
+          : file.type.startsWith('image/') ? 'image' 
           : file.type.startsWith('video/') ? 'video'
           : file.type.startsWith('audio/') ? 'audio'
           : 'document';
@@ -3033,6 +3246,54 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
       } catch (metadataError: any) {
         console.warn('⚠️ [Upload] Metadata creation failed (non-critical):', metadataError?.message || metadataError);
         // Don't fail the upload - metadata can be created later
+      }
+
+      // If PDF, create collection from thumbnails and update PDF metadata
+      if (isPDF && pdfThumbnailFileIds.length > 0) {
+        try {
+          console.log('[PDF Upload] Creating collection from PDF thumbnails...');
+          
+          // Create collection using the thumbnail file IDs
+          const collectionResult = await createCollection(
+            {
+              collectionFileIds: pdfThumbnailFileIds,
+              title: file.name.replace(/\.pdf$/i, '')
+            },
+            accountId,
+            {
+              isPublic: false, // PDF collections are private by default
+              isNSFW: false
+            }
+          );
+
+          if (collectionResult.success) {
+            // Update PDF file metadata with thumbnail IDs
+            try {
+              await fetch(`${apiEndpoint}/api/aggregator/metadata-index/${fileId}?accountId=${accountId}`, {
+                method: 'PUT',
+                headers: {
+                  'Content-Type': 'application/json',
+                  'Authorization': `Bearer ${freshAccessToken}`
+                },
+                body: JSON.stringify({
+                  pdfPageThumbnailIds: pdfThumbnailFileIds,
+                  pdfPageThumbnailTokens: pdfThumbnailTokens,
+                  fileType: 'document'
+                })
+              });
+              console.log('[PDF Upload] PDF metadata updated with thumbnail IDs');
+            } catch (pdfMetadataError) {
+              console.warn('[PDF Upload] Failed to update PDF metadata:', pdfMetadataError);
+            }
+            
+            console.log('[PDF Upload] PDF collection created successfully');
+          } else {
+            console.warn('[PDF Upload] Failed to create collection:', collectionResult.error);
+          }
+        } catch (collectionError: any) {
+          console.error('[PDF Upload] Failed to create collection:', collectionError);
+          // Don't fail the upload if collection creation fails
+        }
       }
 
       // Reload files for this account
