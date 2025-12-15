@@ -3242,12 +3242,23 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
                 thumbnailPublicToken = JSON.stringify(thumbnailShareToken);
               }
               
+              // Refresh token before thumbnail metadata call
+              let thumbnailMetadataToken = metadataToken || freshAccessToken;
+              try {
+                const refreshedToken = await PNOAuthService.getValidAccessToken(true);
+                if (refreshedToken) {
+                  thumbnailMetadataToken = refreshedToken;
+                }
+              } catch (tokenError) {
+                console.warn('[Upload] Failed to refresh token before thumbnail metadata call:', tokenError);
+              }
+              
               // Submit thumbnail to public index
               const thumbnailMetadataResponse = await fetch(`${apiEndpoint}/api/aggregator/metadata-index/${thumbnailFileId}`, {
                 method: 'PUT',
                 headers: {
                   'Content-Type': 'application/json',
-                  'Authorization': `Bearer ${freshAccessToken}`
+                  'Authorization': `Bearer ${thumbnailMetadataToken}`
                 },
                 body: JSON.stringify({
                   name: `thumb_${file.name}`, // Include thumb_ prefix so public index query can find it
