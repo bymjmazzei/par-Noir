@@ -2726,7 +2726,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
     session: any,
     publicKey: string,
     encryptionManager: EncryptionManager,
-    accessToken: string
+    initialAccessToken: string
   ): Promise<{ thumbnailFileIds: string[]; thumbnailTokens: string[] }> => {
     try {
       const pdfjsLib = await import('pdfjs-dist');
@@ -2790,6 +2790,17 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
         // Create thumbnail file name (format: thumb_filename-page-N.png)
         const thumbnailFileName = `thumb_${baseFileName}-page-${pageNum}.png`;
         
+        // Refresh access token before each upload (tokens can expire during long PDF processing)
+        let currentAccessToken = initialAccessToken;
+        try {
+          const refreshedToken = await PNOAuthService.getValidAccessToken(true); // Force refresh
+          if (refreshedToken) {
+            currentAccessToken = refreshedToken;
+          }
+        } catch (tokenError) {
+          console.warn(`[PDF Upload] Failed to refresh token for page ${pageNum}, using existing token:`, tokenError);
+        }
+        
         // Upload thumbnail using existing helper
         const thumbnailFileId = await uploadThumbnailLocal(
           thumbnailBlob,
@@ -2797,7 +2808,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
           encryptionManager,
           session,
           publicKey,
-          accessToken,
+          currentAccessToken,
           accountId
         );
         
@@ -2842,11 +2853,22 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
         
         // Create metadata entry for thumbnail
         try {
+          // Refresh token again before metadata call
+          let metadataToken = currentAccessToken;
+          try {
+            const refreshedToken = await PNOAuthService.getValidAccessToken(true);
+            if (refreshedToken) {
+              metadataToken = refreshedToken;
+            }
+          } catch (tokenError) {
+            // Use existing token if refresh fails
+          }
+          
           await fetch(`${apiEndpoint}/api/aggregator/metadata-index/${thumbnailFileId}?accountId=${accountId}`, {
             method: 'PUT',
             headers: {
               'Content-Type': 'application/json',
-              'Authorization': `Bearer ${accessToken}`
+              'Authorization': `Bearer ${metadataToken}`
             },
             body: JSON.stringify({
               name: thumbnailFileName,
@@ -3110,13 +3132,27 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
         reader.readAsDataURL(encryptedBlob);
       });
 
+        // Refresh token before uploading main file (may have expired during PDF processing)
+        let uploadToken = freshAccessToken;
+        if (isPDF) {
+          // PDF processing may have taken a while, refresh token
+          try {
+            const refreshedToken = await PNOAuthService.getValidAccessToken(true);
+            if (refreshedToken) {
+              uploadToken = refreshedToken;
+            }
+          } catch (tokenError) {
+            console.warn('[Upload] Failed to refresh token before main file upload:', tokenError);
+          }
+        }
+        
         // Upload encrypted file with .encrypted extension (use fresh token)
       const encryptedFileName = `${file.name}.encrypted`;
       const response = await fetch(`${apiEndpoint}/api/drive/files`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-            'Authorization': `Bearer ${freshAccessToken}`
+            'Authorization': `Bearer ${uploadToken}`
         },
         body: JSON.stringify({
           fileData: base64File,
@@ -3156,6 +3192,17 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
         // Default to public content (isNSFW: false)
         // Users can mark content as NSFW during upload or edit
         
+        // Refresh token before metadata call (may have expired during upload)
+        let metadataToken = uploadToken || freshAccessToken;
+        try {
+          const refreshedToken = await PNOAuthService.getValidAccessToken(true);
+          if (refreshedToken) {
+            metadataToken = refreshedToken;
+          }
+        } catch (tokenError) {
+          console.warn('[Upload] Failed to refresh token before metadata call:', tokenError);
+        }
+        
         // Create metadata entry for MAIN FILE (private - not in public index)
         // Main file is only used for downloads, thumbnail is what appears in feed
         console.log(`📝 [Upload] Saving metadata for main file (private)`);
@@ -3163,7 +3210,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
           method: 'PUT',
           headers: {
             'Content-Type': 'application/json',
-            'Authorization': `Bearer ${freshAccessToken}` // Use fresh token
+            'Authorization': `Bearer ${metadataToken}` // Use refreshed token
           },
           body: JSON.stringify({
             name: file.name,
@@ -3253,6 +3300,17 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
         try {
           console.log('[PDF Upload] Creating collection from PDF thumbnails...');
           
+          // Refresh token before collection creation (may have expired during PDF processing)
+          let collectionToken = freshAccessToken;
+          try {
+            const refreshedToken = await PNOAuthService.getValidAccessToken(true);
+            if (refreshedToken) {
+              collectionToken = refreshedToken;
+            }
+          } catch (tokenError) {
+            console.warn('[PDF Upload] Failed to refresh token for collection creation:', tokenError);
+          }
+          
           // Create collection using the thumbnail file IDs
           const collectionResult = await createCollection(
             {
@@ -3269,11 +3327,22 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
           if (collectionResult.success) {
             // Update PDF file metadata with thumbnail IDs
             try {
+              // Refresh token again before metadata update
+              let metadataToken = collectionToken;
+              try {
+                const refreshedToken = await PNOAuthService.getValidAccessToken(true);
+                if (refreshedToken) {
+                  metadataToken = refreshedToken;
+                }
+              } catch (tokenError) {
+                // Use existing token if refresh fails
+              }
+              
               await fetch(`${apiEndpoint}/api/aggregator/metadata-index/${fileId}?accountId=${accountId}`, {
                 method: 'PUT',
                 headers: {
                   'Content-Type': 'application/json',
-                  'Authorization': `Bearer ${freshAccessToken}`
+                  'Authorization': `Bearer ${metadataToken}`
                 },
                 body: JSON.stringify({
                   pdfPageThumbnailIds: pdfThumbnailFileIds,
