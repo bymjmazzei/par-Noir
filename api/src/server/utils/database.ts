@@ -12,14 +12,27 @@ let pool: Pool | null = null;
  */
 export function getDatabasePool(): Pool {
   if (!pool) {
+    const dbUrl = process.env.DATABASE_URL;
+    
+    if (!dbUrl) {
+      throw new Error('DATABASE_URL environment variable is not set');
+    }
+
+    // Railway and most cloud providers require SSL
+    // Check if URL contains sslmode or if it's a Railway/cloud provider URL
+    const requiresSSL = dbUrl.includes('sslmode=require') || 
+                        dbUrl.includes('railway.app') ||
+                        dbUrl.includes('railway.internal') ||
+                        dbUrl.includes('supabase.co') ||
+                        dbUrl.includes('neon.tech') ||
+                        dbUrl.includes('render.com');
+
     const config: PoolConfig = {
-      connectionString: process.env.DATABASE_URL,
-      ssl: process.env.DATABASE_URL?.includes('sslmode=require') 
-        ? { rejectUnauthorized: false }
-        : false,
+      connectionString: dbUrl,
+      ssl: requiresSSL ? { rejectUnauthorized: false } : false,
       max: 20, // Maximum number of clients in the pool
       idleTimeoutMillis: 30000,
-      connectionTimeoutMillis: 2000,
+      connectionTimeoutMillis: 10000, // Increased to 10 seconds for Railway network latency
     };
 
     pool = new Pool(config);
@@ -41,6 +54,31 @@ export function getDatabasePool(): Pool {
  */
 export async function initializeDatabase(): Promise<void> {
   const db = getDatabasePool();
+
+  // Test connection first with retry logic
+  let retries = 3;
+  let lastError: Error | null = null;
+  
+  while (retries > 0) {
+    try {
+      // Simple connection test
+      await db.query('SELECT 1');
+      console.log('✅ Database connection test successful');
+      break;
+    } catch (error) {
+      lastError = error as Error;
+      retries--;
+      if (retries > 0) {
+        console.warn(`⚠️ Database connection test failed, retrying... (${retries} attempts left)`);
+        await new Promise(resolve => setTimeout(resolve, 2000)); // Wait 2 seconds before retry
+      }
+    }
+  }
+
+  if (retries === 0 && lastError) {
+    console.error('❌ Failed to connect to database after 3 attempts');
+    throw lastError;
+  }
 
   try {
     // Create aggregator_metadata table
