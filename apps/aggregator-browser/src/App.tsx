@@ -3343,25 +3343,61 @@ function App() {
           }
         }, 50); // Poll every 50ms for fastest detection
         
+        // Clean up when popup closes (but keep polling for callback for a short grace period)
+        let popupClosedTime: number | null = null;
+        const checkPopupInterval = setInterval(() => {
+          try {
+            if (popup.closed && callbackFound) {
+              clearInterval(checkPopupInterval);
+              clearTimeout(timeoutId);
+              console.log('Popup closed and callback processed');
+            } else if (popup.closed && !callbackFound) {
+              // Track when popup closed
+              if (popupClosedTime === null) {
+                popupClosedTime = Date.now();
+                console.log('Popup closed, waiting for callback (grace period: 3 seconds)...');
+              }
+              
+              // If popup closed more than 3 seconds ago and no callback, stop polling
+              if (popupClosedTime && Date.now() - popupClosedTime > 3000) {
+                console.log('Popup closed without callback - stopping polling');
+                callbackFound = true; // Set flag to stop polling
+                clearInterval(pollInterval);
+                clearInterval(checkPopupInterval);
+                clearTimeout(timeoutId);
+                window.removeEventListener('message', messageListener);
+                window.removeEventListener('storage', storageListener);
+                // Clear OAuth flags
+                localStorage.removeItem('pn_oauth_pending');
+                localStorage.removeItem('pn_oauth_latest_key');
+                // Lock user if authentication failed
+                setLocked();
+                PNOAuthService.clearSession();
+                showErrorToast('Authentication cancelled or failed. Please try again.');
+              }
+            }
+          } catch (e) {
+            // Popup access might be blocked by COOP policy - ignore
+          }
+        }, 500);
+        
         // Stop polling after 30 seconds (timeout)
-        setTimeout(() => {
+        const timeoutId = setTimeout(() => {
           if (!callbackFound) {
             console.log('OAuth polling timeout - no callback received');
             clearInterval(pollInterval);
+            clearInterval(checkPopupInterval);
             window.removeEventListener('message', messageListener);
             window.removeEventListener('storage', storageListener);
+            // Clear OAuth flags
+            localStorage.removeItem('pn_oauth_pending');
+            localStorage.removeItem('pn_oauth_latest_key');
+            // Lock user if authentication failed
+            setLocked();
+            PNOAuthService.clearSession();
+            showErrorToast('Authentication timeout. Please try again.');
           }
         }, 30000);
-        
-        // Clean up when popup closes (but keep polling for callback)
-        const checkPopupInterval = setInterval(() => {
-          if (popup.closed && callbackFound) {
-            clearInterval(checkPopupInterval);
-            console.log('Popup closed and callback processed');
-          } else if (popup.closed && !callbackFound) {
-            console.log('Popup closed, but still polling for callback...');
-          }
-        }, 500);
       } catch (err) {
         console.error('OAuth redirect error:', err);
         showErrorToast('Failed to open authentication window');
