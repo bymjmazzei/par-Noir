@@ -997,6 +997,9 @@ interface DriveFile {
   accountId?: string; // Track which account this file belongs to
   mainFileId?: string; // ID of the main file (if this is a thumbnail)
   isThumbnail?: boolean; // Whether this file is a thumbnail
+  displayName?: string; // Display name for the file (may differ from name)
+  fileType?: string; // File type (image, video, collection, etc.)
+  collection?: { collectionFileIds: string[] }; // Collection data if this is a collection
 }
 
 interface FileStorageAggregatorProps {
@@ -1233,6 +1236,51 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
           return name.startsWith('collection-') && name.endsWith('.collection.encrypted');
         });
         
+        // Also detect PDF files that have been converted to collections
+        const pdfFiles = allFiles.filter((file: DriveFile) => {
+          const name = file.name.toLowerCase();
+          const mimeType = file.mimeType || '';
+          return (name.endsWith('.pdf.encrypted') || mimeType === 'application/pdf');
+        });
+        
+        // Load metadata for PDFs to check if they're collections
+        const pdfFilesWithMetadata = await Promise.all(
+          pdfFiles.map(async (file: DriveFile) => {
+            try {
+              const metadata = await loadFileMetadata(file.id);
+              // Check if this PDF has been converted to a collection
+              const isCollection = metadata?.fileType === 'collection' || 
+                                   (metadata?.collection && Array.isArray(metadata.collection.collectionFileIds) && metadata.collection.collectionFileIds.length > 0);
+              return {
+                file,
+                metadata,
+                isCollection
+              };
+            } catch (err) {
+              console.warn(`[FileStorageAggregator] Failed to load metadata for PDF ${file.id}:`, err);
+              return {
+                file,
+                metadata: null,
+                isCollection: false
+              };
+            }
+          })
+        );
+        
+        // Separate PDFs that are collections from regular PDFs
+        const pdfCollections = pdfFilesWithMetadata
+          .filter(({ isCollection }) => isCollection)
+          .map(({ file, metadata }) => ({
+            ...file,
+            fileType: 'collection',
+            collection: metadata?.collection,
+            displayName: metadata?.name || metadata?.title || file.name.replace(/\.encrypted$/i, '').replace(/\.pdf$/i, '')
+          }));
+        
+        const regularPdfFiles = pdfFilesWithMetadata
+          .filter(({ isCollection }) => !isCollection)
+          .map(({ file }) => file);
+        
         // Load metadata for collections to get fileType and collection data
         const collectionFilesWithMetadata = await Promise.all(
           collectionFiles.map(async (file: DriveFile) => {
@@ -1255,22 +1303,26 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
           })
         );
         
+        // Combine all collections (collection files + PDF collections)
+        const allCollections = [...collectionFilesWithMetadata, ...pdfCollections];
+        
         // Filter to show thumbnails (representing main files), thought thumbnails, and collections
-        // IMPORTANT: Exclude collections from allFiles since they're already added via collectionFilesWithMetadata
-        const collectionFileIds = new Set(collectionFiles.map((f: DriveFile) => f.id));
-        const mediaFiles = thumbnailEntries.concat(thoughtThumbnailEntries).concat(collectionFilesWithMetadata).concat(
+        // IMPORTANT: Exclude collections from allFiles since they're already added via allCollections
+        const collectionFileIds = new Set(allCollections.map((f: DriveFile) => f.id));
+        const mediaFiles = thumbnailEntries.concat(thoughtThumbnailEntries).concat(allCollections).concat(
           allFiles.filter((file: DriveFile) => {
           const name = file.name.toLowerCase();
           const mimeType = file.mimeType || '';
           
-          // Exclude collections - they're already added via collectionFilesWithMetadata
+          // Exclude collections - they're already added via allCollections
           if (collectionFileIds.has(file.id)) {
             return false;
           }
           
-          // Include PDF files (they will be displayed as collections)
+          // Only include PDF files that haven't been converted to collections
           if (name.endsWith('.pdf.encrypted') || mimeType === 'application/pdf') {
-            return true;
+            // Check if this PDF is in the regular PDFs list (not converted to collection)
+            return regularPdfFiles.some(pdf => pdf.id === file.id);
           }
           
           // Include thoughts that don't have thumbnails (legacy thoughts)
@@ -1406,6 +1458,51 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
           return name.startsWith('collection-') && name.endsWith('.collection.encrypted');
         });
         
+        // Also detect PDF files that have been converted to collections
+        const pdfFiles = allFiles.filter((file: DriveFile) => {
+          const name = file.name.toLowerCase();
+          const mimeType = file.mimeType || '';
+          return (name.endsWith('.pdf.encrypted') || mimeType === 'application/pdf');
+        });
+        
+        // Load metadata for PDFs to check if they're collections
+        const pdfFilesWithMetadata = await Promise.all(
+          pdfFiles.map(async (file: DriveFile) => {
+            try {
+              const metadata = await loadFileMetadata(file.id);
+              // Check if this PDF has been converted to a collection
+              const isCollection = metadata?.fileType === 'collection' || 
+                                   (metadata?.collection && Array.isArray(metadata.collection.collectionFileIds) && metadata.collection.collectionFileIds.length > 0);
+              return {
+                file,
+                metadata,
+                isCollection
+              };
+            } catch (err) {
+              console.warn(`[FileStorageAggregator] Failed to load metadata for PDF ${file.id}:`, err);
+              return {
+                file,
+                metadata: null,
+                isCollection: false
+              };
+            }
+          })
+        );
+        
+        // Separate PDFs that are collections from regular PDFs
+        const pdfCollections = pdfFilesWithMetadata
+          .filter(({ isCollection }) => isCollection)
+          .map(({ file, metadata }) => ({
+            ...file,
+            fileType: 'collection',
+            collection: metadata?.collection,
+            displayName: metadata?.name || metadata?.title || file.name.replace(/\.encrypted$/i, '').replace(/\.pdf$/i, '')
+          }));
+        
+        const regularPdfFiles = pdfFilesWithMetadata
+          .filter(({ isCollection }) => !isCollection)
+          .map(({ file }) => file);
+        
         // Load metadata for collections to get fileType and collection data
         const collectionFilesWithMetadata = await Promise.all(
           collectionFiles.map(async (file: DriveFile) => {
@@ -1428,22 +1525,26 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
           })
         );
         
+        // Combine all collections (collection files + PDF collections)
+        const allCollections = [...collectionFilesWithMetadata, ...pdfCollections];
+        
         // Filter to show thumbnails (representing main files), thought thumbnails, and collections
-        // IMPORTANT: Exclude collections from allFiles since they're already added via collectionFilesWithMetadata
-        const collectionFileIds = new Set(collectionFiles.map((f: DriveFile) => f.id));
-        const mediaFiles = thumbnailEntries.concat(thoughtThumbnailEntries).concat(collectionFilesWithMetadata).concat(
+        // IMPORTANT: Exclude collections from allFiles since they're already added via allCollections
+        const collectionFileIds = new Set(allCollections.map((f: DriveFile) => f.id));
+        const mediaFiles = thumbnailEntries.concat(thoughtThumbnailEntries).concat(allCollections).concat(
           allFiles.filter((file: DriveFile) => {
           const name = file.name.toLowerCase();
           const mimeType = file.mimeType || '';
           
-          // Exclude collections - they're already added via collectionFilesWithMetadata
+          // Exclude collections - they're already added via allCollections
           if (collectionFileIds.has(file.id)) {
             return false;
           }
           
-          // Include PDF files (they will be displayed as collections)
+          // Only include PDF files that haven't been converted to collections
           if (name.endsWith('.pdf.encrypted') || mimeType === 'application/pdf') {
-            return true;
+            // Check if this PDF is in the regular PDFs list (not converted to collection)
+            return regularPdfFiles.some(pdf => pdf.id === file.id);
           }
           
           // Include thoughts that don't have thumbnails (legacy thoughts)
