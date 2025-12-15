@@ -1932,6 +1932,19 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
       const isCurrentlyPublic = existingMetadata?.isPublic || false;
       const existingIsNSFW = existingMetadata?.isNSFW === true;
       const makePublic = shareVisibility === 'public';
+      
+      // Check if this is a PDF file (PDFs don't need publicToken - thumbnails handle their own tokens)
+      const fileName = existingMetadata?.name || sharingFile.name || '';
+      const fileType = existingMetadata?.fileType || '';
+      const mimeType = (existingMetadata as any)?.mimeType || '';
+      const hasPdfPageThumbnails = !!(existingMetadata as any)?.pdfPageThumbnailIds && 
+                                    Array.isArray((existingMetadata as any).pdfPageThumbnailIds) &&
+                                    (existingMetadata as any).pdfPageThumbnailIds.length > 0;
+      const isPDF = fileType === 'document' || 
+                    fileName.toLowerCase().endsWith('.pdf') || 
+                    fileName.toLowerCase().endsWith('.pdf.encrypted') ||
+                    mimeType === 'application/pdf' ||
+                    hasPdfPageThumbnails;
 
       const blockedIds = Object.entries(indexerToggles)
         .filter(([, enabled]) => !enabled)
@@ -1972,19 +1985,21 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
       }
 
       // Check if file needs token generation (either making public OR already public but missing token)
+      // PDFs don't need tokens - their thumbnails have tokens in pdfPageThumbnailTokens
       const existingPublicToken = existingMetadata?.publicToken;
       const hasValidToken = existingPublicToken && 
                             typeof existingPublicToken === 'string' && 
                             existingPublicToken.trim().length > 0;
       const isPublicAfterUpdate = makePublic || isCurrentlyPublic;
-      const needsTokenGeneration = isPublicAfterUpdate && !hasValidToken;
+      const needsTokenGeneration = !isPDF && isPublicAfterUpdate && !hasValidToken;
       
       // Update if visibility changed OR if token needs to be generated
       if (makePublic !== isCurrentlyPublic || needsTokenGeneration) {
         let publicToken: string | undefined = undefined;
         
         // Generate share token if making public OR if already public but missing token
-        if (needsTokenGeneration) {
+        // Skip token generation for PDFs - their thumbnails handle their own tokens
+        if (needsTokenGeneration && !isPDF) {
           try {
             const session = PNOAuthService.loadSession();
             if (session?.did) {
@@ -2075,7 +2090,11 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
         
         // Always include publicToken if we have one (newly generated or existing)
         // This ensures the API has the token for public files
-        if (publicToken) {
+        // EXCEPTION: PDFs don't need publicToken - their thumbnails have their own tokens in pdfPageThumbnailTokens
+        if (isPDF) {
+          console.log('📄 [ShareSettings] Skipping publicToken for PDF - thumbnails handle their own tokens via pdfPageThumbnailTokens');
+          // Don't send publicToken for PDFs - API will use pdfPageThumbnailTokens from existing metadata
+        } else if (publicToken) {
           updateBody.publicToken = publicToken;
           console.log('📤 [ShareSettings] Sending publicToken to API:', {
             hasToken: !!publicToken,
