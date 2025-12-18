@@ -29,7 +29,7 @@ interface EncryptedFilePackage {
 export async function renderTextPostToBlob(textPost: TextPostData, scale: number = 1.0): Promise<Blob> {
   const canvas = document.createElement('canvas');
   const width = Math.round(1080 * scale);
-  const height = Math.round(1920 * scale);
+  const height = Math.round(1080 * scale); // Square format for better display on all screens
   canvas.width = width;
   canvas.height = height;
 
@@ -321,7 +321,7 @@ export async function createTextPost(
     let thumbnailShareToken: any = undefined;
     
     try {
-      // Generate full-size PNG thumbnail (1080x1920) - this is what users see in feeds
+      // Generate full-size PNG thumbnail (1080x1080) - this is what users see in feeds
       const thumbnailBlob = await renderTextPostToBlob(textPost, 1.0);
       
       // Encrypt thumbnail

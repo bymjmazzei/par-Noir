@@ -10,6 +10,7 @@ import { useHorizontalSwipe } from '../hooks/useHorizontalSwipe';
 
 interface HorizontalThumbnailFeedProps {
   thumbnailIds: string[]; // Array of thumbnail file IDs
+  thumbnailTokens?: string[]; // Array of publicTokens for each thumbnail (same order as thumbnailIds) - for public feed decryption
   fileName?: string;
   accountId?: string; // Account ID for downloading images
   onThumbnailClick?: (index: number, thumbnailId: string) => void; // Optional: handle thumbnail clicks
@@ -17,6 +18,7 @@ interface HorizontalThumbnailFeedProps {
 
 export function HorizontalThumbnailFeed({ 
   thumbnailIds, 
+  thumbnailTokens,
   fileName, 
   accountId,
   onThumbnailClick 
@@ -73,7 +75,8 @@ export function HorizontalThumbnailFeed({
   const loadThumbnail = useCallback(async (
     thumbnailId: string,
     index: number,
-    accountIdHint: string | null
+    accountIdHint: string | null,
+    thumbnailToken?: string // Optional publicToken for decryption (no auth required)
   ) => {
     // Skip if already loaded, loading, or failed
     if (loadedThumbnailsRef.current.has(index) || 
@@ -157,7 +160,7 @@ export function HorizontalThumbnailFeed({
 
       let imageUrl: string;
       
-      // Handle encrypted files (same pattern as FullScreenFeed)
+      // Handle encrypted files
       if (contentType.includes('application/json')) {
         try {
           const text = await blob.text();
@@ -167,11 +170,39 @@ export function HorizontalThumbnailFeed({
               typeof parsed.encrypted === 'string' &&
               typeof parsed.iv === 'string' &&
               typeof parsed.salt === 'string') {
-            // Encrypted file - decrypt
+            
+            // PRIORITY 1: If we have a publicToken, use it for decryption (no auth required)
+            if (thumbnailToken) {
+              try {
+                const { decryptWithToken } = await import('../utils/tokenDecryption');
+                let token: ShareToken;
+                try {
+                  token = typeof thumbnailToken === 'string' ? JSON.parse(thumbnailToken) : thumbnailToken;
+                } catch (e) {
+                  console.warn(`[HorizontalThumbnailFeed] Failed to parse token for thumbnail ${index}:`, e);
+                  // Fall through to session-based decryption
+                }
+                
+                // Decrypt using token (NO AUTH REQUIRED!)
+                const decryptedBlob = await decryptWithToken(token);
+                imageUrl = URL.createObjectURL(decryptedBlob);
+                
+                // Success with token!
+                loadedThumbnailsRef.current.add(index);
+                failedThumbnailsRef.current.delete(index);
+                setThumbnailUrls(prev => new Map(prev).set(index, imageUrl));
+                return;
+              } catch (tokenError) {
+                console.warn(`[HorizontalThumbnailFeed] Token decryption failed for thumbnail ${index}, falling back to auth:`, tokenError);
+                // Fall through to session-based decryption
+              }
+            }
+            
+            // PRIORITY 2: Fall back to session-based decryption (for private files)
             const { EncryptionManager } = await import('../utils/encryptionManager');
             const session = PNOAuthService.loadSession();
             if (!session?.did) {
-              console.warn(`[HorizontalThumbnailFeed] Cannot decrypt - no session`);
+              console.warn(`[HorizontalThumbnailFeed] Cannot decrypt - no session and no token`);
               failedThumbnailsRef.current.add(index);
               loadingThumbnailsRef.current.delete(index);
               return;
@@ -238,7 +269,7 @@ export function HorizontalThumbnailFeed({
     } finally {
       loadingThumbnailsRef.current.delete(index);
     }
-  }, [accountId]);
+  }, [accountId, thumbnailTokens]);
 
   // Horizontal swipe navigation (like vertical feed but horizontal)
   const swipeRef = useHorizontalSwipe({
@@ -266,17 +297,20 @@ export function HorizontalThumbnailFeed({
 
     // Priority 1: Current thumbnail - START IMMEDIATELY
     if (thumbnailIds[currentIndex]) {
-      loadThumbnail(thumbnailIds[currentIndex], currentIndex, null).catch(() => {});
+      const token = thumbnailTokens?.[currentIndex];
+      loadThumbnail(thumbnailIds[currentIndex], currentIndex, null, token).catch(() => {});
     }
     
     // Priority 2: Next thumbnail (preload)
     if (currentIndex + 1 < thumbnailIds.length) {
-      loadThumbnail(thumbnailIds[currentIndex + 1], currentIndex + 1, null).catch(() => {});
+      const token = thumbnailTokens?.[currentIndex + 1];
+      loadThumbnail(thumbnailIds[currentIndex + 1], currentIndex + 1, null, token).catch(() => {});
     }
     
     // Priority 3: Previous thumbnail (preload)
     if (currentIndex > 0) {
-      loadThumbnail(thumbnailIds[currentIndex - 1], currentIndex - 1, null).catch(() => {});
+      const token = thumbnailTokens?.[currentIndex - 1];
+      loadThumbnail(thumbnailIds[currentIndex - 1], currentIndex - 1, null, token).catch(() => {});
     }
     
     // Priority 4: Load remaining thumbnails in background (non-blocking)
@@ -293,7 +327,8 @@ export function HorizontalThumbnailFeed({
     // Load remaining in parallel (non-blocking)
     remainingIndices.forEach(index => {
       if (!cancelled) {
-        loadThumbnail(thumbnailIds[index], index, null).catch(() => {});
+        const token = thumbnailTokens?.[index];
+        loadThumbnail(thumbnailIds[index], index, null, token).catch(() => {});
       }
     });
 
