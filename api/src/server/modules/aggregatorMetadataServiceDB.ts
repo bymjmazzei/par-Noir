@@ -465,10 +465,16 @@ export class AggregatorMetadataServiceDB {
         }))
       });
       
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/e9725a07-b703-47ab-ba6c-a54c252a4988',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'aggregatorMetadataServiceDB.ts:468',message:'Executing public metadata query',data:{query:query.substring(0,200),params:params,filters:filters},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+      // #endregion
       const result = await db.query(query, params);
       const hasMore = result.rows.length > limit;
       const rowsToProcess = result.rows.slice(0, limit); // Only process the requested amount
       
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/e9725a07-b703-47ab-ba6c-a54c252a4988',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'aggregatorMetadataServiceDB.ts:472',message:'Query result received',data:{rowsReturned:result.rows.length,rowsToProcess:rowsToProcess.length,hasMore,firstRow:rowsToProcess[0]?{fileId:rowsToProcess[0].file_id,fileType:rowsToProcess[0].metadata?.fileType||null,name:rowsToProcess[0].metadata?.name||null}:null},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+      // #endregion
       console.log(`🔍 [getPublicMetadata] Query result:`, {
         rowsReturned: result.rows.length,
         rowsToProcess: rowsToProcess.length,
@@ -545,6 +551,9 @@ export class AggregatorMetadataServiceDB {
       // 2. User deletes file (DELETE endpoint removes from database)
       // 3. User disconnects cloud (handled by disconnect logic)
       // No need for complex validation - database is source of truth
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/e9725a07-b703-47ab-ba6c-a54c252a4988',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'aggregatorMetadataServiceDB.ts:554',message:'Returning public metadata entries',data:{entriesCount:entries.length,total,hasMore,limit,offset,sampleEntries:entries.slice(0,3).map(e=>({fileId:e.fileId,fileType:e.metadata?.fileType,name:e.metadata?.name}))},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+      // #endregion
       console.log(`📤 [getPublicMetadata] Returning ${entries.length} files from database (isPublic = true, limit=${limit}, offset=${offset}, hasMore=${hasMore})`);
       
       return { files: entries, total, hasMore };
