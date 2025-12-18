@@ -31,10 +31,6 @@ export interface PublicMetadataSubmission {
   // CRITICAL: Include textPost/thought for thoughts to render in feeds
   textPost?: any;
   thought?: any;
-  // Include PDF slideshow data
-  pdfPageThumbnailIds?: string[];
-  pdfPageThumbnailTokens?: string[];
-  pdfFileId?: string;
   thumbnailFileId?: string;
   subjects?: string[];
   feedCategories?: string[];

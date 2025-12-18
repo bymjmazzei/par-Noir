@@ -200,7 +200,7 @@ const ThumbnailImage: React.FC<{ fileId: string; accountId: string; fileName: st
                           pnId,
                           publicKey
                         );
-                        const decryptedBlob = new Blob([decryptedData], {
+                        const decryptedBlob = new Blob([decryptedData as BlobPart], {
                           type: encryptedPackage.metadata.originalMimeType || 'image/jpeg'
                         });
                         const url = URL.createObjectURL(decryptedBlob);
@@ -300,7 +300,7 @@ const ThumbnailImage: React.FC<{ fileId: string; accountId: string; fileName: st
           }
 
           // Create thumbnail from decrypted blob
-          const decryptedBlob = new Blob([decryptedData], {
+          const decryptedBlob = new Blob([decryptedData as BlobPart], {
             type: encryptedPackage.metadata.originalMimeType || 'image/jpeg'
           });
           
@@ -877,7 +877,7 @@ const FileViewer: React.FC<{ file: DriveFile; accountId: string; onDownload: () 
 
           // Create blob from decrypted data
           const originalMimeType = encryptedPackage.metadata?.originalMimeType || file.mimeType || 'application/octet-stream';
-          const decryptedBlob = new Blob([decryptedData], {
+          const decryptedBlob = new Blob([decryptedData as BlobPart], {
             type: originalMimeType
           });
 
@@ -1249,7 +1249,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
         
         // Filter to show thumbnails (representing main files), thought thumbnails, and collections
         // IMPORTANT: Exclude collections from allFiles since they're already added via collectionFilesWithMetadata
-        const collectionFileIds = new Set(collectionFiles.map(f => f.id));
+        const collectionFileIds = new Set(collectionFiles.map((f: any) => f.id));
         const mediaFiles = thumbnailEntries.concat(thoughtThumbnailEntries).concat(collectionFilesWithMetadata).concat(
           allFiles.filter((file: DriveFile) => {
           const name = file.name.toLowerCase();
@@ -1409,7 +1409,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
         
         // Filter to show thumbnails (representing main files), thought thumbnails, and collections
         // IMPORTANT: Exclude collections from allFiles since they're already added via collectionFilesWithMetadata
-        const collectionFileIds = new Set(collectionFiles.map(f => f.id));
+        const collectionFileIds = new Set(collectionFiles.map((f: any) => f.id));
         const mediaFiles = thumbnailEntries.concat(thoughtThumbnailEntries).concat(collectionFilesWithMetadata).concat(
           allFiles.filter((file: DriveFile) => {
           const name = file.name.toLowerCase();
@@ -1514,15 +1514,15 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
               downloadFileName = metadata.metadata.name;
             } else {
               // Fallback: reconstruct from display name (add back extension if we can infer it)
-              downloadFileName = file.displayName || file.name.replace(/^thumb_/i, '').replace(/\.encrypted$/i, '');
+              downloadFileName = file.name.replace(/^thumb_/i, '').replace(/\.encrypted$/i, '');
             }
           } else {
             // Fallback: reconstruct from display name
-            downloadFileName = file.displayName || file.name.replace(/^thumb_/i, '').replace(/\.encrypted$/i, '');
+              downloadFileName = file.name.replace(/^thumb_/i, '').replace(/\.encrypted$/i, '');
           }
         } catch (metadataError) {
           // Fallback: reconstruct from display name
-          downloadFileName = file.displayName || file.name.replace(/^thumb_/i, '').replace(/\.encrypted$/i, '');
+              downloadFileName = file.name.replace(/^thumb_/i, '').replace(/\.encrypted$/i, '');
         }
       }
 
@@ -1800,9 +1800,10 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
 
       // Update displayName in file list if name was changed
       if (editingFile.accountId) {
+        const accountId = editingFile.accountId; // Store in const for type narrowing
         setFilesByAccount(prev => {
           const next = new Map(prev);
-          const accountFiles = next.get(editingFile.accountId) || [];
+          const accountFiles = next.get(accountId) || [];
           const updatedFiles = accountFiles.map(file => {
             if (file.id === editingFile.id) {
               return {
@@ -1812,7 +1813,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
             }
             return file;
           });
-          next.set(editingFile.accountId, updatedFiles);
+          next.set(accountId, updatedFiles);
           return next;
         });
       }
@@ -1831,8 +1832,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
         category: '',
         locationName: '',
         locationAddress: '',
-        license: '',
-        isNSFW: false
+        license: ''
       });
     } catch (err: any) {
       const errorMessage = err instanceof Error ? err.message : 'Failed to update metadata';
@@ -2753,10 +2753,11 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
       let thumbnailFileId: string | undefined = undefined;
       
       // Refresh access token before uploading main file
-      freshAccessToken = await PNOAuthService.getValidAccessToken();
-      if (!freshAccessToken) {
+      const token = await PNOAuthService.getValidAccessToken();
+      if (!token) {
         throw new Error('No valid access token available for upload');
       }
+      freshAccessToken = token;
 
         // Generate thumbnail for images and videos BEFORE encryption
         const isImage = file.type.startsWith('image/');
@@ -3018,7 +3019,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
           }
           
           // Update local metadata map
-          if (metadataResult.metadata) {
+          if (metadataResult.metadata && fileId) {
             setFileMetadataMap(prev => {
               const next = new Map(prev);
               next.set(fileId, metadataResult.metadata);
@@ -3699,9 +3700,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
               category: '',
               locationName: '',
               locationAddress: '',
-              license: '',
-              isNSFW: false,
-              isPublic: false
+              license: ''
             });
           }}
         >
@@ -3722,11 +3721,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
                       category: '',
                       locationName: '',
                       locationAddress: '',
-                      locationLat: '',
-                      locationLng: '',
-                      license: '',
-                      language: '',
-                      isNSFW: false
+                      license: ''
                     });
                 }}
                 className="text-text-secondary hover:text-text-primary transition-colors"

@@ -348,10 +348,6 @@ export interface PublicMetadata {
     collectionFileIds: string[]; // Array of file IDs in order
   };
   
-  // PDF Slideshow Support
-  pdfPageThumbnailIds?: string[]; // Array of thumbnail file IDs for PDF slideshow pages (loaded directly, no folder listing)
-  pdfFileId?: string; // ID of the original PDF file (for on-demand rendering)
-  
   // Thumbnail for fast feed loading (images, videos, slideshows)
   thumbnailFileId?: string; // File ID of encrypted thumbnail (800px width, JPEG)
   

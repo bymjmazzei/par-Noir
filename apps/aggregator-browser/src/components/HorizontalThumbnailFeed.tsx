@@ -4,7 +4,8 @@
  * Swipe left/right to navigate, loads sequentially prioritizing current thumbnail
  */
 
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
+import type React from 'react';
 import { useHorizontalSwipe } from '../hooks/useHorizontalSwipe';
 
 interface HorizontalThumbnailFeedProps {
@@ -25,7 +26,7 @@ export function HorizontalThumbnailFeed({
   const loadedThumbnailsRef = useRef<Set<number>>(new Set());
   const loadingThumbnailsRef = useRef<Set<number>>(new Set());
   const failedThumbnailsRef = useRef<Set<number>>(new Set());
-  const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const scrollContainerRef = useRef<HTMLDivElement | null>(null);
   const thumbnailRefs = useRef<Map<number, HTMLDivElement>>(new Map());
 
   // Fetch accountId helper (non-blocking)
@@ -198,7 +199,8 @@ export function HorizontalThumbnailFeed({
                 publicKey
               );
 
-              const decryptedBlob = new Blob([decryptedData], {
+              // Create blob from decrypted data
+              const decryptedBlob = new Blob([decryptedData as BlobPart], {
                 type: parsed.metadata?.originalMimeType || 'image/jpeg'
               });
               imageUrl = URL.createObjectURL(decryptedBlob);
@@ -253,6 +255,7 @@ export function HorizontalThumbnailFeed({
     threshold: 50,
     snapThreshold: 0.2
   });
+  
 
   // Load thumbnails sequentially - prioritize current, then adjacent
   // START LOADING IMMEDIATELY - don't wait for accountId (loadThumbnail fetches it internally)
@@ -342,8 +345,13 @@ export function HorizontalThumbnailFeed({
       <div
         ref={(el) => {
           scrollContainerRef.current = el;
-          // Attach swipeRef to the scroll container for touch event handling
-          (swipeRef as any).current = el;
+          // Merge with swipeRef from useHorizontalSwipe hook (same pattern as FullScreenFeed)
+          if (swipeRef && swipeRef.current !== el && el) {
+            // TypeScript sees RefObject as readonly, but we need to set it for the hook to work
+            // This is safe because the hook expects us to set the ref
+            const mutableRef = swipeRef as unknown as { current: HTMLDivElement | null };
+            mutableRef.current = el;
+          }
         }}
         className="flex-1 overflow-x-auto snap-x snap-mandatory scrollbar-hide"
         style={{

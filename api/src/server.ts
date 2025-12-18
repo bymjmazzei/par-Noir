@@ -250,7 +250,7 @@ class ProductionServer {
     if (mimeType.startsWith('image/')) return 'image';
     if (mimeType.startsWith('video/')) return 'video';
     if (mimeType.startsWith('audio/')) return 'audio';
-    if (mimeType.includes('pdf') || mimeType.includes('document') || mimeType.includes('text')) return 'document';
+    if (mimeType.includes('text')) return 'text';
     return 'other';
   }
 
@@ -1589,7 +1589,6 @@ class ProductionServer {
             metadata->>'backend' as backend,
             CASE 
               WHEN metadata->>'textPost' IS NOT NULL OR metadata->>'thought' IS NOT NULL THEN 'thought'
-              WHEN metadata->>'pdfPageThumbnailIds' IS NOT NULL THEN 'pdf_slideshow'
               ELSE metadata->>'fileType'
             END as detected_type,
             updated_at
@@ -1609,14 +1608,8 @@ class ProductionServer {
         const googleDriveFiles = allFiles.rows.filter((r: any) => r.backend === 'google_drive');
         
         // Count by file type
-        const pdfs = allFiles.rows.filter((r: any) => 
-          r.file_type === 'document' || r.detected_type === 'pdf_slideshow'
-        );
         const thoughts = allFiles.rows.filter((r: any) => 
           r.file_type === 'thought' || r.file_type === 'text' || r.detected_type === 'thought'
-        );
-        const publicPdfs = pdfs.filter((r: any) => 
-          r.is_public === 'true' || r.is_public_bool === true
         );
         const publicThoughts = thoughts.filter((r: any) => 
           r.is_public === 'true' || r.is_public_bool === true
@@ -1676,7 +1669,6 @@ class ProductionServer {
         const textPostContent = metadata.textPost?.content;
         const thoughtContent = metadata.thought?.content;
         const isJustFilename = /^thought-\d+\.(thought|png)/i.test(textPostContent || thoughtContent || '');
-        const hasPdfThumbnails = !!metadata.pdfPageThumbnailIds && Array.isArray(metadata.pdfPageThumbnailIds) && metadata.pdfPageThumbnailIds.length > 0;
         
         return res.json({
           exists: true,
@@ -1689,8 +1681,6 @@ class ProductionServer {
           textPostContent: textPostContent ? (textPostContent.length > 100 ? textPostContent.substring(0, 100) + '...' : textPostContent) : null,
           thoughtContent: thoughtContent ? (thoughtContent.length > 100 ? thoughtContent.substring(0, 100) + '...' : thoughtContent) : null,
           isJustFilename,
-          hasPdfThumbnails,
-          pdfThumbnailCount: hasPdfThumbnails ? metadata.pdfPageThumbnailIds.length : 0,
           hasPublicToken: !!metadata.publicToken,
           metadataKeys: Object.keys(metadata),
           fullMetadata: metadata // Include full metadata for inspection
@@ -1947,9 +1937,6 @@ class ProductionServer {
           isNSFW,
           subjects,
           feedCategories,
-          pdfPageThumbnailIds,
-          pdfPageThumbnailTokens,
-          pdfFileId,
           thumbnailFileId
         } = req.body;
 
@@ -2127,9 +2114,6 @@ class ProductionServer {
           isPublic,
           subjects,
           feedCategories,
-          pdfPageThumbnailIds,
-          pdfPageThumbnailTokens,
-          pdfFileId,
           thumbnailFileId
         });
 
@@ -2185,41 +2169,8 @@ class ProductionServer {
             // Main files are excluded from feeds - only thumbnails appear
             const currentMetadata = current?.metadata || {} as any;
             const thumbnailFileId = (currentMetadata as any).thumbnailFileId;
-            const pdfPageThumbnailIds = (currentMetadata as any).pdfPageThumbnailIds;
             
-            // CRITICAL FIX: Check PDF thumbnails FIRST (they need pdfPageThumbnailIds metadata)
-            // Regular thumbnails don't have pdfPageThumbnailIds, so check PDFs before regular thumbnails
-            if (pdfPageThumbnailIds && Array.isArray(pdfPageThumbnailIds) && pdfPageThumbnailIds.length > 0) {
-              // PDF file has page thumbnails - make first thumbnail public and add slideshow metadata
-              const firstThumbnailId = pdfPageThumbnailIds[0];
-              try {
-                const thumbnailMetadata = await service.getFileMetadata(firstThumbnailId);
-                const mainPdfMetadata = current?.metadata || {};
-                const pdfPageThumbnailTokens = (mainPdfMetadata as any).pdfPageThumbnailTokens || [];
-                
-                if (thumbnailMetadata) {
-                  const updatedThumbnailMetadata = {
-                    ...thumbnailMetadata.metadata,
-                    isPublic: true,
-                    fileType: 'document', // CRITICAL: Must be 'document' for isPdfSlideshow to detect it
-                    // CRITICAL: Add pdfPageThumbnailIds so frontend knows this is a slideshow
-                    pdfPageThumbnailIds: pdfPageThumbnailIds,
-                    pdfPageThumbnailTokens: pdfPageThumbnailTokens,
-                    pdfFileId: fileId
-                  };
-                  const db = (await import('./server/utils/database')).getDatabasePool();
-                  await db.query(
-                    `UPDATE aggregator_metadata 
-                     SET metadata = $1, updated_at = NOW()
-                     WHERE file_id = $2`,
-                    [JSON.stringify(updatedThumbnailMetadata), firstThumbnailId]
-                  );
-                  console.log(`[MetadataIndex PUT] Made PDF thumbnail ${firstThumbnailId} public with slideshow metadata for PDF file ${fileId}`);
-                }
-              } catch (thumbError: any) {
-                console.warn(`[MetadataIndex PUT] Failed to make PDF thumbnail public:`, thumbError?.message || thumbError);
-              }
-            } else if (thumbnailFileId) {
+            if (thumbnailFileId) {
               // Regular image/video thumbnail - make thumbnail public
               try {
                 const thumbnailMetadata = await service.getFileMetadata(thumbnailFileId);
@@ -5684,7 +5635,7 @@ class ProductionServer {
         }
         }
         
-        // STEP 1: READ METADATA FIRST (before deleting!) to find PDF thumbnails and paired files
+        // STEP 1: READ METADATA FIRST (before deleting!) to find paired files
         const { AggregatorMetadataServiceDB } = await import('./server/modules/aggregatorMetadataServiceDB');
         const metadataService = AggregatorMetadataServiceDB.getInstance();
         
@@ -5692,9 +5643,6 @@ class ProductionServer {
         let fileName = '';
         let isThumbnail = false;
         let pairedFileId: string | null = null;
-        let pdfPageThumbnailIds: string[] = []; // PDF page thumbnails to delete
-        let pdfThumbnailFileId: string | null = null; // Main PDF thumbnail (first page)
-        let parentPdfFileId: string | null = null; // Parent PDF if deleting a thumbnail
         
         try {
           // Get metadata from database first (more reliable than Drive API)
@@ -5704,15 +5652,9 @@ class ProductionServer {
             fileName = (fileMetadata.name || '').toLowerCase();
             isThumbnail = fileName.startsWith('thumb_');
             
-            // Get PDF page thumbnail IDs from metadata
-            if (fileMetadata.pdfPageThumbnailIds && Array.isArray(fileMetadata.pdfPageThumbnailIds)) {
-              pdfPageThumbnailIds = fileMetadata.pdfPageThumbnailIds;
-              console.log(`📄 [DeleteFile] Found ${pdfPageThumbnailIds.length} PDF page thumbnails to delete`);
-            }
-            
-            // Get main PDF thumbnail file ID (first page thumbnail used in feed)
+            // Get main thumbnail file ID (if exists)
             if (fileMetadata.thumbnailFileId) {
-              pdfThumbnailFileId = fileMetadata.thumbnailFileId;
+              pairedFileId = fileMetadata.thumbnailFileId;
             }
           }
           
@@ -5724,69 +5666,8 @@ class ProductionServer {
             isThumbnail = fileName.startsWith('thumb_');
           }
           
-          // CRITICAL FIX: If deleting a thumbnail file, find the parent PDF that references it
-          if (isThumbnail && !pdfPageThumbnailIds.length) {
-            try {
-              const { getDatabasePool } = await import('./server/utils/database');
-              const db = getDatabasePool();
-              // Search for PDFs that have this thumbnail ID in their pdfPageThumbnailIds array
-              const parentPdfQuery = await db.query(
-                `SELECT file_id, metadata->>'pdfPageThumbnailIds' as pdfPageThumbnailIds
-                 FROM aggregator_metadata
-                 WHERE metadata->'pdfPageThumbnailIds' @> $1::jsonb
-                 LIMIT 1`,
-                [JSON.stringify([fileId])]
-              );
-              
-              if (parentPdfQuery.rows.length > 0) {
-                parentPdfFileId = parentPdfQuery.rows[0].file_id;
-                const parentPdfThumbnailIds = JSON.parse(parentPdfQuery.rows[0].pdfPageThumbnailIds || '[]');
-                pdfPageThumbnailIds = parentPdfThumbnailIds;
-                console.log(`📄 [DeleteFile] Found parent PDF ${parentPdfFileId} with ${pdfPageThumbnailIds.length} thumbnails`);
-              }
-            } catch (parentPdfError: any) {
-              console.warn(`⚠️ [DeleteFile] Could not find parent PDF for thumbnail ${fileId}:`, parentPdfError?.message || parentPdfError);
-            }
-          }
-          
-          // CRITICAL FIX: If deleting a PDF and no thumbnails found in metadata, search by filename pattern
-          const isPdfFile = fileName.includes('.pdf') && !fileName.startsWith('thumb_');
-          if (!isThumbnail && !pdfPageThumbnailIds.length && userIdentifier && isPdfFile) {
-            try {
-              const { googleDriveProxyService } = await import('./server/modules/googleDriveProxy');
-              const accessToken = await googleDriveProxyService.getAccessToken(userIdentifier, accountId);
-              
-              // Search for thumbnail files that match PDF naming pattern
-              // PDF thumbnails are typically named like: "thumb_filename-page-1.png.encrypted", "thumb_filename-page-2.png.encrypted", etc.
-              const baseFileName = fileName.replace(/\.pdf$/i, '').replace(/\.encrypted$/i, '');
-              // Google Drive API doesn't support LIKE, so search for files containing base filename and "thumb_" prefix
-              // Then filter client-side to match the exact pattern
-              const searchQuery = `name contains 'thumb_${baseFileName.replace(/'/g, "\\'")}-page-' and trashed=false`;
-              const searchUrl = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(searchQuery)}&fields=files(id,name)&pageSize=100`;
-              
-              const searchResponse = await fetch(searchUrl, {
-                headers: { 'Authorization': `Bearer ${accessToken}` }
-              });
-              
-              if (searchResponse.ok) {
-                const searchData = await searchResponse.json() as { files?: Array<{ id: string; name: string }> };
-                if (searchData.files && searchData.files.length > 0) {
-                  // Filter to match exact pattern: thumb_<baseFileName>-page-<number>.png.encrypted
-                  const thumbnailPattern = new RegExp(`^thumb_${baseFileName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}-page-\\d+\\.png\\.encrypted$`, 'i');
-                  const matchingThumbnails = searchData.files.filter(f => 
-                    thumbnailPattern.test(f.name.toLowerCase())
-                  );
-                  pdfPageThumbnailIds = matchingThumbnails.map(f => f.id);
-                  console.log(`📄 [DeleteFile] Found ${pdfPageThumbnailIds.length} PDF thumbnails by filename pattern`);
-                }
-              }
-            } catch (patternSearchError: any) {
-              console.warn(`⚠️ [DeleteFile] Could not search for PDF thumbnails by pattern:`, patternSearchError?.message || patternSearchError);
-            }
-          }
-          
-          // Find paired file (thumbnail if main, main if thumbnail) - only if not PDF
-          if (!pdfPageThumbnailIds.length && userIdentifier) {
+          // Find paired file (thumbnail if main, main if thumbnail)
+          if (userIdentifier && !pairedFileId) {
             const { googleDriveProxyService } = await import('./server/modules/googleDriveProxy');
             const accessToken = await googleDriveProxyService.getAccessToken(userIdentifier, accountId);
             
@@ -5835,19 +5716,11 @@ class ProductionServer {
           console.warn(`⚠️ [DeleteFile] Could not get file metadata (may already be deleted):`, metadataError?.message || metadataError);
         }
         
-        // STEP 2: Remove from database metadata (main file, paired file, PDF thumbnails, and PDF page thumbnails)
+        // STEP 2: Remove from database metadata (main file and paired file)
         const filesToRemoveFromDb = [fileId];
         if (pairedFileId) {
           filesToRemoveFromDb.push(pairedFileId);
         }
-        if (parentPdfFileId) {
-          filesToRemoveFromDb.push(parentPdfFileId);
-        }
-        if (pdfThumbnailFileId) {
-          filesToRemoveFromDb.push(pdfThumbnailFileId);
-        }
-        // Add all PDF page thumbnails
-        filesToRemoveFromDb.push(...pdfPageThumbnailIds);
         
         for (const dbFileId of filesToRemoveFromDb) {
           try {
@@ -5865,14 +5738,6 @@ class ProductionServer {
         if (pairedFileId) {
           filesToDelete.push(pairedFileId);
         }
-        if (parentPdfFileId) {
-          filesToDelete.push(parentPdfFileId);
-        }
-        if (pdfThumbnailFileId) {
-          filesToDelete.push(pdfThumbnailFileId);
-        }
-        // Add all PDF page thumbnails
-        filesToDelete.push(...pdfPageThumbnailIds);
         
         if (userIdentifier) {
           const { googleDriveProxyService } = await import('./server/modules/googleDriveProxy');

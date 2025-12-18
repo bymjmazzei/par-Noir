@@ -234,10 +234,8 @@ export class AggregatorMetadataServiceDB {
           OR (am.metadata->>'isNSFW')::text = 'true'
           OR (am.metadata->'isNSFW')::boolean = true
         )
-        -- CRITICAL: Public index contains thumbnails and standalone files (text posts, PDFs)
+        -- CRITICAL: Public index contains thumbnails and standalone files (text posts)
         -- Exclude main files that have a thumbnailFileId (those are private, only thumbnails are public)
-        -- Exclude main PDF files that have pdfPageThumbnailIds (only their thumbnails should appear in feeds)
-        -- BUT: Allow thumbnail files (name starts with "thumb_") that have pdfPageThumbnailIds (they're slideshow entry points)
         -- NOTE: Thoughts with thumbnails should NOT appear - only their thumbnails should be in feeds
         AND (
           -- Exclude thought/text post files that have a thumbnailFileId (only their thumbnails should appear)
@@ -259,23 +257,6 @@ export class AggregatorMetadataServiceDB {
              AND (am.metadata->>'thumbnailFileId' IS NULL OR am.metadata->>'thumbnailFileId' = ''))
             -- OR exclude main files that have a thumbnailFileId (those are private, only thumbnails are public)
             OR (am.metadata->>'thumbnailFileId' IS NULL OR am.metadata->>'thumbnailFileId' = '')
-          )
-        )
-        AND (
-          -- Allow standalone thoughts/text posts (they don't have pdfPageThumbnailIds)
-          ((am.metadata->>'fileType' = 'text' 
-            OR am.metadata->>'fileType' = 'thought' 
-            OR am.metadata->'textPost' IS NOT NULL 
-            OR am.metadata->'thought' IS NOT NULL)
-           AND (am.metadata->>'thumbnailFileId' IS NULL OR am.metadata->>'thumbnailFileId' = ''))
-          -- OR allow thumbnail files with pdfPageThumbnailIds (they're slideshow entry points)
-          OR (LOWER(am.metadata->>'name') LIKE 'thumb_%' OR LOWER(am.metadata->>'title') LIKE 'thumb_%')
-          -- OR exclude main PDF files (not thumbnails) that have pdfPageThumbnailIds
-          OR NOT (
-            am.metadata->>'pdfPageThumbnailIds' IS NOT NULL 
-            AND am.metadata->>'pdfPageThumbnailIds' != '[]'
-            AND jsonb_typeof(am.metadata->'pdfPageThumbnailIds') = 'array'
-            AND jsonb_array_length(am.metadata->'pdfPageThumbnailIds') > 0
           )
         )
       `;
@@ -353,8 +334,6 @@ export class AggregatorMetadataServiceDB {
         )
         -- CRITICAL: Public index contains thumbnails and standalone files (text posts, PDFs)
         -- Exclude main files that have a thumbnailFileId (those are private, only thumbnails are public)
-        -- Exclude main PDF files that have pdfPageThumbnailIds (only their thumbnails should appear in feeds)
-        -- BUT: Allow thumbnail files (name starts with "thumb_") that have pdfPageThumbnailIds (they're slideshow entry points)
         -- AND: Always allow thoughts/text posts (they don't have thumbnails, so they should always be included)
         AND (
           -- Allow thoughts/text posts (they don't have thumbnails, so they should always be included)
@@ -366,20 +345,13 @@ export class AggregatorMetadataServiceDB {
           OR (am.metadata->>'thumbnailFileId' IS NULL OR am.metadata->>'thumbnailFileId' = '')
         )
         AND (
-          -- Allow thoughts/text posts (they don't have pdfPageThumbnailIds)
+          -- Allow thoughts/text posts
           am.metadata->>'fileType' = 'text' 
           OR am.metadata->>'fileType' = 'thought' 
           OR am.metadata->'textPost' IS NOT NULL 
           OR am.metadata->'thought' IS NOT NULL
-          -- OR allow thumbnail files with pdfPageThumbnailIds (they're slideshow entry points)
+          -- OR allow thumbnail files
           OR (LOWER(am.metadata->>'name') LIKE 'thumb_%' OR LOWER(am.metadata->>'title') LIKE 'thumb_%')
-          -- OR exclude main PDF files (not thumbnails) that have pdfPageThumbnailIds
-          OR NOT (
-            am.metadata->>'pdfPageThumbnailIds' IS NOT NULL 
-            AND am.metadata->>'pdfPageThumbnailIds' != '[]'
-            AND jsonb_typeof(am.metadata->'pdfPageThumbnailIds') = 'array'
-            AND jsonb_array_length(am.metadata->'pdfPageThumbnailIds') > 0
-          )
         )
         ${filters?.fileType ? `AND am.metadata->>'fileType' = $1` : ''}
         ${filters?.feedId ? `AND fp.feed_id = $${filters?.fileType ? '2' : '1'}` : ''}
@@ -466,7 +438,6 @@ export class AggregatorMetadataServiceDB {
       const sampleFilesCheck = await db.query(`
         SELECT file_id, metadata->>'name' as name, metadata->>'fileType' as file_type, 
                metadata->>'isPublic' as is_public, metadata->>'thumbnailFileId' as thumbnail_file_id,
-               metadata->>'pdfPageThumbnailIds' as pdf_page_thumbnails,
                metadata->'textPost' IS NOT NULL as has_text_post,
                metadata->'thought' IS NOT NULL as has_thought
         FROM aggregator_metadata 
@@ -489,7 +460,6 @@ export class AggregatorMetadataServiceDB {
           fileType: r.file_type,
           isPublic: r.is_public,
           hasThumbnailFileId: !!r.thumbnail_file_id,
-          hasPdfPageThumbnails: !!r.pdf_page_thumbnails,
           hasTextPost: r.has_text_post,
           hasThought: r.has_thought
         }))
@@ -1552,9 +1522,6 @@ export class AggregatorMetadataServiceDB {
       isPublic?: boolean;
       subjects?: string[];
       feedCategories?: string[];
-      pdfPageThumbnailIds?: string[];
-      pdfPageThumbnailTokens?: string[]; // Array of publicToken for each thumbnail (same order as pdfPageThumbnailIds)
-      pdfFileId?: string;
       thumbnailFileId?: string;
     }
   ): Promise<PublicMetadata | null> {
@@ -1613,10 +1580,6 @@ export class AggregatorMetadataServiceDB {
         // Update subjects and feedCategories
         ...(updates.subjects !== undefined && { subjects: updates.subjects }),
         ...(updates.feedCategories !== undefined && { feedCategories: updates.feedCategories }),
-        // Update PDF page thumbnail IDs array
-        ...(updates.pdfPageThumbnailIds !== undefined && { pdfPageThumbnailIds: updates.pdfPageThumbnailIds }),
-        ...(updates.pdfPageThumbnailTokens !== undefined && { pdfPageThumbnailTokens: updates.pdfPageThumbnailTokens }),
-        ...(updates.pdfFileId !== undefined && { pdfFileId: updates.pdfFileId }),
         // Update thumbnail file ID
         ...(updates.thumbnailFileId !== undefined && { thumbnailFileId: updates.thumbnailFileId })
       };

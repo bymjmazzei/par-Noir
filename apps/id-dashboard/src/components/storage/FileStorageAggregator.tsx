@@ -20,63 +20,6 @@ import { LICENSE_TYPES } from '../../constants/licenses';
 import { FEED_CATEGORIES, FEED_CATEGORY_LIST } from '../../constants/feedCategories';
 import { ReportContentModal } from './ReportContentModal';
 
-// Helper function to create PDF thumbnail (first page)
-async function createPDFThumbnail(blob: Blob, maxWidth: number, maxHeight: number): Promise<Blob> {
-  try {
-    const pdfjsLib = await import('pdfjs-dist');
-    // Ensure worker is set (should already be set globally, but set as fallback)
-    if (!pdfjsLib.GlobalWorkerOptions.workerSrc) {
-      pdfjsLib.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs';
-    }
-    
-    // Convert blob to ArrayBuffer for PDF.js (avoids blob URL XHR issues)
-    const arrayBuffer = await blob.arrayBuffer();
-    const uint8Array = new Uint8Array(arrayBuffer);
-    
-    // Use data directly instead of URL to avoid blob URL XHR issues
-    const loadingTask = pdfjsLib.getDocument({ data: uint8Array });
-    const pdf = await loadingTask.promise;
-    
-    // Get first page
-    const page = await pdf.getPage(1);
-    const viewport = page.getViewport({ scale: 1.0 });
-    
-    // Calculate scale to fit max dimensions
-    const scale = Math.min(maxWidth / viewport.width, maxHeight / viewport.height, 1.0);
-    const scaledViewport = page.getViewport({ scale });
-    
-    // Create canvas
-    const canvas = document.createElement('canvas');
-    canvas.width = scaledViewport.width;
-    canvas.height = scaledViewport.height;
-    
-    const ctx = canvas.getContext('2d');
-    if (!ctx) {
-      URL.revokeObjectURL(url);
-      throw new Error('Failed to get canvas context');
-    }
-    
-    // Render PDF page to canvas
-    await page.render({
-      canvasContext: ctx,
-      viewport: scaledViewport
-    }).promise;
-    
-    // Convert canvas to blob
-    return new Promise((resolve, reject) => {
-      canvas.toBlob((thumbnailBlob) => {
-        if (thumbnailBlob) {
-          resolve(thumbnailBlob);
-        } else {
-          reject(new Error('Failed to create PDF thumbnail blob'));
-        }
-      }, 'image/jpeg', 0.8);
-    });
-  } catch (error) {
-    throw new Error(`Failed to create PDF thumbnail: ${error}`);
-  }
-}
-
 const GOOGLE_DRIVE_ICON_URL = GoogleDriveIconUrl;
 const DRIVE_ACCOUNTS_STORAGE_KEY = 'pn_google_drive_accounts';
 const METADATA_SYNC_MIN_INTERVAL_MS = 90_000;
@@ -3527,7 +3470,6 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
         const thoughtFileName = fileTitle.toLowerCase();
         const isThoughtFile = /^thought-\d+\.(thought|png)/i.test(thoughtFileName);
         const isTextFile = mimeCategory === 'text' || file.fileType === 'text' || file.fileType === 'thought';
-        const isPDF = mimeCategory === 'application' && (file.fileType === 'pdf' || file.name.toLowerCase().endsWith('.pdf'));
         
         let existingTextPost = existingMetadata?.textPost || existingMetadata?.thought || (file as any).textPost || (file as any).thought;
         
@@ -3576,48 +3518,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
           }
         }
         
-        // CRITICAL: If this is a PDF and we don't have PDF metadata, load it from the API database
-        let existingPdfPageThumbnailIds = existingMetadata?.pdfPageThumbnailIds;
-        let existingPdfPageThumbnailTokens = existingMetadata?.pdfPageThumbnailTokens;
-        let existingPdfFileId = existingMetadata?.pdfFileId;
         let existingThumbnailFileId = existingMetadata?.thumbnailFileId || null;
-        
-        if (isPDF && (!existingPdfPageThumbnailIds || existingPdfPageThumbnailIds.length === 0)) {
-          try {
-            console.log(`[handleTogglePublic] Loading PDF metadata from API database for ${file.id}...`);
-            const targetFileId = file.id || file.backendFileId;
-            const apiResponse = await fetch(
-              `${apiEndpoint}/api/aggregator/metadata-index/${encodeURIComponent(targetFileId)}${authenticatedUser?.accessToken ? `?accountId=${encodeURIComponent(file.backend || '')}` : ''}`,
-              {
-                headers: {
-                  ...(authenticatedUser?.accessToken && {
-                    'Authorization': `Bearer ${authenticatedUser.accessToken}`
-                  })
-                }
-              }
-            );
-            
-            if (apiResponse.ok) {
-              const apiMetadata = await apiResponse.json();
-              if (apiMetadata.metadata) {
-                const dbMetadata = typeof apiMetadata.metadata === 'string' 
-                  ? JSON.parse(apiMetadata.metadata) 
-                  : apiMetadata.metadata;
-                
-                if (dbMetadata.pdfPageThumbnailIds && Array.isArray(dbMetadata.pdfPageThumbnailIds) && dbMetadata.pdfPageThumbnailIds.length > 0) {
-                  existingPdfPageThumbnailIds = dbMetadata.pdfPageThumbnailIds;
-                  existingPdfPageThumbnailTokens = dbMetadata.pdfPageThumbnailTokens || [];
-                  existingPdfFileId = dbMetadata.pdfFileId;
-                  existingThumbnailFileId = dbMetadata.thumbnailFileId || null;
-                  console.log(`[handleTogglePublic] ✅ Loaded PDF metadata from API database: ${existingPdfPageThumbnailIds.length} thumbnails`);
-                }
-              }
-            }
-          } catch (error) {
-            console.warn(`[handleTogglePublic] Failed to load PDF metadata from API database:`, error);
-            // Continue without PDF metadata - user can manually fix later
-          }
-        }
         
         const existingDescription = existingMetadata?.description || '';
         const existingKeywords = existingMetadata?.keywords || existingMetadata?.tags || [];
@@ -3648,10 +3549,6 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
           textPost: existingTextPost || null,
           thought: existingTextPost || null,
           
-          // CRITICAL: Always include PDF slideshow data (even if null/empty) so backend can preserve/clear it
-          pdfPageThumbnailIds: existingPdfPageThumbnailIds || null,
-          pdfPageThumbnailTokens: existingPdfPageThumbnailTokens || null,
-          pdfFileId: existingPdfFileId || null,
           thumbnailFileId: existingThumbnailFileId ?? null,
           
           // Preserve subjects and feed categories
@@ -3858,9 +3755,6 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
                     textPost: publicMetadata.textPost ?? null,
                     thought: publicMetadata.thought ?? null,
                     // CRITICAL: Always include PDF slideshow data (even if null) so backend can preserve/clear it
-                    pdfPageThumbnailIds: publicMetadata.pdfPageThumbnailIds ?? null,
-                    pdfPageThumbnailTokens: publicMetadata.pdfPageThumbnailTokens ?? null,
-                    pdfFileId: publicMetadata.pdfFileId ?? null,
                     thumbnailFileId: publicMetadata.thumbnailFileId ?? null,
                     feedCategories: publicMetadata.feedCategories || [],
                   }),
@@ -5588,8 +5482,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
     const fileName = file.originalName || file.name || '';
     const isImage = mimeType.startsWith('image/') || /\.(jpg|jpeg|png|gif|webp|svg|bmp|ico)$/i.test(fileName);
     const isVideo = mimeType.startsWith('video/') || /\.(mp4|mov|avi|webm|mkv|flv|wmv)$/i.test(fileName);
-    const isPDF = mimeType === 'application/pdf' || /\.pdf$/i.test(fileName);
-    if (!isImage && !isVideo && !isPDF) {
+    if (!isImage && !isVideo) {
       return;
     }
 
@@ -5647,14 +5540,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
 
           const { decryptWithToken } = await import('../../utils/tokenDecryption');
           const decryptedBlob = await decryptWithToken(token);
-          
-          // Check if it's a PDF and generate thumbnail from first page
-          if (isPDF) {
-            const thumbnailBlob = await createPDFThumbnail(decryptedBlob, 300, 300);
-            previewUrl = URL.createObjectURL(thumbnailBlob);
-          } else {
           previewUrl = URL.createObjectURL(decryptedBlob);
-          }
           previewRetryCounts.current.delete(file.id);
         } catch (tokenError) {
           console.warn('⚠️ [Preview] Token-based decryption failed, will attempt owner fallback:', tokenError);
@@ -5717,13 +5603,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
             session
           );
 
-          // Check if it's a PDF and generate thumbnail from first page
-          if (isPDF) {
-            const thumbnailBlob = await createPDFThumbnail(decryptedBlob, 300, 300);
-            previewUrl = URL.createObjectURL(thumbnailBlob);
-          } else {
           previewUrl = URL.createObjectURL(decryptedBlob);
-          }
           previewRetryCounts.current.delete(file.id);
 
           // Cache metadata fields for future reference
@@ -5831,9 +5711,8 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
         const fileName = file.originalName || file.name || '';
         const isImage = mimeType.startsWith('image/') || /\.(jpg|jpeg|png|gif|webp|svg|bmp|ico)$/i.test(fileName);
         const isVideo = mimeType.startsWith('video/') || /\.(mp4|mov|avi|webm|mkv|flv|wmv)$/i.test(fileName);
-        const isPDF = mimeType === 'application/pdf' || /\.pdf$/i.test(fileName);
         
-        if ((isImage || isVideo || isPDF) && !filePreviewUrls.has(file.id) && !loadingPreviews.has(file.id)) {
+        if ((isImage || isVideo) && !filePreviewUrls.has(file.id) && !loadingPreviews.has(file.id)) {
           console.log('🔄 [Auto-Preview] Loading preview for file:', file.id, file.name);
           loadFilePreview(file).catch(err => {
             // Silently fail for auto-preview - don't show error modal
@@ -6808,7 +6687,6 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
                       const fileName = file.originalName || file.name || '';
                       const isImage = mimeType.startsWith('image/') || /\.(jpg|jpeg|png|gif|webp|svg|bmp|ico)$/i.test(fileName);
                       const isVideo = mimeType.startsWith('video/') || /\.(mp4|mov|avi|webm|mkv|flv|wmv)$/i.test(fileName);
-                      const isPDF = mimeType === 'application/pdf' || /\.pdf$/i.test(fileName);
 
                       return (
                         <div
@@ -6843,7 +6721,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
                           <div
                             className="relative aspect-square bg-neutral-700/50 overflow-hidden"
                             onMouseEnter={() => {
-                              if ((isImage || isVideo || isPDF) && !previewUrl && !isLoadingPreview) {
+                              if ((isImage || isVideo) && !previewUrl && !isLoadingPreview) {
                                 loadFilePreview(file);
                               }
                             }}
@@ -6861,12 +6739,6 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
                                 muted
                                 loop
                               />
-                            ) : previewUrl && isPDF ? (
-                              <img
-                                src={previewUrl}
-                                alt={file.encrypted ? file.originalName : file.name}
-                                className="w-full h-full object-cover"
-                              />
                             ) : isLoadingPreview ? (
                               <div className="w-full h-full flex items-center justify-center">
                                 <RefreshCw className="h-6 w-6 text-text-secondary animate-spin" />
@@ -6881,7 +6753,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ au
                                 <Globe className="h-3 w-3 text-white" />
                               </div>
                             )}
-                            {(isImage || isVideo || isPDF) && (
+                            {(isImage || isVideo) && (
                               <div className="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-colors flex items-center justify-center opacity-0 group-hover:opacity-100">
                                 <Eye className="h-6 w-6 text-white" />
                               </div>

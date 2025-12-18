@@ -215,10 +215,6 @@ export class MetadataIndexService {
         // CRITICAL: Include textPost/thought content so thoughts render in feeds
         textPost: publicMetadata.textPost,
         thought: publicMetadata.thought,
-        // Include PDF slideshow data
-        pdfPageThumbnailIds: publicMetadata.pdfPageThumbnailIds,
-        pdfPageThumbnailTokens: publicMetadata.pdfPageThumbnailTokens,
-        pdfFileId: publicMetadata.pdfFileId,
         thumbnailFileId: publicMetadata.thumbnailFileId ?? null,
         subjects: publicMetadata.subjects,
         feedCategories: publicMetadata.feedCategories

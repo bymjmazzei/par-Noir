@@ -184,7 +184,7 @@ export function FullScreenFeed({
     
     // Check for collections specifically - check ALL possible locations
     const collections = files.filter(f => {
-      const hasCollection = f.metadata?.collection?.collectionFileIds?.length > 0;
+      const hasCollection = (f.metadata?.collection?.collectionFileIds?.length ?? 0) > 0;
       if (hasCollection) return true;
       
       // Also check if fileType is collection
@@ -2209,7 +2209,7 @@ export function FullScreenFeed({
                 
                 // Get thumbnails from Map for collection file IDs
                 const collectionThumbnails = finalCollectionData.collectionFileIds
-                  .map((fileId: string) => {
+                  .map((fileId: string): string | undefined => {
                     const thumbnail = thumbnails.get(fileId);
                     console.log(`[FullScreenFeed] Thumbnail lookup for collection file ${fileId}:`, {
                       found: !!thumbnail,
@@ -2217,7 +2217,7 @@ export function FullScreenFeed({
                     });
                     return thumbnail;
                   })
-                  .filter((url): url is string => url !== undefined);
+                  .filter((url: string | undefined): url is string => url !== undefined);
                 
                 console.log(`[FullScreenFeed] Collection thumbnails result for ${fileId}:`, {
                   requestedCount: finalCollectionData.collectionFileIds.length,
@@ -2230,7 +2230,7 @@ export function FullScreenFeed({
                   // Render horizontal slideshow of thumbnails
                   return (
                     <div className="w-full h-full flex overflow-x-auto snap-x snap-mandatory scrollbar-hide">
-                      {collectionThumbnails.map((thumbnailUrl, idx) => (
+                      {collectionThumbnails.map((thumbnailUrl: string, idx: number) => (
                         <div
                           key={`${fileId}-${idx}`}
                           className="flex-shrink-0 w-full h-full snap-start"

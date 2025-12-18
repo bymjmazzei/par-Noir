@@ -643,9 +643,6 @@ function App() {
     if (fileName.match(/\.(mp4|mov|avi|webm|mkv|flv|wmv)$/i)) {
       return 'video';
     }
-    if (fileName.match(/\.(pdf)$/i)) {
-      return 'document';
-    }
     if (fileName.match(/\.(thought)$/i) || /^thought-\d+\.(thought|png)/i.test(fileName)) {
       return 'thought';
     }
@@ -789,7 +786,7 @@ function App() {
       const imageFiles = filtered.filter(isImageFile);
       
       if (process.env.NODE_ENV === 'development') {
-        console.log(`[Public Feed] ${filtered.length} files: ${imageFiles.length} images, ${filtered.filter(f => f.metadata.fileType === 'video').length} videos, ${filtered.filter(f => f.metadata.fileType === 'document').length} PDFs, ${filtered.filter(f => {
+        console.log(`[Public Feed] ${filtered.length} files: ${imageFiles.length} images, ${filtered.filter(f => f.metadata.fileType === 'video').length} videos, ${filtered.filter(f => {
           const fileType = f.metadata.fileType;
           const hasTextPostData = !!(f.metadata as any).textPost || !!(f.metadata as any).thought;
           const hasTextFileType = fileType === 'text' || fileType === 'thought';
@@ -2456,7 +2453,7 @@ function App() {
             );
             break;
           case 'media':
-            // Only show images, videos, and PDF slideshows (exclude thoughts and raw PDFs)
+            // Only show images and videos (exclude thoughts)
             currentFilteredMeFiles = currentCreatorFiles.filter(f => isMedia(f));
             break;
           case 'thoughts':
@@ -2513,7 +2510,7 @@ function App() {
             );
             break;
           case 'media':
-            // Only show images, videos, and PDF slideshows (exclude thoughts and raw PDFs)
+            // Only show images and videos (exclude thoughts)
             currentFilteredMeFiles = currentCreatorFiles.filter(f => isMedia(f));
             break;
           case 'thoughts':
@@ -2697,27 +2694,11 @@ function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visibleFileId, viewingCreatorId, mePageTab, creatorFilesState, userState.pnIdentifier, userState.isUnlocked, userLikedFiles, userCommentedFiles, viewedUserLikedFiles, viewedUserCommentedFiles, savedFiles]);
 
-  // Helper function to check if a file is a PDF slideshow (has page thumbnails)
-  const isPdfSlideshow = (file: IndexedFile): boolean => {
-    const pdfPageThumbnailIds = file.metadata?.pdfPageThumbnailIds;
-    return file.metadata.fileType === 'document' && 
-           pdfPageThumbnailIds && 
-           pdfPageThumbnailIds.length > 0;
-  };
-
-  // Helper function to check if a file is a raw PDF (document without thumbnails - should be excluded)
-  const isRawPdf = (file: IndexedFile): boolean => {
-    return file.metadata.fileType === 'document' && 
-           !isPdfSlideshow(file);
-  };
-
-  // Helper function to check if a file is media (image, video, or PDF slideshow)
+  // Helper function to check if a file is media (image or video)
   const isMedia = (file: IndexedFile): boolean => {
     // Check if it's a thought first - if so, it's not media
     const thoughtCheck = isThought(file);
     if (thoughtCheck) return false; // Thoughts are not media
-    
-    if (isRawPdf(file)) return false; // Raw PDFs should not be shown
     
     // Normalize fileType based on extension - this fixes 'other' types
     const normalizedFileType = normalizeFileType(file);
@@ -2731,10 +2712,7 @@ function App() {
     const isVideo = normalizedFileType === 'video' || 
                    !!(fileName.match(/\.(mp4|mov|avi|webm|mkv|flv|wmv)$/i));
     
-    // Check for PDF slideshows
-    const isSlideshow = isPdfSlideshow(file);
-    
-    const result = isImage || isVideo || isSlideshow;
+    const result = isImage || isVideo;
     
     // Debug logging for files that should be media but aren't detected
     if (!result && (normalizedFileType === 'image' || normalizedFileType === 'video' || !!fileName.match(/\.(jpg|jpeg|png|gif|webp|svg|bmp|ico|mp4|mov|avi|webm)$/i))) {
@@ -2744,10 +2722,8 @@ function App() {
         normalizedFileType,
         fileName,
         isThought: thoughtCheck,
-        isRawPdf: isRawPdf(file),
         isImage,
-        isVideo,
-        isSlideshow
+        isVideo
       });
     }
     
@@ -2770,12 +2746,8 @@ function App() {
             new Map([...creatorFiles, ...userLikedFiles, ...userCommentedFiles]
               .map(f => [f.metadata.fileId, f])).values()
           );
-          // Show all files that are either media OR thoughts (exclude raw PDFs)
-          // Don't separate them - just filter out raw PDFs
+          // Show all files that are either media OR thoughts
           filtered = allFiles.filter(f => {
-            // Exclude raw PDFs
-            if (isRawPdf(f)) return false;
-            // Include everything else (media, thoughts, or both)
             const isMediaFile = isMedia(f);
             const isThoughtFile = isThought(f);
             return isMediaFile || isThoughtFile;
@@ -2787,7 +2759,7 @@ function App() {
           }
           break;
         case 'media':
-          // Only show images, videos, and PDF slideshows (exclude thoughts and raw PDFs)
+          // Only show images and videos (exclude thoughts)
           filtered = creatorFiles.filter(f => isMedia(f));
           break;
         case 'thoughts':
@@ -2873,16 +2845,13 @@ function App() {
             new Map([...creatorFiles, ...viewedUserLikedFiles, ...viewedUserCommentedFiles]
               .map(f => [f.metadata.fileId, f])).values()
           );
-          // Show all files that are either media OR thoughts (exclude raw PDFs)
+          // Show all files that are either media OR thoughts
           filtered = allFilesOther.filter(f => {
-            // Exclude raw PDFs
-            if (isRawPdf(f)) return false;
-            // Include everything else (media, thoughts, or both)
             return isMedia(f) || isThought(f);
           });
           break;
         case 'media':
-          // Only show images, videos, and PDF slideshows (exclude thoughts and raw PDFs)
+          // Only show images and videos (exclude thoughts)
           filtered = creatorFiles.filter(f => isMedia(f));
           break;
         case 'thoughts':
