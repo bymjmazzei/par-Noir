@@ -1968,11 +1968,12 @@ class ProductionServer {
             error_description: 'Invalid or expired access token'
           });
         }
+
+        // Define userIdentifier for use in both new file creation and companion metadata reading
+        const userIdentifier = tokenPayload.pnIdentifier || tokenPayload.did;
         
         if (!current) {
           // Create new metadata entry - fetch file info from Google Drive
-
-          const userIdentifier = tokenPayload.pnIdentifier || tokenPayload.did;
           const identifierCandidates: string[] = [];
           if (tokenPayload.pnIdentifier) {
             identifierCandidates.push(tokenPayload.pnIdentifier);
@@ -2112,7 +2113,7 @@ class ProductionServer {
               }
             }
             
-            const accessToken = await googleDriveProxyService.getAccessToken(userIdentifier, accountId, identifierCandidates);
+            const accessToken = await googleDriveProxyService.getAccessToken(userIdentifier || tokenPayload.pnIdentifier || tokenPayload.did, accountId, identifierCandidates);
             const backendFileId = current.metadata.backendFileId || fileId;
             
             // Find companion metadata file
