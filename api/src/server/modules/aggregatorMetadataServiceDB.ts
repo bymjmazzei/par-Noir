@@ -1558,6 +1558,8 @@ export class AggregatorMetadataServiceDB {
         ...(updates.collection !== undefined ? { collection: updates.collection } : (existingCollection !== undefined ? { collection: existingCollection } : {})),
         // Always update isNSFW if provided (even if false, to ensure it's saved)
         ...(updates.isNSFW !== undefined && { isNSFW: Boolean(updates.isNSFW) }),
+        // CRITICAL: Only update isPublic if explicitly provided
+        // If not provided, preserve existing value (don't accidentally make public files private)
         ...(updates.isPublic !== undefined && { isPublic: updates.isPublic === true }),
         // Update schema.org fields (merge with existing schema)
         schema: {

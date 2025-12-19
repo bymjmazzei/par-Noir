@@ -2097,8 +2097,13 @@ class ProductionServer {
 
         // CRITICAL: If isPublic is not explicitly provided, read from companion metadata
         // Companion metadata is the source of truth for visibility
+        // IMPORTANT: If isPublic is undefined, we should preserve the existing value OR read from companion metadata
+        // Only set to false if explicitly provided as false
         let finalIsPublic = isPublic;
         if (isPublic === undefined && current.metadata.backend === 'google_drive') {
+          // #region agent log
+          fetch('http://127.0.0.1:7242/ingest/e9725a07-b703-47ab-ba6c-a54c252a4988',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'server.ts:2100',message:'Reading companion metadata for isPublic',data:{fileId,currentIsPublic:current.metadata.isPublic},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'F'})}).catch(()=>{});
+          // #endregion
           try {
             const { googleDriveProxyService } = await import('./server/modules/googleDriveProxy');
             const { CompanionMetadataSheets } = await import('./server/modules/companionMetadataSheets');
@@ -2129,15 +2134,29 @@ class ProductionServer {
                 const companionMetadata = await CompanionMetadataSheets.readMetadata(accessToken, spreadsheetId);
                 if (companionMetadata) {
                   finalIsPublic = companionMetadata.visibility === 'public';
+                  // #region agent log
+                  fetch('http://127.0.0.1:7242/ingest/e9725a07-b703-47ab-ba6c-a54c252a4988',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'server.ts:2131',message:'Companion metadata read result',data:{fileId,visibility:companionMetadata.visibility,finalIsPublic,currentIsPublic:current.metadata.isPublic},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'F'})}).catch(()=>{});
+                  // #endregion
                   console.log(`[MetadataIndex PUT] Read isPublic from companion metadata: ${finalIsPublic} (visibility: ${companionMetadata.visibility})`);
                 }
               }
             }
           } catch (companionError: any) {
+            // #region agent log
+            fetch('http://127.0.0.1:7242/ingest/e9725a07-b703-47ab-ba6c-a54c252a4988',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'server.ts:2136',message:'Failed to read companion metadata',data:{fileId,error:companionError.message,currentIsPublic:current.metadata.isPublic},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'F'})}).catch(()=>{});
+            // #endregion
             console.warn(`[MetadataIndex PUT] Failed to read companion metadata for ${fileId}:`, companionError.message);
-            // Continue with provided isPublic or default
+            // If companion metadata read failed, preserve existing isPublic value (don't change it)
+            if (finalIsPublic === undefined) {
+              finalIsPublic = current.metadata.isPublic;
+              console.log(`[MetadataIndex PUT] Preserving existing isPublic value: ${finalIsPublic}`);
+            }
           }
         }
+
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/e9725a07-b703-47ab-ba6c-a54c252a4988',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'server.ts:2142',message:'Updating metadata with isPublic',data:{fileId,isPublicProvided:isPublic,finalIsPublic,currentIsPublic:current.metadata.isPublic},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'F'})}).catch(()=>{});
+        // #endregion
 
         // Now update with provided fields
         const updated = await service.updateMetadata(fileId, {
@@ -2156,6 +2175,8 @@ class ProductionServer {
           thought,
           collection, // Include collection data if provided
           isNSFW,
+          // Only update isPublic if we have a value (either from request or companion metadata)
+          // If undefined, updateMetadata will preserve existing value
           isPublic: finalIsPublic !== undefined ? finalIsPublic : isPublic,
           subjects,
           feedCategories,
