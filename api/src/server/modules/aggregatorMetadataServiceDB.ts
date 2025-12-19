@@ -234,12 +234,6 @@ export class AggregatorMetadataServiceDB {
           OR (am.metadata->>'isNSFW')::text = 'true'
           OR (am.metadata->'isNSFW')::boolean = true
         )
-        -- CRITICAL: Filter out thumbnail files from public feed - they're auxiliary files
-        -- Thumbnail files start with "thumb_" and should not appear as main feed items
-        AND NOT (
-          LOWER(am.metadata->>'name') LIKE 'thumb_%'
-          OR LOWER(am.metadata->>'title') LIKE 'thumb_%'
-        )
         -- SIMPLIFIED: Public feed should only filter by isPublic/publicToken and isNSFW
         -- Files with publicToken are considered public even if isPublic is false
       `;
@@ -315,12 +309,6 @@ export class AggregatorMetadataServiceDB {
           OR am.metadata->>'isNSFW' = 'TRUE'
           OR (am.metadata->>'isNSFW')::text = 'true'
           OR (am.metadata->'isNSFW')::boolean = true
-        )
-        -- CRITICAL: Filter out thumbnail files from public feed - they're auxiliary files
-        -- Thumbnail files start with "thumb_" and should not appear as main feed items
-        AND NOT (
-          LOWER(am.metadata->>'name') LIKE 'thumb_%'
-          OR LOWER(am.metadata->>'title') LIKE 'thumb_%'
         )
         -- SIMPLIFIED: Public feed should only filter by isPublic/publicToken and isNSFW
         -- Files with publicToken are considered public even if isPublic is false
@@ -1246,18 +1234,12 @@ export class AggregatorMetadataServiceDB {
     const result = await this.getPublicMetadata(filters);
     
     // Filter to only show files with active URLs (files that exist in Google Drive)
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/e9725a07-b703-47ab-ba6c-a54c252a4988',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'aggregatorMetadataServiceDB.ts:1237',message:'Before filterActiveFiles',data:{filesCount:result.files.length,total:result.total,hasMore:result.hasMore},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
-    // #endregion
     const filteredResult = await this.filterActiveFiles({
       files: result.files,
       total: result.total,
       hasMore: result.hasMore
     });
     
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/e9725a07-b703-47ab-ba6c-a54c252a4988',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'aggregatorMetadataServiceDB.ts:1246',message:'After filterActiveFiles',data:{beforeCount:result.files.length,afterCount:filteredResult.files.length,filteredOut:result.files.length-filteredResult.files.length},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
-    // #endregion
     if (filteredResult.files.length !== result.files.length) {
       console.log(`🔍 [getIndexResponse] Filtered ${result.files.length - filteredResult.files.length} inactive file(s) (${filteredResult.files.length} active files remaining)`);
     }

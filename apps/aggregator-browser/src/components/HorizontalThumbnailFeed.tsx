@@ -140,9 +140,6 @@ export function HorizontalThumbnailFeed({
 
       // Check response status
       if (!response.ok || response.status !== 200) {
-        // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/e9725a07-b703-47ab-ba6c-a54c252a4988',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'HorizontalThumbnailFeed.tsx:142',message:'Thumbnail fetch failed',data:{thumbnailId,index,status:response.status,statusText:response.statusText,hasToken:!!thumbnailToken},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
-        // #endregion
         console.warn(`[HorizontalThumbnailFeed] Thumbnail ${thumbnailId} failed: ${response.status}`);
         failedThumbnailsRef.current.add(index);
         loadingThumbnailsRef.current.delete(index);
@@ -196,9 +193,6 @@ export function HorizontalThumbnailFeed({
                 setThumbnailUrls(prev => new Map(prev).set(index, imageUrl));
                 return;
               } catch (tokenError) {
-                // #region agent log
-                fetch('http://127.0.0.1:7242/ingest/e9725a07-b703-47ab-ba6c-a54c252a4988',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'HorizontalThumbnailFeed.tsx:196',message:'Token decryption failed',data:{thumbnailId,index,error:tokenError instanceof Error?tokenError.message:String(tokenError)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
-                // #endregion
                 console.warn(`[HorizontalThumbnailFeed] Token decryption failed for thumbnail ${index}, falling back to auth:`, tokenError);
                 // Fall through to session-based decryption
               }
@@ -242,9 +236,6 @@ export function HorizontalThumbnailFeed({
               });
               imageUrl = URL.createObjectURL(decryptedBlob);
             } catch (decryptError) {
-              // #region agent log
-              fetch('http://127.0.0.1:7242/ingest/e9725a07-b703-47ab-ba6c-a54c252a4988',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'HorizontalThumbnailFeed.tsx:239',message:'Session-based decryption failed',data:{thumbnailId,index,error:decryptError instanceof Error?decryptError.message:String(decryptError)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
-              // #endregion
               console.error(`[HorizontalThumbnailFeed] Failed to decrypt:`, decryptError);
               failedThumbnailsRef.current.add(index);
               loadingThumbnailsRef.current.delete(index);
@@ -269,9 +260,6 @@ export function HorizontalThumbnailFeed({
       }
 
       // Success!
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/e9725a07-b703-47ab-ba6c-a54c252a4988',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'HorizontalThumbnailFeed.tsx:263',message:'Thumbnail loaded successfully',data:{thumbnailId,index,contentType,wasEncrypted:contentType.includes('application/json'),usedToken:!!thumbnailToken},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
-      // #endregion
       loadedThumbnailsRef.current.add(index);
       failedThumbnailsRef.current.delete(index);
       setThumbnailUrls(prev => new Map(prev).set(index, imageUrl));
@@ -369,9 +357,6 @@ export function HorizontalThumbnailFeed({
     };
   }, [thumbnailUrls]);
 
-  // #region agent log
-  fetch('http://127.0.0.1:7242/ingest/e9725a07-b703-47ab-ba6c-a54c252a4988',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'HorizontalThumbnailFeed.tsx:360',message:'HorizontalThumbnailFeed render',data:{thumbnailIdsCount:thumbnailIds.length,thumbnailTokensCount:thumbnailTokens?.length||0,loadedCount:loadedThumbnailsRef.current.size,failedCount:failedThumbnailsRef.current.size,loadingCount:loadingThumbnailsRef.current.size,currentIndex},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{});
-  // #endregion
   if (thumbnailIds.length === 0) {
     return (
       <div className="w-full h-full flex items-center justify-center bg-black text-white">

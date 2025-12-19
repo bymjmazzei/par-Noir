@@ -95,17 +95,6 @@ export class MetadataIndexService {
           const isPublic = metadata.isPublic;
           const hasPublicToken = metadata.publicToken != null;
           
-          // CRITICAL: Filter out thumbnail files - they're auxiliary files, not main feed items
-          // Thumbnail files start with "thumb_" and should not appear in the main public feed
-          const fileName = (metadata.name || metadata.title || '').toLowerCase();
-          const isThumbnailFile = fileName.startsWith('thumb_');
-          if (isThumbnailFile) {
-            // #region agent log
-            fetch('http://127.0.0.1:7242/ingest/e9725a07-b703-47ab-ba6c-a54c252a4988',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'MetadataIndexService.ts:96',message:'Thumbnail file excluded from public feed',data:{fileId:entry.fileId,fileName,fileType:metadata.fileType},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{});
-            // #endregion
-            return false; // Exclude thumbnail files from main feed
-          }
-          
           // Include if: isPublic is true/undefined/null OR has publicToken
           const shouldInclude = isPublic !== false || hasPublicToken;
           // #region agent log
@@ -116,6 +105,7 @@ export class MetadataIndexService {
           if (process.env.NODE_ENV === 'development') {
             const fileType = metadata.fileType;
             const hasTextPost = !!(metadata.textPost || metadata.thought);
+            const fileName = metadata.name || metadata.title || '';
             const isThoughtFile = /^thought-\d+\.(thought|png)/i.test(fileName);
             if (fileType === 'text' || fileType === 'thought' || hasTextPost || isThoughtFile) {
               if (!shouldInclude) {
@@ -152,16 +142,8 @@ export class MetadataIndexService {
           const fileName = metadata.name || metadata.title || '';
           const isThumbnailFile = fileName.toLowerCase().startsWith('thumb_');
           
-          // CRITICAL FIX: Detect collection files by filename extension if fileType is missing
-          // Collection files end with .collection (or .collection.encrypted)
-          const isCollectionByFilename = fileName.endsWith('.collection') || fileName.endsWith('.collection.encrypted');
-          let detectedFileType = metadata.fileType;
-          if (!detectedFileType && isCollectionByFilename) {
-            detectedFileType = 'collection';
-          }
-          
           // DEBUG: Log collection data from API
-          if (detectedFileType === 'collection' || metadata.fileType === 'collection' || metadata.collection || isCollectionByFilename) {
+          if (metadata.fileType === 'collection' || metadata.collection) {
             console.log(`[MetadataIndexService] Collection file found:`, {
               fileId: metadata.fileId || entry.fileId,
               fileType: metadata.fileType,
@@ -192,9 +174,8 @@ export class MetadataIndexService {
               // Explicitly preserve title field (cleaned display name) - prioritize over name
               // title is cleaned (no thumb_ prefix, no extension), name has thumb_ prefix for query matching
               title: metadata.title || metadata.name || undefined,
-              // CRITICAL FIX: Use detected fileType if metadata.fileType is missing or incorrect
-              // This fixes cases where collection files have fileType='other' instead of 'collection'
-              fileType: detectedFileType || metadata.fileType || undefined,
+              // Explicitly preserve fileType (especially important for collections)
+              fileType: metadata.fileType || undefined,
               // Explicitly preserve textPost and thought fields (but NOT for thumbnails - they're just images)
               // FIX: Ensure both textPost and thought are preserved even if one is missing
               // NOTE: Thumbnail files should NOT have textPost/thought data - they're just images

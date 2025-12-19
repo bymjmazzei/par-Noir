@@ -1242,9 +1242,6 @@ function App() {
           : { feedId: activeFeedId })
       };
       
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/e9725a07-b703-47ab-ba6c-a54c252a4988',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.tsx:1246',message:'Calling discoverFiles',data:{activeFeedId,finalFilters,page,append},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
-      // #endregion
       // Discover public files from all users (with pagination support)
       const publicFilesResult = await metadataIndexService.discoverFiles(finalFilters, forceRefresh);
       
@@ -1256,9 +1253,6 @@ function App() {
         ? { total: publicFiles.length, hasMore: false }
         : { total: publicFilesResult.total, hasMore: publicFilesResult.hasMore };
       
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/e9725a07-b703-47ab-ba6c-a54c252a4988',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.tsx:1256',message:'Files received from API',data:{count:publicFiles.length,fileIds:publicFiles.slice(0,5).map((f:any)=>f.metadata?.fileId),fileTypes:publicFiles.slice(0,5).map((f:any)=>f.metadata?.fileType),total:paginationInfo.total,hasMore:paginationInfo.hasMore},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
-      // #endregion
       // CRITICAL DEBUG: Log discovered files
       console.log('🔍 [App] Files discovered from API:', {
         count: publicFiles.length,
@@ -1339,9 +1333,6 @@ function App() {
       });
       
       // SCALABILITY: Handle pagination - append or replace based on page number
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/e9725a07-b703-47ab-ba6c-a54c252a4988',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.tsx:1335',message:'Setting indexedFiles',data:{discoveredCount:discoveredFiles.length,publicFilesCount:publicFiles.length,nsfwFilesCount:nsfwFiles.length,page,append},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{});
-      // #endregion
       setIndexedFiles(prev => {
         if (page === 0 || !append) {
           // First page or force refresh - replace all files
