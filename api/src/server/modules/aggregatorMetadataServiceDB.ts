@@ -219,6 +219,8 @@ export class AggregatorMetadataServiceDB {
           am.metadata->>'isPublic' = 'true' 
           OR (am.metadata->>'isPublic')::boolean = true
           OR am.metadata->'isPublic' = 'true'::jsonb
+          OR am.metadata->>'publicToken' IS NOT NULL
+          OR am.metadata->>'publicToken' != ''
         )
         AND (
           am.metadata->>'isNSFW' IS NULL 
@@ -234,8 +236,8 @@ export class AggregatorMetadataServiceDB {
           OR (am.metadata->>'isNSFW')::text = 'true'
           OR (am.metadata->'isNSFW')::boolean = true
         )
-        -- SIMPLIFIED: Public feed should only filter by isPublic and isNSFW
-        -- No complex thumbnail logic - if a file is public, it should appear
+        -- SIMPLIFIED: Public feed should only filter by isPublic/publicToken and isNSFW
+        -- Files with publicToken are considered public even if isPublic is false
       `;
       const params: any[] = [];
       let paramIndex = 1;
@@ -295,6 +297,8 @@ export class AggregatorMetadataServiceDB {
           am.metadata->>'isPublic' = 'true' 
           OR (am.metadata->>'isPublic')::boolean = true
           OR am.metadata->'isPublic' = 'true'::jsonb
+          OR am.metadata->>'publicToken' IS NOT NULL
+          OR am.metadata->>'publicToken' != ''
         )
         AND (
           am.metadata->>'isNSFW' IS NULL 
@@ -307,10 +311,11 @@ export class AggregatorMetadataServiceDB {
           am.metadata->>'isNSFW' = 'true'
           OR am.metadata->>'isNSFW' = 'True'
           OR am.metadata->>'isNSFW' = 'TRUE'
+          OR (am.metadata->>'isNSFW')::text = 'true'
           OR (am.metadata->'isNSFW')::boolean = true
         )
-        -- SIMPLIFIED: Public feed should only filter by isPublic and isNSFW
-        -- No complex thumbnail logic - if a file is public, it should appear
+        -- SIMPLIFIED: Public feed should only filter by isPublic/publicToken and isNSFW
+        -- Files with publicToken are considered public even if isPublic is false
         ${filters?.fileType ? `AND am.metadata->>'fileType' = $1` : ''}
         ${filters?.feedId ? `AND fp.feed_id = $${filters?.fileType ? '2' : '1'}` : ''}
         ${filters?.indexerId ? `AND (
@@ -354,6 +359,15 @@ export class AggregatorMetadataServiceDB {
       const totalFilesCheck = await db.query(`SELECT COUNT(*) as count FROM aggregator_metadata`);
       const totalFilesInDB = parseInt(totalFilesCheck.rows[0].count, 10);
       
+      // Get ALL files to see what their isPublic values actually are
+      const allFilesCheck = await db.query(`
+        SELECT file_id, metadata->>'isPublic' as is_public, metadata->>'name' as name, 
+               metadata->>'fileType' as file_type, metadata->>'publicToken' as public_token
+        FROM aggregator_metadata 
+        ORDER BY updated_at DESC
+        LIMIT 10
+      `);
+      
       // Check how many are public
       const publicFilesCheck = await db.query(`
         SELECT COUNT(*) as count 
@@ -365,6 +379,10 @@ export class AggregatorMetadataServiceDB {
         )
       `);
       const publicFilesInDB = parseInt(publicFilesCheck.rows[0].count, 10);
+      
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/e9725a07-b703-47ab-ba6c-a54c252a4988',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'aggregatorMetadataServiceDB.ts:396',message:'All files in database',data:{allFiles:allFilesCheck.rows.map((r:any)=>({fileId:r.file_id,isPublic:r.is_public,name:r.name,fileType:r.file_type,hasPublicToken:!!r.public_token}))},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{});
+      // #endregion
       
       // Check how many pass NSFW filter
       const publicNonNSFWCheck = await db.query(`
@@ -412,6 +430,13 @@ export class AggregatorMetadataServiceDB {
         totalFilesInDB,
         publicFilesInDB,
         publicNonNSFWInDB,
+        allFiles: allFilesCheck.rows.map((r: any) => ({
+          fileId: r.file_id,
+          name: r.name,
+          fileType: r.file_type,
+          isPublic: r.is_public,
+          hasPublicToken: !!r.public_token
+        })),
         sampleFiles: sampleFilesCheck.rows.map((r: any) => ({
           fileId: r.file_id,
           name: r.name,
