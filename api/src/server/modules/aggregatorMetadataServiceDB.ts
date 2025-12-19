@@ -219,8 +219,6 @@ export class AggregatorMetadataServiceDB {
           am.metadata->>'isPublic' = 'true' 
           OR (am.metadata->>'isPublic')::boolean = true
           OR am.metadata->'isPublic' = 'true'::jsonb
-          OR am.metadata->>'publicToken' IS NOT NULL
-          OR am.metadata->>'publicToken' != ''
         )
         AND (
           am.metadata->>'isNSFW' IS NULL 
@@ -297,8 +295,6 @@ export class AggregatorMetadataServiceDB {
           am.metadata->>'isPublic' = 'true' 
           OR (am.metadata->>'isPublic')::boolean = true
           OR am.metadata->'isPublic' = 'true'::jsonb
-          OR am.metadata->>'publicToken' IS NOT NULL
-          OR am.metadata->>'publicToken' != ''
         )
         AND (
           am.metadata->>'isNSFW' IS NULL 
@@ -361,8 +357,14 @@ export class AggregatorMetadataServiceDB {
       
       // Get ALL files to see what their isPublic values actually are
       const allFilesCheck = await db.query(`
-        SELECT file_id, metadata->>'isPublic' as is_public, metadata->>'name' as name, 
-               metadata->>'fileType' as file_type, metadata->>'publicToken' as public_token
+        SELECT file_id, 
+               metadata->>'isPublic' as is_public, 
+               metadata->'isPublic' as is_public_jsonb,
+               (metadata->>'isPublic')::boolean as is_public_boolean,
+               metadata->>'name' as name, 
+               metadata->>'fileType' as file_type, 
+               metadata->>'publicToken' as public_token,
+               metadata as full_metadata
         FROM aggregator_metadata 
         ORDER BY updated_at DESC
         LIMIT 10
@@ -434,8 +436,11 @@ export class AggregatorMetadataServiceDB {
           fileId: r.file_id,
           name: r.name,
           fileType: r.file_type,
-          isPublic: r.is_public,
-          hasPublicToken: !!r.public_token
+          isPublic_string: r.is_public,
+          isPublic_jsonb: r.is_public_jsonb,
+          isPublic_boolean: r.is_public_boolean,
+          hasPublicToken: !!r.public_token,
+          fullMetadata: r.full_metadata
         })),
         sampleFiles: sampleFilesCheck.rows.map((r: any) => ({
           fileId: r.file_id,
