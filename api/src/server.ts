@@ -2094,6 +2094,50 @@ class ProductionServer {
           return res.status(404).json({ error: 'File not found in index' });
         }
 
+        // CRITICAL: If isPublic is not explicitly provided, read from companion metadata
+        // Companion metadata is the source of truth for visibility
+        let finalIsPublic = isPublic;
+        if (isPublic === undefined && current.metadata.backend === 'google_drive') {
+          try {
+            const { googleDriveProxyService } = await import('./server/modules/googleDriveProxy');
+            const { CompanionMetadataSheets } = await import('./server/modules/companionMetadataSheets');
+            const accountId = req.query.accountId as string | undefined;
+            const identifierCandidates: string[] = [];
+            if (tokenPayload.pnIdentifier) identifierCandidates.push(tokenPayload.pnIdentifier);
+            if (tokenPayload.did) {
+              identifierCandidates.push(tokenPayload.did);
+              if (tokenPayload.did.startsWith('did:key:')) {
+                const keyPart = tokenPayload.did.substring(8);
+                if (keyPart) identifierCandidates.push(keyPart);
+              }
+            }
+            
+            const accessToken = await googleDriveProxyService.getAccessToken(userIdentifier, accountId, identifierCandidates);
+            const backendFileId = current.metadata.backendFileId || fileId;
+            
+            // Find companion metadata file
+            const driveResponse = await fetch(
+              `https://www.googleapis.com/drive/v3/files?q=name='${backendFileId}.metadata' and mimeType='application/vnd.google-apps.spreadsheet'&fields=files(id,name)`,
+              { headers: { 'Authorization': `Bearer ${accessToken}` } }
+            );
+
+            if (driveResponse.ok) {
+              const driveData = await driveResponse.json() as { files?: Array<{ id: string }> };
+              if (driveData.files && driveData.files.length > 0) {
+                const spreadsheetId = driveData.files[0].id;
+                const companionMetadata = await CompanionMetadataSheets.readMetadata(accessToken, spreadsheetId);
+                if (companionMetadata) {
+                  finalIsPublic = companionMetadata.visibility === 'public';
+                  console.log(`[MetadataIndex PUT] Read isPublic from companion metadata: ${finalIsPublic} (visibility: ${companionMetadata.visibility})`);
+                }
+              }
+            }
+          } catch (companionError: any) {
+            console.warn(`[MetadataIndex PUT] Failed to read companion metadata for ${fileId}:`, companionError.message);
+            // Continue with provided isPublic or default
+          }
+        }
+
         // Now update with provided fields
         const updated = await service.updateMetadata(fileId, {
           name,
@@ -2111,7 +2155,7 @@ class ProductionServer {
           thought,
           collection, // Include collection data if provided
           isNSFW,
-          isPublic,
+          isPublic: finalIsPublic !== undefined ? finalIsPublic : isPublic,
           subjects,
           feedCategories,
           thumbnailFileId
