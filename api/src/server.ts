@@ -4707,6 +4707,101 @@ class ProductionServer {
       });
     });
 
+    // POST /api/aggregator/metadata-index/sync-visibility - Sync isPublic from companion metadata files
+    this.app.post('/api/aggregator/metadata-index/sync-visibility', async (req, res) => {
+      try {
+        const { AggregatorMetadataServiceDB } = await import('./server/modules/aggregatorMetadataServiceDB');
+        const { googleDriveProxyService } = await import('./server/modules/googleDriveProxy');
+        const { CompanionMetadataSheets } = await import('./server/modules/companionMetadataSheets');
+        const service = AggregatorMetadataServiceDB.getInstance();
+        const db = (await import('./server/utils/database')).getDatabasePool();
+
+        // Get auth token
+        const authHeader = req.headers.authorization;
+        if (!authHeader || !authHeader.startsWith('Bearer ')) {
+          return res.status(401).json({ error: 'Missing or invalid Authorization header' });
+        }
+
+        const token = authHeader.substring(7);
+        const { PNOAuthService } = await import('./server/modules/pnOAuthService');
+        const tokenPayload = PNOAuthService.validateAccessToken(token);
+        if (!tokenPayload) {
+          return res.status(401).json({ error: 'Invalid or expired access token' });
+        }
+
+        const userIdentifier = tokenPayload.pnIdentifier || tokenPayload.did;
+        const identifierCandidates: string[] = [];
+        if (tokenPayload.pnIdentifier) identifierCandidates.push(tokenPayload.pnIdentifier);
+        if (tokenPayload.did) {
+          identifierCandidates.push(tokenPayload.did);
+          if (tokenPayload.did.startsWith('did:key:')) {
+            const keyPart = tokenPayload.did.substring(8);
+            if (keyPart) identifierCandidates.push(keyPart);
+          }
+        }
+
+        // Get all files from database
+        const allFiles = await db.query(`
+          SELECT file_id, metadata->>'backendFileId' as backend_file_id, metadata->>'name' as name
+          FROM aggregator_metadata
+          WHERE metadata->>'backend' = 'google_drive'
+        `);
+
+        let updated = 0;
+        let errors = 0;
+
+        for (const row of allFiles.rows) {
+          try {
+            const fileId = row.file_id;
+            const backendFileId = row.backend_file_id || fileId;
+
+            // Get access token
+            const accountId = req.query.accountId as string | undefined;
+            const accessToken = await googleDriveProxyService.getAccessToken(userIdentifier, accountId, identifierCandidates);
+
+            // Find companion metadata file
+            const driveResponse = await fetch(
+              `https://www.googleapis.com/drive/v3/files?q=name='${backendFileId}.metadata' and mimeType='application/vnd.google-apps.spreadsheet'&fields=files(id,name)`,
+              { headers: { 'Authorization': `Bearer ${accessToken}` } }
+            );
+
+            if (!driveResponse.ok) continue;
+            const driveData = await driveResponse.json() as { files?: Array<{ id: string }> };
+            if (!driveData.files || driveData.files.length === 0) continue;
+
+            const spreadsheetId = driveData.files[0].id;
+
+            // Read companion metadata
+            const companionMetadata = await CompanionMetadataSheets.readMetadata(accessToken, spreadsheetId);
+            if (!companionMetadata) continue;
+
+            // Update isPublic based on visibility
+            const shouldBePublic = companionMetadata.visibility === 'public';
+            const current = await service.getFileMetadata(fileId);
+            if (current && current.metadata.isPublic !== shouldBePublic) {
+              await service.updateMetadata(fileId, { isPublic: shouldBePublic });
+              updated++;
+              console.log(`✅ Updated ${fileId}: isPublic = ${shouldBePublic} (from visibility: ${companionMetadata.visibility})`);
+            }
+          } catch (error: any) {
+            console.error(`❌ Failed to sync visibility for ${row.file_id}:`, error.message);
+            errors++;
+          }
+        }
+
+        return res.json({
+          success: true,
+          totalFiles: allFiles.rows.length,
+          updated,
+          errors,
+          message: `Synced visibility for ${updated} file(s)`
+        });
+      } catch (error: any) {
+        console.error('❌ Sync visibility error:', error);
+        return res.status(500).json({ error: 'Failed to sync visibility', message: error.message });
+      }
+    });
+
     // POST /api/aggregator/metadata-index/refresh - Clear and rebuild index from Google Drive
     this.app.post('/api/aggregator/metadata-index/refresh', async (req, res) => {
       try {
