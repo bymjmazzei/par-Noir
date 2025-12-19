@@ -1647,6 +1647,93 @@ class ProductionServer {
       }
     });
 
+    // GET /api/aggregator/metadata-index/:fileId/companion-check - Check companion metadata visibility vs database isPublic
+    this.app.get('/api/aggregator/metadata-index/:fileId/companion-check', async (req, res) => {
+      try {
+        const { fileId } = req.params;
+        const { AggregatorMetadataServiceDB } = await import('./server/modules/aggregatorMetadataServiceDB');
+        const { googleDriveProxyService } = await import('./server/modules/googleDriveProxy');
+        const { CompanionMetadataSheets } = await import('./server/modules/companionMetadataSheets');
+        const service = AggregatorMetadataServiceDB.getInstance();
+
+        // Get auth token
+        const authHeader = req.headers.authorization;
+        if (!authHeader || !authHeader.startsWith('Bearer ')) {
+          return res.status(401).json({ error: 'Missing or invalid Authorization header' });
+        }
+
+        const token = authHeader.substring(7);
+        const { PNOAuthService } = await import('./server/modules/pnOAuthService');
+        const tokenPayload = PNOAuthService.validateAccessToken(token);
+        if (!tokenPayload) {
+          return res.status(401).json({ error: 'Invalid or expired access token' });
+        }
+
+        const userIdentifier = tokenPayload.pnIdentifier || tokenPayload.did;
+        const identifierCandidates: string[] = [];
+        if (tokenPayload.pnIdentifier) identifierCandidates.push(tokenPayload.pnIdentifier);
+        if (tokenPayload.did) {
+          identifierCandidates.push(tokenPayload.did);
+          if (tokenPayload.did.startsWith('did:key:')) {
+            const keyPart = tokenPayload.did.substring(8);
+            if (keyPart) identifierCandidates.push(keyPart);
+          }
+        }
+
+        // Get database metadata
+        const dbMetadata = await service.getFileMetadata(fileId);
+        if (!dbMetadata) {
+          return res.status(404).json({ error: 'File not found in database' });
+        }
+
+        // Try to read companion metadata
+        const accountId = req.query.accountId as string | undefined;
+        const accessToken = await googleDriveProxyService.getAccessToken(userIdentifier, accountId, identifierCandidates);
+        const backendFileId = dbMetadata.metadata.backendFileId || fileId;
+        
+        const driveResponse = await fetch(
+          `https://www.googleapis.com/drive/v3/files?q=name='${backendFileId}.metadata' and mimeType='application/vnd.google-apps.spreadsheet'&fields=files(id,name)`,
+          { headers: { 'Authorization': `Bearer ${accessToken}` } }
+        );
+
+        let companionMetadata = null;
+        let companionError = null;
+        if (driveResponse.ok) {
+          const driveData = await driveResponse.json() as { files?: Array<{ id: string }> };
+          if (driveData.files && driveData.files.length > 0) {
+            const spreadsheetId = driveData.files[0].id;
+            try {
+              companionMetadata = await CompanionMetadataSheets.readMetadata(accessToken, spreadsheetId);
+            } catch (error: any) {
+              companionError = error.message;
+            }
+          }
+        }
+
+        return res.json({
+          fileId,
+          database: {
+            isPublic: dbMetadata.metadata.isPublic,
+            backend: dbMetadata.metadata.backend,
+            backendFileId: dbMetadata.metadata.backendFileId
+          },
+          companionMetadata: companionMetadata ? {
+            visibility: companionMetadata.visibility,
+            fileId: companionMetadata.fileId,
+            googleDriveFileId: companionMetadata.googleDriveFileId
+          } : null,
+          companionError,
+          mismatch: companionMetadata ? (companionMetadata.visibility === 'public') !== dbMetadata.metadata.isPublic : null,
+          recommendation: companionMetadata && (companionMetadata.visibility === 'public') !== dbMetadata.metadata.isPublic
+            ? `Database has isPublic=${dbMetadata.metadata.isPublic} but companion metadata has visibility=${companionMetadata.visibility}. They should match.`
+            : companionMetadata ? 'Values match' : 'Could not read companion metadata'
+        });
+      } catch (error: any) {
+        console.error('❌ Companion check error:', error);
+        return res.status(500).json({ error: 'Failed to check companion metadata', message: error.message });
+      }
+    });
+
     // GET /api/aggregator/metadata-index/:fileId/inspect - Deep inspection of a specific file's metadata
     this.app.get('/api/aggregator/metadata-index/:fileId/inspect', async (req, res) => {
       try {
