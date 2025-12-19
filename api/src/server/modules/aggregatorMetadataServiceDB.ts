@@ -234,31 +234,8 @@ export class AggregatorMetadataServiceDB {
           OR (am.metadata->>'isNSFW')::text = 'true'
           OR (am.metadata->'isNSFW')::boolean = true
         )
-        -- CRITICAL: Public index contains thumbnails and standalone files (text posts)
-        -- Exclude main files that have a thumbnailFileId (those are private, only thumbnails are public)
-        -- NOTE: Thoughts with thumbnails should NOT appear - only their thumbnails should be in feeds
-        AND (
-          -- Exclude thought/text post files that have a thumbnailFileId (only their thumbnails should appear)
-          NOT (
-            (am.metadata->>'fileType' = 'text' 
-             OR am.metadata->>'fileType' = 'thought' 
-             OR am.metadata->'textPost' IS NOT NULL 
-             OR am.metadata->'thought' IS NOT NULL)
-            AND am.metadata->>'thumbnailFileId' IS NOT NULL 
-            AND am.metadata->>'thumbnailFileId' != ''
-          )
-          -- Allow standalone text posts/thoughts that don't have thumbnails (legacy support)
-          AND (
-            -- Standalone thoughts/text posts (no thumbnail)
-            ((am.metadata->>'fileType' = 'text' 
-              OR am.metadata->>'fileType' = 'thought' 
-              OR am.metadata->'textPost' IS NOT NULL 
-              OR am.metadata->'thought' IS NOT NULL)
-             AND (am.metadata->>'thumbnailFileId' IS NULL OR am.metadata->>'thumbnailFileId' = ''))
-            -- OR exclude main files that have a thumbnailFileId (those are private, only thumbnails are public)
-            OR (am.metadata->>'thumbnailFileId' IS NULL OR am.metadata->>'thumbnailFileId' = '')
-          )
-        )
+        -- SIMPLIFIED: Public feed should only filter by isPublic and isNSFW
+        -- No complex thumbnail logic - if a file is public, it should appear
       `;
       const params: any[] = [];
       let paramIndex = 1;
@@ -332,27 +309,8 @@ export class AggregatorMetadataServiceDB {
           OR am.metadata->>'isNSFW' = 'TRUE'
           OR (am.metadata->'isNSFW')::boolean = true
         )
-        -- CRITICAL: Public index contains thumbnails and standalone files (text posts, PDFs)
-        -- Exclude main files that have a thumbnailFileId (those are private, only thumbnails are public)
-        -- AND: Always allow thoughts/text posts (they don't have thumbnails, so they should always be included)
-        AND (
-          -- Allow thoughts/text posts (they don't have thumbnails, so they should always be included)
-          am.metadata->>'fileType' = 'text' 
-          OR am.metadata->>'fileType' = 'thought' 
-          OR am.metadata->'textPost' IS NOT NULL 
-          OR am.metadata->'thought' IS NOT NULL
-          -- OR exclude main files that have a thumbnailFileId (those are private, only thumbnails are public)
-          OR (am.metadata->>'thumbnailFileId' IS NULL OR am.metadata->>'thumbnailFileId' = '')
-        )
-        AND (
-          -- Allow thoughts/text posts
-          am.metadata->>'fileType' = 'text' 
-          OR am.metadata->>'fileType' = 'thought' 
-          OR am.metadata->'textPost' IS NOT NULL 
-          OR am.metadata->'thought' IS NOT NULL
-          -- OR allow thumbnail files
-          OR (LOWER(am.metadata->>'name') LIKE 'thumb_%' OR LOWER(am.metadata->>'title') LIKE 'thumb_%')
-        )
+        -- SIMPLIFIED: Public feed should only filter by isPublic and isNSFW
+        -- No complex thumbnail logic - if a file is public, it should appear
         ${filters?.fileType ? `AND am.metadata->>'fileType' = $1` : ''}
         ${filters?.feedId ? `AND fp.feed_id = $${filters?.fileType ? '2' : '1'}` : ''}
         ${filters?.indexerId ? `AND (
