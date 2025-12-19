@@ -1280,6 +1280,9 @@ class ProductionServer {
           });
         }
 
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/e9725a07-b703-47ab-ba6c-a54c252a4988',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'server.ts:1283',message:'API endpoint returning response',data:{filesCount:response.files?.length||0,total:response.totalFiles||response.total||0,hasMore:response.hasMore||false,sampleFiles:response.files?.slice(0,3).map((f:any)=>({fileId:f.fileId||f.metadata?.fileId,fileType:f.metadata?.fileType,name:f.metadata?.name,isPublic:f.metadata?.isPublic}))||[]},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+        // #endregion
         console.log(`📤 [GET /api/aggregator/metadata-index] Returning ${response.files.length} files`);
         return res.json(response);
       } catch (error: any) {
