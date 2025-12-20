@@ -1163,7 +1163,15 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
         
         const nonThoughtThumbnails = regularThumbnails.filter((thumb: DriveFile) => {
           const name = thumb.name.toLowerCase();
-          return !name.startsWith('thumb_thought-');
+          // Exclude thought thumbnails
+          if (name.startsWith('thumb_thought-')) {
+            return false;
+          }
+          // Exclude PDF page thumbnails (format: thumb_filename-page-N.png.encrypted)
+          if (name.match(/thumb_.*-page-\d+\.(png|jpg|jpeg)\.encrypted$/i)) {
+            return false;
+          }
+          return true;
         });
         
         // Map regular (non-thought) thumbnails to their main files and create display entries
@@ -1323,7 +1331,15 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
         
         const nonThoughtThumbnails = regularThumbnails.filter((thumb: DriveFile) => {
           const name = thumb.name.toLowerCase();
-          return !name.startsWith('thumb_thought-');
+          // Exclude thought thumbnails
+          if (name.startsWith('thumb_thought-')) {
+            return false;
+          }
+          // Exclude PDF page thumbnails (format: thumb_filename-page-N.png.encrypted)
+          if (name.match(/thumb_.*-page-\d+\.(png|jpg|jpeg)\.encrypted$/i)) {
+            return false;
+          }
+          return true;
         });
         
         // Map regular (non-thought) thumbnails to their main files and create display entries
@@ -2692,6 +2708,106 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
     }
   };
 
+  // Convert PDF pages to thumbnails and upload them
+  const processPDFPages = async (
+    pdfFile: File,
+    accountId: string,
+    session: any,
+    publicKey: string,
+    encryptionManager: EncryptionManager,
+    accessToken: string
+  ): Promise<string[]> => {
+    const pdfjsLib = await import('pdfjs-dist');
+    pdfjsLib.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs';
+    
+    const arrayBuffer = await pdfFile.arrayBuffer();
+    const loadingTask = pdfjsLib.getDocument({ data: new Uint8Array(arrayBuffer) });
+    const pdf = await loadingTask.promise;
+    const numPages = pdf.numPages;
+    
+    const thumbnailFileIds: string[] = [];
+    const baseFileName = pdfFile.name.replace(/\.pdf$/i, '');
+    
+    console.log(`[PDF Upload] Processing ${numPages} pages...`);
+    
+    for (let pageNum = 1; pageNum <= numPages; pageNum++) {
+      const page = await pdf.getPage(pageNum);
+      const viewport = page.getViewport({ scale: 1.0 });
+      const scale = Math.min(800 / viewport.width, 800 / viewport.height, 1.0);
+      const scaledViewport = page.getViewport({ scale });
+      
+      const canvas = document.createElement('canvas');
+      canvas.width = scaledViewport.width;
+      canvas.height = scaledViewport.height;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) continue;
+      
+      await page.render({ canvasContext: ctx, viewport: scaledViewport } as any).promise;
+      
+      const thumbnailBlob = await new Promise<Blob>((resolve, reject) => {
+        canvas.toBlob((blob) => blob ? resolve(blob) : reject(new Error('Failed to create blob')), 'image/jpeg', 0.85);
+      });
+      
+      const thumbnailFileName = `${baseFileName}-page-${pageNum}.png`;
+      const thumbnailFileId = await uploadThumbnailLocal(
+        thumbnailBlob,
+        thumbnailFileName,
+        encryptionManager,
+        session,
+        publicKey,
+        accessToken,
+        accountId
+      );
+      
+      if (thumbnailFileId) {
+        // Generate publicToken for thumbnail
+        try {
+          const thumbnailArrayBuffer = await thumbnailBlob.arrayBuffer();
+          const thumbnailData = new Uint8Array(thumbnailArrayBuffer);
+          const encryptedThumbnail = await encryptionManager.encrypt(thumbnailData, session.did, publicKey);
+          const thumbnailPackage: EncryptedFilePackage = {
+            encrypted: encryptedThumbnail.encrypted,
+            iv: encryptedThumbnail.iv,
+            salt: encryptedThumbnail.salt,
+            metadata: {
+              originalName: `thumb_${thumbnailFileName}`,
+              originalSize: thumbnailBlob.size,
+              originalMimeType: 'image/jpeg',
+            },
+          };
+          
+          const encryptionService = getEncryptionService();
+          const thumbnailShareToken = await encryptionService.generateShareToken(thumbnailPackage, {
+            id: session.did,
+            publicKey: publicKey
+          });
+          
+          // Create metadata for thumbnail
+          await fetch(`${apiEndpoint}/api/aggregator/metadata-index/${thumbnailFileId}?accountId=${accountId}`, {
+            method: 'PUT',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${accessToken}`
+            },
+            body: JSON.stringify({
+              name: `thumb_${thumbnailFileName}`,
+              fileType: 'image',
+              isPublic: false,
+              publicToken: JSON.stringify(thumbnailShareToken)
+            })
+          });
+        } catch (err) {
+          console.warn(`[PDF Upload] Failed to process thumbnail for page ${pageNum}:`, err);
+        }
+        
+        thumbnailFileIds.push(thumbnailFileId);
+        console.log(`[PDF Upload] Processed page ${pageNum}/${numPages}`);
+      }
+    }
+    
+    return thumbnailFileIds;
+  };
+
   const handleUploadForAccount = async (accountId: string, event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     
@@ -2742,6 +2858,8 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
 
       console.log('📤 [Upload] Starting upload...', { fileName: file.name, fileSize: file.size });
 
+      const isPDF = file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
+
       // Initialize encryption manager
       const encryptionManager = new EncryptionManager();
       
@@ -2751,6 +2869,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
       let freshAccessToken: string | undefined = undefined;
       let thumbnailShareToken: any = undefined;
       let thumbnailFileId: string | undefined = undefined;
+      let pdfThumbnailFileIds: string[] = [];
       
       // Refresh access token before uploading main file
       const token = await PNOAuthService.getValidAccessToken();
@@ -2758,6 +2877,24 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
         throw new Error('No valid access token available for upload');
       }
       freshAccessToken = token;
+
+      // Process PDF pages if it's a PDF
+      if (isPDF) {
+        try {
+          pdfThumbnailFileIds = await processPDFPages(
+            file,
+            accountId,
+            session,
+            publicKey,
+            encryptionManager,
+            freshAccessToken
+          );
+          console.log(`[PDF Upload] Created ${pdfThumbnailFileIds.length} page thumbnails`);
+        } catch (pdfError: any) {
+          console.error('[PDF Upload] Failed to process PDF:', pdfError);
+          throw new Error(`Failed to process PDF: ${pdfError.message || pdfError}`);
+        }
+      }
 
         // Generate thumbnail for images and videos BEFORE encryption
         const isImage = file.type.startsWith('image/');
@@ -2936,7 +3073,8 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
         console.log('📝 [Upload] Creating initial metadata entry...');
         
         // Determine file type from MIME type
-        const fileType = file.type.startsWith('image/') ? 'image' 
+        const fileType = isPDF ? 'document'
+          : file.type.startsWith('image/') ? 'image' 
           : file.type.startsWith('video/') ? 'video'
           : file.type.startsWith('audio/') ? 'audio'
           : 'document';
@@ -3034,6 +3172,33 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
       } catch (metadataError: any) {
         console.warn('⚠️ [Upload] Metadata creation failed (non-critical):', metadataError?.message || metadataError);
         // Don't fail the upload - metadata can be created later
+      }
+
+      // If PDF, create collection from thumbnails
+      if (isPDF && pdfThumbnailFileIds.length > 0) {
+        try {
+          console.log('[PDF Upload] Creating collection from PDF thumbnails...');
+          const result = await createCollection(
+            {
+              collectionFileIds: pdfThumbnailFileIds,
+              title: file.name.replace(/\.pdf$/i, '')
+            },
+            accountId,
+            {
+              isPublic: false,
+              isNSFW: false
+            }
+          );
+
+          if (result.success) {
+            console.log('[PDF Upload] Collection created successfully');
+          } else {
+            console.warn('[PDF Upload] Failed to create collection:', result.error);
+          }
+        } catch (collectionError: any) {
+          console.error('[PDF Upload] Collection creation failed:', collectionError);
+          // Don't fail the upload if collection creation fails
+        }
       }
 
       // Reload files for this account
