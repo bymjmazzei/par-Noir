@@ -10,6 +10,7 @@ import { PNOAuthService } from '../services/pnOAuthService';
 import { EncryptionManager } from '../utils/encryptionManager';
 import { decryptWithToken, ShareToken } from '../utils/tokenDecryption';
 import { useViewportHeightCSS } from '../hooks/useViewportHeight';
+import { calculateMediaScaling, getContainerDimensions, type MediaDimensions } from '../utils/mediaScaling';
 
 const apiEndpoint = process.env.REACT_APP_API_ENDPOINT || 'https://api.parnoir.com';
 
@@ -34,6 +35,7 @@ export function CollectionFeed({
   const [fileContent, setFileContent] = useState<Map<string, FileContent>>(new Map());
   const [loading, setLoading] = useState<Map<string, boolean>>(new Map());
   const [error, setError] = useState<Map<string, string>>(new Map());
+  const [mediaDimensions, setMediaDimensions] = useState<Map<string, MediaDimensions>>(new Map());
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const videoRefs = useRef<Map<string, HTMLVideoElement>>(new Map());
   const loadedFilesRef = useRef<Set<string>>(new Set());
@@ -428,16 +430,46 @@ export function CollectionFeed({
         </div>
       );
     } else if (content.type === 'image') {
+      const containerDims = getContainerDimensions(64);
+      const dims = mediaDimensions.get(fileId);
+      const scalingStyles = calculateMediaScaling(dims, containerDims);
+      
       return (
-        <div key={fileId} className="w-full h-full flex items-center justify-center">
+        <div key={fileId} className="w-full h-full flex items-center justify-center relative">
+          {/* Blurred background image */}
           <img
             src={content.data}
-            alt={`Collection item ${index + 1}`}
-            className="max-w-full max-h-full object-contain"
-            style={{
-              maxHeight: viewportHeightCSS
+            alt=""
+            className="absolute"
+            style={scalingStyles.background}
+            loading="eager"
+            decoding="async"
+            onError={(e) => {
+              console.error(`[CollectionFeed] Background image failed to load for ${fileId}:`, e);
             }}
           />
+          {/* Main image container */}
+          <div className="w-full h-full flex items-center justify-center relative z-10">
+            <img
+              src={content.data}
+              alt={`Collection item ${index + 1}`}
+              style={scalingStyles.mainMedia}
+              onLoad={(e) => {
+                const img = e.currentTarget;
+                // Track dimensions for this specific image
+                setMediaDimensions(prev => {
+                  const newMap = new Map(prev);
+                  newMap.set(fileId, { width: img.naturalWidth, height: img.naturalHeight });
+                  return newMap;
+                });
+              }}
+              onError={(e) => {
+                console.error(`[CollectionFeed] Image failed to load for ${fileId}:`, e);
+              }}
+              loading="eager"
+              decoding="sync"
+            />
+          </div>
         </div>
       );
     } else if (content.type === 'video') {

@@ -3987,6 +3987,14 @@ function App() {
                                      Array.isArray(collectionData.collectionFileIds) &&
                                      collectionData.collectionFileIds.length > 0;
               
+              // Detect if file is a thought
+              const isThoughtFile = isThought(indexedFile);
+              
+              // Helper to get text post data
+              const getTextPostData = (file: IndexedFile) => {
+                return (file.metadata as any).textPost || (file.metadata as any).thought || null;
+              };
+              
               return (
                 <div
                   key={file.fileId}
@@ -4043,8 +4051,81 @@ function App() {
                     </div>
                   )}
                   
+                  {/* Thought Preview Section */}
+                  {!isCollectionFile && isThoughtFile && (
+                    <div className="w-full h-48 bg-neutral-800 flex items-center justify-center relative overflow-hidden">
+                      {(() => {
+                        const textPostData = getTextPostData(indexedFile);
+                        // Use thumbnail if available, otherwise render thought content directly
+                        const thoughtThumbnail = thumbnails.get(file.fileId);
+                        
+                        if (thoughtThumbnail) {
+                          return (
+                            <img
+                              src={thoughtThumbnail}
+                              alt={fileName}
+                              className="w-full h-full object-contain"
+                              onError={(e) => {
+                                // Fallback to rendering thought content if thumbnail fails
+                                e.currentTarget.style.display = 'none';
+                              }}
+                            />
+                          );
+                        } else if (textPostData) {
+                          return (
+                            <div
+                              className="w-full h-full flex items-center justify-center"
+                              style={{
+                                backgroundColor: textPostData?.style?.backgroundColor || '#000000',
+                                backgroundImage: textPostData?.style?.backgroundImage 
+                                  ? `url(${textPostData.style.backgroundImage})` 
+                                  : 'none',
+                                backgroundSize: 'cover',
+                                backgroundPosition: 'center',
+                              }}
+                            >
+                              <div
+                                className="w-full px-4 text-center"
+                                style={{
+                                  fontFamily: textPostData?.style?.fontFamily || 'Arial',
+                                  fontSize: textPostData?.style?.fontSize 
+                                    ? `${Math.min(textPostData.style.fontSize, 24)}px` 
+                                    : '16px',
+                                  color: textPostData?.style?.textColor || '#FFFFFF',
+                                  fontWeight: textPostData?.style?.textStyle === 'bold' ? 'bold' : 'normal',
+                                  fontStyle: textPostData?.style?.textStyle === 'italic' ? 'italic' : 'normal',
+                                  textDecoration: textPostData?.style?.textStyle === 'strikethrough' ? 'line-through' : 'none',
+                                  textAlign: (textPostData?.style?.textAlign || 'center') as 'left' | 'center' | 'right' | 'justify',
+                                  textShadow: textPostData?.style?.dropShadowOffsetX || textPostData?.style?.dropShadowOffsetY || textPostData?.style?.dropShadowBlur
+                                    ? `${textPostData.style.dropShadowOffsetX || 2}px ${textPostData.style.dropShadowOffsetY || 2}px ${textPostData.style.dropShadowBlur || 10}px ${textPostData.style.dropShadowColor || '#000000'}`
+                                    : 'none',
+                                  padding: `${Math.min(textPostData?.style?.padding || 20, 20)}px`,
+                                  lineHeight: 1.2,
+                                  wordWrap: 'break-word',
+                                  overflowWrap: 'break-word',
+                                  whiteSpace: 'pre-wrap',
+                                  maxHeight: '100%',
+                                  overflow: 'hidden',
+                                }}
+                              >
+                                {textPostData?.content || file.description || fileName || 'Thought'}
+                              </div>
+                            </div>
+                          );
+                        } else {
+                          return (
+                            <div className="flex flex-col items-center justify-center text-neutral-500">
+                              <div className="text-2xl mb-2">💭</div>
+                              <span className="text-xs">Thought</span>
+                            </div>
+                          );
+                        }
+                      })()}
+                    </div>
+                  )}
+                  
                   {/* Image/Video Preview Section */}
-                  {!isCollectionFile && (isImage || isVideo) && (
+                  {!isCollectionFile && !isThoughtFile && (isImage || isVideo) && (
                     <div 
                       className="w-full h-48 bg-neutral-800 flex items-center justify-center relative overflow-hidden group"
                       onMouseEnter={async () => {
@@ -4141,7 +4222,7 @@ function App() {
                           {fileName}
                         </h3>
                         <p className="text-text-secondary text-xs mt-1">
-                          {isVideo ? 'Video' : file.fileType === 'image' ? 'Image' : file.fileType || 'File'} • {new Date(file.uploadDate).toLocaleDateString()}
+                          {isThoughtFile ? 'Thought' : isVideo ? 'Video' : file.fileType === 'image' ? 'Image' : file.fileType || 'File'} • {new Date(file.uploadDate).toLocaleDateString()}
                         </p>
                       </div>
                       {file.metadata?.isNSFW && (

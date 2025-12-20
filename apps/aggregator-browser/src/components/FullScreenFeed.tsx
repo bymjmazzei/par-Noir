@@ -18,6 +18,7 @@ import { decryptWithToken, ShareToken } from '../utils/tokenDecryption';
 import { cleanTitle } from '../utils/cleanTitle';
 import { CollectionFeed } from './CollectionFeed';
 import { PNOAuthService } from '../services/pnOAuthService';
+import { calculateMediaScaling, getContainerDimensions, type MediaDimensions } from '../utils/mediaScaling';
 
 const apiEndpoint = process.env.REACT_APP_API_ENDPOINT || 'https://api.parnoir.com';
 
@@ -2384,39 +2385,9 @@ export function FullScreenFeed({
                 );
               }
               
-              const containerHeight = window.innerHeight - 64; // Account for bottom nav
-              const containerWidth = window.innerWidth;
-              const containerAspect = containerWidth / containerHeight;
+              const containerDims = getContainerDimensions(64);
               const dims = mediaDimensions.get(fileId);
-              const imageAspect = dims ? dims.width / dims.height : 16/9; // Default to 16:9
-              
-              // If image is wider than container (widescreen), scale background to fill height
-              // If image is taller than container (portrait), scale background to fill width
-              const isWidescreen = imageAspect > containerAspect;
-              const backgroundStyle: React.CSSProperties = {
-                filter: 'blur(40px)',
-                opacity: 0.6,
-                zIndex: 0,
-                position: 'absolute',
-                top: 0,
-                right: 0,
-                bottom: 0,
-                objectFit: 'cover', // Ensure it covers the entire area
-                ...(isWidescreen 
-                  ? { 
-                      width: 'auto', 
-                      height: '100%',
-                      left: '50%',
-                      transform: 'translateX(-50%) scale(1.1)'
-                    }
-                  : { 
-                      height: 'auto', 
-                      width: '100%',
-                      top: '50%',
-                      transform: 'translateY(-50%) scale(1.1)'
-                    }
-                )
-              };
+              const scalingStyles = calculateMediaScaling(dims, containerDims);
 
               return (
                 <>
@@ -2425,7 +2396,7 @@ export function FullScreenFeed({
                     src={thumbnailUrl}
                     alt=""
                     className="absolute"
-                    style={backgroundStyle}
+                    style={scalingStyles.background}
                     loading="eager"
                     decoding="async"
                     onError={(e) => {
@@ -2456,17 +2427,7 @@ export function FullScreenFeed({
                     }}
                     src={thumbnailUrl}
                     alt={fileName}
-                    style={{ 
-                        // Fill container while maintaining aspect ratio
-                        height: '100%',
-                        width: '100%',
-                        objectFit: 'contain', // Maintain aspect ratio, fill container
-                        imageRendering: 'auto' as const,
-                        // Prevent pixelation and ensure high quality
-                        backfaceVisibility: 'hidden',
-                        WebkitBackfaceVisibility: 'hidden',
-                        transform: 'translateZ(0)' // Force hardware acceleration
-                      }}
+                    style={scalingStyles.mainMedia}
                       loading="eager"
                       decoding="sync"
                       onError={(e) => {
@@ -2516,28 +2477,63 @@ export function FullScreenFeed({
                 
                 if (collectionThumbnails.length > 0) {
                   console.log(`[FullScreenFeed] Rendering slideshow with ${collectionThumbnails.length} thumbnails for ${fileId}`);
-                  // Render horizontal slideshow of thumbnails
+                  const containerDims = getContainerDimensions(64);
+                  
+                  // Render horizontal slideshow of thumbnails with individual scaling
                   return (
                     <div className="w-full h-full flex overflow-x-auto snap-x snap-mandatory scrollbar-hide">
-                      {collectionThumbnails.map((thumbnailUrl: string, idx: number) => (
-                        <div
-                          key={`${fileId}-${idx}`}
-                          className="flex-shrink-0 w-full h-full snap-start"
-                        >
-                          <img
-                            src={thumbnailUrl}
-                            alt={`${fileName} - ${idx + 1}`}
-                            className="w-full h-full object-cover"
-                            onError={(e) => {
-                              console.error(`[FullScreenFeed] Thumbnail failed to load for collection ${fileId}, index ${idx}:`, thumbnailUrl);
-                              e.currentTarget.src = '/placeholder-thumbnail.png';
-                            }}
-                            onLoad={() => {
-                              console.log(`[FullScreenFeed] Thumbnail loaded successfully for collection ${fileId}, index ${idx}`);
-                            }}
-                          />
-                        </div>
-                      ))}
+                      {collectionThumbnails.map((thumbnailUrl: string, idx: number) => {
+                        // Use composite key for dimension tracking: collection file ID + index
+                        // Or use the individual file ID from the collection if available
+                        const collectionFileId = finalCollectionData.collectionFileIds[idx];
+                        const dimensionKey = collectionFileId || `${fileId}-${idx}`;
+                        const dims = mediaDimensions.get(dimensionKey);
+                        const scalingStyles = calculateMediaScaling(dims, containerDims);
+                        
+                        return (
+                          <div
+                            key={`${fileId}-${idx}`}
+                            className="flex-shrink-0 w-full h-full snap-start relative"
+                          >
+                            {/* Blurred background image */}
+                            <img
+                              src={thumbnailUrl}
+                              alt=""
+                              className="absolute"
+                              style={scalingStyles.background}
+                              loading="eager"
+                              decoding="async"
+                              onError={(e) => {
+                                console.error(`[FullScreenFeed] Background image failed to load for collection ${fileId}, index ${idx}:`, thumbnailUrl);
+                              }}
+                            />
+                            {/* Main image container */}
+                            <div className="w-full h-full flex items-center justify-center relative z-10">
+                              <img
+                                src={thumbnailUrl}
+                                alt={`${fileName} - ${idx + 1}`}
+                                style={scalingStyles.mainMedia}
+                                onError={(e) => {
+                                  console.error(`[FullScreenFeed] Thumbnail failed to load for collection ${fileId}, index ${idx}:`, thumbnailUrl);
+                                  e.currentTarget.src = '/placeholder-thumbnail.png';
+                                }}
+                                onLoad={(e) => {
+                                  const img = e.currentTarget;
+                                  // Track dimensions for this specific image in the collection
+                                  setMediaDimensions(prev => {
+                                    const newMap = new Map(prev);
+                                    newMap.set(dimensionKey, { width: img.naturalWidth, height: img.naturalHeight });
+                                    return newMap;
+                                  });
+                                  console.log(`[FullScreenFeed] Thumbnail loaded successfully for collection ${fileId}, index ${idx}, dimensions: ${img.naturalWidth}x${img.naturalHeight}`);
+                                }}
+                                loading="eager"
+                                decoding="sync"
+                              />
+                            </div>
+                          </div>
+                        );
+                      })}
                     </div>
                   );
                 } else {
