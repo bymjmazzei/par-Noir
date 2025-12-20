@@ -2136,15 +2136,31 @@ export function FullScreenFeed({
                     </div>
                   );
                 } else {
-                  console.warn(`[FullScreenFeed] No thumbnails found for collection ${fileId}, showing placeholder`);
-                  // Fallback: show placeholder if no thumbnails available
-                  return (
-                    <div className="w-full h-full flex flex-col items-center justify-center text-neutral-400">
-                      <div className="text-4xl mb-2">📚</div>
-                      <div className="text-sm">Collection</div>
-                      <div className="text-xs mt-1">{finalCollectionData.collectionFileIds.length} files</div>
-                    </div>
+                  // Check if thumbnails are currently loading
+                  const areThumbnailsLoading = finalCollectionData.collectionFileIds.some((cfId: string) => 
+                    loadingCollectionThumbnailsRef.current.has(cfId)
                   );
+                  
+                  if (areThumbnailsLoading) {
+                    // Show loading state while thumbnails are being fetched
+                    return (
+                      <div className="w-full h-full flex flex-col items-center justify-center text-neutral-400">
+                        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-400 mb-4"></div>
+                        <div className="text-sm">Loading collection...</div>
+                        <div className="text-xs mt-1">{finalCollectionData.collectionFileIds.length} files</div>
+                      </div>
+                    );
+                  } else {
+                    // Only show book icon if thumbnails have failed to load or don't exist
+                    console.warn(`[FullScreenFeed] No thumbnails found for collection ${fileId}, showing placeholder`);
+                    return (
+                      <div className="w-full h-full flex flex-col items-center justify-center text-neutral-400">
+                        <div className="text-4xl mb-2">📚</div>
+                        <div className="text-sm">Collection</div>
+                        <div className="text-xs mt-1">{finalCollectionData.collectionFileIds.length} files</div>
+                      </div>
+                    );
+                  }
                 }
               })()
             ) : (() => {
