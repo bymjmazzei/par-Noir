@@ -1135,8 +1135,9 @@ export function FullScreenFeed({
         }
         // Show currentIndex and next 2 files (or previous if at start)
         // This ensures we always show at least 3 files when available
+        // Expand to show more files so we can see all thumbnails that are loaded
         const startIdx = Math.max(0, currentIndex - 1);
-        const endIdx = Math.min(files.length, currentIndex + 3); // Show current + next 2
+        const endIdx = Math.min(files.length, currentIndex + 5); // Show current + next 4 to see all files
         return files.slice(startIdx, endIdx);
       })()
         .map((indexedFile) => {
