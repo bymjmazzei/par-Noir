@@ -636,7 +636,7 @@ export function FullScreenFeed({
               const fileName = (file.name || file.title || '').toLowerCase();
               const isThumbnailFile = fileName.startsWith('thumb_');
               
-              // PRIORITY 1: If this IS a thumbnail file, decrypt using publicToken from metadata
+              // PRIORITY 1: If this IS a thumbnail file, fetch it and decrypt using publicToken
               if (isThumbnailFile) {
                 // Use publicToken from metadata to decrypt (required for public feed)
                 const publicToken = indexedFile.publicToken || file.publicToken;
@@ -645,44 +645,82 @@ export function FullScreenFeed({
                 // #endregion
                 if (publicToken) {
                   try {
-                    let token: ShareToken;
-                    try {
-                      token = typeof publicToken === 'string' ? JSON.parse(publicToken) : publicToken;
-                      // #region agent log
-                      fetch('http://127.0.0.1:7242/ingest/e9725a07-b703-47ab-ba6c-a54c252a4988',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'FullScreenFeed.tsx:644',message:'Parsed publicToken',data:{fileId,hasToken:!!token,hasShareKey:!!token?.shareKey,hasShareEncrypted:!!token?.shareEncrypted},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
-                      // #endregion
-                    } catch (e) {
-                      // #region agent log
-                      fetch('http://127.0.0.1:7242/ingest/e9725a07-b703-47ab-ba6c-a54c252a4988',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'FullScreenFeed.tsx:646',message:'Failed to parse publicToken',data:{fileId,error:e instanceof Error?e.message:String(e),publicTokenPreview:typeof publicToken==='string'?publicToken.substring(0,50):'not string'},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
-                      // #endregion
-                      console.warn(`[FullScreenFeed] Failed to parse publicToken for thumbnail ${fileId}:`, e);
+                    // CRITICAL: First fetch the encrypted file from API (no auth needed for public files)
+                    const { PNOAuthService } = await import('../services/pnOAuthService');
+                    const apiEndpoint = process.env.REACT_APP_API_ENDPOINT || 'https://api.parnoir.com';
+                    const fileUrl = `${apiEndpoint}/api/drive/files/${fileId}`;
+                    
+                    // Fetch file (no auth required for public files)
+                    let response = await fetch(fileUrl);
+                    // #region agent log
+                    fetch('http://127.0.0.1:7242/ingest/e9725a07-b703-47ab-ba6c-a54c252a4988',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'FullScreenFeed.tsx:647',message:'Fetched thumbnail file',data:{fileId,responseStatus:response.status,responseOk:response.ok},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
+                    // #endregion
+                    
+                    if (!response.ok) {
+                      console.warn(`[FullScreenFeed] Failed to fetch thumbnail file ${fileId}: ${response.status}`);
                       return;
                     }
                     
-                    // Decrypt using publicToken (NO API CALLS!)
-                    const decryptedBlob = await decryptWithToken(token);
-                    const thumbnailUrlObj = URL.createObjectURL(decryptedBlob);
-                    // #region agent log
-                    fetch('http://127.0.0.1:7242/ingest/e9725a07-b703-47ab-ba6c-a54c252a4988',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'FullScreenFeed.tsx:651',message:'Successfully decrypted thumbnail',data:{fileId,decryptedBlobSize:decryptedBlob.size,decryptedBlobType:decryptedBlob.type},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
-                    // #endregion
+                    const contentType = response.headers.get('content-type') || '';
+                    const blob = await response.blob();
                     
-                    setThumbnails(prev => {
-                      const newMap = new Map(prev);
-                      newMap.set(fileId, thumbnailUrlObj);
-                      return newMap;
-                    });
-                    
-                    return; // Success - thumbnail loaded!
+                    // Check if file is encrypted (JSON format)
+                    if (contentType.includes('application/json')) {
+                      const text = await blob.text();
+                      const parsed = JSON.parse(text);
+                      
+                      if (parsed.encrypted && parsed.iv && parsed.salt) {
+                        // Parse token
+                        let token: ShareToken;
+                        try {
+                          token = typeof publicToken === 'string' ? JSON.parse(publicToken) : publicToken;
+                          // #region agent log
+                          fetch('http://127.0.0.1:7242/ingest/e9725a07-b703-47ab-ba6c-a54c252a4988',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'FullScreenFeed.tsx:664',message:'Parsed publicToken',data:{fileId,hasToken:!!token,hasShareKey:!!token?.shareKey,hasShareEncrypted:!!token?.shareEncrypted},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
+                          // #endregion
+                        } catch (e) {
+                          // #region agent log
+                          fetch('http://127.0.0.1:7242/ingest/e9725a07-b703-47ab-ba6c-a54c252a4988',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'FullScreenFeed.tsx:667',message:'Failed to parse publicToken',data:{fileId,error:e instanceof Error?e.message:String(e),publicTokenPreview:typeof publicToken==='string'?publicToken.substring(0,50):'not string'},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
+                          // #endregion
+                          console.warn(`[FullScreenFeed] Failed to parse publicToken for thumbnail ${fileId}:`, e);
+                          return;
+                        }
+                        
+                        // Decrypt using publicToken
+                        const { decryptWithToken } = await import('../utils/tokenDecryption');
+                        const decryptedBlob = await decryptWithToken(token);
+                        const thumbnailUrlObj = URL.createObjectURL(decryptedBlob);
+                        // #region agent log
+                        fetch('http://127.0.0.1:7242/ingest/e9725a07-b703-47ab-ba6c-a54c252a4988',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'FullScreenFeed.tsx:675',message:'Successfully decrypted thumbnail',data:{fileId,decryptedBlobSize:decryptedBlob.size,decryptedBlobType:decryptedBlob.type},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
+                        // #endregion
+                        
+                        setThumbnails(prev => {
+                          const newMap = new Map(prev);
+                          newMap.set(fileId, thumbnailUrlObj);
+                          return newMap;
+                        });
+                        
+                        return; // Success - thumbnail loaded!
+                      }
+                    } else {
+                      // Not encrypted - use directly
+                      const thumbnailUrlObj = URL.createObjectURL(blob);
+                      setThumbnails(prev => {
+                        const newMap = new Map(prev);
+                        newMap.set(fileId, thumbnailUrlObj);
+                        return newMap;
+                      });
+                      return;
+                    }
                   } catch (decryptErr) {
                     // #region agent log
-                    fetch('http://127.0.0.1:7242/ingest/e9725a07-b703-47ab-ba6c-a54c252a4988',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'FullScreenFeed.tsx:662',message:'Failed to decrypt thumbnail',data:{fileId,error:decryptErr instanceof Error?decryptErr.message:String(decryptErr)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
+                    fetch('http://127.0.0.1:7242/ingest/e9725a07-b703-47ab-ba6c-a54c252a4988',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'FullScreenFeed.tsx:695',message:'Failed to decrypt thumbnail',data:{fileId,error:decryptErr instanceof Error?decryptErr.message:String(decryptErr)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
                     // #endregion
                     console.error(`[FullScreenFeed] Failed to decrypt thumbnail with publicToken:`, decryptErr);
                     return;
                   }
                 } else {
                   // #region agent log
-                  fetch('http://127.0.0.1:7242/ingest/e9725a07-b703-47ab-ba6c-a54c252a4988',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'FullScreenFeed.tsx:666',message:'Thumbnail file has no publicToken',data:{fileId,fileName,indexedFileKeys:Object.keys(indexedFile),fileKeys:Object.keys(file)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
+                  fetch('http://127.0.0.1:7242/ingest/e9725a07-b703-47ab-ba6c-a54c252a4988',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'FullScreenFeed.tsx:700',message:'Thumbnail file has no publicToken',data:{fileId,fileName,indexedFileKeys:Object.keys(indexedFile),fileKeys:Object.keys(file)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
                   // #endregion
                   console.warn(`[FullScreenFeed] Thumbnail file ${fileId} has no publicToken - cannot decrypt`);
                   return;
