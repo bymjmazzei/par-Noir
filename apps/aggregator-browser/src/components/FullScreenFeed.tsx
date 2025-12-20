@@ -595,6 +595,9 @@ export function FullScreenFeed({
           (file.fileType === 'other' && hasImageExtension) ||
           hasImageExtension ||
           hasImageMimeType;
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/e9725a07-b703-47ab-ba6c-a54c252a4988',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'FullScreenFeed.tsx:597',message:'Image detection check',data:{fileId,fileName:fileNameForImageCheck,fileType:file.fileType,hasImageExtension,hasImageMimeType,isImageObject,isImage,hasThumbnail:thumbnails.has(fileId)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
+        // #endregion
 
         // Only load video if not provided externally or if external map doesn't have this file
         if (isVideo && file.publicToken && !videoBlobs.has(fileId)) {
