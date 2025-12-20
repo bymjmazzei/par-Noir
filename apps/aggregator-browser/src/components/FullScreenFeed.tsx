@@ -560,6 +560,7 @@ export function FullScreenFeed({
   // Thoughts now render as images (thumbnails) - no special loading needed!
   // Load video blobs and thumbnails for visible files (only if not provided externally)
   useEffect(() => {
+    console.log(`[FullScreenFeed] loadMedia useEffect triggered`, {filesLength: files.length, currentIndex, thumbnailsSize: thumbnails.size});
     const loadMedia = async () => {
       // Load current file and adjacent files
       const indicesToLoad = [
@@ -567,6 +568,7 @@ export function FullScreenFeed({
         currentIndex,
         currentIndex + 1
       ].filter(idx => idx >= 0 && idx < files.length);
+      console.log(`[FullScreenFeed] loadMedia running`, {indicesToLoad, filesLength: files.length});
 
       // Parallelize loading for better performance
       await Promise.all(indicesToLoad.map(async (idx) => {
