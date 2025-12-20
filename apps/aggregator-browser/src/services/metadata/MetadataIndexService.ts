@@ -85,10 +85,6 @@ export class MetadataIndexService {
           hasPublicToken: !!result.files[0].metadata?.publicToken
         } : null
       });
-      
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/e9725a07-b703-47ab-ba6c-a54c252a4988',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'MetadataIndexService.ts:89',message:'Filtering API result files',data:{inputFilesCount:result.files.length,sampleFiles:result.files.slice(0,3).map((e:any)=>({fileId:e.fileId,fileType:e.metadata?.fileType,isPublic:e.metadata?.isPublic,hasPublicToken:!!e.metadata?.publicToken}))},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
-      // #endregion
       let files: IndexedFile[] = result.files
         .filter((entry: any) => {
           const metadata = entry.metadata || {};
@@ -97,9 +93,6 @@ export class MetadataIndexService {
           
           // Include if: isPublic is true/undefined/null OR has publicToken
           const shouldInclude = isPublic !== false || hasPublicToken;
-          // #region agent log
-          if (!shouldInclude) fetch('http://127.0.0.1:7242/ingest/e9725a07-b703-47ab-ba6c-a54c252a4988',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'MetadataIndexService.ts:96',message:'File excluded from public feed',data:{fileId:entry.fileId,isPublic,hasPublicToken,fileType:metadata.fileType},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
-          // #endregion
           
           // Debug logging for thoughts (only in development)
           if (process.env.NODE_ENV === 'development') {
@@ -122,9 +115,6 @@ export class MetadataIndexService {
           
           return shouldInclude;
         });
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/e9725a07-b703-47ab-ba6c-a54c252a4988',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'MetadataIndexService.ts:118',message:'After public filter',data:{filteredCount:files.length,excludedCount:result.files.length-files.length},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
-      // #endregion
       files = files.map((entry: any) => {
           // Normalize pnIdentifier - remove "pn-" prefix if present
           const pnId = entry.pnIdentifier;
@@ -197,10 +187,6 @@ export class MetadataIndexService {
           };
         });
       
-      // CRITICAL DEBUG: Log files after transformation
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/e9725a07-b703-47ab-ba6c-a54c252a4988',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'MetadataIndexService.ts:201',message:'Files after transformation',data:{count:files.length,fileIds:files.slice(0,5).map((f:any)=>f.metadata?.fileId),fileTypes:files.slice(0,5).map((f:any)=>f.metadata?.fileType)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
-      // #endregion
       console.log('🔍 [MetadataIndexService] Files after transformation:', {
         count: files.length,
         fileIds: files.slice(0, 5).map((f: any) => f.metadata?.fileId),
@@ -277,9 +263,6 @@ export class MetadataIndexService {
       }
 
       // SCALABILITY: Return pagination info if pagination params were provided
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/e9725a07-b703-47ab-ba6c-a54c252a4988',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'MetadataIndexService.ts:277',message:'Returning files from discoverFiles',data:{filesCount:files.length,total:result.total,hasMore:result.hasMore,hasPagination:filters?.limit!==undefined||filters?.offset!==undefined,sampleFiles:files.slice(0,3).map(f=>({fileId:f.metadata?.fileId,fileType:f.metadata?.fileType}))},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
-      // #endregion
       if (filters?.limit !== undefined || filters?.offset !== undefined) {
         return {
           files,

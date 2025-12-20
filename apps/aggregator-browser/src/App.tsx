@@ -742,20 +742,7 @@ function App() {
     if (activeFeedId === 'public') {
       // Public feed: ALWAYS filter out NSFW content unless user has it enabled
       // This ensures NSFW content never appears in public feed unless explicitly enabled
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/e9725a07-b703-47ab-ba6c-a54c252a4988',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.tsx:742',message:'Filtering public feed',data:{beforeCount:indexedFiles.length,showNSFW,hasAgeZKP,isOver18,isUnlocked:userState.isUnlocked},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
-      // #endregion
       const filtered = indexedFiles.filter(shouldShowFile);
-      
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/e9725a07-b703-47ab-ba6c-a54c252a4988',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.tsx:745',message:'Public feed filtered result',data:{afterCount:filtered.length,excludedCount:indexedFiles.length-filtered.length,sampleFiles:filtered.slice(0,3).map(f=>({fileId:f.metadata?.fileId,fileType:f.metadata?.fileType,isNSFW:isNSFWContent(f.metadata)}))},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
-      // #endregion
-      // CRITICAL DEBUG: Log public feed filtered
-      console.log('🔍 [App] Public feed filtered:', {
-        beforeCount: indexedFiles.length,
-        afterCount: filtered.length,
-        fileIds: filtered.slice(0, 5).map((f: any) => f.metadata?.fileId)
-      });
       
       // Helper function to detect images - check fileType, name, title, mimeType, encodingFormat, and @type
       const isImageFile = (f: IndexedFile): boolean => {
@@ -2705,9 +2692,6 @@ function App() {
     // Check if it's a thought first - if so, it's not media
     const thoughtCheck = isThought(file);
     if (thoughtCheck) {
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/e9725a07-b703-47ab-ba6c-a54c252a4988',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.tsx:2707',message:'File excluded from isMedia (is thought)',data:{fileId:file.metadata?.fileId,fileType:file.metadata?.fileType,name:file.metadata?.name},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
-      // #endregion
       return false; // Thoughts are not media
     }
     
@@ -2724,9 +2708,6 @@ function App() {
                    !!(fileName.match(/\.(mp4|mov|avi|webm|mkv|flv|wmv)$/i));
     
     const result = isImage || isVideo;
-    // #region agent log
-    if (!result) fetch('http://127.0.0.1:7242/ingest/e9725a07-b703-47ab-ba6c-a54c252a4988',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.tsx:2721',message:'File not detected as media',data:{fileId:file.metadata?.fileId,fileType:file.metadata?.fileType,normalizedFileType,fileName,isImage,isVideo},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
-    // #endregion
     
     // Debug logging for files that should be media but aren't detected
     if (!result && (normalizedFileType === 'image' || normalizedFileType === 'video' || !!fileName.match(/\.(jpg|jpeg|png|gif|webp|svg|bmp|ico|mp4|mov|avi|webm)$/i))) {

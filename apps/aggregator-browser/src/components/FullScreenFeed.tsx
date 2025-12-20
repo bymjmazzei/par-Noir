@@ -73,10 +73,9 @@ export function FullScreenFeed({
   thumbnails: externalThumbnails,
   videoBlobs: externalVideoBlobs
 }: FullScreenFeedProps) {
-  // CACHE BUSTER: If you see this log, the new code is running! Version: 2024-12-19-v3
-  console.log('%c[FullScreenFeed] NEW CODE LOADED - Version 2024-12-19-v3', 'color: red; font-size: 20px; font-weight: bold;');
-  console.error('[FullScreenFeed] VERSION CHECK - If you see this, new code is loaded!');
-  (window as any).__fullScreenFeedVersion = '2024-12-19-v3';
+  // CACHE BUSTER: If you see this log, the new code is running! Version: 2024-12-19-v4
+  console.log('%c[FullScreenFeed] NEW CODE LOADED - Version 2024-12-19-v4', 'color: red; font-size: 20px; font-weight: bold;');
+  (window as any).__fullScreenFeedVersion = '2024-12-19-v4';
   
   // Debug function to test thumbnail loading for a specific file ID
   (window as any).__testThumbnailLoad = async (fileId: string) => {
@@ -557,438 +556,145 @@ export function FullScreenFeed({
     };
   }, [visibleFileId, getPopularComments]);
 
-  // Thoughts now render as images (thumbnails) - no special loading needed!
-  // Load video blobs and thumbnails for visible files (only if not provided externally)
+  // Load thumbnails for all thumbnail files in the feed
+  // Browser is stateless - public files use publicToken only (no session fallback)
   useEffect(() => {
-    // FORCE LOG - this should ALWAYS appear if useEffect runs
-    console.error(`[FullScreenFeed] loadMedia useEffect triggered`, {
-      filesLength: files.length, 
-      currentIndex, 
-      thumbnailsSize: thumbnails.size, 
-      externalThumbnailsSize: externalThumbnails?.size, 
-      externalVideoBlobsSize: externalVideoBlobs?.size,
-      filesArray: files.map(f => f.metadata?.fileId)
-    });
-    const loadMedia = async () => {
-      // Load current file and adjacent files
-      const indicesToLoad = [
-        currentIndex - 1,
-        currentIndex,
-        currentIndex + 1
-      ].filter(idx => idx >= 0 && idx < files.length);
-      console.error(`[FullScreenFeed] loadMedia running`, {indicesToLoad, filesLength: files.length, files: files.map(f => ({fileId: f.metadata?.fileId, name: f.metadata?.name}))});
+    const loadThumbnails = async () => {
+      // Process ALL files in the feed to find thumbnail files
+      const thumbnailFiles = files.filter((indexedFile) => {
+        const fileName = (indexedFile.metadata?.name || indexedFile.metadata?.title || '').toLowerCase();
+        return fileName.startsWith('thumb_');
+      });
 
-      // Parallelize loading for better performance
-      await Promise.all(indicesToLoad.map(async (idx) => {
-        const indexedFile = files[idx];
+      // Load each thumbnail file
+      await Promise.all(thumbnailFiles.map(async (indexedFile) => {
         const file = indexedFile.metadata;
         const fileId = file.fileId;
+        
+        // Skip if already loaded or provided externally
+        if (thumbnails.has(fileId)) return;
+        if (externalThumbnails && externalThumbnails.has(fileId)) return;
 
-        // Thoughts now render as images (thumbnails) - no special detection needed!
-        // Just detect images and videos
-        
-        // Detect videos
-        const isVideo = file.fileType === 'video' || 
-          !!(file.name || file.title || '').match(/\.(mp4|mov|avi|webm|mkv|flv|wmv)$/i);
-        
-        // Detect images (includes thought thumbnails which are just PNG images)
-        const fileNameForImageCheck = file.name || file.title || '';
-        const hasImageExtension = !!(fileNameForImageCheck.match(/\.(jpg|jpeg|png|gif|webp|svg|bmp|ico)$/i));
-        const mimeType = (file as any).mimeType || indexedFile.metadata?.mimeType || file.encodingFormat || indexedFile.metadata?.encodingFormat || '';
-        const hasImageMimeType = mimeType.startsWith('image/');
-        const atType = file['@type'] || indexedFile.metadata?.['@type'];
-        const isImageObject = Array.isArray(atType) 
-          ? atType.some(t => String(t).toLowerCase().includes('image'))
-          : String(atType || '').toLowerCase().includes('image');
-        const isImage = file.fileType === 'image' || 
-          isImageObject ||
-          (file.fileType === 'other' && hasImageExtension) ||
-          hasImageExtension ||
-          hasImageMimeType;
-        // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/e9725a07-b703-47ab-ba6c-a54c252a4988',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'FullScreenFeed.tsx:597',message:'Image detection check',data:{fileId,fileName:fileNameForImageCheck,fileType:file.fileType,hasImageExtension,hasImageMimeType,isImageObject,isImage,hasThumbnail:thumbnails.has(fileId)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
-        // #endregion
-
-        console.error(`[FullScreenFeed] Processing file ${fileId}:`, {isImage, isVideo, fileType: file.fileType, fileName: file.name, hasPublicToken: !!file.publicToken, alreadyHasThumbnail: thumbnails.has(fileId)});
-        
-        // Only load video if not provided externally or if external map doesn't have this file
-        if (isVideo && file.publicToken && !videoBlobs.has(fileId)) {
-          // Check if external videoBlobs has this file
-          const hasExternalVideo = externalVideoBlobs && externalVideoBlobs.has(fileId);
-          if (!hasExternalVideo) {
-            try {
-              let token: ShareToken;
-              try {
-                token = typeof file.publicToken === 'string' ? JSON.parse(file.publicToken) : file.publicToken;
-              } catch (e) {
-                return; // Skip this file if token parsing fails
-              }
-              const decryptedBlob = await decryptWithToken(token);
-              const videoUrl = URL.createObjectURL(decryptedBlob);
-              setVideoBlobs(prev => {
-                const newMap = new Map(prev);
-                newMap.set(fileId, videoUrl);
-                return newMap;
-              });
-            } catch (err) {
-              console.warn('Failed to load video:', err);
-            }
-          }
+        // Get publicToken (REQUIRED - no fallback)
+        const publicToken = indexedFile.publicToken || file.publicToken;
+        if (!publicToken) {
+          console.warn(`[FullScreenFeed] Thumbnail ${fileId} has no publicToken - cannot decrypt`);
+          return;
         }
 
-                // Only load image if not provided externally or if external map doesn't have this file
-                if (isImage && !thumbnails.has(fileId)) {
-          // Check if external thumbnails has this file
-          const hasExternalThumbnail = externalThumbnails && externalThumbnails.has(fileId);
-          if (!hasExternalThumbnail) {
-            try {
-              // CRITICAL: Public index contains thumbnail files (files starting with "thumb_")
-              // If this file IS a thumbnail (name starts with "thumb_"), load it directly
-              // Otherwise, check for thumbnailFileId (for main files that reference thumbnails)
-              const fileName = (file.name || file.title || '').toLowerCase();
-              const isThumbnailFile = fileName.startsWith('thumb_');
-              
-                // PRIORITY 1: If this IS a thumbnail file, load it using the same pattern as HorizontalThumbnailFeed
-              if (isThumbnailFile) {
-                console.error(`[FullScreenFeed] Detected thumbnail file ${fileId}, loading...`);
-                const publicToken = indexedFile.publicToken || file.publicToken;
-                const { PNOAuthService } = await import('../services/pnOAuthService');
-                const apiEndpoint = process.env.REACT_APP_API_ENDPOINT || 'https://api.parnoir.com';
-                
-                // Get accountId (needed for API call)
-                const getAccountId = async (): Promise<string | null> => {
-                  try {
-                    const session = PNOAuthService.loadSession();
-                    if (session?.did || session?.pnIdentifier) {
-                      const userId = session.pnIdentifier || session.did;
-                      const accessToken = await PNOAuthService.getValidAccessToken();
-                      if (accessToken) {
-                        const accountsResponse = await fetch(`${apiEndpoint}/api/storage/accounts/${userId}`, {
-                          headers: { 'Authorization': `Bearer ${accessToken}` }
-                        });
-                        if (accountsResponse.ok) {
-                          const accountsData = await accountsResponse.json();
-                          const accounts = accountsData.accounts || [];
-                          if (accounts.length > 0) {
-                            return accounts[0].accountId;
-                          }
-                        }
-                      }
-                    }
-                  } catch (err) {
-                    console.warn(`[FullScreenFeed] Failed to fetch accountId:`, err);
-                  }
-                  return null;
-                };
-                
-                const accountId = await getAccountId();
-                
-                // Build URL (matching HorizontalThumbnailFeed pattern)
-                let thumbnailUrl = `${apiEndpoint}/api/drive/files/${fileId}?thumbnail=true`;
-                if (accountId && accountId.includes('::')) {
-                  thumbnailUrl += `&accountId=${encodeURIComponent(accountId)}`;
-                }
-                
-                // Fetch with auth token (same as HorizontalThumbnailFeed)
-                let accessToken = await PNOAuthService.getValidAccessToken();
-                let response = await fetch(thumbnailUrl, {
+        try {
+          const { PNOAuthService } = await import('../services/pnOAuthService');
+          const apiEndpoint = process.env.REACT_APP_API_ENDPOINT || 'https://api.parnoir.com';
+          
+          // Get accountId for API call (may be needed for routing)
+          let accountId: string | null = null;
+          try {
+            const session = PNOAuthService.loadSession();
+            if (session?.did || session?.pnIdentifier) {
+              const userId = session.pnIdentifier || session.did;
+              const accessToken = await PNOAuthService.getValidAccessToken();
+              if (accessToken) {
+                const accountsResponse = await fetch(`${apiEndpoint}/api/storage/accounts/${userId}`, {
                   headers: { 'Authorization': `Bearer ${accessToken}` }
                 });
-                
-                // Retry with refreshed token on 401
-                if (response.status === 401) {
-                  const refreshedToken = await PNOAuthService.getValidAccessToken(true);
-                  if (refreshedToken) {
-                    response = await fetch(thumbnailUrl, {
-                      headers: { 'Authorization': `Bearer ${refreshedToken}` }
-                    });
-                  }
-                }
-                
-                if (!response.ok || response.status !== 200) {
-                  console.warn(`[FullScreenFeed] Thumbnail ${fileId} failed: ${response.status}`);
-                  return;
-                }
-                
-                const contentType = response.headers.get('content-type') || '';
-                const blob = await response.blob();
-                
-                // Handle encrypted files (matching HorizontalThumbnailFeed pattern)
-                if (contentType.includes('application/json')) {
-                  try {
-                    const text = await blob.text();
-                    const parsed = JSON.parse(text);
-                    
-                    if (parsed.encrypted && parsed.iv && parsed.salt &&
-                        typeof parsed.encrypted === 'string' &&
-                        typeof parsed.iv === 'string' &&
-                        typeof parsed.salt === 'string') {
-                      
-                      // PRIORITY 1: If we have a publicToken, use it for decryption
-                      if (publicToken) {
-                        try {
-                          const { decryptWithToken } = await import('../utils/tokenDecryption');
-                          let token: ShareToken;
-                          try {
-                            token = typeof publicToken === 'string' ? JSON.parse(publicToken) : publicToken;
-                          } catch (e) {
-                            console.warn(`[FullScreenFeed] Failed to parse token for thumbnail ${fileId}:`, e);
-                            return;
-                          }
-                          
-                          // Decrypt using token
-                          const decryptedBlob = await decryptWithToken(token);
-                          const thumbnailUrlObj = URL.createObjectURL(decryptedBlob);
-                          
-                          setThumbnails(prev => {
-                            const newMap = new Map(prev);
-                            newMap.set(fileId, thumbnailUrlObj);
-                            return newMap;
-                          });
-                          
-                          return; // Success!
-                        } catch (tokenError) {
-                          console.warn(`[FullScreenFeed] Token decryption failed for thumbnail ${fileId}, falling back to session:`, tokenError);
-                          // Fall through to session-based decryption
-                        }
-                      }
-                      
-                      // PRIORITY 2: Fall back to session-based decryption
-                      const { EncryptionManager } = await import('../utils/encryptionManager');
-                      const session = PNOAuthService.loadSession();
-                      if (!session?.did) {
-                        console.warn(`[FullScreenFeed] Cannot decrypt - no session and no token`);
-                        return;
-                      }
-                      
-                      const pnId = session.did;
-                      let publicKey = session?.publicKey;
-                      if (!publicKey && session.did.startsWith('did:key:')) {
-                        publicKey = session.did.substring(8);
-                      }
-                      if (!publicKey) {
-                        console.warn(`[FullScreenFeed] Cannot decrypt - no public key`);
-                        return;
-                      }
-                      
-                      const encryptionManager = new EncryptionManager();
-                      const decryptedData = await encryptionManager.decrypt(
-                        parsed.encrypted,
-                        parsed.iv,
-                        parsed.salt,
-                        pnId,
-                        publicKey
-                      );
-                      
-                      const decryptedBlob = new Blob([decryptedData as BlobPart], {
-                        type: parsed.metadata?.originalMimeType || 'image/jpeg'
-                      });
-                      const thumbnailUrlObj = URL.createObjectURL(decryptedBlob);
-                      
-                      setThumbnails(prev => {
-                        const newMap = new Map(prev);
-                        newMap.set(fileId, thumbnailUrlObj);
-                        return newMap;
-                      });
-                      
-                      return; // Success!
-                    }
-                  } catch (parseError) {
-                    console.error(`[FullScreenFeed] Failed to parse encrypted thumbnail ${fileId}:`, parseError);
-                    return;
-                  }
-                } else {
-                  // Not encrypted - use directly
-                  const thumbnailUrlObj = URL.createObjectURL(blob);
-                  setThumbnails(prev => {
-                    const newMap = new Map(prev);
-                    newMap.set(fileId, thumbnailUrlObj);
-                    return newMap;
-                  });
-                  return;
-                }
-              }
-              
-              // PRIORITY 2: Check for thumbnailFileId in metadata (for main files that reference thumbnails)
-              const thumbnailFileId = file.thumbnailFileId;
-              if (thumbnailFileId) {
-                const { PNOAuthService } = await import('../services/pnOAuthService');
-                const apiEndpoint = process.env.REACT_APP_API_ENDPOINT || 'https://api.parnoir.com';
-                const accessToken = await PNOAuthService.getValidAccessToken();
-                
-                if (accessToken) {
-                  // Get accountId with caching
-                  const accountId = await getAccountId(indexedFile, accessToken);
-                  
-                  // Load thumbnail file
-                  let thumbnailUrl = `${apiEndpoint}/api/drive/files/${thumbnailFileId}?thumbnail=true`;
-                  if (accountId && accountId.includes('::')) {
-                    thumbnailUrl += `&accountId=${encodeURIComponent(accountId)}`;
-                  }
-                  
-                  let response = await fetch(thumbnailUrl, {
-                    headers: { 'Authorization': `Bearer ${accessToken}` }
-                  });
-                  
-                  if (response.status === 401) {
-                    const refreshedToken = await PNOAuthService.getValidAccessToken(true);
-                    if (refreshedToken) {
-                      response = await fetch(thumbnailUrl, {
-                        headers: { 'Authorization': `Bearer ${refreshedToken}` }
-                      });
-                    }
-                  }
-                  
-                  if (response.ok) {
-                    const contentType = response.headers.get('content-type') || '';
-                    const blob = await response.blob();
-                    
-                    // Decrypt thumbnail if encrypted
-                    let thumbnailBlob: Blob;
-                    if (contentType.includes('application/json') || contentType.includes('application/octet-stream')) {
-                      const { EncryptionManager } = await import('../utils/encryptionManager');
-                      const session = PNOAuthService.loadSession();
-                      if (session?.did) {
-                        const pnId = session.did;
-                        let publicKey = session?.publicKey;
-                        if (!publicKey && session.did.startsWith('did:key:')) {
-                          publicKey = session.did.substring(8);
-                        }
-                        if (publicKey) {
-                          const encryptedText = await blob.text();
-                          const encryptedPackage = JSON.parse(encryptedText);
-                          const encryptionManager = new EncryptionManager();
-                          const decryptedData = await encryptionManager.decrypt(
-                            encryptedPackage.encrypted,
-                            encryptedPackage.iv,
-                            encryptedPackage.salt,
-                            pnId,
-                            publicKey
-                          );
-                          // Convert Uint8Array to ArrayBuffer for Blob creation
-                          const arrayBuffer = decryptedData.buffer.slice(decryptedData.byteOffset, decryptedData.byteOffset + decryptedData.byteLength) as ArrayBuffer;
-                          thumbnailBlob = new Blob([arrayBuffer], {
-                            type: encryptedPackage.metadata.originalMimeType || 'image/jpeg'
-                          });
-                        } else {
-                          return; // Skip if can't decrypt
-                        }
-                      } else {
-                        return; // Skip if no session
-                      }
-                    } else {
-                      thumbnailBlob = blob;
-                    }
-                    
-                    const thumbnailUrlObj = URL.createObjectURL(thumbnailBlob);
-                    setThumbnails(prev => {
-                      const newMap = new Map(prev);
-                      newMap.set(fileId, thumbnailUrlObj);
-                      return newMap;
-                    });
-                    
-                    return; // Skip to next file, thumbnail is loaded
+                if (accountsResponse.ok) {
+                  const accountsData = await accountsResponse.json();
+                  const accounts = accountsData.accounts || [];
+                  if (accounts.length > 0) {
+                    accountId = accounts[0].accountId;
                   }
                 }
               }
-              
-              // PRIORITY 2: Try API endpoint with ?thumbnail=true
-              // BUT FIRST: Check if thumbnail was just loaded by PRIORITY 1 (race condition fix)
-              if (!thumbnails.has(fileId)) {
-                const { PNOAuthService } = await import('../services/pnOAuthService');
-                const apiEndpoint = process.env.REACT_APP_API_ENDPOINT || 'https://api.parnoir.com';
-                const accessToken = await PNOAuthService.getValidAccessToken();
-                
-                if (accessToken) {
-                  // Get accountId with caching
-                  const accountId = await getAccountId(indexedFile, accessToken);
-                  
-                  // Try thumbnail endpoint
-                  let thumbnailUrl = `${apiEndpoint}/api/drive/files/${fileId}?thumbnail=true`;
-                  if (accountId && accountId.includes('::')) {
-                    thumbnailUrl += `&accountId=${encodeURIComponent(accountId)}`;
-                  }
-                  
-                  let response = await fetch(thumbnailUrl, {
-                    headers: { 'Authorization': `Bearer ${accessToken}` }
-                  });
-                  
-                  if (response.status === 401) {
-                    const refreshedToken = await PNOAuthService.getValidAccessToken(true);
-                    if (refreshedToken) {
-                      response = await fetch(thumbnailUrl, {
-                        headers: { 'Authorization': `Bearer ${refreshedToken}` }
-                      });
-                    }
-                  }
-                  
-                  if (response.ok) {
-                    const contentType = response.headers.get('content-type') || '';
-                    const blob = await response.blob();
-                    
-                    // Decrypt thumbnail if encrypted
-                    let thumbnailBlob: Blob | null = null;
-                    if (contentType.includes('application/json') || contentType.includes('application/octet-stream')) {
-                      const { EncryptionManager } = await import('../utils/encryptionManager');
-                      const session = PNOAuthService.loadSession();
-                      if (session?.did) {
-                        const pnId = session.did;
-                        let publicKey = session?.publicKey;
-                        if (!publicKey && session.did.startsWith('did:key:')) {
-                          publicKey = session.did.substring(8);
-                        }
-                        if (publicKey) {
-                          try {
-                            const encryptedText = await blob.text();
-                            const encryptedPackage = JSON.parse(encryptedText);
-                            const encryptionManager = new EncryptionManager();
-                            const decryptedData = await encryptionManager.decrypt(
-                              encryptedPackage.encrypted,
-                              encryptedPackage.iv,
-                              encryptedPackage.salt,
-                              pnId,
-                              publicKey
-                            );
-                            const arrayBuffer = decryptedData.buffer.slice(decryptedData.byteOffset, decryptedData.byteOffset + decryptedData.byteLength) as ArrayBuffer;
-                            thumbnailBlob = new Blob([arrayBuffer], {
-                              type: encryptedPackage.metadata.originalMimeType || 'image/jpeg'
-                            });
-                          } catch (decryptErr) {
-                            console.warn(`[FullScreenFeed] Failed to decrypt thumbnail for ${fileId}:`, decryptErr);
-                            thumbnailBlob = null;
-                          }
-                        }
-                      }
-                    } else {
-                      thumbnailBlob = blob;
-                    }
-                    
-                    if (thumbnailBlob) {
-                      const thumbnailUrlObj = URL.createObjectURL(thumbnailBlob);
-                      setThumbnails(prev => {
-                        const newMap = new Map(prev);
-                        newMap.set(fileId, thumbnailUrlObj);
-                        return newMap;
-                      });
-                      return; // Success - thumbnail loaded via API
-                    }
-                  }
-                }
-              }
-              
-              // DO NOT load full file as fallback - if thumbnail loading fails, show placeholder
-              // This prevents loading both thumbnail and full file
-            } catch (err) {
-              console.error(`[FullScreenFeed] Failed to load thumbnail for ${fileId}:`, err);
+            }
+          } catch (err) {
+            // Continue without accountId - may still work
+          }
+          
+          // Build URL
+          let thumbnailUrl = `${apiEndpoint}/api/drive/files/${fileId}?thumbnail=true`;
+          if (accountId && accountId.includes('::')) {
+            thumbnailUrl += `&accountId=${encodeURIComponent(accountId)}`;
+          }
+          
+          // Fetch file (may need auth for API access, but file content is public)
+          let accessToken = await PNOAuthService.getValidAccessToken();
+          let response = await fetch(thumbnailUrl, {
+            headers: { 'Authorization': `Bearer ${accessToken}` }
+          });
+          
+          // Retry with refreshed token on 401
+          if (response.status === 401) {
+            const refreshedToken = await PNOAuthService.getValidAccessToken(true);
+            if (refreshedToken) {
+              response = await fetch(thumbnailUrl, {
+                headers: { 'Authorization': `Bearer ${refreshedToken}` }
+              });
             }
           }
+          
+          if (!response.ok || response.status !== 200) {
+            console.warn(`[FullScreenFeed] Thumbnail ${fileId} failed: ${response.status}`);
+            return;
+          }
+          
+          const contentType = response.headers.get('content-type') || '';
+          const blob = await response.blob();
+          
+          // Handle encrypted files
+          if (contentType.includes('application/json')) {
+            try {
+              const text = await blob.text();
+              const parsed = JSON.parse(text);
+              
+              if (parsed.encrypted && parsed.iv && parsed.salt &&
+                  typeof parsed.encrypted === 'string' &&
+                  typeof parsed.iv === 'string' &&
+                  typeof parsed.salt === 'string') {
+                
+                // Parse publicToken
+                let token: ShareToken;
+                try {
+                  token = typeof publicToken === 'string' ? JSON.parse(publicToken) : publicToken;
+                } catch (e) {
+                  console.warn(`[FullScreenFeed] Failed to parse token for thumbnail ${fileId}:`, e);
+                  return;
+                }
+                
+                // Decrypt using token (ONLY method - no session fallback)
+                const { decryptWithToken } = await import('../utils/tokenDecryption');
+                const decryptedBlob = await decryptWithToken(token);
+                const thumbnailUrlObj = URL.createObjectURL(decryptedBlob);
+                
+                setThumbnails(prev => {
+                  const newMap = new Map(prev);
+                  newMap.set(fileId, thumbnailUrlObj);
+                  return newMap;
+                });
+                
+                return; // Success!
+              }
+            } catch (parseError) {
+              console.error(`[FullScreenFeed] Failed to parse encrypted thumbnail ${fileId}:`, parseError);
+              return;
+            }
+          } else {
+            // Not encrypted - use directly
+            const thumbnailUrlObj = URL.createObjectURL(blob);
+            setThumbnails(prev => {
+              const newMap = new Map(prev);
+              newMap.set(fileId, thumbnailUrlObj);
+              return newMap;
+            });
+            return;
+          }
+        } catch (err) {
+          console.error(`[FullScreenFeed] Failed to load thumbnail for ${fileId}:`, err);
         }
-
       }));
     };
 
-    loadMedia();
-  }, [currentIndex, files, externalThumbnails, externalVideoBlobs]); // Removed videoBlobs and thumbnails from deps to prevent loops
+    loadThumbnails();
+  }, [files, externalThumbnails, thumbnails]);
 
   // Retry loading thumbnails when authentication becomes available
   useEffect(() => {

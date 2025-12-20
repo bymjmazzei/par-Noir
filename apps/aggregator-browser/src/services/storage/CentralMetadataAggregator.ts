@@ -138,10 +138,7 @@ export class CentralMetadataAggregator {
       if (response.ok) {
         const data: CentralIndexResponse & { total?: number; hasMore?: boolean } = await response.json();
         
-        // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/e9725a07-b703-47ab-ba6c-a54c252a4988',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'CentralMetadataAggregator.ts:139',message:'API response received',data:{filesCount:data.files?.length||0,total:data.totalFiles||data.total||0,hasMore:data.hasMore||false,firstFile:data.files?.[0]?{fileId:data.files[0].fileId||data.files[0].metadata?.fileId,fileType:data.files[0].metadata?.fileType,name:data.files[0].metadata?.name||data.files[0].metadata?.title,isPublic:data.files[0].metadata?.isPublic}:null,requestUrl:`${this.API_ENDPOINT}${this.CENTRAL_INDEX_PATH}?${params.toString()}`},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
-        // #endregion
-        // CRITICAL DEBUG: Log API response
+        // Log API response
         console.log('🔍 [CentralMetadataAggregator] API Response:', {
           filesCount: data.files?.length || 0,
           total: data.totalFiles || data.total || 0,
