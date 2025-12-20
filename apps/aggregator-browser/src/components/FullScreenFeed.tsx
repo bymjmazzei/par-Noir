@@ -667,6 +667,193 @@ export function FullScreenFeed({
     triggeredImmediateLoadRef.current.delete(fileId);
   }, [userState.isUnlocked, currentIndex, files, thumbnails, externalThumbnails]);
 
+  // Helper function to immediately load thumbnails for a collection
+  const loadCollectionThumbnailsImmediate = async (fileId: string, collectionData: any) => {
+    const collectionFileIds = collectionData.collectionFileIds || [];
+    const thumbnailTokens = collectionData.thumbnailTokens || {}; // Get tokens from collection data if available
+    
+    // DEBUG: Log token details
+    console.log(`[FullScreenFeed] Collection ${fileId} token analysis:`, {
+      collectionFileIdsCount: collectionFileIds.length,
+      thumbnailTokensKeys: Object.keys(thumbnailTokens),
+      thumbnailTokensCount: Object.keys(thumbnailTokens).length,
+      firstCollectionFileId: collectionFileIds[0],
+      firstTokenKey: Object.keys(thumbnailTokens)[0],
+      tokensMatch: collectionFileIds.map((id: string) => ({
+        id,
+        hasToken: !!thumbnailTokens[id],
+        tokenPreview: thumbnailTokens[id] ? thumbnailTokens[id].substring(0, 50) + '...' : 'NO TOKEN'
+      }))
+    });
+    
+    const missingThumbnailIds = collectionFileIds.filter(
+      (cfId: string) => 
+        !thumbnails.has(cfId) && 
+        (!externalThumbnails || !externalThumbnails.has(cfId)) &&
+        !loadingCollectionThumbnailsRef.current.has(cfId)
+    );
+    
+    if (missingThumbnailIds.length > 0 && !triggeredImmediateLoadRef.current.has(fileId)) {
+      console.log(`[FullScreenFeed] Triggering immediate thumbnail load for collection ${fileId} (${missingThumbnailIds.length} thumbnails, hasTokens: ${!!collectionData.thumbnailTokens})`);
+      triggeredImmediateLoadRef.current.add(fileId);
+      
+      // Mark as loading
+      missingThumbnailIds.forEach((cfId: string) => {
+        loadingCollectionThumbnailsRef.current.add(cfId);
+        loadingStartTimesRef.current.set(cfId, Date.now());
+      });
+      
+      // Load thumbnails asynchronously
+      (async () => {
+        try {
+          const { decryptWithToken } = await import('../utils/tokenDecryption');
+          
+          // FIRST: Try to use tokens from collection data (fastest - no API call)
+          const thumbnailsWithTokens = missingThumbnailIds.filter((cfId: string) => {
+            const hasToken = !!thumbnailTokens[cfId];
+            if (!hasToken) {
+              console.log(`[FullScreenFeed] Thumbnail ${cfId} has no token in thumbnailTokens object`);
+            }
+            return hasToken;
+          });
+          console.log(`[FullScreenFeed] Token filter result: ${thumbnailsWithTokens.length} thumbnails have tokens out of ${missingThumbnailIds.length} missing`);
+          if (thumbnailsWithTokens.length > 0) {
+            console.log(`[FullScreenFeed] Loading ${thumbnailsWithTokens.length} thumbnails using tokens from collection data (tokens available for: ${thumbnailsWithTokens.length}/${missingThumbnailIds.length})`);
+            
+            // Decrypt thumbnails in parallel but update state as each completes (don't wait for all)
+            // This allows the first thumbnail to appear immediately
+            const decryptPromises = thumbnailsWithTokens.map(async (cfId: string) => {
+              const startTime = Date.now();
+              try {
+                const tokenString = thumbnailTokens[cfId];
+                const token: ShareToken = typeof tokenString === 'string' ? JSON.parse(tokenString) : tokenString;
+                const decryptedBlob = await decryptWithToken(token);
+                const thumbnailUrlObj = URL.createObjectURL(decryptedBlob);
+                const decryptTime = Date.now() - startTime;
+                
+                setThumbnails(prev => {
+                  const newMap = new Map(prev);
+                  newMap.set(cfId, thumbnailUrlObj);
+                  return newMap;
+                });
+                
+                console.log(`[FullScreenFeed] ✓ Decrypted thumbnail ${cfId} in ${decryptTime}ms using token from collection`);
+                clearLoadingState(cfId);
+              } catch (decryptErr) {
+                console.warn(`[FullScreenFeed] Failed to decrypt thumbnail ${cfId} with token from collection:`, decryptErr);
+                clearLoadingState(cfId);
+              }
+            });
+            
+            // Don't await - let them decrypt in parallel and update as they complete
+            Promise.all(decryptPromises).catch(err => {
+              console.error(`[FullScreenFeed] Error in parallel thumbnail decryption:`, err);
+            });
+          } else {
+            console.warn(`[FullScreenFeed] No tokens found in collection data for ${missingThumbnailIds.length} thumbnails - will use metadata fetch fallback`);
+          }
+          
+          // SECOND: Fetch metadata for thumbnails without tokens (fallback)
+          const thumbnailsWithoutTokens = missingThumbnailIds.filter((cfId: string) => !thumbnailTokens[cfId]);
+          if (thumbnailsWithoutTokens.length > 0) {
+            console.log(`[FullScreenFeed] Loading ${thumbnailsWithoutTokens.length} thumbnails via metadata fetch (fallback)`);
+            const { PNOAuthService } = await import('../services/pnOAuthService');
+            const apiEndpoint = process.env.REACT_APP_API_ENDPOINT || 'https://api.parnoir.com';
+            const accessToken = await PNOAuthService.getValidAccessToken().catch(() => null);
+            
+            await Promise.all(thumbnailsWithoutTokens.map(async (cfId: string) => {
+              try {
+                // Fetch metadata
+                const headers: HeadersInit = {};
+                if (accessToken) {
+                  headers['Authorization'] = `Bearer ${accessToken}`;
+                }
+                
+                const metadataResponse = await fetch(`${apiEndpoint}/api/aggregator/metadata-index/${cfId}`, { headers });
+                if (!metadataResponse.ok) {
+                  clearLoadingState(cfId);
+                  return;
+                }
+                
+                const metadataData = await metadataResponse.json();
+                const collectionFileMetadata = metadataData.metadata || metadataData;
+                
+                // If thumbnail file with publicToken, decrypt directly
+                const fileName = (collectionFileMetadata.name || collectionFileMetadata.title || '').toLowerCase();
+                if (fileName.startsWith('thumb_') && collectionFileMetadata.publicToken) {
+                  try {
+                    const token: ShareToken = typeof collectionFileMetadata.publicToken === 'string' 
+                      ? JSON.parse(collectionFileMetadata.publicToken) 
+                      : collectionFileMetadata.publicToken;
+                    
+                    const decryptedBlob = await decryptWithToken(token);
+                    const thumbnailUrlObj = URL.createObjectURL(decryptedBlob);
+                    
+                    setThumbnails(prev => {
+                      const newMap = new Map(prev);
+                      newMap.set(cfId, thumbnailUrlObj);
+                      return newMap;
+                    });
+                    
+                    clearLoadingState(cfId);
+                    return;
+                  } catch (decryptErr) {
+                    console.warn(`[FullScreenFeed] Failed to decrypt thumbnail ${cfId}:`, decryptErr);
+                  }
+                }
+                
+                clearLoadingState(cfId);
+              } catch (err) {
+                console.error(`[FullScreenFeed] Error loading thumbnail ${cfId} via metadata fetch:`, err);
+                clearLoadingState(cfId);
+              }
+            }));
+          }
+        } catch (err) {
+          console.error(`[FullScreenFeed] Error in thumbnail load batch:`, err);
+        } finally {
+          // Log summary after all thumbnails are processed
+          console.log(`[FullScreenFeed] IMMEDIATE LOAD: Completed processing ${missingThumbnailIds.length} thumbnails`);
+          missingThumbnailIds.forEach((cfId: string) => {
+            const loaded = thumbnails.has(cfId) || (externalThumbnails?.has(cfId));
+            console.log(`[FullScreenFeed] IMMEDIATE LOAD: ${cfId} - ${loaded ? 'LOADED' : 'FAILED'}`);
+          });
+        }
+      })();
+    }
+  };
+
+  // Check for collection data from metadata API and load thumbnails immediately
+  useEffect(() => {
+    for (const indexedFile of files) {
+      const file = indexedFile.metadata;
+      const fileId = file.fileId;
+      const fileName = (file.name || file.title || '').toLowerCase();
+      const isCollectionFile = fileName.endsWith('.collection') || file.fileType === 'collection';
+      
+      if (!isCollectionFile) {
+        continue;
+      }
+      
+      // Check if collection data is available from metadata API (not just from cache)
+      const collectionDataFromMetadata = file.collection;
+      if (collectionDataFromMetadata && collectionDataFromMetadata.collectionFileIds && Array.isArray(collectionDataFromMetadata.collectionFileIds)) {
+        // Cache it if not already cached
+        if (!collectionDataCache.has(fileId)) {
+          collectionDataCache.set(fileId, collectionDataFromMetadata);
+          console.log(`[FullScreenFeed] Cached collection data from metadata API for ${fileId}`, {
+            collectionFileIdsCount: collectionDataFromMetadata.collectionFileIds.length,
+            hasThumbnailTokens: !!collectionDataFromMetadata.thumbnailTokens,
+            tokenCount: collectionDataFromMetadata.thumbnailTokens ? Object.keys(collectionDataFromMetadata.thumbnailTokens).length : 0
+          });
+        }
+        
+        // Load thumbnails immediately
+        loadCollectionThumbnailsImmediate(fileId, collectionDataFromMetadata);
+      }
+    }
+  }, [files, thumbnails, externalThumbnails]);
+
   // Decrypt public collection files to get collectionFileIds
   useEffect(() => {
     const decryptCollectionFiles = async () => {
