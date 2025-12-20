@@ -8,6 +8,7 @@ interface CollectionData {
   collectionFileIds: string[];
   title?: string;
   description?: string;
+  thumbnailTokens?: Record<string, string>; // Map of fileId -> publicToken JSON string
 }
 
 export async function createCollection(

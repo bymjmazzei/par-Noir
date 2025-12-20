@@ -731,6 +731,7 @@ export function FullScreenFeed({
             
             // IMMEDIATELY load thumbnails for this collection (don't wait for render)
             const collectionFileIds = collectionData.collectionFileIds;
+            const thumbnailTokens = collectionData.thumbnailTokens || {}; // Get tokens from collection data if available
             const missingThumbnailIds = collectionFileIds.filter(
               (cfId: string) => 
                 !thumbnails.has(cfId) && 
@@ -739,7 +740,7 @@ export function FullScreenFeed({
             );
             
             if (missingThumbnailIds.length > 0 && !triggeredImmediateLoadRef.current.has(fileId)) {
-              console.log(`[FullScreenFeed] Triggering immediate thumbnail load for collection ${fileId} (${missingThumbnailIds.length} thumbnails)`);
+              console.log(`[FullScreenFeed] Triggering immediate thumbnail load for collection ${fileId} (${missingThumbnailIds.length} thumbnails, hasTokens: ${!!collectionData.thumbnailTokens})`);
               triggeredImmediateLoadRef.current.add(fileId);
               
               // Mark as loading
@@ -751,59 +752,89 @@ export function FullScreenFeed({
               // Load thumbnails asynchronously
               (async () => {
                 try {
-                  const { PNOAuthService } = await import('../services/pnOAuthService');
-                  const apiEndpoint = process.env.REACT_APP_API_ENDPOINT || 'https://api.parnoir.com';
-                  const accessToken = await PNOAuthService.getValidAccessToken().catch(() => null);
+                  const { decryptWithToken } = await import('../utils/tokenDecryption');
                   
-                  await Promise.all(missingThumbnailIds.map(async (cfId: string) => {
-                    try {
-                      // Fetch metadata
-                      const headers: HeadersInit = {};
-                      if (accessToken) {
-                        headers['Authorization'] = `Bearer ${accessToken}`;
-                      }
-                      
-                      const metadataResponse = await fetch(`${apiEndpoint}/api/aggregator/metadata-index/${cfId}`, { headers });
-                      if (!metadataResponse.ok) {
+                  // FIRST: Try to use tokens from collection data (fastest - no API call)
+                  const thumbnailsWithTokens = missingThumbnailIds.filter((cfId: string) => thumbnailTokens[cfId]);
+                  if (thumbnailsWithTokens.length > 0) {
+                    console.log(`[FullScreenFeed] Loading ${thumbnailsWithTokens.length} thumbnails using tokens from collection data`);
+                    await Promise.all(thumbnailsWithTokens.map(async (cfId: string) => {
+                      try {
+                        const tokenString = thumbnailTokens[cfId];
+                        const token: ShareToken = typeof tokenString === 'string' ? JSON.parse(tokenString) : tokenString;
+                        const decryptedBlob = await decryptWithToken(token);
+                        const thumbnailUrlObj = URL.createObjectURL(decryptedBlob);
+                        
+                        setThumbnails(prev => {
+                          const newMap = new Map(prev);
+                          newMap.set(cfId, thumbnailUrlObj);
+                          return newMap;
+                        });
+                        
                         clearLoadingState(cfId);
-                        return;
+                      } catch (decryptErr) {
+                        console.warn(`[FullScreenFeed] Failed to decrypt thumbnail ${cfId} with token from collection:`, decryptErr);
+                        clearLoadingState(cfId);
                       }
-                      
-                      const metadataData = await metadataResponse.json();
-                      const collectionFileMetadata = metadataData.metadata || metadataData;
-                      
-                      // If thumbnail file with publicToken, decrypt directly
-                      const fileName = (collectionFileMetadata.name || collectionFileMetadata.title || '').toLowerCase();
-                      if (fileName.startsWith('thumb_') && collectionFileMetadata.publicToken) {
-                        try {
-                          const { decryptWithToken } = await import('../utils/tokenDecryption');
-                          const token: ShareToken = typeof collectionFileMetadata.publicToken === 'string' 
-                            ? JSON.parse(collectionFileMetadata.publicToken) 
-                            : collectionFileMetadata.publicToken;
-                          
-                          const decryptedBlob = await decryptWithToken(token);
-                          const thumbnailUrlObj = URL.createObjectURL(decryptedBlob);
-                          
-                          setThumbnails(prev => {
-                            const newMap = new Map(prev);
-                            newMap.set(cfId, thumbnailUrlObj);
-                            return newMap;
-                          });
-                          
+                    }));
+                  }
+                  
+                  // SECOND: Fetch metadata for thumbnails without tokens (fallback)
+                  const thumbnailsWithoutTokens = missingThumbnailIds.filter((cfId: string) => !thumbnailTokens[cfId]);
+                  if (thumbnailsWithoutTokens.length > 0) {
+                    console.log(`[FullScreenFeed] Loading ${thumbnailsWithoutTokens.length} thumbnails via metadata fetch (fallback)`);
+                    const { PNOAuthService } = await import('../services/pnOAuthService');
+                    const apiEndpoint = process.env.REACT_APP_API_ENDPOINT || 'https://api.parnoir.com';
+                    const accessToken = await PNOAuthService.getValidAccessToken().catch(() => null);
+                    
+                    await Promise.all(thumbnailsWithoutTokens.map(async (cfId: string) => {
+                      try {
+                        // Fetch metadata
+                        const headers: HeadersInit = {};
+                        if (accessToken) {
+                          headers['Authorization'] = `Bearer ${accessToken}`;
+                        }
+                        
+                        const metadataResponse = await fetch(`${apiEndpoint}/api/aggregator/metadata-index/${cfId}`, { headers });
+                        if (!metadataResponse.ok) {
                           clearLoadingState(cfId);
                           return;
-                        } catch (decryptErr) {
-                          console.warn(`[FullScreenFeed] Failed to decrypt thumbnail ${cfId}:`, decryptErr);
                         }
+                        
+                        const metadataData = await metadataResponse.json();
+                        const collectionFileMetadata = metadataData.metadata || metadataData;
+                        
+                        // If thumbnail file with publicToken, decrypt directly
+                        const fileName = (collectionFileMetadata.name || collectionFileMetadata.title || '').toLowerCase();
+                        if (fileName.startsWith('thumb_') && collectionFileMetadata.publicToken) {
+                          try {
+                            const token: ShareToken = typeof collectionFileMetadata.publicToken === 'string' 
+                              ? JSON.parse(collectionFileMetadata.publicToken) 
+                              : collectionFileMetadata.publicToken;
+                            
+                            const decryptedBlob = await decryptWithToken(token);
+                            const thumbnailUrlObj = URL.createObjectURL(decryptedBlob);
+                            
+                            setThumbnails(prev => {
+                              const newMap = new Map(prev);
+                              newMap.set(cfId, thumbnailUrlObj);
+                              return newMap;
+                            });
+                            
+                            clearLoadingState(cfId);
+                            return;
+                          } catch (decryptErr) {
+                            console.warn(`[FullScreenFeed] Failed to decrypt thumbnail ${cfId}:`, decryptErr);
+                          }
+                        }
+                        
+                        clearLoadingState(cfId);
+                      } catch (err) {
+                        console.error(`[FullScreenFeed] Error loading thumbnail ${cfId}:`, err);
+                        clearLoadingState(cfId);
                       }
-                      
-                      // Fallback to other methods if needed (but public thumbnails should use publicToken)
-                      clearLoadingState(cfId);
-                    } catch (err) {
-                      console.error(`[FullScreenFeed] Error loading thumbnail ${cfId}:`, err);
-                      clearLoadingState(cfId);
-                    }
-                  }));
+                    }));
+                  }
                 } catch (err) {
                   console.error(`[FullScreenFeed] Error in thumbnail load batch:`, err);
                 }

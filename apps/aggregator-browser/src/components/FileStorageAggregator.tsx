@@ -2716,7 +2716,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
     publicKey: string,
     encryptionManager: EncryptionManager,
     accessToken: string
-  ): Promise<string[]> => {
+  ): Promise<{ thumbnailFileIds: string[]; thumbnailTokens: Record<string, string> }> => {
     const pdfjsLib = await import('pdfjs-dist');
     pdfjsLib.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs';
     
@@ -2726,6 +2726,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
     const numPages = pdf.numPages;
     
     const thumbnailFileIds: string[] = [];
+    const thumbnailTokens: Record<string, string> = {};
     const baseFileName = pdfFile.name.replace(/\.pdf$/i, '');
     
     console.log(`[PDF Upload] Processing ${numPages} pages...`);
@@ -2782,6 +2783,9 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
             publicKey: publicKey
           });
           
+          // Store token for later use in collection
+          thumbnailTokens[thumbnailFileId] = JSON.stringify(thumbnailShareToken);
+          
           // Create metadata for thumbnail
           await fetch(`${apiEndpoint}/api/aggregator/metadata-index/${thumbnailFileId}?accountId=${accountId}`, {
             method: 'PUT',
@@ -2805,7 +2809,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
       }
     }
     
-    return thumbnailFileIds;
+    return { thumbnailFileIds, thumbnailTokens };
   };
 
   const handleUploadForAccount = async (accountId: string, event: React.ChangeEvent<HTMLInputElement>) => {
@@ -2870,6 +2874,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
       let thumbnailShareToken: any = undefined;
       let thumbnailFileId: string | undefined = undefined;
       let pdfThumbnailFileIds: string[] = [];
+      let pdfThumbnailTokens: Record<string, string> = {};
       
       // Refresh access token before uploading main file
       const token = await PNOAuthService.getValidAccessToken();
@@ -2881,7 +2886,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
       // Process PDF pages if it's a PDF
       if (isPDF) {
         try {
-          pdfThumbnailFileIds = await processPDFPages(
+          const pdfResult = await processPDFPages(
             file,
             accountId,
             session,
@@ -2889,6 +2894,8 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
             encryptionManager,
             freshAccessToken
           );
+          pdfThumbnailFileIds = pdfResult.thumbnailFileIds;
+          pdfThumbnailTokens = pdfResult.thumbnailTokens;
           console.log(`[PDF Upload] Created ${pdfThumbnailFileIds.length} page thumbnails`);
         } catch (pdfError: any) {
           console.error('[PDF Upload] Failed to process PDF:', pdfError);
@@ -3181,7 +3188,8 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
           const result = await createCollection(
             {
               collectionFileIds: pdfThumbnailFileIds,
-              title: file.name.replace(/\.pdf$/i, '')
+              title: file.name.replace(/\.pdf$/i, ''),
+              thumbnailTokens: pdfThumbnailTokens // Include tokens for instant thumbnail loading
             },
             accountId,
             {
