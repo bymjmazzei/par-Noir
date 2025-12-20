@@ -667,6 +667,74 @@ export function FullScreenFeed({
     triggeredImmediateLoadRef.current.delete(fileId);
   }, [userState.isUnlocked, currentIndex, files, thumbnails, externalThumbnails]);
 
+  // Decrypt public collection files to get collectionFileIds
+  useEffect(() => {
+    const decryptCollectionFiles = async () => {
+      // Process all files to find collection files that need decryption
+      for (const indexedFile of files) {
+        const file = indexedFile.metadata;
+        const fileId = file.fileId;
+        
+        // Skip if already cached
+        if (collectionDataCache.has(fileId)) {
+          continue;
+        }
+        
+        // Check if it's a collection file (by name or fileType)
+        const fileName = (file.name || file.title || '').toLowerCase();
+        const isCollectionFile = fileName.endsWith('.collection') || file.fileType === 'collection';
+        
+        if (!isCollectionFile) {
+          continue;
+        }
+        
+        // Check if it has publicToken
+        const publicToken = indexedFile.publicToken || file.publicToken;
+        if (!publicToken) {
+          console.log(`[FullScreenFeed] Collection file ${fileId} has no publicToken, skipping decryption`);
+          continue;
+        }
+        
+        console.log(`[FullScreenFeed] Decrypting public collection file ${fileId} (${fileName})`);
+        
+        try {
+          // Parse publicToken
+          let token: ShareToken;
+          try {
+            token = typeof publicToken === 'string' ? JSON.parse(publicToken) : publicToken;
+          } catch (e) {
+            console.warn(`[FullScreenFeed] Failed to parse token for collection ${fileId}:`, e);
+            continue;
+          }
+          
+          // Decrypt collection file
+          const { decryptWithToken } = await import('../utils/tokenDecryption');
+          const decryptedBlob = await decryptWithToken(token);
+          
+          // Parse decrypted JSON to get collection data
+          const decryptedText = await decryptedBlob.text();
+          const collectionFileData = JSON.parse(decryptedText);
+          
+          // Extract collection data (structure: { collection: { collectionFileIds: [...] }, version: '1.0', ... })
+          const collectionData = collectionFileData.collection;
+          
+          if (collectionData && collectionData.collectionFileIds && Array.isArray(collectionData.collectionFileIds)) {
+            console.log(`[FullScreenFeed] Successfully decrypted collection ${fileId}, found ${collectionData.collectionFileIds.length} file IDs`);
+            collectionDataCache.set(fileId, collectionData);
+            // Force re-render by updating state (use a dummy state update)
+            setThumbnails(prev => new Map(prev));
+          } else {
+            console.warn(`[FullScreenFeed] Decrypted collection ${fileId} but no collectionFileIds found:`, collectionFileData);
+          }
+        } catch (err) {
+          console.error(`[FullScreenFeed] Failed to decrypt collection file ${fileId}:`, err);
+        }
+      }
+    };
+    
+    decryptCollectionFiles();
+  }, [files, collectionDataCache]);
+
   // Load thumbnails for collection files when a collection is visible
   useEffect(() => {
     console.log(`[FullScreenFeed] loadCollectionThumbnails useEffect triggered:`, {
