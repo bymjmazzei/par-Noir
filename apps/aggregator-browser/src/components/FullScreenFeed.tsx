@@ -564,30 +564,50 @@ export function FullScreenFeed({
       // Process ALL files in the feed to find thumbnail files
       const thumbnailFiles = files.filter((indexedFile) => {
         const fileName = (indexedFile.metadata?.name || indexedFile.metadata?.title || '').toLowerCase();
-        return fileName.startsWith('thumb_');
+        const isThumbnail = fileName.startsWith('thumb_');
+        if (isThumbnail) {
+          console.log(`[FullScreenFeed] Found thumbnail file: ${fileName} (${indexedFile.metadata?.fileId})`);
+        }
+        return isThumbnail;
       });
+
+      console.log(`[FullScreenFeed] loadThumbnails: Processing ${thumbnailFiles.length} thumbnail files`);
 
       // Load each thumbnail file
       await Promise.all(thumbnailFiles.map(async (indexedFile) => {
         const file = indexedFile.metadata;
         const fileId = file.fileId;
+        const fileName = file.name || file.title || '';
         
         // Skip if already loaded or provided externally
-        if (thumbnails.has(fileId)) return;
-        if (externalThumbnails && externalThumbnails.has(fileId)) return;
+        if (thumbnails.has(fileId)) {
+          console.log(`[FullScreenFeed] Thumbnail ${fileId} already loaded`);
+          return;
+        }
+        if (externalThumbnails && externalThumbnails.has(fileId)) {
+          console.log(`[FullScreenFeed] Thumbnail ${fileId} provided externally`);
+          return;
+        }
 
         // Get publicToken (REQUIRED - no fallback)
         const publicToken = indexedFile.publicToken || file.publicToken;
         if (!publicToken) {
-          console.warn(`[FullScreenFeed] Thumbnail ${fileId} has no publicToken - cannot decrypt`);
+          console.warn(`[FullScreenFeed] Thumbnail ${fileId} (${fileName}) has no publicToken - cannot decrypt`);
           return;
         }
+
+        console.log(`[FullScreenFeed] Loading thumbnail ${fileId} (${fileName}) with publicToken`);
 
         try {
           // Parse publicToken
           let token: ShareToken;
           try {
             token = typeof publicToken === 'string' ? JSON.parse(publicToken) : publicToken;
+            console.log(`[FullScreenFeed] Parsed token for ${fileId}:`, {
+              hasShareEncrypted: !!token.shareEncrypted,
+              hasShareKey: !!token.shareKey,
+              fileId: token.fileId
+            });
           } catch (e) {
             console.warn(`[FullScreenFeed] Failed to parse token for thumbnail ${fileId}:`, e);
             return;
@@ -599,13 +619,15 @@ export function FullScreenFeed({
           const decryptedBlob = await decryptWithToken(token);
           const thumbnailUrlObj = URL.createObjectURL(decryptedBlob);
           
+          console.log(`[FullScreenFeed] Successfully decrypted thumbnail ${fileId} (${fileName})`);
+          
           setThumbnails(prev => {
             const newMap = new Map(prev);
             newMap.set(fileId, thumbnailUrlObj);
             return newMap;
           });
         } catch (err) {
-          console.error(`[FullScreenFeed] Failed to decrypt thumbnail for ${fileId}:`, err);
+          console.error(`[FullScreenFeed] Failed to decrypt thumbnail for ${fileId} (${fileName}):`, err);
         }
       }));
     };
