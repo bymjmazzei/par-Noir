@@ -1692,14 +1692,22 @@ export function FullScreenFeed({
         const isVideoFinal = isCollectionFile ? false : isVideo;
         const isImageFinal = isCollectionFile ? false : isImage;
         
-        // DEBUG: Log final detection results
-        if (isCollectionFile || collectionData) {
-          console.log(`[FullScreenFeed] Final detection for ${fileId}:`, {
+        // DEBUG: Log final detection results for ALL files (especially images)
+        const debugFileName = file.name || file.title || '';
+        if (debugFileName.toLowerCase().startsWith('thumb_') || isImage || isImageFinal || isCollectionFile) {
+          console.log(`[FullScreenFeed] Final detection for ${fileId} (${debugFileName}):`, {
+            fileType: file.fileType,
+            fileName: debugFileName,
+            hasImageExtension,
+            hasImageMimeType,
+            isImageObject,
+            isImage,
             isCollectionFile,
             isVideo,
             isVideoFinal,
-            isImage,
             isImageFinal,
+            hasThumbnail: thumbnails.has(fileId),
+            thumbnailUrl: thumbnails.get(fileId)?.substring(0, 50) + '...',
             willRenderCollection: isCollectionFile && collectionData?.collectionFileIds,
             willRenderVideo: isVideoFinal,
             willRenderImage: isImageFinal,
@@ -1869,6 +1877,14 @@ export function FullScreenFeed({
             {/* Show image if detected as image (show placeholder if thumbnail not loaded yet) */}
             {isImageFinal && (() => {
               const thumbnailUrl = thumbnails.get(fileId);
+              console.log(`[FullScreenFeed] Rendering image for ${fileId}:`, {
+                fileName: file.name || file.title,
+                isImageFinal,
+                hasThumbnailUrl: !!thumbnailUrl,
+                thumbnailUrl: thumbnailUrl?.substring(0, 50) + '...',
+                thumbnailsMapSize: thumbnails.size,
+                thumbnailsMapKeys: Array.from(thumbnails.keys())
+              });
               if (!thumbnailUrl) {
                 // Show placeholder while thumbnail loads
                 return (
