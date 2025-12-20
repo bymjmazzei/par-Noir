@@ -560,7 +560,7 @@ export function FullScreenFeed({
   // Thoughts now render as images (thumbnails) - no special loading needed!
   // Load video blobs and thumbnails for visible files (only if not provided externally)
   useEffect(() => {
-    console.log(`[FullScreenFeed] loadMedia useEffect triggered`, {filesLength: files.length, currentIndex, thumbnailsSize: thumbnails.size});
+    console.error(`[FullScreenFeed] loadMedia useEffect triggered`, {filesLength: files.length, currentIndex, thumbnailsSize: thumbnails.size, externalThumbnailsSize: externalThumbnails?.size, externalVideoBlobsSize: externalVideoBlobs?.size});
     const loadMedia = async () => {
       // Load current file and adjacent files
       const indicesToLoad = [
@@ -568,7 +568,7 @@ export function FullScreenFeed({
         currentIndex,
         currentIndex + 1
       ].filter(idx => idx >= 0 && idx < files.length);
-      console.log(`[FullScreenFeed] loadMedia running`, {indicesToLoad, filesLength: files.length});
+      console.error(`[FullScreenFeed] loadMedia running`, {indicesToLoad, filesLength: files.length, files: files.map(f => ({fileId: f.metadata?.fileId, name: f.metadata?.name}))});
 
       // Parallelize loading for better performance
       await Promise.all(indicesToLoad.map(async (idx) => {
@@ -601,6 +601,8 @@ export function FullScreenFeed({
         fetch('http://127.0.0.1:7242/ingest/e9725a07-b703-47ab-ba6c-a54c252a4988',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'FullScreenFeed.tsx:597',message:'Image detection check',data:{fileId,fileName:fileNameForImageCheck,fileType:file.fileType,hasImageExtension,hasImageMimeType,isImageObject,isImage,hasThumbnail:thumbnails.has(fileId)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
         // #endregion
 
+        console.error(`[FullScreenFeed] Processing file ${fileId}:`, {isImage, isVideo, fileType: file.fileType, fileName: file.name, hasPublicToken: !!file.publicToken, alreadyHasThumbnail: thumbnails.has(fileId)});
+        
         // Only load video if not provided externally or if external map doesn't have this file
         if (isVideo && file.publicToken && !videoBlobs.has(fileId)) {
           // Check if external videoBlobs has this file
@@ -638,8 +640,9 @@ export function FullScreenFeed({
               const fileName = (file.name || file.title || '').toLowerCase();
               const isThumbnailFile = fileName.startsWith('thumb_');
               
-              // PRIORITY 1: If this IS a thumbnail file, load it using the same pattern as HorizontalThumbnailFeed
+                // PRIORITY 1: If this IS a thumbnail file, load it using the same pattern as HorizontalThumbnailFeed
               if (isThumbnailFile) {
+                console.error(`[FullScreenFeed] Detected thumbnail file ${fileId}, loading...`);
                 const publicToken = indexedFile.publicToken || file.publicToken;
                 const { PNOAuthService } = await import('../services/pnOAuthService');
                 const apiEndpoint = process.env.REACT_APP_API_ENDPOINT || 'https://api.parnoir.com';
