@@ -558,6 +558,7 @@ export function FullScreenFeed({
 
   // Load thumbnails for all thumbnail files in the feed
   // Browser is stateless - public files use publicToken only (no session fallback)
+  // The token contains the encrypted data, so we don't need to fetch from API
   useEffect(() => {
     const loadThumbnails = async () => {
       // Process ALL files in the feed to find thumbnail files
@@ -583,112 +584,28 @@ export function FullScreenFeed({
         }
 
         try {
-          const { PNOAuthService } = await import('../services/pnOAuthService');
-          const apiEndpoint = process.env.REACT_APP_API_ENDPOINT || 'https://api.parnoir.com';
-          
-          // Get accountId for API call (may be needed for routing)
-          let accountId: string | null = null;
+          // Parse publicToken
+          let token: ShareToken;
           try {
-            const session = PNOAuthService.loadSession();
-            if (session?.did || session?.pnIdentifier) {
-              const userId = session.pnIdentifier || session.did;
-              const accessToken = await PNOAuthService.getValidAccessToken();
-              if (accessToken) {
-                const accountsResponse = await fetch(`${apiEndpoint}/api/storage/accounts/${userId}`, {
-                  headers: { 'Authorization': `Bearer ${accessToken}` }
-                });
-                if (accountsResponse.ok) {
-                  const accountsData = await accountsResponse.json();
-                  const accounts = accountsData.accounts || [];
-                  if (accounts.length > 0) {
-                    accountId = accounts[0].accountId;
-                  }
-                }
-              }
-            }
-          } catch (err) {
-            // Continue without accountId - may still work
+            token = typeof publicToken === 'string' ? JSON.parse(publicToken) : publicToken;
+          } catch (e) {
+            console.warn(`[FullScreenFeed] Failed to parse token for thumbnail ${fileId}:`, e);
+            return;
           }
           
-          // Build URL
-          let thumbnailUrl = `${apiEndpoint}/api/drive/files/${fileId}?thumbnail=true`;
-          if (accountId && accountId.includes('::')) {
-            thumbnailUrl += `&accountId=${encodeURIComponent(accountId)}`;
-          }
+          // Decrypt using token directly (token contains shareEncrypted data)
+          // No need to fetch from API - the token has everything we need
+          const { decryptWithToken } = await import('../utils/tokenDecryption');
+          const decryptedBlob = await decryptWithToken(token);
+          const thumbnailUrlObj = URL.createObjectURL(decryptedBlob);
           
-          // Fetch file (may need auth for API access, but file content is public)
-          let accessToken = await PNOAuthService.getValidAccessToken();
-          let response = await fetch(thumbnailUrl, {
-            headers: { 'Authorization': `Bearer ${accessToken}` }
+          setThumbnails(prev => {
+            const newMap = new Map(prev);
+            newMap.set(fileId, thumbnailUrlObj);
+            return newMap;
           });
-          
-          // Retry with refreshed token on 401
-          if (response.status === 401) {
-            const refreshedToken = await PNOAuthService.getValidAccessToken(true);
-            if (refreshedToken) {
-              response = await fetch(thumbnailUrl, {
-                headers: { 'Authorization': `Bearer ${refreshedToken}` }
-              });
-            }
-          }
-          
-          if (!response.ok || response.status !== 200) {
-            console.warn(`[FullScreenFeed] Thumbnail ${fileId} failed: ${response.status}`);
-            return;
-          }
-          
-          const contentType = response.headers.get('content-type') || '';
-          const blob = await response.blob();
-          
-          // Handle encrypted files
-          if (contentType.includes('application/json')) {
-            try {
-              const text = await blob.text();
-              const parsed = JSON.parse(text);
-              
-              if (parsed.encrypted && parsed.iv && parsed.salt &&
-                  typeof parsed.encrypted === 'string' &&
-                  typeof parsed.iv === 'string' &&
-                  typeof parsed.salt === 'string') {
-                
-                // Parse publicToken
-                let token: ShareToken;
-                try {
-                  token = typeof publicToken === 'string' ? JSON.parse(publicToken) : publicToken;
-                } catch (e) {
-                  console.warn(`[FullScreenFeed] Failed to parse token for thumbnail ${fileId}:`, e);
-                  return;
-                }
-                
-                // Decrypt using token (ONLY method - no session fallback)
-                const { decryptWithToken } = await import('../utils/tokenDecryption');
-                const decryptedBlob = await decryptWithToken(token);
-                const thumbnailUrlObj = URL.createObjectURL(decryptedBlob);
-                
-                setThumbnails(prev => {
-                  const newMap = new Map(prev);
-                  newMap.set(fileId, thumbnailUrlObj);
-                  return newMap;
-                });
-                
-                return; // Success!
-              }
-            } catch (parseError) {
-              console.error(`[FullScreenFeed] Failed to parse encrypted thumbnail ${fileId}:`, parseError);
-              return;
-            }
-          } else {
-            // Not encrypted - use directly
-            const thumbnailUrlObj = URL.createObjectURL(blob);
-            setThumbnails(prev => {
-              const newMap = new Map(prev);
-              newMap.set(fileId, thumbnailUrlObj);
-              return newMap;
-            });
-            return;
-          }
         } catch (err) {
-          console.error(`[FullScreenFeed] Failed to load thumbnail for ${fileId}:`, err);
+          console.error(`[FullScreenFeed] Failed to decrypt thumbnail for ${fileId}:`, err);
         }
       }));
     };
