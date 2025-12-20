@@ -1694,26 +1694,25 @@ export function FullScreenFeed({
         
         // DEBUG: Log final detection results for ALL files (especially images)
         const debugFileName = file.name || file.title || '';
-        if (debugFileName.toLowerCase().startsWith('thumb_') || isImage || isImageFinal || isCollectionFile) {
-          console.log(`[FullScreenFeed] Final detection for ${fileId} (${debugFileName}):`, {
-            fileType: file.fileType,
-            fileName: debugFileName,
-            hasImageExtension,
-            hasImageMimeType,
-            isImageObject,
-            isImage,
-            isCollectionFile,
-            isVideo,
-            isVideoFinal,
-            isImageFinal,
-            hasThumbnail: thumbnails.has(fileId),
-            thumbnailUrl: thumbnails.get(fileId)?.substring(0, 50) + '...',
-            willRenderCollection: isCollectionFile && collectionData?.collectionFileIds,
-            willRenderVideo: isVideoFinal,
-            willRenderImage: isImageFinal,
-            willRenderFallback: !isImageFinal && !isVideoFinal && !isCollectionFile
-          });
-        }
+        // Log ALL files to see what's happening
+        console.log(`[FullScreenFeed] Final detection for ${fileId} (${debugFileName}):`, {
+          fileType: file.fileType,
+          fileName: debugFileName,
+          hasImageExtension,
+          hasImageMimeType,
+          isImageObject,
+          isImage,
+          isCollectionFile,
+          isVideo,
+          isVideoFinal,
+          isImageFinal,
+          hasThumbnail: thumbnails.has(fileId),
+          thumbnailUrl: thumbnails.get(fileId) ? (thumbnails.get(fileId)!.substring(0, 50) + '...') : 'NOT FOUND',
+          willRenderCollection: isCollectionFile && collectionData?.collectionFileIds,
+          willRenderVideo: isVideoFinal,
+          willRenderImage: isImageFinal,
+          willRenderFallback: !isImageFinal && !isVideoFinal && !isCollectionFile
+        });
         
         // NO THOUGHT DETECTION - thoughts are just images (thumbnails) now!
         
