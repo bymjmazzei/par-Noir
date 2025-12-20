@@ -715,16 +715,23 @@ export function FullScreenFeed({
           const decryptedText = await decryptedBlob.text();
           const collectionFileData = JSON.parse(decryptedText);
           
+          console.log(`[FullScreenFeed] Decrypted collection file ${fileId} structure:`, {
+            hasCollection: !!collectionFileData.collection,
+            collectionKeys: collectionFileData.collection ? Object.keys(collectionFileData.collection) : [],
+            topLevelKeys: Object.keys(collectionFileData),
+            fullStructure: collectionFileData
+          });
+          
           // Extract collection data (structure: { collection: { collectionFileIds: [...] }, version: '1.0', ... })
           const collectionData = collectionFileData.collection;
           
           if (collectionData && collectionData.collectionFileIds && Array.isArray(collectionData.collectionFileIds)) {
-            console.log(`[FullScreenFeed] Successfully decrypted collection ${fileId}, found ${collectionData.collectionFileIds.length} file IDs`);
+            console.log(`[FullScreenFeed] Successfully decrypted collection ${fileId}, found ${collectionData.collectionFileIds.length} file IDs:`, collectionData.collectionFileIds);
             collectionDataCache.set(fileId, collectionData);
             // Force re-render by updating state (use a dummy state update)
             setThumbnails(prev => new Map(prev));
           } else {
-            console.warn(`[FullScreenFeed] Decrypted collection ${fileId} but no collectionFileIds found:`, collectionFileData);
+            console.warn(`[FullScreenFeed] Decrypted collection ${fileId} but no collectionFileIds found. Collection data:`, collectionData, 'Full file data:', collectionFileData);
           }
         } catch (err) {
           console.error(`[FullScreenFeed] Failed to decrypt collection file ${fileId}:`, err);
