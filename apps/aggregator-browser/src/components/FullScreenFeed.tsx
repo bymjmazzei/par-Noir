@@ -1338,38 +1338,29 @@ export function FullScreenFeed({
             });
             
             // Load thumbnails asynchronously (fire and forget)
+            // For public collections, we should be able to load thumbnails using publicToken without authentication
             (async () => {
               try {
-                // Wait for authentication before attempting to load
-                if (!userState.isUnlocked) {
-                  console.log(`[FullScreenFeed] IMMEDIATE LOAD: User not authenticated, will retry when authenticated`);
-                  // Don't clear loading states - we'll retry when authenticated
-                  return;
-                }
-                
                 const { PNOAuthService } = await import('../services/pnOAuthService');
                 const apiEndpoint = process.env.REACT_APP_API_ENDPOINT || 'https://api.parnoir.com';
-                const accessToken = await PNOAuthService.getValidAccessToken();
                 
-                console.log(`[FullScreenFeed] IMMEDIATE LOAD: Got access token: ${!!accessToken}`);
+                // Try to get access token (optional - may not be available for public files)
+                const accessToken = await PNOAuthService.getValidAccessToken().catch(() => null);
                 
-                if (!accessToken) {
-                  console.warn(`[FullScreenFeed] IMMEDIATE LOAD: No access token, will retry when available`);
-                  // Don't clear loading states - we'll retry when token is available
-                  return;
-                }
+                console.log(`[FullScreenFeed] IMMEDIATE LOAD: Attempting to load ${missingThumbnailIds.length} thumbnails (accessToken: ${!!accessToken})`);
                 
                 await Promise.all(missingThumbnailIds.map(async (cfId: string) => {
                   console.log(`[FullScreenFeed] IMMEDIATE LOAD: Starting to load thumbnail for collection file ${cfId}`);
-                  let success = false;
-                  let collectionFileMetadata: any = null;
-                  let accountId: string | null = null;
                   
                   try {
-                    console.log(`[FullScreenFeed] IMMEDIATE LOAD: About to fetch metadata for ${cfId}, accessToken exists: ${!!accessToken}`);
-                    // Fetch metadata for this collection file
+                    // Fetch metadata for this collection file (try with auth if available, but should work without for public files)
+                    const headers: HeadersInit = {};
+                    if (accessToken) {
+                      headers['Authorization'] = `Bearer ${accessToken}`;
+                    }
+                    
                     const metadataResponse = await fetch(`${apiEndpoint}/api/aggregator/metadata-index/${cfId}`, {
-                      headers: { 'Authorization': `Bearer ${accessToken}` }
+                      headers
                     });
                     
                     console.log(`[FullScreenFeed] IMMEDIATE LOAD: Response for ${cfId}:`, {
@@ -1437,7 +1428,7 @@ export function FullScreenFeed({
                     const fileName = (collectionFileMetadata.name || collectionFileMetadata.title || '').toLowerCase();
                     const isThumbnailFile = fileName.startsWith('thumb_');
                     
-                    // PRIORITY 1: If this IS a thumbnail file, decrypt using publicToken
+                    // PRIORITY 1: If this IS a thumbnail file, decrypt using publicToken (WORKS FOR PUBLIC FILES WITHOUT AUTH)
                     if (isThumbnailFile && collectionFileMetadata.publicToken) {
                       try {
                         const { decryptWithToken } = await import('../utils/tokenDecryption');
@@ -1447,7 +1438,8 @@ export function FullScreenFeed({
                             ? JSON.parse(collectionFileMetadata.publicToken) 
                             : collectionFileMetadata.publicToken;
                         } catch (e) {
-                          loadingCollectionThumbnailsRef.current.delete(cfId);
+                          console.warn(`[FullScreenFeed] IMMEDIATE LOAD: Failed to parse token for ${cfId}:`, e);
+                          clearLoadingState(cfId);
                           return;
                         }
                         
@@ -1460,13 +1452,19 @@ export function FullScreenFeed({
                           return newMap;
                         });
                         
-                        console.log(`[FullScreenFeed] Loaded thumbnail for collection file ${cfId} via publicToken`);
-                        success = true;
+                        console.log(`[FullScreenFeed] IMMEDIATE LOAD: Loaded thumbnail for collection file ${cfId} via publicToken`);
                         clearLoadingState(cfId);
                         return;
                       } catch (decryptErr) {
-                        console.warn(`[FullScreenFeed] Failed to decrypt thumbnail with publicToken for ${cfId}:`, decryptErr);
+                        console.warn(`[FullScreenFeed] IMMEDIATE LOAD: Failed to decrypt thumbnail with publicToken for ${cfId}:`, decryptErr);
                       }
+                    }
+                    
+                    // If we reach here and still don't have an access token, we can't load non-public thumbnails
+                    if (!accessToken) {
+                      console.warn(`[FullScreenFeed] IMMEDIATE LOAD: No access token and no publicToken for ${cfId}, cannot load thumbnail`);
+                      clearLoadingState(cfId);
+                      return;
                     }
                     
                     // PRIORITY 2: Check for thumbnailFileId
