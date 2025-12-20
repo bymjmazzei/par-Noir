@@ -2387,7 +2387,12 @@ export function FullScreenFeed({
               
               const containerDims = getContainerDimensions(64);
               const dims = mediaDimensions.get(fileId);
-              const scalingStyles = calculateMediaScaling(dims, containerDims);
+              // For thought thumbnails, default to 1080x1080 (square) if dimensions not yet loaded
+              // Check if this might be a thought thumbnail by checking if it's a square image
+              const defaultDims = dims || (file.fileType === 'thought' || (file as any).isThoughtThumbnail 
+                ? { width: 1080, height: 1080 } 
+                : undefined);
+              const scalingStyles = calculateMediaScaling(defaultDims, containerDims);
 
               return (
                 <>

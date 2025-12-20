@@ -55,6 +55,7 @@ import { Inbox } from './components/Inbox';
 import { saveToFeed, getSavedFeed } from './services/savedFeedService';
 import { getUserProfile } from './services/profileService';
 import { isNSFWContent } from './constants/contentRatings';
+import { calculateMediaScaling, getContainerDimensions, type MediaDimensions } from './utils/mediaScaling';
 
 // Shared types - importing from id-dashboard
 // In production, these would come from a shared package
@@ -81,6 +82,7 @@ function App() {
   const [generatingThumbnails, setGeneratingThumbnails] = useState<Set<string>>(new Set()); // Track which thumbnails are being generated
   const [videoPlaying, setVideoPlaying] = useState<Map<string, boolean>>(new Map()); // Track which videos are playing
   const [videoBlobs, setVideoBlobs] = useState<Map<string, string>>(new Map()); // Store video URLs for playback
+  const [mediaDimensions, setMediaDimensions] = useState<Map<string, MediaDimensions>>(new Map()); // Track media dimensions for scaling
   
   // Keep videoBlobsRef in sync with videoBlobs state
   useEffect(() => {
@@ -4060,16 +4062,50 @@ function App() {
                         const thoughtThumbnail = thumbnails.get(file.fileId);
                         
                         if (thoughtThumbnail) {
+                          // Thought thumbnails are 1080x1080 (square)
+                          const containerDims = { width: 192, height: 192 }; // h-48 = 192px
+                          const dims = mediaDimensions.get(file.fileId) || { width: 1080, height: 1080 }; // Default to 1080x1080 for thoughts
+                          const scalingStyles = calculateMediaScaling(dims, containerDims);
+                          
                           return (
-                            <img
-                              src={thoughtThumbnail}
-                              alt={fileName}
-                              className="w-full h-full object-contain"
-                              onError={(e) => {
-                                // Fallback to rendering thought content if thumbnail fails
-                                e.currentTarget.style.display = 'none';
-                              }}
-                            />
+                            <>
+                              {/* Blurred background */}
+                              <img
+                                src={thoughtThumbnail}
+                                alt=""
+                                className="absolute"
+                                style={scalingStyles.background}
+                                loading="lazy"
+                                decoding="async"
+                                onError={(e) => {
+                                  console.error(`[App] Thought background thumbnail failed to load for ${file.fileId}:`, e);
+                                }}
+                              />
+                              {/* Main image */}
+                              <div className="w-full h-full flex items-center justify-center relative z-10">
+                                <img
+                                  src={thoughtThumbnail}
+                                  alt={fileName}
+                                  style={scalingStyles.mainMedia}
+                                  onLoad={(e) => {
+                                    const img = e.currentTarget;
+                                    // Track dimensions - thoughts are 1080x1080
+                                    setMediaDimensions(prev => {
+                                      const newMap = new Map(prev);
+                                      newMap.set(file.fileId, { width: img.naturalWidth || 1080, height: img.naturalHeight || 1080 });
+                                      return newMap;
+                                    });
+                                  }}
+                                  onError={(e) => {
+                                    console.error(`[App] Thought thumbnail failed to load for ${file.fileId}:`, e);
+                                    // Fallback to rendering thought content if thumbnail fails
+                                    e.currentTarget.style.display = 'none';
+                                  }}
+                                  loading="lazy"
+                                  decoding="sync"
+                                />
+                              </div>
+                            </>
                           );
                         } else if (textPostData) {
                           return (

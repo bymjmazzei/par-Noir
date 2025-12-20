@@ -372,10 +372,17 @@ export function CollectionFeed({
     if (content.type === 'thought') {
       const textPost = content.data;
       const style = textPost.style || {};
+      // Thoughts are square (1080x1080) - use media scaling utility
+      const containerDims = getContainerDimensions(64);
+      // Thoughts are always 1080x1080 (square)
+      const thoughtDims: MediaDimensions = { width: 1080, height: 1080 };
+      const scalingStyles = calculateMediaScaling(thoughtDims, containerDims);
+      
+      // Calculate scale for text rendering (based on container)
       const REFERENCE_WIDTH = 1080;
-      const REFERENCE_HEIGHT = 1080; // Square format to match thumbnail dimensions
-      const viewportWidth = typeof window !== 'undefined' ? window.innerWidth : REFERENCE_WIDTH;
-      const viewportHeight = typeof window !== 'undefined' ? (window.innerHeight - 64) : REFERENCE_HEIGHT;
+      const REFERENCE_HEIGHT = 1080;
+      const viewportWidth = containerDims.width;
+      const viewportHeight = containerDims.height;
       const widthScale = viewportWidth / REFERENCE_WIDTH;
       const heightScale = viewportHeight / REFERENCE_HEIGHT;
       const scale = Math.min(widthScale, heightScale);
@@ -391,7 +398,7 @@ export function CollectionFeed({
       return (
         <div
           key={fileId}
-          className="w-full h-full flex items-center justify-center"
+          className="w-full h-full flex items-center justify-center relative"
           style={{
             backgroundColor: style.backgroundColor || '#000000',
             backgroundImage: style.backgroundImage ? `url(${style.backgroundImage})` : 'none',
@@ -400,7 +407,7 @@ export function CollectionFeed({
           }}
         >
           <div
-            className="text-center"
+            className="text-center relative z-10"
             style={{
               fontFamily: style.fontFamily || 'Arial',
               fontSize: `${scaledFontSize}px`,
