@@ -1352,6 +1352,8 @@ export function FullScreenFeed({
                 await Promise.all(missingThumbnailIds.map(async (cfId: string) => {
                   console.log(`[FullScreenFeed] IMMEDIATE LOAD: Starting to load thumbnail for collection file ${cfId}`);
                   
+                  let success = false;
+                  
                   try {
                     // Fetch metadata for this collection file (try with auth if available, but should work without for public files)
                     const headers: HeadersInit = {};
@@ -1390,7 +1392,7 @@ export function FullScreenFeed({
                     }
                     
                     const metadataData = await metadataResponse.json();
-                    collectionFileMetadata = metadataData.metadata || metadataData;
+                    const collectionFileMetadata = metadataData.metadata || metadataData;
                     
                     // Log FULL metadata to see what we're working with
                     console.log(`[FullScreenFeed] IMMEDIATE LOAD: FULL Metadata for ${cfId}:`, collectionFileMetadata);
@@ -1406,7 +1408,7 @@ export function FullScreenFeed({
                     });
                     
                     // Get accountId
-                    accountId = collectionFileMetadata.accountId || collectionFileMetadata.backendFileId;
+                    let accountId = collectionFileMetadata.accountId || collectionFileMetadata.backendFileId;
                     if (!accountId || !accountId.includes('::')) {
                       const pnIdentifier = collectionFileMetadata.creatorId || collectionFileMetadata.creator?.identifier?.value || 
                                            collectionFileMetadata.creator?.["@id"] || collectionFileMetadata.author?.did;
@@ -1545,7 +1547,6 @@ export function FullScreenFeed({
                         });
                         
                         console.log(`[FullScreenFeed] Loaded thumbnail for collection file ${cfId} via thumbnailFileId`);
-                        success = true;
                         clearLoadingState(cfId);
                         return;
                       }
