@@ -728,6 +728,88 @@ export function FullScreenFeed({
           if (collectionData && collectionData.collectionFileIds && Array.isArray(collectionData.collectionFileIds)) {
             console.log(`[FullScreenFeed] Successfully decrypted collection ${fileId}, found ${collectionData.collectionFileIds.length} file IDs:`, collectionData.collectionFileIds);
             collectionDataCache.set(fileId, collectionData);
+            
+            // IMMEDIATELY load thumbnails for this collection (don't wait for render)
+            const collectionFileIds = collectionData.collectionFileIds;
+            const missingThumbnailIds = collectionFileIds.filter(
+              (cfId: string) => 
+                !thumbnails.has(cfId) && 
+                (!externalThumbnails || !externalThumbnails.has(cfId)) &&
+                !loadingCollectionThumbnailsRef.current.has(cfId)
+            );
+            
+            if (missingThumbnailIds.length > 0 && !triggeredImmediateLoadRef.current.has(fileId)) {
+              console.log(`[FullScreenFeed] Triggering immediate thumbnail load for collection ${fileId} (${missingThumbnailIds.length} thumbnails)`);
+              triggeredImmediateLoadRef.current.add(fileId);
+              
+              // Mark as loading
+              missingThumbnailIds.forEach((cfId: string) => {
+                loadingCollectionThumbnailsRef.current.add(cfId);
+                loadingStartTimesRef.current.set(cfId, Date.now());
+              });
+              
+              // Load thumbnails asynchronously
+              (async () => {
+                try {
+                  const { PNOAuthService } = await import('../services/pnOAuthService');
+                  const apiEndpoint = process.env.REACT_APP_API_ENDPOINT || 'https://api.parnoir.com';
+                  const accessToken = await PNOAuthService.getValidAccessToken().catch(() => null);
+                  
+                  await Promise.all(missingThumbnailIds.map(async (cfId: string) => {
+                    try {
+                      // Fetch metadata
+                      const headers: HeadersInit = {};
+                      if (accessToken) {
+                        headers['Authorization'] = `Bearer ${accessToken}`;
+                      }
+                      
+                      const metadataResponse = await fetch(`${apiEndpoint}/api/aggregator/metadata-index/${cfId}`, { headers });
+                      if (!metadataResponse.ok) {
+                        clearLoadingState(cfId);
+                        return;
+                      }
+                      
+                      const metadataData = await metadataResponse.json();
+                      const collectionFileMetadata = metadataData.metadata || metadataData;
+                      
+                      // If thumbnail file with publicToken, decrypt directly
+                      const fileName = (collectionFileMetadata.name || collectionFileMetadata.title || '').toLowerCase();
+                      if (fileName.startsWith('thumb_') && collectionFileMetadata.publicToken) {
+                        try {
+                          const { decryptWithToken } = await import('../utils/tokenDecryption');
+                          const token: ShareToken = typeof collectionFileMetadata.publicToken === 'string' 
+                            ? JSON.parse(collectionFileMetadata.publicToken) 
+                            : collectionFileMetadata.publicToken;
+                          
+                          const decryptedBlob = await decryptWithToken(token);
+                          const thumbnailUrlObj = URL.createObjectURL(decryptedBlob);
+                          
+                          setThumbnails(prev => {
+                            const newMap = new Map(prev);
+                            newMap.set(cfId, thumbnailUrlObj);
+                            return newMap;
+                          });
+                          
+                          clearLoadingState(cfId);
+                          return;
+                        } catch (decryptErr) {
+                          console.warn(`[FullScreenFeed] Failed to decrypt thumbnail ${cfId}:`, decryptErr);
+                        }
+                      }
+                      
+                      // Fallback to other methods if needed (but public thumbnails should use publicToken)
+                      clearLoadingState(cfId);
+                    } catch (err) {
+                      console.error(`[FullScreenFeed] Error loading thumbnail ${cfId}:`, err);
+                      clearLoadingState(cfId);
+                    }
+                  }));
+                } catch (err) {
+                  console.error(`[FullScreenFeed] Error in thumbnail load batch:`, err);
+                }
+              })();
+            }
+            
             // Force re-render by updating state (use a dummy state update)
             setThumbnails(prev => new Map(prev));
           } else {
@@ -2136,31 +2218,9 @@ export function FullScreenFeed({
                     </div>
                   );
                 } else {
-                  // Check if thumbnails are currently loading
-                  const areThumbnailsLoading = finalCollectionData.collectionFileIds.some((cfId: string) => 
-                    loadingCollectionThumbnailsRef.current.has(cfId)
-                  );
-                  
-                  if (areThumbnailsLoading) {
-                    // Show loading state while thumbnails are being fetched
-                    return (
-                      <div className="w-full h-full flex flex-col items-center justify-center text-neutral-400">
-                        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-400 mb-4"></div>
-                        <div className="text-sm">Loading collection...</div>
-                        <div className="text-xs mt-1">{finalCollectionData.collectionFileIds.length} files</div>
-                      </div>
-                    );
-                  } else {
-                    // Only show book icon if thumbnails have failed to load or don't exist
-                    console.warn(`[FullScreenFeed] No thumbnails found for collection ${fileId}, showing placeholder`);
-                    return (
-                      <div className="w-full h-full flex flex-col items-center justify-center text-neutral-400">
-                        <div className="text-4xl mb-2">📚</div>
-                        <div className="text-sm">Collection</div>
-                        <div className="text-xs mt-1">{finalCollectionData.collectionFileIds.length} files</div>
-                      </div>
-                    );
-                  }
+                  // No thumbnails loaded yet - render empty/minimal placeholder
+                  // Thumbnails should be loading in background, will render when ready
+                  return null;
                 }
               })()
             ) : (() => {
