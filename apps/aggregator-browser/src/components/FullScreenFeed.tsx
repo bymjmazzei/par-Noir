@@ -1372,11 +1372,19 @@ export function FullScreenFeed({
                     
                     if (!metadataResponse.ok) {
                       const errorText = await metadataResponse.text().catch(() => 'Could not read error response');
-                      console.error(`[FullScreenFeed] Failed to fetch metadata for collection file ${cfId}:`, {
-                        status: metadataResponse.status,
-                        statusText: metadataResponse.statusText,
-                        errorBody: errorText
-                      });
+                      const errorData = errorText ? (() => {
+                        try { return JSON.parse(errorText); } catch { return errorText; }
+                      })() : null;
+                      
+                      if (metadataResponse.status === 404) {
+                        console.warn(`[FullScreenFeed] IMMEDIATE LOAD: Collection thumbnail file ${cfId} not found in public aggregator index (404). These PDF thumbnail files need to be submitted to the public index with their publicTokens when the collection is made public.`);
+                      } else {
+                        console.error(`[FullScreenFeed] IMMEDIATE LOAD: Failed to fetch metadata for collection file ${cfId}:`, {
+                          status: metadataResponse.status,
+                          statusText: metadataResponse.statusText,
+                          errorBody: errorData
+                        });
+                      }
                       clearLoadingState(cfId);
                       return;
                     }
