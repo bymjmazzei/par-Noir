@@ -736,6 +736,21 @@ export function FullScreenFeed({
             // IMMEDIATELY load thumbnails for this collection (don't wait for render)
             const collectionFileIds = collectionData.collectionFileIds;
             const thumbnailTokens = collectionData.thumbnailTokens || {}; // Get tokens from collection data if available
+            
+            // DEBUG: Log token details
+            console.log(`[FullScreenFeed] Collection ${fileId} token analysis:`, {
+              collectionFileIdsCount: collectionFileIds.length,
+              thumbnailTokensKeys: Object.keys(thumbnailTokens),
+              thumbnailTokensCount: Object.keys(thumbnailTokens).length,
+              firstCollectionFileId: collectionFileIds[0],
+              firstTokenKey: Object.keys(thumbnailTokens)[0],
+              tokensMatch: collectionFileIds.map((id: string) => ({
+                id,
+                hasToken: !!thumbnailTokens[id],
+                tokenPreview: thumbnailTokens[id] ? thumbnailTokens[id].substring(0, 50) + '...' : 'NO TOKEN'
+              }))
+            });
+            
             const missingThumbnailIds = collectionFileIds.filter(
               (cfId: string) => 
                 !thumbnails.has(cfId) && 
@@ -759,7 +774,14 @@ export function FullScreenFeed({
                   const { decryptWithToken } = await import('../utils/tokenDecryption');
                   
                   // FIRST: Try to use tokens from collection data (fastest - no API call)
-                  const thumbnailsWithTokens = missingThumbnailIds.filter((cfId: string) => thumbnailTokens[cfId]);
+                  const thumbnailsWithTokens = missingThumbnailIds.filter((cfId: string) => {
+                    const hasToken = !!thumbnailTokens[cfId];
+                    if (!hasToken) {
+                      console.log(`[FullScreenFeed] Thumbnail ${cfId} has no token in thumbnailTokens object`);
+                    }
+                    return hasToken;
+                  });
+                  console.log(`[FullScreenFeed] Token filter result: ${thumbnailsWithTokens.length} thumbnails have tokens out of ${missingThumbnailIds.length} missing`);
                   if (thumbnailsWithTokens.length > 0) {
                     console.log(`[FullScreenFeed] Loading ${thumbnailsWithTokens.length} thumbnails using tokens from collection data (tokens available for: ${thumbnailsWithTokens.length}/${missingThumbnailIds.length})`);
                     
