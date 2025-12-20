@@ -726,7 +726,11 @@ export function FullScreenFeed({
           const collectionData = collectionFileData.collection;
           
           if (collectionData && collectionData.collectionFileIds && Array.isArray(collectionData.collectionFileIds)) {
-            console.log(`[FullScreenFeed] Successfully decrypted collection ${fileId}, found ${collectionData.collectionFileIds.length} file IDs:`, collectionData.collectionFileIds);
+            console.log(`[FullScreenFeed] Successfully decrypted collection ${fileId}, found ${collectionData.collectionFileIds.length} file IDs`, {
+              collectionFileIds: collectionData.collectionFileIds,
+              hasThumbnailTokens: !!collectionData.thumbnailTokens,
+              tokenCount: collectionData.thumbnailTokens ? Object.keys(collectionData.thumbnailTokens).length : 0
+            });
             collectionDataCache.set(fileId, collectionData);
             
             // IMMEDIATELY load thumbnails for this collection (don't wait for render)
@@ -757,13 +761,18 @@ export function FullScreenFeed({
                   // FIRST: Try to use tokens from collection data (fastest - no API call)
                   const thumbnailsWithTokens = missingThumbnailIds.filter((cfId: string) => thumbnailTokens[cfId]);
                   if (thumbnailsWithTokens.length > 0) {
-                    console.log(`[FullScreenFeed] Loading ${thumbnailsWithTokens.length} thumbnails using tokens from collection data`);
-                    await Promise.all(thumbnailsWithTokens.map(async (cfId: string) => {
+                    console.log(`[FullScreenFeed] Loading ${thumbnailsWithTokens.length} thumbnails using tokens from collection data (tokens available for: ${thumbnailsWithTokens.length}/${missingThumbnailIds.length})`);
+                    
+                    // Decrypt thumbnails in parallel but update state as each completes (don't wait for all)
+                    // This allows the first thumbnail to appear immediately
+                    const decryptPromises = thumbnailsWithTokens.map(async (cfId: string) => {
+                      const startTime = Date.now();
                       try {
                         const tokenString = thumbnailTokens[cfId];
                         const token: ShareToken = typeof tokenString === 'string' ? JSON.parse(tokenString) : tokenString;
                         const decryptedBlob = await decryptWithToken(token);
                         const thumbnailUrlObj = URL.createObjectURL(decryptedBlob);
+                        const decryptTime = Date.now() - startTime;
                         
                         setThumbnails(prev => {
                           const newMap = new Map(prev);
@@ -771,12 +780,20 @@ export function FullScreenFeed({
                           return newMap;
                         });
                         
+                        console.log(`[FullScreenFeed] ✓ Decrypted thumbnail ${cfId} in ${decryptTime}ms`);
                         clearLoadingState(cfId);
                       } catch (decryptErr) {
                         console.warn(`[FullScreenFeed] Failed to decrypt thumbnail ${cfId} with token from collection:`, decryptErr);
                         clearLoadingState(cfId);
                       }
-                    }));
+                    });
+                    
+                    // Don't await - let them decrypt in parallel and update as they complete
+                    Promise.all(decryptPromises).catch(err => {
+                      console.error(`[FullScreenFeed] Error in parallel thumbnail decryption:`, err);
+                    });
+                  } else {
+                    console.warn(`[FullScreenFeed] No tokens found in collection data for ${missingThumbnailIds.length} thumbnails - will use metadata fetch fallback`);
                   }
                   
                   // SECOND: Fetch metadata for thumbnails without tokens (fallback)

@@ -2785,6 +2785,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
           
           // Store token for later use in collection
           thumbnailTokens[thumbnailFileId] = JSON.stringify(thumbnailShareToken);
+          console.log(`[PDF Upload] Stored token for thumbnail ${thumbnailFileId} (page ${pageNum}/${numPages})`);
           
           // Create metadata for thumbnail
           await fetch(`${apiEndpoint}/api/aggregator/metadata-index/${thumbnailFileId}?accountId=${accountId}`, {
@@ -3184,7 +3185,11 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
       // If PDF, create collection from thumbnails
       if (isPDF && pdfThumbnailFileIds.length > 0) {
         try {
-          console.log('[PDF Upload] Creating collection from PDF thumbnails...');
+          console.log('[PDF Upload] Creating collection from PDF thumbnails...', {
+            thumbnailCount: pdfThumbnailFileIds.length,
+            tokenCount: Object.keys(pdfThumbnailTokens).length,
+            hasAllTokens: pdfThumbnailFileIds.every(id => pdfThumbnailTokens[id])
+          });
           const result = await createCollection(
             {
               collectionFileIds: pdfThumbnailFileIds,
