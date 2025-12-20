@@ -720,12 +720,12 @@ export function FullScreenFeed({
           if (thumbnailsWithTokens.length > 0) {
             console.log(`[FullScreenFeed] Loading ${thumbnailsWithTokens.length} thumbnails using tokens from collection data (tokens available for: ${thumbnailsWithTokens.length}/${missingThumbnailIds.length})`);
             
-            // Decrypt thumbnails in parallel but update state as each completes (don't wait for all)
-            // This allows the first thumbnail to appear immediately
-            const decryptPromises = thumbnailsWithTokens.map(async (cfId: string) => {
-              const startTime = Date.now();
+            // PRIORITY: Decrypt the first thumbnail immediately to show it ASAP
+            const firstThumbnailId = thumbnailsWithTokens[0];
+            if (firstThumbnailId) {
               try {
-                const tokenString = thumbnailTokens[cfId];
+                const startTime = Date.now();
+                const tokenString = thumbnailTokens[firstThumbnailId];
                 const token: ShareToken = typeof tokenString === 'string' ? JSON.parse(tokenString) : tokenString;
                 const decryptedBlob = await decryptWithToken(token);
                 const thumbnailUrlObj = URL.createObjectURL(decryptedBlob);
@@ -733,22 +733,49 @@ export function FullScreenFeed({
                 
                 setThumbnails(prev => {
                   const newMap = new Map(prev);
-                  newMap.set(cfId, thumbnailUrlObj);
+                  newMap.set(firstThumbnailId, thumbnailUrlObj);
                   return newMap;
                 });
                 
-                console.log(`[FullScreenFeed] ✓ Decrypted thumbnail ${cfId} in ${decryptTime}ms using token from collection`);
-                clearLoadingState(cfId);
+                console.log(`[FullScreenFeed] ✓ PRIORITY: Decrypted first thumbnail ${firstThumbnailId} in ${decryptTime}ms using token from collection`);
+                clearLoadingState(firstThumbnailId);
               } catch (decryptErr) {
-                console.warn(`[FullScreenFeed] Failed to decrypt thumbnail ${cfId} with token from collection:`, decryptErr);
-                clearLoadingState(cfId);
+                console.warn(`[FullScreenFeed] Failed to decrypt first thumbnail ${firstThumbnailId} with token from collection:`, decryptErr);
+                clearLoadingState(firstThumbnailId);
               }
-            });
+            }
             
-            // Don't await - let them decrypt in parallel and update as they complete
-            Promise.all(decryptPromises).catch(err => {
-              console.error(`[FullScreenFeed] Error in parallel thumbnail decryption:`, err);
-            });
+            // Then decrypt remaining thumbnails in parallel (skip first one)
+            const remainingThumbnails = thumbnailsWithTokens.slice(1);
+            if (remainingThumbnails.length > 0) {
+              const decryptPromises = remainingThumbnails.map(async (cfId: string) => {
+                const startTime = Date.now();
+                try {
+                  const tokenString = thumbnailTokens[cfId];
+                  const token: ShareToken = typeof tokenString === 'string' ? JSON.parse(tokenString) : tokenString;
+                  const decryptedBlob = await decryptWithToken(token);
+                  const thumbnailUrlObj = URL.createObjectURL(decryptedBlob);
+                  const decryptTime = Date.now() - startTime;
+                  
+                  setThumbnails(prev => {
+                    const newMap = new Map(prev);
+                    newMap.set(cfId, thumbnailUrlObj);
+                    return newMap;
+                  });
+                  
+                  console.log(`[FullScreenFeed] ✓ Decrypted thumbnail ${cfId} in ${decryptTime}ms using token from collection`);
+                  clearLoadingState(cfId);
+                } catch (decryptErr) {
+                  console.warn(`[FullScreenFeed] Failed to decrypt thumbnail ${cfId} with token from collection:`, decryptErr);
+                  clearLoadingState(cfId);
+                }
+              });
+              
+              // Don't await - let them decrypt in parallel and update as they complete
+              Promise.all(decryptPromises).catch(err => {
+                console.error(`[FullScreenFeed] Error in parallel thumbnail decryption:`, err);
+              });
+            }
           } else {
             console.warn(`[FullScreenFeed] No tokens found in collection data for ${missingThumbnailIds.length} thumbnails - will use metadata fetch fallback`);
           }
@@ -824,8 +851,14 @@ export function FullScreenFeed({
   };
 
   // Check for collection data from metadata API and load thumbnails immediately
+  // Priority: Load thumbnails for first few items first to reduce initial lag
   useEffect(() => {
-    for (const indexedFile of files) {
+    // Process first 3 files with higher priority (immediate render items)
+    const priorityFiles = files.slice(0, 3);
+    const remainingFiles = files.slice(3);
+    
+    // Process priority files first
+    for (const indexedFile of priorityFiles) {
       const file = indexedFile.metadata;
       const fileId = file.fileId;
       const fileName = (file.name || file.title || '').toLowerCase();
@@ -841,18 +874,51 @@ export function FullScreenFeed({
         // Cache it if not already cached
         if (!collectionDataCache.has(fileId)) {
           collectionDataCache.set(fileId, collectionDataFromMetadata);
-          console.log(`[FullScreenFeed] Cached collection data from metadata API for ${fileId}`, {
+          console.log(`[FullScreenFeed] Cached collection data from metadata API for ${fileId} (PRIORITY)`, {
             collectionFileIdsCount: collectionDataFromMetadata.collectionFileIds.length,
             hasThumbnailTokens: !!collectionDataFromMetadata.thumbnailTokens,
             tokenCount: collectionDataFromMetadata.thumbnailTokens ? Object.keys(collectionDataFromMetadata.thumbnailTokens).length : 0
           });
         }
         
-        // Load thumbnails immediately
+        // Load thumbnails immediately (priority)
         loadCollectionThumbnailsImmediate(fileId, collectionDataFromMetadata);
       }
     }
-  }, [files, thumbnails, externalThumbnails]);
+    
+    // Process remaining files with slight delay to prioritize first items
+    if (remainingFiles.length > 0) {
+      setTimeout(() => {
+        for (const indexedFile of remainingFiles) {
+          const file = indexedFile.metadata;
+          const fileId = file.fileId;
+          const fileName = (file.name || file.title || '').toLowerCase();
+          const isCollectionFile = fileName.endsWith('.collection') || file.fileType === 'collection';
+          
+          if (!isCollectionFile) {
+            continue;
+          }
+          
+          // Check if collection data is available from metadata API (not just from cache)
+          const collectionDataFromMetadata = file.collection;
+          if (collectionDataFromMetadata && collectionDataFromMetadata.collectionFileIds && Array.isArray(collectionDataFromMetadata.collectionFileIds)) {
+            // Cache it if not already cached
+            if (!collectionDataCache.has(fileId)) {
+              collectionDataCache.set(fileId, collectionDataFromMetadata);
+              console.log(`[FullScreenFeed] Cached collection data from metadata API for ${fileId}`, {
+                collectionFileIdsCount: collectionDataFromMetadata.collectionFileIds.length,
+                hasThumbnailTokens: !!collectionDataFromMetadata.thumbnailTokens,
+                tokenCount: collectionDataFromMetadata.thumbnailTokens ? Object.keys(collectionDataFromMetadata.thumbnailTokens).length : 0
+              });
+            }
+            
+            // Load thumbnails immediately
+            loadCollectionThumbnailsImmediate(fileId, collectionDataFromMetadata);
+          }
+        }
+      }, 50); // Small delay to prioritize first items
+    }
+  }, [files]); // Removed thumbnails/externalThumbnails from deps to avoid unnecessary re-runs
 
   // Decrypt public collection files to get collectionFileIds
   useEffect(() => {
