@@ -560,7 +560,16 @@ export function FullScreenFeed({
   // Thoughts now render as images (thumbnails) - no special loading needed!
   // Load video blobs and thumbnails for visible files (only if not provided externally)
   useEffect(() => {
-    console.error(`[FullScreenFeed] loadMedia useEffect triggered`, {filesLength: files.length, currentIndex, thumbnailsSize: thumbnails.size, externalThumbnailsSize: externalThumbnails?.size, externalVideoBlobsSize: externalVideoBlobs?.size});
+    // FORCE LOG - this should ALWAYS appear if useEffect runs
+    console.error(`🔥🔥🔥 [FullScreenFeed] loadMedia useEffect triggered 🔥🔥🔥`, {
+      filesLength: files.length, 
+      currentIndex, 
+      thumbnailsSize: thumbnails.size, 
+      externalThumbnailsSize: externalThumbnails?.size, 
+      externalVideoBlobsSize: externalVideoBlobs?.size,
+      filesArray: files.map(f => f.metadata?.fileId)
+    });
+    window.alert(`loadMedia useEffect triggered! files: ${files.length}`);
     const loadMedia = async () => {
       // Load current file and adjacent files
       const indicesToLoad = [
