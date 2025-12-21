@@ -383,22 +383,21 @@ export function FeedEngagementSidebar({
       )}
 
       {/* Views Count - At the bottom */}
-      <div className="relative flex items-center justify-center">
-        <span className="text-xs text-white font-medium min-w-[1rem] text-center" style={{ filter: 'drop-shadow(0 1px 2px rgba(0, 0, 0, 0.5))' }}>
+      <div className="flex flex-col items-center justify-center" style={{ width: '1.75rem' }}>
+        <span className="text-sm md:text-base text-white font-medium text-center leading-tight" style={{ filter: 'drop-shadow(0 1px 2px rgba(0, 0, 0, 0.5))' }}>
           {formatEngagementCount(views)}
         </span>
-        <svg 
-          className="absolute -bottom-1 -left-1 h-3 w-3"
-          viewBox="0 0 136.8 63.1"
-          fill="none"
-          style={{ filter: 'drop-shadow(0 1px 2px rgba(0, 0, 0, 0.5))' }}
+        <span 
+          className="text-white font-medium text-center leading-tight whitespace-nowrap"
+          style={{ 
+            filter: 'drop-shadow(0 1px 2px rgba(0, 0, 0, 0.5))',
+            fontSize: 'clamp(0.5rem, 1.5vw, 0.625rem)',
+            transform: 'scaleX(0.9)',
+            transformOrigin: 'center'
+          }}
         >
-          <path d="M67.7,0c16.1-.15,33.7,4.83,47.53,12.93,3.77,2.21,22.12,15.41,21.56,19.12-33.97,41.45-102.73,41.33-136.79.04l.37-1.33C16.71,11.71,42.42.23,67.7,0ZM68.42,3.31c-37.62,0-37.6,56.86,0,56.86,37.62,0,37.6-56.86,0-56.86ZM49.92,5.75C32.77,8.54,14.7,18.33,3.99,32.1c11.74,12.94,28.5,22.99,45.93,25.63-17.54-13.17-17.55-38.8,0-51.98ZM86.92,57.73c17.15-2.79,35.22-12.58,45.93-26.35-11.74-12.94-28.5-22.99-45.93-25.63,17.54,13.17,17.55,38.8,0,51.98Z" fill="white"/>
-          <path d="M68.42,3.31c37.6,0,37.62,56.85,0,56.86-37.6,0-37.62-56.85,0-56.86ZM67.71,12.97c-17.04.57-24.51,22.75-10.81,33.28,17.17,13.21,39.13-7.89,26.52-25.5-5.71,12.42-20.87,4.3-12.52-6.53-1.13-1.67-1.56-1.31-3.19-1.26Z" fill="white"/>
-          <path d="M49.92,5.75c-17.55,13.18-17.54,38.81,0,51.98-17.43-2.64-34.19-12.69-45.93-25.63C14.7,18.33,32.77,8.54,49.92,5.75Z" fill="white"/>
-          <path d="M86.92,57.73c17.55-13.18,17.54-38.81,0-51.98,17.43,2.64,34.19,12.69,45.93,25.63-10.71,13.77-28.78,23.56-45.93,26.35Z" fill="white"/>
-          <path d="M67.71,12.97c1.63-.05,2.05-.42,3.19,1.26-8.34,10.83,6.81,18.95,12.52,6.53,12.61,17.61-9.35,38.71-26.52,25.5-13.7-10.54-6.22-32.71,10.81-33.28Z" fill="white"/>
-        </svg>
+          VIEWS
+        </span>
       </div>
     </div>
   );
