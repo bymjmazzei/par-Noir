@@ -647,6 +647,14 @@ export function CollectionFeed({
   }, [viewportHeightCSS]);
   // #endregion
 
+  // #region agent log
+  console.log('[CollectionFeed] RENDERING - Component is being used!', {
+    collectionFileIds: collectionFileIds.length,
+    viewportHeightCSS,
+    windowInnerHeight: typeof window !== 'undefined' ? window.innerHeight : 0
+  });
+  // #endregion
+
   return (
     <div
       ref={(el) => {
@@ -664,7 +672,15 @@ export function CollectionFeed({
           const parent = el.parentElement;
           const parentHeight = parent ? window.getComputedStyle(parent).height : 'none';
           const parentPosition = parent ? window.getComputedStyle(parent).position : 'none';
-          fetch('http://127.0.0.1:7242/ingest/e9725a07-b703-47ab-ba6c-a54c252a4988',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'CollectionFeed.tsx:657',message:'Container ref set - height values with parent context',data:{viewportHeightCSS,windowInnerHeight:window.innerHeight,computedHeight,computedBottom,computedPosition,actualHeight,parentHeight,parentPosition,bottomNavHeight:64,expectedHeight:window.innerHeight - 64},timestamp:Date.now(),sessionId:'debug-session',runId:'run2',hypothesisId:'D'})}).catch(()=>{});
+          console.log('[CollectionFeed] Container ref set', {
+            computedHeight,
+            actualHeight,
+            parentHeight,
+            parentPosition,
+            windowInnerHeight: window.innerHeight,
+            expectedHeight: window.innerHeight - 64
+          });
+          fetch('http://127.0.0.1:7242/ingest/e9725a07-b703-47ab-ba6c-a54c252a4988',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'CollectionFeed.tsx:657',message:'Container ref set - height values with parent context',data:{viewportHeightCSS,windowInnerHeight:window.innerHeight,computedHeight,computedBottom,computedPosition,actualHeight,parentHeight,parentPosition,bottomNavHeight:64,expectedHeight:window.innerHeight - 64},timestamp:Date.now(),sessionId:'debug-session',runId:'run3',hypothesisId:'D'})}).catch(()=>{});
         }
         // #endregion
       }}
