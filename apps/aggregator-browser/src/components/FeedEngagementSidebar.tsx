@@ -152,11 +152,13 @@ export function FeedEngagementSidebar({
 
   return (
     <div 
-      className="absolute right-2 md:right-4 bottom-0 flex flex-col items-center z-20 pointer-events-auto" 
+      className="absolute right-2 md:right-4 flex flex-col items-center z-20 pointer-events-auto" 
       style={{ 
         gap: '16px',
-        // MOBILE FIX: Position at bottom of container (container already accounts for bottom nav)
-        // Add safe area margin only
+        // Position above bottom bar with a gap
+        // Bottom bar is typically ~60-80px tall (with padding and content), so we add that plus 8px gap
+        bottom: 'calc(72px + env(safe-area-inset-bottom, 0px) + 8px)',
+        // Fallback for older browsers
         marginBottom: 'env(safe-area-inset-bottom, 0px)'
       }}
     >
