@@ -276,15 +276,18 @@ export function FeedEngagementSidebar({
           fill="none"
           style={{ filter: 'drop-shadow(0 1px 2px rgba(0, 0, 0, 0.5))' }}
         >
-          {/* Top triangle (upper half of paper plane) */}
+          <defs>
+            <mask id="paper-plane-mask">
+              <rect width="24" height="24" fill="white"/>
+              {/* White triangle cutout in bottom-left rear */}
+              <path d="M 3 20 L 5.5 17.5 L 4.5 19 Z" fill="black"/>
+            </mask>
+          </defs>
+          {/* Paper airplane body - pointing diagonally top-right */}
           <path 
-            d="M 4 6 L 20 10 L 4 10.5 Z" 
+            d="M 3 20 L 19 4 L 21 6 L 5 22 Z" 
             fill="white"
-          />
-          {/* Bottom triangle (lower half of paper plane) - separated with gap */}
-          <path 
-            d="M 4 13.5 L 20 14 L 4 18 Z" 
-            fill="white"
+            mask="url(#paper-plane-mask)"
           />
         </svg>
       </button>
