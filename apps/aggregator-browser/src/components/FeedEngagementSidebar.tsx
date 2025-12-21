@@ -384,14 +384,14 @@ export function FeedEngagementSidebar({
 
       {/* Views Count - At the bottom */}
       <div className="relative flex items-center justify-center">
+        <span className="text-xs text-white font-medium min-w-[1rem] text-center" style={{ filter: 'drop-shadow(0 1px 2px rgba(0, 0, 0, 0.5))' }}>
+          {formatEngagementCount(views)}
+        </span>
         <Eye 
-          className="h-6 w-6 md:h-7 md:w-7 text-white" 
+          className="absolute -bottom-1 -left-1 h-3 w-3 text-white" 
           fill="white"
           style={{ filter: 'drop-shadow(0 1px 2px rgba(0, 0, 0, 0.5))' }}
         />
-        <span className="absolute -bottom-1 -left-1 text-xs text-white font-medium min-w-[1rem] text-center" style={{ filter: 'drop-shadow(0 1px 2px rgba(0, 0, 0, 0.5))' }}>
-          {formatEngagementCount(views)}
-        </span>
       </div>
     </div>
   );
