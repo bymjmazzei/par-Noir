@@ -4,7 +4,7 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { Heart, MessageCircle, Share2, Bookmark, MoreVertical, Plus, Edit, Send } from 'lucide-react';
+import { Heart, MessageCircle, Share2, Bookmark, MoreVertical, Plus, Edit, Send, Eye } from 'lucide-react';
 import { IndexedFile } from '../types/aggregator';
 import { useUserState } from '../contexts/UserStateContext';
 import { Lock } from 'lucide-react';
@@ -383,8 +383,13 @@ export function FeedEngagementSidebar({
       )}
 
       {/* Views Count - At the bottom */}
-      <div className="flex items-center justify-center">
-        <span className="text-xs text-white font-medium" style={{ filter: 'drop-shadow(0 1px 2px rgba(0, 0, 0, 0.5))' }}>
+      <div className="relative flex items-center justify-center">
+        <Eye 
+          className="h-6 w-6 md:h-7 md:w-7 text-white" 
+          fill="white"
+          style={{ filter: 'drop-shadow(0 1px 2px rgba(0, 0, 0, 0.5))' }}
+        />
+        <span className="absolute -bottom-1 -left-1 text-xs text-white font-medium min-w-[1rem] text-center" style={{ filter: 'drop-shadow(0 1px 2px rgba(0, 0, 0, 0.5))' }}>
           {formatEngagementCount(views)}
         </span>
       </div>
