@@ -37,7 +37,7 @@ export function CollectionFeed({
   const [error, setError] = useState<Map<string, string>>(new Map());
   const [mediaDimensions, setMediaDimensions] = useState<Map<string, MediaDimensions>>(new Map());
   // Thought thumbnails are stored directly in content.data, no need for separate state
-  const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const scrollContainerRef = useRef<HTMLDivElement | null>(null);
   const videoRefs = useRef<Map<string, HTMLVideoElement>>(new Map());
   const loadedFilesRef = useRef<Set<string>>(new Set());
   const loadingFilesRef = useRef<Set<string>>(new Set());

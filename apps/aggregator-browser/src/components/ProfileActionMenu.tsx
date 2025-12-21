@@ -5,7 +5,7 @@
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { createPortal } from 'react-dom';
-import { User, MessageCircle, UserPlus, Check, X, Clock, ChevronDown, Edit2, Save, X as XIcon, Pencil, UserMinus } from 'lucide-react';
+import { User, MessageCircle, UserPlus, Check, X, Clock, ChevronDown, Pencil, UserMinus } from 'lucide-react';
 import { useUserState } from '../contexts/UserStateContext';
 import { getConnectionStatus, sendConnectionRequest, acceptConnectionRequest, rejectConnectionRequest, removeConnection } from '../services/connectionService';
 import { ConnectionStatus } from '../services/connectionService';
@@ -559,7 +559,6 @@ export const ProfileActionMenu = React.memo(function ProfileActionMenu({ creator
             e.stopPropagation();
           }}
         >
-          {console.log('🔍 Menu rendering, isOpen:', isOpen, 'position:', menuPosition, 'buttonRect:', buttonRef.current?.getBoundingClientRect())}
             {/* Header with Display Name */}
           <div className="px-4 py-3 border-b border-neutral-700 min-h-[60px]">
             {isEditingName && isOwnProfile ? (
@@ -691,8 +690,8 @@ export const ProfileActionMenu = React.memo(function ProfileActionMenu({ creator
   if (prevProps.onMessage !== nextProps.onMessage) return false;
   
   // Compare indexedFiles by fileIds, not reference
-  const prevFileIds = prevProps.indexedFiles.map(f => f.metadata.fileId).sort().join(',');
-  const nextFileIds = nextProps.indexedFiles.map(f => f.metadata.fileId).sort().join(',');
+  const prevFileIds = (prevProps.indexedFiles || []).map(f => f.metadata.fileId).sort().join(',');
+  const nextFileIds = (nextProps.indexedFiles || []).map(f => f.metadata.fileId).sort().join(',');
   if (prevFileIds !== nextFileIds) return false;
   
   // Props are equal, skip re-render
