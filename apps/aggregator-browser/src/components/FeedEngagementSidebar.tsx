@@ -223,7 +223,7 @@ export function FeedEngagementSidebar({
           <MessageCircle 
             className="h-6 w-6 md:h-7 md:w-7 text-white group-hover:text-blue-400 transition-colors" 
             fill="white"
-            style={{ fill: 'white' }}
+            style={{ fill: 'white', transform: 'scaleX(-1)' }}
           />
           <span className="absolute -bottom-1 -left-1 text-xs text-blue-400 font-medium min-w-[1rem] text-center">
             {comments.toLocaleString()}
