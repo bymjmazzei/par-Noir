@@ -276,14 +276,14 @@ export function FeedEngagementSidebar({
           fill="none"
           style={{ filter: 'drop-shadow(0 1px 2px rgba(0, 0, 0, 0.5))' }}
         >
-          {/* Top triangle - connected to form paper airplane */}
+          {/* Front triangle (nose/body) */}
           <path 
-            d="M 22 2 L 2 12 L 12 11 Z" 
+            d="M 22 2 L 2 12 L 10.5 13.5 Z" 
             fill="white"
           />
-          {/* Bottom triangle - connected to form paper airplane */}
+          {/* Rear triangle (tail) */}
           <path 
-            d="M 2 12 L 12 13 L 22 2 Z" 
+            d="M 2 12 L 10.5 13.5 L 12.5 21.5 Z" 
             fill="white"
           />
         </svg>
