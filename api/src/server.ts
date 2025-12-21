@@ -4173,7 +4173,6 @@ class ProductionServer {
             console.warn(`[Engagement] Failed to update companion metadata sheet for save:`, sheetError?.message || sheetError);
           }
         }
-      }
 
         return res.json({
           success: true,
