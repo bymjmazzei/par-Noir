@@ -270,19 +270,16 @@ export function FeedEngagementSidebar({
         className="flex items-center justify-center group"
         title="Share"
       >
-        <svg 
-          className="h-6 w-6 md:h-7 md:w-7"
-          viewBox="0 0 24 24"
-          fill="none"
-          style={{ filter: 'drop-shadow(0 1px 2px rgba(0, 0, 0, 0.5))' }}
-        >
-          {/* Paper airplane with cutout using compound path */}
-          <path 
-            d="M 22 2 L 2 12 L 10.5 13.5 L 12.5 21.5 L 22 2 Z M 2 12 L 4.5 10.5 L 3.5 11.5 Z" 
-            fill="white"
-            fillRule="evenodd"
-          />
-        </svg>
+        <Send 
+          className="h-6 w-6 md:h-7 md:w-7 text-white transition-colors" 
+          fill="white"
+          style={{ 
+            fill: 'white', 
+            filter: 'drop-shadow(0 1px 2px rgba(0, 0, 0, 0.5))',
+            stroke: 'transparent',
+            strokeWidth: '2px'
+          }}
+        />
       </button>
 
       {/* Bookmark Button (legacy - only show if onBookmark callback provided) */}
