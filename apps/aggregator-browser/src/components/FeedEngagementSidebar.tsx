@@ -272,18 +272,12 @@ export function FeedEngagementSidebar({
       >
         <svg 
           className="h-6 w-6 md:h-7 md:w-7"
-          viewBox="0 0 24 24"
+          viewBox="0 0 223.87 199.31"
           fill="none"
           style={{ filter: 'drop-shadow(0 1px 2px rgba(0, 0, 0, 0.5))' }}
         >
-          {/* Front triangle (nose/body) */}
           <path 
-            d="M 22 2 L 2 12 L 10.5 13.5 Z" 
-            fill="white"
-          />
-          {/* Rear triangle (tail) */}
-          <path 
-            d="M 2 12 L 10.5 13.5 L 12.5 21.5 Z" 
+            d="M0,90.56c2.45-9.18,8.97-10.47,16.68-13.68C82.51,49.42,150.89,27.58,216.79.2c3.35-.69,7.2.32,7.08,4.26l-69.12,188.52c-4.53,6.91-14.09,7.87-21.04,4.25-20.64-14.84-41-30.05-61.77-44.72-.7-.5-1.69.21-1.23-1.72L207.08,15.94,52.13,137.23,4.07,102.91l-4.07-7.38v-4.98Z" 
             fill="white"
           />
         </svg>
