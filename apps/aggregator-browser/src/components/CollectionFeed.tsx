@@ -4,7 +4,7 @@
  * Swipe up/down to navigate between items
  */
 
-import { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useVerticalSwipe } from '../hooks/useVerticalSwipe';
 import { PNOAuthService } from '../services/pnOAuthService';
 import { EncryptionManager } from '../utils/encryptionManager';
@@ -488,7 +488,10 @@ export function CollectionFeed({
             backgroundColor: style.backgroundColor || '#000000',
             backgroundImage: style.backgroundImage ? `url(${style.backgroundImage})` : 'none',
             backgroundSize: 'cover',
-            backgroundPosition: 'center'
+            backgroundPosition: 'center',
+            overflow: 'hidden', // Prevent overflow
+            height: '100%',
+            width: '100%'
           }}
         >
           <div
@@ -527,13 +530,24 @@ export function CollectionFeed({
       const scalingStyles = calculateMediaScaling(dims, containerDims);
       
       return (
-        <div key={fileId} className="w-full h-full flex items-center justify-center relative">
+        <div 
+          key={fileId} 
+          className="w-full h-full flex items-center justify-center relative"
+          style={{
+            overflow: 'hidden', // Prevent any content from overflowing
+            height: '100%',
+            width: '100%'
+          }}
+        >
           {/* Blurred background image */}
           <img
             src={content.data}
             alt=""
             className="absolute"
-            style={scalingStyles.background}
+            style={{
+              ...scalingStyles.background,
+              overflow: 'hidden' // Ensure background doesn't cause overflow
+            }}
             loading="eager"
             decoding="async"
             onError={(e) => {
@@ -541,7 +555,14 @@ export function CollectionFeed({
             }}
           />
           {/* Main image container */}
-          <div className="w-full h-full flex items-center justify-center relative z-10">
+          <div 
+            className="w-full h-full flex items-center justify-center relative z-10"
+            style={{
+              overflow: 'hidden', // Prevent content overflow
+              height: '100%',
+              width: '100%'
+            }}
+          >
             <img
               src={content.data}
               alt={`Collection item ${index + 1}`}
@@ -620,29 +641,39 @@ export function CollectionFeed({
     }
   }, [currentIndex]);
 
-  // Enforce snap behavior on manual scroll - snap to nearest item immediately
+  // Measure container and item dimensions to debug overflow
   useEffect(() => {
     const container = scrollContainerRef.current;
     if (!container) return;
 
-    const handleScroll = () => {
-      // Let CSS scroll-snap handle the snapping naturally
-      // This handler is just to ensure snap behavior is enforced
-      // CSS scroll-snap should prevent intermediate scrolling
+    const measureDimensions = () => {
+      const containerHeight = container.clientHeight;
+      const containerScrollHeight = container.scrollHeight;
+      const viewportHeight = window.innerHeight;
+      const viewportHeightCSSValue = viewportHeightCSS;
+      
+      // Measure first item
+      const firstItem = container.children[0] as HTMLElement;
+      const firstItemHeight = firstItem?.clientHeight || 0;
+      const firstItemScrollHeight = firstItem?.scrollHeight || 0;
+      
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/e9725a07-b703-47ab-ba6c-a54c252a4988',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'CollectionFeed.tsx:630',message:'Container dimensions measurement',data:{containerHeight,containerScrollHeight,viewportHeight,viewportHeightCSSValue,firstItemHeight,firstItemScrollHeight,hasOverflow:containerScrollHeight>containerHeight,itemOverflow:firstItemScrollHeight>firstItemHeight},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+      // #endregion
     };
 
-    container.addEventListener('scroll', handleScroll, { passive: true });
-    return () => container.removeEventListener('scroll', handleScroll);
-  }, []);
+    // Measure on mount and after a short delay to catch any dynamic sizing
+    measureDimensions();
+    const timeout = setTimeout(measureDimensions, 100);
+    return () => clearTimeout(timeout);
+  }, [viewportHeightCSS, collectionFileIds]);
 
   return (
     <div
       ref={(el) => {
         scrollContainerRef.current = el;
-        if (el && verticalSwipeRef.current !== el) {
-          // Assign to hook's ref - TypeScript workaround for RefObject
-          // @ts-ignore - RefObject.current is readonly but hook expects us to set it
-          verticalSwipeRef.current = el;
+        if (verticalSwipeRef.current !== el) {
+          (verticalSwipeRef as React.MutableRefObject<HTMLDivElement | null>).current = el;
         }
       }}
       className="w-full overflow-y-scroll snap-y snap-mandatory bg-black"
@@ -656,10 +687,12 @@ export function CollectionFeed({
         maxHeight: viewportHeightCSS,
         minHeight: viewportHeightCSS, // Ensure exact height
         overflowX: 'hidden', // Prevent horizontal scrolling
+        overflowY: 'scroll', // Allow vertical scrolling for snap
         position: 'relative', // Use relative instead of fixed to prevent layout issues
         margin: 0,
         padding: 0,
-        boxSizing: 'border-box'
+        boxSizing: 'border-box',
+        width: '100%'
       }}
     >
       {collectionFileIds.map((fileId, index) => (
@@ -670,7 +703,12 @@ export function CollectionFeed({
             height: viewportHeightCSS,
             minHeight: viewportHeightCSS,
             maxHeight: viewportHeightCSS,
-            flexShrink: 0 // Prevent items from shrinking
+            flexShrink: 0, // Prevent items from shrinking
+            overflow: 'hidden', // Prevent any content overflow
+            width: '100%',
+            boxSizing: 'border-box',
+            margin: 0,
+            padding: 0
           }}
         >
           {renderFile(fileId, index)}
