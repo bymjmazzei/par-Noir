@@ -155,11 +155,9 @@ export function FeedEngagementSidebar({
       className="absolute right-2 md:right-4 flex flex-col items-center z-20 pointer-events-auto" 
       style={{ 
         gap: '16px',
-        // Position above bottom bar with a gap
-        // Bottom bar is typically ~60-80px tall (with padding and content), so we add that plus 8px gap
-        bottom: 'calc(72px + env(safe-area-inset-bottom, 0px) + 8px)',
-        // Fallback for older browsers
-        marginBottom: 'env(safe-area-inset-bottom, 0px)'
+        // Position just a few pixels above the bottom bar (caption bar)
+        // Minimal gap - accounts for bottom bar height plus small separation
+        bottom: 'calc(32px + env(safe-area-inset-bottom, 0px) + 8px)'
       }}
     >
       {/* Creator Profile Icon - Above Like Button */}
