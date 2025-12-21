@@ -276,17 +276,11 @@ export function FeedEngagementSidebar({
           fill="none"
           style={{ filter: 'drop-shadow(0 1px 2px rgba(0, 0, 0, 0.5))' }}
         >
-          <defs>
-            <mask id="send-icon-mask">
-              <rect width="24" height="24" fill="white"/>
-              {/* Cutout triangle - black in mask means transparent */}
-              <path d="M 3 20 L 5.5 17.5 L 4.5 19 Z" fill="black"/>
-            </mask>
-          </defs>
-          <Send 
-            className="h-6 w-6 md:h-7 md:w-7 text-white transition-colors" 
+          {/* Paper airplane with cutout using compound path */}
+          <path 
+            d="M 22 2 L 2 12 L 10.5 13.5 L 12.5 21.5 L 22 2 Z M 2 12 L 4.5 10.5 L 3.5 11.5 Z" 
             fill="white"
-            style={{ fill: 'white', mask: 'url(#send-icon-mask)', WebkitMask: 'url(#send-icon-mask)' }}
+            fillRule="evenodd"
           />
         </svg>
       </button>
