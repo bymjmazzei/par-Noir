@@ -2486,7 +2486,18 @@ export function FullScreenFeed({
                   
                   // Render horizontal slideshow of thumbnails with individual scaling
                   return (
-                    <div className="w-full h-full flex overflow-x-auto snap-x snap-mandatory scrollbar-hide">
+                    <div 
+                      className="w-full h-full flex overflow-x-auto snap-x snap-mandatory scrollbar-hide"
+                      style={{
+                        height: '100%',
+                        maxHeight: '100%',
+                        minHeight: '100%',
+                        overflowY: 'hidden', // Prevent vertical scrolling
+                        overflowX: 'auto', // Allow horizontal scrolling
+                        boxSizing: 'border-box',
+                        position: 'relative'
+                      }}
+                    >
                       {collectionThumbnails.map((thumbnailUrl: string, idx: number) => {
                         // Use composite key for dimension tracking: collection file ID + index
                         // Or use the individual file ID from the collection if available
@@ -2499,6 +2510,14 @@ export function FullScreenFeed({
                           <div
                             key={`${fileId}-${idx}`}
                             className="flex-shrink-0 w-full h-full snap-start relative"
+                            style={{
+                              height: '100%',
+                              maxHeight: '100%',
+                              minHeight: '100%',
+                              overflow: 'hidden', // Prevent any content overflow
+                              boxSizing: 'border-box',
+                              width: '100%'
+                            }}
                           >
                             {/* Blurred background image */}
                             <img
