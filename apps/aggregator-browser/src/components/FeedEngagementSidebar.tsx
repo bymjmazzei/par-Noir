@@ -270,26 +270,11 @@ export function FeedEngagementSidebar({
         className="flex items-center justify-center group"
         title="Share"
       >
-        <svg 
-          className="h-6 w-6 md:h-7 md:w-7"
-          viewBox="0 0 24 24"
-          fill="none"
-          style={{ filter: 'drop-shadow(0 1px 2px rgba(0, 0, 0, 0.5))' }}
-        >
-          <defs>
-            <mask id="paper-plane-mask">
-              <rect width="24" height="24" fill="white"/>
-              {/* White triangle cutout in bottom-left rear */}
-              <path d="M 3 20 L 5.5 17.5 L 4.5 19 Z" fill="black"/>
-            </mask>
-          </defs>
-          {/* Paper airplane body - pointing diagonally top-right */}
-          <path 
-            d="M 3 20 L 19 4 L 21 6 L 5 22 Z" 
-            fill="white"
-            mask="url(#paper-plane-mask)"
-          />
-        </svg>
+        <Send 
+          className="h-6 w-6 md:h-7 md:w-7 text-white transition-colors" 
+          fill="white"
+          style={{ fill: 'white', filter: 'drop-shadow(0 1px 2px rgba(0, 0, 0, 0.5))' }}
+        />
       </button>
 
       {/* Bookmark Button (legacy - only show if onBookmark callback provided) */}
