@@ -278,12 +278,12 @@ export function FeedEngagementSidebar({
         >
           {/* Top triangle (upper half of paper plane) */}
           <path 
-            d="M 4 8 L 20 12 L 4 12 Z" 
+            d="M 4 6 L 20 10 L 4 10.5 Z" 
             fill="white"
           />
-          {/* Bottom triangle (lower half of paper plane) - separated with diagonal gap */}
+          {/* Bottom triangle (lower half of paper plane) - separated with gap */}
           <path 
-            d="M 4 12 L 20 12 L 4 16 Z" 
+            d="M 4 13.5 L 20 14 L 4 18 Z" 
             fill="white"
           />
         </svg>
