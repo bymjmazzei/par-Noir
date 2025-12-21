@@ -527,7 +527,7 @@ export const ProfileActionMenu = React.memo(function ProfileActionMenu({ creator
         title="Profile actions"
         type="button"
       >
-        <div className="relative w-12 h-12 md:w-14 md:h-14 rounded-full overflow-hidden flex items-center justify-center border-2 border-white/20 touch-manipulation bg-black/30" style={{ filter: 'drop-shadow(0 2px 4px rgba(0, 0, 0, 0.3))' }}>
+        <div className="relative w-12 h-12 md:w-14 md:h-14 rounded-full overflow-hidden flex items-center justify-center border-2 border-white/20 touch-manipulation bg-black/15" style={{ filter: 'drop-shadow(0 2px 6px rgba(0, 0, 0, 0.6))' }}>
           {profileImageUrl && !profileImageLoading ? (
             <img 
               src={profileImageUrl} 
