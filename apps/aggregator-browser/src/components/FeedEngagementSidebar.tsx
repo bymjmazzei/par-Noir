@@ -181,7 +181,7 @@ export function FeedEngagementSidebar({
       >
         <div className="relative">
           {!userState.isUnlocked && (
-            <Lock className="absolute -top-1 -right-1 h-3 w-3 text-yellow-400" />
+            <Lock className="absolute -top-1 -right-1 h-3 w-3 text-yellow-400 z-10" />
           )}
           <Heart 
             className={`h-6 w-6 md:h-7 md:w-7 transition-colors ${
@@ -218,7 +218,7 @@ export function FeedEngagementSidebar({
       >
         <div className="relative">
           {!userState.isUnlocked && (
-            <Lock className="absolute -top-1 -right-1 h-3 w-3 text-yellow-400" />
+            <Lock className="absolute -top-1 -right-1 h-3 w-3 text-yellow-400 z-10" />
           )}
           <MessageCircle 
             className="h-6 w-6 md:h-7 md:w-7 text-white group-hover:text-blue-400 transition-colors" 
@@ -240,7 +240,7 @@ export function FeedEngagementSidebar({
       >
         <div className="relative">
           {!userState.isUnlocked && (
-            <Lock className="absolute -top-1 -right-1 h-3 w-3 text-yellow-400" />
+            <Lock className="absolute -top-1 -right-1 h-3 w-3 text-yellow-400 z-10" />
           )}
           <Bookmark 
             className={`h-6 w-6 md:h-7 md:w-7 transition-colors ${
