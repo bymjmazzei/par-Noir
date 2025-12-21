@@ -3605,6 +3605,7 @@ class ProductionServer {
               likes: engagementStats.likes || 0,
               comments: engagementStats.comments || 0,
               shares: engagementStats.shares || 0,
+              saves: engagementStats.saves || 0,
               lastUpdated: new Date().toISOString(),
               engagementHistory: currentMeta.metadata.engagement?.engagementHistory || []
             }
@@ -3752,6 +3753,7 @@ class ProductionServer {
               likes: engagementStats.likes || 0,
               comments: engagementStats.comments || 0,
               shares: engagementStats.shares || 0,
+              saves: engagementStats.saves || 0,
               lastUpdated: new Date().toISOString(),
               engagementHistory: fileMetadata.metadata.engagement?.engagementHistory || []
             }
@@ -3978,6 +3980,7 @@ class ProductionServer {
               likes: engagementStats.likes || 0,
               comments: engagementStats.comments || 0,
               shares: engagementStats.shares || 0,
+              saves: engagementStats.saves || 0,
               lastUpdated: new Date().toISOString(),
               engagementHistory: fileMetadata.metadata.engagement?.engagementHistory || []
             }
@@ -4056,6 +4059,130 @@ class ProductionServer {
       } catch (error: any) {
         console.error('Error recording share:', error);
         return res.status(500).json({ error: 'Failed to record share', message: error.message });
+      }
+    });
+
+    // POST /api/engagement/:fileId/save - Toggle save
+    this.app.post('/api/engagement/:fileId/save', async (req, res) => {
+      try {
+        const { EngagementService } = await import('./server/modules/engagementService');
+        const { AggregatorMetadataServiceDB } = await import('./server/modules/aggregatorMetadataServiceDB');
+        const { CompanionMetadataSheets } = await import('./server/modules/companionMetadataSheets');
+        const { googleDriveProxyService } = await import('./server/modules/googleDriveProxy');
+        const { fileId } = req.params;
+        const { userDid } = req.body;
+
+        if (!userDid) {
+          return res.status(400).json({ error: 'userDid is required' });
+        }
+
+        const result = await EngagementService.toggleSave(fileId, userDid);
+
+        // Update engagement counts in database metadata
+        const aggregator = AggregatorMetadataServiceDB.getInstance();
+        const fileMetadata = await aggregator.getFileMetadata(fileId);
+        
+        if (fileMetadata) {
+          // Update engagement counts in database metadata
+          // Get current engagement stats from engagement table to sync counts
+          const engagementStats = await EngagementService.getEngagementStats(fileId);
+          
+          // Update database metadata with current counts (not increment/decrement)
+          const db = (await import('./server/utils/database')).getDatabasePool();
+          const currentMeta = await aggregator.getFileMetadata(fileId);
+          if (currentMeta) {
+          const updatedMetadata = {
+            ...currentMeta.metadata,
+            engagement: {
+              views: currentMeta.metadata.engagement?.views || 0,
+              likes: engagementStats.likes || 0,
+              comments: engagementStats.comments || 0,
+              shares: engagementStats.shares || 0,
+              saves: engagementStats.saves || 0,
+              lastUpdated: new Date().toISOString(),
+              engagementHistory: currentMeta.metadata.engagement?.engagementHistory || []
+            }
+          };
+          
+          await db.query(
+            `UPDATE aggregator_metadata 
+             SET metadata = $1, updated_at = NOW()
+             WHERE file_id = $2`,
+            [JSON.stringify(updatedMetadata), fileId]
+          );
+        }
+        
+        // Also update companion metadata spreadsheet if file owner has one
+        try {
+          const ownerDid = fileMetadata.pnIdentifier || fileMetadata.metadata.creator?.["@id"] || fileMetadata.metadata.author?.did;
+          if (ownerDid) {
+            // Try to get owner's access token
+            const identifierCandidates = [ownerDid];
+            const ownerIdentifier = fileMetadata.metadata.creator?.identifier?.value;
+            if (ownerIdentifier) {
+              identifierCandidates.push(ownerIdentifier);
+            }
+            
+            // Get first Google Drive account for owner
+            const { storageCredentialsService } = await import('./server/modules/storageCredentialsService');
+            const credentialsRecord = await storageCredentialsService.getCredentials(ownerDid);
+            const credentials = credentialsRecord?.credentials;
+              const googleDriveAccounts = credentials?.googleDriveAccounts || (credentials?.googleDrive ? [credentials.googleDrive] : []);
+              
+              if (googleDriveAccounts.length > 0) {
+                const account = googleDriveAccounts[0];
+                const accountId = (account as any).accountId || (account as any).id;
+                const accessToken = await googleDriveProxyService.getAccessToken(ownerDid, accountId, identifierCandidates);
+                
+                // Find metadata folder
+                const folderSearchQuery = `name='Metadata' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
+                const folderSearchUrl = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(folderSearchQuery)}&fields=files(id)&pageSize=1`;
+                const folderResponse = await fetch(folderSearchUrl, {
+                  headers: { 'Authorization': `Bearer ${accessToken}` }
+                });
+                
+                if (folderResponse.ok) {
+                  const folderData = await folderResponse.json() as { files?: Array<{ id: string }> };
+                  if (folderData.files && folderData.files.length > 0) {
+                    const metadataFolderId = folderData.files[0].id;
+                    const spreadsheetId = await CompanionMetadataSheets.findSpreadsheet(
+                      accessToken,
+                      metadataFolderId,
+                      fileId
+                    );
+                    
+                    if (spreadsheetId) {
+                      if (result.saved) {
+                        // Add save to sheet
+                        await CompanionMetadataSheets.appendSave(accessToken, spreadsheetId, {
+                          fileId,
+                          pnIdentifier: userDid,
+                          timestamp: new Date().toISOString()
+                        });
+                      } else {
+                        // Remove save from sheet
+                        await CompanionMetadataSheets.removeSave(accessToken, spreadsheetId, fileId, userDid);
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          } catch (sheetError: any) {
+            // Non-critical - log but don't fail the request
+            console.warn(`[Engagement] Failed to update companion metadata sheet for save:`, sheetError?.message || sheetError);
+          }
+        }
+      }
+
+        return res.json({
+          success: true,
+          saved: result.saved,
+          count: result.count
+        });
+      } catch (error: any) {
+        console.error('Error toggling save:', error);
+        return res.status(500).json({ error: 'Failed to toggle save', message: error.message });
       }
     });
 

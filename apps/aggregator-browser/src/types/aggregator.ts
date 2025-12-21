@@ -176,9 +176,10 @@ export interface EngagementMetrics {
   likes: number;
   comments: number;
   shares: number;
+  saves: number;
   lastUpdated: string;
   engagementHistory?: Array<{
-    type: 'like' | 'comment' | 'share' | 'view';
+    type: 'like' | 'comment' | 'share' | 'view' | 'save';
     did?: string; // Optional: who engaged (for analytics, privacy-preserving)
     timestamp: string;
   }>;

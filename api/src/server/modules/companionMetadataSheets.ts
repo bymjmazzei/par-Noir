@@ -37,6 +37,7 @@ export interface CompanionMetadata {
     likes: number;
     comments: number;
     shares: number;
+    saves: number;
     lastUpdated: string;
     engagementHistory?: any[];
   };
@@ -58,6 +59,12 @@ export interface CommentRecord {
 }
 
 export interface ShareRecord {
+  fileId: string;
+  pnIdentifier: string;
+  timestamp: string;
+}
+
+export interface SaveRecord {
   fileId: string;
   pnIdentifier: string;
   timestamp: string;
@@ -117,6 +124,15 @@ export class CompanionMetadataSheets {
             {
               properties: {
                 title: 'Shares',
+                gridProperties: {
+                  rowCount: 1000,
+                  columnCount: 3
+                }
+              }
+            },
+            {
+              properties: {
+                title: 'Saves',
                 gridProperties: {
                   rowCount: 1000,
                   columnCount: 3
@@ -214,6 +230,18 @@ export class CompanionMetadataSheets {
       await sheets.spreadsheets.values.update({
         spreadsheetId,
         range: 'Shares!A1',
+        valueInputOption: 'RAW',
+        requestBody: {
+          values: [
+            ['fileId', 'pnIdentifier', 'timestamp']
+          ]
+        }
+      });
+
+      // 7. Populate Saves sheet headers
+      await sheets.spreadsheets.values.update({
+        spreadsheetId,
+        range: 'Saves!A1',
         valueInputOption: 'RAW',
         requestBody: {
           values: [
@@ -343,6 +371,7 @@ export class CompanionMetadataSheets {
     likes: number;
     comments: number;
     shares: number;
+    saves: number;
     lastUpdated: string;
   }> {
     const auth = new google.auth.OAuth2();
@@ -352,7 +381,7 @@ export class CompanionMetadataSheets {
 
     try {
       // Get all engagement sheet data (excluding headers)
-      const [likesResponse, commentsResponse, sharesResponse] = await Promise.all([
+      const [likesResponse, commentsResponse, sharesResponse, savesResponse] = await Promise.all([
         sheets.spreadsheets.values.get({
           spreadsheetId,
           range: 'Likes!A2:C'
@@ -364,12 +393,17 @@ export class CompanionMetadataSheets {
         sheets.spreadsheets.values.get({
           spreadsheetId,
           range: 'Shares!A2:C'
-        })
+        }),
+        sheets.spreadsheets.values.get({
+          spreadsheetId,
+          range: 'Saves!A2:C'
+        }).catch(() => ({ data: { values: undefined } })) // Saves sheet might not exist yet
       ]);
 
       const likesCount = likesResponse.data.values ? likesResponse.data.values.length : 0;
       const commentsCount = commentsResponse.data.values ? commentsResponse.data.values.length : 0;
       const sharesCount = sharesResponse.data.values ? sharesResponse.data.values.length : 0;
+      const savesCount = savesResponse.data.values ? savesResponse.data.values.length : 0;
 
       // Get most recent timestamp from all engagement sheets
       let lastUpdated = new Date().toISOString();
@@ -398,11 +432,20 @@ export class CompanionMetadataSheets {
         }
       }
 
+      // Check saves for latest timestamp
+      if (savesResponse.data.values && savesResponse.data.values.length > 0) {
+        const latestSave = savesResponse.data.values[savesResponse.data.values.length - 1];
+        if (latestSave && latestSave[2] && latestSave[2] > lastUpdated) {
+          lastUpdated = latestSave[2];
+        }
+      }
+
       return {
         views: 0, // Views not tracked in sheets currently
         likes: likesCount,
         comments: commentsCount,
         shares: sharesCount,
+        saves: savesCount,
         lastUpdated
       };
     } catch (error: any) {
@@ -412,6 +455,7 @@ export class CompanionMetadataSheets {
         likes: 0,
         comments: 0,
         shares: 0,
+        saves: 0,
         lastUpdated: new Date().toISOString()
       };
     }
@@ -644,6 +688,87 @@ export class CompanionMetadataSheets {
       });
     } catch (error: any) {
       console.error('Error appending share:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Append a save to the Saves sheet
+   */
+  static async appendSave(
+    accessToken: string,
+    spreadsheetId: string,
+    save: SaveRecord
+  ): Promise<void> {
+    const auth = new google.auth.OAuth2();
+    auth.setCredentials({ access_token: accessToken });
+
+    const sheets = google.sheets({ version: 'v4', auth });
+
+    try {
+      await sheets.spreadsheets.values.append({
+        spreadsheetId,
+        range: 'Saves!A2',
+        valueInputOption: 'RAW',
+        insertDataOption: 'INSERT_ROWS',
+        requestBody: {
+          values: [[save.fileId, save.pnIdentifier, save.timestamp]]
+        }
+      });
+    } catch (error: any) {
+      console.error('Error appending save:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Remove a save from the Saves sheet (by fileId and pnIdentifier)
+   */
+  static async removeSave(
+    accessToken: string,
+    spreadsheetId: string,
+    fileId: string,
+    pnIdentifier: string
+  ): Promise<void> {
+    const auth = new google.auth.OAuth2();
+    auth.setCredentials({ access_token: accessToken });
+
+    const sheets = google.sheets({ version: 'v4', auth });
+
+    try {
+      // Read all saves
+      const response = await sheets.spreadsheets.values.get({
+        spreadsheetId,
+        range: 'Saves!A2:C'
+      });
+
+      if (!response.data.values) {
+        return;
+      }
+
+      // Filter out the save to remove
+      const filteredSaves = response.data.values.filter((row: any[]) => {
+        return !(row[0] === fileId && row[1] === pnIdentifier);
+      });
+
+      // Clear and rewrite
+      await sheets.spreadsheets.values.clear({
+        spreadsheetId,
+        range: 'Saves!A2:C'
+      });
+
+      if (filteredSaves.length > 0) {
+        await sheets.spreadsheets.values.update({
+          spreadsheetId,
+          range: 'Saves!A2',
+          valueInputOption: 'RAW',
+          requestBody: {
+            values: filteredSaves
+          }
+        });
+      }
+    } catch (error: any) {
+      console.error('Error removing save:', error);
       throw error;
     }
   }

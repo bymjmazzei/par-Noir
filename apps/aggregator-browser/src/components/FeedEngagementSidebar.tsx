@@ -28,6 +28,17 @@ interface FeedEngagementSidebarProps {
   indexedFiles?: IndexedFile[]; // For loading profile images
 }
 
+// Format numbers: full numbers up to 999, then one decimal place (e.g., 20.1K, 5.1M)
+function formatEngagementCount(count: number): string {
+  if (count < 1000) {
+    return count.toString();
+  } else if (count < 1000000) {
+    return (count / 1000).toFixed(1) + 'K';
+  } else {
+    return (count / 1000000).toFixed(1) + 'M';
+  }
+}
+
 export function FeedEngagementSidebar({
   file,
   onLike,
@@ -48,6 +59,9 @@ export function FeedEngagementSidebar({
   const engagement = file.metadata.engagement;
   const likes = engagement?.likes || 0;
   const comments = engagement?.comments || 0;
+  const shares = engagement?.shares || 0;
+  const saves = engagement?.saves || 0;
+  const views = engagement?.views || 0;
   const [isSaved, setIsSaved] = useState(false);
   const [isCheckingSaved, setIsCheckingSaved] = useState(false);
   
@@ -96,14 +110,39 @@ export function FeedEngagementSidebar({
     }
     
     const fileId = file.metadata.fileId;
+    const API_ENDPOINT = process.env.REACT_APP_API_ENDPOINT || 'https://api.parnoir.com';
     
     try {
       if (isSaved) {
         await removeFromSavedFeed(userState.pnIdentifier, fileId);
+        // Also record save engagement (toggle off)
+        try {
+          await fetch(`${API_ENDPOINT}/api/engagement/${fileId}/save`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ userDid: userState.pnIdentifier })
+          });
+        } catch (engagementErr) {
+          console.warn('Failed to record save engagement:', engagementErr);
+        }
         setIsSaved(false);
         success('Removed from saved');
       } else {
         await saveToFeed(userState.pnIdentifier, fileId);
+        // Also record save engagement (toggle on)
+        try {
+          await fetch(`${API_ENDPOINT}/api/engagement/${fileId}/save`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ userDid: userState.pnIdentifier })
+          });
+        } catch (engagementErr) {
+          console.warn('Failed to record save engagement:', engagementErr);
+        }
         setIsSaved(true);
         success('Saved to your collection');
       }
@@ -119,10 +158,26 @@ export function FeedEngagementSidebar({
     
     const fileId = file.metadata.fileId;
     const shareUrl = `${window.location.origin}${window.location.pathname}?file=${fileId}&view=feed`;
+    const API_ENDPOINT = process.env.REACT_APP_API_ENDPOINT || 'https://api.parnoir.com';
     
     try {
       await navigator.clipboard.writeText(shareUrl);
       success('Link copied to clipboard!');
+      
+      // Record share engagement if user is unlocked
+      if (userState.isUnlocked && userState.pnIdentifier) {
+        try {
+          await fetch(`${API_ENDPOINT}/api/engagement/${fileId}/share`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ userDid: userState.pnIdentifier })
+          });
+        } catch (engagementErr) {
+          console.warn('Failed to record share engagement:', engagementErr);
+        }
+      }
       
       // Call optional callback for additional actions (like recording share)
       if (onShare) {
@@ -261,6 +316,9 @@ export function FeedEngagementSidebar({
               filter: 'drop-shadow(0 1px 2px rgba(0, 0, 0, 0.5))'
             }}
           />
+          <span className="absolute -bottom-1 -left-1 text-xs text-white font-medium min-w-[1rem] text-center" style={{ filter: 'drop-shadow(0 1px 2px rgba(0, 0, 0, 0.5))' }}>
+            {formatEngagementCount(saves)}
+          </span>
         </div>
       </button>
 
@@ -270,17 +328,22 @@ export function FeedEngagementSidebar({
         className="flex items-center justify-center group"
         title="Share"
       >
-        <svg 
-          className="h-6 w-6 md:h-7 md:w-7"
-          viewBox="0 0 223.87 199.31"
-          fill="none"
-          style={{ filter: 'drop-shadow(0 1px 2px rgba(0, 0, 0, 0.5))' }}
-        >
-          <path 
-            d="M0,90.56c2.45-9.18,8.97-10.47,16.68-13.68C82.51,49.42,150.89,27.58,216.79.2c3.35-.69,7.2.32,7.08,4.26l-69.12,188.52c-4.53,6.91-14.09,7.87-21.04,4.25-20.64-14.84-41-30.05-61.77-44.72-.7-.5-1.69.21-1.23-1.72L207.08,15.94,52.13,137.23,4.07,102.91l-4.07-7.38v-4.98Z" 
-            fill="white"
-          />
-        </svg>
+        <div className="relative">
+          <svg 
+            className="h-6 w-6 md:h-7 md:w-7"
+            viewBox="0 0 223.87 199.31"
+            fill="none"
+            style={{ filter: 'drop-shadow(0 1px 2px rgba(0, 0, 0, 0.5))' }}
+          >
+            <path 
+              d="M0,90.56c2.45-9.18,8.97-10.47,16.68-13.68C82.51,49.42,150.89,27.58,216.79.2c3.35-.69,7.2.32,7.08,4.26l-69.12,188.52c-4.53,6.91-14.09,7.87-21.04,4.25-20.64-14.84-41-30.05-61.77-44.72-.7-.5-1.69.21-1.23-1.72L207.08,15.94,52.13,137.23,4.07,102.91l-4.07-7.38v-4.98Z" 
+              fill="white"
+            />
+          </svg>
+          <span className="absolute -bottom-1 -left-1 text-xs text-white font-medium min-w-[1rem] text-center" style={{ filter: 'drop-shadow(0 1px 2px rgba(0, 0, 0, 0.5))' }}>
+            {formatEngagementCount(shares)}
+          </span>
+        </div>
       </button>
 
       {/* Bookmark Button (legacy - only show if onBookmark callback provided) */}
@@ -318,6 +381,13 @@ export function FeedEngagementSidebar({
           />
         </button>
       )}
+
+      {/* Views Count - At the bottom */}
+      <div className="flex items-center justify-center">
+        <span className="text-xs text-white font-medium" style={{ filter: 'drop-shadow(0 1px 2px rgba(0, 0, 0, 0.5))' }}>
+          {formatEngagementCount(views)}
+        </span>
+      </div>
     </div>
   );
 }

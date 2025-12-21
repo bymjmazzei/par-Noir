@@ -36,6 +36,7 @@ export interface EngagementStats {
   likes: number;
   comments: number;
   shares: number;
+  saves: number;
 }
 
 export class EngagementService {
@@ -417,6 +418,66 @@ export class EngagementService {
   }
 
   /**
+   * Toggle save for a file
+   */
+  static async toggleSave(fileId: string, userDid: string): Promise<{ saved: boolean; count: number }> {
+    const db = getDatabasePool();
+    
+    try {
+      // Check if already saved
+      const existing = await db.query(`
+        SELECT engagement_id FROM engagement 
+        WHERE file_id = $1 AND user_did = $2 AND type = 'save'
+        LIMIT 1
+      `, [fileId, userDid]);
+
+      if (existing.rows.length > 0) {
+        // Unsave - remove the engagement
+        await db.query(`
+          DELETE FROM engagement 
+          WHERE file_id = $1 AND user_did = $2 AND type = 'save'
+        `, [fileId, userDid]);
+      } else {
+        // Save - add the engagement
+        await db.query(`
+          INSERT INTO engagement (file_id, user_did, type)
+          VALUES ($1, $2, 'save')
+          ON CONFLICT (file_id, user_did, type) DO NOTHING
+        `, [fileId, userDid]);
+      }
+
+      // Get updated count
+      const countResult = await db.query(`
+        SELECT COUNT(*) as count FROM engagement 
+        WHERE file_id = $1 AND type = 'save'
+      `, [fileId]);
+
+      const count = parseInt(countResult.rows[0].count, 10);
+      const saved = existing.rows.length === 0; // If it didn't exist, now it's saved
+
+      return { saved, count };
+    } catch (error) {
+      console.error('Failed to toggle save:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Check if user has saved a file
+   */
+  static async isSaved(fileId: string, userDid: string): Promise<boolean> {
+    const db = getDatabasePool();
+    
+    const result = await db.query(`
+      SELECT 1 FROM engagement 
+      WHERE file_id = $1 AND user_did = $2 AND type = 'save'
+      LIMIT 1
+    `, [fileId, userDid]);
+
+    return result.rows.length > 0;
+  }
+
+  /**
    * Get engagement stats for a file
    */
   static async getEngagementStats(fileId: string): Promise<EngagementStats> {
@@ -435,7 +496,8 @@ export class EngagementService {
       const stats: EngagementStats = {
         likes: 0,
         comments: 0,
-        shares: 0
+        shares: 0,
+        saves: 0
       };
 
       result.rows.forEach(row => {
@@ -444,12 +506,13 @@ export class EngagementService {
         if (type === 'like') stats.likes = count;
         else if (type === 'comment') stats.comments = count;
         else if (type === 'share') stats.shares = count;
+        else if (type === 'save') stats.saves = count;
       });
 
       return stats;
     } catch (error) {
       console.error('Failed to get engagement stats:', error);
-      return { likes: 0, comments: 0, shares: 0 };
+      return { likes: 0, comments: 0, shares: 0, saves: 0 };
     }
   }
 
@@ -505,7 +568,7 @@ export class EngagementService {
 
       // Initialize all files with zero stats
       fileIds.forEach(fileId => {
-        statsMap.set(fileId, { likes: 0, comments: 0, shares: 0 });
+        statsMap.set(fileId, { likes: 0, comments: 0, shares: 0, saves: 0 });
       });
 
       // Populate stats
@@ -514,10 +577,11 @@ export class EngagementService {
         const type = row.type;
         const count = parseInt(row.count, 10);
         
-        const stats = statsMap.get(fileId) || { likes: 0, comments: 0, shares: 0 };
+        const stats = statsMap.get(fileId) || { likes: 0, comments: 0, shares: 0, saves: 0 };
         if (type === 'like') stats.likes = count;
         else if (type === 'comment') stats.comments = count;
         else if (type === 'share') stats.shares = count;
+        else if (type === 'save') stats.saves = count;
         
         statsMap.set(fileId, stats);
       });
@@ -527,7 +591,7 @@ export class EngagementService {
       console.error('Failed to get bulk engagement stats:', error);
       // Return empty stats for all files
       fileIds.forEach(fileId => {
-        statsMap.set(fileId, { likes: 0, comments: 0, shares: 0 });
+        statsMap.set(fileId, { likes: 0, comments: 0, shares: 0, saves: 0 });
       });
       return statsMap;
     }
