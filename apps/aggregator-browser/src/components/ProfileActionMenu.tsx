@@ -5,7 +5,7 @@
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { createPortal } from 'react-dom';
-import { User, MessageCircle, UserPlus, Check, X, Clock, ChevronDown, Pencil, UserMinus } from 'lucide-react';
+import { User, MessageCircle, UserPlus, Check, X, Clock, Pencil, UserMinus } from 'lucide-react';
 import { useUserState } from '../contexts/UserStateContext';
 import { getConnectionStatus, sendConnectionRequest, acceptConnectionRequest, rejectConnectionRequest, removeConnection } from '../services/connectionService';
 import { ConnectionStatus } from '../services/connectionService';
@@ -537,7 +537,6 @@ export const ProfileActionMenu = React.memo(function ProfileActionMenu({ creator
           ) : (
             <User className="h-6 w-6 md:h-7 md:w-7 text-white fill-white group-hover:text-blue-400 group-hover:fill-blue-400 transition-colors" />
           )}
-          <ChevronDown className="absolute bottom-0 right-0 h-3 w-3 text-white/70 bg-black/50 rounded-full p-0.5" />
         </div>
       </button>
 
