@@ -276,21 +276,15 @@ export function FeedEngagementSidebar({
           fill="none"
           style={{ filter: 'drop-shadow(0 1px 2px rgba(0, 0, 0, 0.5))' }}
         >
-          <defs>
-            <mask id="send-cutout-mask">
-              <rect width="24" height="24" fill="white"/>
-              {/* Cut out the stroke line area - diagonal line through center */}
-              <line x1="2" y1="22" x2="22" y2="2" stroke="black" strokeWidth="2.5" strokeLinecap="round"/>
-            </mask>
-          </defs>
-          <Send 
-            className="h-6 w-6 md:h-7 md:w-7 text-white transition-colors" 
+          {/* Top triangle - connected to form paper airplane */}
+          <path 
+            d="M 22 2 L 2 12 L 12 11 Z" 
             fill="white"
-            style={{ 
-              fill: 'white',
-              mask: 'url(#send-cutout-mask)',
-              WebkitMask: 'url(#send-cutout-mask)'
-            }}
+          />
+          {/* Bottom triangle - connected to form paper airplane */}
+          <path 
+            d="M 2 12 L 12 13 L 22 2 Z" 
+            fill="white"
           />
         </svg>
       </button>
