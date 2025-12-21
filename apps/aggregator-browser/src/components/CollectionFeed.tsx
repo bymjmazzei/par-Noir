@@ -675,13 +675,13 @@ export function CollectionFeed({
         WebkitOverflowScrolling: 'touch',
         scrollBehavior: 'auto',
         scrollSnapType: 'y mandatory',
-        // Match FullScreenFeed: use relative positioning instead of absolute
-        height: viewportHeightCSS,
-        maxHeight: viewportHeightCSS,
-        minHeight: viewportHeightCSS,
+        // Use 100% height to fill parent container (parent should already have viewportHeightCSS constraint)
+        height: '100%',
+        maxHeight: '100%',
+        minHeight: '100%',
         overflowX: 'hidden',
         overflowY: 'scroll',
-        position: 'relative', // Changed from absolute to match FullScreenFeed tiles
+        position: 'relative',
         margin: 0,
         padding: 0,
         boxSizing: 'border-box',
@@ -693,9 +693,9 @@ export function CollectionFeed({
           key={fileId}
           className="w-full snap-start flex items-center justify-center"
           style={{ 
-            height: viewportHeightCSS,
-            minHeight: viewportHeightCSS,
-            maxHeight: viewportHeightCSS,
+            height: '100%',
+            minHeight: '100%',
+            maxHeight: '100%',
             flexShrink: 0, // Prevent items from shrinking
             overflow: 'hidden', // Prevent any content overflow
             width: '100%',
