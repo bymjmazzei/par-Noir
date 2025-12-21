@@ -190,7 +190,7 @@ export function FeedEngagementSidebar({
                 : 'text-white group-hover:text-red-400'
             }`} 
             fill={isLiked ? 'red' : 'white'}
-            style={{ fill: isLiked ? 'red' : 'white' }}
+            style={{ fill: isLiked ? 'red' : 'white', filter: 'drop-shadow(0 1px 2px rgba(0, 0, 0, 0.5))' }}
           />
           <span className="absolute -bottom-1 -left-1 text-xs text-red-400 font-medium min-w-[1rem] text-center">
             {likes.toLocaleString()}
@@ -223,7 +223,7 @@ export function FeedEngagementSidebar({
           <MessageCircle 
             className="h-6 w-6 md:h-7 md:w-7 text-white group-hover:text-blue-400 transition-colors" 
             fill="white"
-            style={{ fill: 'white', transform: 'scaleX(-1)' }}
+            style={{ fill: 'white', transform: 'scaleX(-1)', filter: 'drop-shadow(0 1px 2px rgba(0, 0, 0, 0.5))' }}
           />
           <span className="absolute -bottom-1 -left-1 text-xs text-blue-400 font-medium min-w-[1rem] text-center">
             {comments.toLocaleString()}
@@ -249,7 +249,7 @@ export function FeedEngagementSidebar({
                 : 'text-white group-hover:text-yellow-400'
             }`} 
             fill={isSaved ? 'yellow' : 'white'}
-            style={{ fill: isSaved ? 'yellow' : 'white' }}
+            style={{ fill: isSaved ? 'yellow' : 'white', filter: 'drop-shadow(0 1px 2px rgba(0, 0, 0, 0.5))' }}
           />
         </div>
       </button>
@@ -263,7 +263,7 @@ export function FeedEngagementSidebar({
         <Send 
           className="h-6 w-6 md:h-7 md:w-7 text-white group-hover:text-green-400 transition-colors" 
           fill="white"
-          style={{ fill: 'white' }}
+          style={{ fill: 'white', filter: 'drop-shadow(0 1px 2px rgba(0, 0, 0, 0.5))' }}
         />
       </button>
 
