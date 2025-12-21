@@ -4,7 +4,7 @@
  * Swipe up/down to navigate between items
  */
 
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useVerticalSwipe } from '../hooks/useVerticalSwipe';
 import { PNOAuthService } from '../services/pnOAuthService';
 import { EncryptionManager } from '../utils/encryptionManager';
@@ -539,21 +539,27 @@ export function CollectionFeed({
             width: '100%'
           }}
         >
-          {/* Blurred background image */}
-          <img
-            src={content.data}
-            alt=""
-            className="absolute"
+          {/* Blurred background image - constrained to prevent overflow */}
+          <div
+            className="absolute inset-0 overflow-hidden"
             style={{
-              ...scalingStyles.background,
-              overflow: 'hidden' // Ensure background doesn't cause overflow
+              width: '100%',
+              height: '100%',
+              zIndex: 0
             }}
-            loading="eager"
-            decoding="async"
-            onError={(e) => {
-              console.error(`[CollectionFeed] Background image failed to load for ${fileId}:`, e);
-            }}
-          />
+          >
+            <img
+              src={content.data}
+              alt=""
+              className="absolute"
+              style={scalingStyles.background}
+              loading="eager"
+              decoding="async"
+              onError={(e) => {
+                console.error(`[CollectionFeed] Background image failed to load for ${fileId}:`, e);
+              }}
+            />
+          </div>
           {/* Main image container */}
           <div 
             className="w-full h-full flex items-center justify-center relative z-10"
@@ -672,8 +678,9 @@ export function CollectionFeed({
     <div
       ref={(el) => {
         scrollContainerRef.current = el;
-        if (verticalSwipeRef.current !== el) {
-          (verticalSwipeRef as React.MutableRefObject<HTMLDivElement | null>).current = el;
+        if (verticalSwipeRef.current !== el && el) {
+          // @ts-ignore - useVerticalSwipe returns RefObject but hook expects us to set it
+          verticalSwipeRef.current = el;
         }
       }}
       className="w-full overflow-y-scroll snap-y snap-mandatory bg-black"
