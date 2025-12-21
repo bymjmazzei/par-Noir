@@ -568,9 +568,6 @@ export function FullScreenFeed({
         const isThumbnail = fileName.startsWith('thumb_');
         const fileType = indexedFile.metadata?.fileType;
         const thumbnailFileId = indexedFile.metadata?.thumbnailFileId;
-        // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/e9725a07-b703-47ab-ba6c-a54c252a4988',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'FullScreenFeed.tsx:568',message:'Checking file for thumbnail loading',data:{fileId:indexedFile.metadata?.fileId,fileName,fileType,isThumbnail,hasThumbnailFileId:!!thumbnailFileId},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
-        // #endregion
         if (isThumbnail) {
           console.log(`[FullScreenFeed] Found thumbnail file: ${fileName} (${indexedFile.metadata?.fileId})`);
         }
@@ -1670,10 +1667,6 @@ export function FullScreenFeed({
           (file.fileType === 'other' && hasImageExtension) ||
           hasImageExtension;
         
-        // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/e9725a07-b703-47ab-ba6c-a54c252a4988',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'FullScreenFeed.tsx:1666',message:'Image detection for file',data:{fileId,fileType:file.fileType,fileName:fileNameForImageCheck,hasImageExtension,hasImageMimeType,isImageObject,isImage,thumbnailFileId:(file as any).thumbnailFileId||indexedFile.metadata?.thumbnailFileId},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
-        // #endregion
-        
         // Check for collection - PRIMARY check: collectionFileIds existence
         // A file is a collection if it has collectionFileIds, regardless of fileType
         // Also check cache for fetched collection data
@@ -2190,10 +2183,6 @@ export function FullScreenFeed({
         const isVideoFinal = isCollectionFile ? false : isVideo;
         const isImageFinal = isCollectionFile ? false : isImage;
         
-        // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/e9725a07-b703-47ab-ba6c-a54c252a4988',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'FullScreenFeed.tsx:2186',message:'Final rendering decision',data:{fileId,fileType:file.fileType,isImage,isVideo,isCollectionFile,isImageFinal,hasThumbnail:thumbnails.has(fileId),thumbnailFileId:(file as any).thumbnailFileId||indexedFile.metadata?.thumbnailFileId},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
-        // #endregion
-        
         // DEBUG: Log final detection results for ALL files (especially images)
         const debugFileName = file.name || file.title || '';
         // Log ALL files to see what's happening
@@ -2387,10 +2376,6 @@ export function FullScreenFeed({
                 thumbnailsMapKeys: Array.from(thumbnails.keys())
               });
               
-              // #region agent log
-              fetch('http://127.0.0.1:7242/ingest/e9725a07-b703-47ab-ba6c-a54c252a4988',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'FullScreenFeed.tsx:2367',message:'Image rendering entry',data:{fileId,fileName:file.name||file.title,fileType:file.fileType,hasThumbnail:!!thumbnailUrl,hasDimensions:mediaDimensions.has(fileId)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
-              // #endregion
-              
               if (!thumbnailUrl) {
                 // Show placeholder while thumbnail loads
                 return (
@@ -2407,10 +2392,6 @@ export function FullScreenFeed({
               const dims = mediaDimensions.get(fileId);
               const scalingStyles = calculateMediaScaling(dims, containerDims);
               
-              // #region agent log
-              fetch('http://127.0.0.1:7242/ingest/e9725a07-b703-47ab-ba6c-a54c252a4988',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'FullScreenFeed.tsx:2395',message:'Media scaling calculation',data:{fileId,containerDims,mediaDims:dims,hasMediaDims:!!dims,mainMediaObjectFit:scalingStyles.mainMedia.objectFit},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
-              // #endregion
-
               return (
                 <>
                   {/* Blurred background image */}
@@ -2436,9 +2417,6 @@ export function FullScreenFeed({
                         el.addEventListener('load', () => {
                           const naturalWidth = el.naturalWidth;
                           const naturalHeight = el.naturalHeight;
-                          // #region agent log
-                          fetch('http://127.0.0.1:7242/ingest/e9725a07-b703-47ab-ba6c-a54c252a4988',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'FullScreenFeed.tsx:2433',message:'Image loaded - tracking dimensions',data:{fileId,naturalWidth,naturalHeight,aspectRatio:naturalWidth/naturalHeight},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
-                          // #endregion
                           setMediaDimensions(prev => {
                             const newMap = new Map(prev);
                             newMap.set(fileId, { width: naturalWidth, height: naturalHeight });

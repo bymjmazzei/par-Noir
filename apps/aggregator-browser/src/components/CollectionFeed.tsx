@@ -136,10 +136,6 @@ export function CollectionFeed({
       let content: FileContent | null = null;
 
       if (isThought) {
-        // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/e9725a07-b703-47ab-ba6c-a54c252a4988',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'CollectionFeed.tsx:138',message:'Thought detected in collection',data:{fileId,fileType:metadata.fileType,hasTextPost:!!(metadata.textPost||metadata.thought),thumbnailFileId:metadata.thumbnailFileId},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{});
-        // #endregion
-        
         // For thoughts, try to load thumbnail first (thoughts should render as images)
         const thumbnailFileId = metadata.thumbnailFileId;
         if (thumbnailFileId) {
@@ -190,9 +186,6 @@ export function CollectionFeed({
                       type: 'image', // Treat thought thumbnail as image
                       data: thumbnailUrlObj
                     };
-                    // #region agent log
-                    fetch('http://127.0.0.1:7242/ingest/e9725a07-b703-47ab-ba6c-a54c252a4988',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'CollectionFeed.tsx:193',message:'Thought thumbnail loaded (encrypted)',data:{fileId,thumbnailFileId,contentType:'image'},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{});
-                    // #endregion
                   }
                 }
               } else {
@@ -202,21 +195,11 @@ export function CollectionFeed({
                   type: 'image', // Treat thought thumbnail as image
                   data: thumbnailUrlObj
                 };
-                // #region agent log
-                fetch('http://127.0.0.1:7242/ingest/e9725a07-b703-47ab-ba6c-a54c252a4988',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'CollectionFeed.tsx:207',message:'Thought thumbnail loaded (unencrypted)',data:{fileId,thumbnailFileId,contentType:'image'},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{});
-                // #endregion
               }
             }
           } catch (thumbnailErr) {
             console.warn(`Failed to load thought thumbnail for ${fileId}, falling back to text rendering:`, thumbnailErr);
-            // #region agent log
-            fetch('http://127.0.0.1:7242/ingest/e9725a07-b703-47ab-ba6c-a54c252a4988',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'CollectionFeed.tsx:211',message:'Thought thumbnail load failed',data:{fileId,thumbnailFileId,error:thumbnailErr instanceof Error ? thumbnailErr.message : String(thumbnailErr)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{});
-            // #endregion
           }
-        } else {
-          // #region agent log
-          fetch('http://127.0.0.1:7242/ingest/e9725a07-b703-47ab-ba6c-a54c252a4988',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'CollectionFeed.tsx:213',message:'Thought has no thumbnailFileId',data:{fileId,metadataKeys:Object.keys(metadata)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{});
-          // #endregion
         }
         
         // Fallback: Load and decrypt thought text if thumbnail not available
@@ -455,10 +438,6 @@ export function CollectionFeed({
     }
 
     // Render based on content type
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/e9725a07-b703-47ab-ba6c-a54c252a4988',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'CollectionFeed.tsx:449',message:'Rendering file in collection',data:{fileId,contentType:content.type,hasDimensions:mediaDimensions.has(fileId)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{});
-    // #endregion
-    
     if (content.type === 'thought') {
       const textPost = content.data;
       const style = textPost.style || {};
@@ -541,11 +520,13 @@ export function CollectionFeed({
         >
           {/* Blurred background image - constrained to prevent overflow */}
           <div
-            className="absolute inset-0 overflow-hidden"
+            className="absolute inset-0"
             style={{
               width: '100%',
               height: '100%',
-              zIndex: 0
+              zIndex: 0,
+              overflow: 'hidden',
+              clipPath: 'inset(0)'
             }}
           >
             <img
@@ -577,9 +558,6 @@ export function CollectionFeed({
                 const img = e.currentTarget;
                 const naturalWidth = img.naturalWidth;
                 const naturalHeight = img.naturalHeight;
-                // #region agent log
-                fetch('http://127.0.0.1:7242/ingest/e9725a07-b703-47ab-ba6c-a54c252a4988',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'CollectionFeed.tsx:580',message:'Image loaded - tracking dimensions',data:{fileId,naturalWidth,naturalHeight,aspectRatio:naturalWidth/naturalHeight},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
-                // #endregion
                 // Track dimensions for this specific image
                 setMediaDimensions(prev => {
                   const newMap = new Map(prev);
@@ -647,33 +625,6 @@ export function CollectionFeed({
     }
   }, [currentIndex]);
 
-  // Measure container and item dimensions to debug overflow
-  useEffect(() => {
-    const container = scrollContainerRef.current;
-    if (!container) return;
-
-    const measureDimensions = () => {
-      const containerHeight = container.clientHeight;
-      const containerScrollHeight = container.scrollHeight;
-      const viewportHeight = window.innerHeight;
-      const viewportHeightCSSValue = viewportHeightCSS;
-      
-      // Measure first item
-      const firstItem = container.children[0] as HTMLElement;
-      const firstItemHeight = firstItem?.clientHeight || 0;
-      const firstItemScrollHeight = firstItem?.scrollHeight || 0;
-      
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/e9725a07-b703-47ab-ba6c-a54c252a4988',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'CollectionFeed.tsx:630',message:'Container dimensions measurement',data:{containerHeight,containerScrollHeight,viewportHeight,viewportHeightCSSValue,firstItemHeight,firstItemScrollHeight,hasOverflow:containerScrollHeight>containerHeight,itemOverflow:firstItemScrollHeight>firstItemHeight},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
-      // #endregion
-    };
-
-    // Measure on mount and after a short delay to catch any dynamic sizing
-    measureDimensions();
-    const timeout = setTimeout(measureDimensions, 100);
-    return () => clearTimeout(timeout);
-  }, [viewportHeightCSS, collectionFileIds]);
-
   return (
     <div
       ref={(el) => {
@@ -688,14 +639,18 @@ export function CollectionFeed({
         scrollbarWidth: 'none', 
         msOverflowStyle: 'none', 
         WebkitOverflowScrolling: 'touch',
-        scrollBehavior: 'auto', // Use 'auto' for instant snap - CSS scroll-snap handles snapping
+        scrollBehavior: 'auto',
         scrollSnapType: 'y mandatory',
         height: viewportHeightCSS,
         maxHeight: viewportHeightCSS,
-        minHeight: viewportHeightCSS, // Ensure exact height
-        overflowX: 'hidden', // Prevent horizontal scrolling
-        overflowY: 'scroll', // Allow vertical scrolling for snap
-        position: 'relative', // Use relative instead of fixed to prevent layout issues
+        minHeight: viewportHeightCSS,
+        overflowX: 'hidden',
+        overflowY: 'scroll',
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
         margin: 0,
         padding: 0,
         boxSizing: 'border-box',
