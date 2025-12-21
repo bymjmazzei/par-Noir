@@ -36,6 +36,7 @@ export function CollectionFeed({
   const [loading, setLoading] = useState<Map<string, boolean>>(new Map());
   const [error, setError] = useState<Map<string, string>>(new Map());
   const [mediaDimensions, setMediaDimensions] = useState<Map<string, MediaDimensions>>(new Map());
+  const [thoughtThumbnails, setThoughtThumbnails] = useState<Map<string, string>>(new Map()); // Store thought thumbnail URLs
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const videoRefs = useRef<Map<string, HTMLVideoElement>>(new Map());
   const loadedFilesRef = useRef<Set<string>>(new Set());
@@ -135,25 +136,103 @@ export function CollectionFeed({
       let content: FileContent | null = null;
 
       if (isThought) {
-        // Load and decrypt thought
-        const publicToken = metadata.publicToken;
-        if (publicToken) {
+        // For thoughts, try to load thumbnail first (thoughts should render as images)
+        const thumbnailFileId = metadata.thumbnailFileId;
+        if (thumbnailFileId) {
+          // Load thought thumbnail as image
+          let thumbnailUrl = `${apiEndpoint}/api/drive/files/${thumbnailFileId}?thumbnail=true`;
+          if (accountIdToUse) {
+            thumbnailUrl += `&accountId=${encodeURIComponent(accountIdToUse)}`;
+          }
+          
           try {
-            const token: ShareToken = typeof publicToken === 'string' ? JSON.parse(publicToken) : publicToken;
-            const decryptedBlob = await decryptWithToken(token);
-            const text = await decryptedBlob.text();
-            const thoughtData = JSON.parse(text);
-            content = {
-              type: 'thought',
-              data: thoughtData.textPost || thoughtData.thought || thoughtData
-            };
-          } catch (err) {
-            console.error('Failed to decrypt thought:', err);
-            setError(prev => {
-              const newMap = new Map(prev);
-              newMap.set(fileId, 'Failed to load thought');
-              return newMap;
+            const thumbnailResponse = await fetch(thumbnailUrl, {
+              headers: { 'Authorization': `Bearer ${accessToken}` }
             });
+            
+            if (thumbnailResponse.ok) {
+              const thumbnailBlob = await thumbnailResponse.blob();
+              const contentType = thumbnailResponse.headers.get('content-type') || '';
+              
+              if (contentType.includes('application/json')) {
+                // Decrypt thumbnail
+                const encryptedText = await thumbnailBlob.text();
+                const encryptedPackage = JSON.parse(encryptedText);
+                const session = PNOAuthService.loadSession();
+                if (session?.did) {
+                  const pnId = session.did;
+                  let publicKey = session.publicKey;
+                  if (!publicKey && session.did.startsWith('did:key:')) {
+                    publicKey = session.did.substring(8);
+                  }
+                  if (publicKey) {
+                    const encryptionManager = new EncryptionManager();
+                    const decryptedData = await encryptionManager.decrypt(
+                      encryptedPackage.encrypted,
+                      encryptedPackage.iv,
+                      encryptedPackage.salt,
+                      pnId,
+                      publicKey
+                    );
+                    const arrayBuffer = decryptedData.buffer.slice(
+                      decryptedData.byteOffset,
+                      decryptedData.byteOffset + decryptedData.byteLength
+                    ) as ArrayBuffer;
+                    const imageBlob = new Blob([arrayBuffer], {
+                      type: encryptedPackage.metadata.originalMimeType || 'image/png'
+                    });
+                    const thumbnailUrlObj = URL.createObjectURL(imageBlob);
+                    setThoughtThumbnails(prev => {
+                      const newMap = new Map(prev);
+                      newMap.set(fileId, thumbnailUrlObj);
+                      return newMap;
+                    });
+                    content = {
+                      type: 'image', // Treat thought thumbnail as image
+                      data: thumbnailUrlObj
+                    };
+                  }
+                }
+              } else {
+                // Not encrypted, use directly
+                const thumbnailUrlObj = URL.createObjectURL(thumbnailBlob);
+                setThoughtThumbnails(prev => {
+                  const newMap = new Map(prev);
+                  newMap.set(fileId, thumbnailUrlObj);
+                  return newMap;
+                });
+                content = {
+                  type: 'image', // Treat thought thumbnail as image
+                  data: thumbnailUrlObj
+                };
+              }
+            }
+          } catch (thumbnailErr) {
+            console.warn(`Failed to load thought thumbnail for ${fileId}, falling back to text rendering:`, thumbnailErr);
+          }
+        }
+        
+        // Fallback: Load and decrypt thought text if thumbnail not available
+        if (!content) {
+          const publicToken = metadata.publicToken;
+          if (publicToken) {
+            try {
+              const token: ShareToken = typeof publicToken === 'string' ? JSON.parse(publicToken) : publicToken;
+              const decryptedBlob = await decryptWithToken(token);
+              const text = await decryptedBlob.text();
+              const thoughtData = JSON.parse(text);
+              content = {
+                type: 'thought',
+                data: thoughtData.textPost || thoughtData.thought || thoughtData
+              };
+            } catch (err) {
+              console.error('Failed to decrypt thought:', err);
+              setError(prev => {
+                const newMap = new Map(prev);
+                newMap.set(fileId, 'Failed to load thought');
+                return newMap;
+              });
+            }
           }
         }
       } else if (isImage) {
@@ -369,7 +448,56 @@ export function CollectionFeed({
     }
 
     // Render based on content type
-    if (content.type === 'thought') {
+    // Check if this is a thought (by metadata) that has a thumbnail
+    const isThought = metadata.fileType === 'thought' || metadata.fileType === 'text' || !!(metadata.textPost || metadata.thought);
+    const hasThoughtThumbnail = thoughtThumbnails.has(fileId);
+    
+    // Note: Thoughts with thumbnails are now loaded as 'image' type, so check thought thumbnail first
+    if ((content.type === 'image' && hasThoughtThumbnail) || (isThought && hasThoughtThumbnail)) {
+      // Thought thumbnail - render as image with proper scaling (1080x1080 square)
+      const containerDims = getContainerDimensions(64);
+      const dims = mediaDimensions.get(fileId) || { width: 1080, height: 1080 }; // Thoughts are always 1080x1080
+      const scalingStyles = calculateMediaScaling(dims, containerDims);
+      
+      return (
+        <div key={fileId} className="w-full h-full flex items-center justify-center relative">
+          {/* Blurred background image */}
+          <img
+            src={content.data}
+            alt=""
+            className="absolute"
+            style={scalingStyles.background}
+            loading="eager"
+            decoding="async"
+            onError={(e) => {
+              console.error(`[CollectionFeed] Thought background thumbnail failed to load for ${fileId}:`, e);
+            }}
+          />
+          {/* Main image container */}
+          <div className="w-full h-full flex items-center justify-center relative z-10">
+            <img
+              src={content.data}
+              alt={`Collection thought ${index + 1}`}
+              style={scalingStyles.mainMedia}
+              onLoad={(e) => {
+                const img = e.currentTarget;
+                // Track dimensions - thoughts are 1080x1080
+                setMediaDimensions(prev => {
+                  const newMap = new Map(prev);
+                  newMap.set(fileId, { width: img.naturalWidth || 1080, height: img.naturalHeight || 1080 });
+                  return newMap;
+                });
+              }}
+              onError={(e) => {
+                console.error(`[CollectionFeed] Thought thumbnail failed to load for ${fileId}:`, e);
+              }}
+              loading="eager"
+              decoding="sync"
+            />
+          </div>
+        </div>
+      );
+    } else if (content.type === 'thought') {
       const textPost = content.data;
       const style = textPost.style || {};
       // Thoughts are square (1080x1080) - use media scaling utility
@@ -543,7 +671,13 @@ export function CollectionFeed({
         scrollBehavior: 'smooth',
         scrollSnapType: 'y mandatory',
         height: viewportHeightCSS,
-        maxHeight: viewportHeightCSS
+        maxHeight: viewportHeightCSS,
+        minHeight: viewportHeightCSS, // Ensure exact height
+        overflowX: 'hidden', // Prevent horizontal scrolling
+        position: 'relative', // Use relative instead of fixed to prevent layout issues
+        margin: 0,
+        padding: 0,
+        boxSizing: 'border-box'
       }}
     >
       {collectionFileIds.map((fileId, index) => (
@@ -552,7 +686,9 @@ export function CollectionFeed({
           className="w-full snap-start flex items-center justify-center"
           style={{ 
             height: viewportHeightCSS,
-            minHeight: viewportHeightCSS
+            minHeight: viewportHeightCSS,
+            maxHeight: viewportHeightCSS,
+            flexShrink: 0 // Prevent items from shrinking
           }}
         >
           {renderFile(fileId, index)}

@@ -2373,6 +2373,23 @@ export function FullScreenFeed({
                 thumbnailsMapSize: thumbnails.size,
                 thumbnailsMapKeys: Array.from(thumbnails.keys())
               });
+              
+              // Check if this is a thought (by metadata or filename)
+              const isThought = file.fileType === 'thought' || 
+                                file.fileType === 'text' ||
+                                !!(file as any).textPost || 
+                                !!(file as any).thought ||
+                                /^thought-|^thumb_thought-/i.test(file.name || file.title || '');
+              
+              // For thoughts, set default dimensions immediately if not already set
+              if (isThought && !mediaDimensions.has(fileId)) {
+                setMediaDimensions(prev => {
+                  const newMap = new Map(prev);
+                  newMap.set(fileId, { width: 1080, height: 1080 });
+                  return newMap;
+                });
+              }
+              
               if (!thumbnailUrl) {
                 // Show placeholder while thumbnail loads
                 return (
@@ -2388,11 +2405,8 @@ export function FullScreenFeed({
               const containerDims = getContainerDimensions(64);
               const dims = mediaDimensions.get(fileId);
               // For thought thumbnails, default to 1080x1080 (square) if dimensions not yet loaded
-              // Check if this might be a thought thumbnail by checking if it's a square image
-              const defaultDims = dims || (file.fileType === 'thought' || (file as any).isThoughtThumbnail 
-                ? { width: 1080, height: 1080 } 
-                : undefined);
-              const scalingStyles = calculateMediaScaling(defaultDims, containerDims);
+              const defaultDims = dims || (isThought ? { width: 1080, height: 1080 } : undefined);
+              const scalingStyles = calculateMediaScaling(defaultDims, containerDims, isThought ? 1 : 16/9);
 
               return (
                 <>
