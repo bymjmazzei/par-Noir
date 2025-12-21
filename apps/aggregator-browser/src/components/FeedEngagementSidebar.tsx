@@ -270,33 +270,23 @@ export function FeedEngagementSidebar({
         className="flex items-center justify-center group"
         title="Share"
       >
-        <div className="relative">
-          <Send 
-            className="h-6 w-6 md:h-7 md:w-7 text-white transition-colors" 
+        <svg 
+          className="h-6 w-6 md:h-7 md:w-7"
+          viewBox="0 0 24 24"
+          fill="none"
+          style={{ filter: 'drop-shadow(0 1px 2px rgba(0, 0, 0, 0.5))' }}
+        >
+          {/* Top triangle (left half of paper plane) */}
+          <path 
+            d="M 2 12 L 11 3 L 11 8 L 19 10 L 11 11.5 Z" 
             fill="white"
-            style={{ 
-              fill: 'white', 
-              filter: 'drop-shadow(0 1px 2px rgba(0, 0, 0, 0.5))'
-            }}
           />
-          {/* Strikethrough line */}
-          <svg 
-            className="absolute inset-0 w-full h-full pointer-events-none"
-            viewBox="0 0 24 24"
-            style={{ transform: 'rotate(-45deg)' }}
-          >
-            <line 
-              x1="2" 
-              y1="12" 
-              x2="22" 
-              y2="12" 
-              stroke="white" 
-              strokeWidth="2" 
-              strokeLinecap="round"
-              style={{ filter: 'drop-shadow(0 1px 2px rgba(0, 0, 0, 0.5))' }}
-            />
-          </svg>
-        </div>
+          {/* Bottom triangle (right half of paper plane) - separated with gap */}
+          <path 
+            d="M 11 12.5 L 19 14 L 11 16 L 11 21 L 22 12 Z" 
+            fill="white"
+          />
+        </svg>
       </button>
 
       {/* Bookmark Button (legacy - only show if onBookmark callback provided) */}
