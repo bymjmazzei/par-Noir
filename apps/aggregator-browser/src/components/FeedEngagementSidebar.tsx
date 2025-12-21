@@ -192,7 +192,7 @@ export function FeedEngagementSidebar({
             fill={isLiked ? 'red' : 'white'}
             style={{ fill: isLiked ? 'red' : 'white' }}
           />
-          <span className="absolute -bottom-1 -left-1 text-xs text-white font-medium bg-black/50 rounded px-0.5 min-w-[1rem] text-center">
+          <span className="absolute -bottom-1 -left-1 text-xs text-red-400 font-medium bg-black/50 rounded px-0.5 min-w-[1rem] text-center">
             {likes.toLocaleString()}
           </span>
         </div>
@@ -225,7 +225,7 @@ export function FeedEngagementSidebar({
             fill="white"
             style={{ fill: 'white' }}
           />
-          <span className="absolute -bottom-1 -left-1 text-xs text-white font-medium bg-black/50 rounded px-0.5 min-w-[1rem] text-center">
+          <span className="absolute -bottom-1 -left-1 text-xs text-blue-400 font-medium bg-black/50 rounded px-0.5 min-w-[1rem] text-center">
             {comments.toLocaleString()}
           </span>
         </div>
