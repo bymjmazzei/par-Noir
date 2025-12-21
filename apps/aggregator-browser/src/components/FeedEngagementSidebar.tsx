@@ -270,16 +270,29 @@ export function FeedEngagementSidebar({
         className="flex items-center justify-center group"
         title="Share"
       >
-        <Send 
-          className="h-6 w-6 md:h-7 md:w-7 text-white transition-colors" 
-          fill="white"
-          style={{ 
-            fill: 'white', 
-            filter: 'drop-shadow(0 1px 2px rgba(0, 0, 0, 0.5))',
-            stroke: 'transparent',
-            strokeWidth: '2px'
-          }}
-        />
+        <svg 
+          className="h-6 w-6 md:h-7 md:w-7"
+          viewBox="0 0 24 24"
+          fill="none"
+          style={{ filter: 'drop-shadow(0 1px 2px rgba(0, 0, 0, 0.5))' }}
+        >
+          <defs>
+            <mask id="send-cutout-mask">
+              <rect width="24" height="24" fill="white"/>
+              {/* Cut out the stroke line area - diagonal line through center */}
+              <line x1="2" y1="22" x2="22" y2="2" stroke="black" strokeWidth="2.5" strokeLinecap="round"/>
+            </mask>
+          </defs>
+          <Send 
+            className="h-6 w-6 md:h-7 md:w-7 text-white transition-colors" 
+            fill="white"
+            style={{ 
+              fill: 'white',
+              mask: 'url(#send-cutout-mask)',
+              WebkitMask: 'url(#send-cutout-mask)'
+            }}
+          />
+        </svg>
       </button>
 
       {/* Bookmark Button (legacy - only show if onBookmark callback provided) */}
