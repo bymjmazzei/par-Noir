@@ -4,7 +4,7 @@
  * Swipe up/down to navigate between items
  */
 
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useVerticalSwipe } from '../hooks/useVerticalSwipe';
 import { PNOAuthService } from '../services/pnOAuthService';
 import { EncryptionManager } from '../utils/encryptionManager';
@@ -28,7 +28,7 @@ interface FileContent {
 export function CollectionFeed({ 
   collectionFileIds, 
   accountId,
-  onClose 
+  onClose: _onClose 
 }: CollectionFeedProps) {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [fileMetadata, setFileMetadata] = useState<Map<string, any>>(new Map());
@@ -36,7 +36,7 @@ export function CollectionFeed({
   const [loading, setLoading] = useState<Map<string, boolean>>(new Map());
   const [error, setError] = useState<Map<string, string>>(new Map());
   const [mediaDimensions, setMediaDimensions] = useState<Map<string, MediaDimensions>>(new Map());
-  const [thoughtThumbnails, setThoughtThumbnails] = useState<Map<string, string>>(new Map()); // Store thought thumbnail URLs
+  // Thought thumbnails are stored directly in content.data, no need for separate state
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const videoRefs = useRef<Map<string, HTMLVideoElement>>(new Map());
   const loadedFilesRef = useRef<Set<string>>(new Set());
@@ -136,6 +136,10 @@ export function CollectionFeed({
       let content: FileContent | null = null;
 
       if (isThought) {
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/e9725a07-b703-47ab-ba6c-a54c252a4988',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'CollectionFeed.tsx:138',message:'Thought detected in collection',data:{fileId,fileType:metadata.fileType,hasTextPost:!!(metadata.textPost||metadata.thought),thumbnailFileId:metadata.thumbnailFileId},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{});
+        // #endregion
+        
         // For thoughts, try to load thumbnail first (thoughts should render as images)
         const thumbnailFileId = metadata.thumbnailFileId;
         if (thumbnailFileId) {
@@ -182,34 +186,37 @@ export function CollectionFeed({
                       type: encryptedPackage.metadata.originalMimeType || 'image/png'
                     });
                     const thumbnailUrlObj = URL.createObjectURL(imageBlob);
-                    setThoughtThumbnails(prev => {
-                      const newMap = new Map(prev);
-                      newMap.set(fileId, thumbnailUrlObj);
-                      return newMap;
-                    });
                     content = {
                       type: 'image', // Treat thought thumbnail as image
                       data: thumbnailUrlObj
                     };
+                    // #region agent log
+                    fetch('http://127.0.0.1:7242/ingest/e9725a07-b703-47ab-ba6c-a54c252a4988',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'CollectionFeed.tsx:193',message:'Thought thumbnail loaded (encrypted)',data:{fileId,thumbnailFileId,contentType:'image'},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{});
+                    // #endregion
                   }
                 }
               } else {
                 // Not encrypted, use directly
                 const thumbnailUrlObj = URL.createObjectURL(thumbnailBlob);
-                setThoughtThumbnails(prev => {
-                  const newMap = new Map(prev);
-                  newMap.set(fileId, thumbnailUrlObj);
-                  return newMap;
-                });
                 content = {
                   type: 'image', // Treat thought thumbnail as image
                   data: thumbnailUrlObj
                 };
+                // #region agent log
+                fetch('http://127.0.0.1:7242/ingest/e9725a07-b703-47ab-ba6c-a54c252a4988',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'CollectionFeed.tsx:207',message:'Thought thumbnail loaded (unencrypted)',data:{fileId,thumbnailFileId,contentType:'image'},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{});
+                // #endregion
               }
             }
           } catch (thumbnailErr) {
             console.warn(`Failed to load thought thumbnail for ${fileId}, falling back to text rendering:`, thumbnailErr);
+            // #region agent log
+            fetch('http://127.0.0.1:7242/ingest/e9725a07-b703-47ab-ba6c-a54c252a4988',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'CollectionFeed.tsx:211',message:'Thought thumbnail load failed',data:{fileId,thumbnailFileId,error:thumbnailErr instanceof Error ? thumbnailErr.message : String(thumbnailErr)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{});
+            // #endregion
           }
+        } else {
+          // #region agent log
+          fetch('http://127.0.0.1:7242/ingest/e9725a07-b703-47ab-ba6c-a54c252a4988',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'CollectionFeed.tsx:213',message:'Thought has no thumbnailFileId',data:{fileId,metadataKeys:Object.keys(metadata)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{});
+          // #endregion
         }
         
         // Fallback: Load and decrypt thought text if thumbnail not available
@@ -448,65 +455,15 @@ export function CollectionFeed({
     }
 
     // Render based on content type
-    // Check if this is a thought (by metadata) that has a thumbnail
-    const isThought = metadata.fileType === 'thought' || metadata.fileType === 'text' || !!(metadata.textPost || metadata.thought);
-    const hasThoughtThumbnail = thoughtThumbnails.has(fileId);
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/e9725a07-b703-47ab-ba6c-a54c252a4988',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'CollectionFeed.tsx:449',message:'Rendering file in collection',data:{fileId,contentType:content.type,hasDimensions:mediaDimensions.has(fileId)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{});
+    // #endregion
     
-    // Note: Thoughts with thumbnails are now loaded as 'image' type, so check thought thumbnail first
-    if ((content.type === 'image' && hasThoughtThumbnail) || (isThought && hasThoughtThumbnail)) {
-      // Thought thumbnail - render as image with proper scaling (1080x1080 square)
-      const containerDims = getContainerDimensions(64);
-      const dims = mediaDimensions.get(fileId) || { width: 1080, height: 1080 }; // Thoughts are always 1080x1080
-      const scalingStyles = calculateMediaScaling(dims, containerDims);
-      
-      return (
-        <div key={fileId} className="w-full h-full flex items-center justify-center relative">
-          {/* Blurred background image */}
-          <img
-            src={content.data}
-            alt=""
-            className="absolute"
-            style={scalingStyles.background}
-            loading="eager"
-            decoding="async"
-            onError={(e) => {
-              console.error(`[CollectionFeed] Thought background thumbnail failed to load for ${fileId}:`, e);
-            }}
-          />
-          {/* Main image container */}
-          <div className="w-full h-full flex items-center justify-center relative z-10">
-            <img
-              src={content.data}
-              alt={`Collection thought ${index + 1}`}
-              style={scalingStyles.mainMedia}
-              onLoad={(e) => {
-                const img = e.currentTarget;
-                // Track dimensions - thoughts are 1080x1080
-                setMediaDimensions(prev => {
-                  const newMap = new Map(prev);
-                  newMap.set(fileId, { width: img.naturalWidth || 1080, height: img.naturalHeight || 1080 });
-                  return newMap;
-                });
-              }}
-              onError={(e) => {
-                console.error(`[CollectionFeed] Thought thumbnail failed to load for ${fileId}:`, e);
-              }}
-              loading="eager"
-              decoding="sync"
-            />
-          </div>
-        </div>
-      );
-    } else if (content.type === 'thought') {
+    if (content.type === 'thought') {
       const textPost = content.data;
       const style = textPost.style || {};
-      // Thoughts are square (1080x1080) - use media scaling utility
+      // Thoughts are square (1080x1080) - calculate scale for text rendering (based on container)
       const containerDims = getContainerDimensions(64);
-      // Thoughts are always 1080x1080 (square)
-      const thoughtDims: MediaDimensions = { width: 1080, height: 1080 };
-      const scalingStyles = calculateMediaScaling(thoughtDims, containerDims);
-      
-      // Calculate scale for text rendering (based on container)
       const REFERENCE_WIDTH = 1080;
       const REFERENCE_HEIGHT = 1080;
       const viewportWidth = containerDims.width;
@@ -591,10 +548,15 @@ export function CollectionFeed({
               style={scalingStyles.mainMedia}
               onLoad={(e) => {
                 const img = e.currentTarget;
+                const naturalWidth = img.naturalWidth;
+                const naturalHeight = img.naturalHeight;
+                // #region agent log
+                fetch('http://127.0.0.1:7242/ingest/e9725a07-b703-47ab-ba6c-a54c252a4988',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'CollectionFeed.tsx:580',message:'Image loaded - tracking dimensions',data:{fileId,naturalWidth,naturalHeight,aspectRatio:naturalWidth/naturalHeight},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
+                // #endregion
                 // Track dimensions for this specific image
                 setMediaDimensions(prev => {
                   const newMap = new Map(prev);
-                  newMap.set(fileId, { width: img.naturalWidth, height: img.naturalHeight });
+                  newMap.set(fileId, { width: naturalWidth, height: naturalHeight });
                   return newMap;
                 });
               }}
@@ -645,22 +607,42 @@ export function CollectionFeed({
     threshold: 50
   });
 
-  // Scroll to current index
+  // Scroll to current index - use scrollTo with auto behavior for instant snap
   useEffect(() => {
     if (scrollContainerRef.current) {
       const targetElement = scrollContainerRef.current.children[currentIndex] as HTMLElement;
       if (targetElement) {
-        targetElement.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        // Use scrollTo with 'auto' for instant positioning - CSS scroll-snap will handle snapping
+        const container = scrollContainerRef.current;
+        const targetTop = targetElement.offsetTop;
+        container.scrollTo({ top: targetTop, behavior: 'auto' });
       }
     }
   }, [currentIndex]);
+
+  // Enforce snap behavior on manual scroll - snap to nearest item immediately
+  useEffect(() => {
+    const container = scrollContainerRef.current;
+    if (!container) return;
+
+    const handleScroll = () => {
+      // Let CSS scroll-snap handle the snapping naturally
+      // This handler is just to ensure snap behavior is enforced
+      // CSS scroll-snap should prevent intermediate scrolling
+    };
+
+    container.addEventListener('scroll', handleScroll, { passive: true });
+    return () => container.removeEventListener('scroll', handleScroll);
+  }, []);
 
   return (
     <div
       ref={(el) => {
         scrollContainerRef.current = el;
-        if (verticalSwipeRef.current !== el) {
-          (verticalSwipeRef as React.MutableRefObject<HTMLDivElement | null>).current = el;
+        if (el && verticalSwipeRef.current !== el) {
+          // Assign to hook's ref - TypeScript workaround for RefObject
+          // @ts-ignore - RefObject.current is readonly but hook expects us to set it
+          verticalSwipeRef.current = el;
         }
       }}
       className="w-full overflow-y-scroll snap-y snap-mandatory bg-black"
@@ -668,7 +650,7 @@ export function CollectionFeed({
         scrollbarWidth: 'none', 
         msOverflowStyle: 'none', 
         WebkitOverflowScrolling: 'touch',
-        scrollBehavior: 'smooth',
+        scrollBehavior: 'auto', // Use 'auto' for instant snap - CSS scroll-snap handles snapping
         scrollSnapType: 'y mandatory',
         height: viewportHeightCSS,
         maxHeight: viewportHeightCSS,
