@@ -67,7 +67,7 @@ export function FeedEngagementSidebar({
   const normalizedUserPnId = normalizeId(userState.pnIdentifier);
   
   // Calculate isOwner - normalize both IDs before comparison
-  const calculatedIsOwner = isOwner || (userState.isUnlocked && normalizedUserPnId && normalizedCreatorId === normalizedUserPnId);
+  const calculatedIsOwner = isOwner || (userState.isUnlocked && !!normalizedUserPnId && normalizedCreatorId === normalizedUserPnId);
 
   // Check if file is saved when component mounts or user unlocks
   useEffect(() => {
@@ -184,27 +184,15 @@ export function FeedEngagementSidebar({
             <Lock className="absolute -top-1 -right-1 h-3 w-3 text-yellow-400 z-10" />
           )}
           <Heart 
-            className={`h-6 w-6 md:h-7 md:w-7 transition-all ${
+            className={`h-6 w-6 md:h-7 md:w-7 transition-colors ${
               isLiked
                 ? 'text-red-500'
-                : 'text-white group-hover:stroke-black'
+                : 'text-white'
             }`} 
             fill={isLiked ? 'red' : 'white'}
             style={{ 
               fill: isLiked ? 'red' : 'white', 
-              filter: 'drop-shadow(0 1px 2px rgba(0, 0, 0, 0.5))',
-              stroke: isLiked ? 'none' : 'transparent',
-              strokeWidth: '1.5px'
-            }}
-            onMouseEnter={(e) => {
-              if (!isLiked) {
-                e.currentTarget.style.stroke = 'black';
-              }
-            }}
-            onMouseLeave={(e) => {
-              if (!isLiked) {
-                e.currentTarget.style.stroke = 'transparent';
-              }
+              filter: 'drop-shadow(0 1px 2px rgba(0, 0, 0, 0.5))'
             }}
           />
           <span className="absolute -bottom-1 -left-1 text-xs text-white font-medium min-w-[1rem] text-center" style={{ filter: 'drop-shadow(0 1px 2px rgba(0, 0, 0, 0.5))' }}>
@@ -236,20 +224,12 @@ export function FeedEngagementSidebar({
             <Lock className="absolute -top-1 -right-1 h-3 w-3 text-yellow-400 z-10" />
           )}
           <MessageCircle 
-            className="h-6 w-6 md:h-7 md:w-7 text-white transition-all" 
+            className="h-6 w-6 md:h-7 md:w-7 text-white transition-colors" 
             fill="white"
             style={{ 
               fill: 'white', 
               transform: 'scaleX(-1)', 
-              filter: 'drop-shadow(0 1px 2px rgba(0, 0, 0, 0.5))',
-              stroke: 'transparent',
-              strokeWidth: '1.5px'
-            }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.stroke = 'black';
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.stroke = 'transparent';
+              filter: 'drop-shadow(0 1px 2px rgba(0, 0, 0, 0.5))'
             }}
           />
           <span className="absolute -bottom-1 -left-1 text-xs text-white font-medium min-w-[1rem] text-center" style={{ filter: 'drop-shadow(0 1px 2px rgba(0, 0, 0, 0.5))' }}>
@@ -270,27 +250,15 @@ export function FeedEngagementSidebar({
             <Lock className="absolute -top-1 -right-1 h-3 w-3 text-yellow-400 z-10" />
           )}
           <Bookmark 
-            className={`h-6 w-6 md:h-7 md:w-7 transition-all ${
+            className={`h-6 w-6 md:h-7 md:w-7 transition-colors ${
               isSaved
                 ? 'text-yellow-400'
-                : 'text-white group-hover:stroke-black'
+                : 'text-white'
             }`} 
             fill={isSaved ? 'yellow' : 'white'}
             style={{ 
               fill: isSaved ? 'yellow' : 'white', 
-              filter: 'drop-shadow(0 1px 2px rgba(0, 0, 0, 0.5))',
-              stroke: isSaved ? 'none' : 'transparent',
-              strokeWidth: '1.5px'
-            }}
-            onMouseEnter={(e) => {
-              if (!isSaved) {
-                e.currentTarget.style.stroke = 'black';
-              }
-            }}
-            onMouseLeave={(e) => {
-              if (!isSaved) {
-                e.currentTarget.style.stroke = 'transparent';
-              }
+              filter: 'drop-shadow(0 1px 2px rgba(0, 0, 0, 0.5))'
             }}
           />
         </div>
@@ -302,22 +270,33 @@ export function FeedEngagementSidebar({
         className="flex items-center justify-center group"
         title="Share"
       >
-        <Send 
-          className="h-6 w-6 md:h-7 md:w-7 text-white transition-all" 
-          fill="white"
-          style={{ 
-            fill: 'white', 
-            filter: 'drop-shadow(0 1px 2px rgba(0, 0, 0, 0.5))',
-            stroke: 'transparent',
-            strokeWidth: '1.5px'
-          }}
-          onMouseEnter={(e) => {
-            e.currentTarget.style.stroke = 'black';
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.stroke = 'transparent';
-          }}
-        />
+        <div className="relative">
+          <Send 
+            className="h-6 w-6 md:h-7 md:w-7 text-white transition-colors" 
+            fill="white"
+            style={{ 
+              fill: 'white', 
+              filter: 'drop-shadow(0 1px 2px rgba(0, 0, 0, 0.5))'
+            }}
+          />
+          {/* Strikethrough line */}
+          <svg 
+            className="absolute inset-0 w-full h-full pointer-events-none"
+            viewBox="0 0 24 24"
+            style={{ transform: 'rotate(-45deg)' }}
+          >
+            <line 
+              x1="2" 
+              y1="12" 
+              x2="22" 
+              y2="12" 
+              stroke="white" 
+              strokeWidth="2" 
+              strokeLinecap="round"
+              style={{ filter: 'drop-shadow(0 1px 2px rgba(0, 0, 0, 0.5))' }}
+            />
+          </svg>
+        </div>
       </button>
 
       {/* Bookmark Button (legacy - only show if onBookmark callback provided) */}
