@@ -187,12 +187,12 @@ export function FeedEngagementSidebar({
             className={`h-6 w-6 md:h-7 md:w-7 transition-colors ${
               isLiked
                 ? 'text-red-500'
-                : 'text-white group-hover:text-red-400'
+                : 'text-black'
             }`} 
-            fill={isLiked ? 'red' : 'white'}
-            style={{ fill: isLiked ? 'red' : 'white', filter: 'drop-shadow(0 1px 2px rgba(0, 0, 0, 0.5))' }}
+            fill={isLiked ? 'red' : 'black'}
+            style={{ fill: isLiked ? 'red' : 'black', filter: 'drop-shadow(0 1px 2px rgba(0, 0, 0, 0.5))' }}
           />
-          <span className="absolute -bottom-1 -left-1 text-xs text-red-400 font-medium min-w-[1rem] text-center">
+          <span className="absolute -bottom-1 -left-1 text-xs text-white font-medium min-w-[1rem] text-center" style={{ filter: 'drop-shadow(0 1px 2px rgba(0, 0, 0, 0.5))' }}>
             {likes.toLocaleString()}
           </span>
         </div>
@@ -221,11 +221,11 @@ export function FeedEngagementSidebar({
             <Lock className="absolute -top-1 -right-1 h-3 w-3 text-yellow-400 z-10" />
           )}
           <MessageCircle 
-            className="h-6 w-6 md:h-7 md:w-7 text-white group-hover:text-blue-400 transition-colors" 
-            fill="white"
-            style={{ fill: 'white', transform: 'scaleX(-1)', filter: 'drop-shadow(0 1px 2px rgba(0, 0, 0, 0.5))' }}
+            className="h-6 w-6 md:h-7 md:w-7 text-black transition-colors" 
+            fill="black"
+            style={{ fill: 'black', transform: 'scaleX(-1)', filter: 'drop-shadow(0 1px 2px rgba(0, 0, 0, 0.5))' }}
           />
-          <span className="absolute -bottom-1 -left-1 text-xs text-blue-400 font-medium min-w-[1rem] text-center">
+          <span className="absolute -bottom-1 -left-1 text-xs text-white font-medium min-w-[1rem] text-center" style={{ filter: 'drop-shadow(0 1px 2px rgba(0, 0, 0, 0.5))' }}>
             {comments.toLocaleString()}
           </span>
         </div>
@@ -246,10 +246,10 @@ export function FeedEngagementSidebar({
             className={`h-6 w-6 md:h-7 md:w-7 transition-colors ${
               isSaved
                 ? 'text-yellow-400'
-                : 'text-white group-hover:text-yellow-400'
+                : 'text-black'
             }`} 
-            fill={isSaved ? 'yellow' : 'white'}
-            style={{ fill: isSaved ? 'yellow' : 'white', filter: 'drop-shadow(0 1px 2px rgba(0, 0, 0, 0.5))' }}
+            fill={isSaved ? 'yellow' : 'black'}
+            style={{ fill: isSaved ? 'yellow' : 'black', filter: 'drop-shadow(0 1px 2px rgba(0, 0, 0, 0.5))' }}
           />
         </div>
       </button>
@@ -261,9 +261,9 @@ export function FeedEngagementSidebar({
         title="Share"
       >
         <Send 
-          className="h-6 w-6 md:h-7 md:w-7 text-white group-hover:text-green-400 transition-colors" 
-          fill="white"
-          style={{ fill: 'white', filter: 'drop-shadow(0 1px 2px rgba(0, 0, 0, 0.5))' }}
+          className="h-6 w-6 md:h-7 md:w-7 text-black transition-colors" 
+          fill="black"
+          style={{ fill: 'black', filter: 'drop-shadow(0 1px 2px rgba(0, 0, 0, 0.5))' }}
         />
       </button>
 
