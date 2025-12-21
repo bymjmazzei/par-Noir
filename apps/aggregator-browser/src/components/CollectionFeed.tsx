@@ -659,8 +659,12 @@ export function CollectionFeed({
         if (el) {
           const computedHeight = window.getComputedStyle(el).height;
           const computedBottom = window.getComputedStyle(el).bottom;
+          const computedPosition = window.getComputedStyle(el).position;
           const actualHeight = el.offsetHeight;
-          fetch('http://127.0.0.1:7242/ingest/e9725a07-b703-47ab-ba6c-a54c252a4988',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'CollectionFeed.tsx:657',message:'Container ref set - height values (post-fix)',data:{viewportHeightCSS,windowInnerHeight:window.innerHeight,computedHeight,computedBottom,actualHeight,bottomNavHeight:64,expectedHeight:window.innerHeight - 64},timestamp:Date.now(),sessionId:'debug-session',runId:'post-fix',hypothesisId:'A'})}).catch(()=>{});
+          const parent = el.parentElement;
+          const parentHeight = parent ? window.getComputedStyle(parent).height : 'none';
+          const parentPosition = parent ? window.getComputedStyle(parent).position : 'none';
+          fetch('http://127.0.0.1:7242/ingest/e9725a07-b703-47ab-ba6c-a54c252a4988',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'CollectionFeed.tsx:657',message:'Container ref set - height values with parent context',data:{viewportHeightCSS,windowInnerHeight:window.innerHeight,computedHeight,computedBottom,computedPosition,actualHeight,parentHeight,parentPosition,bottomNavHeight:64,expectedHeight:window.innerHeight - 64},timestamp:Date.now(),sessionId:'debug-session',runId:'run2',hypothesisId:'D'})}).catch(()=>{});
         }
         // #endregion
       }}
@@ -671,16 +675,13 @@ export function CollectionFeed({
         WebkitOverflowScrolling: 'touch',
         scrollBehavior: 'auto',
         scrollSnapType: 'y mandatory',
+        // Match FullScreenFeed: use relative positioning instead of absolute
         height: viewportHeightCSS,
         maxHeight: viewportHeightCSS,
         minHeight: viewportHeightCSS,
         overflowX: 'hidden',
         overflowY: 'scroll',
-        position: 'absolute',
-        top: 0,
-        left: 0,
-        right: 0,
-        // Removed bottom: 0 to allow height constraint to work properly (excludes bottom nav)
+        position: 'relative', // Changed from absolute to match FullScreenFeed tiles
         margin: 0,
         padding: 0,
         boxSizing: 'border-box',
