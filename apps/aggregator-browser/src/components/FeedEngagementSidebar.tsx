@@ -176,7 +176,7 @@ export function FeedEngagementSidebar({
       {/* Like Button */}
       <button
         onClick={(e) => handleAction(e, 'like', onLike)}
-        className="flex flex-col items-center space-y-1 group"
+        className="flex items-center justify-center group"
         title={!userState.isUnlocked ? 'Connect pN to like' : 'Like'}
       >
         <div className="relative">
@@ -192,8 +192,10 @@ export function FeedEngagementSidebar({
             fill={isLiked ? 'red' : 'white'}
             style={{ fill: isLiked ? 'red' : 'white' }}
           />
+          <span className="absolute -bottom-1 -left-1 text-xs text-white font-medium bg-black/50 rounded px-0.5 min-w-[1rem] text-center">
+            {likes.toLocaleString()}
+          </span>
         </div>
-        <span className="text-xs text-white font-medium">{likes.toLocaleString()}</span>
       </button>
 
       {/* Comment Button */}
@@ -211,7 +213,7 @@ export function FeedEngagementSidebar({
             console.warn('[FeedEngagementSidebar] onComment is not a function:', onComment);
           }
         }}
-        className="flex flex-col items-center space-y-1 group"
+        className="flex items-center justify-center group"
         title={!userState.isUnlocked ? 'Connect pN to comment' : 'Comment'}
       >
         <div className="relative">
@@ -223,14 +225,16 @@ export function FeedEngagementSidebar({
             fill="white"
             style={{ fill: 'white' }}
           />
+          <span className="absolute -bottom-1 -left-1 text-xs text-white font-medium bg-black/50 rounded px-0.5 min-w-[1rem] text-center">
+            {comments.toLocaleString()}
+          </span>
         </div>
-        <span className="text-xs text-white font-medium">{comments.toLocaleString()}</span>
       </button>
 
       {/* Save Button - Always show, but require unlock to function */}
       <button
         onClick={handleSave}
-        className="flex flex-col items-center space-y-1 group"
+        className="flex items-center justify-center group"
         title={userState.isUnlocked ? (isSaved ? 'Remove from saved' : 'Save') : 'Connect pN to save'}
         disabled={isCheckingSaved || !userState.isUnlocked}
       >
@@ -253,7 +257,7 @@ export function FeedEngagementSidebar({
       {/* Share Button */}
       <button
         onClick={handleShare}
-        className="flex flex-col items-center space-y-1 group"
+        className="flex items-center justify-center group"
         title="Share"
       >
         <Send 
