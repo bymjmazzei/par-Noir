@@ -184,13 +184,28 @@ export function FeedEngagementSidebar({
             <Lock className="absolute -top-1 -right-1 h-3 w-3 text-yellow-400 z-10" />
           )}
           <Heart 
-            className={`h-6 w-6 md:h-7 md:w-7 transition-colors ${
+            className={`h-6 w-6 md:h-7 md:w-7 transition-all ${
               isLiked
                 ? 'text-red-500'
-                : 'text-black'
+                : 'text-white group-hover:stroke-black'
             }`} 
-            fill={isLiked ? 'red' : 'black'}
-            style={{ fill: isLiked ? 'red' : 'black', filter: 'drop-shadow(0 1px 2px rgba(0, 0, 0, 0.5))' }}
+            fill={isLiked ? 'red' : 'white'}
+            style={{ 
+              fill: isLiked ? 'red' : 'white', 
+              filter: 'drop-shadow(0 1px 2px rgba(0, 0, 0, 0.5))',
+              stroke: isLiked ? 'none' : 'transparent',
+              strokeWidth: '1.5px'
+            }}
+            onMouseEnter={(e) => {
+              if (!isLiked) {
+                e.currentTarget.style.stroke = 'black';
+              }
+            }}
+            onMouseLeave={(e) => {
+              if (!isLiked) {
+                e.currentTarget.style.stroke = 'transparent';
+              }
+            }}
           />
           <span className="absolute -bottom-1 -left-1 text-xs text-white font-medium min-w-[1rem] text-center" style={{ filter: 'drop-shadow(0 1px 2px rgba(0, 0, 0, 0.5))' }}>
             {likes.toLocaleString()}
@@ -221,9 +236,21 @@ export function FeedEngagementSidebar({
             <Lock className="absolute -top-1 -right-1 h-3 w-3 text-yellow-400 z-10" />
           )}
           <MessageCircle 
-            className="h-6 w-6 md:h-7 md:w-7 text-black transition-colors" 
-            fill="black"
-            style={{ fill: 'black', transform: 'scaleX(-1)', filter: 'drop-shadow(0 1px 2px rgba(0, 0, 0, 0.5))' }}
+            className="h-6 w-6 md:h-7 md:w-7 text-white transition-all" 
+            fill="white"
+            style={{ 
+              fill: 'white', 
+              transform: 'scaleX(-1)', 
+              filter: 'drop-shadow(0 1px 2px rgba(0, 0, 0, 0.5))',
+              stroke: 'transparent',
+              strokeWidth: '1.5px'
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.stroke = 'black';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.stroke = 'transparent';
+            }}
           />
           <span className="absolute -bottom-1 -left-1 text-xs text-white font-medium min-w-[1rem] text-center" style={{ filter: 'drop-shadow(0 1px 2px rgba(0, 0, 0, 0.5))' }}>
             {comments.toLocaleString()}
@@ -243,13 +270,28 @@ export function FeedEngagementSidebar({
             <Lock className="absolute -top-1 -right-1 h-3 w-3 text-yellow-400 z-10" />
           )}
           <Bookmark 
-            className={`h-6 w-6 md:h-7 md:w-7 transition-colors ${
+            className={`h-6 w-6 md:h-7 md:w-7 transition-all ${
               isSaved
                 ? 'text-yellow-400'
-                : 'text-black'
+                : 'text-white group-hover:stroke-black'
             }`} 
-            fill={isSaved ? 'yellow' : 'black'}
-            style={{ fill: isSaved ? 'yellow' : 'black', filter: 'drop-shadow(0 1px 2px rgba(0, 0, 0, 0.5))' }}
+            fill={isSaved ? 'yellow' : 'white'}
+            style={{ 
+              fill: isSaved ? 'yellow' : 'white', 
+              filter: 'drop-shadow(0 1px 2px rgba(0, 0, 0, 0.5))',
+              stroke: isSaved ? 'none' : 'transparent',
+              strokeWidth: '1.5px'
+            }}
+            onMouseEnter={(e) => {
+              if (!isSaved) {
+                e.currentTarget.style.stroke = 'black';
+              }
+            }}
+            onMouseLeave={(e) => {
+              if (!isSaved) {
+                e.currentTarget.style.stroke = 'transparent';
+              }
+            }}
           />
         </div>
       </button>
@@ -261,9 +303,20 @@ export function FeedEngagementSidebar({
         title="Share"
       >
         <Send 
-          className="h-6 w-6 md:h-7 md:w-7 text-black transition-colors" 
-          fill="black"
-          style={{ fill: 'black', filter: 'drop-shadow(0 1px 2px rgba(0, 0, 0, 0.5))' }}
+          className="h-6 w-6 md:h-7 md:w-7 text-white transition-all" 
+          fill="white"
+          style={{ 
+            fill: 'white', 
+            filter: 'drop-shadow(0 1px 2px rgba(0, 0, 0, 0.5))',
+            stroke: 'transparent',
+            strokeWidth: '1.5px'
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.stroke = 'black';
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.stroke = 'transparent';
+          }}
         />
       </button>
 
