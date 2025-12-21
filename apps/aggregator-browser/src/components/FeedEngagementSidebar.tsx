@@ -276,14 +276,14 @@ export function FeedEngagementSidebar({
           fill="none"
           style={{ filter: 'drop-shadow(0 1px 2px rgba(0, 0, 0, 0.5))' }}
         >
-          {/* Top triangle (left half of paper plane) */}
+          {/* Top triangle (upper half of paper plane) */}
           <path 
-            d="M 2 12 L 11 3 L 11 8 L 19 10 L 11 11.5 Z" 
+            d="M 3 12 L 12 3 L 21 12 L 12 11.5 Z" 
             fill="white"
           />
-          {/* Bottom triangle (right half of paper plane) - separated with gap */}
+          {/* Bottom triangle (lower half of paper plane) - separated with gap */}
           <path 
-            d="M 11 12.5 L 19 14 L 11 16 L 11 21 L 22 12 Z" 
+            d="M 3 12 L 12 12.5 L 21 12 L 12 21 Z" 
             fill="white"
           />
         </svg>
