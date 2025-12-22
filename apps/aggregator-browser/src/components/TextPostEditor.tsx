@@ -806,14 +806,17 @@ export function TextPostEditor({ onSave, onCancel }: TextPostEditorProps) {
     if (textPosts.length === 1) {
       onSave(textPosts[0]);
     } else {
-      // Multiple pages - save as collection
-      // For now, save first page with metadata indicating it's part of a multi-page thought
-      const firstPost = textPosts[0];
-      if (textPosts.length > 1) {
-        // Add metadata to indicate this is a multi-page thought
-        (firstPost as any).isMultiPage = true;
-        (firstPost as any).pages = textPosts;
-      }
+      // Multiple pages - save first page with metadata indicating it's part of a multi-page thought
+      // Create a clean copy of the first post without circular references
+      const firstPost = {
+        ...textPosts[0],
+        isMultiPage: true,
+        pages: textPosts.map(post => ({
+          content: post.content,
+          style: post.style,
+          metadata: post.metadata
+        }))
+      };
       onSave(firstPost);
     }
   };
