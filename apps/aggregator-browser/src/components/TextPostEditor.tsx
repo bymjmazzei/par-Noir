@@ -1460,16 +1460,6 @@ export function TextPostEditor({ onSave, onCancel }: TextPostEditorProps) {
             {textAlign === 'justify' && <AlignJustify className="h-4 w-4" />}
           </button>
 
-          {/* Add Page */}
-          <button
-            onClick={handleAddPage}
-            className="px-2 py-1 transition-opacity hover:opacity-80"
-            style={{ color: 'white' }}
-            title="Add Page"
-          >
-            <Layers className="h-4 w-4" />
-          </button>
-          
           {/* Delete Page (only show if more than one page) */}
           {pages.length > 1 && (
             <button
@@ -1543,6 +1533,15 @@ export function TextPostEditor({ onSave, onCancel }: TextPostEditorProps) {
         
         {/* Text Input Area */}
         <div className="flex items-end gap-2 px-4 pb-4">
+          {/* Add Page Button */}
+          <button
+            onClick={handleAddPage}
+            className="p-3 bg-neutral-700 text-white rounded-lg hover:bg-neutral-600 transition-colors flex items-center justify-center mb-0.5"
+            title="Add Page"
+          >
+            <PlusIcon className="h-5 w-5" />
+          </button>
+          
           <textarea
             ref={textareaRef}
             value={content}
@@ -1565,6 +1564,7 @@ export function TextPostEditor({ onSave, onCancel }: TextPostEditorProps) {
             }}
             rows={1}
           />
+          
           <button
             onClick={handleSave}
             className="p-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center justify-center mb-0.5"
