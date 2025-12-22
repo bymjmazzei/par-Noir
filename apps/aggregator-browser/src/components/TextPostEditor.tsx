@@ -9,7 +9,7 @@ import { X, Check, Palette, Type, Image as ImageIcon, Upload, AlignLeft, AlignCe
 import { TextPostData, TextPostStyle } from '../types/aggregator';
 import { useUserState } from '../contexts/UserStateContext';
 import { useHorizontalSwipe } from '../hooks/useHorizontalSwipe';
-import { ThoughtMetadataModal } from './ThoughtMetadataModal';
+import { EditMetadataModal, MetadataFormData } from './EditMetadataModal';
 
 // Helper function to convert hex to RGB
 const hexToRgb = (hex: string): { r: number; g: number; b: number } => {
@@ -719,8 +719,12 @@ export function TextPostEditor({ onSave, onCancel }: TextPostEditorProps) {
     setShowMetadataModal(true);
   };
   
-  const handleMetadataSave = (metadata: { name: string; description: string; tags: string[]; visibility: 'public' | 'private' | 'friends'; isTopPost: boolean }) => {
+  const handleMetadataSave = (metadata: MetadataFormData) => {
     setShowMetadataModal(false);
+    
+    // Parse tags and genre from comma-separated strings
+    const tags = metadata.tags.split(',').map(t => t.trim()).filter(Boolean);
+    const genre = metadata.genre.split(',').map(g => g.trim()).filter(Boolean);
     
     // Convert all pages to TextPostData format
     const textPosts: TextPostData[] = pages
@@ -745,11 +749,24 @@ export function TextPostEditor({ onSave, onCancel }: TextPostEditorProps) {
           name: metadata.name,
           title: metadata.name,
           description: metadata.description,
-          keywords: metadata.tags,
-          tags: metadata.tags,
-          isPublic: metadata.visibility === 'public',
-          visibility: metadata.visibility,
-          isTopPost: metadata.isTopPost,
+          keywords: tags,
+          tags: tags,
+          genre: genre.length > 0 ? genre : undefined,
+          feedCategories: metadata.category ? [metadata.category] : undefined,
+          category: metadata.category || undefined,
+          locationCreated: (metadata.locationName || metadata.locationAddress) ? {
+            '@type': 'Place',
+            ...(metadata.locationName && { name: metadata.locationName }),
+            ...(metadata.locationAddress && {
+              address: {
+                '@type': 'PostalAddress',
+                addressLocality: metadata.locationAddress.split(',')[0]?.trim() || '',
+                addressRegion: metadata.locationAddress.split(',')[1]?.trim() || '',
+                addressCountry: metadata.locationAddress.split(',')[2]?.trim() || ''
+              }
+            })
+          } : undefined,
+          license: metadata.license || undefined,
         }
       }));
     
@@ -1572,12 +1589,13 @@ export function TextPostEditor({ onSave, onCancel }: TextPostEditorProps) {
       />
       
       {/* Metadata Modal */}
-      {showMetadataModal && (
-        <ThoughtMetadataModal
-          onSave={handleMetadataSave}
-          onCancel={() => setShowMetadataModal(false)}
-        />
-      )}
+      <EditMetadataModal
+        isOpen={showMetadataModal}
+        onClose={() => setShowMetadataModal(false)}
+        onSave={handleMetadataSave}
+        title="Add Metadata"
+        submitButtonText="Submit"
+      />
     </div>
   );
 }

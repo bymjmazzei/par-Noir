@@ -15,7 +15,7 @@ import { LICENSE_TYPES } from '../constants/licenses';
 import { FeedCategory } from '../types/aggregator';
 import { useUserState } from '../contexts/UserStateContext';
 import { cleanTitle } from '../utils/cleanTitle';
-import { CollectionMetadataModal } from './CollectionMetadataModal';
+import { EditMetadataModal, MetadataFormData } from './EditMetadataModal';
 
 const apiEndpoint = process.env.REACT_APP_API_ENDPOINT || 'https://api.parnoir.com';
 
@@ -2297,7 +2297,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
     setShowCollectionMetadataModal(true);
   };
   
-  const handleCollectionMetadataSave = async (metadata: { title: string; description: string; tags: string[]; visibility: 'public' | 'private' | 'friends' }) => {
+  const handleCollectionMetadataSave = async (metadata: MetadataFormData) => {
     if (!pendingCollectionData) return;
     
     setShowCollectionMetadataModal(false);
@@ -2305,19 +2305,55 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
     setError(null);
 
     try {
-      // Use collection service with metadata
+      // Parse tags and genre from comma-separated strings
+      const tags = metadata.tags.split(',').map(t => t.trim()).filter(Boolean);
+      const genre = metadata.genre.split(',').map(g => g.trim()).filter(Boolean);
+      
+      // Build location object if provided
+      let locationCreated = undefined;
+      if (metadata.locationName || metadata.locationAddress) {
+        locationCreated = {
+          '@type': 'Place',
+          ...(metadata.locationName && { name: metadata.locationName }),
+          ...(metadata.locationAddress && {
+            address: {
+              '@type': 'PostalAddress',
+              addressLocality: metadata.locationAddress.split(',')[0]?.trim() || '',
+              addressRegion: metadata.locationAddress.split(',')[1]?.trim() || '',
+              addressCountry: metadata.locationAddress.split(',')[2]?.trim() || ''
+            }
+          })
+        };
+      }
+      
+      // Extract subjects from description, tags, and keywords
+      const { extractSubjects } = await import('../utils/subjectExtractor');
+      const subjects = extractSubjects(
+        metadata.description,
+        tags,
+        tags // keywords same as tags
+      );
+      
+      // Use collection service with full metadata
       const result = await createCollection(
         {
           collectionFileIds: pendingCollectionData.fileIds,
-          title: metadata.title
+          title: metadata.name || `Collection of ${pendingCollectionData.fileIds.length} files`
         },
         pendingCollectionData.accountId,
         {
-          title: metadata.title,
+          name: metadata.name,
+          title: metadata.name,
           description: metadata.description,
-          keywords: metadata.tags,
-          tags: metadata.tags,
-          isPublic: metadata.visibility === 'public',
+          keywords: tags,
+          tags: tags,
+          genre: genre.length > 0 ? genre : undefined,
+          feedCategories: metadata.category ? [metadata.category] : undefined,
+          category: metadata.category || undefined,
+          locationCreated: locationCreated,
+          license: metadata.license || undefined,
+          subjects: subjects.length > 0 ? subjects : undefined,
+          isPublic: true, // Collections default to public
           isNSFW: false
         }
       );
@@ -4420,16 +4456,20 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
       })()}
       
       {/* Collection Metadata Modal */}
-      {showCollectionMetadataModal && pendingCollectionData && (
-        <CollectionMetadataModal
-          onSave={handleCollectionMetadataSave}
-          onCancel={() => {
-            setShowCollectionMetadataModal(false);
-            setPendingCollectionData(null);
-          }}
-          defaultTitle={`Collection of ${pendingCollectionData.fileIds.length} files`}
-        />
-      )}
+      <EditMetadataModal
+        isOpen={showCollectionMetadataModal && !!pendingCollectionData}
+        onClose={() => {
+          setShowCollectionMetadataModal(false);
+          setPendingCollectionData(null);
+        }}
+        onSave={handleCollectionMetadataSave}
+        initialData={pendingCollectionData ? {
+          name: `Collection of ${pendingCollectionData.fileIds.length} files`
+        } : undefined}
+        title="Collection Metadata"
+        submitButtonText="Create Collection"
+        isLoading={isLoading}
+      />
     </div>
   );
 };
