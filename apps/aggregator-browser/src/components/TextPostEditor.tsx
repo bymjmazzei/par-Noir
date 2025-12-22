@@ -1261,14 +1261,16 @@ export function TextPostEditor({ onSave, onCancel }: TextPostEditorProps) {
             scrollBehavior: 'smooth'
           }}
         >
-          <div className="flex h-full" style={{ width: `${pages.length * 100}%` }}>
+          <div className="flex h-full" style={{ width: `${pages.length * 100}vw` }}>
             {pages.map((page, pageIdx) => (
               <div
                 key={pageIdx}
                 data-preview-container
-                className="w-full h-full flex items-center justify-center relative flex-shrink-0 snap-start"
+                className="h-full flex items-center justify-center relative flex-shrink-0 snap-start"
                 style={{
-                  width: `${100 / pages.length}%`,
+                  width: '100vw',
+                  minWidth: '100vw',
+                  maxWidth: '100vw',
                   backgroundImage: page.backgroundImage ? `url(${page.backgroundImage})` : 'none',
                   backgroundColor: page.backgroundImage ? 'transparent' : page.backgroundColor,
                   backgroundSize: 'cover',
