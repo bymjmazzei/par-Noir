@@ -2267,17 +2267,12 @@ export function FullScreenFeed({
             key={fileId}
             data-file-id={fileId}
             className="w-full snap-start flex items-center justify-center bg-black relative"
-            style={{
-              height: viewportHeightCSS,
-              minHeight: viewportHeightCSS,
-              maxHeight: viewportHeightCSS,
-              flexShrink: 0
-            }}
             style={{ 
               // MOBILE FIX: Use actual viewport height (excludes mobile browser UI)
               height: viewportHeightCSS,
               minHeight: viewportHeightCSS,
               maxHeight: viewportHeightCSS,
+              flexShrink: 0,
               // Start at top of window
               marginTop: '0',
               paddingTop: '0',
