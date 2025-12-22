@@ -5,9 +5,11 @@
 
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
-import { X, Check, Palette, Type, Image as ImageIcon, Upload, AlignLeft, AlignCenter, AlignRight, AlignJustify, Layers, Minus, Plus as PlusIcon, Send, Bold } from 'lucide-react';
+import { X, Check, Palette, Type, Image as ImageIcon, Upload, AlignLeft, AlignCenter, AlignRight, AlignJustify, Layers, Minus, Plus as PlusIcon, Send, Bold, ChevronLeft, ChevronRight } from 'lucide-react';
 import { TextPostData, TextPostStyle } from '../types/aggregator';
 import { useUserState } from '../contexts/UserStateContext';
+import { useHorizontalSwipe } from '../hooks/useHorizontalSwipe';
+import { ThoughtMetadataModal } from './ThoughtMetadataModal';
 
 // Helper function to convert hex to RGB
 const hexToRgb = (hex: string): { r: number; g: number; b: number } => {
@@ -227,21 +229,80 @@ const FONT_OPTIONS = [
 
 export function TextPostEditor({ onSave, onCancel }: TextPostEditorProps) {
   const { userState } = useUserState();
-  const [content, setContent] = useState('');
+  
+  // Multi-page state
+  const [pages, setPages] = useState<Array<{
+    content: string;
+    fontFamily: string;
+    fontSize: number;
+    textColor: string;
+    dropShadowColor: string;
+    dropShadowBlur: number;
+    dropShadowOffsetX: number;
+    dropShadowOffsetY: number;
+    backgroundColor: string;
+    backgroundImage: string | null;
+    textAlign: 'left' | 'center' | 'right' | 'justify';
+    textStyle: 'plain' | 'bold' | 'italic' | 'strikethrough';
+    padding: number;
+  }>>([{
+    content: '',
+    fontFamily: 'Arial',
+    fontSize: 48,
+    textColor: '#FFFFFF',
+    dropShadowColor: '#000000',
+    dropShadowBlur: 10,
+    dropShadowOffsetX: 2,
+    dropShadowOffsetY: 2,
+    backgroundColor: '#000000',
+    backgroundImage: null,
+    textAlign: 'center',
+    textStyle: 'plain',
+    padding: 40,
+  }]);
+  const [currentPageIndex, setCurrentPageIndex] = useState(0);
+  const previewContainerRef = useRef<HTMLDivElement>(null);
+  
+  // Get current page data
+  const currentPage = pages[currentPageIndex];
+  const content = currentPage.content;
+  const fontFamily = currentPage.fontFamily;
+  const fontSize = currentPage.fontSize;
+  const textColor = currentPage.textColor;
+  const dropShadowColor = currentPage.dropShadowColor;
+  const dropShadowBlur = currentPage.dropShadowBlur;
+  const dropShadowOffsetX = currentPage.dropShadowOffsetX;
+  const dropShadowOffsetY = currentPage.dropShadowOffsetY;
+  const backgroundColor = currentPage.backgroundColor;
+  const backgroundImage = currentPage.backgroundImage;
+  const textAlign = currentPage.textAlign;
+  const textStyle = currentPage.textStyle;
+  const padding = currentPage.padding;
+  
+  // Update current page helper
+  const updateCurrentPage = (updates: Partial<typeof currentPage>) => {
+    setPages(prev => prev.map((page, idx) => 
+      idx === currentPageIndex ? { ...page, ...updates } : page
+    ));
+  };
+  
+  // Setters that update current page
+  const setContent = (value: string) => updateCurrentPage({ content: value });
+  const setFontFamily = (value: string) => updateCurrentPage({ fontFamily: value });
+  const setFontSize = (value: number) => updateCurrentPage({ fontSize: value });
+  const setTextColor = (value: string) => updateCurrentPage({ textColor: value });
+  const setDropShadowColor = (value: string) => updateCurrentPage({ dropShadowColor: value });
+  const setDropShadowBlur = (value: number) => updateCurrentPage({ dropShadowBlur: value });
+  const setDropShadowOffsetX = (value: number) => updateCurrentPage({ dropShadowOffsetX: value });
+  const setDropShadowOffsetY = (value: number) => updateCurrentPage({ dropShadowOffsetY: value });
+  const setBackgroundColor = (value: string) => updateCurrentPage({ backgroundColor: value });
+  const setBackgroundImage = (value: string | null) => updateCurrentPage({ backgroundImage: value });
+  const setTextAlign = (value: 'left' | 'center' | 'right' | 'justify') => updateCurrentPage({ textAlign: value });
+  const setTextStyle = (value: 'plain' | 'bold' | 'italic' | 'strikethrough') => updateCurrentPage({ textStyle: value });
+  const setPadding = (value: number) => updateCurrentPage({ padding: value });
+  
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [textareaHeight, setTextareaHeight] = useState(60); // Starting height
-  const [fontFamily, setFontFamily] = useState('Arial');
-  const [fontSize, setFontSize] = useState(48);
-  const [textColor, setTextColor] = useState('#FFFFFF'); // Default white
-  const [dropShadowColor, setDropShadowColor] = useState('#000000');
-  const [dropShadowBlur, setDropShadowBlur] = useState(10);
-  const [dropShadowOffsetX, setDropShadowOffsetX] = useState(2);
-  const [dropShadowOffsetY, setDropShadowOffsetY] = useState(2);
-  const [backgroundColor, setBackgroundColor] = useState('#000000');
-  const [backgroundImage, setBackgroundImage] = useState<string | null>(null);
-  const [textAlign, setTextAlign] = useState<'left' | 'center' | 'right' | 'justify'>('center');
-  const [textStyle, setTextStyle] = useState<'plain' | 'bold' | 'italic' | 'strikethrough'>('plain');
-  const [padding, setPadding] = useState(40);
   const [showTextColorPicker, setShowTextColorPicker] = useState(false);
   const [showBackgroundColorPicker, setShowBackgroundColorPicker] = useState(false);
   const [showDropShadowColorPicker, setShowDropShadowColorPicker] = useState(false);
@@ -262,6 +323,55 @@ export function TextPostEditor({ onSave, onCancel }: TextPostEditorProps) {
   const [openMenu, setOpenMenu] = useState<string | null>(null);
   const [menuPosition, setMenuPosition] = useState<{ top: number; left: number } | null>(null);
   const menuButtonRefs = useRef<Map<string, HTMLButtonElement | null>>(new Map());
+  
+  // Metadata modal state
+  const [showMetadataModal, setShowMetadataModal] = useState(false);
+  
+  // Horizontal swipe for page navigation
+  const swipeRef = useHorizontalSwipe({
+    onSwipeLeft: () => {
+      if (currentPageIndex < pages.length - 1) {
+        setCurrentPageIndex(prev => prev + 1);
+      }
+    },
+    onSwipeRight: () => {
+      if (currentPageIndex > 0) {
+        setCurrentPageIndex(prev => prev - 1);
+      }
+    },
+    enabled: true,
+    threshold: 50,
+    snapThreshold: 0.2
+  });
+  
+  // Add page function
+  const handleAddPage = () => {
+    setPages(prev => [...prev, {
+      content: '',
+      fontFamily: prev[prev.length - 1].fontFamily,
+      fontSize: 48,
+      textColor: prev[prev.length - 1].textColor,
+      dropShadowColor: prev[prev.length - 1].dropShadowColor,
+      dropShadowBlur: prev[prev.length - 1].dropShadowBlur,
+      dropShadowOffsetX: prev[prev.length - 1].dropShadowOffsetX,
+      dropShadowOffsetY: prev[prev.length - 1].dropShadowOffsetY,
+      backgroundColor: prev[prev.length - 1].backgroundColor,
+      backgroundImage: null,
+      textAlign: prev[prev.length - 1].textAlign,
+      textStyle: 'plain',
+      padding: prev[prev.length - 1].padding,
+    }]);
+    setCurrentPageIndex(pages.length);
+  };
+  
+  // Delete current page
+  const handleDeletePage = () => {
+    if (pages.length <= 1) return; // Don't delete the last page
+    setPages(prev => prev.filter((_, idx) => idx !== currentPageIndex));
+    if (currentPageIndex >= pages.length - 1) {
+      setCurrentPageIndex(Math.max(0, pages.length - 2));
+    }
+  };
 
   // Initialize textarea height on mount
   useEffect(() => {
@@ -422,6 +532,16 @@ export function TextPostEditor({ onSave, onCancel }: TextPostEditorProps) {
       window.removeEventListener('orientationchange', handleResize);
     };
   }, [content, calculateOptimalFontSize]);
+  
+  // Sync scroll position with current page index
+  useEffect(() => {
+    if (previewContainerRef.current) {
+      previewContainerRef.current.scrollTo({
+        left: currentPageIndex * window.innerWidth,
+        behavior: 'smooth'
+      });
+    }
+  }, [currentPageIndex]);
 
   // Preview rendering
   useEffect(() => {
@@ -588,30 +708,63 @@ export function TextPostEditor({ onSave, onCancel }: TextPostEditorProps) {
   };
 
   const handleSave = () => {
-    if (!content.trim()) {
+    // Check if at least one page has content
+    const hasContent = pages.some(page => page.content.trim());
+    if (!hasContent) {
       alert('Please enter some text');
       return;
     }
 
-    const textPost: TextPostData = {
-      content: content.trim(),
-      style: {
-        fontFamily,
-        fontSize,
-        textColor,
-        dropShadowColor,
-        dropShadowBlur,
-        dropShadowOffsetX,
-        dropShadowOffsetY,
-        backgroundColor,
-        backgroundImage: backgroundImage || undefined,
-        textAlign,
-        textStyle,
-        padding,
-      },
-    };
-
-    onSave(textPost);
+    // Show metadata modal first
+    setShowMetadataModal(true);
+  };
+  
+  const handleMetadataSave = (metadata: { caption: string; tags: string[]; visibility: 'public' | 'private' | 'friends' }) => {
+    setShowMetadataModal(false);
+    
+    // Convert all pages to TextPostData format
+    const textPosts: TextPostData[] = pages
+      .filter(page => page.content.trim())
+      .map(page => ({
+        content: page.content.trim(),
+        style: {
+          fontFamily: page.fontFamily,
+          fontSize: page.fontSize,
+          textColor: page.textColor,
+          dropShadowColor: page.dropShadowColor,
+          dropShadowBlur: page.dropShadowBlur,
+          dropShadowOffsetX: page.dropShadowOffsetX,
+          dropShadowOffsetY: page.dropShadowOffsetY,
+          backgroundColor: page.backgroundColor,
+          backgroundImage: page.backgroundImage || undefined,
+          textAlign: page.textAlign,
+          textStyle: page.textStyle,
+          padding: page.padding,
+        },
+        metadata: {
+          description: metadata.caption,
+          keywords: metadata.tags,
+          tags: metadata.tags,
+          isPublic: metadata.visibility === 'public',
+          visibility: metadata.visibility,
+        }
+      }));
+    
+    // If multiple pages, we'll need to handle this differently
+    // For now, save the first page (or all pages as a collection)
+    if (textPosts.length === 1) {
+      onSave(textPosts[0]);
+    } else {
+      // Multiple pages - save as collection
+      // For now, save first page with metadata indicating it's part of a multi-page thought
+      const firstPost = textPosts[0];
+      if (textPosts.length > 1) {
+        // Add metadata to indicate this is a multi-page thought
+        (firstPost as any).isMultiPage = true;
+        (firstPost as any).pages = textPosts;
+      }
+      onSave(firstPost);
+    }
   };
 
   const openPopupMenu = (menuId: string, button: HTMLButtonElement) => {
@@ -1034,7 +1187,7 @@ export function TextPostEditor({ onSave, onCancel }: TextPostEditorProps) {
 
   return (
     <div className="fixed inset-0 bg-black z-50 flex flex-col">
-      {/* Preview - Above text input, scales with screen */}
+      {/* Preview - Above text input, scales with screen - Horizontal swipe for multi-page */}
       <div 
         className="fixed left-0 right-0 flex items-center justify-center z-30"
         style={{ 
@@ -1043,71 +1196,131 @@ export function TextPostEditor({ onSave, onCancel }: TextPostEditorProps) {
         }}
       >
         <div 
-          data-preview-container
-          className="w-full h-full flex items-center justify-center relative"
+          ref={(el) => {
+            previewContainerRef.current = el;
+            if (swipeRef.current !== el && el) {
+              (swipeRef as any).current = el;
+            }
+          }}
+          className="w-full h-full flex overflow-x-auto snap-x snap-mandatory scrollbar-hide"
           style={{
-            backgroundImage: backgroundImage ? `url(${backgroundImage})` : 'none',
-            backgroundColor: backgroundImage ? 'transparent' : backgroundColor,
-            backgroundSize: 'cover',
-            backgroundPosition: 'center'
+            scrollbarWidth: 'none',
+            msOverflowStyle: 'none',
+            WebkitOverflowScrolling: 'touch',
+            scrollBehavior: 'smooth'
           }}
         >
-          {content.trim() ? (
-            <>
-              {/* Hidden measurement element */}
+          <div className="flex h-full" style={{ width: `${pages.length * 100}%` }}>
+            {pages.map((page, pageIdx) => (
               <div
-                ref={measurementRef}
+                key={pageIdx}
+                data-preview-container
+                className="w-full h-full flex items-center justify-center relative flex-shrink-0 snap-start"
                 style={{
-                  visibility: 'hidden',
-                  position: 'absolute',
-                  top: '-9999px',
-                  whiteSpace: 'pre-wrap',
-                  wordWrap: 'break-word',
-                  overflowWrap: 'break-word',
-                }}
-              />
-              <div
-                className="w-full text-center"
-                style={{
-                  fontFamily: fontFamily,
-                  fontSize: `${fontSize}px`,
-                  color: textColor,
-                  fontWeight: textStyle === 'bold' ? 'bold' : 'normal',
-                  fontStyle: textStyle === 'italic' ? 'italic' : 'normal',
-                  textDecoration: textStyle === 'strikethrough' ? 'line-through' : 'none',
-                  textAlign: textAlign as 'left' | 'center' | 'right' | 'justify',
-                  textShadow: `
-                    ${dropShadowOffsetX}px 
-                    ${dropShadowOffsetY}px 
-                    ${dropShadowBlur}px 
-                    ${dropShadowColor}
-                  `,
-                  // Use responsive padding that maintains layout as screen size changes
-                  padding: (() => {
-                    const viewportWidth = window.innerWidth;
-                    const baseViewportWidth = 375; // iPhone base width
-                    const paddingScale = viewportWidth / baseViewportWidth;
-                    return `${padding * paddingScale}px`;
-                  })(),
-                  lineHeight: 1.2,
-                  wordWrap: 'break-word',
-                  overflowWrap: 'break-word',
-                  whiteSpace: 'pre-wrap',
+                  width: `${100 / pages.length}%`,
+                  backgroundImage: page.backgroundImage ? `url(${page.backgroundImage})` : 'none',
+                  backgroundColor: page.backgroundImage ? 'transparent' : page.backgroundColor,
+                  backgroundSize: 'cover',
+                  backgroundPosition: 'center'
                 }}
               >
-                {content}
+                {page.content.trim() ? (
+                  <>
+                    {/* Hidden measurement element */}
+                    <div
+                      ref={pageIdx === currentPageIndex ? measurementRef : null}
+                      style={{
+                        visibility: 'hidden',
+                        position: 'absolute',
+                        top: '-9999px',
+                        whiteSpace: 'pre-wrap',
+                        wordWrap: 'break-word',
+                        overflowWrap: 'break-word',
+                      }}
+                    />
+                    <div
+                      className="w-full text-center"
+                      style={{
+                        fontFamily: page.fontFamily,
+                        fontSize: `${page.fontSize}px`,
+                        color: page.textColor,
+                        fontWeight: page.textStyle === 'bold' ? 'bold' : 'normal',
+                        fontStyle: page.textStyle === 'italic' ? 'italic' : 'normal',
+                        textDecoration: page.textStyle === 'strikethrough' ? 'line-through' : 'none',
+                        textAlign: page.textAlign as 'left' | 'center' | 'right' | 'justify',
+                        textShadow: `
+                          ${page.dropShadowOffsetX}px 
+                          ${page.dropShadowOffsetY}px 
+                          ${page.dropShadowBlur}px 
+                          ${page.dropShadowColor}
+                        `,
+                        padding: (() => {
+                          const viewportWidth = window.innerWidth;
+                          const baseViewportWidth = 375;
+                          const paddingScale = viewportWidth / baseViewportWidth;
+                          return `${page.padding * paddingScale}px`;
+                        })(),
+                        lineHeight: 1.2,
+                        wordWrap: 'break-word',
+                        overflowWrap: 'break-word',
+                        whiteSpace: 'pre-wrap',
+                      }}
+                    >
+                      {page.content}
+                    </div>
+                  </>
+                ) : (
+                  <div className="text-neutral-500">
+                    <p>Preview will appear here</p>
+                  </div>
+                )}
               </div>
-            </>
-          ) : (
-            <div className="text-neutral-500">
-              <p>Preview will appear here</p>
-            </div>
-          )}
+            ))}
+          </div>
         </div>
+        
+        {/* Page indicator and navigation */}
+        {pages.length > 1 && (
+          <div className="absolute top-4 left-1/2 transform -translate-x-1/2 z-20 bg-black/60 px-4 py-2 rounded-full flex items-center gap-2">
+            <button
+              onClick={() => {
+                if (currentPageIndex > 0) {
+                  setCurrentPageIndex(prev => prev - 1);
+                  previewContainerRef.current?.scrollTo({
+                    left: (currentPageIndex - 1) * window.innerWidth,
+                    behavior: 'smooth'
+                  });
+                }
+              }}
+              disabled={currentPageIndex === 0}
+              className="text-white disabled:opacity-30"
+            >
+              <ChevronLeft className="h-4 w-4" />
+            </button>
+            <span className="text-white text-sm">
+              {currentPageIndex + 1} / {pages.length}
+            </span>
+            <button
+              onClick={() => {
+                if (currentPageIndex < pages.length - 1) {
+                  setCurrentPageIndex(prev => prev + 1);
+                  previewContainerRef.current?.scrollTo({
+                    left: (currentPageIndex + 1) * window.innerWidth,
+                    behavior: 'smooth'
+                  });
+                }
+              }}
+              disabled={currentPageIndex === pages.length - 1}
+              className="text-white disabled:opacity-30"
+            >
+              <ChevronRight className="h-4 w-4" />
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Main Railway with Icon Buttons - Sticky (above font selector, overlays media) */}
-      <div className="fixed left-0 right-0 h-14 flex items-center justify-center gap-4 px-4 z-40" style={{ bottom: `calc(64px + ${textareaHeight}px + 48px + 8px)` }}>
+      <div className="fixed left-0 right-0 h-14 flex items-center justify-center gap-4 px-4 z-40" style={{ bottom: `calc(64px + ${textareaHeight}px + 48px + 24px)` }}>
         <div className="flex items-center gap-4 overflow-x-auto" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
 
           {/* Font Size - Small A next to large A */}
@@ -1227,11 +1440,33 @@ export function TextPostEditor({ onSave, onCancel }: TextPostEditorProps) {
             {textAlign === 'justify' && <AlignJustify className="h-4 w-4" />}
           </button>
 
+          {/* Add Page */}
+          <button
+            onClick={handleAddPage}
+            className="px-2 py-1 transition-opacity hover:opacity-80"
+            style={{ color: 'white' }}
+            title="Add Page"
+          >
+            <Layers className="h-4 w-4" />
+          </button>
+          
+          {/* Delete Page (only show if more than one page) */}
+          {pages.length > 1 && (
+            <button
+              onClick={handleDeletePage}
+              className="px-2 py-1 transition-opacity hover:opacity-80"
+              style={{ color: 'white' }}
+              title="Delete Page"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          )}
+
         </div>
       </div>
 
       {/* Font Selector Railway - Sticky (above text input, overlays media) */}
-      <div className="fixed left-0 right-0 h-12 flex items-center justify-center z-40" style={{ bottom: `calc(64px + ${textareaHeight}px + 40px)` }}>
+      <div className="fixed left-0 right-0 h-12 flex items-center justify-center z-40" style={{ bottom: `calc(64px + ${textareaHeight}px + 52px)` }}>
         <div 
           ref={fontSelectorRef}
           className="flex items-center overflow-x-auto w-full px-4"
@@ -1332,6 +1567,14 @@ export function TextPostEditor({ onSave, onCancel }: TextPostEditorProps) {
         onChange={handleBackgroundImageUpload}
         className="hidden"
       />
+      
+      {/* Metadata Modal */}
+      {showMetadataModal && (
+        <ThoughtMetadataModal
+          onSave={handleMetadataSave}
+          onCancel={() => setShowMetadataModal(false)}
+        />
+      )}
     </div>
   );
 }

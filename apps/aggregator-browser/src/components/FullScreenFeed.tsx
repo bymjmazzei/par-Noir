@@ -278,16 +278,43 @@ export function FullScreenFeed({
   // MOBILE FIX: Use actual viewport height instead of 100vh to account for mobile browser UI
   const viewportHeightCSS = useViewportHeightCSS(true); // true = exclude bottom nav
 
+  // Wrapper for onIndexChange with bounds checking
+  const handleIndexChange = useCallback((newIndex: number) => {
+    if (newIndex < 0 || newIndex >= files.length) {
+      return; // Prevent going beyond bounds
+    }
+    onIndexChange(newIndex);
+  }, [files.length, onIndexChange]);
+  
+  // Prevent scrolling beyond content bounds
+  useEffect(() => {
+    const container = scrollContainerRef.current;
+    if (!container) return;
+    
+    const handleScroll = () => {
+      const maxScroll = container.scrollHeight - container.clientHeight;
+      if (container.scrollTop > maxScroll) {
+        container.scrollTop = maxScroll;
+      }
+      if (container.scrollTop < 0) {
+        container.scrollTop = 0;
+      }
+    };
+    
+    container.addEventListener('scroll', handleScroll, { passive: true });
+    return () => container.removeEventListener('scroll', handleScroll);
+  }, []);
+  
   // Handle vertical swipe for next/previous media
   const verticalSwipeRef = useVerticalSwipe({
     onSwipeUp: () => {
       if (currentIndex < files.length - 1) {
-        onIndexChange(currentIndex + 1);
+        handleIndexChange(currentIndex + 1);
       }
     },
     onSwipeDown: () => {
       if (currentIndex > 0) {
-        onIndexChange(currentIndex - 1);
+        handleIndexChange(currentIndex - 1);
       }
     },
     enabled: true,
@@ -1590,10 +1617,15 @@ export function FullScreenFeed({
         // MOBILE FIX: Use actual viewport height (excludes mobile browser UI)
         height: viewportHeightCSS,
         maxHeight: viewportHeightCSS,
+        minHeight: viewportHeightCSS,
         // Start at top of window
         marginTop: '0',
         paddingTop: '0',
-        boxSizing: 'border-box'
+        paddingBottom: '0',
+        marginBottom: '0',
+        boxSizing: 'border-box',
+        overflowX: 'hidden',
+        position: 'relative'
       }}
     >
       {/* Only render visible files (currentIndex ± 1) for better performance */}
@@ -2235,6 +2267,12 @@ export function FullScreenFeed({
             key={fileId}
             data-file-id={fileId}
             className="w-full snap-start flex items-center justify-center bg-black relative"
+            style={{
+              height: viewportHeightCSS,
+              minHeight: viewportHeightCSS,
+              maxHeight: viewportHeightCSS,
+              flexShrink: 0
+            }}
             style={{ 
               // MOBILE FIX: Use actual viewport height (excludes mobile browser UI)
               height: viewportHeightCSS,

@@ -216,8 +216,14 @@ export function DiscoveryPage({
     
     return collectionData.collectionFileIds
       .map((fileId: string) => {
+        // First try thumbnails map
         if (thumbnails && thumbnails.has(fileId)) {
           return thumbnails.get(fileId)!;
+        }
+        // Then try to find the file in the files array and use its thumbnail
+        const collectionFile = files.find(f => f.metadata.fileId === fileId);
+        if (collectionFile) {
+          return collectionFile.thumbnail || getThumbnail(collectionFile);
         }
         return null;
       })

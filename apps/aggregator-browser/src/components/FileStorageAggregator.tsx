@@ -15,6 +15,7 @@ import { LICENSE_TYPES } from '../constants/licenses';
 import { FeedCategory } from '../types/aggregator';
 import { useUserState } from '../contexts/UserStateContext';
 import { cleanTitle } from '../utils/cleanTitle';
+import { CollectionMetadataModal } from './CollectionMetadataModal';
 
 const apiEndpoint = process.env.REACT_APP_API_ENDPOINT || 'https://api.parnoir.com';
 
@@ -1032,6 +1033,8 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
   const [isCollectionMode, setIsCollectionMode] = useState(false);
   const [selectedFiles, setSelectedFiles] = useState<Set<string>>(new Set());
   const [collectionFileOrder, setCollectionFileOrder] = useState<Map<string, number>>(new Map());
+  const [showCollectionMetadataModal, setShowCollectionMetadataModal] = useState(false);
+  const [pendingCollectionData, setPendingCollectionData] = useState<{ accountId: string; fileIds: string[] } | null>(null);
   const fileInputRefs = useRef<Map<string, HTMLInputElement | null>>(new Map());
   const actionMenuRef = useRef<HTMLDivElement | null>(null);
   const menuButtonRefs = useRef<Map<string, HTMLButtonElement | null>>(new Map());
@@ -2277,31 +2280,44 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
     if (!authenticatedUser?.id || !accountId) return;
     if (selectedFiles.size === 0) return;
 
+    // Sort files by collection order
+    const accountFiles = filesByAccount.get(accountId) || [];
+    const selectedFilesArray = accountFiles
+      .filter(file => selectedFiles.has(file.id))
+      .sort((a, b) => {
+        const orderA = collectionFileOrder.get(a.id) || 0;
+        const orderB = collectionFileOrder.get(b.id) || 0;
+        return orderA - orderB;
+      });
+
+    const collectionFileIds = selectedFilesArray.map(f => f.id);
+    
+    // Store pending collection data and show metadata modal
+    setPendingCollectionData({ accountId, fileIds: collectionFileIds });
+    setShowCollectionMetadataModal(true);
+  };
+  
+  const handleCollectionMetadataSave = async (metadata: { title: string; description: string; tags: string[]; visibility: 'public' | 'private' | 'friends' }) => {
+    if (!pendingCollectionData) return;
+    
+    setShowCollectionMetadataModal(false);
     setIsLoading(true);
     setError(null);
 
     try {
-      // Sort files by collection order
-      const accountFiles = filesByAccount.get(accountId) || [];
-      const selectedFilesArray = accountFiles
-        .filter(file => selectedFiles.has(file.id))
-        .sort((a, b) => {
-          const orderA = collectionFileOrder.get(a.id) || 0;
-          const orderB = collectionFileOrder.get(b.id) || 0;
-          return orderA - orderB;
-        });
-
-      const collectionFileIds = selectedFilesArray.map(f => f.id);
-      
-      // Use collection service
+      // Use collection service with metadata
       const result = await createCollection(
         {
-          collectionFileIds: collectionFileIds,
-          title: `Collection of ${collectionFileIds.length} files`
+          collectionFileIds: pendingCollectionData.fileIds,
+          title: metadata.title
         },
-        accountId,
+        pendingCollectionData.accountId,
         {
-          isPublic: true,
+          title: metadata.title,
+          description: metadata.description,
+          keywords: metadata.tags,
+          tags: metadata.tags,
+          isPublic: metadata.visibility === 'public',
           isNSFW: false
         }
       );
@@ -2311,9 +2327,10 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
         setSelectedFiles(new Set());
         setCollectionFileOrder(new Map());
         setIsCollectionMode(false);
+        setPendingCollectionData(null);
         
         // Reload files
-        await loadFilesForAccount(accountId);
+        await loadFilesForAccount(pendingCollectionData.accountId);
       } else {
         throw new Error(result.error || 'Failed to create collection');
       }
@@ -3525,14 +3542,43 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
                     )}
                     <div className="relative aspect-square bg-neutral-700/50 overflow-hidden">
                       {isCollection ? (
-                        <div className="w-full h-full flex flex-col items-center justify-center bg-gradient-to-br from-blue-600/20 to-purple-600/20">
-                          <Layers className="h-12 w-12 text-blue-400 mb-2" />
-                          <span className="text-xs text-white/80 px-2 text-center">
-                            {((file as any).collection?.collectionFileIds?.length || 0) > 0 
-                              ? `${(file as any).collection.collectionFileIds.length} items`
-                              : 'Collection'}
-                          </span>
-                        </div>
+                        (() => {
+                          const collectionData = (file as any).collection;
+                          const firstFileId = collectionData?.collectionFileIds?.[0];
+                          const accountFiles = filesByAccount.get(account.accountId) || [];
+                          const firstFile = firstFileId ? accountFiles.find(f => f.id === firstFileId) : null;
+                          
+                          return (
+                            <div className="w-full h-full relative">
+                              {firstFile && (firstFile.mimeType?.startsWith('image/') || firstFile.mimeType?.startsWith('video/')) ? (
+                                <>
+                                  <ThumbnailImage 
+                                    fileId={firstFile.id}
+                                    accountId={firstFile.accountId || account.accountId}
+                                    fileName={firstFile.name}
+                                    alt={firstFile.name}
+                                    mimeType={firstFile.mimeType}
+                                    mainFileId={(firstFile as any).mainFileId}
+                                    isThumbnail={(firstFile as any).isThumbnail}
+                                  />
+                                  {/* Collection icon overlay */}
+                                  <div className="absolute top-2 right-2 bg-black/60 rounded-full p-1.5">
+                                    <Layers className="h-4 w-4 text-blue-400" />
+                                  </div>
+                                </>
+                              ) : (
+                                <div className="w-full h-full flex flex-col items-center justify-center bg-gradient-to-br from-blue-600/20 to-purple-600/20">
+                                  <Layers className="h-12 w-12 text-blue-400 mb-2" />
+                                  <span className="text-xs text-white/80 px-2 text-center">
+                                    {collectionData?.collectionFileIds?.length || 0 > 0 
+                                      ? `${collectionData.collectionFileIds.length} items`
+                                      : 'Collection'}
+                                  </span>
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })()
                       ) : isMediaFile ? (
                         <ThumbnailImage 
                           fileId={file.id}
@@ -3802,7 +3848,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
                         disabled={selectedFiles.size === 0 || isLoading}
                         className="px-3 py-1.5 text-sm bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                       >
-                        Create Collection
+                        Next
                       </button>
                     </div>
                   </div>
@@ -4372,6 +4418,18 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
 
         return createPortal(menuContent, document.body);
       })()}
+      
+      {/* Collection Metadata Modal */}
+      {showCollectionMetadataModal && pendingCollectionData && (
+        <CollectionMetadataModal
+          onSave={handleCollectionMetadataSave}
+          onCancel={() => {
+            setShowCollectionMetadataModal(false);
+            setPendingCollectionData(null);
+          }}
+          defaultTitle={`Collection of ${pendingCollectionData.fileIds.length} files`}
+        />
+      )}
     </div>
   );
 };
