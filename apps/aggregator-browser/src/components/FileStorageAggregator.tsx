@@ -1577,7 +1577,8 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
     description: string;
     tags: string;
     genre: string;
-    category: FeedCategory | '';
+    category: FeedCategory | ''; // Keep for backward compatibility
+    categories: FeedCategory[]; // New array format
     locationName: string;
     locationAddress: string;
     license: string;
@@ -1587,6 +1588,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
     tags: '',
     genre: '',
     category: '',
+    categories: [],
     locationName: '',
     locationAddress: '',
     license: 'all-rights-reserved'
@@ -1704,9 +1706,9 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
     const genre = metadata?.genre || metadata?.schema?.genre || [];
     const genreString = Array.isArray(genre) ? genre.join(', ') : (typeof genre === 'string' ? genre : '');
     
-    // Extract category (prefer feedCategories, fallback to category)
+    // Extract categories (prefer feedCategories, fallback to category)
     const feedCategories = metadata?.feedCategories || [];
-    const category = feedCategories.length > 0 ? feedCategories[0] : (metadata?.category || '');
+    const categories = feedCategories.length > 0 ? feedCategories : (metadata?.category ? [metadata.category as FeedCategory] : []);
     
     // Extract license (can be object with name or string)
     const license = metadata?.license || metadata?.schema?.license || '';
@@ -1717,7 +1719,8 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
       description: metadata?.description || '',
       tags: (metadata?.keywords || metadata?.tags || []).join(', '),
       genre: genreString,
-      category: category as FeedCategory | '',
+      category: categories.length > 0 ? categories[0] as FeedCategory : '' as FeedCategory | '', // Keep for backward compatibility
+      categories: categories, // New array format
       locationName: locationName,
       locationAddress: locationAddress,
       license: licenseString
@@ -1726,8 +1729,20 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
   };
 
   // Handle save metadata
-  const handleSaveMetadata = async () => {
+  const handleSaveMetadata = async (metadata?: MetadataFormData) => {
     if (!editingFile) return;
+
+    // Use provided metadata or fall back to editForm state
+    const formData = metadata || {
+      name: editForm.name,
+      description: editForm.description,
+      tags: editForm.tags,
+      genre: editForm.genre,
+      categories: editForm.categories || (editForm.category ? [editForm.category as FeedCategory] : []),
+      locationName: editForm.locationName,
+      locationAddress: editForm.locationAddress,
+      license: editForm.license
+    };
 
     try {
       setIsLoading(true);
@@ -1739,13 +1754,13 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
       }
 
       // Parse tags from comma-separated string
-      const tags = editForm.tags
+      const tags = formData.tags
         .split(',')
         .map(t => t.trim())
         .filter(t => t.length > 0);
 
       // Parse genre from comma-separated string
-      const genre = editForm.genre
+      const genre = formData.genre
         .split(',')
         .map(g => g.trim())
         .filter(g => g.length > 0);
@@ -1753,30 +1768,31 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
       // Extract subjects from description, tags, and keywords
       const { extractSubjects } = await import('../utils/subjectExtractor');
       const subjects = extractSubjects(
-        editForm.description,
+        formData.description,
         tags,
         tags // keywords same as tags
       );
 
       // Validate required category
-      if (!editForm.category) {
-        setError('Category is required');
+      const categories = formData.categories || [];
+      if (categories.length === 0) {
+        setError('At least one category is required');
         setIsLoading(false);
         return;
       }
 
       // Build location object if provided (without lat/lng)
       let locationCreated = undefined;
-      if (editForm.locationName || editForm.locationAddress) {
+      if (formData.locationName || formData.locationAddress) {
         locationCreated = {
           '@type': 'Place',
-          ...(editForm.locationName && { name: editForm.locationName }),
-          ...(editForm.locationAddress && {
+          ...(formData.locationName && { name: formData.locationName }),
+          ...(formData.locationAddress && {
             address: {
               '@type': 'PostalAddress',
-              addressLocality: editForm.locationAddress.split(',')[0]?.trim() || '',
-              addressRegion: editForm.locationAddress.split(',')[1]?.trim() || '',
-              addressCountry: editForm.locationAddress.split(',')[2]?.trim() || ''
+              addressLocality: formData.locationAddress.split(',')[0]?.trim() || '',
+              addressRegion: formData.locationAddress.split(',')[1]?.trim() || '',
+              addressCountry: formData.locationAddress.split(',')[2]?.trim() || ''
             }
           })
         };
@@ -1790,15 +1806,15 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
           'Authorization': `Bearer ${accessToken}`
         },
         body: JSON.stringify({
-          name: editForm.name,
-          description: editForm.description,
+          name: formData.name,
+          description: formData.description,
           keywords: tags,
           tags: tags,
           genre: genre.length > 0 ? genre : undefined,
-          feedCategories: editForm.category ? [editForm.category as FeedCategory] : undefined,
-          category: editForm.category || undefined,
+          feedCategories: categories.length > 0 ? categories : undefined,
+          category: categories.length > 0 ? categories[0] : undefined,
           locationCreated: locationCreated,
-          license: editForm.license || undefined,
+          license: formData.license || undefined,
           subjects: subjects.length > 0 ? subjects : undefined
         }),
       });
@@ -1827,7 +1843,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
             if (file.id === editingFile.id) {
               return {
                 ...file,
-                displayName: editForm.name || (file.name.endsWith('.encrypted') ? file.name.replace('.encrypted', '') : file.name)
+                displayName: formData.name || (file.name.endsWith('.encrypted') ? file.name.replace('.encrypted', '') : file.name)
               };
             }
             return file;
@@ -1836,6 +1852,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
           return next;
         });
       }
+      
 
       // Reload files to ensure metadata is fresh
       if (editingFile.accountId) {
@@ -1849,9 +1866,10 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
         tags: '',
         genre: '',
         category: '',
+        categories: [],
         locationName: '',
         locationAddress: '',
-        license: ''
+        license: 'all-rights-reserved'
       });
     } catch (err: any) {
       const errorMessage = err instanceof Error ? err.message : 'Failed to update metadata';
@@ -2348,8 +2366,8 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
           keywords: tags,
           tags: tags,
           genre: genre.length > 0 ? genre : undefined,
-          feedCategories: metadata.category ? [metadata.category] : undefined,
-          category: metadata.category || undefined,
+          feedCategories: metadata.categories && metadata.categories.length > 0 ? metadata.categories : undefined,
+          category: metadata.categories && metadata.categories.length > 0 ? metadata.categories[0] : undefined,
           locationCreated: locationCreated,
           license: metadata.license || undefined,
           subjects: subjects.length > 0 ? subjects : undefined,
@@ -3947,223 +3965,40 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
       )}
 
       {/* Edit Metadata Modal */}
-      {editingFile && (
-        <div 
-          className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4"
-          onClick={() => {
-            setEditingFile(null);
-            setEditForm({ 
-              name: '', 
-              description: '', 
-              tags: '',
-              genre: '',
-              category: '',
-              locationName: '',
-              locationAddress: '',
-              license: ''
-            });
-          }}
-        >
-          <div 
-            className="bg-neutral-800 rounded-lg p-6 max-w-md w-full text-text-primary border border-neutral-700 shadow-2xl max-h-[85vh] flex flex-col"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="flex justify-between items-center mb-4 flex-shrink-0">
-              <h3 className="text-lg font-semibold">Edit Metadata</h3>
-              <button
-                onClick={() => {
-                    setEditingFile(null);
-                    setEditForm({ 
-                      name: '', 
-                      description: '', 
-                      tags: '',
-                      genre: '',
-                      category: '',
-                      locationName: '',
-                      locationAddress: '',
-                      license: ''
-                    });
-                }}
-                className="text-text-secondary hover:text-text-primary transition-colors"
-              >
-                <X className="h-5 w-5" />
-              </button>
-            </div>
-            
-            <div className="space-y-4 overflow-y-auto pr-2 -mr-2 flex-1">
-              <div>
-                <label className="block text-sm font-medium text-text-secondary mb-1">
-                  Name / Title
-                </label>
-                <input
-                  type="text"
-                  value={editForm.name}
-                  onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
-                  className="w-full px-3 py-2 bg-neutral-700 border border-neutral-600 rounded-lg text-text-primary focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="File name"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-text-secondary mb-1">
-                  Description
-                </label>
-                <textarea
-                  value={editForm.description}
-                  onChange={(e) => setEditForm({ ...editForm, description: e.target.value })}
-                  className="w-full px-3 py-2 bg-neutral-700 border border-neutral-600 rounded-lg text-text-primary focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
-                  placeholder="File description"
-                  rows={3}
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-text-secondary mb-1">
-                  Tags (comma-separated)
-                </label>
-                <input
-                  type="text"
-                  value={editForm.tags}
-                  onChange={(e) => setEditForm({ ...editForm, tags: e.target.value })}
-                  className="w-full px-3 py-2 bg-neutral-700 border border-neutral-600 rounded-lg text-text-primary focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="tag1, tag2, tag3"
-                />
-              </div>
-
-              <div className="border-t border-neutral-700 pt-4 mt-4">
-                <h4 className="text-sm font-semibold text-text-primary mb-3">Content Classification</h4>
-                
-                <div className="space-y-4">
-                  <div>
-                    <label className="block text-sm font-medium text-text-secondary mb-1">
-                      Category <span className="text-red-400">*</span>
-                    </label>
-                    <select
-                      value={editForm.category}
-                      onChange={(e) => setEditForm({ ...editForm, category: e.target.value as FeedCategory | '' })}
-                      className="w-full px-3 py-2 bg-neutral-700 border border-neutral-600 rounded-lg text-text-primary focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      required
-                    >
-                      <option value="">Select a category</option>
-                      {FEED_CATEGORY_LIST
-                        .map(category => (
-                          <option key={category.id} value={category.id}>
-                            {category.name}
-                          </option>
-                        ))}
-                    </select>
-                    <p className="text-xs text-text-secondary mt-1">Required: Select the niche category for this content</p>
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-text-secondary mb-1">
-                      Genre (comma-separated)
-                    </label>
-                    <input
-                      type="text"
-                      value={editForm.genre}
-                      onChange={(e) => setEditForm({ ...editForm, genre: e.target.value })}
-                      className="w-full px-3 py-2 bg-neutral-700 border border-neutral-600 rounded-lg text-text-primary focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      placeholder="photography, art, documentation"
-                    />
-                  </div>
-                </div>
-              </div>
-
-              <div className="border-t border-neutral-700 pt-4 mt-4">
-                <h4 className="text-sm font-semibold text-text-primary mb-3">Location</h4>
-                
-                <div className="space-y-4">
-                  <div>
-                    <label className="block text-sm font-medium text-text-secondary mb-1">
-                      Place Name
-                    </label>
-                    <input
-                      type="text"
-                      value={editForm.locationName}
-                      onChange={(e) => setEditForm({ ...editForm, locationName: e.target.value })}
-                      className="w-full px-3 py-2 bg-neutral-700 border border-neutral-600 rounded-lg text-text-primary focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      placeholder="e.g., Central Park, New York"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-text-secondary mb-1">
-                      Address (City, State, Country)
-                    </label>
-                    <input
-                      type="text"
-                      value={editForm.locationAddress}
-                      onChange={(e) => setEditForm({ ...editForm, locationAddress: e.target.value })}
-                      className="w-full px-3 py-2 bg-neutral-700 border border-neutral-600 rounded-lg text-text-primary focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      placeholder="New York, NY, USA"
-                    />
-                  </div>
-
-                </div>
-              </div>
-
-              <div className="border-t border-neutral-700 pt-4 mt-4">
-                <h4 className="text-sm font-semibold text-text-primary mb-3">Rights & Licensing</h4>
-                
-                <div className="space-y-4">
-                  <div>
-                    <label className="block text-sm font-medium text-text-secondary mb-1">
-                      License
-                    </label>
-                    <select
-                      value={editForm.license}
-                      onChange={(e) => setEditForm({ ...editForm, license: e.target.value })}
-                      className="w-full px-3 py-2 bg-neutral-700 border border-neutral-600 rounded-lg text-text-primary focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    >
-                      <option value="">Select a license</option>
-                      {LICENSE_TYPES.map(license => (
-                        <option key={license.value} value={license.value}>
-                          {license.label} - {license.description}
-                        </option>
-                      ))}
-                    </select>
-                    {editForm.license && (
-                      <p className="text-xs text-text-secondary mt-1">
-                        {LICENSE_TYPES.find(l => l.value === editForm.license)?.description}
-                      </p>
-                    )}
-                  </div>
-                </div>
-              </div>
-
-              <div className="flex justify-end space-x-2 pt-4 flex-shrink-0 border-t border-neutral-700 mt-4">
-                <button
-                  onClick={() => {
-      setEditingFile(null);
-      setEditForm({
-        name: '',
-        description: '',
-        tags: '',
-        genre: '',
-        category: '',
-        locationName: '',
-        locationAddress: '',
-        license: 'all-rights-reserved'
-      });
-                  }}
-                  className="px-4 py-2 text-sm font-medium text-text-secondary hover:text-text-primary transition-colors"
-                  disabled={isLoading}
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={handleSaveMetadata}
-                  disabled={isLoading}
-                  className="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50"
-                >
-                  {isLoading ? 'Saving...' : 'Save Changes'}
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
+      <EditMetadataModal
+        isOpen={!!editingFile}
+        onClose={() => {
+          setEditingFile(null);
+          setEditForm({
+            name: '',
+            description: '',
+            tags: '',
+            genre: '',
+            category: '',
+            categories: [],
+            locationName: '',
+            locationAddress: '',
+            license: 'all-rights-reserved'
+          });
+        }}
+        onSave={(metadata) => {
+          // Pass metadata directly to handleSaveMetadata
+          handleSaveMetadata(metadata);
+        }}
+        initialData={editingFile ? {
+          name: editForm.name,
+          description: editForm.description,
+          tags: editForm.tags,
+          genre: editForm.genre,
+          categories: editForm.categories,
+          locationName: editForm.locationName,
+          locationAddress: editForm.locationAddress,
+          license: editForm.license
+        } : undefined}
+        title="Edit Metadata"
+        submitButtonText="Save Changes"
+        isLoading={isLoading}
+      />
 
       {/* Share Settings Modal */}
       {sharingFile && (

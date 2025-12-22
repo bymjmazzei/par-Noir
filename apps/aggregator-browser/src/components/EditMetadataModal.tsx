@@ -5,7 +5,7 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { X } from 'lucide-react';
+import { X, ChevronDown, ChevronUp } from 'lucide-react';
 import { FEED_CATEGORY_LIST } from '../constants/feedCategories';
 import { LICENSE_TYPES } from '../constants/licenses';
 import { FeedCategory } from '../types/aggregator';
@@ -15,7 +15,7 @@ export interface MetadataFormData {
   description: string;
   tags: string;
   genre: string;
-  category: FeedCategory | '';
+  categories: FeedCategory[]; // Changed to array for multiple selection
   locationName: string;
   locationAddress: string;
   license: string;
@@ -40,26 +40,55 @@ export function EditMetadataModal({
   submitButtonText = 'Save Changes',
   isLoading = false
 }: EditMetadataModalProps) {
+  // Handle legacy single category from initialData
+  const initialCategories = initialData?.category 
+    ? [initialData.category as FeedCategory]
+    : (initialData?.categories || []);
+  
   const [editForm, setEditForm] = useState<MetadataFormData>({
     name: initialData?.name || '',
     description: initialData?.description || '',
     tags: initialData?.tags || '',
     genre: initialData?.genre || '',
-    category: initialData?.category || '',
+    categories: initialCategories,
     locationName: initialData?.locationName || '',
     locationAddress: initialData?.locationAddress || '',
     license: initialData?.license || 'all-rights-reserved'
   });
+  
+  const [isExpanded, setIsExpanded] = useState(false);
 
   // Update form when initialData changes
   useEffect(() => {
     if (initialData) {
+      const categories = initialData.category 
+        ? [initialData.category as FeedCategory]
+        : (initialData.categories || []);
       setEditForm(prev => ({
         ...prev,
-        ...initialData
+        ...initialData,
+        categories
       }));
     }
   }, [initialData]);
+  
+  // Toggle category selection
+  const toggleCategory = (categoryId: FeedCategory) => {
+    setEditForm(prev => {
+      const currentCategories = prev.categories || [];
+      if (currentCategories.includes(categoryId)) {
+        return {
+          ...prev,
+          categories: currentCategories.filter(c => c !== categoryId)
+        };
+      } else {
+        return {
+          ...prev,
+          categories: [...currentCategories, categoryId]
+        };
+      }
+    });
+  };
 
   const handleSave = () => {
     onSave(editForm);
@@ -71,11 +100,12 @@ export function EditMetadataModal({
       description: '',
       tags: '',
       genre: '',
-      category: '',
+      categories: [],
       locationName: '',
       locationAddress: '',
       license: 'all-rights-reserved'
     });
+    setIsExpanded(false);
     onClose();
   };
 
@@ -101,6 +131,34 @@ export function EditMetadataModal({
         </div>
         
         <div className="space-y-4 overflow-y-auto pr-2 -mr-2 flex-1">
+          {/* Categories at the top */}
+          <div>
+            <label className="block text-sm font-medium text-text-secondary mb-2">
+              Categories <span className="text-red-400">*</span>
+            </label>
+            <div className="grid grid-cols-2 gap-2">
+              {FEED_CATEGORY_LIST.map(category => {
+                const isSelected = editForm.categories?.includes(category.id) || false;
+                return (
+                  <button
+                    key={category.id}
+                    type="button"
+                    onClick={() => toggleCategory(category.id)}
+                    className={`px-3 py-2 text-sm rounded-lg border transition-colors text-left ${
+                      isSelected
+                        ? 'border-blue-500 bg-blue-500/20 text-white'
+                        : 'border-neutral-600 bg-neutral-700 text-text-primary hover:border-neutral-500'
+                    }`}
+                  >
+                    {category.name}
+                  </button>
+                );
+              })}
+            </div>
+            <p className="text-xs text-text-secondary mt-2">Select one or more categories</p>
+          </div>
+
+          {/* Name */}
           <div>
             <label className="block text-sm font-medium text-text-secondary mb-1">
               Name / Title
@@ -114,132 +172,127 @@ export function EditMetadataModal({
             />
           </div>
 
+          {/* Caption (formerly Description) */}
           <div>
             <label className="block text-sm font-medium text-text-secondary mb-1">
-              Description
+              Caption
             </label>
             <textarea
               value={editForm.description}
               onChange={(e) => setEditForm({ ...editForm, description: e.target.value })}
               className="w-full px-3 py-2 bg-neutral-700 border border-neutral-600 rounded-lg text-text-primary focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
-              placeholder="Description"
+              placeholder="Caption"
               rows={3}
             />
           </div>
 
-          <div>
-            <label className="block text-sm font-medium text-text-secondary mb-1">
-              Tags (comma-separated)
-            </label>
-            <input
-              type="text"
-              value={editForm.tags}
-              onChange={(e) => setEditForm({ ...editForm, tags: e.target.value })}
-              className="w-full px-3 py-2 bg-neutral-700 border border-neutral-600 rounded-lg text-text-primary focus:outline-none focus:ring-2 focus:ring-blue-500"
-              placeholder="tag1, tag2, tag3"
-            />
-          </div>
+          {/* Expand/Collapse button */}
+          <button
+            type="button"
+            onClick={() => setIsExpanded(!isExpanded)}
+            className="w-full flex items-center justify-between px-3 py-2 text-sm text-text-secondary hover:text-text-primary transition-colors border border-neutral-700 rounded-lg hover:bg-neutral-700/50"
+          >
+            <span>{isExpanded ? 'Show Less' : 'Show More Options'}</span>
+            {isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+          </button>
 
-          <div className="border-t border-neutral-700 pt-4 mt-4">
-            <h4 className="text-sm font-semibold text-text-primary mb-3">Content Classification</h4>
-            
-            <div className="space-y-4">
+          {/* Collapsible sections */}
+          {isExpanded && (
+            <>
               <div>
                 <label className="block text-sm font-medium text-text-secondary mb-1">
-                  Category <span className="text-red-400">*</span>
-                </label>
-                <select
-                  value={editForm.category}
-                  onChange={(e) => setEditForm({ ...editForm, category: e.target.value as FeedCategory | '' })}
-                  className="w-full px-3 py-2 bg-neutral-700 border border-neutral-600 rounded-lg text-text-primary focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  required
-                >
-                  <option value="">Select a category</option>
-                  {FEED_CATEGORY_LIST
-                    .map(category => (
-                      <option key={category.id} value={category.id}>
-                        {category.name}
-                      </option>
-                    ))}
-                </select>
-                <p className="text-xs text-text-secondary mt-1">Required: Select the niche category for this content</p>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-text-secondary mb-1">
-                  Genre (comma-separated)
+                  Tags (comma-separated)
                 </label>
                 <input
                   type="text"
-                  value={editForm.genre}
-                  onChange={(e) => setEditForm({ ...editForm, genre: e.target.value })}
+                  value={editForm.tags}
+                  onChange={(e) => setEditForm({ ...editForm, tags: e.target.value })}
                   className="w-full px-3 py-2 bg-neutral-700 border border-neutral-600 rounded-lg text-text-primary focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="photography, art, documentation"
-                />
-              </div>
-            </div>
-          </div>
-
-          <div className="border-t border-neutral-700 pt-4 mt-4">
-            <h4 className="text-sm font-semibold text-text-primary mb-3">Location</h4>
-            
-            <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-text-secondary mb-1">
-                  Place Name
-                </label>
-                <input
-                  type="text"
-                  value={editForm.locationName}
-                  onChange={(e) => setEditForm({ ...editForm, locationName: e.target.value })}
-                  className="w-full px-3 py-2 bg-neutral-700 border border-neutral-600 rounded-lg text-text-primary focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="e.g., Central Park, New York"
+                  placeholder="tag1, tag2, tag3"
                 />
               </div>
 
-              <div>
-                <label className="block text-sm font-medium text-text-secondary mb-1">
-                  Address (City, State, Country)
-                </label>
-                <input
-                  type="text"
-                  value={editForm.locationAddress}
-                  onChange={(e) => setEditForm({ ...editForm, locationAddress: e.target.value })}
-                  className="w-full px-3 py-2 bg-neutral-700 border border-neutral-600 rounded-lg text-text-primary focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="New York, NY, USA"
-                />
+              <div className="border-t border-neutral-700 pt-4 mt-4">
+                <h4 className="text-sm font-semibold text-text-primary mb-3">Content Classification</h4>
+                
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium text-text-secondary mb-1">
+                      Genre (comma-separated)
+                    </label>
+                    <input
+                      type="text"
+                      value={editForm.genre}
+                      onChange={(e) => setEditForm({ ...editForm, genre: e.target.value })}
+                      className="w-full px-3 py-2 bg-neutral-700 border border-neutral-600 rounded-lg text-text-primary focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      placeholder="photography, art, documentation"
+                    />
+                  </div>
+                </div>
               </div>
-            </div>
-          </div>
 
-          <div className="border-t border-neutral-700 pt-4 mt-4">
-            <h4 className="text-sm font-semibold text-text-primary mb-3">Rights & Licensing</h4>
-            
-            <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-text-secondary mb-1">
-                  License
-                </label>
-                <select
-                  value={editForm.license}
-                  onChange={(e) => setEditForm({ ...editForm, license: e.target.value })}
-                  className="w-full px-3 py-2 bg-neutral-700 border border-neutral-600 rounded-lg text-text-primary focus:outline-none focus:ring-2 focus:ring-blue-500"
-                >
-                  <option value="">Select a license</option>
-                  {LICENSE_TYPES.map(license => (
-                    <option key={license.value} value={license.value}>
-                      {license.label} - {license.description}
-                    </option>
-                  ))}
-                </select>
-                {editForm.license && (
-                  <p className="text-xs text-text-secondary mt-1">
-                    {LICENSE_TYPES.find(l => l.value === editForm.license)?.description}
-                  </p>
-                )}
+              <div className="border-t border-neutral-700 pt-4 mt-4">
+                <h4 className="text-sm font-semibold text-text-primary mb-3">Location</h4>
+                
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium text-text-secondary mb-1">
+                      Place Name
+                    </label>
+                    <input
+                      type="text"
+                      value={editForm.locationName}
+                      onChange={(e) => setEditForm({ ...editForm, locationName: e.target.value })}
+                      className="w-full px-3 py-2 bg-neutral-700 border border-neutral-600 rounded-lg text-text-primary focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      placeholder="e.g., Central Park, New York"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-text-secondary mb-1">
+                      Address (City, State, Country)
+                    </label>
+                    <input
+                      type="text"
+                      value={editForm.locationAddress}
+                      onChange={(e) => setEditForm({ ...editForm, locationAddress: e.target.value })}
+                      className="w-full px-3 py-2 bg-neutral-700 border border-neutral-600 rounded-lg text-text-primary focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      placeholder="New York, NY, USA"
+                    />
+                  </div>
+                </div>
               </div>
-            </div>
-          </div>
+
+              <div className="border-t border-neutral-700 pt-4 mt-4">
+                <h4 className="text-sm font-semibold text-text-primary mb-3">Rights & Licensing</h4>
+                
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium text-text-secondary mb-1">
+                      License
+                    </label>
+                    <select
+                      value={editForm.license}
+                      onChange={(e) => setEditForm({ ...editForm, license: e.target.value })}
+                      className="w-full px-3 py-2 bg-neutral-700 border border-neutral-600 rounded-lg text-text-primary focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    >
+                      <option value="">Select a license</option>
+                      {LICENSE_TYPES.map(license => (
+                        <option key={license.value} value={license.value}>
+                          {license.label} - {license.description}
+                        </option>
+                      ))}
+                    </select>
+                    {editForm.license && (
+                      <p className="text-xs text-text-secondary mt-1">
+                        {LICENSE_TYPES.find(l => l.value === editForm.license)?.description}
+                      </p>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </>
+          )}
 
           <div className="flex justify-end space-x-2 pt-4 flex-shrink-0 border-t border-neutral-700 mt-4">
             <button
@@ -251,7 +304,7 @@ export function EditMetadataModal({
             </button>
             <button
               onClick={handleSave}
-              disabled={isLoading || !editForm.category}
+              disabled={isLoading || !editForm.categories || editForm.categories.length === 0}
               className="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50"
             >
               {isLoading ? 'Saving...' : submitButtonText}

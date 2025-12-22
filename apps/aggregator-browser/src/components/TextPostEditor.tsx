@@ -752,8 +752,8 @@ export function TextPostEditor({ onSave, onCancel }: TextPostEditorProps) {
           keywords: tags,
           tags: tags,
           genre: genre.length > 0 ? genre : undefined,
-          feedCategories: metadata.category ? [metadata.category] : undefined,
-          category: metadata.category || undefined,
+          feedCategories: metadata.categories && metadata.categories.length > 0 ? metadata.categories : undefined,
+          category: metadata.categories && metadata.categories.length > 0 ? metadata.categories[0] : undefined,
           locationCreated: (metadata.locationName || metadata.locationAddress) ? {
             '@type': 'Place',
             ...(metadata.locationName && { name: metadata.locationName }),
