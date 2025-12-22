@@ -10,6 +10,7 @@ import { ContentPreferencesPanel } from './ContentPreferencesPanel';
 import { useUserState } from '../contexts/UserStateContext';
 import { TextPostData, Feed } from '../types/aggregator';
 import { createTextPost } from '../services/textPostService';
+import { createCollection } from '../services/collectionService';
 import { PNOAuthService } from '../services/pnOAuthService';
 import { FeedService } from '../services/feedService';
 import { Settings } from 'lucide-react';
@@ -94,7 +95,7 @@ export function UploadModal({ feeds: propsFeeds, onClose, onUploadComplete }: Up
     loadFeeds();
   }, [propsFeeds]);
 
-  const handleTextPostSave = async (textPost: TextPostData) => {
+  const handleTextPostSave = async (textPost: TextPostData | any) => {
     if (!authenticatedUser?.id) {
       alert('Please unlock your pN to create thoughts');
       return;
@@ -106,32 +107,104 @@ export function UploadModal({ feeds: propsFeeds, onClose, onUploadComplete }: Up
     }
 
     try {
-      const result = await createTextPost(
-        textPost,
-        accountId,
-        {
-          title: textPost.content.substring(0, 50),
-          description: textPost.content,
-          isNSFW: textPost.isNSFW || false,
-          keywords: textPost.category ? [textPost.category] : undefined,
-          tags: textPost.category ? [textPost.category] : undefined,
+      // Check if this is a multi-page thought
+      const isMultiPage = (textPost as any).isMultiPage && (textPost as any).pages && Array.isArray((textPost as any).pages) && (textPost as any).pages.length > 1;
+      
+      if (isMultiPage) {
+        // Multi-page thought: save each page as a separate thought, then create a collection
+        const pages = (textPost as any).pages as TextPostData[];
+        const metadata = textPost.metadata || {};
+        
+        console.log(`[UploadModal] Creating multi-page thought with ${pages.length} pages`);
+        
+        // Save each page as a separate thought
+        const pageFileIds: string[] = [];
+        for (let i = 0; i < pages.length; i++) {
+          const page = pages[i];
+          const pageTitle = pages.length > 1 
+            ? `${metadata.name || 'Thought'} (Page ${i + 1})`
+            : (metadata.name || page.content.substring(0, 50));
+          
+          const result = await createTextPost(
+            page,
+            accountId,
+            {
+              title: pageTitle,
+              description: i === 0 ? metadata.description : undefined, // Only add description to first page
+              isNSFW: false,
+              keywords: metadata.keywords || metadata.tags || [],
+              tags: metadata.tags || metadata.keywords || [],
+            }
+          );
+          
+          if (result.success && result.fileId) {
+            pageFileIds.push(result.fileId);
+            console.log(`[UploadModal] Saved page ${i + 1}/${pages.length}, fileId: ${result.fileId}`);
+          } else {
+            throw new Error(`Failed to save page ${i + 1}: ${result.error || 'Unknown error'}`);
+          }
         }
-      );
-
-      if (result.success) {
-        setShowTextEditor(false);
-        if (onUploadComplete) {
-          onUploadComplete();
+        
+        // Create collection with all page fileIds
+        if (pageFileIds.length > 0) {
+          const collectionResult = await createCollection(
+            {
+              collectionFileIds: pageFileIds,
+              title: metadata.name || `Thought Collection (${pageFileIds.length} pages)`
+            },
+            accountId,
+            {
+              title: metadata.name || `Thought Collection`,
+              description: metadata.description || '',
+              keywords: metadata.keywords || metadata.tags || [],
+              tags: metadata.tags || metadata.keywords || [],
+              isPublic: true,
+              isNSFW: false
+            }
+          );
+          
+          if (collectionResult.success) {
+            console.log(`[UploadModal] Created collection with ${pageFileIds.length} pages, fileId: ${collectionResult.fileId}`);
+            setShowTextEditor(false);
+            if (onUploadComplete) {
+              onUploadComplete();
+            }
+            setTimeout(() => {
+              onClose();
+            }, 500);
+          } else {
+            throw new Error(`Failed to create collection: ${collectionResult.error || 'Unknown error'}`);
+          }
         }
-        // Close modal after a brief delay to show success
-        setTimeout(() => {
-          onClose();
-        }, 500);
       } else {
-        alert(`Failed to create thought: ${result.error}`);
+        // Single page thought - save normally
+        const result = await createTextPost(
+          textPost,
+          accountId,
+          {
+            title: textPost.metadata?.name || textPost.content.substring(0, 50),
+            description: textPost.metadata?.description || textPost.content,
+            isNSFW: textPost.isNSFW || false,
+            keywords: textPost.metadata?.keywords || textPost.metadata?.tags || (textPost.category ? [textPost.category] : undefined),
+            tags: textPost.metadata?.tags || textPost.metadata?.keywords || (textPost.category ? [textPost.category] : undefined),
+          }
+        );
+
+        if (result.success) {
+          setShowTextEditor(false);
+          if (onUploadComplete) {
+            onUploadComplete();
+          }
+          setTimeout(() => {
+            onClose();
+          }, 500);
+        } else {
+          alert(`Failed to create thought: ${result.error}`);
+        }
       }
     } catch (error: any) {
-      alert(`Error creating thought: ${error?.message || 'Unknown error'}`);
+      console.error('Failed to create text post:', error);
+      alert(`Failed to create thought: ${error?.message || 'Unknown error'}`);
     }
   };
 
