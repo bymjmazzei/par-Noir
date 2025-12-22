@@ -177,7 +177,7 @@ export function UploadModal({ feeds: propsFeeds, onClose, onUploadComplete }: Up
           );
           
           if (collectionResult.success) {
-            console.log(`[UploadModal] Created collection with ${pageFileIds.length} pages, fileId: ${collectionResult.fileId}`);
+            console.log(`[UploadModal] Created collection with ${thumbnailFileIds.length} pages, fileId: ${collectionResult.fileId}`);
             setShowTextEditor(false);
             if (onUploadComplete) {
               onUploadComplete();
