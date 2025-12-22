@@ -346,6 +346,7 @@ export function TextPostEditor({ onSave, onCancel }: TextPostEditorProps) {
   
   // Add page function
   const handleAddPage = () => {
+    const newPageIndex = pages.length;
     setPages(prev => [...prev, {
       content: '',
       fontFamily: prev[prev.length - 1].fontFamily,
@@ -361,7 +362,17 @@ export function TextPostEditor({ onSave, onCancel }: TextPostEditorProps) {
       textStyle: 'plain',
       padding: prev[prev.length - 1].padding,
     }]);
-    setCurrentPageIndex(pages.length);
+    setCurrentPageIndex(newPageIndex);
+    // Scroll to new page after state updates
+    setTimeout(() => {
+      if (previewContainerRef.current) {
+        const viewportWidth = previewContainerRef.current.clientWidth;
+        previewContainerRef.current.scrollTo({
+          left: newPageIndex * viewportWidth,
+          behavior: 'smooth'
+        });
+      }
+    }, 0);
   };
   
   // Delete current page
@@ -536,12 +547,32 @@ export function TextPostEditor({ onSave, onCancel }: TextPostEditorProps) {
   // Sync scroll position with current page index
   useEffect(() => {
     if (previewContainerRef.current) {
+      const viewportWidth = previewContainerRef.current.clientWidth;
       previewContainerRef.current.scrollTo({
-        left: currentPageIndex * window.innerWidth,
+        left: currentPageIndex * viewportWidth,
         behavior: 'smooth'
       });
     }
   }, [currentPageIndex]);
+
+  // Update current page index based on scroll position
+  useEffect(() => {
+    const container = previewContainerRef.current;
+    if (!container) return;
+
+    const handleScroll = () => {
+      const viewportWidth = container.clientWidth;
+      const scrollLeft = container.scrollLeft;
+      const newPageIndex = Math.round(scrollLeft / viewportWidth);
+      
+      if (newPageIndex !== currentPageIndex && newPageIndex >= 0 && newPageIndex < pages.length) {
+        setCurrentPageIndex(newPageIndex);
+      }
+    };
+
+    container.addEventListener('scroll', handleScroll, { passive: true });
+    return () => container.removeEventListener('scroll', handleScroll);
+  }, [currentPageIndex, pages.length]);
 
   // Preview rendering
   useEffect(() => {
@@ -1305,11 +1336,15 @@ export function TextPostEditor({ onSave, onCancel }: TextPostEditorProps) {
             <button
               onClick={() => {
                 if (currentPageIndex > 0) {
-                  setCurrentPageIndex(prev => prev - 1);
-                  previewContainerRef.current?.scrollTo({
-                    left: (currentPageIndex - 1) * window.innerWidth,
-                    behavior: 'smooth'
-                  });
+                  const newIndex = currentPageIndex - 1;
+                  setCurrentPageIndex(newIndex);
+                  if (previewContainerRef.current) {
+                    const viewportWidth = previewContainerRef.current.clientWidth;
+                    previewContainerRef.current.scrollTo({
+                      left: newIndex * viewportWidth,
+                      behavior: 'smooth'
+                    });
+                  }
                 }
               }}
               disabled={currentPageIndex === 0}
@@ -1323,11 +1358,15 @@ export function TextPostEditor({ onSave, onCancel }: TextPostEditorProps) {
             <button
               onClick={() => {
                 if (currentPageIndex < pages.length - 1) {
-                  setCurrentPageIndex(prev => prev + 1);
-                  previewContainerRef.current?.scrollTo({
-                    left: (currentPageIndex + 1) * window.innerWidth,
-                    behavior: 'smooth'
-                  });
+                  const newIndex = currentPageIndex + 1;
+                  setCurrentPageIndex(newIndex);
+                  if (previewContainerRef.current) {
+                    const viewportWidth = previewContainerRef.current.clientWidth;
+                    previewContainerRef.current.scrollTo({
+                      left: newIndex * viewportWidth,
+                      behavior: 'smooth'
+                    });
+                  }
                 }
               }}
               disabled={currentPageIndex === pages.length - 1}
